@@ -1,0 +1,157 @@
+/* =========================================================================
+ * WindowChrome — Liquid Neon custom title bar (SKY-3033)
+ * Foundation phase: no glass/blur — var(--bg-panel) fill only.
+ * ========================================================================= */
+
+.wc-bar {
+  position: relative;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  user-select: none;
+  z-index: 100;
+}
+
+/* 1px neon gradient accent along the top edge */
+.wc-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: var(--grad-neon-soft);
+  pointer-events: none;
+}
+
+.wc-drag-region {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--space-2);
+  /* Full-width draggable area; buttons inside use no-drag */
+  -webkit-app-region: drag;
+}
+
+.wc-title {
+  flex: 1;
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-heading);
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  /* Must not participate in drag so text stays selectable in non-electron contexts */
+  -webkit-app-region: no-drag;
+}
+
+/* ── Control button groups ─────────────────────────────────────────── */
+
+.wc-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  /* Buttons are never draggable */
+  -webkit-app-region: no-drag;
+}
+
+.wc-controls-left {
+  margin-right: var(--space-2);
+}
+
+.wc-controls-right {
+  margin-left: var(--space-2);
+}
+
+/* ── Individual control buttons ────────────────────────────────────── */
+
+.wc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background var(--dur-hover-in) var(--ease-standard),
+    color var(--dur-hover-in) var(--ease-standard);
+}
+
+.wc-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.wc-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.wc-btn:active {
+  background: var(--bg-active);
+}
+
+.wc-btn-close:hover {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--state-danger);
+}
+
+.wc-btn-minimize:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.wc-btn-maximize:hover {
+  background: rgba(74, 222, 128, 0.14);
+  color: var(--state-success);
+}
+
+/* ── High-contrast overrides ───────────────────────────────────────── */
+
+/* System forced-colors (Windows High Contrast / Increased Contrast) */
+@media (forced-colors: active) {
+  .wc-bar {
+    background: ButtonFace;
+    border-bottom: 1px solid ButtonText;
+    forced-color-adjust: none;
+  }
+
+  .wc-bar::before {
+    background: Highlight;
+  }
+
+  .wc-btn {
+    border: 1px solid ButtonText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+
+  .wc-btn:hover {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+}
+
+/* App-level high-contrast token override */
+[data-contrast="high"] .wc-bar {
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+[data-contrast="high"] .wc-bar::before {
+  background: var(--border-neon-outline);
+}
+
+[data-contrast="high"] .wc-btn {
+  border: 1px solid var(--border-default);
+}
+
+[data-contrast="high"] .wc-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}

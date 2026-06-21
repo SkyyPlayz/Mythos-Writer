@@ -1612,3 +1612,66 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
     }
   });
 });
+
+describe('Background image persistence (SKY-2963)', () => {
+  const bgPath = '/home/user/Pictures/background.jpg';
+  const bgSettings: AppSettings = {
+    ...defaultSettings,
+    liquidNeon: {
+      background: bgPath,
+      bgMode: 'image',
+    } as LiquidNeonPrefs,
+  };
+
+  const mockLoadBgImage = vi.fn();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue(bgSettings);
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    mockLoadBgImage.mockResolvedValue({ dataUrl: 'data:image/jpeg;base64,abc123' });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+      loadBgImage: mockLoadBgImage,
+    };
+  });
+
+  it('preserves background image path in settingsSet payload after save', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+
+    const saved = mockSettingsSet.mock.calls[0][0] as AppSettings;
+    expect(saved.liquidNeon?.background).toBe(bgPath);
+    expect(saved.liquidNeon?.bgMode).toBe('image');
+  });
+
+  it('calls onSaved with background path intact', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const onSavedArg = mockOnSaved.mock.calls[0][0] as AppSettings;
+    expect(onSavedArg.liquidNeon?.background).toBe(bgPath);
+    expect(onSavedArg.liquidNeon?.bgMode).toBe('image');
+  });
+});

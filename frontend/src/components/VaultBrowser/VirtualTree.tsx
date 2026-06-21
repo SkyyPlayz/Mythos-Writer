@@ -22,6 +22,13 @@ interface RowData {
   focusedIdx: number;
   onMoveFocus: (newIdx: number) => void;
   iconMap?: Record<string, string>;
+  // Drag-and-drop
+  draggedPath: string | null;
+  dropTargetPath: string | null;
+  onDragStart: (path: string) => void;
+  onDragEnd: () => void;
+  onDragOverRow: (path: string) => void;
+  onDropRow: (draggedPath: string, targetRow: FlatRow) => void;
 }
 
 interface RowProps extends RowData {
@@ -44,6 +51,7 @@ function Row({
   index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
   focusedIdx, onMoveFocus, iconMap,
+  draggedPath, dropTargetPath, onDragStart, onDragEnd, onDragOverRow, onDropRow,
   // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
   // we emit role="treeitem" + aria-level instead.
 }: RowProps) {
@@ -66,17 +74,18 @@ function Row({
   const { node, depth, isExpanded, isSelected } = row;
   const isMd = !node.isDirectory && node.name.endsWith('.md');
   const indent = 8 + depth * 14;
-  const isInteractive = node.isDirectory || isMd;
   const isEditing = editingPath === node.path;
+  const isBeingDragged = draggedPath === node.path;
+  const isDropTarget = dropTargetPath === node.path;
 
   function handleClick() {
     onMoveFocus(index);
     if (node.isDirectory) onToggle(node.path);
-    else if (isMd) onOpen(node.path);
+    else onOpen(node.path);
   }
 
   function handleDoubleClick(e: React.MouseEvent) {
-    if (isMd && onStartRename) {
+    if (!node.isDirectory && onStartRename) {
       e.preventDefault();
       e.stopPropagation();
       onStartRename(row);
@@ -114,20 +123,55 @@ function Row({
   return (
     <div
       ref={rowRef}
-      style={{ ...style, paddingLeft: indent, display: 'flex', alignItems: 'center', boxSizing: 'border-box', gap: 4, paddingRight: 8 }}
+      style={{
+        ...style,
+        paddingLeft: indent,
+        display: 'flex',
+        alignItems: 'center',
+        boxSizing: 'border-box',
+        gap: 4,
+        paddingRight: 8,
+        opacity: isBeingDragged ? 0.4 : 1,
+        outline: isDropTarget ? '2px solid var(--accent, #00f0ff)' : undefined,
+        outlineOffset: isDropTarget ? '-2px' : undefined,
+      }}
       className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${isMd ? ' vb-md' : ''}`}
       data-testid={`vb-row-${node.path}`}
       role="treeitem"
       aria-level={depth + 1}
       aria-expanded={node.isDirectory ? isExpanded : undefined}
       aria-selected={isSelected}
-      tabIndex={isInteractive ? (isFocused ? 0 : -1) : undefined}
+      tabIndex={isFocused ? 0 : -1}
+      draggable={!isEditing}
       onClick={isEditing ? undefined : handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, row); }}
       onKeyDown={handleKeyDown}
       onFocus={() => { if (index !== focusedIdx) onMoveFocus(index); }}
       title={isEditing ? undefined : node.path}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', node.path);
+        onDragStart(node.path);
+      }}
+      onDragEnd={() => onDragEnd()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        onDragOverRow(node.path);
+      }}
+      onDragLeave={(e) => {
+        // Only clear when leaving the row itself, not entering a child element
+        if (!rowRef.current?.contains(e.relatedTarget as Node)) {
+          onDragOverRow('');
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const from = e.dataTransfer.getData('text/plain');
+        if (from && from !== node.path) onDropRow(from, row);
+        onDragEnd();
+      }}
     >
       <span className="vb-chevron" aria-hidden="true">{node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}</span>
       <span className="vb-icon" aria-hidden="true">
@@ -157,6 +201,7 @@ interface VirtualTreeProps {
   onRenameCancel?: () => void;
   label?: string;
   iconMap?: Record<string, string>;
+  onMove?: (fromPath: string, targetRow: FlatRow) => void;
 }
 
 export default function VirtualTree({
@@ -174,14 +219,37 @@ export default function VirtualTree({
   onRenameCancel,
   label,
   iconMap,
+  onMove,
 }: VirtualTreeProps) {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<ListImperativeAPI | null>(null);
+  const [draggedPath, setDraggedPath] = useState<string | null>(null);
+  const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
 
   const onMoveFocus = useCallback((newIdx: number) => {
     setFocusedIdx(newIdx);
     listRef.current?.scrollToRow({ index: newIdx, align: 'auto' });
   }, []);
+
+  const handleDragStart = useCallback((path: string) => {
+    setDraggedPath(path);
+    setDropTargetPath(null);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedPath(null);
+    setDropTargetPath(null);
+  }, []);
+
+  const handleDragOverRow = useCallback((path: string) => {
+    setDropTargetPath(path || null);
+  }, []);
+
+  const handleDropRow = useCallback((from: string, targetRow: FlatRow) => {
+    setDraggedPath(null);
+    setDropTargetPath(null);
+    onMove?.(from, targetRow);
+  }, [onMove]);
 
   // Clamp focusedIdx when rows shrink (e.g. parent folder collapses)
   useEffect(() => {
@@ -208,6 +276,11 @@ export default function VirtualTree({
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
           focusedIdx, onMoveFocus, iconMap,
+          draggedPath, dropTargetPath,
+          onDragStart: handleDragStart,
+          onDragEnd: handleDragEnd,
+          onDragOverRow: handleDragOverRow,
+          onDropRow: handleDropRow,
         }}
         style={{ overflowX: 'hidden' }}
       />

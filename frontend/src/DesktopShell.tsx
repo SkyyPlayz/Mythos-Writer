@@ -69,6 +69,7 @@ import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import StoryTimeline from './StoryTimeline';
+import WindowChrome from './components/ui/WindowChrome';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -165,9 +166,6 @@ interface AppMenuBarProps {
   selectedStoryId?: string | null;
   activeVaultRoot: string;
   onProjectSwitched: (vaultRoot: string) => void;
-  writingMode: WritingMode;
-  onSetWritingMode: (m: WritingMode) => void;
-  onOpenFocusPrefs: () => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
   onOpenTour: () => void;
@@ -183,7 +181,8 @@ interface AppMenuBarProps {
   onAddPanelAsNewTab: (panelId: SidebarPanelId) => void;
 }
 
-function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, writingMode, onSetWritingMode, onOpenFocusPrefs, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+// SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
+function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -298,42 +297,6 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
         dockedPanelIds={dockedPanelIds}
         onAddPanelAsNewTab={onAddPanelAsNewTab}
       />
-      <div className="writing-mode-selector" aria-label="Writing mode">
-        <button
-          className={`writing-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('normal')}
-          aria-pressed={writingMode === 'normal'}
-          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-        >
-          N
-        </button>
-        <button
-          className={`writing-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('focus')}
-          aria-pressed={writingMode === 'focus'}
-          title="Focus mode — distraction-free"
-        >
-          F
-        </button>
-        {writingMode === 'focus' && (
-          <button
-            className="writing-mode-prefs-btn"
-            onClick={onOpenFocusPrefs}
-            title="Configure Focus mode panels"
-            aria-label="Focus mode preferences"
-          >
-            ⚙
-          </button>
-        )}
-        <button
-          className={`writing-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('edit')}
-          aria-pressed={writingMode === 'edit'}
-          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
-        >
-          E
-        </button>
-      </div>
       <button
         className="app-menu-df-btn"
         onClick={onToggleDistractionFree}
@@ -547,6 +510,9 @@ export default function DesktopShell() {
   const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
+  // SKY-2966: stable ref so navigator sync callbacks don't re-subscribe on every render
+  const storiesRef = useRef<Story[]>([]);
+  storiesRef.current = stories;
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -724,6 +690,24 @@ export default function DesktopShell() {
     if (!gettingStartedProgress) return;
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleWaAutoApplyCategoriesChange = useCallback(
+    (categories: Partial<Record<SuggestionCategory, boolean>>) => {
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const updated: AppSettings = {
+          ...prev,
+          agents: {
+            ...prev.agents,
+            writingAssistant: { ...prev.agents.writingAssistant, autoApplyCategories: categories },
+          },
+        };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+    },
+    [],
+  );
 
   const handleToggleGsCollapsed = useCallback(() => {
     if (!gettingStartedProgress) return;
@@ -1256,6 +1240,7 @@ export default function DesktopShell() {
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
       await window.api.writeManifest(m);
+      window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }
@@ -1765,6 +1750,22 @@ export default function DesktopShell() {
     });
   }, []);
 
+  // SKY-2966: Report current scene to floating navigator panels whenever selection changes.
+  useEffect(() => {
+    window.api.navigatorReportScene?.(selectedScene?.id ?? null).catch(() => {});
+  }, [selectedScene]);
+
+  // SKY-2966: Refresh stories when a floating navigator panel modifies the manifest.
+  useEffect(() => {
+    if (!window.api.onNavigatorManifestChanged) return;
+    const unsub = window.api.onNavigatorManifestChanged(() => {
+      (window.api.readManifest() as Promise<Manifest>).then((m) => {
+        setStories(m?.stories ?? []);
+      }).catch(() => {});
+    });
+    return () => unsub?.();
+  }, []);
+
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
     if (mode === 'edit') {
@@ -2268,6 +2269,24 @@ export default function DesktopShell() {
     }
   }, []);
 
+  // SKY-2966: Handle scene selection requested from a floating navigator panel.
+  useEffect(() => {
+    if (!window.api.onNavigatorSceneChanged) return;
+    const unsub = window.api.onNavigatorSceneChanged(({ sceneId }) => {
+      for (const story of storiesRef.current) {
+        for (const chapter of story.chapters) {
+          const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+          if (scene) {
+            handleSelectScene(scene, chapter, story);
+            setViewDepth('scene');
+            return;
+          }
+        }
+      }
+    });
+    return () => unsub?.();
+  }, [handleSelectScene, setViewDepth]);
+
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
@@ -2635,6 +2654,9 @@ export default function DesktopShell() {
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
+            autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
+            autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
+            onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
           />
         );
       case 'archive-continuity':
@@ -2667,7 +2689,7 @@ export default function DesktopShell() {
     handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
-    activeSceneForSidebar,
+    activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -2915,6 +2937,7 @@ export default function DesktopShell() {
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
+      {showTitleBar && <WindowChrome />}
       {showTitleBar && (
         <AppMenuBar
           onOpenSettings={() => setSettingsOpen(true)}
@@ -2923,9 +2946,6 @@ export default function DesktopShell() {
           selectedStoryId={selectedStory?.id ?? null}
           activeVaultRoot={activeVaultRoot}
           onProjectSwitched={handleProjectSwitched}
-          writingMode={writingMode}
-          onSetWritingMode={setWritingMode}
-          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
           onOpenTour={() => setTourOpen(true)}
@@ -2973,8 +2993,18 @@ export default function DesktopShell() {
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
-            applyLiquidNeonTokens(s.liquidNeon);
             applyPageBackgroundTokens(s.pageBackground);
+            // SKY-2963: must load the background data URL before applying tokens,
+            // otherwise applyLiquidNeonTokens receives no bgDataUrl and resets the
+            // background to the default gradient (same pattern as initial load above).
+            const lg = s.liquidNeon;
+            if (lg?.background && lg.background !== 'default') {
+              window.api.loadBgImage?.(lg.background)
+                .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
+                .catch(() => applyLiquidNeonTokens(lg));
+            } else {
+              applyLiquidNeonTokens(lg);
+            }
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
@@ -3421,6 +3451,9 @@ export default function DesktopShell() {
             cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
             idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
             idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
+            waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
+            waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
+            onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}

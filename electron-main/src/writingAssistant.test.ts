@@ -40,6 +40,7 @@ import {
   parseBetaReadLines,
   buildBetaReadComments,
   buildWritingAssistantUserContent,
+  extractFirstJsonArray,
 } from './writingAssistant.js';
 import type { DatabaseSync } from 'node:sqlite';
 
@@ -159,6 +160,130 @@ describe('parseScanTipsStructured (§1b)', () => {
     const text = JSON.stringify(cats.map((c) => ({ category: c, tip: `${c} tip` })));
     const result = parseScanTipsStructured(text, cats.length);
     expect(result.map((r) => r.category)).toEqual(cats);
+  });
+});
+
+// ─── §1c extractFirstJsonArray — balanced bracket scanner ────────────────────
+// Regression tests for GH #638 / SKY-2965: greedy regex ate bracketed prose.
+
+describe('extractFirstJsonArray (§1c)', () => {
+  it('returns a plain JSON array from clean text', () => {
+    expect(extractFirstJsonArray('["a","b"]')).toEqual(['a', 'b']);
+  });
+
+  it('returns null for text with no brackets', () => {
+    expect(extractFirstJsonArray('no brackets here')).toBeNull();
+  });
+
+  it('returns null for text with unmatched `[` only', () => {
+    expect(extractFirstJsonArray('unclosed [')).toBeNull();
+  });
+
+  it('returns null for text with only prose `[...]` that is not valid JSON', () => {
+    // [like so] is not a JSON array — brackets around plain words
+    expect(extractFirstJsonArray('[like so]')).toBeNull();
+  });
+
+  it('skips prose bracket before the JSON array and returns the array (GH #638 regression)', () => {
+    // Prior greedy regex matched "[example]:\n[\"tip\"]" as one string → JSON.parse failed
+    const text = 'Here are tips [example]:\n["tip one", "tip two"]';
+    expect(extractFirstJsonArray(text)).toEqual(['tip one', 'tip two']);
+  });
+
+  it('stops at the first balanced `]` — does not eat trailing prose brackets', () => {
+    // Prior greedy regex: ["t1","t2"] [note] would match ["t1","t2"] [note]
+    const text = '["t1","t2"] [note]';
+    expect(extractFirstJsonArray(text)).toEqual(['t1', 't2']);
+  });
+
+  it('handles brackets inside JSON string values correctly', () => {
+    const text = '["fix [this phrase]", "and [that one]"]';
+    expect(extractFirstJsonArray(text)).toEqual(['fix [this phrase]', 'and [that one]']);
+  });
+
+  it('handles nested arrays in the JSON', () => {
+    const text = '[["a","b"],["c"]]';
+    expect(extractFirstJsonArray(text)).toEqual([['a', 'b'], ['c']]);
+  });
+
+  it('handles a multi-line JSON array with preamble prose', () => {
+    const text = 'Preamble [author note]:\n[\n  "Tip one.",\n  "Tip two."\n]';
+    expect(extractFirstJsonArray(text)).toEqual(['Tip one.', 'Tip two.']);
+  });
+
+  it('handles unmatched `{` and `}` inside string values', () => {
+    const text = '["{broken}", "good tip"]';
+    expect(extractFirstJsonArray(text)).toEqual(['{broken}', 'good tip']);
+  });
+
+  it('handles escaped quotes inside string values', () => {
+    const text = '["she said \\"hello\\"", "normal"]';
+    expect(extractFirstJsonArray(text)).toEqual(['she said "hello"', 'normal']);
+  });
+
+  it('falls through invalid candidates to find the real array', () => {
+    // First `[` starts a non-JSON span; second `[` is the real array
+    const text = '[invalid prose] ["real", "array"]';
+    expect(extractFirstJsonArray(text)).toEqual(['real', 'array']);
+  });
+
+  it('returns null when all bracket spans fail JSON.parse', () => {
+    const text = '[no json here] [also not json]';
+    expect(extractFirstJsonArray(text)).toBeNull();
+  });
+
+  it('returns structured objects when the array contains objects', () => {
+    const text = '[{"category":"grammar","tip":"Fix fragment"}]';
+    expect(extractFirstJsonArray(text)).toEqual([{ category: 'grammar', tip: 'Fix fragment' }]);
+  });
+});
+
+// ─── §1d parseScanTips — bracket-prose regression (GH #638 / SKY-2965) ───────
+
+describe('parseScanTips bracket-prose regression (§1d)', () => {
+  it('correctly parses the tip array when prose brackets appear before the JSON', () => {
+    const text = 'Analysis [scene 1]:\n["Cut adverbs.", "Use active voice."]';
+    const tips = parseScanTips(text);
+    expect(tips).toEqual(['Cut adverbs.', 'Use active voice.']);
+  });
+
+  it('correctly parses when prose brackets appear after the JSON array', () => {
+    const text = '["Fix pacing.", "Vary rhythm."] [end of tips]';
+    const tips = parseScanTips(text);
+    expect(tips).toEqual(['Fix pacing.', 'Vary rhythm.']);
+  });
+
+  it('falls back to newline split when no valid JSON array is found', () => {
+    const text = 'No JSON here [just prose] and [more prose].';
+    const tips = parseScanTips(text);
+    // Fallback: split by lines → single line returned as a tip
+    expect(tips).toHaveLength(1);
+    expect(tips[0]).toBe('No JSON here [just prose] and [more prose].');
+  });
+
+  it('tip text may contain square brackets without corrupting the parse', () => {
+    const text = '["The phrase [like this] is weak.", "Use stronger verbs."]';
+    const tips = parseScanTips(text);
+    expect(tips).toEqual(['The phrase [like this] is weak.', 'Use stronger verbs.']);
+  });
+});
+
+// ─── §1e parseScanTipsStructured — bracket-prose regression ──────────────────
+
+describe('parseScanTipsStructured bracket-prose regression (§1e)', () => {
+  it('parses structured tips when preamble contains prose brackets', () => {
+    const text = 'Results for [chapter 1]:\n[{"category":"grammar","tip":"Fix fragment."}]';
+    const result = parseScanTipsStructured(text);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ category: 'grammar', tip: 'Fix fragment.' });
+  });
+
+  it('tip category field may contain bracket characters without breaking parse', () => {
+    const text = '[{"category":"style-tone","tip":"Avoid [said] bookisms."}]';
+    const result = parseScanTipsStructured(text);
+    expect(result).toHaveLength(1);
+    expect(result[0].tip).toBe('Avoid [said] bookisms.');
+    expect(result[0].category).toBe('style-tone');
   });
 });
 

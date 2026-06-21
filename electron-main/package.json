@@ -20,11 +20,12 @@
     "chokidar": "^5.0.0",
     "docx": "^9.7.1",
     "electron-updater": "^6.3.9",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "mammoth": "^1.9.0"
   },
   "devDependencies": {
-    "@mythos-writer/shared": "*",
     "@jazzer.js/core": "^4.0.0",
+    "@mythos-writer/shared": "*",
     "@types/node": "^22.19.19",
     "@vitest/coverage-v8": "^4.1.8",
     "electron-vite": "^5.0.0",

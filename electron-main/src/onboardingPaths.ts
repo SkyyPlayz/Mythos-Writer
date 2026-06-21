@@ -113,6 +113,19 @@ export function readExistingVaultPaths(vaultParentPath: string): ExistingVaultPa
   };
 }
 
+/** Returns true when p contains a valid Mythos two-vault layout (Story Vault/manifest.json + Notes Vault/). */
+export function detectMythosVaultAt(p: string, exists: ExistsFn = fs.existsSync): boolean {
+  if (!p || typeof p !== 'string') return false;
+  try {
+    return (
+      exists(path.join(p, 'Story Vault', 'manifest.json')) &&
+      exists(path.join(p, 'Notes Vault'))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export type LegacyVaultDetection =
   | { found: false }
   | { found: true; legacyRoot: string; storyVaultPath: string; notesVaultPath: string };

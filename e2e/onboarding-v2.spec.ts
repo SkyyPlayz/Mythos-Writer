@@ -67,7 +67,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
   if (cardTestId === 'card-blank' || cardTestId === 'card-sample' || cardTestId === 'card-template') {
-    await page.locator('[data-testid="card-create-custom"]').click();
+    await page.locator('[data-testid="card-custom"]').click();
     await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
     await page.locator(`[data-testid="${cardTestId}"]`).click();
     return;
@@ -675,6 +675,7 @@ test.describe('AC-OB-12: Non-writable path disables Create Story', () => {
 
 // ─── AC-OB-14: Recents list bounded to ≤5 entries ────────────────────────────
 
+
 test.describe('AC-OB-14: Recents list bounded', () => {
   let userData: string;
   let app: ElectronApplication;
@@ -774,5 +775,68 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
     await expect(hint).toContainText('200');
 
     await expect(page.locator('[data-testid="gs-create-story"]')).toBeDisabled();
+  });
+});
+
+// ─── AC-SKY-2967: Scrollable wizard at 1280×720 (no maximize needed) ─────────
+//
+// Regression test for SKY-2967: the onboarding overlay must be scrollable at
+// small viewports so the user can reach all controls without maximizing.
+//
+// Two assertions:
+//   1. Structural — computed overflow-y on gs-overlay is 'auto' (not hidden/visible)
+//   2. Functional — gs-skip (bottom of step1 modal) and gs-create-story (step2)
+//      are both reachable via scrollIntoViewIfNeeded() at 720px viewport height.
+
+test.describe('AC-SKY-2967: Onboarding scrollable at 1280×720', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-2967-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-SKY-2967: wizard content reachable at 1280×720 without maximizing', async () => {
+    // Shrink to the minimum target resolution from the ticket
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 720);
+    });
+
+    await expect(page.locator('[data-testid="gs-overlay"]')).toBeVisible({ timeout: 10_000 });
+
+    // Structural: overlay must scroll its content rather than clip it
+    const overflowY = await page.locator('[data-testid="gs-overlay"]').evaluate(
+      (el) => getComputedStyle(el).overflowY,
+    );
+    expect(overflowY, 'gs-overlay must be overflow-y: auto').toBe('auto');
+
+    // Functional step1: the lowest top-level card remains reachable without maximizing.
+    const importCard = page.locator('[data-testid="card-import"]');
+    await importCard.scrollIntoViewIfNeeded();
+    await expect(importCard).toBeVisible();
+    await expect(importCard).toBeEnabled();
+
+    // Functional step2: navigate and verify Create Story button reachable without maximizing
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+    });
+    await page.locator('[data-testid="card-custom"]').click();
+    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="card-blank"]').click();
+    await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
+
+    const createBtn = page.locator('[data-testid="gs-create-story"]');
+    await createBtn.scrollIntoViewIfNeeded();
+    await expect(createBtn).toBeVisible();
+    await expect(createBtn).toBeEnabled({ timeout: 1_000 });
   });
 });

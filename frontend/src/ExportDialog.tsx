@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Story, Scene, Block } from './types';
+import { Button } from './components/ui/Button';
 import './ExportDialog.css';
 
 export type ExportScope = | { kind: 'scene'; sceneId: string } | { kind: 'chapter'; chapterId: string; storyId: string } | { kind: 'story'; storyId: string } | { kind: 'vault' };
@@ -101,8 +102,8 @@ export default function ExportDialog({ scope, stories, onClose }: Props) {
           })}
         </fieldset>
         <div className="export-dialog-actions">
-          <button className="export-dialog-btn export-dialog-btn-secondary" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="export-dialog-btn export-dialog-btn-primary" onClick={doExport} disabled={busy||scenes.length===0||selectedFormatDisabled}>{busy?'Exporting…':'Export…'}</button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="primary" onClick={doExport} disabled={busy || scenes.length === 0 || selectedFormatDisabled}>{busy ? 'Exporting…' : 'Export…'}</Button>
         </div>
       </div>
     </div>

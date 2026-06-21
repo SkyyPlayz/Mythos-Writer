@@ -1,3 +1,4 @@
+import { Button } from '../ui/Button';
 import './VaultNotFoundScreen.css';
 
 interface Props {
@@ -23,15 +24,15 @@ export default function VaultNotFoundScreen({ vaultPath, onRerunWizard, onOpenSe
           {displayPath}
         </div>
         <div className="vault-not-found-actions">
-          <button type="button" className="vault-not-found-primary" onClick={onRerunWizard}>
+          <Button variant="primary" onClick={onRerunWizard}>
             Re-run setup
-          </button>
-          <button type="button" className="vault-not-found-secondary" onClick={onOpenSettings}>
+          </Button>
+          <Button variant="secondary" onClick={onOpenSettings}>
             Open Settings
-          </button>
-          <button type="button" className="vault-not-found-danger" onClick={onQuit}>
+          </Button>
+          <Button variant="destructive" onClick={onQuit}>
             Quit
-          </button>
+          </Button>
         </div>
       </section>
     </main>

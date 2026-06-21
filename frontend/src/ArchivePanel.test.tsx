@@ -195,7 +195,7 @@ describe('ArchivePanel — reject / dismiss', () => {
     const btn = await screen.findByRole('button', { name: /resolve inconsistency/i });
     fireEvent.click(btn);
     await waitFor(() =>
-      expect(screen.getByRole('dialog', { name: /archive continuity issue/i })).toBeInTheDocument(),
+      expect(screen.getByRole('dialog', { name: /continuity issue found/i })).toBeInTheDocument(),
     );
   });
 

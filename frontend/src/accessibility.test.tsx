@@ -87,6 +87,10 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     notesVaultReadIcons: vi.fn().mockResolvedValue({}),
     vaultReadIcons: vi.fn().mockResolvedValue({}),
     iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
+    outline: {
+      load: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockResolvedValue({ saved: true }),
+    },
     ...overrides,
   };
 }
@@ -577,65 +581,23 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
         ],
       }],
     };
-    const { container } = render(
-      <RightSidebar
-        activeTab="outline"
-        onTabChange={() => {}}
-        selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
-        selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
-        selectedStory={story as any}
-      />,
-    );
+    let container!: HTMLElement;
+    await act(async () => {
+      container = render(
+        <RightSidebar
+          activeTab="outline"
+          onTabChange={() => {}}
+          selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
+          selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
+          selectedStory={story as any}
+        />,
+      ).container;
+      await Promise.resolve(); // flush outline.load() Promise → setNodes
+    });
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('outline tab — active scene has aria-current="true"', () => {
-    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
-    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
-
-    const { container } = render(
-      <RightSidebar
-        activeTab="outline"
-        onTabChange={() => {}}
-        selectedScene={scene1}
-        selectedChapter={chapter}
-        selectedStory={story as any}
-      />,
-    );
-
-    const activeNode = container.querySelector('[aria-current="true"]');
-    expect(activeNode).not.toBeNull();
-    expect(activeNode?.textContent).toBe('Scene 1');
-
-    const inactiveNode = container.querySelector('.outline-sidebar-scene:not(.active-scene)');
-    expect(inactiveNode?.getAttribute('aria-current')).toBeNull();
-  });
-
-  it('outline tab — clicking a scene calls onSelectScene', () => {
-    const scene1 = { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const scene2 = { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' };
-    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [scene1, scene2], createdAt: '', updatedAt: '' };
-    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [chapter] };
-    const onSelectScene = vi.fn();
-
-    const { container } = render(
-      <RightSidebar
-        activeTab="outline"
-        onTabChange={() => {}}
-        selectedScene={scene1}
-        selectedChapter={chapter}
-        selectedStory={story as any}
-        onSelectScene={onSelectScene}
-      />,
-    );
-
-    const scene2Node = container.querySelector('.outline-sidebar-scene:not(.active-scene)') as HTMLElement;
-    fireEvent.click(scene2Node);
-    expect(onSelectScene).toHaveBeenCalledWith(scene2, chapter);
-  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

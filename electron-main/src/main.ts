@@ -117,6 +117,7 @@ import {
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
+  type CleanUninstallResponse,
   isFromTopFrame,
   UNTRUSTED_FRAME_REJECTION,
   type SettingsTestConnectionPayload,
@@ -143,6 +144,17 @@ import {
   type ContinuityCheckPayload,
   type OnboardingCompletePayload,
   type OnboardingCompleteResponse,
+  type OnboardingImportDocxPayload,
+  type OnboardingImportDocxResponse,
+  type OnboardingImportObsidianPayload,
+  type OnboardingImportObsidianResponse,
+  type OnboardingDryRunObsidianPayload,
+  type OnboardingDryRunObsidianResponse,
+  type OnboardingValidatePathPayload,
+  type OnboardingOpenExistingVaultPayload,
+  type OnboardingDetectMythosVaultPayload,
+  type ImportedDocxStory,
+  type DocxImportError,
   type ProviderListModelsPayload,
   type DraftsCreatePayload,
   type DraftsListPayload,
@@ -163,7 +175,13 @@ import {
   type SceneCrafterClosePayload,
   type SceneCrafterSuggestionAcceptPayload,
   type SceneCrafterSuggestionRejectPayload,
+  type OutlineLoadPayload,
+  type OutlineSavePayload,
+  type OutlineSaveResponse,
 } from './ipc.js';
+import { loadOutline, saveOutline } from './outline.js';
+import { parseDocxBuffer } from './docxImporter.js';
+import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
 import {
@@ -184,7 +202,7 @@ import {
 } from './sceneCrafterSuggestions.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
-import { isExistingUsableVaultRoot } from './validatePathUtil.js';
+import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
 import {
   defaultMythosVaultsParentPath,
   defaultNotesVaultRootPath,
@@ -369,7 +387,7 @@ import {
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
-import { buildSystemPaths, detectLegacyVaults, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
   hydrateSecretsIntoSettings,
@@ -408,6 +426,7 @@ import {
 } from './writingAssistant.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
+import { cleanUninstall } from './uninstallHelper.js';
 import {
   loadBrainstormSettings,
   setCategoryRouting,
@@ -2247,6 +2266,160 @@ const handlers: IpcHandlers = {
     const current = loadAppSettings();
     saveAppSettings({ ...current, onboardingComplete: false });
     return { ok: true as const };
+  },
+
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  // Parses each .docx file with mammoth, splits on H1 (chapters) / H2 (scenes),
+  // writes scene files + manifest entries for the current vault.
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: async (payload: OnboardingImportDocxPayload): Promise<OnboardingImportDocxResponse> => {
+    const { filePaths } = payload ?? {};
+    if (!Array.isArray(filePaths) || filePaths.length === 0) {
+      return { ok: false, importedStories: [], errors: [{ filePath: '', error: 'filePaths must be a non-empty array' }] };
+    }
+
+    const vaultRoot = getVaultRoot();
+    const manifestPath = getManifestPath();
+    const importedStories: ImportedDocxStory[] = [];
+    const errors: DocxImportError[] = [];
+
+    for (const filePath of filePaths) {
+      try {
+        if (!filePath.toLowerCase().endsWith('.docx')) {
+          errors.push({ filePath, error: 'Only .docx files are supported' });
+          continue;
+        }
+        const buffer = fs.readFileSync(filePath);
+        const baseName = path.basename(filePath, '.docx');
+        const parsed = await parseDocxBuffer(buffer, baseName);
+
+        const nowStr = new Date().toISOString();
+        const storyId = crypto.randomUUID();
+        let sceneCount = 0;
+        let firstScenePath: string | undefined;
+        let firstSceneId: string | undefined;
+
+        const storyChapters: Manifest['stories'][number]['chapters'] = [];
+        for (const ch of parsed.chapters) {
+          const chapterId = crypto.randomUUID();
+          const chapterDir = chapterVaultPath(vaultRoot, parsed.title, ch.title);
+          const chapterScenes: Manifest['stories'][number]['chapters'][number]['scenes'] = [];
+          for (const sc of ch.scenes) {
+            const sceneId = crypto.randomUUID();
+            const scenePath = sceneVaultPath(vaultRoot, chapterDir, sc.title);
+            writeSceneFile(vaultRoot, scenePath, {
+              id: sceneId,
+              title: sc.title,
+              chapterId,
+              storyId,
+              order: sc.order,
+              prose: sc.prose,
+            });
+            sceneCount++;
+            if (!firstScenePath) { firstScenePath = scenePath; firstSceneId = sceneId; }
+            chapterScenes.push({
+              id: sceneId, title: sc.title, path: scenePath,
+              order: sc.order, chapterId, storyId, blocks: [],
+              draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
+            });
+          }
+          storyChapters.push({
+            id: chapterId, title: ch.title, path: chapterDir,
+            order: ch.order, scenes: chapterScenes, createdAt: nowStr, updatedAt: nowStr,
+          });
+        }
+
+        const manifest = readManifest(manifestPath);
+        manifest.stories.push({
+          id: storyId, title: parsed.title, path: `Manuscript/${toSlug(parsed.title)}`,
+          chapters: storyChapters, createdAt: nowStr, updatedAt: nowStr,
+        });
+        writeManifest(manifestPath, manifest);
+
+        importedStories.push({ filePath, storyId, storyTitle: parsed.title, sceneCount, firstScenePath, firstSceneId, warnings: parsed.warnings });
+      } catch (err) {
+        errors.push({ filePath, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    return { ok: errors.length === 0, importedStories, errors };
+  },
+
+  // SKY-2993: Obsidian vault importer — importObsidianVault + dryRunObsidianImport
+
+  [IPC_CHANNELS.ONBOARDING_IMPORT_OBSIDIAN]: async (payload: OnboardingImportObsidianPayload): Promise<OnboardingImportObsidianResponse> => {
+    const { srcPath, targetVaultKind } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { ok: false, error: 'srcPath must be a non-empty string' };
+    }
+    if (targetVaultKind !== 'notes' && targetVaultKind !== 'story') {
+      return { ok: false, error: 'targetVaultKind must be "notes" or "story"' };
+    }
+    const targetRoot = targetVaultKind === 'notes' ? getNotesVaultRoot() : getVaultRoot();
+    const result = importObsidianToVaultDir(srcPath, targetRoot);
+    return {
+      ok: result.ok,
+      targetPath: result.targetPath,
+      error: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+    };
+  },
+
+  [IPC_CHANNELS.ONBOARDING_DRY_RUN_OBSIDIAN]: async (payload: OnboardingDryRunObsidianPayload): Promise<OnboardingDryRunObsidianResponse> => {
+    const { srcPath, targetVaultKind } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { error: 'srcPath must be a non-empty string' };
+    }
+    if (targetVaultKind !== 'notes' && targetVaultKind !== 'story') {
+      return { error: 'targetVaultKind must be "notes" or "story"' };
+    }
+    const preview = dryRunObsidianImport(srcPath);
+    if ('error' in preview) return { error: preview.error };
+    return { preview };
+  },
+
+  // SKY-2991: onboarding v2 path validation + vault discovery handlers
+
+  [IPC_CHANNELS.ONBOARDING_VALIDATE_PATH]: (payload: OnboardingValidatePathPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    const base = validatePathForVault(resolved, homeDir);
+    const result: import('./ipc.js').OnboardingValidatePathResponse = { ...base };
+    if (resolved && path.isAbsolute(resolved)) {
+      result.conflictMythos = detectMythosVaultAt(resolved);
+      if (process.platform === 'win32') {
+        result.pathTooLong = resolved.length > 200;
+      }
+    }
+    return result;
+  },
+
+  [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: () => {
+    const { homeDir, documentsDir, desktopDir, oneDriveDir, iCloudDir } = buildSystemPaths(app);
+    return { homeDir, documentsDir, desktopDir, oneDriveDir, iCloudDir };
+  },
+
+  [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    try {
+      const { storyVaultPath } = readExistingVaultPaths(resolved);
+      return { ok: true, vaultRoot: storyVaultPath };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => {
+    const raw = payload?.path ?? '';
+    const homeDir = app.getPath('home');
+    const resolved = raw === '~' ? homeDir : raw.startsWith('~/') ? path.join(homeDir, raw.slice(2)) : raw;
+    try {
+      readExistingVaultPaths(resolved);
+      return { isValid: true };
+    } catch (e) {
+      return { isValid: false, error: e instanceof Error ? e.message : String(e) };
+    }
   },
 
   // SKY-130: thin write that persists only the last-opened scene + cursor position.
@@ -4368,6 +4541,39 @@ const handlers: IpcHandlers = {
       ensureVaultDir();
     }
   },
+  // SKY-2969: Uninstaller vault-cleanup choice
+  [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: async (): Promise<CleanUninstallResponse> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const { response } = await dialog.showMessageBox(win!, {
+      type: 'warning',
+      buttons: ['Keep My Vaults', 'Delete Everything'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Uninstall Mythos Writer',
+      message: 'What should happen to your story and notes files?',
+      detail:
+        'Your vaults contain your manuscript, notes, and entities.\n\n' +
+        '"Keep My Vaults" leaves your files on disk.\n' +
+        '"Delete Everything" permanently removes all vault data from the default location.\n\n' +
+        'Vaults stored in custom locations will not be removed automatically.',
+    });
+    if (response === 0) {
+      return { cancelled: true, deleted: [], errors: [], customPathsWarning: [] };
+    }
+    closeDb();
+    try {
+      const result = cleanUninstall({
+        storyVaultRoot: getVaultRoot(),
+        notesVaultRoot: getNotesVaultRoot(),
+        userDataPath: app.getPath('userData'),
+      });
+      return { cancelled: false, ...result };
+    } finally {
+      // Re-open the DB only if the vault still exists (user may not uninstall immediately).
+      try { ensureVaultDir(); } catch { /* non-fatal */ }
+    }
+  },
+
   // SKY-156: Project Templates
   [IPC_CHANNELS.TEMPLATE_LIST]: (): import('./ipc.js').TemplateListResponse => {
     try {
@@ -5248,6 +5454,23 @@ const handlers: IpcHandlers = {
     return rebuildVaultManifest(getVaultRoot());
   },
 
+  // SKY-3026: Outline planning surface
+  [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => {
+    return loadOutline(payload.storyVaultPath);
+  },
+  [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload): OutlineSaveResponse => {
+    saveOutline(payload.storyVaultPath, payload.data);
+    return { saved: true };
+  },
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  [IPC_CHANNELS.WINDOW_MINIMIZE]: () => { mainWindow?.minimize(); },
+  [IPC_CHANNELS.WINDOW_MAXIMIZE]: () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  },
+  [IPC_CHANNELS.WINDOW_CLOSE]: () => { mainWindow?.close(); },
+
 };
 
 // ─── Panel popout windows (SKY-1686) ───
@@ -5434,6 +5657,48 @@ function registerFloatingPanelHandlers(): void {
   }));
 }
 
+// ─── Navigator cross-window sync (SKY-2966) ───
+function registerNavigatorSyncHandlers(): void {
+  // Float panel → main window: user clicked a scene in the popout, navigate to it.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_SELECT_SCENE, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_SELECT_SCENE, (event, payload: { sceneId: string }) => {
+    if (!isFromTopFrame(event)) return;
+    const { sceneId } = payload ?? {};
+    if (!sceneId || typeof sceneId !== 'string') return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_CHANGED, { sceneId });
+    }
+  }));
+
+  // Main window → float panels: broadcast current scene so popout highlights it.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_REPORT_SCENE, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_REPORT_SCENE, (event, payload: { sceneId: string | null }) => {
+    if (!isFromTopFrame(event)) return;
+    const { sceneId } = payload ?? {};
+    const senderId = event.sender?.id;
+    for (const [, state] of floatingPanelWindows) {
+      if (!state.win.isDestroyed() && state.win.webContents.id !== senderId) {
+        state.win.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_SYNCED, { sceneId });
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== senderId) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_SCENE_SYNCED, { sceneId });
+    }
+  }));
+
+  // Any window → others: manifest changed, reload stories.
+  ipcMain.handle(IPC_CHANNELS.NAVIGATOR_REPORT_MANIFEST, wrapIpcHandler(IPC_CHANNELS.NAVIGATOR_REPORT_MANIFEST, (event) => {
+    if (!isFromTopFrame(event)) return;
+    const senderId = event.sender?.id;
+    for (const [, state] of floatingPanelWindows) {
+      if (!state.win.isDestroyed() && state.win.webContents.id !== senderId) {
+        state.win.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id !== senderId) {
+      mainWindow.webContents.send(IPC_CHANNELS.NAVIGATOR_MANIFEST_CHANGED, {});
+    }
+  }));
+}
+
 // ─── Create BrowserWindow ───
 function createWindow() {
   // electron-vite emits the preload to out/preload/preload.js, while this
@@ -5449,6 +5714,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     ...restoreBounds,
     title: 'Mythos Writer',
+    // SKY-3033: Custom Liquid Neon window chrome — renderer provides title bar + controls.
+    frame: false,
     webPreferences: secureWebPreferences({ preloadPath }),
   });
 
@@ -7297,6 +7564,7 @@ app.whenReady().then(async () => {
   registerPresetHandlers();
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
+  registerNavigatorSyncHandlers();
 
   if (initializeVaults) startWritingScanScheduler();
   if (initializeVaults) startArchiveContScheduler();

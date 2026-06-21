@@ -45,6 +45,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  importDocxToStoryVault: (filePaths: string[]) =>
+    ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
+  // SKY-2993: Obsidian vault importer.
+  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
+    ipcRenderer.invoke('onboarding:importObsidianVault', { srcPath, targetVaultKind }),
+  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
+    ipcRenderer.invoke('onboarding:dryRunObsidianImport', { srcPath, targetVaultKind }),
+  // SKY-2991: onboarding v2 path validation + vault discovery
+  onboardingValidatePath: (p: string) =>
+    ipcRenderer.invoke('onboarding:validatePath', { path: p }),
+  onboardingGetSuggestedPaths: () =>
+    ipcRenderer.invoke('onboarding:getSuggestedPaths', undefined),
+  onboardingOpenExistingVault: (p: string) =>
+    ipcRenderer.invoke('onboarding:openExistingVault', { path: p }),
+  onboardingDetectMythosVault: (p: string) =>
+    ipcRenderer.invoke('onboarding:detectMythosVault', { path: p }),
 
   // SKY-9: full Notes-Vault-scoped CRUD for VaultBrowser and the
   // Brainstorm / Writing-Assistant downstream slices. Mirrors the Story Vault
@@ -127,6 +144,8 @@ contextBridge.exposeInMainWorld('api', {
   getAppInfo: () => ipcRenderer.invoke('app:ready', undefined),
   getSystemInfo: () => ipcRenderer.invoke('system:info', undefined),
   appQuit: () => ipcRenderer.invoke('app:quit', undefined),
+  // SKY-2969: prompt user to keep or delete vaults before uninstalling
+  cleanUninstall: () => ipcRenderer.invoke('app:cleanUninstall', undefined),
 
   // Versioning — per-scene snapshots
   snapshotSave: (sceneId: string, content: string, label?: string) =>
@@ -787,6 +806,34 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('panel:float-bounds', handler);
   },
 
+  // SKY-2966: story navigator popout cross-window sync
+  navigatorSelectScene: (sceneId: string) =>
+    ipcRenderer.invoke('navigator:select-scene', { sceneId }),
+
+  navigatorReportScene: (sceneId: string | null) =>
+    ipcRenderer.invoke('navigator:report-scene', { sceneId }),
+
+  navigatorReportManifest: () =>
+    ipcRenderer.invoke('navigator:report-manifest', undefined),
+
+  onNavigatorSceneChanged: (cb: (data: { sceneId: string }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string }) => cb(data);
+    ipcRenderer.on('navigator:scene-changed', handler);
+    return () => ipcRenderer.removeListener('navigator:scene-changed', handler);
+  },
+
+  onNavigatorSceneSynced: (cb: (data: { sceneId: string | null }) => void) => {
+    const handler = (_: unknown, data: { sceneId: string | null }) => cb(data);
+    ipcRenderer.on('navigator:scene-synced', handler);
+    return () => ipcRenderer.removeListener('navigator:scene-synced', handler);
+  },
+
+  onNavigatorManifestChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('navigator:manifest-changed', handler);
+    return () => ipcRenderer.removeListener('navigator:manifest-changed', handler);
+  },
+
   // SKY-1684: Archive Agent v1 — continuity scan
   archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
     ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
@@ -868,6 +915,19 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:check-integrity', undefined),
   rebuildVaultManifest: () =>
     ipcRenderer.invoke('vault:rebuild-manifest', undefined),
+
+  // SKY-3026: Outline planning surface
+  outline: {
+    load: (storyVaultPath: string) =>
+      ipcRenderer.invoke('outline:load', { storyVaultPath }),
+    save: (storyVaultPath: string, data: unknown) =>
+      ipcRenderer.invoke('outline:save', { storyVaultPath, data }),
+  },
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  windowMinimize: () => ipcRenderer.invoke('window:minimize', undefined),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize', undefined),
+  windowClose: () => ipcRenderer.invoke('window:close', undefined),
 
 });
 

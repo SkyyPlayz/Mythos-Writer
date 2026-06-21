@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import VaultAgentPanel from './VaultAgentPanel';
@@ -6,6 +6,7 @@ import ArchivePanel from './ArchivePanel';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import DraftHistoryPanel from './DraftHistoryPanel';
 import ContinuityPanel from './components/ContinuityPanel/ContinuityPanel';
+import OutlinePlanningPanel from './OutlinePlanningPanel';
 import { isGettingStartedVisible, type GettingStartedItemId, type GettingStartedProgress } from './gettingStartedReducer';
 import './RightSidebar.css';
 
@@ -26,6 +27,9 @@ interface Props {
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
+  waAutoApply?: boolean;
+  waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -218,6 +222,9 @@ function AiPanel({
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
+  waAutoApply = false,
+  waAutoApplyCategories,
+  onWaAutoApplyCategoriesChange,
   isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
@@ -231,6 +238,9 @@ function AiPanel({
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
+  waAutoApply?: boolean;
+  waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -286,6 +296,9 @@ function AiPanel({
             idleDebounceSeconds={idleDebounceSeconds}
             isActive={isPageFocused}
             onJumpToText={onJumpToText}
+            autoApply={waAutoApply}
+            autoApplyCategories={waAutoApplyCategories}
+            onAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
           />
         )}
         {subTab === 'vault' && <VaultAgentPanel scene={scene} enabled={archiveEnabled} />}
@@ -303,83 +316,6 @@ function AiPanel({
   );
 }
 
-function OutlineSidebarPanel({
-  story,
-  selectedChapterId,
-  selectedSceneId,
-  onSelectScene,
-}: {
-  story: Story | null;
-  selectedChapterId: string | null;
-  selectedSceneId: string | null;
-  onSelectScene?: (scene: Scene, chapter: Chapter) => void;
-}) {
-  const sortedChapters = useMemo(
-    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
-    [story],
-  );
-  const activeSceneRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedSceneId]);
-
-  if (!story) {
-    return (
-      <div className="sidebar-empty">
-        <div className="sidebar-empty-icon">📖</div>
-        <p>Select a story to see its outline.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="outline-sidebar-panel">
-      <div className="outline-sidebar-story-title">{story.title}</div>
-      {sortedChapters.length === 0 ? (
-        <div className="outline-sidebar-empty">No chapters yet.</div>
-      ) : (
-        sortedChapters.map((chapter) => {
-          const isActiveChapter = chapter.id === selectedChapterId;
-          const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
-          return (
-            <div
-              key={chapter.id}
-              className={`outline-sidebar-chapter${isActiveChapter ? ' active-chapter' : ''}`}
-            >
-              <div className="outline-sidebar-chapter-title">{chapter.title}</div>
-              <div className="outline-sidebar-scene-list">
-                {sortedScenes.length === 0 ? (
-                  <div className="outline-sidebar-no-scenes">No scenes</div>
-                ) : (
-                  sortedScenes.map((scene) => {
-                    const isActive = scene.id === selectedSceneId;
-                    return (
-                      <div
-                        key={scene.id}
-                        ref={isActive ? activeSceneRef : null}
-                        className={`outline-sidebar-scene${isActive ? ' active-scene' : ''}`}
-                        role="button"
-                        tabIndex={0}
-                        aria-current={isActive ? 'true' : undefined}
-                        onClick={() => onSelectScene?.(scene, chapter)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); onSelectScene?.(scene, chapter); }
-                        }}
-                      >
-                        {scene.title}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-}
 
 export default function RightSidebar({
   activeTab,
@@ -394,6 +330,9 @@ export default function RightSidebar({
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
+  waAutoApply = false,
+  waAutoApplyCategories,
+  onWaAutoApplyCategoriesChange,
   isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
@@ -482,6 +421,9 @@ export default function RightSidebar({
             cadenceTrigger={cadenceTrigger}
             idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
             idleDebounceSeconds={idleDebounceSeconds}
+            waAutoApply={waAutoApply}
+            waAutoApplyCategories={waAutoApplyCategories}
+            onWaAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
             isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}
@@ -489,10 +431,8 @@ export default function RightSidebar({
           />
         )}
         {activeTab === 'outline' && (
-          <OutlineSidebarPanel
+          <OutlinePlanningPanel
             story={selectedStory}
-            selectedChapterId={selectedChapter?.id ?? null}
-            selectedSceneId={selectedScene?.id ?? null}
             onSelectScene={onSelectScene}
           />
         )}

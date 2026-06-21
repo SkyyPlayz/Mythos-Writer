@@ -1,0 +1,89 @@
+/* Liquid Neon — shared popup menu surface (SKY-3030) */
+
+.ln-menu {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elev-2);
+  padding: var(--space-1) 0;
+  min-width: 192px;
+  animation: ln-menu-in var(--dur-hover-in) var(--ease-out) both;
+  outline: none;
+}
+
+@keyframes ln-menu-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ln-menu {
+    animation: none;
+  }
+}
+
+.ln-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-header);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease-out);
+  outline: none;
+}
+
+.ln-menu-item:hover:not(:disabled),
+.ln-menu-item:focus-visible:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.ln-menu-item:focus-visible:not(:disabled) {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.ln-menu-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ln-menu-item--destructive:not(:disabled) {
+  color: var(--state-danger);
+}
+
+.ln-menu-item--destructive:hover:not(:disabled),
+.ln-menu-item--destructive:focus-visible:not(:disabled) {
+  color: var(--state-danger-hover, var(--neon-magenta));
+  background: var(--bg-hover);
+}
+
+.ln-menu-separator {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-1) 0;
+  pointer-events: none;
+}
+
+/* High-contrast mode */
+[data-contrast="high"] .ln-menu {
+  background: #000;
+  border-color: #fff;
+  border-width: 2px;
+  box-shadow: none;
+}
+
+[data-contrast="high"] .ln-menu-item:hover:not(:disabled),
+[data-contrast="high"] .ln-menu-item:focus-visible:not(:disabled) {
+  background: #fff;
+  color: #000;
+  box-shadow: none;
+}
+
+[data-contrast="high"] .ln-menu-separator {
+  background: #fff;
+}

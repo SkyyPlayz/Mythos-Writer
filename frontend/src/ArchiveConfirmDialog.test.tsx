@@ -76,11 +76,16 @@ describe('ArchiveConfirmDialog', () => {
     expect(screen.getByText(/DB write failed/)).toBeTruthy();
   });
 
-  it('calls onClose when overlay is clicked', () => {
+  it('calls onClose when overlay (scrim) is clicked', () => {
     const onClose = vi.fn();
-    render(<ArchiveConfirmDialog {...defaultProps} onClose={onClose} />);
+    const { container } = render(<ArchiveConfirmDialog {...defaultProps} onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole('dialog'));
+    const overlay = container.querySelector('.ln-dialog-overlay')!;
+    // Simulate a direct click on the scrim (target === currentTarget)
+    const evt = new MouseEvent('click', { bubbles: true });
+    Object.defineProperty(evt, 'target', { value: overlay, configurable: true });
+    Object.defineProperty(evt, 'currentTarget', { value: overlay, configurable: true });
+    overlay.dispatchEvent(evt);
     expect(onClose).toHaveBeenCalled();
   });
 

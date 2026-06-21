@@ -71,6 +71,7 @@ function makeApi(overrides: Partial<{
   vaultGetPaths: ReturnType<typeof vi.fn>;
   vaultGetSystemPaths: ReturnType<typeof vi.fn>;
   settingsSet: ReturnType<typeof vi.fn>;
+  importDocxToStoryVault: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
@@ -89,6 +90,7 @@ function makeApi(overrides: Partial<{
       iCloudDir: null,
     })),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
+    importDocxToStoryVault: overrides.importDocxToStoryVault ?? vi.fn().mockResolvedValue({ ok: true, importedStories: [], errors: [] }),
   };
 }
 
@@ -131,7 +133,7 @@ async function renderWizard(ui: ReactElement) {
 }
 
 async function openCustomOptions() {
-  fireEvent.click(screen.getByTestId('card-create-custom'));
+  fireEvent.click(screen.getByTestId('card-custom'));
   await flushAsyncEffects();
 }
 
@@ -153,6 +155,8 @@ async function openTemplateGallery() {
   await flushAsyncEffects();
 }
 
+// ─── Step 1 ───────────────────────────────────────────────────────────────────
+
 function readOnboardingCss() {
   return readFileSync(resolve(process.cwd(), 'src/OnboardingWizard.css'), 'utf-8');
 }
@@ -169,8 +173,6 @@ function assertNoLiteralColorFallbacks(css: string) {
   expect(css).not.toMatch(/hsla?\(/i);
 }
 
-// ─── Step 1 ───────────────────────────────────────────────────────────────────
-
 describe('OnboardingWizard — Step 1', () => {
   it('keeps starting point cards on Liquid Neon tokens without literal color fallbacks', () => {
     const css = readOnboardingCss();
@@ -182,14 +184,14 @@ describe('OnboardingWizard — Step 1', () => {
     const ctaRule = cssRule(css, '.gs-card__cta');
     const cardStyles = [cardRule, hoverRule, focusRule, titleRule, descRule, ctaRule].join('\n');
 
-    // Base card: elevated surface + subtle border + body text (glass/backdrop deferred to phase 2)
+    // Base card: elevated surface + subtle border + body text
     expect(cardRule).toContain('var(--bg-elevated)');
     expect(cardRule).toContain('var(--border-subtle)');
     expect(cardRule).toContain('var(--text-body)');
     // Hover: neon glow frame
     expect(hoverRule).toContain('var(--accent)');
     expect(hoverRule).toContain('var(--glow-md)');
-    // Focus: focus-ring token (not --accent directly, for high-contrast compat)
+    // Focus: focus-ring token
     expect(focusRule).toContain('var(--focus-ring)');
     // Typography hierarchy
     expect(titleRule).toContain('var(--text-header)');
@@ -220,20 +222,50 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows three top-level starting-point cards', async () => {
+  it('shows three top-level starting-point cards (SKY-2987 3-path spec)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
-    expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
+    expect(screen.getByTestId('card-custom')).toBeInTheDocument();
+    expect(screen.getByTestId('card-import')).toBeInTheDocument();
     expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('card-create-custom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('card-open-existing')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match v2.1 spec copy exactly', async () => {
+  it('card labels match SKY-2970 spec copy (3-path redesign)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Create Custom Vault');
-    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open Existing Vault');
+    expect(screen.getByTestId('card-custom')).toHaveTextContent('Custom');
+    expect(screen.getByTestId('card-import')).toHaveTextContent('Import / Open Existing');
+    await act(async () => {});
+  });
+
+  it('AC-L-05: first card (Quick Start) receives focus when Step 1 mounts', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(document.activeElement).toBe(screen.getByTestId('card-quick-start'));
+    await act(async () => {});
+  });
+
+  it('AC-L-07: "Restart an existing project?" link is present on Step 1', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('gs-restart-link')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-restart-link').textContent).toMatch(/Restart an existing project/);
+    await act(async () => {});
+  });
+
+  it('AC-L-08: "Learn more" link is present on Step 1', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('gs-learn-more')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-learn-more').textContent).toMatch(/Learn more/);
+    await act(async () => {});
+  });
+
+  it('AC-L-01: Import card has secondary CSS modifier for visual distinction', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-custom')).not.toHaveClass('gs-card--secondary');
     await act(async () => {});
   });
 
@@ -270,16 +302,21 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
-  it('Open Existing Vault opens the folder picker and passes the selected path to onboardingComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-open-existing'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/Stories',
-    }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
+  it('Import card navigates to the import / open screen (SKY-2990)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-import'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
+    await act(async () => {});
+  });
+
+  it('"Restart an existing project?" link navigates to the import / open screen (SKY-2990)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-restart-link'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
+    await act(async () => {});
   });
 
   it('Create Custom shows Blank Slate, Sample Project, and From Template choices', async () => {
@@ -291,10 +328,9 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('card-template')).toHaveTextContent('From Template');
   });
 
-  it('shows Skip link on Step 1', async () => {
+  it('Skip link is removed from Step 1 (replaced by Restart + Learn more — SKY-2987)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-skip')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-skip').textContent).toMatch(/Skip/);
+    expect(screen.queryByTestId('gs-skip')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -320,13 +356,7 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('Skip calls onboardingComplete with startMode=skip and fires onComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('gs-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'skip' }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
+  /* Skip button removed from landing screen in SKY-2987 — AC-L-07/L-08 replace it */
 
   it('Escape on Step 1 shows cancel confirm dialog', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
@@ -1132,14 +1162,7 @@ describe('OnboardingWizard — AC coverage', () => {
     expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
   });
 
-  it('AC16: Skip bypasses setup — no onboardingComplete call needed before skip fires', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('gs-skip'));
-    await waitFor(() => expect(onComplete).toHaveBeenCalled());
-    // Wizard is gone — DesktopShell would render
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
+  /* AC16: Skip button removed from landing screen in SKY-2987; Restart link replaced it */
 
   it('AC17: Back on Step 2 preserves title and card selection', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
@@ -1375,5 +1398,475 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     await waitFor(() => expect(mockApi.settingsSet).toHaveBeenCalledWith(
       expect.objectContaining({ legacyVaultDismissed: true }),
     ));
+  });
+});
+
+// ─── Import / Open screen (SKY-2990) ───────────────────────────────────────────
+
+describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
+  it('AC-I-01: card-import navigates to import screen', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('card-import'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-01b: gs-restart-link navigates to import screen', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('gs-restart-link'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    await act(async () => {});
+  });
+
+  it('AC-I-02: import screen has all three sections', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-section-mw')).toBeInTheDocument();
+    expect(screen.getByTestId('import-section-obs')).toBeInTheDocument();
+    expect(screen.getByTestId('import-section-docx')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-03: Import/Open button disabled until a field is filled', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-04: Import/Open button enabled after MW path is typed', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-05: MW Browse button calls chooseVaultFolder and fills in path', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-mw-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
+    await waitFor(() => expect(screen.getByTestId('import-mw-path')).toHaveValue('/home/user/Stories'));
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-I-06: Obsidian notes Browse sets the notes path display', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsNotes', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian notes folder'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/home/user/ObsNotes'));
+    await act(async () => {});
+  });
+
+  it('AC-I-07: Obsidian story Browse sets the story path display', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsStory', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-obs-story-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian story folder'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-story-path')).toHaveValue('/home/user/ObsStory'));
+    await act(async () => {});
+  });
+
+  it('AC-I-08: tip text is shown', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    expect(screen.getByTestId('import-tip')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-I-09: MW Browse cancelled leaves path empty and button disabled', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('import-mw-browse'));
+    await act(async () => {});
+    expect(screen.getByTestId('import-mw-path')).toHaveValue('');
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+  });
+
+  it('AC-I-10: Import MW vault calls onboardingComplete with open-existing startMode', async () => {
+    const onComplete = vi.fn();
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
+      startMode: 'open-existing',
+      vaultParentPath: '/home/user/MyVault',
+    }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  it('AC-I-11: MW import failure shows error modal, does not call onComplete', async () => {
+    const onComplete = vi.fn();
+    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Not a Mythos vault' });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/Bad' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('Not a Mythos vault');
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('AC-E-01: error modal dismiss hides the modal', async () => {
+    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Fail' });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/bad' } });
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('import-error-dismiss'));
+    expect(screen.queryByTestId('import-error-modal')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-E-02: Obsidian import stub shows "coming soon" modal', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/obs/notes', cancelled: false });
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
+    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('coming soon');
+    await act(async () => {});
+  });
+
+  it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
+    const onComplete = vi.fn();
+    const importDocxMock = vi.fn().mockResolvedValue({
+      ok: true,
+      importedStories: [{ filePath: '/docs/story.docx', storyId: 's1', storyTitle: 'Story', sceneCount: 2, warnings: [] }],
+      errors: [],
+    });
+    (window as unknown as { api: unknown }).api = { ...mockApi, importDocxToStoryVault: importDocxMock };
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    const fileInput = screen.getByTestId('import-docx-input');
+    const file = new File(['content'], 'story.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput);
+    await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(importDocxMock).toHaveBeenCalled());
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  it('AC-E-04: Back button on import screen returns to step1', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.click(screen.getByTestId('gs-back-step-import'));
+    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+    await act(async () => {});
+  });
+
+  it('AC-E-05: Escape on import screen shows cancel confirm', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
+    await waitFor(() => expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument());
+    await act(async () => {});
+  });
+});
+
+
+
+// ─── Custom Setup path (SKY-2988) ────────────────────────────────────────────
+
+describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)', () => {
+  // Safety net: always restore real timers even if a test times out
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('AC-C-01: renders custom-location screen with all required elements', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-path-input')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-browse')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-vault-name-input')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-location-next')).toBeInTheDocument();
+    expect(screen.getByText('Custom Setup · 1 of 2')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-C-01: Next button is initially disabled (default path not yet validated)', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect(screen.getByTestId('custom-location-next')).toBeDisabled();
+    await act(async () => {});
+  });
+
+  it('AC-C-03: vault name is auto-derived from the default path', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MythosWriter');
+    await act(async () => {});
+  });
+
+  it('AC-C-03: typing in the path field auto-updates vault name', async () => {
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/Projects/MyNovel' },
+      });
+      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MyNovel');
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-03: manual vault name edit prevents auto-update on subsequent path changes', async () => {
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-name-input'), { target: { value: 'My Custom Name' } });
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/SomethingElse' },
+      });
+      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('My Custom Name');
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
+    // validateCustomPathNow calls validatePath twice via Promise.all:
+    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
+    mockApi.validatePath = vi.fn()
+      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true })  // existing dir
+      .mockResolvedValueOnce({ exists: false, isEmpty: true, writable: true }); // no manifest
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/MyVault' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/NewVault' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-02: not-writable path keeps Next disabled and shows validation hint', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/root/protected' },
+      });
+      await act(async () => { vi.advanceTimersByTime(600); });
+      await act(async () => { await vi.runAllTimersAsync(); });
+      expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
+      expect(screen.getByTestId('custom-location-next')).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
+  });
+
+  it('AC-C-04: Browse button opens folder picker and updates path + vault name', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/WritingVault', cancelled: false });
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe('~/WritingVault');
+    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('WritingVault');
+  });
+
+  it('AC-C-04: Browse cancelled keeps existing path', async () => {
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    const pathBefore = (screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value;
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(pathBefore);
+  });
+
+  it('AC-C-05: suggestion pill updates path and triggers immediate validation', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    mockApi.vaultGetSystemPaths = vi.fn(() => resolvedInEffect({
+      homeDir: '/home/user',
+      documentsDir: '/home/user/Documents',
+      desktopDir: '/home/user/Desktop',
+      oneDriveDir: null,
+      iCloudDir: null,
+    }));
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    const pills = await screen.findAllByTestId('custom-suggestion-pill');
+    fireEvent.click(pills[0]);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+  });
+
+  it('AC-C-06: Back button returns to step1', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-location-back'));
+    await act(async () => {});
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+  });
+
+  it('AC-C-06: Next advances to custom-template when path is valid', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/MyVault', cancelled: false });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    // Use Browse to get a valid path (immediate validation, no debounce)
+    fireEvent.click(screen.getByTestId('custom-vault-browse'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('custom-location-next'));
+    await act(async () => {});
+    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
+  });
+});
+
+describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('AC-C-07: renders custom-template screen with both radio cards', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-recommended')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-template-finish')).toBeInTheDocument();
+    expect(screen.getByText('Custom Setup · 2 of 2')).toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('AC-C-07: Recommended card is selected by default', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'false');
+    await act(async () => {});
+  });
+
+  it('AC-C-08: clicking Start Blank card selects it and deselects Recommended', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-blank'));
+    await act(async () => {});
+    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('AC-C-10: Finish calls onboardingComplete with startMode=blank and vault info', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-finish'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ startMode: 'blank' }),
+    );
+  });
+
+  it('AC-C-11: Back returns to custom-location preserving vault path state', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.click(screen.getByTestId('custom-template-back'));
+    await act(async () => {});
+    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
+    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(
+      '~/Documents/MythosWriter',
+    );
+  });
+
+  it('AC-C-11: Escape on custom-template shows cancel confirm', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
+    );
+    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
+    await act(async () => {});
+    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
   });
 });

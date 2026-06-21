@@ -1,0 +1,145 @@
+/* Liquid Neon — dropdown select form control (SKY-3030) */
+
+.ln-select {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.ln-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-header);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-hover-in) var(--ease-out),
+    box-shadow var(--dur-hover-in) var(--ease-out);
+  outline: none;
+}
+
+.ln-select-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.ln-select-trigger:focus-visible:not(:disabled) {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25);
+}
+
+.ln-select-trigger[aria-expanded="true"] {
+  border-color: var(--focus-ring);
+}
+
+.ln-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ln-select-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ln-select-value--placeholder {
+  color: var(--text-muted);
+}
+
+.ln-select-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform var(--dur-hover-in) var(--ease-out);
+}
+
+.ln-select-trigger[aria-expanded="true"] .ln-select-chevron {
+  transform: rotate(180deg);
+}
+
+/* Listbox popup */
+.ln-select-listbox {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elev-2);
+  padding: var(--space-1) 0;
+  overflow-y: auto;
+  max-height: min(320px, 40vh);
+  animation: ln-select-in var(--dur-hover-in) var(--ease-out) both;
+  outline: none;
+}
+
+@keyframes ln-select-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ln-select-listbox {
+    animation: none;
+  }
+}
+
+.ln-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-header);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease-out);
+  outline: none;
+  user-select: none;
+}
+
+.ln-select-option:hover:not([aria-disabled="true"]),
+.ln-select-option:focus:not([aria-disabled="true"]) {
+  background: var(--bg-hover);
+}
+
+.ln-select-option:focus:not([aria-disabled="true"]) {
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.ln-select-option[aria-selected="true"] {
+  color: var(--accent);
+}
+
+.ln-select-option[aria-disabled="true"] {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* High-contrast mode */
+[data-contrast="high"] .ln-select-trigger {
+  background: #000;
+  border-color: #fff;
+  border-width: 2px;
+}
+
+[data-contrast="high"] .ln-select-listbox {
+  background: #000;
+  border-color: #fff;
+  border-width: 2px;
+  box-shadow: none;
+}
+
+[data-contrast="high"] .ln-select-option:hover:not([aria-disabled="true"]),
+[data-contrast="high"] .ln-select-option:focus:not([aria-disabled="true"]) {
+  background: #fff;
+  color: #000;
+  box-shadow: none;
+}

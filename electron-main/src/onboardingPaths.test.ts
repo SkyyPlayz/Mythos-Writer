@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSystemPaths,
   detectLegacyVaults,
+  detectMythosVaultAt,
   readExistingVaultPaths,
   updateRecentVaultParentPaths,
 } from './onboardingPaths.js';
@@ -198,5 +199,48 @@ describe('detectLegacyVaults', () => {
 
     expect(detectLegacyVaults({ homeDir, appVersion: '0.2.0', legacyVaultDismissed: true })).toEqual({ found: false });
     expect(detectLegacyVaults({ homeDir, appVersion: '0.1.9', legacyVaultDismissed: false })).toEqual({ found: false });
+  });
+});
+
+describe('detectMythosVaultAt', () => {
+  it('returns true for a valid two-vault layout', () => {
+    const parent = mkTmp();
+    fs.mkdirSync(path.join(parent, 'Story Vault'));
+    fs.mkdirSync(path.join(parent, 'Notes Vault'));
+    fs.writeFileSync(path.join(parent, 'Story Vault', 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    expect(detectMythosVaultAt(parent)).toBe(true);
+  });
+
+  it('returns false when Story Vault/manifest.json is absent', () => {
+    const parent = mkTmp();
+    fs.mkdirSync(path.join(parent, 'Story Vault'));
+    fs.mkdirSync(path.join(parent, 'Notes Vault'));
+
+    expect(detectMythosVaultAt(parent)).toBe(false);
+  });
+
+  it('returns false when Notes Vault is absent', () => {
+    const parent = mkTmp();
+    fs.mkdirSync(path.join(parent, 'Story Vault'));
+    fs.writeFileSync(path.join(parent, 'Story Vault', 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    expect(detectMythosVaultAt(parent)).toBe(false);
+  });
+
+  it('returns false for an empty directory', () => {
+    const parent = mkTmp();
+    expect(detectMythosVaultAt(parent)).toBe(false);
+  });
+
+  it('returns false for empty string or non-string input', () => {
+    expect(detectMythosVaultAt('')).toBe(false);
+  });
+
+  it('accepts a custom exists function for controlled testing', () => {
+    const always = () => true;
+    const never = () => false;
+    expect(detectMythosVaultAt('/any/path', always)).toBe(true);
+    expect(detectMythosVaultAt('/any/path', never)).toBe(false);
   });
 });

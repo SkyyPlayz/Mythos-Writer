@@ -25,7 +25,7 @@ describe('SyncConflictModal', () => {
 
     const dialog = screen.getByRole('dialog');
     const heading = screen.getByRole('heading', { name: /sync conflict detected/i });
-    const body = dialog.querySelector('.scm-body');
+    const body = dialog.querySelector('.ln-dialog-body');
 
     expect(dialog.getAttribute('aria-label')).toBeNull();
     expect(dialog.getAttribute('aria-labelledby')).toBe(heading.id);
@@ -122,7 +122,7 @@ describe('SyncConflictModal', () => {
     const { container } = render(
       <SyncConflictModal resolved={[]} lockfileConflict={null} onContinue={vi.fn()} />,
     );
-    expect(container.querySelector('.scm-dialog')).not.toBeNull();
+    expect(container.querySelector('.ln-dialog')).not.toBeNull();
   });
 
   it('shows the "don\'t show again" checkbox', () => {

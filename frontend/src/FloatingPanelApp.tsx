@@ -40,6 +40,8 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
+  // SKY-2966: track selected scene so the navigator highlights the active scene
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
 
   // Load settings + apply theme on mount.
   useEffect(() => {
@@ -49,12 +51,29 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
     }).catch(() => {});
   }, []);
 
-  // Load stories for panels that need them.
-  useEffect(() => {
-    if (!['stories', 'vault', 'progress'].includes(panelId)) return;
+  // Refresh the manifest from disk into local state.
+  const refreshStories = useCallback(() => {
     (window.api.readManifest() as Promise<Manifest>).then((m) => {
       setStories(m?.stories ?? []);
     }).catch(() => {});
+  }, []);
+
+  // Load stories for panels that need them, and subscribe to manifest changes
+  // pushed from the main window (SKY-2966).
+  useEffect(() => {
+    if (!['stories', 'vault', 'progress'].includes(panelId)) return;
+    refreshStories();
+    const unsub = window.api.onNavigatorManifestChanged?.(() => refreshStories());
+    return () => unsub?.();
+  }, [panelId, refreshStories]);
+
+  // SKY-2966: Sync the selected scene indicator from the main window.
+  useEffect(() => {
+    if (panelId !== 'stories') return;
+    const unsub = window.api.onNavigatorSceneSynced?.(({ sceneId }) => {
+      setSelectedSceneId(sceneId);
+    });
+    return () => unsub?.();
   }, [panelId]);
 
   // Listen for pin-changed events from main process.
@@ -67,6 +86,120 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       (window as unknown as { ipcRenderer?: { removeListener: (ch: string, h: typeof handler) => void } }).ipcRenderer?.removeListener('panel:float-pin-changed', handler);
     };
   }, [panelId]);
+
+  // SKY-2966: Story navigator callbacks that communicate across windows.
+
+  const handleNavSelectScene = useCallback((scene: { id: string }) => {
+    setSelectedSceneId(scene.id);
+    window.api.navigatorSelectScene?.(scene.id).catch(() => {});
+  }, []);
+
+  const handleNavCreateStory = useCallback(async () => {
+    const title = window.prompt('Story title:');
+    if (!title?.trim()) return;
+    try {
+      const m = await (window.api.readManifest() as Promise<Manifest>);
+      const id = crypto.randomUUID();
+      const nowStr = new Date().toISOString();
+      const story: Story = {
+        id, title: title.trim(), path: `stories/${id}`,
+        chapters: [], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const updated = { ...m, stories: [...(m?.stories ?? []), story] };
+      await window.api.writeManifest(updated);
+      setStories(updated.stories);
+      window.api.navigatorReportManifest?.().catch(() => {});
+    } catch (e) {
+      console.error('Failed to create story:', e);
+    }
+  }, []);
+
+  const handleNavCreateChapter = useCallback(async (storyId: string) => {
+    const title = window.prompt('Chapter title:');
+    if (!title?.trim()) return;
+    try {
+      const m = await (window.api.readManifest() as Promise<Manifest>);
+      const storyData = m?.stories?.find((s) => s.id === storyId);
+      if (!storyData) return;
+      const id = crypto.randomUUID();
+      const nowStr = new Date().toISOString();
+      const chapter = {
+        id, title: title.trim(),
+        path: `stories/${storyId}/chapters/${id}`,
+        order: storyData.chapters.length,
+        scenes: [], createdAt: nowStr, updatedAt: nowStr,
+      };
+      const updatedStories = m.stories.map((s) =>
+        s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
+      );
+      await window.api.writeManifest({ ...m, stories: updatedStories });
+      setStories(updatedStories);
+      window.api.navigatorReportManifest?.().catch(() => {});
+    } catch (e) {
+      console.error('Failed to create chapter:', e);
+    }
+  }, []);
+
+  const handleNavCreateScene = useCallback(async (storyId: string, chapterId: string) => {
+    const title = window.prompt('Scene title:');
+    if (!title?.trim()) return;
+    try {
+      const m = await (window.api.readManifest() as Promise<Manifest>);
+      const storyData = m?.stories?.find((s) => s.id === storyId);
+      const chapterData = storyData?.chapters.find((c) => c.id === chapterId);
+      if (!chapterData) return;
+      const id = crypto.randomUUID();
+      const nowStr = new Date().toISOString();
+      const scene = {
+        id, title: title.trim(),
+        path: `stories/${storyId}/chapters/${chapterId}/scenes/${id}.md`,
+        order: chapterData.scenes.length,
+        chapterId, storyId,
+        blocks: [] as never[],
+        draftState: 'in-progress' as const,
+        createdAt: nowStr, updatedAt: nowStr,
+      };
+      const updatedStories = m.stories.map((s) =>
+        s.id !== storyId ? s : {
+          ...s,
+          chapters: s.chapters.map((ch) =>
+            ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }
+          ),
+        }
+      );
+      await window.api.writeManifest({ ...m, stories: updatedStories });
+      // Also write the empty scene file so the editor can open it.
+      window.api.writeVault?.(scene.path, `---\nid: ${id}\ntitle: "${title.trim().replace(/"/g, '\\"')}"\ndraftState: in-progress\nupdatedAt: ${nowStr}\n---\n\n`).catch(() => {});
+      setStories(updatedStories);
+      window.api.navigatorReportManifest?.().catch(() => {});
+    } catch (e) {
+      console.error('Failed to create scene:', e);
+    }
+  }, []);
+
+  const handleNavReorderScenes = useCallback(async (storyId: string, chapterId: string, orderedIds: string[]) => {
+    try {
+      const m = await (window.api.readManifest() as Promise<Manifest>);
+      const updatedStories = m.stories.map((s) =>
+        s.id !== storyId ? s : {
+          ...s,
+          chapters: s.chapters.map((ch) => {
+            if (ch.id !== chapterId) return ch;
+            const sceneMap = new Map(ch.scenes.map((sc) => [sc.id, sc]));
+            return {
+              ...ch,
+              scenes: orderedIds.map((id, idx) => ({ ...(sceneMap.get(id) ?? ch.scenes[idx]), order: idx })),
+            };
+          }),
+        }
+      );
+      await window.api.writeManifest({ ...m, stories: updatedStories });
+      setStories(updatedStories);
+      window.api.navigatorReportManifest?.().catch(() => {});
+    } catch (e) {
+      console.error('Failed to reorder scenes:', e);
+    }
+  }, []);
 
   const handleDockBack = useCallback(() => {
     window.api.panelFloatDockBack?.(panelId).catch(() => {});
@@ -118,12 +251,12 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         return (
           <StoryNavigator
             stories={stories}
-            selectedSceneId={null}
-            onSelectScene={() => {}}
-            onCreateStory={() => {}}
-            onCreateChapter={() => {}}
-            onCreateScene={() => {}}
-            onReorderScenes={() => {}}
+            selectedSceneId={selectedSceneId}
+            onSelectScene={handleNavSelectScene}
+            onCreateStory={handleNavCreateStory}
+            onCreateChapter={handleNavCreateChapter}
+            onCreateScene={handleNavCreateScene}
+            onReorderScenes={handleNavReorderScenes}
             showTemplateCta={false}
             onTemplateCtaClick={() => {}}
           />

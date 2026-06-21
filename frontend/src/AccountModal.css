@@ -1,0 +1,71 @@
+/* AccountModal — v0.3 placeholder (SKY-3096) */
+
+.am-title {
+  font-size: var(--text-lg, 18px);
+  font-weight: var(--weight-heading, 600);
+  color: var(--text-header);
+  margin: 0;
+}
+
+.am-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.am-brand-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 36px;
+  font-weight: 700;
+  box-shadow: var(--neon-glow-strong);
+}
+
+.am-tagline {
+  font-size: var(--text-sm, 13px);
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  margin: 0;
+  max-width: 240px;
+}
+
+.am-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.am-dismiss {
+  padding: 8px 20px;
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+  border-radius: var(--radius-md, 6px);
+  background: transparent;
+  color: var(--text-body);
+  font-family: inherit;
+  font-size: var(--text-sm, 13px);
+  cursor: pointer;
+  transition: background var(--dur-hover-in, 120ms) ease, color var(--dur-hover-in, 120ms) ease;
+}
+
+.am-dismiss:hover {
+  background: var(--bg-elevated, rgba(255,255,255,0.06));
+  color: var(--text-header);
+}
+
+.am-dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .am-dismiss {
+    transition: none;
+  }
+}

@@ -8,6 +8,8 @@ import type { IpcEnvelope } from './ipcErrors.js';
 import type { SceneCrafterBoard } from './sceneCrafterBoard.js';
 import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/types.js';
 export type { StoryTimeOfDay, ManifestTimelineEntry };
+import type { OutlineNode, OutlineData } from './outline.js';
+export type { OutlineNode, OutlineData };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
 // SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
@@ -64,6 +66,8 @@ export const IPC_CHANNELS = {
   // App lifecycle
   APP_READY: 'app:ready',
   APP_QUIT: 'app:quit',
+  // SKY-2969: uninstaller vault-cleanup choice
+  APP_CLEAN_UNINSTALL: 'app:cleanUninstall',
 
   // AI agents
   AI_BRAINSTORMER: 'ai:brainstormer',
@@ -330,6 +334,19 @@ export const IPC_CHANNELS = {
   // and onboardingComplete so the wizard re-appears on next boot.
   ONBOARDING_RESET: 'onboarding:reset',
 
+  // SKY-2971: Word (.docx) → Story Vault importer.
+  ONBOARDING_IMPORT_DOCX: 'onboarding:importDocxToStoryVault',
+
+  // SKY-2993: Obsidian vault import.
+  ONBOARDING_IMPORT_OBSIDIAN: 'onboarding:importObsidianVault',
+  ONBOARDING_DRY_RUN_OBSIDIAN: 'onboarding:dryRunObsidianImport',
+
+  // SKY-2991: onboarding v2 path validation + vault discovery handlers
+  ONBOARDING_VALIDATE_PATH: 'onboarding:validatePath',
+  ONBOARDING_GET_SUGGESTED_PATHS: 'onboarding:getSuggestedPaths',
+  ONBOARDING_OPEN_EXISTING_VAULT: 'onboarding:openExistingVault',
+  ONBOARDING_DETECT_MYTHOS_VAULT: 'onboarding:detectMythosVault',
+
   // SKY-130: persist last-opened scene + editor cursor so it can be restored on next launch.
   SESSION_SCENE_SAVE: 'session:saveScene',
 
@@ -454,6 +471,14 @@ export const IPC_CHANNELS = {
   PANEL_FLOAT_SET_PIN: 'panel:float-set-pin',
   PANEL_FLOAT_BOUNDS: 'panel:float-bounds',
 
+  // SKY-2966: Story navigator popout cross-window sync
+  NAVIGATOR_SELECT_SCENE: 'navigator:select-scene',
+  NAVIGATOR_REPORT_SCENE: 'navigator:report-scene',
+  NAVIGATOR_SCENE_CHANGED: 'navigator:scene-changed',
+  NAVIGATOR_SCENE_SYNCED: 'navigator:scene-synced',
+  NAVIGATOR_REPORT_MANIFEST: 'navigator:report-manifest',
+  NAVIGATOR_MANIFEST_CHANGED: 'navigator:manifest-changed',
+
   // SKY-1684: Archive Agent v1 — continuity scan IPC
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
   ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',
@@ -492,6 +517,15 @@ export const IPC_CHANNELS = {
   // SKY-2308: Vault manifest integrity check + orphan detection
   VAULT_CHECK_INTEGRITY: 'vault:check-integrity',
   VAULT_REBUILD_MANIFEST: 'vault:rebuild-manifest',
+
+  // SKY-3026: Outline planning surface
+  OUTLINE_LOAD: 'outline:load',
+  OUTLINE_SAVE: 'outline:save',
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_MAXIMIZE: 'window:maximize',
+  WINDOW_CLOSE: 'window:close',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -703,6 +737,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WRITING_MODE_SET]: (payload: WritingModeSetPayload) => WritingModeState;
   [IPC_CHANNELS.APP_BACKUP_APP_DATA]: (payload: BackupAppDataPayload) => Promise<BackupAppDataResponse>;
   [IPC_CHANNELS.APP_RESTORE_APP_DATA]: (payload: RestoreAppDataPayload) => Promise<RestoreAppDataResponse>;
+  // SKY-2969: uninstaller vault-cleanup choice
+  [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: (payload: never) => Promise<CleanUninstallResponse>;
   [IPC_CHANNELS.BRAINSTORM_GET_SETTINGS]: (payload: never) => BrainstormGetSettingsResponse;
   [IPC_CHANNELS.BRAINSTORM_WRITE_NOTE]: (payload: BrainstormWriteNotePayload) => BrainstormWriteNoteResponse;
   [IPC_CHANNELS.BRAINSTORM_RESOLVE_ROUTING]: (payload: BrainstormResolveRoutingPayload) => BrainstormResolveRoutingResponse;
@@ -714,6 +750,16 @@ export interface IpcHandlers {
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  // SKY-2971: .docx importer
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
+  // SKY-2993: Obsidian vault importer
+  [IPC_CHANNELS.ONBOARDING_IMPORT_OBSIDIAN]: (payload: OnboardingImportObsidianPayload) => Promise<OnboardingImportObsidianResponse>;
+  [IPC_CHANNELS.ONBOARDING_DRY_RUN_OBSIDIAN]: (payload: OnboardingDryRunObsidianPayload) => Promise<OnboardingDryRunObsidianResponse>;
+  // SKY-2991: onboarding v2 path validation + vault discovery
+  [IPC_CHANNELS.ONBOARDING_VALIDATE_PATH]: (payload: OnboardingValidatePathPayload) => OnboardingValidatePathResponse;
+  [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: (payload: never) => OnboardingGetSuggestedPathsResponse;
+  [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => OnboardingOpenExistingVaultResponse;
+  [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => OnboardingDetectMythosVaultResponse;
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
@@ -855,6 +901,15 @@ export interface IpcHandlers {
   // SKY-2308: Vault integrity check + manifest rebuild
   [IPC_CHANNELS.VAULT_CHECK_INTEGRITY]: (payload: never) => Promise<VaultIntegrityReport>;
   [IPC_CHANNELS.VAULT_REBUILD_MANIFEST]: (payload: never) => Promise<VaultRebuildManifestResponse>;
+
+  // SKY-3026: Outline planning surface
+  [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => OutlineData | null;
+  [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload) => OutlineSaveResponse;
+
+  // SKY-3033: Window chrome controls (frameless main window)
+  [IPC_CHANNELS.WINDOW_MINIMIZE]: (payload: never) => void;
+  [IPC_CHANNELS.WINDOW_MAXIMIZE]: (payload: never) => void;
+  [IPC_CHANNELS.WINDOW_CLOSE]: (payload: never) => void;
 }
 
 // ─── Payload / Response types ───
@@ -1972,6 +2027,64 @@ export interface OnboardingCompleteResponse {
   error?: string;
 }
 
+/** SKY-2971: .docx → Story Vault importer IPC types. */
+export interface OnboardingImportDocxPayload {
+  filePaths: string[];
+}
+
+export interface ImportedDocxStory {
+  filePath: string;
+  storyId: string;
+  storyTitle: string;
+  sceneCount: number;
+  firstScenePath?: string;
+  firstSceneId?: string;
+  warnings: string[];
+}
+
+export interface DocxImportError {
+  filePath: string;
+  error: string;
+}
+
+export interface OnboardingImportDocxResponse {
+  ok: boolean;
+  importedStories: ImportedDocxStory[];
+  errors: DocxImportError[];
+}
+
+/** SKY-2993: Obsidian vault importer IPC types. */
+export type ObsidianTargetVaultKind = 'notes' | 'story';
+
+export interface OnboardingImportObsidianPayload {
+  srcPath: string;
+  targetVaultKind: ObsidianTargetVaultKind;
+}
+
+export interface OnboardingImportObsidianResponse {
+  ok: boolean;
+  targetPath?: string;
+  error?: string;
+}
+
+export interface OnboardingDryRunObsidianPayload {
+  srcPath: string;
+  targetVaultKind: ObsidianTargetVaultKind;
+}
+
+export interface ObsidianImportPreview {
+  markdownCount: number;
+  attachmentCount: number;
+  totalFiles: number;
+  topLevelFolders: string[];
+  sampleFiles: string[];
+}
+
+export interface OnboardingDryRunObsidianResponse {
+  preview?: ObsidianImportPreview;
+  error?: string;
+}
+
 export interface SessionSaveScenePayload {
   sceneId: string;
   scenePath: string;
@@ -2926,6 +3039,49 @@ export interface VaultLoadSampleTwoVaultResponse {
   error?: string;
 }
 
+// ─── SKY-2991: onboarding v2 path/vault IPC types ───
+
+export interface OnboardingValidatePathPayload {
+  path: string;
+}
+
+export interface OnboardingValidatePathResponse {
+  exists: boolean;
+  isEmpty: boolean;
+  writable: boolean;
+  /** True when the path already contains a Mythos two-vault layout. */
+  conflictMythos?: boolean;
+  /** True on Windows when the resolved path exceeds 200 characters. */
+  pathTooLong?: boolean;
+}
+
+export interface OnboardingGetSuggestedPathsResponse {
+  homeDir: string;
+  documentsDir: string;
+  desktopDir: string;
+  oneDriveDir: string | null;
+  iCloudDir: string | null;
+}
+
+export interface OnboardingOpenExistingVaultPayload {
+  path: string;
+}
+
+export interface OnboardingOpenExistingVaultResponse {
+  ok: boolean;
+  vaultRoot?: string;
+  error?: string;
+}
+
+export interface OnboardingDetectMythosVaultPayload {
+  path: string;
+}
+
+export interface OnboardingDetectMythosVaultResponse {
+  isValid: boolean;
+  error?: string;
+}
+
 // ─── Per-agent config IPC types (MYT-343) ───
 
 export interface SetAgentConfigPayload {
@@ -3230,6 +3386,18 @@ export interface RestoreAppDataResponse {
   /** True when the caller must re-call with confirmed: true to proceed. */
   requiresConfirmation?: boolean;
   cancelled?: boolean;
+}
+
+// SKY-2969: Uninstaller vault-cleanup choice
+export interface CleanUninstallResponse {
+  /** True when the user clicked the keep-vaults button (no deletion performed). */
+  cancelled: boolean;
+  /** Absolute paths that were successfully deleted. */
+  deleted: string[];
+  /** Paths that could not be deleted (message per path). */
+  errors: string[];
+  /** Vault paths outside the default location that were NOT auto-deleted. */
+  customPathsWarning: string[];
 }
 
 // ─── Brainstorm Agent routing (SKY-20) ───
@@ -4129,3 +4297,9 @@ export interface VaultRebuildManifestResponse {
   scenesFound: number;
   entitiesFound: number;
 }
+
+// SKY-3026: Outline planning surface
+export interface OutlineLoadPayload { storyVaultPath: string; }
+export type OutlineLoadResponse = OutlineData | null;
+export interface OutlineSavePayload { storyVaultPath: string; data: OutlineData; }
+export interface OutlineSaveResponse { saved: boolean; }

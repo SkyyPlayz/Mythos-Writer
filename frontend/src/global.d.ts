@@ -530,6 +530,13 @@ interface AppTabShellState {
   notesSidebarCollapsed: boolean;
 }
 
+/** SKY-3096 (v0.3 AppNavRail): A single item in the persistent left nav rail. */
+interface NavRailItem {
+  id: AppTab;
+  label: string;
+  icon: string;
+}
+
 /** SKY-1697 (Wave 2c): persisted floating panel window state. */
 interface FloatingPanelEntry {
   panelId: string;
@@ -1016,6 +1023,11 @@ interface Window {
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
+    // SKY-2971: Word (.docx) → Story Vault importer
+    importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
+    // SKY-2993: Obsidian vault importer
+    importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string }>;
+    dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
@@ -1310,6 +1322,25 @@ interface Window {
       success: boolean;
       error?: string;
     }>;
+
+    // SKY-2966: story navigator popout cross-window sync
+    navigatorSelectScene?: (sceneId: string) => Promise<void>;
+    navigatorReportScene?: (sceneId: string | null) => Promise<void>;
+    navigatorReportManifest?: () => Promise<void>;
+    onNavigatorSceneChanged?: (cb: (data: { sceneId: string | null }) => void) => () => void;
+    onNavigatorSceneSynced?: (cb: (data: { sceneId: string | null }) => void) => () => void;
+    onNavigatorManifestChanged?: (cb: () => void) => () => void;
+
+    // SKY-3026: Outline planning surface
+    outline: {
+      load: (storyVaultPath: string) => Promise<import('./types').OutlineData | null>;
+      save: (storyVaultPath: string, data: import('./types').OutlineData) => Promise<{ saved: boolean }>;
+    };
+
+    // SKY-3033: Window chrome controls (frameless main window)
+    windowMinimize?: () => Promise<void>;
+    windowMaximize?: () => Promise<void>;
+    windowClose?: () => Promise<void>;
 
   };
 

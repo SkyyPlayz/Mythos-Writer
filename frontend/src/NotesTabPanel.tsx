@@ -212,6 +212,7 @@ export default function NotesTabPanel({
                 onExport={onExport}
                 journalModeEnabled={journalModeEnabled}
                 initialScope="notes"
+                lockScope
               />
             </div>
           </div>

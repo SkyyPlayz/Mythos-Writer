@@ -1,41 +1,7 @@
-.scm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 900;
-}
-
-.scm-dialog {
-  background: var(--color-surface, #1e1e2e);
-  color: var(--color-text, #cdd6f4);
-  border: 1px solid var(--color-border, #313244);
-  border-radius: 10px;
-  width: min(520px, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.scm-header {
-  padding: 1rem 1.25rem 0.75rem;
-  border-bottom: 1px solid var(--color-border, #313244);
-}
-
-.scm-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--color-text, #cdd6f4);
-}
+/* Overlay, panel, header, and close-button styles are handled by the shared
+   Dialog primitive (components/ui/Dialog). Only component-specific styles live here. */
 
 .scm-body {
-  padding: 1rem 1.25rem;
-  overflow-y: auto;
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
@@ -112,13 +78,10 @@
   white-space: nowrap;
 }
 
+/* Override DialogFooter default (flex-end) so the suppress label sits left
+   and the Continue button sits right. */
 .scm-footer {
-  padding: 0.875rem 1.25rem;
-  border-top: 1px solid var(--color-border, #313244);
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
 }
 
 .scm-suppress-label {

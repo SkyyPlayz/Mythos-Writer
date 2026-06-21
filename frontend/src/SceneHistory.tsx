@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './SceneHistory.css';
 
 interface Props {
@@ -85,7 +86,7 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
 
   const selected = snapshots.find((s) => s.id === selectedId) ?? null;
 
-  return (
+  const dialog = (
     <div className="history-overlay" role="dialog" aria-modal="true" aria-label="Draft history">
       <div className="history-panel">
         <header className="history-header">
@@ -190,4 +191,6 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
       )}
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }
