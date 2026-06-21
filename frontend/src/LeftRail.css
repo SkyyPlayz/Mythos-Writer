@@ -37,16 +37,14 @@
   border-radius: var(--radius-xs);
   line-height: 1;
   z-index: 2;
-  transition: color var(--dur-hover-in) var(--ease-out);
-}
+transition: color var(--dur-hover-in);}
 
 .lr-toggle-btn:hover {
   color: var(--text-body);
-  background: var(--bg-inset);
-}
+background: var(--bg-elevated);}
 
 .lr-toggle-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -78,8 +76,7 @@
   align-items: center;
   gap: 4px;
   padding: 5px 6px;
-  background: var(--bg-surface);
-  flex-shrink: 0;
+background: var(--bg-inset);  flex-shrink: 0;
   min-height: 32px;
 }
 
@@ -101,7 +98,7 @@
 }
 
 .lr-panel-collapse-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -118,8 +115,7 @@
 .lr-panel-float-btn {
   background: none;
   border: none;
-  color: var(--border-strong);
-  font-size: 0.9rem;
+color: var(--text-muted);  font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--radius-xs);
@@ -129,20 +125,18 @@
 }
 
 .lr-panel-float-btn:hover {
-  color: var(--accent);
-  background: var(--bg-inset);
-}
+color: var(--color-accent);
+  background: var(--bg-elevated);}
 
 .lr-panel-float-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 .lr-panel-remove-btn {
   background: none;
   border: none;
-  color: var(--border-strong);
-  font-size: 0.9rem;
+color: var(--text-muted);  font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--radius-xs);
@@ -153,11 +147,10 @@
 
 .lr-panel-remove-btn:hover {
   color: var(--state-danger);
-  background: var(--bg-inset);
-}
+background: var(--bg-elevated);}
 
 .lr-panel-remove-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -178,8 +171,7 @@
   width: 100%;
   padding: 6px 8px;
   background: none;
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-xs);
+border: 1px dashed var(--border-subtle);  border-radius: var(--radius-xs);
   color: var(--text-muted);
   font-size: 0.78rem;
   cursor: pointer;
@@ -189,9 +181,8 @@
 
 .lr-add-panel-btn:hover:not(:disabled) {
   color: var(--text-body);
-  border-color: var(--text-muted);
-  background: var(--bg-surface);
-}
+border-color: var(--border-subtle);
+  background: var(--bg-inset);}
 
 .lr-add-panel-btn:disabled {
   opacity: 0.4;
@@ -199,7 +190,7 @@
 }
 
 .lr-add-panel-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -208,9 +199,8 @@
   bottom: calc(100% + 4px);
   left: 8px;
   right: 8px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xs);
+background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);  border-radius: var(--radius-xs);
   box-shadow: var(--elev-2);
   z-index: 10;
   overflow: hidden;
@@ -230,12 +220,11 @@
 }
 
 .lr-panel-picker-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-header);
+background: var(--bg-elevated);  color: var(--text-header);
 }
 
 .lr-panel-picker-item:focus-visible {
-  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -271,8 +260,8 @@
 
 .vault-empty-sub {
   font-size: 0.78rem !important;
-  color: var(--border-strong) !important;
-}
+color: var(--text-muted);
+  opacity: 0.5;}
 
 /* Vault tree */
 .vault-tree {
@@ -326,7 +315,7 @@
   width: 10px;
   flex-shrink: 0;
   color: var(--text-muted);
-}
+opacity: 0.6;}
 
 .vt-icon {
   font-size: 0.78rem;

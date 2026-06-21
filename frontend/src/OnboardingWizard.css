@@ -22,7 +22,7 @@
   border: none;
   cursor: pointer;
   font-size: 0.8125rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   text-align: center;
   padding: 0;
   text-decoration: underline;
@@ -32,23 +32,23 @@
 }
 
 a.gs-footer-link {
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
 }
 
 .gs-footer-link:hover,
 a.gs-footer-link:hover {
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
 }
 
 .gs-footer-link:focus-visible,
 a.gs-footer-link:focus-visible {
-  outline: 2px solid var(--color-accent, #89b4fa);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: 2px;
 }
 
 .gs-footer-link-sep {
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   opacity: 0.5;
   font-size: 0.8125rem;
   user-select: none;
@@ -59,7 +59,7 @@ a.gs-footer-link:focus-visible {
 .gs-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--scrim-heavy);
   display: flex;
   align-items: flex-start;  /* SKY-2967: was center; flex-start enables overflow-y scrolling */
   justify-content: center;
@@ -70,17 +70,17 @@ a.gs-footer-link:focus-visible {
 
 @media (prefers-reduced-transparency: reduce) {
   .gs-overlay {
-    background: var(--color-surface, #1e1e2e);
+    background: var(--color-surface);
   }
 }
 
 /* ─── Modal shell ── */
 
 .gs-modal {
-  background: var(--color-surface, #1e1e2e);
-  border: 1px solid var(--color-border, #45475a);
-  border-radius: 16px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-3);
   padding: 2rem 2.5rem 2.5rem;
   width: 100%;
   max-width: 640px;
@@ -127,23 +127,23 @@ a.gs-footer-link:focus-visible {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
 }
 
 .gs-close-btn {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   font-size: 1rem;
   padding: 0.25rem;
   border-radius: 4px;
   line-height: 1;
   transition: color 120ms;
 }
-.gs-close-btn:hover { color: var(--color-text, #cdd6f4); }
+.gs-close-btn:hover { color: var(--color-text); }
 .gs-close-btn:focus-visible {
-  outline: 2px solid var(--color-accent, #89b4fa);
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -153,13 +153,13 @@ a.gs-footer-link:focus-visible {
   font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   margin: 0;
 }
 
 .gs-modal__subtitle {
   font-size: 0.95rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   margin: -0.75rem 0 0;
 }
 
@@ -436,8 +436,8 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-template-card__action-btn--destructive:hover {
-  color: var(--color-danger, #f38ba8);
-  border-color: var(--color-danger, #f38ba8);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 .gs-template-card__rename-input {
@@ -496,7 +496,7 @@ a.gs-footer-link:focus-visible {
 
 .gs-template-toast {
   font-size: 0.8125rem;
-  color: var(--accent, #89b4fa);
+  color: var(--accent);
   margin: 0.25rem 0 0;
 }
 
@@ -514,13 +514,13 @@ a.gs-footer-link:focus-visible {
 
 /* SKY-1405: drag-over visual feedback for .mythostemplate drop target */
 .gs-modal--wide.gs-modal--drag-over {
-  outline: 2px dashed var(--color-accent, #89b4fa);
+  outline: 2px dashed var(--color-accent);
   outline-offset: -4px;
 }
 
 .gs-template-toast {
   font-size: 0.8125rem;
-  color: var(--accent, #89b4fa);
+  color: var(--accent);
   margin: 0.25rem 0 0;
 }
 
@@ -532,14 +532,14 @@ a.gs-footer-link:focus-visible {
   gap: 0.75rem;
   padding: 1rem 1.25rem;
   margin-top: 0.5rem;
-  background: var(--color-surface-alt, #181825);
-  border: 1px solid var(--color-accent, #89b4fa);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-accent);
   border-radius: 10px;
 }
 
 .template-preview__desc {
   font-size: 0.875rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   margin: 0;
 }
 
@@ -564,46 +564,47 @@ a.gs-footer-link:focus-visible {
 .gs-form__label {
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
 }
 
 .gs-form__label--optional {
   font-weight: 400;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   font-size: 0.8125rem;
 }
 
 .gs-form__input {
   width: 100%;
   padding: 0.6rem 0.875rem;
-  background: var(--color-surface-alt, #181825);
-  border: 1px solid var(--color-border, #45475a);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   font-family: inherit;
   font-size: 0.9375rem;
   transition: border-color 120ms;
   box-sizing: border-box;
 }
 
-.gs-form__input:focus {
-  outline: none;
-  border-color: var(--color-accent, #89b4fa);
+.gs-form__input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--color-accent);
 }
 
 .gs-form__input--error {
-  border-color: var(--color-error, #f38ba8);
+  border-color: var(--color-error);
 }
 
 .gs-form__error {
   font-size: 0.8125rem;
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
   margin: 0;
 }
 
 .gs-form__hint {
   font-size: 0.8rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   margin: 0;
 }
 
@@ -614,19 +615,19 @@ a.gs-footer-link:focus-visible {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0.875rem;
-  background: var(--color-surface-alt, #181825);
-  border: 1px solid var(--color-border, #45475a);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
 .gs-save-location__path {
   flex: 1;
   font-size: 0.875rem;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
 }
 
 .gs-save-location__path--error {
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
 }
 
 .gs-save-location__change {
@@ -637,7 +638,7 @@ a.gs-footer-link:focus-visible {
 /* ─── Vault picker polish (SKY-2007) ── */
 
 .gs-form__input--valid {
-  border-color: var(--color-success, #a6e3a1);
+  border-color: var(--color-success);
 }
 
 .gs-path-row {
@@ -664,15 +665,15 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-path-hint--info {
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
 }
 
 .gs-path-hint--warn {
-  color: var(--color-warning, #fab387);
+  color: var(--color-warning);
 }
 
 .gs-path-hint--error {
-  color: var(--color-error, #f38ba8);
+  color: var(--color-error);
 }
 
 .gs-path-hint__action {
@@ -690,7 +691,7 @@ a.gs-footer-link:focus-visible {
 
 .gs-suggestions__label {
   font-size: 0.75rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   flex-shrink: 0;
 }
 
@@ -698,10 +699,10 @@ a.gs-footer-link:focus-visible {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.625rem;
-  background: var(--color-surface-alt, #181825);
-  border: 1px solid var(--color-border, #45475a);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   font-size: 0.75rem;
   font-family: var(--font-mono, monospace);
   cursor: pointer;
@@ -714,8 +715,8 @@ a.gs-footer-link:focus-visible {
 
 .gs-suggestion-pill:hover,
 .gs-suggestion-pill:focus-visible {
-  border-color: var(--color-accent, #89b4fa);
-  background: rgba(137, 180, 250, 0.08);
+  border-color: var(--color-accent);
+  background: var(--accent-soft);
   outline: none;
 }
 
@@ -729,7 +730,7 @@ a.gs-footer-link:focus-visible {
   border: none;
   padding: 0;
   font-size: 0.8rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -738,7 +739,7 @@ a.gs-footer-link:focus-visible {
 
 .gs-recents__toggle:hover,
 .gs-recents__toggle:focus-visible {
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   outline: none;
 }
 
@@ -761,7 +762,7 @@ a.gs-footer-link:focus-visible {
   flex: 1;
   font-size: 0.8125rem;
   font-family: var(--font-mono, monospace);
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -777,7 +778,7 @@ a.gs-footer-link:focus-visible {
   background: none;
   border: none;
   padding: 0;
-  color: var(--color-accent, #89b4fa);
+  color: var(--color-accent);
   font-size: inherit;
   font-family: inherit;
   cursor: pointer;
@@ -787,7 +788,7 @@ a.gs-footer-link:focus-visible {
 
 .btn-link:hover,
 .btn-link:focus-visible {
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   outline: none;
 }
 
@@ -805,7 +806,7 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-conflict-alongside-path {
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   font-family: var(--font-mono, monospace);
   font-size: 0.875em;
 }
@@ -833,8 +834,8 @@ a.gs-footer-link:focus-visible {
 .gs-spinner {
   width: 48px;
   height: 48px;
-  border: 3px solid var(--color-border, #45475a);
-  border-top-color: var(--color-accent, #89b4fa);
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: gs-spin 700ms linear infinite;
   align-self: center;
@@ -847,7 +848,7 @@ a.gs-footer-link:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .gs-spinner {
     animation: none;
-    border-color: var(--color-accent, #89b4fa);
+    border-color: var(--color-accent);
   }
 }
 
@@ -864,13 +865,13 @@ a.gs-footer-link:focus-visible {
 .gs-scaffold-error__msg {
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   margin: 0;
 }
 
 .gs-scaffold-error__detail {
   font-size: 0.8125rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   margin: -0.75rem 0 0;
 }
 
@@ -879,36 +880,36 @@ a.gs-footer-link:focus-visible {
 .gs-confirm-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   z-index: 10;
 }
 
 .gs-confirm {
-  background: var(--color-surface, #1e1e2e);
-  border: 1px solid var(--color-border, #45475a);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 1.75rem 2rem;
   max-width: 420px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--elev-2);
   animation: gs-modal-in 150ms ease-out;
 }
 
 .gs-confirm__title {
   font-size: 1.125rem;
   font-weight: 700;
-  color: var(--color-text, #cdd6f4);
+  color: var(--color-text);
   margin: 0 0 0.75rem;
 }
 
 .gs-confirm__body {
   font-size: 0.875rem;
-  color: var(--color-muted, #6c7086);
+  color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0 0 1.5rem;
 }
@@ -1180,7 +1181,7 @@ a.gs-footer-link:focus-visible {
   align-items: flex-start;
   gap: var(--space-3, 12px);
   padding: var(--space-4, 16px);
-  background: rgba(248, 133, 133, 0.08);
+  background: var(--color-danger-bg);
   border: 1px solid var(--state-danger, #f88585);
   border-radius: var(--radius-sm, 12px);
   margin-top: var(--space-4, 16px);

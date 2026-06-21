@@ -268,6 +268,7 @@
   --accent-dark: #007a8a;
   --accent-border: var(--accent);
   --accent-bg: var(--accent-soft);
+  --accent-success: var(--state-success); /* success-green accent — chips/badges (SKY-3196) */
   --text-on-accent: #000000;  /* black on neon-cyan --accent; update if accent changes to a dark hue */
 
   /* States (bare names) */
@@ -298,6 +299,12 @@
   --color-danger-bg: rgba(248, 113, 113, 0.12);
   --color-danger-border: rgba(248, 113, 113, 0.4);
   --color-error: var(--state-danger);
+  /* Destructive-action button palette (SKY-3196) */
+  --bg-btn-danger: rgba(127, 29, 29, 0.85);
+  --text-btn-danger: #fca5a5;          /* ~7:1 on --bg-btn-danger */
+  --bg-btn-danger-hover: rgba(153, 27, 27, 0.92);
+  /* Heavy scrim for full-screen overlays */
+  --scrim-heavy: rgba(5, 8, 14, 0.78);
   --color-warning: var(--state-warning);
   --color-warning-bg: rgba(251, 191, 36, 0.12);
   --color-warning-border: rgba(251, 191, 36, 0.4);
@@ -434,6 +441,12 @@
   --accent-light: #e0d4ff;
   --accent-dim: #c9b6ff;
   --accent-dark: #c9b6ff;
+  --accent-success: #86efac;           /* AAA green at high-contrast */
+  /* Danger button at high-contrast */
+  --bg-btn-danger: rgba(248, 113, 113, 0.22);
+  --text-btn-danger: #fca5a5;
+  --bg-btn-danger-hover: rgba(248, 113, 113, 0.35);
+  --scrim-heavy: rgba(5, 8, 14, 0.96);
   --surface-3: #1d232c;
 
   /* State bg/border — higher opacity for legibility */
