@@ -135,8 +135,12 @@
   font-weight: 500;
 }
 
-/* Section visibility: show only sections matching the active category */
+/* Section visibility: show sections by default; hide non-matching when category is active */
 .settings-body .settings-section[data-settings-cat] {
+  display: flex;
+}
+
+.settings-body[data-active-cat] .settings-section[data-settings-cat] {
   display: none;
 }
 
