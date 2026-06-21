@@ -177,7 +177,7 @@ Per-job results:
 - \`build-linux\`: ${BUILD_LINUX_RESULT}
 - \`build-macos\`: ${BUILD_MACOS_RESULT}
 
-Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a `request_confirmation` routed to Ivy; wait for recorded owner sign-off before any merge (chain: agent → CEO → Ivy → Skyy, SKY-3009). Only merge after sign-off is recorded. On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
+Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a `request_confirmation` routed to Ivy. **Ivy signs off routine/low-risk merges of already-approved scope directly** — that recorded Ivy sign-off is sufficient to merge. Ivy escalates **owner-reserved** merges to Skyy (release cuts, scope/product-direction changes, irreversible/high-risk or security-sensitive merges, anything not already owner-approved). Merge ONLY after a sign-off is recorded (chain: agent → CEO → Ivy → Skyy, SKY-3009). On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
 EOF
 
 # Dedup: look for an already-open ping issue for this PR. The CLI's --match
