@@ -236,10 +236,19 @@ export default function TimelineSpreadsheet({
 
   const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
   const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
-  const setSelectedIds = useCallback((ids: Set<string>) => {
-    if (selectedIdsProp === undefined) setInternalSelectedIds(ids);
-    onSelectionChange?.(ids);
-  }, [selectedIdsProp, onSelectionChange]);
+  // Refs keep the selection bridge stable so callbacks don't need it in their deps.
+  const internalSelectedIdsRef = useRef(internalSelectedIds);
+  internalSelectedIdsRef.current = internalSelectedIds;
+  const selectedIdsPropsRef = useRef(selectedIdsProp);
+  selectedIdsPropsRef.current = selectedIdsProp;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const setSelectedIds = useCallback((ids: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const prev = selectedIdsPropsRef.current ?? internalSelectedIdsRef.current;
+    const resolved = typeof ids === 'function' ? ids(prev) : ids;
+    if (selectedIdsPropsRef.current === undefined) setInternalSelectedIds(resolved);
+    onSelectionChangeRef.current?.(resolved);
+  }, []);
   const [editingCell, setEditingCell] = useState<{ sceneId: string; col: ColKey } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -281,8 +290,7 @@ export default function TimelineSpreadsheet({
     if (!story) {
       setScenes([]);
       setArcs([]);
-      if (selectedIdsProp === undefined) setInternalSelectedIds(new Set());
-      onSelectionChange?.(new Set());
+      setSelectedIds(new Set());
       setProposals([]);
       return;
     }

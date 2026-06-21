@@ -4,7 +4,7 @@
 //
 // SVG+HTML, additive to existing spreadsheet timeline. 500-scene × 10-arc
 // perf gate: only renders cards in the current horizontal viewport + buffer.
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import type { Story } from './types';
 import './AeonLaneView.css';
 
@@ -580,10 +580,15 @@ export default function AeonLaneView({
   const [error, setError] = useState<string | null>(null);
   const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
   const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
-  const setSelectedIds = (ids: Set<string>) => {
-    if (selectedIdsProp === undefined) setInternalSelectedIds(ids);
-    onSelectionChange?.(ids);
-  };
+  // Refs keep the selection bridge stable so callbacks don't need it in their deps.
+  const selectedIdsPropsRef = useRef(selectedIdsProp);
+  selectedIdsPropsRef.current = selectedIdsProp;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const setSelectedIds = useCallback((ids: Set<string>) => {
+    if (selectedIdsPropsRef.current === undefined) setInternalSelectedIds(ids);
+    onSelectionChangeRef.current?.(ids);
+  }, []);
 
   // ─── Interaction state ───
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
@@ -602,8 +607,7 @@ export default function AeonLaneView({
     if (!story) {
       setScenes([]);
       setArcs([]);
-      if (selectedIdsProp === undefined) setInternalSelectedIds(new Set());
-      onSelectionChange?.(new Set());
+      setSelectedIds(new Set());
       setDetail(null);
       setContextMenu(null);
       setHoverInfo(null);

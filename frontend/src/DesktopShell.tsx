@@ -18,7 +18,6 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
-import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
