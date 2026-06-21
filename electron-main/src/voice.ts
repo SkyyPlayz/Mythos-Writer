@@ -759,6 +759,10 @@ async function transcribeWithWhisper(apiKey: string, chunks: Buffer[]): Promise<
   ];
   const body = Buffer.concat(formParts);
 
+  // SKY-847: SSRF guard — this endpoint is hardcoded for security. Do NOT make it
+  // configurable without adding validateBaseUrl() validation (see voice:transcribe
+  // handler and the SSRF guard in transcribeAudio). If the endpoint becomes
+  // user-configurable, validate it before use.
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
