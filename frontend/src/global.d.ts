@@ -517,6 +517,12 @@ interface AppSettings {
     };
     /** SKY-2094 (Phase 2 #1): two-tab app shell state. */
     tabShell?: AppTabShellState;
+    /** SKY-3098 (v0.3): nav rail collapsed state. */
+    navRailCollapsed?: boolean;
+    /** SKY-3098 (v0.3): workspace tab bar tabs. */
+    workspaceTabs?: WorkspaceTab[];
+    /** SKY-3098 (v0.3): active workspace tab id. */
+    activeWorkspaceTabId?: string | null;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──

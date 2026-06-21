@@ -137,7 +137,7 @@ test.afterAll(async () => {
 });
 
 async function openGraphView(): Promise<void> {
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
 }
 

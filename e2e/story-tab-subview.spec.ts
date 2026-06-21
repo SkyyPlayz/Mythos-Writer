@@ -119,9 +119,9 @@ test.afterAll(async () => {
 // ─── AC-SV-01: Story tab active by default ───────────────────────────────────
 
 test('AC-SV-01: Story tab is active by default', async () => {
-  const storyTab = page.locator('[data-testid="app-tab-story"]');
+  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
   await expect(storyTab).toBeVisible({ timeout: 10_000 });
-  await expect(storyTab).toHaveAttribute('aria-selected', 'true');
+  await expect(storyTab).toHaveAttribute('aria-current', 'page');
 });
 
 // ─── AC-SV-02: Sub-view bar visible in Story tab ─────────────────────────────
@@ -161,18 +161,18 @@ test('AC-SV-05: Scene Crafter sub-view persists after Notes tab round-trip', asy
   await expect(kanbanTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
 
   // Switch to Notes tab.
-  const notesTab = page.locator('[data-testid="app-tab-notes"]');
+  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]');
   await notesTab.click();
-  await expect(notesTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+  await expect(notesTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
   // Story sub-view bar should be gone while Notes tab is active.
   const bar = page.locator('[data-testid="story-subview-bar"]');
   await expect(bar).not.toBeVisible({ timeout: 2_000 });
 
   // Switch back to Story tab.
-  const storyTab = page.locator('[data-testid="app-tab-story"]');
+  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
   await storyTab.click();
-  await expect(storyTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+  await expect(storyTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
   // Scene Crafter sub-view should still be selected.
   await expect(bar).toBeVisible({ timeout: 3_000 });
