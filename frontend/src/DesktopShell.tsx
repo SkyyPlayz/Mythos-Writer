@@ -29,6 +29,7 @@ import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
+import { stepScene, computeStepState } from './stepScene';
 import { useFocusMode } from './useFocusMode';
 import { TOPBAR_HIDE_EVENT } from './useTopBarVisibility';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
@@ -3256,8 +3257,8 @@ export default function DesktopShell() {
                 onDepthChange={handleViewDepthChange}
                 canPrev={depthCanPrev}
                 canNext={depthCanNext}
-                onPrev={handleDepthPrev}
-                onNext={handleDepthNext}
+                onPrev={() => handleStep('prev')}
+                onNext={() => handleStep('next')}
                 contextLabel={depthContextLabel}
                 writingMode={writingMode}
                 isEmpty={depthIsEmpty}
@@ -3423,6 +3424,29 @@ export default function DesktopShell() {
               />
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
+                {/* AC-C-4: on-canvas edge arrows — route through unified handleStep */}
+                <button
+                  className="edge-arrow edge-arrow--prev"
+                  onClick={() => handleStep('prev')}
+                  disabled={!depthCanPrev}
+                  aria-label="Previous scene (Ctrl+Alt+←)"
+                  title="Previous (Ctrl+Alt+←)"
+                  data-testid="edge-arrow-prev"
+                  aria-hidden={!depthCanPrev}
+                >
+                  ‹
+                </button>
+                <button
+                  className="edge-arrow edge-arrow--next"
+                  onClick={() => handleStep('next')}
+                  disabled={!depthCanNext}
+                  aria-label="Next scene (Ctrl+Alt+→)"
+                  title="Next (Ctrl+Alt+→)"
+                  data-testid="edge-arrow-next"
+                  aria-hidden={!depthCanNext}
+                >
+                  ›
+                </button>
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"
@@ -3546,7 +3570,7 @@ export default function DesktopShell() {
             selectedScene={selectedScene}
             selectedChapter={selectedChapter}
             selectedStory={selectedStory}
-            onNavigateScene={handleNavigateScene}
+            onNavigateScene={handleStep}
             activeNotePath={openedNotePath}
             activeNoteWordCount={openedNoteWordCount}
             isVoiceActive={voiceActive}
