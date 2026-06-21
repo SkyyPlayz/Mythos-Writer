@@ -301,7 +301,7 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
-        aria-label="Open settings"
+        aria-label="Settings"
         title="Settings"
       >
         ⚙
