@@ -1,6 +1,6 @@
 // SKY-3185 — F5: TimelineRoot view-switcher + grouping tests.
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import TimelineRoot from './TimelineRoot';
 import type { Story } from './types';
 
@@ -38,15 +38,13 @@ const STORY: Story = {
   updatedAt: '',
 };
 
-// ─── localStorage stub ───────────────────────────────────────────────────────
+// ─── localStorage cleanup ─────────────────────────────────────────────────────
+// setupTests.ts installs a custom localStorageMock on window.localStorage (a plain
+// object, not Storage.prototype), so vi.spyOn(Storage.prototype) does not intercept
+// calls from the component.  Use the native mock directly: clear() in beforeEach
+// for isolation, getItem/setItem for assertions.
 
-const localStorageStub: Record<string, string> = {};
-beforeEach(() => {
-  Object.keys(localStorageStub).forEach(k => delete localStorageStub[k]);
-  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(k => localStorageStub[k] ?? null);
-  vi.spyOn(Storage.prototype, 'setItem').mockImplementation((k, v) => { localStorageStub[k] = v; });
-});
-afterEach(() => vi.restoreAllMocks());
+beforeEach(() => localStorage.clear());
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -68,11 +66,11 @@ describe('TimelineRoot — view switcher', () => {
   it('persists view mode to localStorage', async () => {
     render(<TimelineRoot story={STORY} />);
     await act(async () => { fireEvent.click(screen.getByTestId('view-mode-track')); });
-    expect(localStorageStub['timeline:viewMode']).toBe('track');
+    expect(localStorage.getItem('timeline:viewMode')).toBe('track');
   });
 
   it('reads viewMode from localStorage on mount', () => {
-    localStorageStub['timeline:viewMode'] = 'track';
+    localStorage.setItem('timeline:viewMode', 'track');
     render(<TimelineRoot story={STORY} />);
     expect(screen.getByTestId('mock-aeon')).toBeInTheDocument();
   });
@@ -97,11 +95,11 @@ describe('TimelineRoot — grouping', () => {
     await act(async () => {
       fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'chapter' } });
     });
-    expect(localStorageStub['timeline:groupBy']).toBe('chapter');
+    expect(localStorage.getItem('timeline:groupBy')).toBe('chapter');
   });
 
   it('reads groupBy from localStorage on mount', () => {
-    localStorageStub['timeline:groupBy'] = 'character';
+    localStorage.setItem('timeline:groupBy', 'character');
     render(<TimelineRoot story={STORY} />);
     expect(screen.getByTestId('groupby-select')).toHaveValue('character');
   });
@@ -110,7 +108,6 @@ describe('TimelineRoot — grouping', () => {
 describe('TimelineRoot — selection', () => {
   it('clears selection when view mode switches', async () => {
     render(<TimelineRoot story={STORY} />);
-    // View switch clears selection (tested via the selectedIds prop passed to children)
     const trackBtn = screen.getByTestId('view-mode-track');
     await act(async () => { fireEvent.click(trackBtn); });
     expect(screen.getByTestId('mock-aeon')).toHaveAttribute('data-selected-count', '0');
