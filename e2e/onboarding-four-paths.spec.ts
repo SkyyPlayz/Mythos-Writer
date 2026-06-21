@@ -31,10 +31,10 @@
  *   AC-OB-25  onboarding:import-vault:dry-run IPC channel registered in preload
  *
  * Test strategy:
- *   - ACs for the NEW four-card selector and Import path (03-12, 17, 21) use test.skip
- *     until the frontend refactor from the existing two-level card flow to the flat
- *     four-card radiogroup is complete (blocked on SKY-2553 impl children).
- *   - ACs that map to EXISTING wizard behavior (13-16, 18-20, 22-25) are active now.
+ *   - All ACs 01-14, 16-25 are active: four-card selector (SKY-2635) and import
+ *     dry-run IPC (SKY-2638 scope absorbed into main branch) are implemented.
+ *   - AC-OB-15 (sample banner) remains skipped: the banner UI is not yet implemented
+ *     on the writing page.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/onboarding-four-paths.spec.ts --reporter=list
@@ -185,11 +185,6 @@ test.describe('AC-OB-01: Four-card path selector', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(
-    true,
-    'AC-OB-01: blocked on SKY-2553 frontend refactor to four-card path selector',
-  );
-
   test('AC-OB-01: exactly four path cards rendered; Recommended badge on card-path-default', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
 
@@ -223,8 +218,6 @@ test.describe('AC-OB-02: Keyboard navigation', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-02: blocked on SKY-2553 frontend refactor to four-card path selector');
 
   test('AC-OB-02: Arrow keys cycle focus within radiogroup; Enter activates path', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
@@ -275,8 +268,6 @@ test.describe('AC-OB-03: Path 1 seeds full SKY-15 structure', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-03: blocked on SKY-2553 frontend refactor + IPC impl for default-layout vault seeding');
 
   test('AC-OB-03: Notes Vault contains expected top-level folders; Story Vault has manifest + scene', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
@@ -345,8 +336,6 @@ test.describe('AC-OB-04: Path 1 custom title reflected in vault', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-04: blocked on SKY-2553 frontend refactor + IPC impl for default-layout vault seeding');
-
   test('AC-OB-04: "Dragons Crossing" title appears in scene path on disk', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardDefault).click();
@@ -385,8 +374,6 @@ test.describe('AC-OB-05: Path 2 blank seeds only root vault folders', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-05: blocked on SKY-2553 frontend refactor for four-card path selector');
 
   test('AC-OB-05: Notes Vault has no Universes/ or Stories/ subfolders after blank mode', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
@@ -428,8 +415,6 @@ test.describe('AC-OB-06: Path 2 untitled story defaults to "Untitled Story"', ()
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-06: blocked on SKY-2553 frontend refactor for four-card path selector');
-
   test('AC-OB-06: empty title field → scene path contains "Untitled Story"', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardBlank).click();
@@ -465,8 +450,6 @@ test.describe('AC-OB-07: Path 3 vault picker — invalid folder shows error', ()
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-07: blocked on SKY-2553 frontend + IPC for import vault picker');
 
   test('AC-OB-07: folder with no .obsidian/ or .md files → error; scan button disabled', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
@@ -508,8 +491,6 @@ test.describe('AC-OB-08: Path 3 dry-run report display', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-08: blocked on SKY-2553 frontend import dry-run screen + IPC channel');
 
   test('AC-OB-08: dry-run report shows notesCount; broken-links section appears when count > 0', async () => {
     await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
@@ -579,8 +560,6 @@ test.describe('AC-OB-09: Path 3 fatalError blocks import', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-09: blocked on SKY-2553 frontend import dry-run screen');
-
   test('AC-OB-09: fatalError in dry-run report shows red banner; Import button disabled', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('onboarding:import-vault:dry-run');
@@ -635,8 +614,6 @@ test.describe('AC-OB-10: Path 3 restructured files shown in dry-run', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-10: blocked on SKY-2553 frontend import dry-run screen');
 
   test('AC-OB-10: restructured section shows before/after list; Import button enabled', async () => {
     await app.evaluate(({ ipcMain }) => {
@@ -696,8 +673,6 @@ test.describe('AC-OB-11 + AC-OB-12: Path 3 post-import nav + log file', () => {
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-11/12: blocked on SKY-2553 frontend import commit path + IPC');
 
   test('AC-OB-12: successful import opens vault browser; getting-started tip card visible', async () => {
     await app.evaluate(({ ipcMain }) => {
@@ -960,8 +935,6 @@ test.describe('AC-OB-17: ConflictDialog create-alongside uses <parent> 2/', () =
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-17: create-alongside behaviour depends on new four-card refactor to verify <parent> 2/ path naming');
-
   test('AC-OB-17: create-alongside creates vault in <parentFolder> 2/ and proceeds', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
@@ -1138,8 +1111,6 @@ test.describe('AC-OB-21: Path 3 Back from dry-run returns to picker with pre-fil
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-21: blocked on SKY-2553 frontend import dry-run screen');
-
   test('AC-OB-21: clicking Back on dry-run screen returns to vault picker with selected path pre-filled', async () => {
     const selectedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-21-'));
     fs.mkdirSync(path.join(selectedDir, '.obsidian'));
@@ -1314,8 +1285,6 @@ test.describe('AC-OB-25: onboarding:import-vault:dry-run channel in preload brid
     await app.close().catch(() => {});
     fs.rmSync(userData, { recursive: true, force: true });
   });
-
-  test.skip(true, 'AC-OB-25: blocked on SKY-2553 IPC impl — channel not registered yet in preload');
 
   test('AC-OB-25: window.api.importVaultDryRun is a callable function', async () => {
     const hasChannel = await page.evaluate(() => {
