@@ -269,6 +269,7 @@
   --accent-border: var(--accent);
   --accent-bg: var(--accent-soft);
   --text-on-accent: #000000;  /* black on neon-cyan --accent; update if accent changes to a dark hue */
+  --accent-success: var(--state-success);  /* green accept/positive action; ~8:1 on dark surfaces */
 
   /* States (bare names) */
   --danger: var(--state-danger);
