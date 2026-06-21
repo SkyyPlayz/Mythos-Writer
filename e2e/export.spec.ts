@@ -242,9 +242,14 @@ async function clearExportCalls(app: ElectronApplication): Promise<void> {
 
 /**
  * Open the ExportDialog via File menu > "Export Markdown…".
- * Requires a story to be selected (click .nav-story-row first).
+ * Select the seeded story first so every test remains independent after a
+ * Playwright worker restart.
  */
 async function openExportDialog(page: Page): Promise<void> {
+  const storyTitle = page.locator('.nav-story-title', { hasText: STORY_TITLE }).first();
+  await expect(storyTitle).toBeVisible({ timeout: 10_000 });
+  await storyTitle.click();
+
   await page.locator('.app-menu-item-trigger', { hasText: 'File' }).click();
   await page.locator('#file-menu').waitFor({ state: 'visible', timeout: 4_000 });
   await page.locator('#file-menu button[role="menuitem"]', { hasText: 'Export Markdown…' }).click();
@@ -352,7 +357,7 @@ test('AC-EXQ-3: selecting DOCX and clicking Export triggers IPC and writes expor
   await expect(dialog.locator('input[type="radio"][value="docx"]')).toBeChecked();
 
   // Click Export.
-  await dialog.locator('button.export-dialog-btn-primary').click();
+  await dialog.getByRole('button', { name: /^Export/ }).click();
 
   // Dialog should close (mock returns non-cancelled, then onClose is called).
   await dialog.waitFor({ state: 'detached', timeout: 8_000 });
@@ -374,7 +379,7 @@ test('AC-EXQ-6: clicking Cancel closes ExportDialog without triggering any expor
 
   const filesBefore = fs.readdirSync(exportDir).length;
 
-  await dialog.locator('button.export-dialog-btn-secondary', { hasText: 'Cancel' }).click();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 
   // No IPC call made.
@@ -406,7 +411,7 @@ test('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file', async () =
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
   await dialog.locator('input[type="radio"][value="epub"]').click();
   await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeChecked();
-  await dialog.locator('button.export-dialog-btn-primary').click();
+  await dialog.getByRole('button', { name: 'Export…' }).click();
   await dialog.waitFor({ state: 'detached', timeout: 8_000 });
   const calls = await getExportCalls(app!);
   const epubCall = calls.find((c) => c.channel === 'export:epub');
