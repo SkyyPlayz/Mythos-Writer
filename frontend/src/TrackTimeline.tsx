@@ -20,7 +20,6 @@ const MS_DAY = 86_400_000;
 const MS_WEEK = 7 * MS_DAY;
 const MS_MONTH = 30.44 * MS_DAY;
 const MS_QUARTER = 91.31 * MS_DAY;
-const MS_YEAR = 365.25 * MS_DAY;
 
 export type SpacingMode = 'uniform' | 'proportional';
 
