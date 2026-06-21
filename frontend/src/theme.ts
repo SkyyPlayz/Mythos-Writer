@@ -292,6 +292,12 @@ export function applyLiquidNeonTokens(
     // Scrim: 0–100 → 0.20–0.85
     const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
     root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
+  } else if (p.bgMode === 'image') {
+    // GH-614: bgDataUrl not yet resolved — preserve --bg-app-image so the
+    // wallpaper stays visible, but still update the scrim alpha so the
+    // Light↔Dark slider responds in real time before the data URL arrives.
+    const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
+    root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
   } else if (p.bgMode === 'color') {
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
     root.style.setProperty('--bg-scrim-alpha', '0');
