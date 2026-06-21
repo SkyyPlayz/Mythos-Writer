@@ -292,15 +292,19 @@ export function applyLiquidNeonTokens(
     // Scrim: 0–100 → 0.20–0.85
     const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
     root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
-  } else if (p.bgMode === 'color') {
-    root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
-    root.style.setProperty('--bg-scrim-alpha', '0');
-  } else if (p.background === 'default') {
+  } else if (p.bgMode === 'image') {
+    // GH#612: bgMode='image' but no data URL yet — preserve both --bg-app-image and
+    // --bg-scrim-alpha so neither the wallpaper nor the scrim is reset while
+    // loadBgImage is in flight (e.g. save clicked before async load resolves).
+  } else if (p.bgMode === 'color' || p.background === 'default' || !p.background) {
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
     root.style.setProperty('--bg-scrim-alpha', '0');
   } else {
-    root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
-    root.style.setProperty('--bg-scrim-alpha', '0');
+    // Legacy: background stores a file path but bgMode was never persisted.
+    // Apply bgDataUrl if available; otherwise preserve --bg-app-image (GH#612).
+    if (bgDataUrl) {
+      root.style.setProperty('--bg-app-image', `url("${bgDataUrl}")`);
+    }
   }
 
   // Vignette: 0–100 → 0–0.9
