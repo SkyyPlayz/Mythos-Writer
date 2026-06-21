@@ -1,9 +1,10 @@
 // SKY-3183 — AEON lane view: arc lanes + scene cards + span bars (windowed).
+// SKY-3184 — F4: hover tooltip, click→detail popover, right-click menu,
+//            double-click→editor, full keyboard nav (↑↓ lanes ←→ within lane Home/End Enter).
 //
 // SVG+HTML, additive to existing spreadsheet timeline. 500-scene × 10-arc
 // perf gate: only renders cards in the current horizontal viewport + buffer.
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { BookOpen, FileText } from 'lucide-react';
 import type { Story } from './types';
 import './AeonLaneView.css';
 
@@ -18,6 +19,7 @@ const CANVAS_RIGHT_PAD = 80;  // px after last scene
 const UNDATED_SECTION_WIDTH = 180; // px reserved for undated scenes at the right
 const CARD_BUFFER_PX = 400;   // render cards within this buffer beyond visible viewport
 const MIN_PX_PER_DAY = 6;     // floor density so short date ranges don't squish
+const POPOVER_W = 220;        // fixed width for the click-detail popover
 
 // ─── Data types ───
 
@@ -81,7 +83,6 @@ function buildTimeAxis(scenes: AeonScene[]): TimeAxis | null {
     return Math.round((ms - minMs) * pxPerMs);
   }
 
-  // Build tick marks
   const ticks: Array<{ x: number; label: string }> = [];
   const tickIntervalMs = spanDays <= 90
     ? 7 * 24 * 60 * 60 * 1000
@@ -117,6 +118,227 @@ function computeArcSpan(scenes: AeonScene[], arcId: string, axis: TimeAxis): Spa
   return { startX: Math.min(...xs), endX: Math.max(...xs) + CARD_WIDTH };
 }
 
+// ─── Hover Tooltip ───
+
+interface HoverInfo { sceneId: string; x: number; y: number }
+
+interface AeonHoverTooltipProps {
+  scene: AeonScene;
+  arcs: AeonArc[];
+  x: number;
+  y: number;
+}
+
+function formatDateShort(date: string): string {
+  if (!date) return 'Undated';
+  try {
+    return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+  } catch {
+    return date;
+  }
+}
+
+function formatDateLong(date: string): string {
+  if (!date) return 'Undated';
+  try {
+    return new Date(date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  } catch {
+    return date;
+  }
+}
+
+function AeonHoverTooltip({ scene, arcs, x, y }: AeonHoverTooltipProps) {
+  const arcName = scene.arcIds
+    .map(id => arcs.find(a => a.id === id)?.title)
+    .filter(Boolean)
+    .join(', ');
+
+  const TOOLTIP_W = 200;
+  const TOOLTIP_H = 64;
+  const left = Math.min(x + 14, window.innerWidth - TOOLTIP_W - 8);
+  const top = y + 20 + TOOLTIP_H > window.innerHeight ? y - TOOLTIP_H - 8 : y + 20;
+
+  const detail = [formatDateShort(scene.date), arcName, scene.wordCount != null ? `${scene.wordCount.toLocaleString()} words` : '']
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <div
+      className="aeon-tooltip"
+      role="tooltip"
+      id={`aeon-tooltip-${scene.id}`}
+      style={{ position: 'fixed', left, top }}
+      data-testid="aeon-hover-tooltip"
+    >
+      <p className="aeon-tooltip__title">{scene.title}</p>
+      {detail && <p className="aeon-tooltip__detail">{detail}</p>}
+    </div>
+  );
+}
+
+// ─── Detail Popover (click) ───
+
+interface DetailState { scene: AeonScene; anchorRect: DOMRect }
+
+interface AeonDetailPopoverProps {
+  scene: AeonScene;
+  arcs: AeonArc[];
+  anchorRect: DOMRect;
+  onOpenInEditor: () => void;
+  onDismiss: () => void;
+}
+
+function AeonDetailPopover({ scene, arcs, anchorRect, onOpenInEditor, onDismiss }: AeonDetailPopoverProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onDismiss();
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onDismiss(); }
+    };
+    document.addEventListener('mousedown', handleOutside, true);
+    document.addEventListener('keydown', handleKey, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside, true);
+      document.removeEventListener('keydown', handleKey, true);
+    };
+  }, [onDismiss]);
+
+  useEffect(() => { ref.current?.focus(); }, []);
+
+  const spaceRight = window.innerWidth - anchorRect.right - 8;
+  const left = spaceRight >= POPOVER_W
+    ? anchorRect.right + 8
+    : Math.max(8, anchorRect.left - POPOVER_W - 8);
+  const top = Math.max(8, Math.min(anchorRect.top, window.innerHeight - 300));
+
+  const sceneArcs = scene.arcIds
+    .map(id => arcs.find(a => a.id === id))
+    .filter((a): a is AeonArc => Boolean(a));
+
+  return (
+    <div
+      ref={ref}
+      className="aeon-popover"
+      role="dialog"
+      aria-label={`Scene details: ${scene.title}`}
+      tabIndex={-1}
+      style={{ position: 'fixed', left, top, width: POPOVER_W }}
+      data-testid="aeon-detail-popover"
+    >
+      <header className="aeon-popover__header">
+        <h3 className="aeon-popover__title" title={scene.title}>{scene.title || 'Untitled scene'}</h3>
+        <button
+          type="button"
+          className="aeon-popover__close"
+          aria-label="Close scene details"
+          onClick={onDismiss}
+          data-testid="aeon-popover-close"
+        >×</button>
+      </header>
+
+      <dl className="aeon-popover__meta">
+        <div className="aeon-popover__row">
+          <dt>Date</dt>
+          <dd>{formatDateLong(scene.date)}</dd>
+        </div>
+        <div className="aeon-popover__row">
+          <dt>Words</dt>
+          <dd>{scene.wordCount != null ? scene.wordCount.toLocaleString() : '—'}</dd>
+        </div>
+        <div className="aeon-popover__row">
+          <dt>Confidence</dt>
+          <dd>{Math.round(scene.confidence * 100)}%</dd>
+        </div>
+      </dl>
+
+      {sceneArcs.length > 0 && (
+        <ul className="aeon-popover__arcs" aria-label="Arc memberships">
+          {sceneArcs.map(arc => (
+            <li key={arc.id} className="aeon-popover__arc-pill">
+              <span className="aeon-popover__arc-dot" style={{ background: arc.color }} aria-hidden="true" />
+              {arc.title}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        type="button"
+        className="aeon-popover__open-btn"
+        onClick={() => { onOpenInEditor(); onDismiss(); }}
+        data-testid="aeon-popover-open-in-editor"
+      >
+        Open in Editor
+      </button>
+    </div>
+  );
+}
+
+// ─── Scene Context Menu (right-click) ───
+
+interface ContextMenuState { sceneId: string; x: number; y: number }
+
+interface AeonSceneContextMenuProps {
+  sceneId: string;
+  x: number;
+  y: number;
+  title: string;
+  onOpenInEditor: () => void;
+  onDismiss: () => void;
+}
+
+function AeonSceneContextMenu({ sceneId, x, y, title, onOpenInEditor, onDismiss }: AeonSceneContextMenuProps) {
+  const ref = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    const btn = ref.current?.querySelector<HTMLButtonElement>('button');
+    btn?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onDismiss();
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    document.addEventListener('mousedown', handleOutside, true);
+    document.addEventListener('keydown', handleKey, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside, true);
+      document.removeEventListener('keydown', handleKey, true);
+    };
+  }, [onDismiss]);
+
+  return (
+    <ul
+      ref={ref}
+      role="menu"
+      aria-label={`Actions for ${title}`}
+      className="aeon-context-menu"
+      style={{ position: 'fixed', top: y, left: x }}
+      data-testid="aeon-scene-context-menu"
+      data-scene-id={sceneId}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <li role="none">
+        <button
+          type="button"
+          role="menuitem"
+          className="aeon-context-item"
+          onClick={() => { onOpenInEditor(); onDismiss(); }}
+          data-testid="aeon-context-open-in-editor"
+        >
+          Open in editor
+        </button>
+      </li>
+    </ul>
+  );
+}
+
 // ─── Memoized scene card ───
 
 interface SceneCardProps {
@@ -124,39 +346,58 @@ interface SceneCardProps {
   arcColor: string;
   xOffset: number;
   isSelected: boolean;
+  tabIndex: number;
   onClick: (id: string) => void;
+  onDoubleClick: (id: string) => void;
+  onContextMenu: (id: string, x: number, y: number) => void;
+  onHoverStart: (id: string, x: number, y: number) => void;
+  onHoverEnd: () => void;
+  onKeyNav: (id: string, key: string) => void;
 }
 
+const NAV_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+
 const SceneCard = memo(function SceneCard({
-  scene, arcColor, xOffset, isSelected, onClick,
+  scene, arcColor, xOffset, isSelected, tabIndex,
+  onClick, onDoubleClick, onContextMenu, onHoverStart, onHoverEnd, onKeyNav,
 }: SceneCardProps) {
   const isWritten = (scene.wordCount ?? 0) > 0;
   const isHighConf = scene.confidence >= 0.8;
 
   const handleClick = useCallback(() => onClick(scene.id), [onClick, scene.id]);
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(scene.id); }
-  }, [onClick, scene.id]);
 
-  const dateLabel = scene.date
-    ? (() => {
-        try {
-          return new Date(scene.date).toLocaleDateString(undefined, {
-            month: 'short', day: 'numeric', year: '2-digit',
-          });
-        } catch {
-          return scene.date;
-        }
-      })()
-    : 'Undated';
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    onDoubleClick(scene.id);
+  }, [onDoubleClick, scene.id]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    onContextMenu(scene.id, e.clientX, e.clientY);
+  }, [onContextMenu, scene.id]);
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent) => {
+    onHoverStart(scene.id, e.clientX, e.clientY);
+  }, [onHoverStart, scene.id]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick(scene.id);
+    } else if (NAV_KEYS.has(e.key)) {
+      e.preventDefault();
+      onKeyNav(scene.id, e.key);
+    }
+  }, [onClick, onKeyNav, scene.id]);
+
+  const dateLabel = formatDateShort(scene.date);
+  const confidencePct = Math.round(scene.confidence * 100);
 
   const cardClass = [
     'aeon-card',
     isWritten ? 'aeon-card--written' : 'aeon-card--planned',
     isSelected ? 'aeon-card--selected' : null,
   ].filter(Boolean).join(' ');
-
-  const confidencePct = Math.round(scene.confidence * 100);
 
   return (
     <div
@@ -170,12 +411,16 @@ const SceneCard = memo(function SceneCard({
         '--aeon-arc-color': isWritten ? arcColor : 'var(--text-muted)',
       } as React.CSSProperties}
       role="button"
-      tabIndex={0}
+      tabIndex={tabIndex}
       aria-label={`Scene: ${scene.title}, ${dateLabel}, ${confidencePct}% confidence`}
       aria-pressed={isSelected}
       data-scene-id={scene.id}
       data-testid="aeon-scene-card"
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={onHoverEnd}
       onKeyDown={handleKeyDown}
     >
       <span
@@ -201,11 +446,18 @@ interface LaneRowProps {
   scrollX: number;
   viewportWidth: number;
   selectedIds: Set<string>;
+  focusedId: string | null;
   onClickScene: (id: string) => void;
+  onDoubleClickScene: (id: string) => void;
+  onContextMenuScene: (id: string, x: number, y: number) => void;
+  onHoverStartScene: (id: string, x: number, y: number) => void;
+  onHoverEndScene: () => void;
+  onKeyNavScene: (id: string, key: string) => void;
 }
 
 const LaneRow = memo(function LaneRow({
-  arc, scenes, axis, totalWidthPx, scrollX, viewportWidth, selectedIds, onClickScene,
+  arc, scenes, axis, totalWidthPx, scrollX, viewportWidth, selectedIds, focusedId,
+  onClickScene, onDoubleClickScene, onContextMenuScene, onHoverStartScene, onHoverEndScene, onKeyNavScene,
 }: LaneRowProps) {
   const arcColor = arc?.color ?? 'var(--text-muted)';
   const arcId = arc?.id ?? '__unassigned__';
@@ -213,7 +465,6 @@ const LaneRow = memo(function LaneRow({
 
   const span = axis && arc ? computeArcSpan(scenes, arcId, axis) : null;
 
-  // Windowing: only render cards within the visible horizontal range + buffer.
   const visStart = scrollX - CARD_BUFFER_PX;
   const visEnd = scrollX + viewportWidth + CARD_BUFFER_PX;
 
@@ -247,7 +498,6 @@ const LaneRow = memo(function LaneRow({
         className="aeon-lane__canvas"
         style={{ width: totalWidthPx, position: 'relative', height: '100%' }}
       >
-        {/* Span bar */}
         {span && (
           <svg
             className="aeon-lane__span-bar"
@@ -265,7 +515,6 @@ const LaneRow = memo(function LaneRow({
           </svg>
         )}
 
-        {/* Scene cards */}
         {visibleCards.map(scene => (
           <SceneCard
             key={scene.id}
@@ -273,7 +522,13 @@ const LaneRow = memo(function LaneRow({
             arcColor={arcColor}
             xOffset={axis ? axis.dateToX(scene.date) : 0}
             isSelected={selectedIds.has(scene.id)}
+            tabIndex={scene.id === focusedId ? 0 : -1}
             onClick={onClickScene}
+            onDoubleClick={onDoubleClickScene}
+            onContextMenu={onContextMenuScene}
+            onHoverStart={onHoverStartScene}
+            onHoverEnd={onHoverEndScene}
+            onKeyNav={onKeyNavScene}
           />
         ))}
       </div>
@@ -316,6 +571,12 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // ─── Interaction state ───
+  const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
+  const [detail, setDetail] = useState<DetailState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
   const [scrollX, setScrollX] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(1024);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -328,6 +589,10 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
       setScenes([]);
       setArcs([]);
       setSelectedIds(new Set());
+      setDetail(null);
+      setContextMenu(null);
+      setHoverInfo(null);
+      setFocusedCardId(null);
       return;
     }
     setLoading(true);
@@ -407,22 +672,108 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
     return lanes;
   }, [scenes, arcs]);
 
+  // Keyboard nav: scenes sorted by x per lane — consistent arrow key ordering
+  const flatLanes = useMemo<string[][]>(() =>
+    arcLanes.map(({ scenes: ls }) => {
+      if (!axis) return ls.map(s => s.id);
+      return [...ls]
+        .sort((a, b) => axis.dateToX(a.date) - axis.dateToX(b.date))
+        .map(s => s.id);
+    }),
+  [arcLanes, axis]);
+
+  // Default focus: first card in first lane when nothing explicitly focused
+  const effectiveFocusedId = focusedCardId ?? (flatLanes[0]?.[0] ?? null);
+
+  // ─── Handlers ───
+
   const handleClickScene = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+    const wasSelected = selectedIds.has(id);
+    const n = new Set(selectedIds);
+    if (wasSelected) {
+      n.delete(id);
+      setSelectedIds(n);
+      setDetail(null);
+    } else {
+      n.add(id);
+      setSelectedIds(n);
+      const clickedScene = scenes.find(s => s.id === id);
+      if (clickedScene) {
+        const el = scrollRef.current?.querySelector<HTMLElement>(`[data-scene-id="${id}"]`);
+        const rect = el?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0);
+        setDetail({ scene: clickedScene, anchorRect: rect });
+      }
+    }
+  }, [selectedIds, scenes]);
+
+  const handleDoubleClickScene = useCallback((id: string) => {
+    setDetail(null);
     onOpenScene?.(id);
   }, [onOpenScene]);
+
+  const handleContextMenuScene = useCallback((id: string, x: number, y: number) => {
+    setDetail(null);
+    setHoverInfo(null);
+    setContextMenu({ sceneId: id, x, y });
+  }, []);
+
+  const handleHoverStartScene = useCallback((id: string, x: number, y: number) => {
+    setHoverInfo({ sceneId: id, x, y });
+  }, []);
+
+  const handleHoverEndScene = useCallback(() => {
+    setHoverInfo(null);
+  }, []);
+
+  const handleKeyNavScene = useCallback((sceneId: string, key: string) => {
+    let laneIdx = -1;
+    let cardIdx = -1;
+    for (let l = 0; l < flatLanes.length; l++) {
+      const ci = flatLanes[l].indexOf(sceneId);
+      if (ci !== -1) { laneIdx = l; cardIdx = ci; break; }
+    }
+    if (laneIdx === -1) return;
+
+    let nextId: string | null = null;
+    if (key === 'ArrowRight') {
+      nextId = flatLanes[laneIdx][cardIdx + 1] ?? null;
+    } else if (key === 'ArrowLeft') {
+      nextId = cardIdx > 0 ? flatLanes[laneIdx][cardIdx - 1] : null;
+    } else if (key === 'ArrowDown') {
+      const nextLane = flatLanes[laneIdx + 1];
+      nextId = nextLane?.[Math.min(cardIdx, nextLane.length - 1)] ?? null;
+    } else if (key === 'ArrowUp') {
+      const prevLane = flatLanes[laneIdx - 1];
+      nextId = prevLane?.[Math.min(cardIdx, prevLane.length - 1)] ?? null;
+    } else if (key === 'Home') {
+      nextId = flatLanes[laneIdx][0] ?? null;
+    } else if (key === 'End') {
+      nextId = flatLanes[laneIdx][flatLanes[laneIdx].length - 1] ?? null;
+    }
+
+    if (nextId) {
+      setFocusedCardId(nextId);
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-scene-id="${nextId}"]`);
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        // Target outside render window — scroll to expose it, then it'll render and be focusable
+        const targetScene = scenes.find(s => s.id === nextId);
+        if (targetScene && axis) {
+          const tx = axis.dateToX(targetScene.date);
+          scrollRef.current?.scrollTo({ left: Math.max(0, tx - viewportWidth / 2), behavior: 'smooth' });
+        }
+      }
+    }
+  }, [flatLanes, scenes, axis, viewportWidth]);
 
   // ─── Empty / loading / error states ───
 
   if (!story) {
     return (
       <div className="aeon-empty" data-testid="aeon-empty-no-story">
-        <div className="aeon-empty__icon" aria-hidden="true"><BookOpen size={40} /></div>
+        <div className="aeon-empty__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
         <h2>Select a story to view its AEON timeline.</h2>
       </div>
     );
@@ -440,7 +791,7 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
   if (error) {
     return (
       <div className="aeon-empty" role="alert">
-        <div className="aeon-empty__icon" aria-hidden="true"><FileText size={40} /></div>
+        <div className="aeon-empty__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
         <h2>Timeline unavailable</h2>
         <p className="aeon-empty__text aeon-empty__text--error">{error}</p>
       </div>
@@ -450,7 +801,7 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
   if (scenes.length === 0) {
     return (
       <div className="aeon-empty" data-testid="aeon-empty-no-scenes">
-        <div className="aeon-empty__icon" aria-hidden="true"><FileText size={40} /></div>
+        <div className="aeon-empty__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
         <h2>Create scenes in your story to see them here.</h2>
         <p className="aeon-empty__text">Add dates to scenes to position them on the timeline.</p>
       </div>
@@ -460,13 +811,15 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
   if (arcLanes.length === 0) {
     return (
       <div className="aeon-empty" data-testid="aeon-empty-no-arcs">
-        <div className="aeon-empty__icon" aria-hidden="true"><FileText size={40} /></div>
+        <div className="aeon-empty__icon" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
         <h2>No scenes have arcs or dates yet.</h2>
       </div>
     );
   }
 
   const datedCount = scenes.filter(s => s.date).length;
+  const hoverScene = hoverInfo ? scenes.find(s => s.id === hoverInfo.sceneId) : null;
+  const ctxTitle = contextMenu ? (scenes.find(s => s.id === contextMenu.sceneId)?.title ?? '') : '';
 
   return (
     <div
@@ -507,11 +860,50 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
               scrollX={scrollX}
               viewportWidth={viewportWidth}
               selectedIds={selectedIds}
+              focusedId={effectiveFocusedId}
               onClickScene={handleClickScene}
+              onDoubleClickScene={handleDoubleClickScene}
+              onContextMenuScene={handleContextMenuScene}
+              onHoverStartScene={handleHoverStartScene}
+              onHoverEndScene={handleHoverEndScene}
+              onKeyNavScene={handleKeyNavScene}
             />
           ))}
         </div>
       </div>
+
+      {/* Hover tooltip — hidden while detail popover is open to avoid overlap */}
+      {hoverInfo && hoverScene && !detail && (
+        <AeonHoverTooltip
+          scene={hoverScene}
+          arcs={arcs}
+          x={hoverInfo.x}
+          y={hoverInfo.y}
+        />
+      )}
+
+      {/* Click detail popover */}
+      {detail && (
+        <AeonDetailPopover
+          scene={detail.scene}
+          arcs={arcs}
+          anchorRect={detail.anchorRect}
+          onOpenInEditor={() => onOpenScene?.(detail.scene.id)}
+          onDismiss={() => { setDetail(null); setSelectedIds(prev => { const n = new Set(prev); n.delete(detail.scene.id); return n; }); }}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <AeonSceneContextMenu
+          sceneId={contextMenu.sceneId}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={ctxTitle}
+          onOpenInEditor={() => onOpenScene?.(contextMenu.sceneId)}
+          onDismiss={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }
