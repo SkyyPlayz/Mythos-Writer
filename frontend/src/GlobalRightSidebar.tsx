@@ -14,6 +14,9 @@ interface PanelConfig {
 }
 
 const PANEL_LABELS: Record<string, string> = {
+  'scene-notes': 'Scene Notes',
+  'scene-properties': 'Scene Properties',
+  'scene-outline': 'Outline',
   'writing-assistant': 'Writing Assistant',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
@@ -29,15 +32,21 @@ const PANEL_LABELS: Record<string, string> = {
 
 /** Right-sidebar-native panel IDs shown in the "Add Panel" picker. */
 const RIGHT_PANEL_IDS: PanelId[] = [
+  'scene-notes',
+  'scene-properties',
+  'scene-outline',
   'writing-assistant',
   'archive-continuity',
   'scene-preview',
 ];
 
 const DEFAULT_PANELS: PanelConfig[] = [
+  { id: 'scene-notes', collapsed: false },
+  { id: 'scene-properties', collapsed: false },
+  { id: 'scene-outline', collapsed: true },
   { id: 'writing-assistant', collapsed: false },
   { id: 'archive-continuity', collapsed: false },
-  { id: 'scene-preview', collapsed: false },
+  { id: 'scene-preview', collapsed: true },
 ];
 
 const SIDEBAR_MIN_WIDTH = 200;

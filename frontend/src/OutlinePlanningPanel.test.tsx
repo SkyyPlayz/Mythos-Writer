@@ -496,7 +496,7 @@ describe('OutlinePlanningPanel', () => {
   });
 
   describe('AC-OPL-UI-14: other sidebar tabs work', () => {
-    it('renders without crashing alongside RightSidebar (import smoke test)', () => {
+    it('renders without crashing (import smoke test)', () => {
       render(<OutlinePlanningPanel story={null} />);
       expect(screen.getByTestId('opl-no-story')).toBeInTheDocument();
     });
