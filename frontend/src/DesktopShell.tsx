@@ -2359,13 +2359,6 @@ export default function DesktopShell() {
     updateManifest(updatedStories);
   }, [selectedChapter, selectedStory, stories, updateManifest]);
 
-  // SKY-3211 C2: Focusing a scene band in chapter view selects it (for sidebar context).
-  const handleChapterSceneFocus = useCallback((scene: Scene) => {
-    if (selectedChapter && selectedStory && scene.id !== selectedScene?.id) {
-      handleSelectScene(scene, selectedChapter, selectedStory);
-    }
-  }, [selectedChapter, selectedStory, selectedScene, handleSelectScene]);
-
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
     if (!title?.trim()) return;
@@ -2451,6 +2444,13 @@ export default function DesktopShell() {
     });
     return () => unsub?.();
   }, [handleSelectScene, setViewDepth]);
+
+  // SKY-3211 C2: Focusing a scene band in chapter view selects it (for sidebar context).
+  const handleChapterSceneFocus = useCallback((scene: Scene) => {
+    if (selectedChapter && selectedStory && scene.id !== selectedScene?.id) {
+      handleSelectScene(scene, selectedChapter, selectedStory);
+    }
+  }, [selectedChapter, selectedStory, selectedScene, handleSelectScene]);
 
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
