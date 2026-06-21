@@ -1,0 +1,252 @@
+/* ─── Page Chrome Toolbar (SKY-3206) ─────────────────────────────────────────
+   Thin toolbar above the writing surface; controls page size, margins, font.  */
+
+.pct-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--bg-panel, #15191f);
+  border-bottom: 1px solid var(--border-subtle, #2a2e3a);
+  flex-shrink: 0;
+  min-height: 32px;
+  user-select: none;
+}
+
+.pct-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted, #5a6070);
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: default;
+}
+
+.pct-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pct-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle, #2a2e3a);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.pct-spacer {
+  flex: 1;
+}
+
+/* ─── Preset buttons ─────────────────────────────────────────────────────── */
+
+.pct-presets {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.pct-preset-btn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary, #7a8090);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pct-preset-btn:hover {
+  background: var(--bg-control-hover, #1e2430);
+  color: var(--text-primary, #cdd6f4);
+}
+
+.pct-preset-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 1px;
+}
+
+.pct-preset-btn--active {
+  background: var(--accent-bg, rgba(0, 240, 255, 0.1));
+  border-color: var(--neon-cyan, #00f0ff);
+  color: var(--accent-light, #a6e3e9);
+}
+
+.pct-custom-width {
+  font-size: 0.72rem;
+  color: var(--text-muted, #5a6070);
+  padding-left: 4px;
+}
+
+/* ─── Sliders ─────────────────────────────────────────────────────────────── */
+
+.pct-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-strong, #3a4050);
+  outline: none;
+  cursor: pointer;
+}
+
+.pct-slider--sm {
+  width: 60px;
+}
+
+.pct-slider:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 3px;
+}
+
+.pct-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--neon-cyan, #00f0ff);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 240, 255, 0.4);
+}
+
+.pct-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--neon-cyan, #00f0ff);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 4px rgba(0, 240, 255, 0.4);
+}
+
+.pct-slider-val {
+  font-size: 0.7rem;
+  color: var(--text-muted, #5a6070);
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Font buttons ────────────────────────────────────────────────────────── */
+
+.pct-font-btn {
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary, #7a8090);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  line-height: 1.4;
+}
+
+.pct-font-btn--serif { font-family: Georgia, 'Times New Roman', serif; }
+.pct-font-btn--sans  { font-family: system-ui, -apple-system, sans-serif; }
+.pct-font-btn--mono  { font-family: 'Courier New', Courier, monospace; }
+
+.pct-font-btn:hover {
+  background: var(--bg-control-hover, #1e2430);
+  color: var(--text-primary, #cdd6f4);
+}
+
+.pct-font-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 1px;
+}
+
+.pct-font-btn--active {
+  background: var(--accent-bg, rgba(0, 240, 255, 0.1));
+  border-color: var(--neon-cyan, #00f0ff);
+  color: var(--accent-light, #a6e3e9);
+}
+
+/* ─── Reset button ────────────────────────────────────────────────────────── */
+
+.pct-reset-btn {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle, #2a2e3a);
+  background: transparent;
+  color: var(--text-muted, #5a6070);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pct-reset-btn:hover {
+  background: var(--bg-control-hover, #1e2430);
+  color: var(--text-primary, #cdd6f4);
+  border-color: var(--border-strong, #4a5060);
+}
+
+.pct-reset-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* ─── Drag handle (inside page canvas) ───────────────────────────────────── */
+
+.pct-drag-handle {
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 16px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pct-drag-handle::after {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--border-strong, #3a4050);
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.pct-drag-handle:hover::after,
+.pct-drag-handle:focus-visible::after {
+  opacity: 1;
+  background: var(--neon-cyan, #00f0ff);
+}
+
+.pct-drag-handle:focus-visible {
+  outline: none;
+}
+
+/* High-contrast: ensure controls remain visible */
+@media (prefers-contrast: more) {
+  .pct-preset-btn--active,
+  .pct-font-btn--active {
+    border-color: #fff !important;
+    color: #fff !important;
+    background: #000 !important;
+  }
+}
+
+/* Reduced motion: disable transitions */
+@media (prefers-reduced-motion: reduce) {
+  .pct-preset-btn,
+  .pct-font-btn,
+  .pct-reset-btn,
+  .pct-drag-handle::after {
+    transition: none;
+  }
+}
