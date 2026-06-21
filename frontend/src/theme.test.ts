@@ -453,6 +453,33 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
   });
 });
 
+describe('applyLiquidNeonTokens background-image preservation (SKY-3219 / GH#612)', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  afterEach(() => {
+    resetLiquidNeonTokens();
+  });
+
+  it('GH#612: does not reset --bg-app-image in legacy path (no bgMode) when data URL absent', () => {
+    const previousUrl = 'url("/existing/legacy-wallpaper.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    // Legacy: background set but bgMode not stored (falls to else branch)
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, null);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+  });
+
+  it('GH#612: applies bgDataUrl in legacy path when data URL is present', () => {
+    const dataUrl = 'data:image/jpeg;base64,abc123';
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, dataUrl);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(`url("${dataUrl}")`);
+  });
+});
+
 describe('DesktopShell.css scrim wiring (SKY-2962)', () => {
   it('background-image layer includes a linear-gradient using --bg-scrim-alpha', () => {
     expect(desktopShellCss).toMatch(/background-image[\s\S]*linear-gradient[\s\S]*--bg-scrim-alpha/);

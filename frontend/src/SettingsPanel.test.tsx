@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
+import { DEFAULT_BG_GRADIENT } from './theme';
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -1673,5 +1674,72 @@ describe('Background image persistence (SKY-2963)', () => {
     const onSavedArg = mockOnSaved.mock.calls[0][0] as AppSettings;
     expect(onSavedArg.liquidNeon?.background).toBe(bgPath);
     expect(onSavedArg.liquidNeon?.bgMode).toBe('image');
+  });
+});
+
+describe('Save preserves background image — legacy no-bgMode migration (SKY-3219 / GH#612)', () => {
+  const bgPath = '/home/user/Pictures/legacy-wallpaper.png';
+  const legacyBgSettings: AppSettings = {
+    ...defaultSettings,
+    liquidNeon: {
+      background: bgPath,
+      // bgMode intentionally absent — simulates settings saved before bgMode was introduced
+    } as LiquidNeonPrefs,
+  };
+
+  const mockLoadBgImage = vi.fn();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue(legacyBgSettings);
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    mockLoadBgImage.mockResolvedValue({ dataUrl: null });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+      loadBgImage: mockLoadBgImage,
+    };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('migrates missing bgMode to image so Save persists background correctly', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    expect(saved.liquidNeon?.background).toBe(bgPath);
+    expect(saved.liquidNeon?.bgMode).toBe('image');
+  });
+
+  it('does not reset --bg-app-image when legacy settings have no bgMode and loadBgImage returns null', async () => {
+    const previousUrl = 'url("/cached/image.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    // --bg-app-image should NOT have been reset to the gradient
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).not.toBe(DEFAULT_BG_GRADIENT);
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+
+    document.documentElement.style.removeProperty('--bg-app-image');
   });
 });

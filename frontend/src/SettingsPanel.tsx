@@ -929,8 +929,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     window.api.settingsGet().then((s) => {
       setSettings(s);
       if (s.liquidNeon) {
-        setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
-        const bg = s.liquidNeon.background;
+        const raw = s.liquidNeon;
+        // SKY-3219 / GH#612: LG_DEFAULTS.bgMode defaults to 'color', so spreading
+        // legacy settings that store a file path in background but no bgMode field
+        // gives bgMode:'color', causing applyLiquidNeonTokens to reset --bg-app-image
+        // on every save.  Check the raw saved value before the spread to infer 'image'.
+        const bgModeOverride: Partial<LiquidNeonPrefs> =
+          (raw.background && raw.background !== 'default' && !raw.bgMode)
+            ? { bgMode: 'image' }
+            : {};
+        setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
+        const bg = raw.background;
         if (bg && bg !== 'default') {
           window.api.loadBgImage?.(bg)
             .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
