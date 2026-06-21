@@ -292,6 +292,11 @@ export function applyLiquidNeonTokens(
     // Scrim: 0–100 → 0.20–0.85
     const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
     root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
+  } else if (p.bgMode === 'image') {
+    // SKY-3219: image mode but no data URL yet — preserve whatever --bg-app-image
+    // is already on the root (e.g. set by the initial loadBgImage call) rather than
+    // resetting it to the default gradient. The caller must follow up with a
+    // loadBgImage → applyLiquidNeonTokens(prefs, dataUrl) pass to display the image.
   } else if (p.bgMode === 'color') {
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
     root.style.setProperty('--bg-scrim-alpha', '0');
