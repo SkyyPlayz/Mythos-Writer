@@ -68,6 +68,8 @@ export interface NotesTabPanelProps {
   writingMode?: WritingMode;
   onSetWritingMode?: (mode: WritingMode) => void;
   onOpenFocusPrefs?: () => void;
+  /** SKY-3201: open the standalone Brainstorm tab seeded with the given text. */
+  onOpenBrainstorm?: (seedText: string) => void;
 }
 
 export default function NotesTabPanel({
@@ -108,6 +110,7 @@ export default function NotesTabPanel({
   writingMode,
   onSetWritingMode,
   onOpenFocusPrefs,
+  onOpenBrainstorm,
 }: NotesTabPanelProps) {
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
@@ -211,6 +214,20 @@ export default function NotesTabPanel({
               data-testid="writing-mode-edit"
             >E</button>
           </div>
+        )}
+        {onOpenBrainstorm && activeNotePath && (
+          <button
+            className="notes-open-brainstorm-btn"
+            aria-label="Open current note in Brainstorm"
+            data-testid="notes-open-brainstorm-btn"
+            onClick={() => {
+              const name = activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? 'this note';
+              onOpenBrainstorm(`Brainstorm ideas about "${name}"`);
+            }}
+            type="button"
+          >
+            ✦ Open in Brainstorm
+          </button>
         )}
       </div>
 
