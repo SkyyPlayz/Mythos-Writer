@@ -14,8 +14,9 @@
       rgba(0, 0, 0, var(--bg-scrim-alpha, 0))
     ),
     var(--bg-app-image, none);
-  background-size: cover;
-  background-position: center;
+  background-size: var(--bg-image-size, cover);
+  background-position: var(--bg-image-position, center);
+  background-repeat: var(--bg-image-repeat, no-repeat);
   background-attachment: fixed;
   color: var(--text-primary);
 }
@@ -256,6 +257,7 @@
   flex-direction: column;
 }
 
+/* SKY-3183: AEON view mode toggle bar */
 .shell-timeline-mode-bar {
   display: flex;
   gap: 2px;
