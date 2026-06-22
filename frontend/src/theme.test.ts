@@ -433,10 +433,18 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
   });
 
-  it('sets --bg-scrim-alpha to 0 when bgMode=image but no bgDataUrl is supplied', () => {
+  it('preserves existing --bg-app-image when bgMode=image but no bgDataUrl is supplied (SKY-3219)', () => {
+    // Simulate a prior applyLiquidNeonTokens call that set the image tokens.
+    document.documentElement.style.setProperty('--bg-app-image', 'url("data:image/png;base64,prior")');
+    document.documentElement.style.setProperty('--bg-scrim-alpha', '0.5');
+
+    // Call without bgDataUrl — SKY-3219 fix: must NOT reset --bg-app-image to the gradient.
     applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
-    // Without bgDataUrl the image branch is skipped; falls through to default → scrim 0.
-    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(
+      'url("data:image/png;base64,prior")',
+    );
+    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0.5');
   });
 });
 

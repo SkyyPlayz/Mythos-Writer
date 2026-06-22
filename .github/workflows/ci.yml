@@ -227,6 +227,9 @@ jobs:
       - name: E2E — A11y tab-focus audit VaultBrowser (SKY-143)
         run: xvfb-run --auto-servernum npm run test:e2e:a11y
 
+      - name: E2E — Settings background image persistence (SKY-3219)
+        run: xvfb-run --auto-servernum npm run test:e2e:settings-background
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
