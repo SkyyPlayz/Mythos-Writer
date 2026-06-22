@@ -1743,3 +1743,94 @@ describe('Save preserves background image — legacy no-bgMode migration (SKY-32
     document.documentElement.style.removeProperty('--bg-app-image');
   });
 });
+
+describe('SKY-3218 nav-bar configuration', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue({ ...defaultSettings });
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+    };
+  });
+
+  it('renders Nav-bar section with Story and Notes toggles', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    expect(screen.getByRole('heading', { name: /nav-bar/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/enable story/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/enable notes/i)).toBeInTheDocument();
+  });
+
+  it('renders start-collapsed, show-labels, show-icons toggles', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show.*labels/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show.*icons/i })).toBeInTheDocument();
+  });
+
+  it('persists navConfig with defaults when saved without changes', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    expect(saved.navConfig).toBeDefined();
+    expect(saved.navConfig?.items).toHaveLength(2);
+    expect(saved.navConfig?.items[0].id).toBe('story');
+    expect(saved.navConfig?.items[1].id).toBe('notes');
+    expect(saved.navConfig?.showLabels).toBe(true);
+    expect(saved.navConfig?.showIcons).toBe(true);
+    expect(saved.navConfig?.collapsedDefault).toBe(false);
+  });
+
+  it('loads and displays saved navConfig from settings', async () => {
+    const savedNavConfig: NavRailConfig = {
+      items: [
+        { id: 'notes', enabled: true, label: 'Notes', icon: '\u{1F4DD}', order: 0 },
+        { id: 'story', enabled: false, label: 'Story', icon: '\u270D', order: 1 },
+      ],
+      collapsedDefault: true,
+      showLabels: false,
+      showIcons: true,
+    };
+    mockSettingsGet.mockResolvedValue({ ...defaultSettings, navConfig: savedNavConfig });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+
+    expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /show.*labels/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /enable story/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /enable notes/i })).toBeChecked();
+  });
+
+  it('persists toggled item state on save', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+
+    const notesToggle = screen.getByLabelText(/enable notes/i);
+    fireEvent.click(notesToggle);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    const notesItem = saved.navConfig?.items.find((i) => i.id === 'notes');
+    expect(notesItem?.enabled).toBe(false);
+  });
+});
+
