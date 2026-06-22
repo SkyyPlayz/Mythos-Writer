@@ -6,7 +6,7 @@ type EndHandler = (data: { streamId: string }) => void;
 type ErrorHandler = (data: { streamId: string; error: string }) => void;
 
 // ─── MediaRecorder mock (for Voice IO state-machine tests) ────────────────────
-let mockMediaRecorderInstance: MockMediaRecorderClass | null = null;
+let _mockMediaRecorderInstance: MockMediaRecorderClass | null = null;
 
 class MockMediaRecorderClass {
   static isTypeSupported = vi.fn(() => false);
@@ -14,7 +14,7 @@ class MockMediaRecorderClass {
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-this-alias
-  constructor() { mockMediaRecorderInstance = this; }
+  constructor() { _mockMediaRecorderInstance = this; }
   start() { this.state = 'recording'; }
   stop() {
     this.state = 'inactive';
@@ -24,7 +24,7 @@ class MockMediaRecorderClass {
 }
 
 function installMediaRecorderMock() {
-  mockMediaRecorderInstance = null;
+  _mockMediaRecorderInstance = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).MediaRecorder = MockMediaRecorderClass;
   Object.defineProperty(global.navigator, 'mediaDevices', {
@@ -35,7 +35,7 @@ function installMediaRecorderMock() {
 function removeMediaRecorderMock() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (global as any).MediaRecorder;
-  mockMediaRecorderInstance = null;
+  _mockMediaRecorderInstance = null;
 }
 
 
