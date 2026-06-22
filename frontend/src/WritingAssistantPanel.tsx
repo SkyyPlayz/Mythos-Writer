@@ -36,6 +36,8 @@ const WA_MIC_ARIA_LABELS: Record<WaVoiceState, string> = {
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   if (typeof window === 'undefined') return null;
+  // SKY-3189 (G3): Web Speech API requires Google's servers (absent in packaged builds).
+  if (window.api?.isPackaged) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;

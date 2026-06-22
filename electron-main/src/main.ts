@@ -479,6 +479,10 @@ import {
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 const require = createRequire(import.meta.url);
 
+// SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
+// synchronously without an IPC round-trip. Must be set before any BrowserWindow is created.
+process.env.MYTHOS_IS_PACKAGED = app.isPackaged ? '1' : '0';
+
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
 

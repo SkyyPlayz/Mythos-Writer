@@ -3283,6 +3283,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 </label>
               </div>
 
+              {/* SKY-3189 (G3): packaged-mode notice — Web Speech is unavailable in shipped builds */}
+              {settings.voice?.enabled && (window as { api?: { isPackaged?: boolean } }).api?.isPackaged && (
+                <p className="settings-hint" role="note" style={{ marginTop: '6px' }}>
+                  Web Speech (browser mic) does not work in the packaged app.
+                  Configure STT via a local whisper.cpp binary or a cloud endpoint in the Voice Provider section below.
+                </p>
+              )}
+
               {(settings.voice?.enabled) && (
                 <>
                   {/* Capture mode */}

@@ -929,6 +929,10 @@ contextBridge.exposeInMainWorld('api', {
   windowMaximize: () => ipcRenderer.invoke('window:maximize', undefined),
   windowClose: () => ipcRenderer.invoke('window:close', undefined),
 
+  // SKY-3189 (G3): true when running in a packaged Electron build.
+  // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
+  isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC
