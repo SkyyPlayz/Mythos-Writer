@@ -12,7 +12,7 @@
   background: var(--glass-fill-fallback);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
-  width: 680px;
+  width: 720px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 80px);
   display: flex;
@@ -1608,4 +1608,65 @@
 .bs-routing-memory-reset:hover {
   color: var(--text-body, rgba(255,255,255,0.85));
   background: rgba(255,255,255,0.08);
+}
+
+/* ── Settings category nav sidebar (SKY-3217) ────────────────────────── */
+
+.settings-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-nav {
+  width: 152px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--border-default);
+  overflow-y: auto;
+}
+
+.settings-nav-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.3;
+}
+
+.settings-nav-btn:hover {
+  background: var(--bg-elevated, rgba(255,255,255,0.06));
+  color: var(--text-body);
+}
+
+.settings-nav-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00e5ff);
+  outline-offset: 1px;
+}
+
+.settings-nav-btn--active {
+  background: var(--bg-elevated, rgba(255,255,255,0.08));
+  color: var(--neon-cyan, #00e5ff);
+  font-weight: 600;
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }

@@ -57,12 +57,15 @@ interface Props {
   onSaved?: (settings: AppSettings) => void;
   focusPrefs?: FocusPrefs;
   onFocusPrefsChange?: (prefs: FocusPrefs) => void;
+  initialSection?: string;
 }
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialSection }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const navBtnRefs = useRef<HTMLButtonElement[]>([]);
 
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement;
@@ -555,6 +558,69 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     applyLiquidNeonTokens(defaults);
     setSavedOk(false);
   }, [resetConfirm]);
+
+  const handleBodyScroll = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const bodyTop = body.getBoundingClientRect().top;
+    let found: string | null = null;
+    let closestTop = -Infinity;
+    for (const cat of SETTINGS_CATEGORIES) {
+      for (const sId of cat.sectionIds) {
+        const el = body.querySelector(`#${sId}`);
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top - bodyTop;
+        if (top <= 40 && top > closestTop) {
+          closestTop = top;
+          found = cat.id;
+        }
+      }
+    }
+    if (found) setActiveNavCat(found);
+  }, []);
+
+  const handleNavClick = useCallback((cat: SettingsNavCategory) => {
+    setActiveNavCat(cat.id);
+    const body = bodyRef.current;
+    if (!body) return;
+    const firstId = cat.sectionIds[0];
+    const el = body.querySelector<HTMLElement>(`#${firstId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const section = el.closest('section');
+    const firstControl = section?.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    firstControl?.focus();
+  }, []);
+
+  const handleNavKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = navBtnRefs.current[(idx + 1) % SETTINGS_CATEGORIES.length];
+      next?.focus();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prev = navBtnRefs.current[(idx - 1 + SETTINGS_CATEGORIES.length) % SETTINGS_CATEGORIES.length];
+      prev?.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialSection) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const el = body.querySelector<HTMLElement>(`#${initialSection}`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    const section = el.closest('section');
+    const firstControl = section?.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    firstControl?.focus();
+    const cat = SETTINGS_CATEGORIES.find((c) => c.sectionIds.includes(initialSection));
+    if (cat) setActiveNavCat(cat.id);
+  }, [initialSection]);
 
   if (loading) {
     return (
