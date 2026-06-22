@@ -5,32 +5,37 @@ type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
 type ErrorHandler = (data: { streamId: string; error: string }) => void;
 
-// ─── SpeechRecognition mock (for Voice IO state-machine tests) ────────────────
-let mockRecognitionInstance: MockSpeechRecognitionClass | null = null;
+// ─── MediaRecorder mock (for Voice IO state-machine tests) ────────────────────
+let mockMediaRecorderInstance: MockMediaRecorderClass | null = null;
 
-class MockSpeechRecognitionClass {
-  continuous = false;
-  interimResults = false;
-  onstart: (() => void) | null = null;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null = null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null = null;
-  onend: (() => void) | null = null;
+class MockMediaRecorderClass {
+  static isTypeSupported = vi.fn(() => false);
+  state: 'inactive' | 'recording' = 'inactive';
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-this-alias
-  constructor() { mockRecognitionInstance = this; }
-  start() { /* caller drives via onstart */ }
-  abort() { /* caller drives via onend */ }
-  stop() { /* caller drives via onend */ }
+  constructor() { mockMediaRecorderInstance = this; }
+  start() { this.state = 'recording'; }
+  stop() {
+    this.state = 'inactive';
+    this.ondataavailable?.({ data: new Blob(['audio'], { type: 'audio/webm' }) });
+    this.onstop?.();
+  }
 }
 
-function installSpeechRecognitionMock() {
-  mockRecognitionInstance = null;
+function installMediaRecorderMock() {
+  mockMediaRecorderInstance = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).SpeechRecognition = MockSpeechRecognitionClass;
+  (global as any).MediaRecorder = MockMediaRecorderClass;
+  Object.defineProperty(global.navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
+    writable: true, configurable: true,
+  });
 }
-function removeSpeechRecognitionMock() {
+function removeMediaRecorderMock() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  delete (window as any).SpeechRecognition;
-  mockRecognitionInstance = null;
+  delete (global as any).MediaRecorder;
+  mockMediaRecorderInstance = null;
 }
 
 
@@ -83,6 +88,7 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     sttStart: vi.fn(),
     sttStop: vi.fn(),
     onSttResult: () => () => {},
+    voiceTranscribe: vi.fn().mockResolvedValue({ text: 'test transcript', confidence: 0.95 }),
     onVaultNotesUpdated: () => () => {},
     ...overrides,
   };
@@ -900,48 +906,36 @@ describe('Stalled-stream UX', () => {
 describe('Mic button', () => {
   const renderVoiceEnabledBrainstorm = () => render(<BrainstormPage onClose={() => {}} voiceEnabled />);
 
+  beforeEach(() => { installMediaRecorderMock(); });
+  afterEach(() => { removeMediaRecorderMock(); });
+
   it('renders a mic button for voice input', () => {
     renderVoiceEnabledBrainstorm();
-    // New label: 'Start voice input'
     expect(screen.getByRole('button', { name: /start voice input/i })).toBeInTheDocument();
   });
 
-  it('calls sttStart when the mic button is clicked (legacy fallback — no SpeechRecognition)', () => {
-    const mockSttStart = vi.fn();
-    (window as unknown as { api: unknown }).api = buildApi({ sttStart: mockSttStart });
+  it('transitions to listening state after mic click (MediaRecorder path)', async () => {
     renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    expect(mockSttStart).toHaveBeenCalled();
+    // getUserMedia is async; wait for listening state
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /stop voice input/i })).toBeInTheDocument(),
+    );
   });
 
-  it('shows listening state when recording is active (legacy fallback)', () => {
-    renderVoiceEnabledBrainstorm();
-    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    // In listening state, label changes to 'Stop voice input — listening'
-    expect(screen.getByRole('button', { name: /stop voice input/i })).toBeInTheDocument();
-  });
-
-  it('calls sttStop when the mic is active and clicked again (legacy fallback)', () => {
-    const mockSttStop = vi.fn();
-    (window as unknown as { api: unknown }).api = buildApi({ sttStop: mockSttStop });
-    renderVoiceEnabledBrainstorm();
-    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    fireEvent.click(screen.getByRole('button', { name: /stop voice input/i }));
-    expect(mockSttStop).toHaveBeenCalled();
-  });
-
-  it('fills the composer with STT result text', async () => {
-    let sttResultCb: ((text: string) => void) | null = null;
+  it('fills the composer with transcription text via voiceTranscribe', async () => {
     (window as unknown as { api: unknown }).api = buildApi({
-      onSttResult: (cb: (text: string) => void) => {
-        sttResultCb = cb;
-        return () => { sttResultCb = null; };
-      },
+      voiceTranscribe: vi.fn().mockResolvedValue({ text: 'hello world', confidence: 0.95 }),
     });
     renderVoiceEnabledBrainstorm();
-    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    await waitFor(() => expect(sttResultCb).not.toBeNull());
-    act(() => { sttResultCb?.('hello world'); });
+    const btn = screen.getByRole('button', { name: /start voice input/i });
+    fireEvent.click(btn);
+    // Wait for listening state
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /stop voice input/i })).toBeInTheDocument(),
+    );
+    // Stop recording → triggers transcription
+    fireEvent.click(screen.getByRole('button', { name: /stop voice input/i }));
     await waitFor(() =>
       expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('hello world'),
     );
@@ -1985,11 +1979,11 @@ describe('Voice IO state machine (SKY-1503)', () => {
   const renderVoiceEnabledBrainstorm = () => render(<BrainstormPage onClose={() => {}} voiceEnabled />);
 
   beforeEach(() => {
-    installSpeechRecognitionMock();
+    installMediaRecorderMock();
     vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { cb(); return 0; });
   });
   afterEach(() => {
-    removeSpeechRecognitionMock();
+    removeMediaRecorderMock();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -2015,10 +2009,11 @@ describe('Voice IO state machine (SKY-1503)', () => {
     renderVoiceEnabledBrainstorm();
     const btn = screen.getByTestId('brainstorm-mic-btn');
     fireEvent.click(btn);
-    // Trigger onstart callback
-    await act(async () => { mockRecognitionInstance?.onstart?.(); });
-    expect(btn.getAttribute('aria-label')).toBe('Stop voice input — listening');
-    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    // getUserMedia is async; waitFor listening state
+    await waitFor(() => {
+      expect(btn.getAttribute('aria-label')).toBe('Stop voice input — listening');
+      expect(btn.getAttribute('aria-pressed')).toBe('true');
+    });
   });
 
   it('AC-V-02: transcript strip is not visible in idle state', () => {
@@ -2030,26 +2025,19 @@ describe('Voice IO state machine (SKY-1503)', () => {
   it('AC-V-02: transcript strip becomes visible in listening state', async () => {
     renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
-    await act(async () => { mockRecognitionInstance?.onstart?.(); });
-    const strip = screen.getByTestId('voice-transcript-strip');
-    expect(strip.className).toContain('voice-transcript-strip--visible');
-  });
-
-  it('AC-V-03: silence countdown ring appears while listening', async () => {
-    vi.useFakeTimers();
-    renderVoiceEnabledBrainstorm();
-    fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
-    await act(async () => { mockRecognitionInstance?.onstart?.(); });
-    // Advance fake timers so the setInterval fires and updates silenceSecondsLeft
-    await act(async () => { vi.advanceTimersByTime(200); });
-    // The ring renders when voiceState==='listening' && silenceSecondsLeft !== null
-    expect(document.querySelector('.voice-countdown-ring')).not.toBeNull();
+    await waitFor(() => {
+      const strip = screen.getByTestId('voice-transcript-strip');
+      expect(strip.className).toContain('voice-transcript-strip--visible');
+    });
   });
 
   it('AC-V-04: Escape key cancels voice input and announces cancellation', async () => {
     renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
-    await act(async () => { mockRecognitionInstance?.onstart?.(); });
+    // Wait for listening state
+    await waitFor(() =>
+      expect(screen.getByTestId('brainstorm-mic-btn').getAttribute('aria-label')).toBe('Stop voice input — listening'),
+    );
     fireEvent.keyDown(document.body, { key: 'Escape', bubbles: true });
     await waitFor(() => {
       const btn = screen.getByTestId('brainstorm-mic-btn');
@@ -2072,16 +2060,18 @@ describe('Voice IO state machine (SKY-1503)', () => {
     expect(region.getAttribute('aria-live')).toBe('assertive');
   });
 
-  it('AC-V-01: processing state renders correctly', async () => {
-    vi.useFakeTimers();
+  it('AC-V-01: processing state renders correctly while voiceTranscribe is in-flight', async () => {
+    // Never-resolving mock keeps the component in processing state indefinitely.
+    (window as unknown as { api: unknown }).api = buildApi({
+      voiceTranscribe: vi.fn().mockReturnValue(new Promise(() => {})),
+    });
     renderVoiceEnabledBrainstorm();
-    fireEvent.click(screen.getByTestId('brainstorm-mic-btn'));
-    await act(async () => { mockRecognitionInstance?.onstart?.(); });
-    // Simulate auto-commit after 3s
-    await act(async () => { vi.advanceTimersByTime(3100); });
-    await act(async () => { mockRecognitionInstance?.onend?.(); });
     const btn = screen.getByTestId('brainstorm-mic-btn');
-    // either processing or back to idle depending on timing
-    expect(['Processing speech…', 'Start voice input']).toContain(btn.getAttribute('aria-label'));
+    fireEvent.click(btn);
+    // Wait for listening
+    await waitFor(() => expect(btn.getAttribute('aria-label')).toBe('Stop voice input — listening'));
+    // Click to stop (triggers transcription)
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn.getAttribute('aria-label')).toBe('Processing speech…'));
   });
 });

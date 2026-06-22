@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { SuggestionCard } from './SuggestionCard';
 import type { Scene } from './types';
@@ -25,23 +26,12 @@ import type { PresetAxes, RefinementChip } from './presets';
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
 
-type WaVoiceState = 'idle' | 'listening' | 'processing' | 'error';
-
-const WA_MIC_ARIA_LABELS: Record<WaVoiceState, string> = {
+const WA_MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
   idle: 'Start voice input',
   listening: 'Stop voice input',
   processing: 'Processing speech…',
   error: 'Voice error — click to retry',
 };
-
-function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
-  if (typeof window === 'undefined') return null;
-  // SKY-3189 (G3): Web Speech API requires Google's servers (absent in packaged builds).
-  if (window.api?.isPackaged) return null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const w = window as any;
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 interface WritingAssistantSuggestion {
   id: string;
@@ -597,127 +587,29 @@ export default function WritingAssistantPanel({
     });
   }, [scene, visibleTips]);
 
-  // ── AC-WA-25: STT voice input ──────────────────────────────────────────────
-  const [waVoiceState, _setWaVoiceStateRaw] = useState<WaVoiceState>('idle');
-  const waVoiceStateRef = useRef<WaVoiceState>('idle');
-  const waRecognitionRef = useRef<SpeechRecognition | null>(null);
-  const waConfirmedTextRef = useRef('');
-  const waSilenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const waSilenceStartRef = useRef<number>(0);
-
-  const setWaVoiceState = useCallback((s: WaVoiceState) => {
-    waVoiceStateRef.current = s;
-    _setWaVoiceStateRaw(s);
-  }, []);
-
-  const waClearSilenceTimer = useCallback(() => {
-    if (waSilenceTimerRef.current) {
-      clearInterval(waSilenceTimerRef.current);
-      waSilenceTimerRef.current = null;
-    }
-  }, []);
-
-  const waCommitTranscript = useCallback(() => {
-    const text = waConfirmedTextRef.current.trim();
-    if (text) {
-      setPrompt((prev) => (prev ? `${prev} ${text}` : text));
-      announce(`Transcribed: ${text}`);
-    }
-    waConfirmedTextRef.current = '';
-  }, [announce]);
-
-  const waStopRecognition = useCallback((mode: 'cancel' | 'commit') => {
-    waClearSilenceTimer();
-    const rec = waRecognitionRef.current;
-    waRecognitionRef.current = null;
-    if (rec) try { rec.abort(); } catch { /* non-fatal */ }
-    if (mode === 'cancel') waConfirmedTextRef.current = '';
-  }, [waClearSilenceTimer]);
-
-  const startWaVoice = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      window.api.sttStart?.();
-      setWaVoiceState('listening');
-      return;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rec = new Ctor() as any;
-    waRecognitionRef.current = rec;
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    rec.onstart = () => {
-      setWaVoiceState('listening');
-      waSilenceStartRef.current = Date.now();
-      waSilenceTimerRef.current = setInterval(() => {
-        const elapsed = (Date.now() - waSilenceStartRef.current) / 1000;
-        if (elapsed >= 3) {
-          waClearSilenceTimer();
-          const r = waRecognitionRef.current;
-          waRecognitionRef.current = null;
-          if (r) try { r.abort(); } catch { /* non-fatal */ }
-          setWaVoiceState('processing');
-          setTimeout(() => {
-            waCommitTranscript();
-            setWaVoiceState('idle');
-          }, 400);
-        }
-      }, 100);
-    };
-
-    rec.onresult = (event: SpeechRecognitionEvent) => {
-      waSilenceStartRef.current = Date.now();
-      let confirmed = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const r = event.results[i];
-        if (r.isFinal) confirmed += r[0]?.transcript ?? '';
-      }
-      if (confirmed) waConfirmedTextRef.current += confirmed;
-    };
-
-    rec.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error === 'no-speech' || event.error === 'aborted') return;
-      waClearSilenceTimer();
-      waRecognitionRef.current = null;
-      setWaVoiceState('error');
-      announce(`Voice error: ${event.error}`);
-    };
-
-    rec.onend = () => {
-      if (waVoiceStateRef.current === 'listening') {
-        waClearSilenceTimer();
-        waRecognitionRef.current = null;
-        setWaVoiceState('idle');
-      }
-    };
-
-    try { rec.start(); } catch { setWaVoiceState('error'); }
-  }, [announce, waClearSilenceTimer, waCommitTranscript, setWaVoiceState]);
-
-  const cancelWaVoice = useCallback(() => {
-    waStopRecognition('cancel');
-    window.api.sttStop?.();
-    setWaVoiceState('idle');
-    announce('Voice input cancelled.');
-  }, [announce, waStopRecognition, setWaVoiceState]);
+  // ── AC-WA-25: STT voice input (single-shot via voice:transcribe IPC) ────────
+  const waVoiceTranscriptRef = useRef<(text: string) => void>(() => { /* filled after announce */ });
+  const waVoiceErrorRef = useRef<(msg: string) => void>(() => { /* filled after announce */ });
+  const { state: waVoiceState, start: startWaVoiceDictation, stop: stopWaVoiceDictation } =
+    useVoiceDictation({
+      onTranscript: useCallback((text: string) => { waVoiceTranscriptRef.current(text); }, []),
+      onError: useCallback((msg: string) => { waVoiceErrorRef.current(msg); }, []),
+    });
+  // Wire refs now that announce and setPrompt are in scope.
+  waVoiceTranscriptRef.current = (text: string) => {
+    setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+    announce(`Transcribed: ${text}`);
+  };
+  waVoiceErrorRef.current = (msg: string) => {
+    announce(`Voice error: ${msg}`);
+  };
 
   const handleWaMicToggle = useCallback(() => {
-    const state = waVoiceStateRef.current;
-    if (state === 'idle') startWaVoice();
-    else if (state === 'listening') cancelWaVoice();
-    else if (state === 'error') setWaVoiceState('idle');
+    if (waVoiceState === 'idle') void startWaVoiceDictation();
+    else if (waVoiceState === 'listening') stopWaVoiceDictation();
+    else if (waVoiceState === 'error') void startWaVoiceDictation();
     // processing: ignore clicks
-  }, [startWaVoice, cancelWaVoice, setWaVoiceState]);
-
-  useEffect(() => {
-    return () => {
-      waClearSilenceTimer();
-      const rec = waRecognitionRef.current;
-      if (rec) try { rec.abort(); } catch { /* non-fatal */ }
-      waRecognitionRef.current = null;
-    };
-  }, [waClearSilenceTimer]);
+  }, [waVoiceState, startWaVoiceDictation, stopWaVoiceDictation]);
   // ──────────────────────────────────────────────────────────────────────────
 
   const messagesRef = useRef<HTMLDivElement>(null);
