@@ -30,6 +30,7 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import { useFocusMode } from './useFocusMode';
+import { TOPBAR_HIDE_EVENT } from './useTopBarVisibility';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
 import {
   createInitialGettingStartedProgress,
@@ -168,6 +169,8 @@ interface AppMenuBarProps {
   onProjectSwitched: (vaultRoot: string) => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  /** SKY-3207 (B4): toggle the top bar hidden state. */
+  onToggleTopBar: () => void;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
   requestText: (label: string) => Promise<string | null>;
@@ -182,7 +185,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -297,6 +300,15 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
         dockedPanelIds={dockedPanelIds}
         onAddPanelAsNewTab={onAddPanelAsNewTab}
       />
+      <button
+        className="app-menu-topbar-btn"
+        onClick={onToggleTopBar}
+        aria-label="Hide top bar"
+        title="Hide top bar (Ctrl+Shift+H)"
+        data-testid="toolbar-hide-topbar-btn"
+      >
+        ▲
+      </button>
       <button
         className="app-menu-df-btn"
         onClick={onToggleDistractionFree}
@@ -568,6 +580,44 @@ export default function DesktopShell() {
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
+
+  // ─── SKY-3207 (B4): Hideable top bar ───
+  const [topBarHidden, setTopBarHiddenRaw] = useState(false);
+  const [topBarPeekVisible, setTopBarPeekVisible] = useState(false);
+
+  const setTopBarHidden = useCallback((hidden: boolean) => {
+    setTopBarHiddenRaw(hidden);
+    if (!hidden) setTopBarPeekVisible(false);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, topBarHidden: hidden };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const toggleTopBar = useCallback(() => {
+    setTopBarHiddenRaw((prev) => {
+      const next = !prev;
+      if (!next) setTopBarPeekVisible(false);
+      setAppSettings((settings) => {
+        if (!settings) return settings;
+        const updated = { ...settings, topBarHidden: next };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { hidden } = (e as CustomEvent<{ hidden: boolean }>).detail;
+      setTopBarHidden(hidden);
+    };
+    window.addEventListener(TOPBAR_HIDE_EVENT, handler);
+    return () => window.removeEventListener(TOPBAR_HIDE_EVENT, handler);
+  }, [setTopBarHidden]);
 
   // ─── SKY-1686: Global right-sidebar state ───
   // undefined = settings not yet loaded (sidebar not rendered at all, no space taken).
@@ -1018,6 +1068,8 @@ export default function DesktopShell() {
       }
       if (s) {
         setAppSettings(s);
+        // SKY-3207 (B4): restore top-bar hidden state per-vault
+        if (typeof s.topBarHidden === 'boolean') setTopBarHiddenRaw(s.topBarHidden);
         // Restore global right sidebar state from persisted settings (SKY-1686)
         if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
@@ -1938,6 +1990,12 @@ export default function DesktopShell() {
         handleTabChange('notes');
         return;
       }
+      // SKY-3207 (B4): Ctrl/Cmd+Shift+H — toggle top bar hidden
+      if (mod && e.shiftKey && !e.altKey && (e.key === 'H' || e.key === 'h')) {
+        e.preventDefault();
+        toggleTopBar();
+        return;
+      }
       // SKY-1700: Ctrl+Shift+L — open layout picker (AC-W-09)
       if (mod && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
         e.preventDefault();
@@ -1995,7 +2053,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -2915,10 +2973,15 @@ export default function DesktopShell() {
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
+  // SKY-3207 (B4): top bar visibility — chrome shows when title bar is on AND user hasn't hidden it (or is peeking)
+  const showChrome = showTitleBar && (!topBarHidden || topBarPeekVisible);
+  const showPeekStrip = showTitleBar && topBarHidden && !topBarPeekVisible;
+
   const shellClasses = [
     'desktop-shell',
     `writing-mode-${writingMode}`,
     distractionFree && 'distraction-free',
+    topBarHidden && !distractionFree && 'desktop-shell--topbar-hidden',
     inFocusOrDF && !focusPrefs.showSidebarButtons && 'focus-hide-sidebar-btns',
     inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
     inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
@@ -2937,47 +3000,64 @@ export default function DesktopShell() {
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
-      {showTitleBar && <WindowChrome />}
-      {showTitleBar && (
-        <AppMenuBar
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenHistory={() => setHistoryOpen(true)}
-          onSearchNavigate={handleSearchNavigate}
-          selectedStoryId={selectedStory?.id ?? null}
-          activeVaultRoot={activeVaultRoot}
-          onProjectSwitched={handleProjectSwitched}
-          onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
-          onToggleDistractionFree={toggleDistractionFree}
-          onOpenTour={() => setTourOpen(true)}
-          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
-          requestText={requestText}
-          dockedTabs={dockedTabs}
-          activeDockedTabId={activeDockedTabId}
-          onDockedTabSelect={setActiveDockedTabId}
-          onDockedTabClose={handleTabClose}
-          onDockedTabReorder={handleTabReorder}
-          dockedPanelIds={dockedPanelIds}
-          onAddPanelAsNewTab={handleAddPanelAsNewTab}
-        />
-      )}
-      {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
-      {showTitleBar && (
-        <TabBar
-          activeTab={tabShell.activeTab}
-          onTabChange={handleTabChange}
-        />
-      )}
-      {/* SKY-2098: per-tab vault badge */}
-      {showTitleBar && activeVaultBadge && (
+      {/* SKY-3207 (B4): peek strip — 8px hover target shown when top bar is hidden */}
+      {showPeekStrip && (
         <div
-          className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
-          aria-label={activeVaultBadgeLabel}
-          aria-live="polite"
-          data-testid="app-vault-badge"
+          className="topbar-peek-strip"
+          onMouseEnter={() => setTopBarPeekVisible(true)}
+          aria-hidden="true"
+          data-testid="topbar-peek-strip"
+        />
+      )}
+      {/* SKY-3207 (B4): chrome wrapper — transparent in normal state, overlaid when peeking */}
+      {showChrome && (
+        <div
+          className={`top-bar-chrome${topBarPeekVisible ? ' top-bar-chrome--peeking' : ''}`}
+          onMouseLeave={topBarPeekVisible ? () => setTopBarPeekVisible(false) : undefined}
+          data-testid="top-bar-chrome"
         >
-          <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
-            {activeVaultBadge}
-          </span>
+          <WindowChrome />
+          <AppMenuBar
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenHistory={() => setHistoryOpen(true)}
+            onSearchNavigate={handleSearchNavigate}
+            selectedStoryId={selectedStory?.id ?? null}
+            activeVaultRoot={activeVaultRoot}
+            onProjectSwitched={handleProjectSwitched}
+            onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
+            onToggleDistractionFree={toggleDistractionFree}
+            onToggleTopBar={toggleTopBar}
+            onOpenTour={() => setTourOpen(true)}
+            onOpenExport={(scope: ExportScope) => setExportScope(scope)}
+            requestText={requestText}
+            dockedTabs={dockedTabs}
+            activeDockedTabId={activeDockedTabId}
+            onDockedTabSelect={setActiveDockedTabId}
+            onDockedTabClose={handleTabClose}
+            onDockedTabReorder={handleTabReorder}
+            dockedPanelIds={dockedPanelIds}
+            onAddPanelAsNewTab={handleAddPanelAsNewTab}
+          />
+          {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
+          {showTabBar && (
+            <TabBar
+              activeTab={tabShell.activeTab}
+              onTabChange={handleTabChange}
+            />
+          )}
+          {/* SKY-2098: per-tab vault badge */}
+          {activeVaultBadge && (
+            <div
+              className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
+              aria-label={activeVaultBadgeLabel}
+              aria-live="polite"
+              data-testid="app-vault-badge"
+            >
+              <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
+                {activeVaultBadge}
+              </span>
+            </div>
+          )}
         </div>
       )}
       {showStatusOverlay && (

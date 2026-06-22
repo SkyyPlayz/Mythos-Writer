@@ -478,6 +478,8 @@ interface AppSettings {
   rightSidebarVisible?: boolean;
   rightSidebarWidth?: number;
   rightSidebarPanels?: RightSidebarPanel[];
+  /** SKY-3207 (B4): top bar hidden state, persisted per-vault. */
+  topBarHidden?: boolean;
 
   /** SKY-1694 (Wave 2a): persisted layout customizations for the panel system. */
   activeLayout?: {
