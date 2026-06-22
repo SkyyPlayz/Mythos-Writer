@@ -455,3 +455,58 @@
   background: rgba(251, 191, 36, 0.15);
   border-color: #fbbf24;
 }
+
+.sdp-btn-ignore {
+  color: var(--text-secondary, #94a3b8);
+  border-color: var(--border, #2d3748);
+}
+
+.sdp-btn-ignore:hover:not(:disabled) {
+  background: var(--surface-2, rgba(148, 163, 184, 0.08));
+  border-color: var(--text-secondary, #94a3b8);
+}
+
+/* Scene Crafter card payload preview */
+.sdp-payload-scene-crafter {
+  padding: 10px 12px;
+  background: var(--surface-2, #1e2433);
+  border: 1px solid var(--border, #2d3748);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sdp-sc-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e2e8f0);
+}
+
+.sdp-sc-meta-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sdp-sc-lane,
+.sdp-sc-linked-note {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.sdp-sc-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sdp-sc-tag {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-muted, rgba(99, 102, 241, 0.15));
+  color: var(--accent, #818cf8);
+  border: 1px solid var(--accent-muted, rgba(99, 102, 241, 0.3));
+}

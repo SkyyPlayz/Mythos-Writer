@@ -240,6 +240,9 @@ export interface GlobalRightSidebarProps {
   /** Badge count for the archive-continuity panel header. */
   continuityIssueCount?: number;
 
+  /** Badge count for the review (Suggestion Review) panel header. */
+  reviewBadgeCount?: number;
+
   /** Count of left sidebar panels (needed for keyboard-drag bounds). */
   leftPanelCount: number;
 
@@ -267,6 +270,7 @@ export default function GlobalRightSidebar({
   onPanelsChange,
   renderPanelContent,
   continuityIssueCount = 0,
+  reviewBadgeCount = 0,
   leftPanelCount,
   onFloatPanel,
   onDockAsTab,
@@ -560,7 +564,11 @@ export default function GlobalRightSidebar({
                 onKeyDown={(e) => handleDragHandleKeyDown(e, config.id, i)}
                 isDragging={isDraggingThis}
                 badgeCount={
-                  config.id === 'archive-continuity' ? continuityIssueCount : undefined
+                  config.id === 'archive-continuity'
+                    ? (continuityIssueCount > 0 ? continuityIssueCount : undefined)
+                    : config.id === 'review'
+                    ? (reviewBadgeCount > 0 ? reviewBadgeCount : undefined)
+                    : undefined
                 }
               >
                 {renderPanelContent(config.id)}

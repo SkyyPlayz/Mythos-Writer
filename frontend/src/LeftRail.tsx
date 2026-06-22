@@ -101,6 +101,8 @@ interface Props {
   onFloatPanel?: (panelId: SidebarPanelId) => void;
   /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
   onDockAsTab?: (panelId: SidebarPanelId) => void;
+  /** Nav badge counts keyed by panel id — shown in panel header. */
+  panelBadgeCounts?: Partial<Record<LeftPanelId, number>>;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -112,6 +114,7 @@ export default function LeftRail({
   rightPanelCount,
   onFloatPanel,
   onDockAsTab,
+  panelBadgeCounts,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -397,6 +400,14 @@ export default function LeftRail({
                   </button>
 
                   <span className="lr-panel-title">{label}</span>
+                  {(panelBadgeCounts?.[panel.id as LeftPanelId] ?? 0) > 0 && (
+                    <span
+                      className="lr-panel-badge"
+                      aria-label={`${panelBadgeCounts![panel.id as LeftPanelId]} pending`}
+                    >
+                      {panelBadgeCounts![panel.id as LeftPanelId]}
+                    </span>
+                  )}
 
                   {/* Float panel — SKY-1697 */}
                   <button

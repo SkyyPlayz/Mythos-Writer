@@ -637,6 +637,23 @@ export default function DesktopShell() {
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
+  const [proposedCount, setProposedCount] = useState(0);
+
+  // Poll proposed suggestion count every 30 s for nav badge
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.suggestionsUnifiedList !== 'function') return;
+    let cancelled = false;
+    const poll = () => {
+      (api.suggestionsUnifiedList({ status: 'proposed' }) as Promise<{ totalCount: number }>)
+        .then((r) => { if (!cancelled) setProposedCount(r.totalCount ?? 0); })
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 30_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
 
   // SKY-1698 (Wave 2d): custom panel tabs in the main tab bar
   const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
@@ -3127,6 +3144,7 @@ export default function DesktopShell() {
             rightPanelCount={grsPanels.length}
             onFloatPanel={(id) => handleFloatPanel(id, 'left')}
             onDockAsTab={(id) => handleDockPanelAsTab(id, 'left')}
+            panelBadgeCounts={{ review: proposedCount }}
           />
         </div>
       )}
@@ -3500,6 +3518,7 @@ export default function DesktopShell() {
         onPanelsChange={handleGrsPanelsChange}
         renderPanelContent={renderSidebarPanel}
         continuityIssueCount={continuityCount}
+        reviewBadgeCount={proposedCount}
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}

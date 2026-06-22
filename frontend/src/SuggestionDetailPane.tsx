@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import './SuggestionDetailPane.css';
 
-export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link';
+export type UnifiedSuggestionKind = 'suggestion' | 'continuity-issue' | 'wiki-link' | 'scene_crafter_card';
 export type UnifiedSuggestionStatus =
   | 'proposed'
   | 'accepted'
@@ -40,6 +40,7 @@ interface Props {
   onClose: () => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onIgnore?: (id: string) => void;
   onRollback: (id: string) => void;
 }
 
@@ -64,6 +65,7 @@ export default function SuggestionDetailPane({
   onClose,
   onAccept,
   onReject,
+  onIgnore,
   onRollback,
 }: Props) {
   const paneRef = useRef<HTMLDivElement>(null);
@@ -92,17 +94,17 @@ export default function SuggestionDetailPane({
     closeRef.current?.focus();
   }, []);
 
-  // Escape to close — captured here so it doesn't fall through to row keyboard handler
+  // A/R/I/Escape keyboard shortcuts — captured so they don't fall through to row handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key === 'a' || e.key === 'A') { e.stopPropagation(); onAccept(suggestion.id); return; }
+      if (e.key === 'r' || e.key === 'R') { e.stopPropagation(); onReject(suggestion.id); return; }
+      if ((e.key === 'i' || e.key === 'I') && onIgnore) { e.stopPropagation(); onIgnore(suggestion.id); }
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
-  }, [onClose]);
+  }, [onClose, onAccept, onReject, onIgnore, suggestion.id]);
 
   // Focus trap within the pane
   useEffect(() => {
@@ -157,8 +159,31 @@ export default function SuggestionDetailPane({
         anchorText?: string;
         before?: string;
         after?: string;
+        target?: { laneId?: string; storySlug?: string };
+        payload?: { title?: string; linkedNotePath?: string; tags?: string[] };
       };
-      if (suggestion.kind === 'wiki-link') {
+      if (suggestion.kind === 'scene_crafter_card') {
+        const cardTitle = p.payload?.title ?? '(untitled)';
+        const lane = p.target?.laneId;
+        const linkedNote = p.payload?.linkedNotePath;
+        const tags = p.payload?.tags ?? [];
+        payloadPreview = (
+          <div className="sdp-payload-scene-crafter">
+            <div className="sdp-sc-title">{cardTitle}</div>
+            <div className="sdp-sc-meta-row">
+              {lane && <span className="sdp-sc-lane">Lane: {lane}</span>}
+              {linkedNote && <span className="sdp-sc-linked-note">Note: {linkedNote}</span>}
+            </div>
+            {tags.length > 0 && (
+              <div className="sdp-sc-tags">
+                {tags.map((tag) => (
+                  <span key={tag} className="sdp-sc-tag">{tag}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      } else if (suggestion.kind === 'wiki-link') {
         const link = p.proposed_link ?? p.link ?? '';
         const anchor = p.anchor_text ?? p.anchorText;
         if (link) {
@@ -334,17 +359,26 @@ export default function SuggestionDetailPane({
                 <button
                   className="sdp-btn sdp-btn-accept"
                   onClick={() => onAccept(suggestion.id)}
-                  aria-label="Accept this suggestion"
+                  aria-label="Accept this suggestion (A)"
                 >
                   Accept
                 </button>
                 <button
                   className="sdp-btn sdp-btn-reject"
                   onClick={() => onReject(suggestion.id)}
-                  aria-label="Reject this suggestion"
+                  aria-label="Reject this suggestion (R)"
                 >
                   Reject
                 </button>
+                {onIgnore && (
+                  <button
+                    className="sdp-btn sdp-btn-ignore"
+                    onClick={() => onIgnore(suggestion.id)}
+                    aria-label="Ignore this suggestion (I)"
+                  >
+                    Ignore
+                  </button>
+                )}
               </>
             )}
             {canRollback && (

@@ -177,7 +177,11 @@ function SuggestionRow({
       e.preventDefault();
       onOpenDetail(suggestion.id);
     }
-    if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      onAccept(suggestion.id);
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       onReject(suggestion.id);
     }
@@ -189,7 +193,7 @@ function SuggestionRow({
 
   const confidencePct = Math.round(suggestion.confidence * 100);
 
-  // For wiki-link rows, surface the proposed link as the descriptive line
+  // For wiki-link and scene_crafter_card rows, surface payload title as the descriptive line
   let rationaleText = suggestion.rationale;
   if (suggestion.kind === 'wiki-link' && suggestion.payloadJson) {
     try {
@@ -199,6 +203,18 @@ function SuggestionRow({
       };
       const link = p.proposed_link ?? p.link;
       if (link) rationaleText = link;
+    } catch {
+      /* malformed — use rationale */
+    }
+  } else if (suggestion.kind === 'scene_crafter_card' && suggestion.payloadJson) {
+    try {
+      const p = JSON.parse(suggestion.payloadJson) as {
+        payload?: { title?: string };
+        target?: { laneId?: string };
+      };
+      const title = p.payload?.title;
+      const lane = p.target?.laneId;
+      if (title) rationaleText = lane ? `${title} → ${lane}` : title;
     } catch {
       /* malformed — use rationale */
     }
@@ -271,6 +287,12 @@ function SuggestionRow({
       )}
 
       <p className="sr-rationale">{rationaleText}</p>
+
+      {suggestion.budgetExceeded && (
+        <div className="sr-budget-held" role="status" aria-label="Auto-apply held — budget reached">
+          <span aria-hidden="true">&#9888;</span> held — budget reached
+        </div>
+      )}
 
       <div className="sr-actions">
         <button
@@ -1011,6 +1033,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
           onClose={handleCloseDetail}
           onAccept={handleAccept}
           onReject={handleReject}
+          onIgnore={handleIgnore}
           onRollback={handleRollback}
         />
       )}
