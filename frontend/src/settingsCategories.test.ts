@@ -4,7 +4,7 @@
  * exactly one category and that no registered id appears more than once.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import {
   SETTINGS_CATEGORIES,
@@ -12,15 +12,24 @@ import {
   ALL_REGISTERED_SECTION_IDS,
 } from './settingsCategories';
 
-// ── Extract rendered section ids from SettingsPanel.tsx ───────────────────────
-const panelSource = readFileSync(
+// ── Extract rendered section ids from SettingsPanel.tsx + all section components ─
+// Sections were extracted to components/SettingsPanel/sections/ (SKY-3216/D2).
+// The test now scans all source files that contribute to the rendered output.
+const SECTION_DIR = resolve(__dirname, 'components/SettingsPanel/sections');
+const SOURCE_FILES = [
   resolve(__dirname, 'SettingsPanel.tsx'),
-  'utf-8',
-);
-// Match every id="section-..." attribute in the rendered JSX
-const RENDERED_IDS = new Set(
-  [...panelSource.matchAll(/id="(section-[^"]+)"/g)].map((m) => m[1]),
-);
+  ...readdirSync(SECTION_DIR)
+    .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
+    .map((f) => resolve(SECTION_DIR, f)),
+];
+
+const RENDERED_IDS = new Set<string>();
+for (const filePath of SOURCE_FILES) {
+  const src = readFileSync(filePath, 'utf-8');
+  for (const m of src.matchAll(/id="(section-[^"]+)"/g)) {
+    RENDERED_IDS.add(m[1]);
+  }
+}
 
 describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
   it('defines at least one category', () => {
