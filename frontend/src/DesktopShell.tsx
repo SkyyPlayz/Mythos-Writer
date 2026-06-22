@@ -417,6 +417,7 @@ function SceneEditorBand({ scene, index, isActive, onBlocksChange, onDraftStateC
           scene={scene}
           onBlocksChange={handleBlocksChange}
           onDraftStateChange={handleDraftStateChange}
+          autoFocus={false}
         />
       </div>
     </section>
