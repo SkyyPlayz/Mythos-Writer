@@ -205,6 +205,11 @@ test('TC-G-03: ThemeContrastSlider sets --lg-neon; soft=0.60, sharp=0.35', async
   await expect(settingsBtn).toBeVisible({ timeout: 6_000 });
   await settingsBtn.click();
 
+  // Navigate to Appearance category (SKY-3215: settings has category sub-nav; slider lives here)
+  const appearanceBtn = page.locator('[data-testid="settings-cat-appearance"]');
+  await expect(appearanceBtn).toBeVisible({ timeout: 4_000 });
+  await appearanceBtn.click();
+
   // Wait for settings panel
   const slider = page.locator('[data-testid="theme-contrast-slider"]');
   await expect(slider).toBeVisible({ timeout: 6_000 });

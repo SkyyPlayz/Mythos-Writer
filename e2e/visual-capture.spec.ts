@@ -334,6 +334,12 @@ test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
     if (await gearBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await gearBtn.click();
       await page.waitForTimeout(600);
+      // Navigate to Appearance category (SKY-3215: settings has category sub-nav; slider lives here)
+      const appearanceNavBtn = page.locator('[data-testid="settings-cat-appearance"]');
+      if (await appearanceNavBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await appearanceNavBtn.click();
+        await page.waitForTimeout(200);
+      }
     }
 
     // MYT-716: ThemeContrastSlider replaced by #lg-softness (range 0–1)
