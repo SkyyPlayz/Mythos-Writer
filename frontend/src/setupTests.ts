@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import 'vitest-axe/extend-expect';
 import { act } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
 
