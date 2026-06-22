@@ -1676,11 +1676,11 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/home/user/MyVault' },
       });
       await act(async () => { vi.advanceTimersByTime(600); });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      // Restore real timers before waitFor so its internal polling setTimeout works;
-      // the debounce has already fired so no fake-timer-driven code remains.
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+      // runAllTimersAsync fires the debounce timer and resolves Promise.all; the extra
+      // Promise.resolve() ticks drain the async-function continuation so setState runs
+      // before the act() wrapper flushes React — avoids a waitFor timeout race.
+      await act(async () => { await vi.runAllTimersAsync(); await Promise.resolve(); await Promise.resolve(); });
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1698,10 +1698,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/home/user/NewVault' },
       });
       await act(async () => { vi.advanceTimersByTime(600); });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      // Restore real timers before waitFor so its internal polling setTimeout works.
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled());
+      await act(async () => { await vi.runAllTimersAsync(); await Promise.resolve(); await Promise.resolve(); });
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
       await act(async () => {});
@@ -1719,10 +1717,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/root/protected' },
       });
       await act(async () => { vi.advanceTimersByTime(600); });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      // Restore real timers before waitFor so its internal polling setTimeout works.
-      vi.useRealTimers();
-      await waitFor(() => expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument());
+      await act(async () => { await vi.runAllTimersAsync(); await Promise.resolve(); await Promise.resolve(); });
+      expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
       vi.useRealTimers();
