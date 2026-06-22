@@ -908,6 +908,10 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
 // TTS playback tests (AC-V-06, AC-V-07, AC-V-08, AC-V-10, AC-V-11)
 // ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — TTS voice controls', () => {
+  // Pass configured Piper settings so tests exercise the IPC path (voiceSpeak).
+  // The OS-speechSynthesis fallback path is covered by useTtsPlayer.test.ts.
+  const piperSettings = { enabled: true, provider: 'local' as const, localBinaryPath: '/piper' };
+
   beforeEach(() => {
     // rAF-based useLiveAnnounce needs synchronous stub so act() drains it.
     vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
@@ -919,7 +923,7 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
 
   async function renderWithSuggestion(text = 'Try shorter sentences.') {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text });
-    render(<WritingAssistantPanel scene={null} />);
+    render(<WritingAssistantPanel scene={null} ttsSettings={piperSettings} />);
     fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
       target: { value: 'advice?' },
     });

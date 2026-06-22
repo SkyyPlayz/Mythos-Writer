@@ -1,5 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
+/** Minimal TTS engine config needed to decide which playback path to use. */
+export interface TtsEngineSettings {
+  enabled?: boolean;
+  provider: 'local' | 'cloud' | 'auto';
+  localBinaryPath?: string;
+  cloudApiKey?: string;
+}
+
 export interface UseTtsPlayer {
   /** ID of the suggestion card currently playing, or null. */
   playingCardId: string | null;
@@ -17,7 +25,27 @@ export interface UseTtsPlayer {
   toggleMute: (announce: (msg: string) => void) => void;
 }
 
-export function useTtsPlayer(): UseTtsPlayer {
+/**
+ * Returns true when a Piper-local or cloud TTS backend is explicitly configured.
+ * When false, the hook falls back to OS speechSynthesis (zero-config default).
+ */
+function hasTtsEngine(settings?: TtsEngineSettings): boolean {
+  if (!settings?.enabled) return false;
+  const { provider, localBinaryPath, cloudApiKey } = settings;
+  if (provider === 'local') return !!localBinaryPath;
+  if (provider === 'cloud') return !!cloudApiKey;
+  // auto: use configured engine if any
+  return !!(localBinaryPath || cloudApiKey);
+}
+
+/**
+ * Manages TTS playback for "Hear" buttons.
+ *
+ * Engine priority:
+ * 1. Piper (local) or cloud TTS via IPC — when `ttsSettings` has a configured path/key.
+ * 2. OS `window.speechSynthesis` — zero-config default when no engine is configured.
+ */
+export function useTtsPlayer(ttsSettings?: TtsEngineSettings): UseTtsPlayer {
   const [playingCardId, setPlayingCardId] = useState<string | null>(null);
   const [sessionMuted, setSessionMuted] = useState(false);
 
@@ -25,13 +53,18 @@ export function useTtsPlayer(): UseTtsPlayer {
   const activeSpeakIdRef = useRef<string | null>(null);
   const sessionMutedRef = useRef(false);
   const playingCardIdRef = useRef<string | null>(null);
-  // Incremented on each speakCard call so stale promise resolutions are ignored.
+  // Incremented on each speakCard call so stale IPC promise resolutions are ignored.
   const speakRequestRef = useRef(0);
+  // Active OS utterance; non-null only when using the speechSynthesis path.
+  const osUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // Stable ref to latest ttsSettings so callbacks pick up changes without re-creating.
+  const ttsSettingsRef = useRef(ttsSettings);
 
   useEffect(() => { sessionMutedRef.current = sessionMuted; }, [sessionMuted]);
   useEffect(() => { playingCardIdRef.current = playingCardId; }, [playingCardId]);
+  useEffect(() => { ttsSettingsRef.current = ttsSettings; }, [ttsSettings]);
 
-  // Subscribe to TTS push events for the lifetime of the component.
+  // Subscribe to IPC push events (only relevant on the Piper/cloud path).
   useEffect(() => {
     const clear = (speakId: string) => {
       if (activeSpeakIdRef.current !== speakId) return;
@@ -48,7 +81,13 @@ export function useTtsPlayer(): UseTtsPlayer {
   }, []);
 
   const cancelCurrent = useCallback((announce?: (msg: string) => void) => {
-    speakRequestRef.current += 1; // discard any in-flight speakCard promise
+    speakRequestRef.current += 1; // discard any in-flight IPC promise
+    // OS path
+    if (osUtteranceRef.current) {
+      window.speechSynthesis.cancel();
+      osUtteranceRef.current = null;
+    }
+    // IPC path
     const id = activeSpeakIdRef.current;
     if (id) {
       window.api.voiceSpeakCancel(id);
@@ -67,10 +106,14 @@ export function useTtsPlayer(): UseTtsPlayer {
   ) => {
     if (sessionMutedRef.current) return;
 
-    // Cancel any existing playback silently.
-    const currentId = activeSpeakIdRef.current;
-    if (currentId) {
-      window.api.voiceSpeakCancel(currentId);
+    // Cancel any existing playback silently before starting the new one.
+    if (osUtteranceRef.current) {
+      window.speechSynthesis.cancel();
+      osUtteranceRef.current = null;
+    }
+    const currentIpcId = activeSpeakIdRef.current;
+    if (currentIpcId) {
+      window.api.voiceSpeakCancel(currentIpcId);
       activeSpeakIdRef.current = null;
     }
 
@@ -81,6 +124,34 @@ export function useTtsPlayer(): UseTtsPlayer {
     playingCardIdRef.current = cardId;
     announce('Playing suggestion…');
 
+    if (!hasTtsEngine(ttsSettingsRef.current)) {
+      // OS speechSynthesis fallback — works in Electron, offline, zero setup.
+      if (typeof window.speechSynthesis === 'undefined') {
+        setPlayingCardId(null);
+        playingCardIdRef.current = null;
+        announce('Voice unavailable — configure a TTS engine in Settings.');
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      osUtteranceRef.current = utterance;
+      utterance.onend = () => {
+        if (osUtteranceRef.current !== utterance) return; // stale (cancelled or superseded)
+        osUtteranceRef.current = null;
+        setPlayingCardId(null);
+        playingCardIdRef.current = null;
+      };
+      utterance.onerror = () => {
+        if (osUtteranceRef.current !== utterance) return;
+        osUtteranceRef.current = null;
+        setPlayingCardId(null);
+        playingCardIdRef.current = null;
+        announce('Voice playback failed.');
+      };
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+
+    // IPC path — Piper (local binary) or cloud TTS.
     void window.api.voiceSpeak(text).then((res) => {
       if (speakRequestRef.current !== token) return; // superseded
       const r = res as { speakId?: string; error?: string };
@@ -108,6 +179,10 @@ export function useTtsPlayer(): UseTtsPlayer {
 
     if (next) {
       // Stop any active playback when muting.
+      if (osUtteranceRef.current) {
+        window.speechSynthesis.cancel();
+        osUtteranceRef.current = null;
+      }
       const id = activeSpeakIdRef.current;
       if (id) {
         window.api.voiceSpeakCancel(id);

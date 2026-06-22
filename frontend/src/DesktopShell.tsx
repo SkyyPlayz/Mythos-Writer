@@ -2662,6 +2662,7 @@ export default function DesktopShell() {
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
+            ttsSettings={appSettings?.tts}
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
