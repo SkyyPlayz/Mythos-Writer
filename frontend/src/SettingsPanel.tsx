@@ -929,7 +929,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     window.api.settingsGet().then((s) => {
       setSettings(s);
       if (s.liquidNeon) {
-        setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
+        const lnPrefs = { ...LG_DEFAULTS, ...s.liquidNeon };
+        // Migrate legacy settings: infer bgMode='image' when a file path is stored but bgMode was never saved
+        if (!s.liquidNeon.bgMode && s.liquidNeon.background && s.liquidNeon.background !== 'default') {
+          lnPrefs.bgMode = 'image';
+        }
+        setLg(lnPrefs);
         const bg = s.liquidNeon.background;
         if (bg && bg !== 'default') {
           window.api.loadBgImage?.(bg)
@@ -3304,6 +3309,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <label className="settings-toggle" htmlFor="nav-collapsed-default">
                 <input
                   id="nav-collapsed-default"
+                  aria-label="Start collapsed"
                   type="checkbox"
                   checked={navConfig.collapsedDefault}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, collapsedDefault: e.target.checked })); setSavedOk(false); }}
@@ -3317,6 +3323,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <label className="settings-toggle" htmlFor="nav-show-labels">
                 <input
                   id="nav-show-labels"
+                  aria-label="Show labels"
                   type="checkbox"
                   checked={navConfig.showLabels}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, showLabels: e.target.checked })); setSavedOk(false); }}
@@ -3330,6 +3337,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <label className="settings-toggle" htmlFor="nav-show-icons">
                 <input
                   id="nav-show-icons"
+                  aria-label="Show icons"
                   type="checkbox"
                   checked={navConfig.showIcons}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, showIcons: e.target.checked })); setSavedOk(false); }}

@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
+import { DEFAULT_BG_GRADIENT } from './theme';
 
 const defaultSettings: AppSettings = {
   apiKey: '',
