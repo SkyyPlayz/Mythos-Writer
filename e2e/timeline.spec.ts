@@ -429,6 +429,8 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
 
   // Clear the range so the next test sees the full fixture again.
+  // SKY-3177: Dismiss any Chromium date-picker popup that may intercept the click.
+  await page.keyboard.press('Escape');
   await page.locator('.tlf-clear-btn').click();
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 4_000 });
 });
