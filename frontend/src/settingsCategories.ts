@@ -54,6 +54,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     sectionIds: [
       'section-theme',
       'section-page-appearance',
+      'section-nav-config',
       'section-focus-mode',
     ],
   },

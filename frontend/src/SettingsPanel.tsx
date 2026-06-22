@@ -3346,6 +3346,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 <input
                   id="nav-collapsed-default"
                   type="checkbox"
+                  aria-label="Start collapsed"
                   checked={navConfig.collapsedDefault}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, collapsedDefault: e.target.checked })); setSavedOk(false); }}
                 />
@@ -3359,6 +3360,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 <input
                   id="nav-show-labels"
                   type="checkbox"
+                  aria-label="Show labels"
                   checked={navConfig.showLabels}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, showLabels: e.target.checked })); setSavedOk(false); }}
                 />
@@ -3372,6 +3374,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 <input
                   id="nav-show-icons"
                   type="checkbox"
+                  aria-label="Show icons"
                   checked={navConfig.showIcons}
                   onChange={(e) => { setNavConfig((p) => ({ ...p, showIcons: e.target.checked })); setSavedOk(false); }}
                 />
