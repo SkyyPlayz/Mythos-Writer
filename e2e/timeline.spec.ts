@@ -429,7 +429,10 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
 
   // Clear the range so the next test sees the full fixture again.
-  await page.locator('.tlf-clear-btn').click();
+  // TC-TL-03 leaves the detail card in `selected` state; it can intercept
+  // pointer events over the filter bar. force:true dispatches the click
+  // directly to the button without the overlay check.
+  await page.locator('.tlf-clear-btn').click({ force: true });
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 4_000 });
 });
 
