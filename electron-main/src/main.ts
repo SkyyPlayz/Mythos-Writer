@@ -1125,12 +1125,20 @@ const handlers: IpcHandlers = {
     const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
     if (settingsKey) {
       const agentSettings = loadAppSettings().agents[settingsKey];
+      let payloadKind: string | null = null;
+      if (payload.suggestion.payload_json) {
+        try {
+          const parsed = JSON.parse(payload.suggestion.payload_json) as { kind?: string };
+          payloadKind = typeof parsed.kind === 'string' ? parsed.kind : null;
+        } catch { /* malformed JSON — skip */ }
+      }
       const result = evaluateAutoApply(
         payload.suggestion.confidence,
         payload.suggestion.source_agent,
         agentSettings,
         getDb(),
         payload.suggestion.category,
+        payloadKind,
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();
