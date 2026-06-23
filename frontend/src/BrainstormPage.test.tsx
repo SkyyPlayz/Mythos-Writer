@@ -6,15 +6,11 @@ type EndHandler = (data: { streamId: string }) => void;
 type ErrorHandler = (data: { streamId: string; error: string }) => void;
 
 // ─── MediaRecorder mock (for Voice IO state-machine tests) ────────────────────
-let _mockMediaRecorderInstance: MockMediaRecorderClass | null = null;
-
 class MockMediaRecorderClass {
   static isTypeSupported = vi.fn(() => false);
   state: 'inactive' | 'recording' = 'inactive';
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-this-alias
-  constructor() { _mockMediaRecorderInstance = this; }
   start() { this.state = 'recording'; }
   stop() {
     this.state = 'inactive';
@@ -24,7 +20,6 @@ class MockMediaRecorderClass {
 }
 
 function installMediaRecorderMock() {
-  _mockMediaRecorderInstance = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).MediaRecorder = MockMediaRecorderClass;
   Object.defineProperty(global.navigator, 'mediaDevices', {
@@ -35,7 +30,6 @@ function installMediaRecorderMock() {
 function removeMediaRecorderMock() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (global as any).MediaRecorder;
-  _mockMediaRecorderInstance = null;
 }
 
 
@@ -941,15 +935,18 @@ describe('Mic button', () => {
     );
   });
 
-  it('SKY-3189: falls through to sttStart in packaged mode even when SpeechRecognition is mocked on window', () => {
-    const mockSttStart = vi.fn();
-    (window as unknown as { api: unknown }).api = buildApi({ sttStart: mockSttStart, isPackaged: true });
-    installSpeechRecognitionMock();
+  it('SKY-3189: uses MediaRecorder path regardless of isPackaged — SpeechRecognition is never used', async () => {
+    let webSpeechConstructed = false;
+    class MockSpeech { constructor() { webSpeechConstructed = true; } start() {} }
+    (window as unknown as Record<string, unknown>).SpeechRecognition = MockSpeech;
+    (window as unknown as { api: unknown }).api = buildApi({ isPackaged: true });
     renderVoiceEnabledBrainstorm();
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    expect(mockSttStart).toHaveBeenCalled();
-    expect(mockRecognitionInstance).toBeNull();
-    removeSpeechRecognitionMock();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /stop voice input/i })).toBeInTheDocument(),
+    );
+    expect(webSpeechConstructed).toBe(false);
+    delete (window as unknown as Record<string, unknown>).SpeechRecognition;
   });
 });
 

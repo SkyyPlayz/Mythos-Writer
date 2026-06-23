@@ -1318,19 +1318,35 @@ describe('WritingAssistantPanel — STT mic button (AC-WA-25)', () => {
     expect(micBtn).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('SKY-3189: blocks Web Speech in packaged mode and falls through to sttStart IPC path', () => {
-    const mockSttStart = vi.fn();
+  it('SKY-3189: uses MediaRecorder path in packaged mode — SpeechRecognition is never used', async () => {
     let webSpeechConstructed = false;
     class MockRecognition {
       constructor() { webSpeechConstructed = true; }
       start() {}
     }
-    (window as unknown as { api: unknown }).api = makeApi({ sttStart: mockSttStart, isPackaged: true });
+    class MockMR {
+      static isTypeSupported = vi.fn(() => false);
+      state: 'inactive' | 'recording' = 'inactive';
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() {}
+    }
+    const mockGetUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] });
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: mockGetUserMedia },
+      writable: true, configurable: true,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).MediaRecorder = MockMR;
     (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = MockRecognition;
+    (window as unknown as { api: unknown }).api = makeApi({ isPackaged: true });
     render(<WritingAssistantPanel scene={null} voiceEnabled />);
     fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    expect(mockSttStart).toHaveBeenCalled();
+    await waitFor(() => expect(mockGetUserMedia).toHaveBeenCalled());
     expect(webSpeechConstructed).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (global as any).MediaRecorder;
     delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
   });
 });
