@@ -275,7 +275,8 @@ if [[ "$CONCLUSION" == "success" ]]; then
     echo "CI green — closing fix-request ${EXISTING_FIX} for PR #${PR_NUMBER}"
     paperclipai issue update "$EXISTING_FIX" \
       --status done \
-      --comment "Branch \`${BRANCH:-?}\` is now green (run: ${RUN_URL}). Auto-fix complete."
+      --comment "Branch \`${BRANCH:-?}\` is now green (run: ${RUN_URL}). Auto-fix complete." \
+      || echo "Warning: could not close fix-request ${EXISTING_FIX} (403 cross-agent boundary — FE agent will close via heartbeat)" >&2
   else
     echo "CI green — no open fix-request for PR #${PR_NUMBER} (nothing to close)"
   fi
@@ -551,7 +552,8 @@ if [[ -n "$EXISTING_FIX" ]]; then
 - **Run:** ${RUN_URL}
 - **Run ID:** \`${GITHUB_RUN_ID}\`
 
-Read ALL failures via \`gh run view ${GITHUB_RUN_ID} --log-failed\` before applying the next fix. Increment retry_count. If retry_count > 3 or failures are identical to prior attempt, escalate."
+Read ALL failures via \`gh run view ${GITHUB_RUN_ID} --log-failed\` before applying the next fix. Increment retry_count. If retry_count > 3 or failures are identical to prior attempt, escalate." \
+    || echo "Warning: could not comment on fix-request ${EXISTING_FIX} (403 cross-agent boundary — FE agent will pick up next CI failure via heartbeat)" >&2
 else
   # No open fix-request — create one assigned to FoundingEngineer.
   FIX_TITLE="${FIX_TITLE_PREFIX} — CI red (${FAILED_STAGE_DESC})"
