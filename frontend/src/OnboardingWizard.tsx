@@ -1828,24 +1828,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     &#x2B06; Import template
                   </button>
                 </div>
-                <div className="gs-template-import-row">
-                  <button
-                    type="button"
-                    className="btn-secondary gs-template-import-btn"
-                    data-testid="template-import-btn"
-                    onClick={async () => {
-                      const res = await window.api.templateImport();
-                      if (res && 'error' in res) {
-                        showTemplateToast("This file doesn't appear to be a valid Mythos template.");
-                      } else if (res && !res.cancelled) {
-                        reloadTemplates();
-                        showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
-                      }
-                    }}
-                  >
-                    &#x2B06; Import template
-                  </button>
-                </div>
               </>
 
               {selectedTemplate && (

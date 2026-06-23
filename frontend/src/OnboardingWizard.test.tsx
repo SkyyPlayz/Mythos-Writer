@@ -515,6 +515,13 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(sub).toHaveTextContent('Templates');
   });
 
+  it('renders exactly one Import template button (SKY-3710)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+    await openTemplateGallery();
+    await waitFor(() => expect(screen.getByTestId('template-import-btn')).toBeInTheDocument());
+    expect(screen.getByTestId('template-import-btn')).toBeInTheDocument();
+  });
+
   // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
   it('template grid has role="radiogroup" labelled by the heading', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
