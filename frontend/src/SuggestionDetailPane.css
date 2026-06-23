@@ -244,6 +244,30 @@
   border-top: 1px solid var(--border, #2d3748);
 }
 
+/* Budget-held notice */
+.sdp-budget-held-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 6px;
+}
+
+.sdp-budget-held-icon {
+  color: #fbbf24;
+  font-size: 13px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.sdp-budget-held-text {
+  font-size: 11px;
+  color: #fde68a;
+  line-height: 1.5;
+}
+
 /* Wiki-link payload */
 .sdp-payload-wikilink {
   display: flex;

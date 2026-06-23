@@ -433,17 +433,17 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
   });
 
-  it('GH-614: updates --bg-scrim-alpha even when bgMode=image but no bgDataUrl is supplied', () => {
+  it('SKY-3219/GH-614: updates --bg-scrim-alpha even when bgMode=image but no bgDataUrl is supplied', () => {
     // Pre-condition: root has no scrim set
     document.documentElement.style.setProperty('--bg-scrim-alpha', '0');
     applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
-    // GH-614 fix: scrim alpha must update so the Light↔Dark slider works in real time
+    // Scrim alpha must update so the Light↔Dark slider works in real time
     // even before the image data URL resolves. bgScrim=80 → lerp(0.20, 0.85, 0.8) ≈ 0.72
     const alpha = parseFloat(document.documentElement.style.getPropertyValue('--bg-scrim-alpha'));
     expect(alpha).toBeGreaterThan(0.5);
   });
 
-  it('GH-614: does not reset --bg-app-image when bgMode=image but no bgDataUrl is supplied', () => {
+  it('SKY-3219/GH-614: does not reset --bg-app-image when bgMode=image but no bgDataUrl is supplied', () => {
     // Simulate a prior call that set the image
     const prior = 'url("data:image/png;base64,prior")';
     document.documentElement.style.setProperty('--bg-app-image', prior);

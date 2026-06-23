@@ -479,6 +479,10 @@ import {
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 const require = createRequire(import.meta.url);
 
+// SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
+// synchronously without an IPC round-trip. Must be set before any BrowserWindow is created.
+process.env.MYTHOS_IS_PACKAGED = app.isPackaged ? '1' : '0';
+
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
 
@@ -1125,12 +1129,20 @@ const handlers: IpcHandlers = {
     const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
     if (settingsKey) {
       const agentSettings = loadAppSettings().agents[settingsKey];
+      let payloadKind: string | null = null;
+      if (payload.suggestion.payload_json) {
+        try {
+          const parsed = JSON.parse(payload.suggestion.payload_json) as { kind?: string };
+          payloadKind = typeof parsed.kind === 'string' ? parsed.kind : null;
+        } catch { /* malformed JSON — skip */ }
+      }
       const result = evaluateAutoApply(
         payload.suggestion.confidence,
         payload.suggestion.source_agent,
         agentSettings,
         getDb(),
         payload.suggestion.category,
+        payloadKind,
       );
       if (result.shouldAutoApply) {
         const now = new Date().toISOString();

@@ -1,0 +1,32 @@
+name: Runner Watchdog
+
+on:
+  # Run every 15 minutes to catch stuck runs early
+  schedule:
+    - cron: '*/15 * * * *'
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  watchdog:
+    # GitHub-hosted runner ensures the watchdog itself cannot get wedged
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run watchdog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/paperclip/runner_watchdog.py

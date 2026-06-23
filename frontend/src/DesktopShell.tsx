@@ -69,6 +69,7 @@ import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import StoryTimeline from './StoryTimeline';
+import AeonLaneView from './AeonLaneView';
 import WindowChrome from './components/ui/WindowChrome';
 import './DesktopShell.css';
 
@@ -525,6 +526,7 @@ export default function DesktopShell() {
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
+  const [timelineMode, setTimelineMode] = useState<'spreadsheet' | 'aeon'>('spreadsheet');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -879,9 +881,15 @@ export default function DesktopShell() {
     setVoiceActive(true);
     setVoiceListening(true);
 
-    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    // SKY-3189 (G3): Web Speech requires Google's servers which are absent in packaged Electron builds.
+    // Block it in packaged mode so it never presents as working-but-silently-failing.
+    const SpeechRecognitionCtor: (new () => SpeechRecognition) | undefined =
+      window.api?.isPackaged ? undefined : (window.SpeechRecognition ?? window.webkitSpeechRecognition);
     if (!SpeechRecognitionCtor) {
-      showVoiceToast('Web Speech API not available.');
+      const msg = window.api?.isPackaged
+        ? 'Voice STT not configured — set up a provider in Settings → Voice.'
+        : 'Web Speech API not available.';
+      showVoiceToast(msg);
       voiceSessionRef.current = null;
       setVoiceActive(false);
       window.api.voiceStop(sessionId).catch(() => {});
@@ -3081,7 +3089,27 @@ export default function DesktopShell() {
       )}
       {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
-          <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
+          <div className="shell-timeline-mode-bar" role="group" aria-label="Timeline view mode">
+            <button
+              className={`shell-timeline-mode-btn${timelineMode === 'spreadsheet' ? ' shell-timeline-mode-btn--active' : ''}`}
+              onClick={() => setTimelineMode('spreadsheet')}
+              aria-pressed={timelineMode === 'spreadsheet'}
+            >
+              Spreadsheet
+            </button>
+            <button
+              className={`shell-timeline-mode-btn${timelineMode === 'aeon' ? ' shell-timeline-mode-btn--active' : ''}`}
+              onClick={() => setTimelineMode('aeon')}
+              aria-pressed={timelineMode === 'aeon'}
+            >
+              AEON
+            </button>
+          </div>
+          {timelineMode === 'spreadsheet' ? (
+            <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
+          ) : (
+            <AeonLaneView story={selectedStory} onOpenScene={handleOpenSceneById} />
+          )}
         </div>
       )}
       {activeDockedTabId === null && view === 'structure' && (

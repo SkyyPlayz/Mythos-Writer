@@ -244,6 +244,10 @@ const COUNTDOWN_RING_C = 2 * Math.PI * COUNTDOWN_RING_R;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   if (typeof window === 'undefined') return null;
+  // SKY-3189 (G3): Web Speech API requires Google's servers (absent in packaged builds).
+  // In a packaged Electron app it silently fails at start() — block it here so the
+  // caller falls through to the sttStart IPC path (wired by G1) instead.
+  if (window.api?.isPackaged) return null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;

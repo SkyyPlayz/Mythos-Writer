@@ -1362,6 +1362,10 @@ interface Window {
     windowMaximize?: () => Promise<void>;
     windowClose?: () => Promise<void>;
 
+    // SKY-3189 (G3): true when running in a packaged Electron build.
+    // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
+    isPackaged?: boolean;
+
   };
 
   // Non-standard browser speech recognition (Chromium only)

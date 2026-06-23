@@ -281,6 +281,22 @@ export default function SuggestionDetailPane({
             </section>
           )}
 
+          {suggestion.budgetExceeded && (
+            <section className="sdp-section">
+              <div
+                className="sdp-budget-held-notice"
+                role="status"
+                aria-label="Auto-apply held \u2014 agent budget exceeded"
+              >
+                <span className="sdp-budget-held-icon" aria-hidden="true">&#9888;</span>
+                <span className="sdp-budget-held-text">
+                  Auto-apply was held \u2014 this suggestion exceeded the agent\u2019s hourly or daily
+                  budget. Review and accept or reject it manually.
+                </span>
+              </div>
+            </section>
+          )}
+
           {payloadPreview && (
             <section className="sdp-section">
               <h3 className="sdp-section-title">Payload</h3>

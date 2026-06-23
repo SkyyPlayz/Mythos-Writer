@@ -18,6 +18,15 @@ export interface AutoApplyResult {
   budgetExceeded: boolean;
 }
 
+/**
+ * Owner-locked Beta 2 decision: these payload kinds are permanently excluded from
+ * auto-apply regardless of confidence, budget, or agent settings.
+ * scene_crafter_card = suggestion-only; user must accept via Suggestion Inbox.
+ */
+export const HARD_EXCLUDED_PAYLOAD_KINDS: ReadonlySet<string> = new Set([
+  'scene_crafter_card',
+]);
+
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 /**
@@ -40,7 +49,12 @@ export function evaluateAutoApply(
   settings: AgentBudgetSettings,
   db: DatabaseSync,
   category?: SuggestionCategory | null,
+  payloadKind?: string | null,
 ): AutoApplyResult {
+  if (payloadKind != null && HARD_EXCLUDED_PAYLOAD_KINDS.has(payloadKind)) {
+    return { shouldAutoApply: false, budgetExceeded: false };
+  }
+
   if (!settings.autoApply) {
     return { shouldAutoApply: false, budgetExceeded: false };
   }

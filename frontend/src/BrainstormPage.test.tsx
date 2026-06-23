@@ -946,6 +946,17 @@ describe('Mic button', () => {
       expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('hello world'),
     );
   });
+
+  it('SKY-3189: falls through to sttStart in packaged mode even when SpeechRecognition is mocked on window', () => {
+    const mockSttStart = vi.fn();
+    (window as unknown as { api: unknown }).api = buildApi({ sttStart: mockSttStart, isPackaged: true });
+    installSpeechRecognitionMock();
+    renderVoiceEnabledBrainstorm();
+    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
+    expect(mockSttStart).toHaveBeenCalled();
+    expect(mockRecognitionInstance).toBeNull();
+    removeSpeechRecognitionMock();
+  });
 });
 
 // ─── Archive: ContinuityPanel in Brainstorm sidebar (SKY-2585/SKY-2588) ────────
