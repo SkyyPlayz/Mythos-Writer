@@ -239,6 +239,33 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 // ─── IPC mock installer ────────────────────────────────────────────────────────
 
+/**
+ * Replace window.speechSynthesis in the renderer with a stub that never
+ * auto-completes utterances. This lets TC-WA-23/24 observe aria-pressed=true
+ * without depending on a real audio device (which headless Electron/Chromium
+ * lacks). The useTtsPlayer hook's cancelCurrent() already handles state
+ * teardown, so cancel() here is intentionally a no-op.
+ */
+async function stubSpeechSynthesis(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>).speechSynthesis = {
+      speak(_utterance: SpeechSynthesisUtterance) {
+        // Intentionally do not fire onend/onerror so playingCardId stays set.
+      },
+      cancel() {
+        // no-op: useTtsPlayer.cancelCurrent() resets state via React directly.
+      },
+      speaking: false,
+      pending: false,
+      paused: false,
+      onvoiceschanged: null,
+      getVoices() { return []; },
+      pause() {},
+      resume() {},
+    };
+  });
+}
+
 type MockTip = { id: string; text: string; category: string; sceneUpdatedAt?: string };
 type MockComment = {
   id: string;
@@ -893,6 +920,9 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false');
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 
+  // Stub speechSynthesis so the utterance never auto-completes in headless CI.
+  await stubSpeechSynthesis(page);
+
   // Click Hear — TTS starts.
   await hearBtn.click();
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
@@ -937,6 +967,9 @@ test('TC-WA-24: starting second Hear cancels first card playback', async () => {
     // The TTS behaviour is verified in WritingAssistantPanel.test.tsx (unit).
     return;
   }
+
+  // Stub speechSynthesis so utterances never auto-complete in headless CI.
+  await stubSpeechSynthesis(page);
 
   // Start the first card.
   const firstHear = hearBtns.nth(0);
