@@ -43,10 +43,8 @@ function makeStory(chapter: Chapter): Story {
   };
 }
 
-beforeEach(() => {
-  mockWritingAssistantSetActiveScene.mockReset().mockResolvedValue({ ok: true });
-  mockWritingAssistantScanNow.mockReset().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
-  (window as unknown as { api: unknown }).api = {
+function buildBaseApi(overrides: Record<string, unknown> = {}) {
+  return {
     writingScan: vi.fn().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() }),
     writingAssistantScanNow: mockWritingAssistantScanNow,
     writingAssistantSetActiveScene: mockWritingAssistantSetActiveScene,
@@ -59,7 +57,35 @@ beforeEach(() => {
     voiceStop: vi.fn().mockResolvedValue({ stopped: true }),
     onVoiceSpeakDone: vi.fn().mockReturnValue(vi.fn()),
     onVoiceSpeakError: vi.fn().mockReturnValue(vi.fn()),
+    // brainstorm IPC stubs
+    streamStart: vi.fn().mockResolvedValue({ streamId: 'sid-1' }),
+    streamCancel: vi.fn().mockResolvedValue({ cancelled: true }),
+    streamAck: vi.fn(),
+    entityCreate: vi.fn(),
+    entityList: vi.fn().mockResolvedValue([]),
+    brainstormWriteNote: vi.fn().mockResolvedValue({ ok: true }),
+    brainstormResolveRouting: vi.fn().mockResolvedValue({ mode: 'written', targetPath: null }),
+    brainstormListNotesFolders: vi.fn().mockResolvedValue([]),
+    brainstormSelectContext: vi.fn().mockResolvedValue({ ok: true }),
+    onStreamToken: vi.fn().mockReturnValue(vi.fn()),
+    onStreamEnd: vi.fn().mockReturnValue(vi.fn()),
+    onStreamError: vi.fn().mockReturnValue(vi.fn()),
+    continuityEntityList: vi.fn().mockResolvedValue([]),
+    continuityIssueList: vi.fn().mockResolvedValue([]),
+    onContinuityUpdate: vi.fn().mockReturnValue(vi.fn()),
+    notesGet: vi.fn().mockResolvedValue({ content: '' }),
+    // ContinuityPanel IPC (rendered inside BrainstormPage)
+    onArchiveContScanStart: vi.fn().mockReturnValue(vi.fn()),
+    onArchiveContScanResult: vi.fn().mockReturnValue(vi.fn()),
+    onArchiveContScanError: vi.fn().mockReturnValue(vi.fn()),
+    ...overrides,
   };
+}
+
+beforeEach(() => {
+  mockWritingAssistantSetActiveScene.mockReset().mockResolvedValue({ ok: true });
+  mockWritingAssistantScanNow.mockReset().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
+  (window as unknown as { api: unknown }).api = buildBaseApi();
 });
 
 describe('RightSidebar getting started slot', () => {
@@ -167,5 +193,57 @@ describe('RightSidebar active scene threading', () => {
         scenePath: '/scene-b.md',
       });
     });
+  });
+});
+
+describe('RightSidebar — Brainstorm Assistant sub-tab (SKY-3623)', () => {
+  it('shows a Brainstorm tab inside the AI assistant panel', () => {
+    render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={vi.fn()}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+    expect(screen.getByRole('tab', { name: /brainstorm/i })).toBeInTheDocument();
+  });
+
+  it('clicking Brainstorm sub-tab renders the brainstorm input area', async () => {
+    render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={vi.fn()}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+        brainstormEnabled
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /brainstorm/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: /prompt/i })).toBeInTheDocument();
+    });
+  });
+
+  it('Writing, Vault, and Archive sub-tabs are still present alongside Brainstorm', () => {
+    render(
+      <RightSidebar
+        activeTab="ai"
+        onTabChange={vi.fn()}
+        selectedScene={null}
+        selectedChapter={null}
+        selectedStory={null}
+      />,
+    );
+    const tablist = screen.getByRole('tablist', { name: /ai assistant panels/i });
+    expect(tablist).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /writing/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /vault/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /archive/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /brainstorm/i })).toBeInTheDocument();
   });
 });

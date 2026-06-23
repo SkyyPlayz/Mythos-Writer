@@ -70,6 +70,7 @@ export function serializeTabbedShellState(state: TabbedShellState): AppTabShellS
   };
 }
 
+const VALID_APP_TABS: AppTab[] = ['story', 'notes', 'brainstorm'];
 const VALID_STORY_SUBVIEWS: StorySubView[] = ['editor', 'kanban', 'structure', 'timeline'];
 const VALID_NOTES_SUBVIEWS: NotesSubView[] = ['editor', 'graph', 'entities'];
 
@@ -87,8 +88,12 @@ export function deserializeTabbedShellState(
   const notesSubView: NotesSubView = (VALID_NOTES_SUBVIEWS as string[]).includes(rawNotes)
     ? rawNotes as NotesSubView
     : DEFAULT_TABBED_SHELL_STATE.notesSubView;
+  const rawTab = persisted.activeTab as string;
+  const activeTab: AppTab = (VALID_APP_TABS as string[]).includes(rawTab)
+    ? rawTab as AppTab
+    : DEFAULT_TABBED_SHELL_STATE.activeTab;
   return {
-    activeTab: persisted.activeTab ?? DEFAULT_TABBED_SHELL_STATE.activeTab,
+    activeTab,
     storySubView,
     notesSubView,
     storySidebarWidth: typeof persisted.storySidebarWidth === 'number'

@@ -87,6 +87,15 @@
   gap: 0;
 }
 
+/* SKY-3623: compact mode — hides facts column for narrow sidebar contexts */
+.brainstorm-body--compact .brainstorm-facts-col {
+  display: none;
+}
+
+.brainstorm-body--compact .brainstorm-chat-col {
+  border-right: none;
+}
+
 /* Chat column */
 .brainstorm-chat-col {
   display: flex;

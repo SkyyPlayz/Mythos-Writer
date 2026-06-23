@@ -524,7 +524,7 @@ describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
     expect(subtablist?.getAttribute('aria-label')).toBe('AI assistant panels');
 
     const subTabs = container.querySelectorAll('[role="tab"][id^="ai-subtab-"]');
-    expect(subTabs).toHaveLength(3);
+    expect(subTabs).toHaveLength(4); // SKY-3623: Writing, Vault, Archive, Brainstorm
 
     const activeSubTab = Array.from(subTabs).find(
       (el) => el.getAttribute('aria-selected') === 'true',

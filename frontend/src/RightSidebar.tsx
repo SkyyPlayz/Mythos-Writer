@@ -7,6 +7,7 @@ import GettingStartedPanel from './components/GettingStartedPanel/GettingStarted
 import DraftHistoryPanel from './DraftHistoryPanel';
 import ContinuityPanel from './components/ContinuityPanel/ContinuityPanel';
 import OutlinePlanningPanel from './OutlinePlanningPanel';
+import BrainstormPage from './BrainstormPage';
 import { isGettingStartedVisible, type GettingStartedItemId, type GettingStartedProgress } from './gettingStartedReducer';
 import './RightSidebar.css';
 
@@ -22,6 +23,9 @@ interface Props {
   editorSelectionText?: string;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  brainstormEnabled?: boolean;
+  brainstormVoiceEnabled?: boolean;
+  archiveContinuityEnabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
@@ -205,18 +209,23 @@ function PropertiesPanel({
   );
 }
 
-type AiSubTab = 'writing' | 'vault' | 'archive';
+type AiSubTab = 'writing' | 'vault' | 'archive' | 'brainstorm';
 
 const AI_SUB_TABS: { id: AiSubTab; label: string }[] = [
   { id: 'writing', label: 'Writing' },
   { id: 'vault', label: 'Vault' },
   { id: 'archive', label: 'Archive' },
+  { id: 'brainstorm', label: 'Brainstorm' },
 ];
 
 function AiPanel({
   scene,
+  story,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  brainstormEnabled = true,
+  brainstormVoiceEnabled = false,
+  archiveContinuityEnabled = true,
   scanIntervalSeconds = 30,
   waScanInterval,
   cadenceTrigger,
@@ -231,8 +240,12 @@ function AiPanel({
   onWikiLinkSuggestionsChange,
 }: {
   scene: Scene | null;
+  story: Story | null;
   writingAssistantEnabled?: boolean;
   archiveEnabled?: boolean;
+  brainstormEnabled?: boolean;
+  brainstormVoiceEnabled?: boolean;
+  archiveContinuityEnabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
@@ -311,6 +324,17 @@ function AiPanel({
             onWikiLinkSuggestionsChange={onWikiLinkSuggestionsChange}
           />
         )}
+        {subTab === 'brainstorm' && (
+          <BrainstormPage
+            onClose={() => {}}
+            enabled={brainstormEnabled}
+            voiceEnabled={brainstormVoiceEnabled}
+            archiveContinuityEnabled={archiveContinuityEnabled}
+            activeScene={scene}
+            activeStorySlug={story ? story.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+            compact
+          />
+        )}
       </div>
     </div>
   );
@@ -325,6 +349,9 @@ export default function RightSidebar({
   selectedStory,
   writingAssistantEnabled = true,
   archiveEnabled = true,
+  brainstormEnabled = true,
+  brainstormVoiceEnabled = false,
+  archiveContinuityEnabled = true,
   scanIntervalSeconds = 30,
   waScanInterval,
   cadenceTrigger,
@@ -414,8 +441,12 @@ export default function RightSidebar({
         {activeTab === 'ai' && (
           <AiPanel
             scene={selectedScene}
+            story={selectedStory}
             writingAssistantEnabled={writingAssistantEnabled}
             archiveEnabled={archiveEnabled}
+            brainstormEnabled={brainstormEnabled}
+            brainstormVoiceEnabled={brainstormVoiceEnabled}
+            archiveContinuityEnabled={archiveContinuityEnabled}
             scanIntervalSeconds={scanIntervalSeconds}
             waScanInterval={waScanInterval}
             cadenceTrigger={cadenceTrigger}

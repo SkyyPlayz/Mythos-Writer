@@ -510,8 +510,8 @@ interface AppSettings {
   layoutMigrationDone?: boolean;
 }
 
-/** SKY-2094 (Phase 2 #1): The two top-level app sections. */
-type AppTab = 'story' | 'notes';
+/** SKY-2094 (Phase 2 #1): The two top-level app sections. SKY-3623: brainstorm added as third tab. */
+type AppTab = 'story' | 'notes' | 'brainstorm';
 
 /** SKY-2094: Sub-view within the Story tab. */
 type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';

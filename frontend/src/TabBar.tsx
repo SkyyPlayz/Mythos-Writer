@@ -10,12 +10,14 @@ interface TabBarProps {
 const TABS: { id: AppTab; label: string; icon: string; shortcutHint: string }[] = [
   { id: 'story', label: 'Story', icon: '📖', shortcutHint: 'Ctrl+1' },
   { id: 'notes', label: 'Notes', icon: '📁', shortcutHint: 'Ctrl+2' },
+  { id: 'brainstorm', label: 'Brainstorm', icon: '💡', shortcutHint: 'Ctrl+3' },
 ];
 
 export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
   const tabRefs = useRef<Record<AppTab, HTMLButtonElement | null>>({
     story: null,
     notes: null,
+    brainstorm: null,
   });
   const activeLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? 'Story';
 
