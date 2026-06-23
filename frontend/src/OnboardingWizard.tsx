@@ -108,6 +108,8 @@ type Api = {
     vaultName?: string;
     /** SKY-2008: genre selected on step1c; required for startMode=sample */
     sampleGenre?: SampleGenreId;
+    /** template variant for custom/blank vault setup */
+    customTemplate?: 'recommended' | 'blank';
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
