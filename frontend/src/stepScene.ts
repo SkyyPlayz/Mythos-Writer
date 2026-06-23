@@ -70,11 +70,10 @@ export function stepScene(ctx: StepSceneContext): StepSceneTarget | null {
     return { scene, chapter, story: selectedStory };
   }
 
-  // depth === 'book'
-  const sorted = sortedBy(stories);
-  const idx = sorted.findIndex((s) => s.id === selectedStory.id);
+  // depth === 'book' — Story has no order field; use array position (manifest order)
+  const idx = stories.findIndex((s) => s.id === selectedStory.id);
   if (idx < 0) return null;
-  const story = sorted[idx + delta];
+  const story = stories[idx + delta];
   if (!story) return null;
   const firstCh = sortedBy(story.chapters)[0] ?? null;
   const scene = firstCh ? sortedBy(firstCh.scenes)[0] ?? null : null;
@@ -121,12 +120,11 @@ export function computeStepState(
     };
   }
 
-  // depth === 'book'
-  const sorted = sortedBy(stories);
-  const idx = sorted.findIndex((s) => s.id === selectedStory.id);
+  // depth === 'book' — Story has no order field; use array position (manifest order)
+  const idx = stories.findIndex((s) => s.id === selectedStory.id);
   return {
     canPrev: idx > 0,
-    canNext: idx >= 0 && idx < sorted.length - 1,
+    canNext: idx >= 0 && idx < stories.length - 1,
     contextLabel: selectedStory.title,
   };
 }

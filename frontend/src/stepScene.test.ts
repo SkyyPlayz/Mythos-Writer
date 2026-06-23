@@ -8,15 +8,15 @@ function makeScene(id: string, order: number): Scene {
 function makeChapter(id: string, order: number, scenes: Scene[]): Chapter {
   return { id, title: `Chapter ${id}`, path: `/chapters/${id}`, order, scenes, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' };
 }
-function makeStory(id: string, order: number, chapters: Chapter[]): Story {
-  return { id, title: `Story ${id}`, path: `/stories/${id}`, order, chapters, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' };
+function makeStory(id: string, chapters: Chapter[]): Story {
+  return { id, title: `Story ${id}`, path: `/stories/${id}`, chapters, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' };
 }
 
 const sc1 = makeScene('sc1', 1), sc2 = makeScene('sc2', 2), sc3 = makeScene('sc3', 1), sc4 = makeScene('sc4', 2);
 const ch1 = makeChapter('ch1', 1, [sc1, sc2]), ch2 = makeChapter('ch2', 2, [sc3, sc4]);
-const story1 = makeStory('s1', 1, [ch1, ch2]);
+const story1 = makeStory('s1', [ch1, ch2]);
 const sc5 = makeScene('sc5', 1), ch3 = makeChapter('ch3', 1, [sc5]);
-const story2 = makeStory('s2', 2, [ch3]);
+const story2 = makeStory('s2', [ch3]);
 const stories = [story1, story2];
 
 describe('stepScene — depth=scene', () => {
@@ -51,7 +51,7 @@ describe('stepScene — depth=scene', () => {
   it('respects order field not array position', () => {
     const scA = makeScene('a', 2), scB = makeScene('b', 1);
     const ch = makeChapter('cx', 1, [scA, scB]);
-    const st = makeStory('sx', 1, [ch]);
+    const st = makeStory('sx', [ch]);
     const r = stepScene({ direction: 'next', depth: 'scene', selectedScene: scB, selectedChapter: ch, selectedStory: st, stories: [st] });
     expect(r?.scene?.id).toBe('a');
   });
@@ -76,7 +76,7 @@ describe('stepScene — depth=chapter', () => {
   });
   it('returns scene=null when next chapter has no scenes', () => {
     const chEmpty = makeChapter('empty', 2, []);
-    const stWithEmpty = makeStory('se', 1, [ch1, chEmpty]);
+    const stWithEmpty = makeStory('se', [ch1, chEmpty]);
     const r = stepScene({ direction: 'next', depth: 'chapter', selectedScene: sc1, selectedChapter: ch1, selectedStory: stWithEmpty, stories: [stWithEmpty] });
     expect(r?.chapter?.id).toBe('empty');
     expect(r?.scene).toBeNull();
