@@ -138,6 +138,7 @@ def get_stuck_jobs():
             job_name = job["name"]
             status = job["status"]
             started_at = job.get("started_at")
+            runner_id = job.get("runner_id")
 
             if status != "in_progress" or not started_at:
                 continue
@@ -172,6 +173,7 @@ def get_stuck_jobs():
                         "job_id": job_id,
                         "job_name": job_name,
                         "run_name": run_name,
+                        "runner_id": runner_id,
                         "elapsed_minutes": elapsed_minutes,
                         "timeout": timeout,
                     }
@@ -200,19 +202,25 @@ def cancel_job(job_id: int, run_id: int, job_name: str) -> bool:
     return False
 
 
-def detect_wedged_runners():
+def detect_wedged_runners(stuck_jobs):
     """
-    Detect wedged runners (online but stuck-busy, no progress on any job).
+    Detect wedged runners (online but stuck-busy with evidence of stale work).
 
     A runner is considered wedged if:
-    - Status is "online"
-    - Has been marked "busy" for a long time with no recent job starts
+    - Status is "online" and marked "busy"
+    - AND has a stuck job currently running on it (real evidence of stale state)
     """
     # Get runner list
     runners = gh_api(f"/repos/{REPO}/actions/runners")
     if not runners or "runners" not in runners:
         log("No runners found")
         return []
+
+    # Build set of runner IDs that have stuck jobs
+    runners_with_stuck_jobs = set()
+    for job in stuck_jobs:
+        if job.get("runner_id"):
+            runners_with_stuck_jobs.add(job["runner_id"])
 
     wedged = []
 
@@ -226,13 +234,15 @@ def detect_wedged_runners():
             f"Runner {name} (id={runner_id}): status={status}, busy={busy}"
         )
 
-        # A runner stuck busy for evidence of wedge: we'd need job history
-        # For now, log suspicious patterns
         if status == "online" and busy:
-            log(f"  → Runner is online and busy (potential wedge candidate)")
-            wedged.append(
-                {"runner_id": runner_id, "name": name, "status": status, "busy": busy}
-            )
+            # Only count as wedged if there's a stuck job on this runner
+            if runner_id in runners_with_stuck_jobs:
+                log(f"  → Runner is online+busy WITH stuck job (WEDGED)")
+                wedged.append(
+                    {"runner_id": runner_id, "name": name, "status": status, "busy": busy}
+                )
+            else:
+                log(f"  → Runner is online+busy but no stuck jobs (candidate, not counted)")
 
     return wedged
 
@@ -259,8 +269,8 @@ def main():
         if cancel_job(job["job_id"], job["run_id"], job["job_name"]):
             cancelled_jobs += 1
 
-    # Detect wedged runners
-    wedged_runners = detect_wedged_runners()
+    # Detect wedged runners (correlate with stuck jobs)
+    wedged_runners = detect_wedged_runners(stuck_jobs)
 
     log("=== Summary ===")
     log(f"Stuck runs detected: {len(stuck_runs)}, cancelled: {cancelled_runs}")
