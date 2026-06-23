@@ -1673,6 +1673,10 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
           : { exists: true, isEmpty: false, writable: true },
       ),
     );
+    // Hybrid pattern: fake timers fire the debounce deterministically (no real 500ms wait),
+    // then real timers let waitFor poll while the floating Promise.all from validateCustomPathNow
+    // resolves. This avoids the race where setCustomPathValidation('valid') fires outside any
+    // act() wrapper when using pure fake-timer advancement.
     vi.useFakeTimers();
     try {
       await renderWizard(
@@ -1681,10 +1685,15 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
+      // Fire the 500ms debounce timer synchronously
       await act(async () => { vi.advanceTimersByTime(600); });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      await flushAsyncEffects();
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+      // Switch to real timers so waitFor's internal setTimeout polling works
+      vi.useRealTimers();
+      // validateCustomPathNow's Promise.all resolves nearly instantly (mock); waitFor catches the state update
+      await waitFor(
+        () => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled(),
+        { timeout: 2000 },
+      );
     } finally {
       vi.useRealTimers();
       await act(async () => {});
