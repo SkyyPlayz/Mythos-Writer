@@ -151,10 +151,9 @@ async function waitUntil(
 }
 
 async function openBrainstormPanel(): Promise<void> {
-  const panel = page.getByTestId('notes-brainstorm-panel');
-  if (!(await panel.isVisible().catch(() => false))) {
-    await page.getByTestId('app-tab-notes').click();
-  }
+  // SKY-3737: Brainstorm is now a dedicated top-level tab (full-screen, facts column visible).
+  await page.getByTestId('app-tab-brainstorm').click();
+  const panel = page.locator('#app-tabpanel-brainstorm');
   await expect(panel).toBeVisible({ timeout: 6_000 });
   await expect(panel.getByRole('button', { name: 'New session' })).toBeVisible();
 }

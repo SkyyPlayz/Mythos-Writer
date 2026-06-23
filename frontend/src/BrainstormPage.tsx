@@ -224,6 +224,8 @@ interface Props {
   archiveContinuityEnabled?: boolean;
   /** SKY-2585: active scene forwarded to ContinuityPanel for scene-scoped issue listing. */
   activeScene?: Scene | null;
+  /** SKY-3623: compact mode — hides the facts column for narrow sidebar contexts (~300-340px). */
+  compact?: boolean;
 }
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'error';
@@ -253,7 +255,7 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1631,7 +1633,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
       )}
 
-      <div className="brainstorm-body">
+      <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
         <div className="brainstorm-chat-col">
           <div className="brainstorm-messages">
             {messages.length === 0 && (
