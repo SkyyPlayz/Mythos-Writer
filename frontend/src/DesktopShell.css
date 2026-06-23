@@ -213,7 +213,58 @@
   box-shadow: var(--neon-glow);
 }
 
-/* SKY-2964: writing-mode-selector removed from AppMenuBar — controls now live only in StorySubViewBar */
+/* SKY-2964: writing-mode-selector removed from AppMenuBar — controls now live in editor toolbar (SKY-3626) */
+
+/* SKY-3626: NFE writing-mode toggle (N / F / E) — shared by Story editor toolbar + Notes editor toolbar */
+.nfe-mode-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.nfe-mode-btn:hover {
+  color: var(--text-header);
+  border-color: var(--border-strong);
+}
+
+.nfe-mode-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-light);
+  box-shadow: var(--neon-glow);
+}
+
+.nfe-mode-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nfe-mode-prefs {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: var(--radius-xs, 4px);
+  transition: color 0.1s;
+}
+
+.nfe-mode-prefs:hover {
+  color: var(--text-primary);
+}
+
+.nfe-mode-prefs:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 /* Focus mode: subtle full-bleed editor */
 .writing-mode-focus .shell-center-column {

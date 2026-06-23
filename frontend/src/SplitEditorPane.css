@@ -319,3 +319,17 @@
   background: var(--bg-bar);
   padding-right: var(--space-2);
 }
+
+/* ── SKY-3626: NFE writing-mode group layout in story editor toolbar ── */
+
+.nfe-mode-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-strong);
+  -webkit-app-region: no-drag;
+}
+
+/* Button styles (.nfe-mode-btn, .nfe-mode-prefs) are in DesktopShell.css for global availability */

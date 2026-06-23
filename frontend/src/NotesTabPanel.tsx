@@ -1,13 +1,14 @@
 // SKY-2096 (Phase 2 #3): Notes tab layout — vault tree + editor + Brainstorm sidebar + sub-view toggles.
 // Spec: vault tree (left) + markdown editor (center) + Brainstorm chat (right), with Graph and Entities
 // as in-tab sub-view toggles.
+// SKY-3626: N/F/E writing mode controls added to editor sub-view toolbar.
 import { useCallback, useRef } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
 import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import NoteViewer from './NoteViewer';
-import type { Story, Scene, Chapter } from './types';
+import type { Story, Scene, Chapter, WritingMode } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
 import './NotesTabPanel.css';
@@ -62,6 +63,10 @@ export interface NotesTabPanelProps {
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
+  // SKY-3626: N/F/E writing mode controls for Notes editor
+  writingMode?: WritingMode;
+  onSetWritingMode?: (mode: WritingMode) => void;
+  onOpenFocusPrefs?: () => void;
 }
 
 export default function NotesTabPanel({
@@ -98,6 +103,9 @@ export default function NotesTabPanel({
   activeScene,
   onSelectEntity,
   selectedEntityId,
+  writingMode,
+  onSetWritingMode,
+  onOpenFocusPrefs,
 }: NotesTabPanelProps) {
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
@@ -168,6 +176,40 @@ export default function NotesTabPanel({
             </button>
           ))}
         </div>
+        {/* SKY-3626: N/F/E writing-mode controls — Notes editor only */}
+        {notesSubView === 'editor' && writingMode !== undefined && onSetWritingMode && (
+          <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
+            <button
+              className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+              onClick={() => onSetWritingMode('normal')}
+              aria-pressed={writingMode === 'normal'}
+              title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+              data-testid="writing-mode-normal"
+            >N</button>
+            <button
+              className={`nfe-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+              onClick={() => onSetWritingMode('focus')}
+              aria-pressed={writingMode === 'focus'}
+              title="Focus mode — distraction-free"
+              data-testid="writing-mode-focus"
+            >F</button>
+            {writingMode === 'focus' && onOpenFocusPrefs && (
+              <button
+                className="nfe-mode-prefs"
+                onClick={onOpenFocusPrefs}
+                title="Configure Focus mode panels"
+                aria-label="Focus mode preferences"
+              >⚙</button>
+            )}
+            <button
+              className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+              onClick={() => onSetWritingMode('edit')}
+              aria-pressed={writingMode === 'edit'}
+              title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+              data-testid="writing-mode-edit"
+            >E</button>
+          </div>
+        )}
       </div>
 
       {/* Main layout row: left sidebar + center + right sidebar */}
