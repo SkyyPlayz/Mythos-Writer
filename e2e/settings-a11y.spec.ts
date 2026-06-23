@@ -179,6 +179,11 @@ test('TC-SKY-814-03: Form controls have aria-label or <label> association', asyn
 
 // ─── TC-SKY-814-04: Toggles announce their state ────────────────────────────────
 test('TC-SKY-814-04: Toggle switches can be activated and announce state change', async () => {
+  // Navigate to Agents category where toggles live (SKY-3215 added category sub-nav;
+  // default is General, so Agents sections are hidden until we switch).
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+  await expect(page.locator('[data-settings-cat="agents"]').first()).toBeVisible();
+
   // The native checkbox is visually hidden; users interact with the visible label/track.
   const toggleControl = page.locator('.settings-toggle').first();
   await expect(toggleControl).toBeVisible();
@@ -194,6 +199,11 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
 
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────
 test('TC-SKY-814-05: Slider controls have aria-label and announce value', async () => {
+  // Navigate to Appearance category where range sliders live (SKY-3215 sub-nav;
+  // default is General which has no sliders).
+  await page.locator('[data-testid="settings-cat-appearance"]').click();
+  await expect(page.locator('[data-settings-cat="appearance"]').first()).toBeVisible();
+
   // Find a slider (range input)
   const slider = page.locator('input[type="range"]:not([disabled])').first();
   await expect(slider).toBeVisible();
@@ -215,6 +225,11 @@ test('TC-SKY-814-05: Slider controls have aria-label and announce value', async 
 
 // ─── TC-SKY-814-06: Focus ring is visible and uses correct color ────────────────
 test('TC-SKY-814-06: Focus ring is visible with cyan color on interactive controls', async () => {
+  // Navigate to Agents category — first .settings-input in DOM order is inside the
+  // Providers section (agents). With SKY-3215 sub-nav default=General, it is hidden.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+  await expect(page.locator('[data-settings-cat="agents"]').first()).toBeVisible();
+
   const input = page.locator('.settings-input').first();
 
   // Focus directly — this test checks focus-ring styling (TC-SKY-814-02 covers tab order).
@@ -293,9 +308,10 @@ test('TC-SKY-814-09: Settings dialog has accessible structure (axe scan in SKY-8
 // ─── TC-SKY-814-10: Section headings use proper heading hierarchy ────────────────
 test('TC-SKY-814-10: Settings sections have proper heading structure', async () => {
   const sections = page.locator('[class*="settings-section"]');
-  // Wait for content to render — dialog may briefly show a loading spinner
-  // that satisfies toBeVisible but has no sections yet.
-  await sections.first().waitFor({ state: 'visible', timeout: 5_000 });
+  // Wait for a visible section to render. With SKY-3215 sub-nav, default category is
+  // General; the first section in DOM order is in Agents (hidden). Scope the wait to
+  // a section that is actually visible in the default General category.
+  await page.locator('[data-settings-cat="general"]').first().waitFor({ state: 'visible', timeout: 5_000 });
   const count = await sections.count();
   expect(count).toBeGreaterThan(0);
 
