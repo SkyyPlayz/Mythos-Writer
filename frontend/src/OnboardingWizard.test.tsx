@@ -1677,6 +1677,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
+      // flush the Promise.all chain from validateCustomPathNow so state update is applied
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1696,6 +1698,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1715,6 +1718,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => { vi.advanceTimersByTime(600); });
       await act(async () => { await vi.runAllTimersAsync(); });
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
