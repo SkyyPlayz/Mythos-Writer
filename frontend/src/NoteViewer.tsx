@@ -1,4 +1,4 @@
-// SKY-204 / SKY-3208: Notes tri-mode editor — Source (textarea) / Rich (TipTap) / Preview.
+// SKY-204 / SKY-3208 / SKY-3624: Notes tri-mode editor — Source (textarea) / Rich (TipTap) / Preview.
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -34,29 +34,96 @@ interface Props {
 // Preview renderer — safe, no dangerouslySetInnerHTML
 // ---------------------------------------------------------------------------
 
-function renderWikiLinkedText(text: string, onWikiLinkClick?: (target: string) => void): ReactNode[] {
+function stripFrontmatter(content: string): string {
+  if (!content.startsWith('---')) return content;
+  const rest = content.slice(3);
+  if (rest.length > 0 && rest[0] !== '\n' && rest[0] !== '\r') return content;
+  const end = rest.indexOf('\n---');
+  if (end === -1) return content;
+  return rest.slice(end + 4).replace(/^\r?\n/, '');
+}
+
+function renderInline(text: string, onWikiLinkClick?: (target: string) => void): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const re = /\[\[([^\]]+)\]\]/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
-    const target = match[1];
-    nodes.push(
-      <button
-        key={`${match.index}-${target}`}
-        type="button"
-        className="note-wiki-link"
-        data-testid="note-wiki-link"
-        onClick={() => onWikiLinkClick?.(target)}
-      >
-        {`[[${target}]]`}
-      </button>,
-    );
-    lastIndex = match.index + match[0].length;
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[\[[^\]]+\]\])/g;
+  let lastIdx = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > lastIdx) nodes.push(text.slice(lastIdx, m.index));
+    const tok = m[0];
+    if (tok.startsWith('**')) {
+      nodes.push(<strong key={key++}>{tok.slice(2, -2)}</strong>);
+    } else if (tok.startsWith('*')) {
+      nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
+    } else if (tok.startsWith('`')) {
+      nodes.push(<code key={key++}>{tok.slice(1, -1)}</code>);
+    } else {
+      const target = tok.slice(2, -2);
+      nodes.push(
+        <button
+          key={key++}
+          type="button"
+          className="note-wiki-link"
+          data-testid="note-wiki-link"
+          onClick={() => onWikiLinkClick?.(target)}
+        >
+          {tok}
+        </button>,
+      );
+    }
+    lastIdx = m.index + m[0].length;
   }
-  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  if (lastIdx < text.length) nodes.push(text.slice(lastIdx));
   return nodes;
+}
+
+function renderMarkdownPreview(content: string, onWikiLinkClick?: (target: string) => void): ReactNode {
+  const body = stripFrontmatter(content);
+  const lines = body.split('\n');
+  const nodes: ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const h3 = line.match(/^### (.+)/);
+    const h2 = !h3 && line.match(/^## (.+)/);
+    const h1 = !h3 && !h2 && line.match(/^# (.+)/);
+
+    if (h3) {
+      nodes.push(<h3 key={i}>{renderInline(h3[1], onWikiLinkClick)}</h3>);
+      i++;
+    } else if (h2) {
+      nodes.push(<h2 key={i}>{renderInline(h2[1], onWikiLinkClick)}</h2>);
+      i++;
+    } else if (h1) {
+      nodes.push(<h1 key={i}>{renderInline(h1[1], onWikiLinkClick)}</h1>);
+      i++;
+    } else if (/^[-*+] /.test(line)) {
+      const items: ReactNode[] = [];
+      const start = i;
+      while (i < lines.length && /^[-*+] /.test(lines[i])) {
+        items.push(<li key={i}>{renderInline(lines[i].slice(2), onWikiLinkClick)}</li>);
+        i++;
+      }
+      nodes.push(<ul key={start}>{items}</ul>);
+    } else if (/^\d+\. /.test(line)) {
+      const items: ReactNode[] = [];
+      const start = i;
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        items.push(<li key={i}>{renderInline(lines[i].replace(/^\d+\. /, ''), onWikiLinkClick)}</li>);
+        i++;
+      }
+      nodes.push(<ol key={start}>{items}</ol>);
+    } else if (line.trim() === '') {
+      i++;
+    } else {
+      nodes.push(<p key={i}>{renderInline(line, onWikiLinkClick)}</p>);
+      i++;
+    }
+  }
+
+  return <>{nodes}</>;
 }
 
 // ---------------------------------------------------------------------------
@@ -459,9 +526,7 @@ export default function NoteViewer({
 
       {mode === 'preview' && (
         <div className="note-viewer-preview" data-testid="note-viewer-preview">
-          {content.split('\n').map((line, index) => (
-            <p key={index}>{renderWikiLinkedText(line, onWikiLinkClick)}</p>
-          ))}
+          {renderMarkdownPreview(content, onWikiLinkClick)}
         </div>
       )}
     </div>
