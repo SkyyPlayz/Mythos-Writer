@@ -1663,27 +1663,28 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
 
   it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
     // validateCustomPathNow calls validatePath twice via Promise.all:
-    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
-    mockApi.validatePath = vi.fn()
-      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true })  // existing dir
-      .mockResolvedValueOnce({ exists: false, isEmpty: true, writable: true }); // no manifest
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/MyVault' },
-      });
-      await act(async () => { vi.advanceTimersByTime(600); });
-      await act(async () => { await vi.runAllTimersAsync(); });
-      // flush the Promise.all chain from validateCustomPathNow so state update is applied
-      await flushAsyncEffects();
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
+    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist).
+    // Use mockImplementation (not mockResolvedValueOnce) so that leaked 400ms debounce timers from
+    // import-screen tests that fire on the shared mockApi do not consume the one-time mock values.
+    mockApi.validatePath = vi.fn().mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith('manifest.json')
+          ? { exists: false, isEmpty: true, writable: true }
+          : { exists: true, isEmpty: false, writable: true },
+      ),
+    );
+    // Real timers + waitFor: fake timers + manual act-flush is environment-sensitive
+    // (React's MessageChannel scheduler is a macrotask; waitFor reliably waits out the 500ms debounce).
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+      target: { value: '/home/user/MyVault' },
+    });
+    await waitFor(
+      () => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled(),
+      { timeout: 2000 },
+    );
   });
 
   it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {
