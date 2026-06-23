@@ -9,8 +9,8 @@ interface PageAppearanceSectionProps {
 export default function PageAppearanceSection({ pageBg, setPageBg, setSavedOk }: PageAppearanceSectionProps) {
   return (
     <section className="settings-section" aria-labelledby="section-page-appearance" data-settings-cat="appearance">
-      <h3 className="settings-section-title" id="section-page-appearance">Page Appearance</h3>
-      <p className="settings-hint">Controls the visual style of the writing surface panel.</p>
+      <h3 className="settings-section-title" id="section-page-appearance">Editor Paper Style</h3>
+      <p className="settings-hint">Controls the style of the paper panel behind the writing column. The panel is constrained to the text area; the surrounding area is transparent.</p>
 
       {/* Panel Preset */}
       <div className="settings-field">
