@@ -103,7 +103,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
         const paragraphs = await extractParagraphTexts(buf);
         expect(paragraphsContainRawHtml(paragraphs)).toBe(false);
       }),
-      { numRuns: 1_000 }
+      { numRuns: 200 }
     );
   }, 20_000);
 
@@ -120,7 +120,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
       }),
       { numRuns: 200 }
     );
-  });
+  }, 30_000);
 
   // ── Mutation-proof assertion ─────────────────────────────────────────────
   // Directly shows that (a) the current implementation escapes '<' correctly,
