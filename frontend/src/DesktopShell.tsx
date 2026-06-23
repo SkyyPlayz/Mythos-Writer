@@ -3483,6 +3483,7 @@ export default function DesktopShell() {
             waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
+            ttsSettings={appSettings?.tts}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
