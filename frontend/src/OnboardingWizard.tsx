@@ -652,10 +652,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         : customVaultPath.startsWith('~\\')
         ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
         : customVaultPath;
-      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
-      // Until it lands, both use startMode:'blank' at the chosen path.
       const res = await api().onboardingComplete({
         startMode: 'blank',
+        customTemplate,
         vaultParentPath: expanded,
         vaultName: customVaultName.trim() || deriveVaultName(expanded),
       });
@@ -1183,6 +1182,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         const updated: AppSettings = {
           ...initialSettings,
           onboardingComplete: true,
+          onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
             ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
             : {}),
@@ -1232,7 +1232,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
 
     // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
-    const storyDir = savePath.replace(/\/+$/, '') + '/' + trimmedTitle;
+    const sep = pathOptionsRef.current.sep ?? '/';
+    const storyDir = savePath.replace(sep === '\\' ? /\\+$/ : /\/+$/, '') + sep + trimmedTitle;
     try {
       const conflict = await api().validatePath(storyDir);
       if (conflict.exists && !conflict.isEmpty) {
