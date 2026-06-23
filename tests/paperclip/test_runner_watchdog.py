@@ -1,11 +1,38 @@
 import sys
 import unittest
+import urllib.request
+from io import BytesIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from scripts.paperclip.runner_watchdog import detect_wedged_runners  # noqa: E402
+import scripts.paperclip.runner_watchdog as watchdog_module  # noqa: E402
+
+
+class _MockResponse:
+    """Minimal urllib response mock that supports context-manager protocol."""
+
+    def __init__(self, status: int, body: bytes = b""):
+        self.status = status
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+def _make_urlopen(status: int, body: bytes = b""):
+    def _urlopen(req):
+        return _MockResponse(status, body)
+
+    return _urlopen
 
 
 class TestDetectWedgedRunners(unittest.TestCase):
@@ -221,6 +248,36 @@ class TestDetectWedgedRunners(unittest.TestCase):
             self.assertEqual(len(wedged), 0, "No runners should be marked as wedged without stuck jobs")
         finally:
             watchdog_module.gh_api = original_gh_api
+
+
+class TestCancelRun202(unittest.TestCase):
+    """cancel_run/cancel_job must treat GitHub's 202 Accepted as success."""
+
+    def setUp(self):
+        self._original_urlopen = urllib.request.urlopen
+
+    def tearDown(self):
+        urllib.request.urlopen = self._original_urlopen
+
+    def test_cancel_run_returns_true_on_202(self):
+        urllib.request.urlopen = _make_urlopen(202)
+        result = watchdog_module.cancel_run(12345)
+        self.assertTrue(result, "cancel_run must return True for HTTP 202")
+
+    def test_cancel_run_returns_false_on_error(self):
+        urllib.request.urlopen = _make_urlopen(500)
+        result = watchdog_module.cancel_run(12345)
+        self.assertFalse(result, "cancel_run must return False for HTTP 500")
+
+    def test_cancel_job_returns_true_on_202(self):
+        urllib.request.urlopen = _make_urlopen(202)
+        result = watchdog_module.cancel_job(67890, 12345, "unit-test-job")
+        self.assertTrue(result, "cancel_job must return True for HTTP 202")
+
+    def test_cancel_job_returns_false_on_error(self):
+        urllib.request.urlopen = _make_urlopen(500)
+        result = watchdog_module.cancel_job(67890, 12345, "unit-test-job")
+        self.assertFalse(result, "cancel_job must return False for HTTP 500")
 
 
 if __name__ == "__main__":
