@@ -205,7 +205,16 @@ test('TC-G-03: ThemeContrastSlider sets --lg-neon; soft=0.60, sharp=0.35', async
   await expect(settingsBtn).toBeVisible({ timeout: 6_000 });
   await settingsBtn.click();
 
-  // Wait for settings panel
+  // Navigate to Appearance category — settings panel now has category nav
+  // (added in SKY-3216); the theme slider lives under Appearance, which is
+  // hidden when the panel opens on the default General tab.
+  const appearanceNavBtn = page.locator('.settings-cat-nav-btn', { hasText: 'Appearance' });
+  if (await appearanceNavBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await appearanceNavBtn.click();
+    await page.waitForTimeout(100);
+  }
+
+  // Wait for settings panel slider (now visible under Appearance tab)
   const slider = page.locator('[data-testid="theme-contrast-slider"]');
   await expect(slider).toBeVisible({ timeout: 6_000 });
 
