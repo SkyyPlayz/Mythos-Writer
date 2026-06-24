@@ -2015,6 +2015,10 @@ export interface OnboardingCompletePayload {
   /** Required for sample mode (SKY-2008): identifies which bundled genre vault to
    *  install. Main-side validates against the allowlist and resolves the source dir. */
   sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
+  /** SKY-2991: Custom Setup template choice. When startMode='blank', 'recommended'
+   *  scaffolds the default quick-start bundle; 'blank' leaves the vault empty.
+   *  Absent for all other startMode values. */
+  customTemplate?: 'recommended' | 'blank';
 }
 
 /** SKY-627: response from the extended onboarding:complete handler. */

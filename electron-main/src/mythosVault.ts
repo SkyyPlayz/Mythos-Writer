@@ -131,3 +131,29 @@ export function scaffoldDefaultMythosVault(
   }
   return { ok: true, mythosVaultRoot, storyVaultPath, notesVaultPath, vaultName };
 }
+
+/** SKY-2991: Create empty Story Vault + Notes Vault dirs for the Custom Setup
+ *  "Start Blank" path. Unlike scaffoldDefaultMythosVault, this does NOT apply
+ *  unique-name suffixing — the user explicitly chose the path in the wizard. */
+export function createCustomBlankVaultDirs(
+  resolvedParent: string,
+  vaultName: string,
+): { ok: true; storyVaultPath: string; notesVaultPath: string } | { ok: false; error: string } {
+  if (!path.isAbsolute(resolvedParent)) {
+    return { ok: false, error: 'resolvedParent: must be an absolute path' };
+  }
+  const rawName = vaultName.trim();
+  if (!rawName || !isSafeVaultName(rawName)) {
+    return { ok: false, error: 'vaultName: must not be empty or contain path separators or parent references' };
+  }
+  const mythosVaultRoot = path.join(resolvedParent, rawName);
+  const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
+  const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
+  try {
+    fs.mkdirSync(storyVaultPath, { recursive: true });
+    fs.mkdirSync(notesVaultPath, { recursive: true });
+  } catch (e) {
+    return { ok: false, error: `Could not create vault directories: ${(e as Error).message}` };
+  }
+  return { ok: true, storyVaultPath, notesVaultPath };
+}

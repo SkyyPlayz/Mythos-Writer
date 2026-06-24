@@ -462,6 +462,7 @@ import { appendBrainstormNote } from './sceneAppendBrainstormNote.js';
 import {
   DEFAULT_MYTHOS_VAULT_NAME,
   scaffoldDefaultMythosVault,
+  createCustomBlankVaultDirs,
   deriveProjectName,
   isSafeVaultName,
   pickUniqueMythosVaultName,
@@ -1992,7 +1993,7 @@ const handlers: IpcHandlers = {
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
   // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string) => {
       const current = loadAppSettings();
@@ -2115,6 +2116,74 @@ const handlers: IpcHandlers = {
         return { ok: true, firstSceneId: existing.firstSceneId, firstScenePath: existing.firstScenePath };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : 'Failed to open existing vault' };
+      }
+    }
+
+    // SKY-2991: Custom Setup path — uses vaultName + vaultParentPath instead of storyTitle.
+    // 'recommended' mirrors the quick-start bundle; 'blank' creates empty vault dirs only.
+    if (startMode === 'blank' && customTemplate) {
+      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+      if (!vaultName?.trim()) return { ok: false, error: 'vaultName is required' };
+      const resolvedCustomParent = vaultParentPath.trim().replace(/^~/, app.getPath('home'));
+
+      if (customTemplate === 'recommended') {
+        const bundle = scaffoldDefaultMythosVault(resolvedCustomParent, { baseName: vaultName });
+        if (!bundle.ok) return { ok: false, error: bundle.error };
+        const { storyVaultPath: svp, notesVaultPath: nvp } = bundle;
+
+        saveVaultSettings({ vaultRoot: svp, notesVaultRoot: nvp, layoutMode: 'blank' });
+        addToRecentProjects(svp, nvp);
+        ensureVaultDir();
+        fs.mkdirSync(nvp, { recursive: true });
+        scaffoldNotesVault(nvp, 'default');
+
+        const effectiveStoryTitle = storyTitle?.trim() || 'My First Story';
+        const nowStr = new Date().toISOString();
+        const storyId = crypto.randomUUID();
+        const chapterId = crypto.randomUUID();
+        const sceneId = crypto.randomUUID();
+        const storyDirPath = `Manuscript/${effectiveStoryTitle}`;
+        const chapterDirPath = `Manuscript/${effectiveStoryTitle}/chapter-1`;
+        const sceneRelPath = `Manuscript/${effectiveStoryTitle}/chapter-1/chapter-1-scene-1.md`;
+
+        writeSceneFile(svp, sceneRelPath, { id: sceneId, title: 'Chapter 1, Scene 1', chapterId, storyId, order: 0, prose: '' });
+        const outlinePath = path.join(svp, storyDirPath, 'Outline.md');
+        const synopsisPath = path.join(svp, storyDirPath, 'Synopsis.md');
+        if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, `# Outline\n\nStart with the big beats for ${effectiveStoryTitle}.\n`, 'utf-8');
+        if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, `# Synopsis\n\nA short pitch for ${effectiveStoryTitle}.\n`, 'utf-8');
+
+        const scene = { id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath, order: 0, chapterId, storyId, blocks: [], draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr };
+        const chapter = { id: chapterId, title: 'Chapter 1', path: chapterDirPath, order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr };
+        const story = { id: storyId, title: effectiveStoryTitle, path: storyDirPath, chapters: [chapter], createdAt: nowStr, updatedAt: nowStr };
+        const manifest = readManifest(getManifestPath());
+        manifest.stories.push(story);
+        writeManifest(getManifestPath(), manifest);
+
+        await stopVaultWatcher();
+        await startVaultWatcher(svp, notifyVaultChanged);
+        await stopNotesVaultWatcher();
+        await startNotesVaultWatcher(nvp, notifyNotesVaultChanged);
+
+        persistSettings(sceneId, sceneRelPath, resolvedCustomParent);
+        return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
+      } else {
+        // customTemplate === 'blank'
+        const dirs = createCustomBlankVaultDirs(resolvedCustomParent, vaultName);
+        if (!dirs.ok) return { ok: false, error: dirs.error };
+        const { storyVaultPath: svp, notesVaultPath: nvp } = dirs;
+
+        saveVaultSettings({ vaultRoot: svp, notesVaultRoot: nvp, layoutMode: 'blank' });
+        addToRecentProjects(svp, nvp);
+        ensureVaultDir();
+        ensureNotesVaultDir();
+
+        await stopVaultWatcher();
+        await startVaultWatcher(svp, notifyVaultChanged);
+        await stopNotesVaultWatcher();
+        await startNotesVaultWatcher(nvp, notifyNotesVaultChanged);
+
+        persistSettings(undefined, undefined, resolvedCustomParent);
+        return { ok: true };
       }
     }
 

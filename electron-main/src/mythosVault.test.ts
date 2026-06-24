@@ -10,6 +10,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   DEFAULT_MYTHOS_VAULT_NAME,
+  createCustomBlankVaultDirs,
   deriveProjectName,
   isSafeVaultName,
   pickUniqueMythosVaultName,
@@ -204,5 +205,77 @@ describe('scaffoldDefaultMythosVault', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('typeguard');
     expect(result.error).toMatch(/path separators|parent references/);
+  });
+});
+
+// ─── SKY-2991: createCustomBlankVaultDirs ───────────────────────────────────
+//
+// Custom Setup "Start Blank" path — creates Story Vault + Notes Vault at the
+// exact user-specified path, with no unique-name suffixing and no seed content.
+
+describe('createCustomBlankVaultDirs', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky2991-blank-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates <parent>/<vaultName>/Story Vault and Notes Vault', () => {
+    const result = createCustomBlankVaultDirs(tmpDir, 'My Novel Project');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('typeguard');
+    expect(result.storyVaultPath).toBe(path.join(tmpDir, 'My Novel Project', 'Story Vault'));
+    expect(result.notesVaultPath).toBe(path.join(tmpDir, 'My Novel Project', 'Notes Vault'));
+    expect(fs.existsSync(result.storyVaultPath)).toBe(true);
+    expect(fs.existsSync(result.notesVaultPath)).toBe(true);
+    expect(fs.statSync(result.storyVaultPath).isDirectory()).toBe(true);
+    expect(fs.statSync(result.notesVaultPath).isDirectory()).toBe(true);
+  });
+
+  it('leaves both vault directories empty (no seed content)', () => {
+    const result = createCustomBlankVaultDirs(tmpDir, 'Clean Slate');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('typeguard');
+    expect(fs.readdirSync(result.storyVaultPath)).toHaveLength(0);
+    expect(fs.readdirSync(result.notesVaultPath)).toHaveLength(0);
+  });
+
+  it('does NOT suffix the name when the folder already exists (user chose explicitly)', () => {
+    // Pre-create the vault root — it should fail, not silently use a different name.
+    fs.mkdirSync(path.join(tmpDir, 'My Vault', 'Story Vault'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, 'My Vault', 'Notes Vault'), { recursive: true });
+    // A second call to the same name creates nested dirs inside the existing ones
+    // because mkdirSync with recursive:true is idempotent on existing dirs.
+    const result = createCustomBlankVaultDirs(tmpDir, 'My Vault');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('typeguard');
+    // The result paths must be at the exact requested location (no suffix).
+    expect(result.storyVaultPath).toBe(path.join(tmpDir, 'My Vault', 'Story Vault'));
+    expect(result.notesVaultPath).toBe(path.join(tmpDir, 'My Vault', 'Notes Vault'));
+  });
+
+  it('rejects relative parent paths', () => {
+    const result = createCustomBlankVaultDirs('relative/path', 'My Vault');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('typeguard');
+    expect(result.error).toMatch(/absolute path/);
+  });
+
+  it('rejects empty vault names', () => {
+    const result = createCustomBlankVaultDirs(tmpDir, '');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('typeguard');
+    expect(result.error).toMatch(/vaultName/);
+  });
+
+  it('rejects unsafe vault names (path separators)', () => {
+    const result = createCustomBlankVaultDirs(tmpDir, 'foo/bar');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('typeguard');
+    expect(result.error).toMatch(/vaultName/);
   });
 });

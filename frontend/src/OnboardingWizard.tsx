@@ -108,6 +108,8 @@ type Api = {
     vaultName?: string;
     /** SKY-2008: genre selected on step1c; required for startMode=sample */
     sampleGenre?: SampleGenreId;
+    /** template variant for custom/blank vault setup */
+    customTemplate?: 'recommended' | 'blank';
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
@@ -652,10 +654,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         : customVaultPath.startsWith('~\\')
         ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
         : customVaultPath;
-      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
-      // Until it lands, both use startMode:'blank' at the chosen path.
       const res = await api().onboardingComplete({
         startMode: 'blank',
+        customTemplate,
         vaultParentPath: expanded,
         vaultName: customVaultName.trim() || deriveVaultName(expanded),
       });
@@ -1183,6 +1184,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         const updated: AppSettings = {
           ...initialSettings,
           onboardingComplete: true,
+          onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
             ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
             : {}),
@@ -1232,7 +1234,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
 
     // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
-    const storyDir = savePath.replace(/\/+$/, '') + '/' + trimmedTitle;
+    const sep = pathOptionsRef.current.sep ?? '/';
+    const storyDir = savePath.replace(sep === '\\' ? /\\+$/ : /\/+$/, '') + sep + trimmedTitle;
     try {
       const conflict = await api().validatePath(storyDir);
       if (conflict.exists && !conflict.isEmpty) {
@@ -1810,24 +1813,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     </p>
                   </>
                 )}
-                <div className="gs-template-import-row">
-                  <button
-                    type="button"
-                    className="btn-secondary gs-template-import-btn"
-                    data-testid="template-import-btn"
-                    onClick={async () => {
-                      const res = await window.api.templateImport();
-                      if (res && 'error' in res) {
-                        showTemplateToast("This file doesn't appear to be a valid Mythos template.");
-                      } else if (res && !res.cancelled) {
-                        reloadTemplates();
-                        showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
-                      }
-                    }}
-                  >
-                    &#x2B06; Import template
-                  </button>
-                </div>
                 <div className="gs-template-import-row">
                   <button
                     type="button"
