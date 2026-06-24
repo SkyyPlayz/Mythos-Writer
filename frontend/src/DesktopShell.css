@@ -1069,3 +1069,77 @@
   border-color: var(--neon-cyan, #00e5ff);
   outline: none;
 }
+
+/* ─── SKY-3207 (B4): Hideable top bar ─────────────────────────────────────── */
+
+/* Transparent wrapper: display:contents makes it invisible to layout in normal state */
+.top-bar-chrome {
+  display: contents;
+}
+
+/* When peeking (revealed by hover): overlay the content below */
+.top-bar-chrome--peeking {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .top-bar-chrome--peeking {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
+  }
+}
+
+/* 8px drag-region hover target when the top bar is hidden */
+.topbar-peek-strip {
+  height: 8px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  background: linear-gradient(to bottom, var(--glass-border), transparent);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.topbar-peek-strip:hover {
+  opacity: 1;
+}
+
+/* Hide top bar toggle button — mirrors df-btn style */
+.app-menu-topbar-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-left: 2px;
+  -webkit-app-region: no-drag;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.app-menu-topbar-btn:hover {
+  color: var(--text-header);
+  background: var(--bg-elevated);
+  opacity: 1;
+}
+
+.app-menu-topbar-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* When top bar is hidden, let the content column fill the full height */
+.desktop-shell--topbar-hidden .shell-center-column {
+  height: 100%;
+}
