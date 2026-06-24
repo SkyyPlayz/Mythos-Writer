@@ -210,7 +210,7 @@ describe('OnboardingWizard — Step 1', () => {
 
   it('renders Step 1 with correct heading and subtitle', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
     await act(async () => {});
@@ -222,27 +222,28 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows three top-level starting-point cards (SKY-2987 3-path spec)', async () => {
+  it('shows four top-level starting-point cards (SKY-2639 4-path spec)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-default')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-path-sample')).toBeInTheDocument();
     expect(screen.getByTestId('card-import')).toBeInTheDocument();
-    expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-open-existing')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match SKY-2970 spec copy (3-path redesign)', async () => {
+  it('card labels match SKY-2639 spec copy (4-path redesign)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Custom');
+    expect(screen.getByTestId('card-path-default')).toHaveTextContent('Quick Start');
+    expect(screen.getByTestId('card-path-blank')).toHaveTextContent('Blank');
+    expect(screen.getByTestId('card-path-sample')).toHaveTextContent('Sample Project');
     expect(screen.getByTestId('card-import')).toHaveTextContent('Import / Open Existing');
     await act(async () => {});
   });
 
   it('AC-L-05: first card (Quick Start) receives focus when Step 1 mounts', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(document.activeElement).toBe(screen.getByTestId('card-quick-start'));
+    expect(document.activeElement).toBe(screen.getByTestId('card-path-default'));
     await act(async () => {});
   });
 
@@ -263,8 +264,8 @@ describe('OnboardingWizard — Step 1', () => {
   it('AC-L-01: Import card has secondary CSS modifier for visual distinction', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-create-custom')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-path-default')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-path-blank')).not.toHaveClass('gs-card--secondary');
     await act(async () => {});
   });
 
@@ -272,7 +273,7 @@ describe('OnboardingWizard — Step 1', () => {
   it('clicking Quick Start calls onboardingComplete with startMode=quick-start and bypasses Step 2', async () => {
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
+    fireEvent.click(screen.getByTestId('card-path-default'));
     await waitFor(() =>
       expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'quick-start' }),
     );
@@ -293,7 +294,7 @@ describe('OnboardingWizard — Step 1', () => {
     (window as unknown as { api: unknown }).api = mockApi;
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
+    fireEvent.click(screen.getByTestId('card-path-default'));
     await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
     expect(onComplete).not.toHaveBeenCalled();
@@ -305,7 +306,7 @@ describe('OnboardingWizard — Step 1', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
     expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
     await act(async () => {});
   });
@@ -381,7 +382,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
     expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -724,7 +725,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
     await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
     fireEvent.click(screen.getByTestId('gs-back-step1c'));
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     // Re-entering step1c should have no selection
     await openSampleFlow();
     expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
@@ -1174,13 +1175,13 @@ describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
 describe('OnboardingWizard — AC coverage', () => {
   it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('AC2: Step 1 shows three top-level starting-point cards', async () => {
+  it('AC2: Step 1 shows five top-level starting-point cards', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(5);
     await act(async () => {});
   });
 
@@ -1417,7 +1418,7 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
   });
 
   it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
@@ -1437,7 +1438,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -1606,7 +1607,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
     );
     fireEvent.click(screen.getByTestId('gs-back-step-import'));
-    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument());
     await act(async () => {});
   });
 
@@ -1813,7 +1814,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     );
     fireEvent.click(screen.getByTestId('custom-location-back'));
     await act(async () => {});
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
   });
 
   it('AC-C-06: Next advances to custom-template when path is valid', async () => {

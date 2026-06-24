@@ -1495,7 +1495,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       {/* ── Step 1: Choose your starting point ── */}
       {step === 'step1' && (
-        <div className="gs-modal" data-testid="screen-step1">
+        <div className="gs-modal" data-testid="screen-path-selector">
           <div className="gs-modal__header">
             <span className="gs-step-label">Step 1 of 3</span>
             <button
@@ -1518,11 +1518,27 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               description="One click — we set everything up for you."
               ctaLabel="Start &#x2192;"
               onActivate={handleQuickStart}
-              testId="card-quick-start"
+              testId="card-path-default"
               cardRef={quickStartRef}
             />
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
+              title="Blank"
+              description="Start with an empty vault — choose your save location."
+              ctaLabel="Set up &#x2192;"
+              onActivate={handleSelectBlank}
+              testId="card-path-blank"
+            />
+            <StartingPointCard
+              icon="&#x1F4DA;"
+              title="Sample Project"
+              description="Start with a genre-specific sample vault to explore the app."
+              ctaLabel="Browse &#x2192;"
+              onActivate={handleSelectSample}
+              testId="card-path-sample"
+            />
+            <StartingPointCard
+              icon="&#x1F527;"
               title="Custom"
               description="Fine-grained control: pick your location and starting point."
               ctaLabel="Set up &#x2192;"
