@@ -433,18 +433,50 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
   });
 
-  it('preserves existing --bg-app-image when bgMode=image but no bgDataUrl is supplied (SKY-3219)', () => {
-    // Simulate a prior applyLiquidNeonTokens call that set the image tokens.
-    document.documentElement.style.setProperty('--bg-app-image', 'url("data:image/png;base64,prior")');
-    document.documentElement.style.setProperty('--bg-scrim-alpha', '0.5');
-
-    // Call without bgDataUrl — SKY-3219 fix: must NOT reset --bg-app-image to the gradient.
+  it('SKY-3219/GH-614: updates --bg-scrim-alpha even when bgMode=image but no bgDataUrl is supplied', () => {
+    // Pre-condition: root has no scrim set
+    document.documentElement.style.setProperty('--bg-scrim-alpha', '0');
     applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
+    // Scrim alpha must update so the Light↔Dark slider works in real time
+    // even before the image data URL resolves. bgScrim=80 → lerp(0.20, 0.85, 0.8) ≈ 0.72
+    const alpha = parseFloat(document.documentElement.style.getPropertyValue('--bg-scrim-alpha'));
+    expect(alpha).toBeGreaterThan(0.5);
+  });
 
-    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(
-      'url("data:image/png;base64,prior")',
-    );
-    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0.5');
+  it('SKY-3219/GH-614: does not reset --bg-app-image when bgMode=image but no bgDataUrl is supplied', () => {
+    // Simulate a prior call that set the image
+    const prior = 'url("data:image/png;base64,prior")';
+    document.documentElement.style.setProperty('--bg-app-image', prior);
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 50 });
+    // The wallpaper must NOT be replaced with the default gradient
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(prior);
+  });
+});
+
+describe('applyLiquidNeonTokens background-image preservation (SKY-3219 / GH#612)', () => {
+  beforeEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  afterEach(() => {
+    resetLiquidNeonTokens();
+  });
+
+  it('GH#612: does not reset --bg-app-image in legacy path (no bgMode) when data URL absent', () => {
+    const previousUrl = 'url("/existing/legacy-wallpaper.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    // Legacy: background set but bgMode not stored (falls to else branch)
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, null);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+  });
+
+  it('GH#612: applies bgDataUrl in legacy path when data URL is present', () => {
+    const dataUrl = 'data:image/jpeg;base64,abc123';
+    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: undefined as unknown as 'color', background: '/legacy/path.jpg' }, dataUrl);
+
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(`url("${dataUrl}")`);
   });
 });
 

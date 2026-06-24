@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
+import { DEFAULT_BG_GRADIENT } from './theme';
 
 const defaultSettings: AppSettings = {
   apiKey: '',
@@ -1748,3 +1749,161 @@ describe('Background image persistence (SKY-2963)', () => {
     expect(onSavedArg.liquidNeon?.bgMode).toBe('image');
   });
 });
+
+describe('Save preserves background image — legacy no-bgMode migration (SKY-3219 / GH#612)', () => {
+  const bgPath = '/home/user/Pictures/legacy-wallpaper.png';
+  const legacyBgSettings: AppSettings = {
+    ...defaultSettings,
+    liquidNeon: {
+      background: bgPath,
+      // bgMode intentionally absent — simulates settings saved before bgMode was introduced
+    } as LiquidNeonPrefs,
+  };
+
+  const mockLoadBgImage = vi.fn();
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue(legacyBgSettings);
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    mockLoadBgImage.mockResolvedValue({ dataUrl: null });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+      loadBgImage: mockLoadBgImage,
+    };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('migrates missing bgMode to image so Save persists background correctly', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    expect(saved.liquidNeon?.background).toBe(bgPath);
+    expect(saved.liquidNeon?.bgMode).toBe('image');
+  });
+
+  it('does not reset --bg-app-image when legacy settings have no bgMode and loadBgImage returns null', async () => {
+    const previousUrl = 'url("/cached/image.jpg")';
+    document.documentElement.style.setProperty('--bg-app-image', previousUrl);
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
+
+    // --bg-app-image should NOT have been reset to the gradient
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).not.toBe(DEFAULT_BG_GRADIENT);
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(previousUrl);
+
+    document.documentElement.style.removeProperty('--bg-app-image');
+  });
+});
+
+describe('SKY-3218 nav-bar configuration', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockSettingsGet.mockResolvedValue({ ...defaultSettings });
+    mockSettingsSet.mockResolvedValue({ saved: true });
+    mockVaultGetPaths.mockResolvedValue(defaultVaultPaths);
+    mockVaultSetPaths.mockImplementation((storyVaultPath: string, notesVaultPath: string) =>
+      Promise.resolve({ storyVaultPath, notesVaultPath, saved: true }),
+    );
+    mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+    mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+    (window as unknown as { api: unknown }).api = {
+      settingsGet: mockSettingsGet,
+      settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      vaultSetPaths: mockVaultSetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      providerListModels: mockProviderListModels,
+    };
+  });
+
+  it('renders Nav-bar section with Story and Notes toggles', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    expect(screen.getByRole('heading', { name: /nav-bar/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/enable story/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/enable notes/i)).toBeInTheDocument();
+  });
+
+  it('renders start-collapsed, show-labels, show-icons toggles', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show.*labels/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /show.*icons/i })).toBeInTheDocument();
+  });
+
+  it('persists navConfig with defaults when saved without changes', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    expect(saved.navConfig).toBeDefined();
+    expect(saved.navConfig?.items).toHaveLength(2);
+    expect(saved.navConfig?.items[0].id).toBe('story');
+    expect(saved.navConfig?.items[1].id).toBe('notes');
+    expect(saved.navConfig?.showLabels).toBe(true);
+    expect(saved.navConfig?.showIcons).toBe(true);
+    expect(saved.navConfig?.collapsedDefault).toBe(false);
+  });
+
+  it('loads and displays saved navConfig from settings', async () => {
+    const savedNavConfig: NavRailConfig = {
+      items: [
+        { id: 'notes', enabled: true, label: 'Notes', icon: '\u{1F4DD}', order: 0 },
+        { id: 'story', enabled: false, label: 'Story', icon: '\u270D', order: 1 },
+      ],
+      collapsedDefault: true,
+      showLabels: false,
+      showIcons: true,
+    };
+    mockSettingsGet.mockResolvedValue({ ...defaultSettings, navConfig: savedNavConfig });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+
+    expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /show.*labels/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /enable story/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /enable notes/i })).toBeChecked();
+  });
+
+  it('persists toggled item state on save', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+
+    const notesToggle = screen.getByLabelText(/enable notes/i);
+    fireEvent.click(notesToggle);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    });
+    await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+
+    const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
+    const notesItem = saved.navConfig?.items.find((i) => i.id === 'notes');
+    expect(notesItem?.enabled).toBe(false);
+  });
+});
+

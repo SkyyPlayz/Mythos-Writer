@@ -336,6 +336,15 @@ test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
       await page.waitForTimeout(600);
     }
 
+    // Navigate to Appearance category — settings panel now has category nav
+    // (added in SKY-3216); #lg-softness is under Appearance which is hidden
+    // on the default General tab.
+    const appearanceNavBtn = page.locator('.settings-cat-nav-btn', { hasText: 'Appearance' });
+    if (await appearanceNavBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await appearanceNavBtn.click();
+      await page.waitForTimeout(100);
+    }
+
     // MYT-716: ThemeContrastSlider replaced by #lg-softness (range 0–1)
     const slider = page.locator('#lg-softness');
     if (!(await slider.isVisible({ timeout: 3_000 }).catch(() => false))) {
