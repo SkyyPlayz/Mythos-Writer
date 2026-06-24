@@ -228,7 +228,6 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
     expect(screen.getByTestId('card-import')).toBeInTheDocument();
     expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('card-create-custom')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-open-existing')).not.toBeInTheDocument();
     await act(async () => {});
   });
