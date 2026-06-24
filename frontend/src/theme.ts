@@ -282,22 +282,20 @@ export function applyLiquidNeonTokens(
   }
 
   // Background image + layout tokens
-  if (bgDataUrl && p.bgMode === 'image') {
-    root.style.setProperty('--bg-app-image', `url("${bgDataUrl}")`);
+  if (p.bgMode === 'image') {
+    // Always update scrim and layout tokens in image mode, regardless of whether
+    // bgDataUrl is present. bgDataUrl may be null during async load in SettingsPanel
+    // (loaded via loadBgImage after mount); the --bg-app-image CSS var was already set
+    // by the startup call and must not be overwritten here when the URL is unavailable.
+    const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
+    root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
     const fit = p.bgFit ?? 'cover';
     root.style.setProperty('--bg-image-size',   fit === 'tile' ? 'auto' : fit);
     root.style.setProperty('--bg-image-repeat',  fit === 'tile' ? 'repeat' : 'no-repeat');
     root.style.setProperty('--bg-image-position', p.bgPosition ?? 'center');
-
-    // Scrim: 0–100 → 0.20–0.85
-    const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
-    root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
-  } else if (p.bgMode === 'image') {
-    // SKY-3219/GH-614: image mode but no data URL yet — preserve whatever --bg-app-image
-    // is already on the root rather than resetting it to the default gradient; also update
-    // the scrim alpha so the Light↔Dark slider responds in real time before the image loads.
-    const scrimAlpha = lerp(0.20, 0.85, (p.bgScrim ?? 40) / 100);
-    root.style.setProperty('--bg-scrim-alpha', scrimAlpha.toFixed(3));
+    if (bgDataUrl) {
+      root.style.setProperty('--bg-app-image', `url("${bgDataUrl}")`);
+    }
   } else if (p.bgMode === 'color') {
     root.style.setProperty('--bg-app-image', DEFAULT_BG_GRADIENT);
     root.style.setProperty('--bg-scrim-alpha', '0');

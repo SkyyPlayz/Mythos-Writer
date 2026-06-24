@@ -433,23 +433,23 @@ describe('applyLiquidNeonTokens scrim (SKY-2962)', () => {
     expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0');
   });
 
-  it('SKY-3219/GH-614: updates --bg-scrim-alpha even when bgMode=image but no bgDataUrl is supplied', () => {
-    // Pre-condition: root has no scrim set
-    document.documentElement.style.setProperty('--bg-scrim-alpha', '0');
+  it('preserves existing --bg-app-image but still updates scrim when bgMode=image with no bgDataUrl (SKY-3219 + SKY-3220)', () => {
+    // Simulate a prior call that set the image.
+    document.documentElement.style.setProperty('--bg-app-image', 'url("data:image/png;base64,prior")');
+
+    // Call without bgDataUrl — SKY-3219: must NOT reset --bg-app-image to the gradient.
     applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 80 });
     // Scrim alpha must update so the Light↔Dark slider works in real time
     // even before the image data URL resolves. bgScrim=80 → lerp(0.20, 0.85, 0.8) ≈ 0.72
     const alpha = parseFloat(document.documentElement.style.getPropertyValue('--bg-scrim-alpha'));
     expect(alpha).toBeGreaterThan(0.5);
-  });
-
-  it('SKY-3219/GH-614: does not reset --bg-app-image when bgMode=image but no bgDataUrl is supplied', () => {
-    // Simulate a prior call that set the image
-    const prior = 'url("data:image/png;base64,prior")';
-    document.documentElement.style.setProperty('--bg-app-image', prior);
-    applyLiquidNeonTokens({ ...LIQUID_NEON_DEFAULTS, bgMode: 'image', bgScrim: 50 });
-    // The wallpaper must NOT be replaced with the default gradient
-    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(prior);
+    // SKY-3219: prior --bg-app-image must NOT be reset to the default gradient
+    expect(document.documentElement.style.getPropertyValue('--bg-app-image')).toBe(
+      'url("data:image/png;base64,prior")',
+    );
+    // SKY-3220: scrim alpha IS applied even when no bgDataUrl.
+    // bgScrim=80 → lerp(0.20, 0.85, 0.80) = 0.720
+    expect(document.documentElement.style.getPropertyValue('--bg-scrim-alpha')).toBe('0.720');
   });
 });
 

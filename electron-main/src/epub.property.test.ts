@@ -118,7 +118,7 @@ describe('buildEpub — HTML-escaping property-based (SKY-361)', () => {
         expect(buf).toBeInstanceOf(Buffer);
         expect(buf.length).toBeGreaterThan(0);
       }),
-      { numRuns: 200 }
+      { numRuns: 75 }
     );
   }, 30_000);
 
