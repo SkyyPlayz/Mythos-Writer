@@ -684,6 +684,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'open-existing',
         ...(res.firstSceneId && res.firstScenePath
@@ -714,6 +716,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'sample',
         ...(res.firstSceneId && res.firstScenePath
@@ -828,6 +832,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'open-existing',
       };
@@ -952,6 +958,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         }
         const updated: AppSettings = {
           ...initialSettings,
+          ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+          gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
           onboardingComplete: true,
           onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
@@ -1039,6 +1047,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1089,6 +1099,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath

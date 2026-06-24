@@ -43,6 +43,7 @@ function seedUserData(userData: string, vaultDir: string): void {
     apiKey: 'sk-ant-test-key-for-e2e',
     onboardingComplete: true,
     waScanInterval: 'manual' as const,
+    rightSidebarVisible: true,
     agents: {
       writingAssistant: {
         enabled: true,
@@ -240,11 +241,9 @@ test.beforeAll(async () => {
   // Wait for scene editor to load.
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 8_000 });
 
-  // The right sidebar defaults to "notes"; click the "Assistant" outer tab so
-  // the AI sub-tabs (Writing / Vault / Archive) are rendered for the tests.
-  const assistantOuterTab = page.locator('button.sidebar-tab', { hasText: 'Assistant' });
-  await expect(assistantOuterTab).toBeVisible({ timeout: 4_000 });
-  await assistantOuterTab.click();
+  // In the GRS (GlobalRightSidebar), Writing Assistant is a top-level panel — no outer tab needed.
+  // Just ensure the GRS is visible before interacting with the Writing sub-tab.
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 });
 
 test.afterAll(async () => {
@@ -264,14 +263,11 @@ test.afterAll(async () => {
 
 test('TC-WAT-01: manual scan returns tip card; Note-it removes it optimistically', async () => {
   // The right sidebar should be visible in Normal Mode.
-  await expect(page.locator('.shell-right')).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 
-  // Click the "Writing" sub-tab in the AI panel.
-  const writingTab = page.locator('[role="tab"]', { hasText: 'Writing' });
-  await expect(writingTab).toBeVisible({ timeout: 4_000 });
-  await writingTab.click();
-
-  // The Writing Assistant panel heartbeat section should be visible.
+  // In the GRS (GlobalRightSidebar), Writing Assistant is a top-level panel with no sub-tabs.
+  // The panel body renders expanded by default (collapsed: false) so the Heartbeat panel
+  // is directly visible without any click.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 4_000 });
 
   // "Scan now" button should be enabled (scene is selected).

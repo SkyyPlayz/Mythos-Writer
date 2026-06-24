@@ -7,7 +7,6 @@ import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens } from './theme';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
-import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -41,6 +40,7 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
@@ -577,9 +577,8 @@ export default function DesktopShell() {
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
   const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
-  // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
+  // SKY-1694 (Wave 2a): left sidebar panel zone layout
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
-  const [rightSidebarUserCollapsed, setRightSidebarUserCollapsed] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
@@ -740,9 +739,15 @@ export default function DesktopShell() {
     });
   }, []);
 
+
   const handleDismissGettingStarted = useCallback(() => {
     if (!gettingStartedProgress) return;
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleWaAutoApplyCategoriesChange = useCallback(
@@ -763,10 +768,6 @@ export default function DesktopShell() {
     [],
   );
 
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
@@ -787,18 +788,6 @@ export default function DesktopShell() {
     window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
-  const handleDraftRestore = useCallback((content: string) => {
-    if (!selectedScene) return;
-    const restoredBlock: Block = {
-      id: generateId(),
-      type: 'prose',
-      content,
-      order: 0,
-      updatedAt: now(),
-    };
-    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
-    setRestoreKey(k => k + 1);
-  }, [selectedScene]);
 
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
@@ -818,9 +807,6 @@ export default function DesktopShell() {
     editorApiRef.current?.jumpToText(text);
   }, []);
 
-  const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
-    editorApiRef.current?.insertWikiLink(link, anchorText);
-  }, []);
 
   const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
@@ -1720,6 +1706,28 @@ export default function DesktopShell() {
     checkGettingStartedItem('notes-vault');
   }, [checkGettingStartedItem, handleNotesSubViewChange, handleTabChange]);
 
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') {
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'notes-vault') {
+      handleNotesSubViewChange('editor');
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'add-character') {
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'write-scene') {
+      handleSetView('editor');
+      handleTabChange('story');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
+
   // SKY-2096: Notes left-sidebar width + collapsed state.
   const handleNotesSidebarWidthChange = useCallback((w: number) => {
     const next = { ...tabShellRef.current, notesSidebarWidth: w };
@@ -1836,27 +1844,6 @@ export default function DesktopShell() {
     persistLayout(newLayout);
   }, [layout, persistLayout]);
 
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'notes-vault') {
-      handleNotesSubViewChange('editor');
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'add-character') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
   const handleToggleSplitWindow = useCallback(() => {
@@ -1986,7 +1973,7 @@ export default function DesktopShell() {
       }
       if (mod && !e.shiftKey && !e.altKey && e.key === ']') {
         e.preventDefault();
-        setRightSidebarUserCollapsed(prev => !prev);
+        handleGrsVisibilityChange(!(grsVisible ?? false));
         return;
       }
       // SKY-2094: Ctrl/Cmd+1 — switch to Story tab; Ctrl/Cmd+2 — switch to Notes tab.
@@ -2014,18 +2001,17 @@ export default function DesktopShell() {
       }
       if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
         e.preventDefault();
-        const el = document.querySelector<HTMLElement>('.right-sidebar [role="tab"][aria-selected="true"], .right-sidebar button');
+        const el = document.querySelector<HTMLElement>('.grs-root [role="tab"][aria-selected="true"], .grs-root button');
         el?.focus();
         return;
       }
-      // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek panel
+      // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek or reveal GRS
       if (mod && e.shiftKey && !e.altKey && (e.key === 'K' || e.key === 'k')) {
         e.preventDefault();
         if ((layout.writingMode ?? 'normal') === 'focus') {
           setContinuityPeekOverlayOpen(true);
-        } else {
-          setRightSidebarUserCollapsed(false);
-          persistLayout({ ...layout, rightTab: 'continuity' });
+        } else if (!grsVisible) {
+          handleGrsVisibilityChange(true);
         }
         focusContinuitySearch();
         return;
@@ -2063,7 +2049,7 @@ export default function DesktopShell() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, toggleTopBar]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, toggleTopBar, handleGrsVisibilityChange, grsVisible]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -2972,8 +2958,6 @@ export default function DesktopShell() {
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
-  // SKY-1694: rightSidebarUserCollapsed allows Ctrl+] to toggle right sidebar independently of focus mode
-  const showRightSidebar = !distractionFree && !rightSidebarUserCollapsed && (writingMode !== 'focus' || focusPrefs.showRightSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
@@ -3555,68 +3539,7 @@ export default function DesktopShell() {
         )}
       </div>
 
-      {/* Right resize handle */}
-      {showRightSidebar && (
-        <div
-          role="separator"
-          aria-label="Resize right panel"
-          aria-orientation="vertical"
-          aria-valuenow={layout.rightWidth}
-          aria-valuemin={160}
-          aria-valuemax={500}
-          tabIndex={0}
-          className="shell-divider shell-divider-right"
-          onMouseDown={(e) => startDrag('right', e)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
-            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
-            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
-          }}
-        />
-      )}
 
-      {/* Right sidebar */}
-      {showRightSidebar && (
-        <div className="shell-right" style={{ width: layout.rightWidth }}>
-          <RightSidebar
-            activeTab={layout.rightTab}
-            onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-            selectedScene={activeSceneForSidebar}
-            selectedChapter={usePane2SidebarContext ? pane2Chapter : selectedChapter}
-            selectedStory={usePane2SidebarContext ? pane2Story : selectedStory}
-            writingAssistantEnabled={agentFlags.writingAssistant}
-            archiveEnabled={agentFlags.archive}
-            scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-            waScanInterval={appSettings?.waScanInterval}
-            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
-            idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
-            idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
-            waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
-            waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
-            onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
-            ttsSettings={appSettings?.tts}
-            isPageFocused={view === 'editor'}
-            onJumpToText={handleJumpToText}
-            onInsertWikiLink={handleInsertWikiLink}
-            onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
-            onGettingStartedAction={handleGettingStartedAction}
-            onDismissGettingStarted={handleDismissGettingStarted}
-            onToggleGsCollapsed={handleToggleGsCollapsed}
-            gettingStartedProgress={gettingStartedProgress}
-            onSelectScene={(sc, ch) => {
-              if (selectedStory) {
-                handleSelectScene(sc, ch, selectedStory);
-                setViewDepth('scene');
-              }
-            }}
-            currentSceneContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
-            onDraftRestore={handleDraftRestore}
-            editorSelectionText={editorSelectionText}
-            onOpenEntityNote={handleOpenContinuityEntityNote}
-          />
-        </div>
-      )}
       </div>}{/* end shell-panels */}
 
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
@@ -3624,7 +3547,7 @@ export default function DesktopShell() {
            This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
            settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
       {grsVisible !== undefined && <GlobalRightSidebar
-        visible={grsVisible as boolean}
+        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar)}
         width={grsWidth}
         panels={grsPanels}
         onVisibilityChange={handleGrsVisibilityChange}
@@ -3635,6 +3558,14 @@ export default function DesktopShell() {
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
+        headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
+          <GettingStartedPanel
+            progress={gettingStartedProgress!}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        ) : undefined}
       />}
 
       {continuityPeekOverlayOpen && (

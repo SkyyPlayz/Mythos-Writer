@@ -39,6 +39,7 @@ function seedUserData(userData: string, vaultDir: string): void {
   const appSettings = {
     apiKey: 'sk-ant-test-key-for-e2e',
     onboardingComplete: true,
+    rightSidebarVisible: true,
     agents: {
       writingAssistant: {
         enabled: false,
@@ -159,7 +160,7 @@ test('TC-WM-01: default mode is Normal — N button active, sidebars visible, no
 
   // Both sidebars must be present in the DOM.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('.shell-right')).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 });
 
 // ─── TC-WM-02: Focus mode — sidebars hidden ───────────────────────────────────
@@ -172,7 +173,7 @@ test('TC-WM-02: Ctrl+Shift+F enters Focus mode and hides sidebars', async () => 
 
   // With default FocusPrefs (all false), sidebars must not be in the DOM.
   await expect(page.locator('.shell-left')).not.toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('.shell-right')).not.toBeVisible({ timeout: 4_000 });
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).not.toBeVisible({ timeout: 4_000 });
 });
 
 // ─── TC-WM-03: Normal restored ────────────────────────────────────────────────
@@ -184,7 +185,7 @@ test('TC-WM-03: Ctrl+Shift+N restores Normal mode and sidebars', async () => {
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('.shell-right')).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 });
 
 // ─── TC-WM-04: Edit mode — sidebars remain visible ────────────────────────────
@@ -197,7 +198,7 @@ test('TC-WM-04: Ctrl+Shift+E enters Edit mode, sidebars still visible', async ()
 
   // Edit mode keeps sidebars visible.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('.shell-right')).toBeVisible({ timeout: 4_000 });
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 
   // Return to Normal for subsequent tests.
   await page.keyboard.press('Control+Shift+N');

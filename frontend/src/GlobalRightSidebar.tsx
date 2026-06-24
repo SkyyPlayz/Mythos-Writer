@@ -236,6 +236,8 @@ export interface GlobalRightSidebarProps {
   onFloatPanel?: (panelId: SidebarPanelId) => void;
   /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
   onDockAsTab?: (panelId: SidebarPanelId) => void;
+  /** Optional content rendered above the panel list (e.g. GettingStartedPanel). */
+  headerContent?: ReactNode;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -253,6 +255,7 @@ export default function GlobalRightSidebar({
   leftPanelCount,
   onFloatPanel,
   onDockAsTab,
+  headerContent,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -499,6 +502,8 @@ export default function GlobalRightSidebar({
           ⇒
         </button>
       </div>
+
+      {headerContent}
 
       <div className="grs-panel-list">
         {/* Drop zone before first panel */}
