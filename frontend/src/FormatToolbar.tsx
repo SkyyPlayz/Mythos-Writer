@@ -40,24 +40,25 @@ export default function FormatToolbar({ editor }: Props) {
     return <div className="fmt-toolbar fmt-toolbar--skeleton" aria-hidden="true" />;
   }
 
-  const headingValue = getActiveHeadingValue(editor);
-  const isBold      = editor.isActive('bold');
-  const isItalic    = editor.isActive('italic');
-  const isUnderline = editor.isActive('underline');
-  const isStrike    = editor.isActive('strike');
-  const isBullet    = editor.isActive('bulletList');
-  const isOrdered   = editor.isActive('orderedList');
-  const isQuote     = editor.isActive('blockquote');
-  const isCode      = editor.isActive('code');
-  const isCodeBlock = editor.isActive('codeBlock');
+  const ed = editor; // narrowed — closures don't inherit outer narrowing
+  const headingValue = getActiveHeadingValue(ed);
+  const isBold      = ed.isActive('bold');
+  const isItalic    = ed.isActive('italic');
+  const isUnderline = ed.isActive('underline');
+  const isStrike    = ed.isActive('strike');
+  const isBullet    = ed.isActive('bulletList');
+  const isOrdered   = ed.isActive('orderedList');
+  const isQuote     = ed.isActive('blockquote');
+  const isCode      = ed.isActive('code');
+  const isCodeBlock = ed.isActive('codeBlock');
 
   function applyHeading(value: string) {
     if (!editor) return;
     if (value === 'body') {
-      editor.chain().focus().setParagraph().run();
+      ed.chain().focus().setParagraph().run();
     } else {
       const level = parseInt(value[1], 10) as HeadingLevel;
-      editor.chain().focus().toggleHeading({ level }).run();
+      ed.chain().focus().toggleHeading({ level }).run();
     }
   }
 
@@ -90,8 +91,10 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Bold"
         aria-pressed={isBold}
         title="Bold (Ctrl+B)"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
-      >B</button>
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleBold().run(); }}
+      >
+        <strong>B</strong>
+      </button>
 
       <button
         type="button"
@@ -99,8 +102,10 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Italic"
         aria-pressed={isItalic}
         title="Italic (Ctrl+I)"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
-      >I</button>
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleItalic().run(); }}
+      >
+        <em>I</em>
+      </button>
 
       <button
         type="button"
@@ -108,8 +113,10 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Underline"
         aria-pressed={isUnderline}
         title="Underline (Ctrl+U)"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
-      >U</button>
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleUnderline().run(); }}
+      >
+        <span style={{ textDecoration: 'underline' }}>U</span>
+      </button>
 
       <button
         type="button"
@@ -117,8 +124,10 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Strikethrough"
         aria-pressed={isStrike}
         title="Strikethrough"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleStrike().run(); }}
-      >S</button>
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleStrike().run(); }}
+      >
+        <s>S</s>
+      </button>
 
       <div className="fmt-sep" role="separator" aria-orientation="vertical" />
 
@@ -129,7 +138,7 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Bullet list"
         aria-pressed={isBullet}
         title="Bullet list"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleBulletList().run(); }}
       >
         <span aria-hidden="true" className="fmt-list-icon">•≡</span>
       </button>
@@ -140,7 +149,7 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Numbered list"
         aria-pressed={isOrdered}
         title="Numbered list"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleOrderedList().run(); }}
       >
         <span aria-hidden="true" className="fmt-list-icon">1≡</span>
       </button>
@@ -151,7 +160,7 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Blockquote"
         aria-pressed={isQuote}
         title="Blockquote"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBlockquote().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleBlockquote().run(); }}
       >
         <span aria-hidden="true">❝</span>
       </button>
@@ -165,7 +174,7 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Inline code"
         aria-pressed={isCode}
         title="Inline code"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleCode().run(); }}
       >
         <span aria-hidden="true">{"`·`"}</span>
       </button>
@@ -176,7 +185,7 @@ export default function FormatToolbar({ editor }: Props) {
         aria-label="Code block"
         aria-pressed={isCodeBlock}
         title="Code block"
-        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCodeBlock().run(); }}
+        onMouseDown={(e) => { e.preventDefault(); ed.chain().focus().toggleCodeBlock().run(); }}
       >
         <span aria-hidden="true">{"{ }"}</span>
       </button>

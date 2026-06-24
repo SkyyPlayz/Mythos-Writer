@@ -1,9 +1,6 @@
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
+import { EditorContent } from '@tiptap/react';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Block, Scene, DraftState, EntityEntry } from './types';
-import { WikiLink } from './WikiLinkExtension';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
 import {
   AutoLinkerExtension,
@@ -16,6 +13,7 @@ import { EntityMention } from './EntityMentionExtension';
 import { EntityMentionPickerExtension, mentionPickerKey, type MentionPickerState } from './EntityMentionPickerExtension';
 import EntityMentionPicker, { matchesEntityQuery } from './EntityMentionPicker';
 import { countWords } from './wordStats';
+import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import FormatToolbar from './FormatToolbar';
 import './BlockEditor.css';
 import './EntityMention.css';
@@ -149,7 +147,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     setMentionSelectedIndex(0);
   }, [mentionState.query]);
 
-  const syncMentionState = useCallback((editor: ReturnType<typeof useEditor>) => {
+  const syncMentionState = useCallback((editor: ReturnType<typeof useRichEditor>) => {
     if (!editor) return;
     const ps = mentionPickerKey.getState(editor.state) ?? INACTIVE_MENTION;
     // Clear suppression when the '@' trigger moves to a new position
@@ -159,8 +157,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     setMentionState(ps);
   }, []);
 
-  const editor = useEditor({
-    extensions: [StarterKit, WikiLink, WikiLinkHintExtension, AutoLinkerExtension, EntityMention, EntityMentionPickerExtension, Markdown],
+  const editor = useRichEditor({
+    extraExtensions: [WikiLinkHintExtension, AutoLinkerExtension, EntityMention, EntityMentionPickerExtension],
     content: blocksToMarkdownBody(scene.blocks),
     autofocus: initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end',
     onUpdate({ editor: ed }) {
@@ -169,11 +167,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       // Word count: debounced at 250ms so typing stays smooth
       if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
       wcDebounceRef.current = setTimeout(() => {
-        // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = (ed.storage as any).markdown.getMarkdown() as string;
-        const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
-        setWordCount(countWords(markdown));
+        setWordCount(countWords(getEditorMarkdown(ed)));
       }, WC_DEBOUNCE_MS);
       if (changeRef.current) clearTimeout(changeRef.current);
       changeRef.current = setTimeout(() => {
@@ -197,15 +191,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             }
           }
         }
-        // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = (ed.storage as any).markdown.getMarkdown() as string;
-        // tiptap-markdown v0.9 omits a trailing newline; add it for tooling compatibility.
-        const markdown = raw.endsWith('\n') ? raw : `${raw}\n`;
         onBlocksChangeRef.current([{
           id: blockIdRef.current,
           type: 'prose',
-          content: markdown,
+          content: getEditorMarkdown(ed),
           order: 0,
           updatedAt: new Date().toISOString(),
         }]);
