@@ -411,7 +411,7 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 }
 
 /**
- * Navigate to Editor → select the Lighthouse Scene → open the Assistant tab.
+ * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
  * Navigates away first so that the Writing Assistant panel remounts and clears
  * any in-memory tip-suppression state from prior tests.
  */
@@ -421,13 +421,31 @@ async function openWritingAssistantWithScene(page: Page): Promise<void> {
   if (await notesTab.isVisible().catch(() => false)) await notesTab.click();
 
   await openScene(page, 'Lighthouse Scene');
-  await page.getByRole('tab', { name: 'Assistant' }).click();
+  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
+  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
+  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
+  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await showSidebarBtn.click();
+  }
+  const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
+  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+    await waHeader.click();
+  }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
-  await page.getByRole('tab', { name: 'Assistant' }).click();
+  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
+  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
+  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
+  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await showSidebarBtn.click();
+  }
+  const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
+  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+    await waHeader.click();
+  }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
@@ -1037,7 +1055,15 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     } else {
       await disabledPage.getByRole('tab', { name: /^Story$/ }).click();
     }
-    await disabledPage.getByRole('tab', { name: 'Assistant' }).click();
+    // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
+    const showSidebarBtnD = disabledPage.getByRole('button', { name: 'Show right sidebar' });
+    if (await showSidebarBtnD.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await showSidebarBtnD.click();
+    }
+    const waHeaderD = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
+    if ((await waHeaderD.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+      await waHeaderD.click();
+    }
 
     // Panel renders in disabled state.
     const disabledPanel = disabledPage.locator('.writing-assistant-disabled');
