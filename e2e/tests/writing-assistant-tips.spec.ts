@@ -79,6 +79,8 @@ function seedUserData(userData: string, vaultDir: string): void {
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    rightSidebarVisible: true,
+    rightSidebarPanels: [{ id: 'writing-assistant', collapsed: false }],
   };
 
   const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: vaultDir };
