@@ -5935,8 +5935,11 @@ function sendUpdateStatus(payload: UpdateStatusPayload) {
 
 function applyUpdateChannel() {
   const { updateChannel } = loadAppSettings();
-  // electron-updater maps 'latest' → stable GitHub releases, 'beta' → pre-releases
+  // electron-updater maps 'latest' → stable GitHub releases, 'beta' → pre-releases.
+  // allowPrerelease must also be set explicitly: beta cuts land as GitHub pre-releases,
+  // so without this flag the GitHub provider skips them even when channel='beta'.
   autoUpdater.channel = updateChannel === 'beta' ? 'beta' : 'latest';
+  autoUpdater.allowPrerelease = updateChannel === 'beta';
 }
 
 function normalizeReleaseNotes(
