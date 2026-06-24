@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Archive } from 'lucide-react';
 import type { Scene } from './types';
 import ArchiveConfirmDialog from './ArchiveConfirmDialog';
+import { PanelHeader } from './components/ui/PanelChrome';
 import './ArchivePanel.css';
 
 interface ArchivePayload {
@@ -197,6 +199,10 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
   if (!enabled) {
     return (
       <div className="archive-panel archive-disabled">
+        <PanelHeader
+          icon={<Archive size={14} aria-hidden="true" />}
+          title="Archive"
+        />
         <p className="archive-disabled-msg">Archive Agent is disabled. Enable it in Settings.</p>
       </div>
     );
@@ -205,6 +211,10 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
   if (loading) {
     return (
       <div className="archive-panel">
+        <PanelHeader
+          icon={<Archive size={14} aria-hidden="true" />}
+          title="Archive"
+        />
         <div className="ap-loading" aria-label="Loading archive suggestions">Loading…</div>
       </div>
     );
@@ -226,6 +236,10 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
       />
     )}
     <div className="archive-panel">
+      <PanelHeader
+        icon={<Archive size={14} aria-hidden="true" />}
+        title="Archive"
+      />
       {!isLive && (
         <div className="ap-mock-banner" role="note">
           Preview mode — live API not yet connected.

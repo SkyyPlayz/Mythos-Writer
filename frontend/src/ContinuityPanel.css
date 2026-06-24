@@ -100,6 +100,11 @@
     border-top-color: var(--border-default);
     opacity: 0.5;
   }
+
+  .cp-scan-now-btn,
+  .cp-group-header {
+    transition: none;
+  }
 }
 
 /* ── Status/error banners ── */

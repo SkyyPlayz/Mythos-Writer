@@ -3,6 +3,7 @@ import { ScrollText, CircleCheck } from 'lucide-react';
 import type { Scene } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
+import { PanelHeader } from './components/ui/PanelChrome';
 import './ContinuityPanel.css';
 
 export type { InconsistencyItem };
@@ -207,6 +208,10 @@ export default function ContinuityPanel({
   if (!enabled) {
     return (
       <div className="cp-panel">
+        <PanelHeader
+          icon={<ScrollText size={14} aria-hidden="true" />}
+          title="Continuity"
+        />
         <p role="status" className="cp-status-msg" aria-live="polite">Archive Agent is disabled. Enable it in Settings.</p>
       </div>
     );
@@ -217,6 +222,10 @@ export default function ContinuityPanel({
 
   return (
     <div className="cp-panel">
+      <PanelHeader
+        icon={<ScrollText size={14} aria-hidden="true" />}
+        title="Continuity"
+      />
       {/* Always-in-DOM aria-live status region */}
       <p
         role="status"
