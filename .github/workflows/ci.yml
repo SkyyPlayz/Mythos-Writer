@@ -145,11 +145,12 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: npm run build:electron
 
-      - name: Cache electron build for E2E shards
-        uses: actions/cache/save@v4
+      - name: Upload electron build for E2E shards
+        uses: actions/upload-artifact@v4
         with:
+          name: electron-build-${{ github.run_id }}
           path: out/
-          key: electron-build-${{ github.run_id }}
+          retention-days: 1
 
       - name: Stop WSL2 power keep-alive
         if: always()
@@ -179,12 +180,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore electron build from cache
-        uses: actions/cache/restore@v4
+      - name: Download electron build
+        uses: actions/download-artifact@v4
         with:
+          name: electron-build-${{ github.run_id }}
           path: out/
-          key: electron-build-${{ github.run_id }}
-          fail-on-cache-miss: true
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -257,12 +257,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore electron build from cache
-        uses: actions/cache/restore@v4
+      - name: Download electron build
+        uses: actions/download-artifact@v4
         with:
+          name: electron-build-${{ github.run_id }}
           path: out/
-          key: electron-build-${{ github.run_id }}
-          fail-on-cache-miss: true
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -312,12 +311,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore electron build from cache
-        uses: actions/cache/restore@v4
+      - name: Download electron build
+        uses: actions/download-artifact@v4
         with:
+          name: electron-build-${{ github.run_id }}
           path: out/
-          key: electron-build-${{ github.run_id }}
-          fail-on-cache-miss: true
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -376,12 +374,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Restore electron build from cache
-        uses: actions/cache/restore@v4
+      - name: Download electron build
+        uses: actions/download-artifact@v4
         with:
+          name: electron-build-${{ github.run_id }}
           path: out/
-          key: electron-build-${{ github.run_id }}
-          fail-on-cache-miss: true
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
