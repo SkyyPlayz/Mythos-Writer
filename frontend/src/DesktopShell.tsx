@@ -4044,9 +4044,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
 
-      {/* Restore GettingStartedPanel when GlobalRightSidebar is not rendered (no rightSidebarVisible in seeded settings).
-           Mirrors the pre-SKY-3177 RightSidebar behaviour so post-onboarding E2E tests see gs-panel. */}
-      {grsVisible === undefined && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
+      {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
+           migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
+           without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
+           Condition: show whenever GRS is not open (grsVisible !== true). */}
+      {grsVisible !== true && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
         <aside className="gs-aside">
           <GettingStartedPanel
             progress={gettingStartedProgress}
