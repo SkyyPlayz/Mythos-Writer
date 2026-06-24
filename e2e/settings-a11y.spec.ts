@@ -82,12 +82,14 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 
 // SKY-3216/D2: settings panel has category nav; navigate to the given category
 // before querying controls that live under it.
+// SKY-3230: extended timeout (10 s) for slow CI runners; wait for section to be
+// visible rather than a fixed 100 ms pause so the assertion can start immediately.
 async function navigateSettingsCategory(page: Page, category: string): Promise<void> {
-  const btn = page.locator('.settings-cat-nav-btn', { hasText: category });
-  if (await btn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await btn.click();
-    await page.waitForTimeout(100);
-  }
+  const catId = category.toLowerCase();
+  const btn = page.locator(`[data-testid="settings-cat-${catId}"]`);
+  await btn.waitFor({ state: 'visible', timeout: 10_000 });
+  await btn.click();
+  await page.locator(`[data-settings-cat="${catId}"]`).first().waitFor({ state: 'visible', timeout: 5_000 });
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
