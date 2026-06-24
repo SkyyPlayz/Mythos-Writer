@@ -816,37 +816,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
-  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
-  // main creates the default Mythos vault bundle under app data and seeds a
-  // "My First Story" scene. The backend keeps default-mythos-vault as a
-  // compatibility alias, but new UI reports startMode=quick-start.
-  async function handleQuickStart() {
-    setStartMode('quick-start');
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const res = await api().onboardingComplete({ startMode: 'quick-start' });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'quick-start',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
-      setScaffolding(false);
-    }
-  }
-
   function handleCreateCustom() {
     setStartMode(null);
     setSelectedTemplateId(null);
@@ -1517,7 +1486,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               title="Quick Start"
               description="One click — we set everything up for you."
               ctaLabel="Start &#x2192;"
-              onActivate={handleQuickStart}
+              onActivate={handleSelectBlank}
               testId="card-path-default"
               cardRef={quickStartRef}
             />

@@ -269,25 +269,16 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  // SKY-2220: one-click Quick Start bypasses step2 (no title, no save path picker).
-  it('clicking Quick Start calls onboardingComplete with startMode=quick-start and bypasses Step 2', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
+  // card-path-default navigates to step2 (title + save path form) — SKY-4262.
+  it('clicking Default card navigates to Step 2 (title + path form)', async () => {
+    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-path-default'));
-    await waitFor(() =>
-      expect(mockApi.onboardingComplete).toHaveBeenCalledWith({ startMode: 'quick-start' }),
-    );
-    expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        onboardingComplete: true,
-        lastOpenedScene: expect.objectContaining({ sceneId: 'scene-1' }),
-      }),
-    );
-    // No detour through step2/step1b — we go straight to step3 (scaffolding) and exit.
-    expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('screen-step2')).toBeInTheDocument());
+    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
+    await act(async () => {});
   });
 
-  it('shows scaffold error UI when Quick Start vault creation fails', async () => {
+  it('shows scaffold error UI when vault creation fails via Default card', async () => {
     mockApi = makeApi({
       onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
     });
@@ -295,6 +286,9 @@ describe('OnboardingWizard — Step 1', () => {
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
     fireEvent.click(screen.getByTestId('card-path-default'));
+    await waitFor(() => expect(screen.getByTestId('screen-step2')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
+    fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
     expect(onComplete).not.toHaveBeenCalled();
