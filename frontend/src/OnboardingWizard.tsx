@@ -520,18 +520,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const docxFileInputRef = useRef<HTMLInputElement>(null);
   const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
-  const [importMwPath, setImportMwPath] = useState('');
-  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
-  const [importMwMsg, setImportMwMsg] = useState('');
-  const [importObsNotesPath, setImportObsNotesPath] = useState('');
-  const [importObsStoryPath, setImportObsStoryPath] = useState('');
-  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
-  const [importRunning, setImportRunning] = useState(false);
-  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
-  const docxFileInputRef = useRef<HTMLInputElement>(null);
-  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // SKY-2007: load system path suggestions when the save-location step opens
   // SKY-2988: also load for the Custom Setup location picker
   useEffect(() => {
@@ -690,47 +678,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       setScaffolding(false);
     }
   }
-
-
-  async function handleCustomFinish() {
-    setScaffoldError('');
-    setFromCustomSetup(true);
-    setStartMode('blank');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const expanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      // SKY-2988: BE-1 (SKY-2991) will differentiate 'recommended' from 'blank'.
-      // Until it lands, both use startMode:'blank' at the chosen path.
-      const res = await api().onboardingComplete({
-        startMode: 'blank',
-        vaultParentPath: expanded,
-        vaultName: customVaultName.trim() || deriveVaultName(expanded),
-      });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
-      setScaffolding(false);
-    }
-  }
-
 
   // AC-L-05: first card gets initial focus when step1 mounts or returns
   const quickStartRef = useRef<HTMLButtonElement>(null);
