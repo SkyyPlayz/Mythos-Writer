@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Scene, Story, Chapter } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import type { TtsEngineSettings } from './hooks/useTtsPlayer';
 import VaultAgentPanel from './VaultAgentPanel';
 import ArchivePanel from './ArchivePanel';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
@@ -30,6 +31,7 @@ interface Props {
   waAutoApply?: boolean;
   waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  ttsSettings?: TtsEngineSettings;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -225,6 +227,7 @@ function AiPanel({
   waAutoApply = false,
   waAutoApplyCategories,
   onWaAutoApplyCategoriesChange,
+  ttsSettings,
   isPageFocused = true,
   onJumpToText = () => {},
   onInsertWikiLink = () => {},
@@ -241,6 +244,7 @@ function AiPanel({
   waAutoApply?: boolean;
   waAutoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onWaAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  ttsSettings?: TtsEngineSettings;
   isPageFocused?: boolean;
   onJumpToText?: (text: string) => void;
   onInsertWikiLink?: (link: string, anchorText: string) => void;
@@ -296,6 +300,7 @@ function AiPanel({
             idleDebounceSeconds={idleDebounceSeconds}
             isActive={isPageFocused}
             onJumpToText={onJumpToText}
+            ttsSettings={ttsSettings}
             autoApply={waAutoApply}
             autoApplyCategories={waAutoApplyCategories}
             onAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
@@ -333,6 +338,7 @@ export default function RightSidebar({
   waAutoApply = false,
   waAutoApplyCategories,
   onWaAutoApplyCategoriesChange,
+  ttsSettings,
   isPageFocused = true,
   onJumpToText,
   onInsertWikiLink,
@@ -424,6 +430,7 @@ export default function RightSidebar({
             waAutoApply={waAutoApply}
             waAutoApplyCategories={waAutoApplyCategories}
             onWaAutoApplyCategoriesChange={onWaAutoApplyCategoriesChange}
+            ttsSettings={ttsSettings}
             isPageFocused={isPageFocused}
             onJumpToText={onJumpToText}
             onInsertWikiLink={onInsertWikiLink}

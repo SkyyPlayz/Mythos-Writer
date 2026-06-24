@@ -6,7 +6,7 @@ import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
 import type { WritingAssistantTip, WritingAssistantTipInput, WritingTipCategory } from './hooks/useWritingScheduler';
 import { TipCard } from './TipCard';
-import { useTtsPlayer } from './hooks/useTtsPlayer';
+import { useTtsPlayer, type TtsEngineSettings } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
 import PresetBrowser from './components/PresetBrowser';
@@ -92,6 +92,8 @@ interface Props {
   onJumpToText?: (text: string) => void;
   /** AC-WA-25: show STT microphone button in input area only when true. Off by default. */
   voiceEnabled?: boolean;
+  /** G2: TTS engine config. When absent or unconfigured, OS speechSynthesis is used as default. */
+  ttsSettings?: TtsEngineSettings;
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
@@ -163,6 +165,7 @@ export default function WritingAssistantPanel({
   isActive = true,
   onJumpToText,
   voiceEnabled = false,
+  ttsSettings,
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
@@ -209,7 +212,7 @@ export default function WritingAssistantPanel({
   const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
 
-  const tts = useTtsPlayer();
+  const tts = useTtsPlayer(ttsSettings);
 
   const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'

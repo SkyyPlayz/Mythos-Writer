@@ -125,6 +125,10 @@ function buildAppSettings(waEnabled = true): object {
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
     voice: { enabled: true, cloudFallback: false },
+    // Force IPC path in useTtsPlayer so E2E tests don't depend on OS speechSynthesis,
+    // which fires onerror immediately in headless Electron (no audio device).
+    // The voice:speak IPC handler is mocked in installIpcMocks.
+    tts: { enabled: true, provider: 'local', localBinaryPath: '/dev/null' },
   };
 }
 
@@ -238,6 +242,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 // ─── IPC mock installer ────────────────────────────────────────────────────────
+
 
 type MockTip = { id: string; text: string; category: string; sceneUpdatedAt?: string };
 type MockComment = {

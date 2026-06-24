@@ -2720,6 +2720,7 @@ export default function DesktopShell() {
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
+            ttsSettings={appSettings?.tts}
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
@@ -3562,6 +3563,7 @@ export default function DesktopShell() {
             waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
+            ttsSettings={appSettings?.tts}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
             onInsertWikiLink={handleInsertWikiLink}
