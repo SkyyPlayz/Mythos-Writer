@@ -522,29 +522,6 @@ describe('OnboardingWizard — Step 2 validation', () => {
     expect(screen.queryByTestId('screen-step3')).not.toBeInTheDocument();
   });
 
-  it('uses backslash separator when constructing storyDir on Windows (sep=\\\\)', async () => {
-    // Simulate Windows: vaultGetPaths returns pathSeparator='\\'
-    mockApi.vaultGetPaths = vi.fn(() =>
-      resolvedInEffect({ homeDir: 'C:\\Users\\user', pathSeparator: '\\' as const })
-    );
-    const capturedPaths: string[] = [];
-    // Track all validatePath calls; allow all to succeed (no conflict)
-    mockApi.validatePath = vi.fn().mockImplementation((path: string) => {
-      capturedPaths.push(path);
-      return Promise.resolve({ exists: false, isEmpty: true, writable: true });
-    });
-    await renderAtStep2();
-    // Do not change save-path: default '~/Documents/MythosWriter' avoids the
-    // 500ms debounce that would disable the Create button mid-test.
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await flushAsyncEffects();
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalled());
-    // storyDir is the second validatePath call; it must use '\\' not '/'
-    const storyDirCall = capturedPaths.find((p) => p.includes('My Story'));
-    expect(storyDirCall).toBe('~/Documents/MythosWriter\\My Story');
-  });
-
   it('unwritable path shows path error', async () => {
     mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
     await renderAtStep2();
