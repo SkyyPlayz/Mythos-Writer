@@ -172,6 +172,8 @@ interface AppMenuBarProps {
   onToggleDistractionFree: () => void;
   /** SKY-3207 (B4): toggle the top bar hidden state. */
   onToggleTopBar: () => void;
+  /** SKY-3207 (B4): current hidden state — drives the toggle button aria-label. */
+  topBarHidden: boolean;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
   requestText: (label: string) => Promise<string | null>;
@@ -186,7 +188,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -304,8 +306,8 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
       <button
         className="app-menu-topbar-btn"
         onClick={onToggleTopBar}
-        aria-label="Hide top bar"
-        title="Hide top bar (Ctrl+Shift+H)"
+        aria-label={topBarHidden ? 'Show top bar' : 'Hide top bar'}
+        title={`${topBarHidden ? 'Show' : 'Hide'} top bar (Ctrl+Shift+H)`}
         data-testid="toolbar-hide-topbar-btn"
       >
         ▲
@@ -3036,6 +3038,7 @@ export default function DesktopShell() {
             onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
             onToggleDistractionFree={toggleDistractionFree}
             onToggleTopBar={toggleTopBar}
+            topBarHidden={topBarHidden}
             onOpenTour={() => setTourOpen(true)}
             onOpenExport={(scope: ExportScope) => setExportScope(scope)}
             requestText={requestText}
