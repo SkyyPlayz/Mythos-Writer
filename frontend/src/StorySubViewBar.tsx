@@ -1,15 +1,12 @@
-// SKY-2095 (Phase 2 #2): Story-tab top bar — sub-view toggles + vault badge + writing mode.
+// SKY-2095 (Phase 2 #2): Story-tab top bar — sub-view toggles + vault badge.
+// SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
 import './StorySubViewBar.css';
-import type { WritingMode } from './types';
 
 type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';
 
 interface StorySubViewBarProps {
   activeSubView: string;
   onSubViewChange: (view: StorySubView) => void;
-  writingMode: WritingMode;
-  onSetWritingMode: (mode: WritingMode) => void;
-  onOpenFocusPrefs: () => void;
   vaultName: string;
 }
 
@@ -23,9 +20,6 @@ const SUB_VIEWS: { id: StorySubView; label: string }[] = [
 export default function StorySubViewBar({
   activeSubView,
   onSubViewChange,
-  writingMode,
-  onSetWritingMode,
-  onOpenFocusPrefs,
   vaultName,
 }: StorySubViewBarProps) {
   return (
@@ -63,47 +57,6 @@ export default function StorySubViewBar({
             {sv.label}
           </button>
         ))}
-      </div>
-
-      {/* Right: Writing mode switcher */}
-      <div className="story-subview-bar__modes" aria-label="Writing mode">
-        <button
-          className={`story-subview-bar__mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('normal')}
-          aria-pressed={writingMode === 'normal'}
-          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-          data-testid="writing-mode-normal"
-        >
-          N
-        </button>
-        <button
-          className={`story-subview-bar__mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('focus')}
-          aria-pressed={writingMode === 'focus'}
-          title="Focus mode — distraction-free"
-          data-testid="writing-mode-focus"
-        >
-          F
-        </button>
-        {writingMode === 'focus' && (
-          <button
-            className="story-subview-bar__mode-prefs"
-            onClick={onOpenFocusPrefs}
-            title="Configure Focus mode panels"
-            aria-label="Focus mode preferences"
-          >
-            ⚙
-          </button>
-        )}
-        <button
-          className={`story-subview-bar__mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-          onClick={() => onSetWritingMode('edit')}
-          aria-pressed={writingMode === 'edit'}
-          title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
-          data-testid="writing-mode-edit"
-        >
-          E
-        </button>
       </div>
     </div>
   );

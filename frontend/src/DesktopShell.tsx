@@ -3128,13 +3128,10 @@ export default function DesktopShell() {
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-      {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles + writing mode. */}
+      {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles. SKY-3626: writing mode removed, lives in editor toolbar. */}
       <StorySubViewBar
         activeSubView={view}
         onSubViewChange={handleSetView}
-        writingMode={writingMode}
-        onSetWritingMode={setWritingMode}
-        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
       />
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
@@ -3251,7 +3248,7 @@ export default function DesktopShell() {
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
+          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker. SKY-3626: NFE writing mode added here. */}
           <div className="shell-editor-toolbar">
             {selectedStory && showTabBar && !splitWindowEnabled && (
               <DepthSlider
@@ -3266,6 +3263,38 @@ export default function DesktopShell() {
                 isEmpty={depthIsEmpty}
               />
             )}
+            {/* SKY-3626: N/F/E writing-mode controls — Story editor only (center, above page) */}
+            <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
+              <button
+                className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+                onClick={() => setWritingMode('normal')}
+                aria-pressed={writingMode === 'normal'}
+                title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+                data-testid="writing-mode-normal"
+              >N</button>
+              <button
+                className={`nfe-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+                onClick={() => setWritingMode('focus')}
+                aria-pressed={writingMode === 'focus'}
+                title="Focus mode — distraction-free"
+                data-testid="writing-mode-focus"
+              >F</button>
+              {writingMode === 'focus' && (
+                <button
+                  className="nfe-mode-prefs"
+                  onClick={() => setFocusModePrefsOpen(true)}
+                  title="Configure Focus mode panels"
+                  aria-label="Focus mode preferences"
+                >⚙</button>
+              )}
+              <button
+                className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+                onClick={() => setWritingMode('edit')}
+                aria-pressed={writingMode === 'edit'}
+                title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+                data-testid="writing-mode-edit"
+              >E</button>
+            </div>
             <button
               className="split-toggle-btn"
               onClick={handleToggleSplitWindow}
@@ -3730,6 +3759,9 @@ export default function DesktopShell() {
           onSelectEntity={handleSelectEntity}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+          writingMode={writingMode}
+          onSetWritingMode={setWritingMode}
+          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         />
       )}
       {ambiguousLink && (

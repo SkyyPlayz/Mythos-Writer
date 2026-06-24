@@ -347,3 +347,14 @@
   display: flex;
   flex-direction: column;
 }
+
+/* ── SKY-3626: NFE writing-mode toggle in notes-tab-toolbar ── */
+
+.notes-tab-toolbar .nfe-mode-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 8px;
+  -webkit-app-region: no-drag;
+}
