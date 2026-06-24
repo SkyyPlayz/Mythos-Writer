@@ -14,6 +14,7 @@
 #   LINT_RESULT, TYPECHECK_RESULT, UNIT_RESULT, BUILD_ELECTRON_RESULT,
 #   CI_RESULT, BUILD_LINUX_RESULT, BUILD_MACOS_RESULT
 #   Optional: PAPERCLIP_FE_AGENT_ID — enables auto-fix issue creation on failure (SKY-3006)
+#   Optional: PAPERCLIP_CTO_AGENT_ID — enables repo-wide [ci-infra] root ticket on shared main failure (SKY-3907)
 #
 # Close-ping mode (ACTION=closed):
 #   Only the shared vars above are needed — CI result vars are absent.
@@ -278,6 +279,78 @@ if [[ "$CONCLUSION" == "success" ]]; then
   else
     echo "CI green — no open fix-request for PR #${PR_NUMBER} (nothing to close)"
   fi
+
+  # ── Close [ci-infra] root ticket if main is also green now (SKY-3907) ──────
+  # When the report job sees a green PR run, check whether main's HEAD CI is
+  # also green. If yes, auto-close any open [ci-infra] repo-wide root tickets
+  # (the root cause that triggered them has been resolved).
+  PAPERCLIP_CTO_AGENT_ID="${PAPERCLIP_CTO_AGENT_ID:-}"
+  if [[ -n "$PAPERCLIP_CTO_AGENT_ID" ]]; then
+    MAIN_GREEN_TMP=$(mktemp)
+    gh run list \
+      --repo "$REPO" \
+      --branch main \
+      --workflow "CI" \
+      --status completed \
+      --limit 1 \
+      --json conclusion \
+      >"$MAIN_GREEN_TMP" 2>/dev/null || echo '[]' >"$MAIN_GREEN_TMP"
+
+    export MAIN_GREEN_TMP
+    MAIN_IS_GREEN=$(python3 <<'PY' || true
+import json, os
+path = os.environ["MAIN_GREEN_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list) and data and data[0].get("conclusion") == "success":
+        print("true")
+    else:
+        print("false")
+except Exception:
+    print("false")
+PY
+    )
+    rm -f "$MAIN_GREEN_TMP"
+
+    if [[ "$MAIN_IS_GREEN" == "true" ]]; then
+      INFRA_CLOSE_TMP=$(mktemp)
+      paperclipai issue list \
+        -C "$PAPERCLIP_COMPANY_ID" \
+        --status todo,in_progress,in_review,blocked \
+        --assignee-agent-id "$PAPERCLIP_CTO_AGENT_ID" \
+        --match "[ci-infra]" \
+        --json >"$INFRA_CLOSE_TMP" 2>/dev/null || echo '[]' >"$INFRA_CLOSE_TMP"
+
+      export INFRA_CLOSE_TMP
+      INFRA_IDS_TO_CLOSE=$(python3 <<'PY' || true
+import json, os
+path = os.environ["INFRA_CLOSE_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = fh.read().strip() or "[]"
+    data = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
+ids = [it.get("id") or "" for it in issues if (it.get("title") or "").startswith("[ci-infra]")]
+print("\n".join(i for i in ids if i))
+PY
+      )
+      rm -f "$INFRA_CLOSE_TMP"
+
+      if [[ -n "$INFRA_IDS_TO_CLOSE" ]]; then
+        while IFS= read -r INFRA_ID; do
+          [[ -z "$INFRA_ID" ]] && continue
+          echo "main is green — closing root infra ticket ${INFRA_ID}"
+          paperclipai issue update "$INFRA_ID" \
+            --status done \
+            --comment "main branch CI is now green (detected via PR #${PR_NUMBER} run: ${RUN_URL}). Root cause resolved — auto-closing."
+        done <<< "$INFRA_IDS_TO_CLOSE"
+      fi
+    fi
+  fi
+
   exit 0
 fi
 
@@ -295,6 +368,179 @@ fi
 
 echo "PR #${PR_NUMBER} CI failure: ${FAILED_STAGE_DESC}"
 
+# ── Repo-wide failure detection (SKY-3907 / SKY-998) ─────────────────────────
+# If main's HEAD CI is also red on the same stage, this failure is repo-wide —
+# every open PR inherits it. Mint ONE [ci-infra] root ticket assigned to CTO
+# and skip the per-PR [auto-fix] fix-request entirely. Create a per-PR
+# fix-request ONLY when main is green (failure is isolated to this PR's branch).
+PAPERCLIP_CTO_AGENT_ID="${PAPERCLIP_CTO_AGENT_ID:-}"
+REPO_WIDE=false
+
+if [[ -n "$PAPERCLIP_CTO_AGENT_ID" ]]; then
+  MAIN_RUN_TMP=$(mktemp)
+  gh run list \
+    --repo "$REPO" \
+    --branch main \
+    --workflow "CI" \
+    --status completed \
+    --limit 1 \
+    --json databaseId,conclusion \
+    >"$MAIN_RUN_TMP" 2>/dev/null || echo '[]' >"$MAIN_RUN_TMP"
+
+  export MAIN_RUN_TMP
+  MAIN_RUN_ID=$(python3 <<'PY' || true
+import json, os
+path = os.environ["MAIN_RUN_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list) and data:
+        print(str(data[0].get("databaseId", "")))
+except Exception:
+    pass
+PY
+  )
+  MAIN_RUN_ID=${MAIN_RUN_ID:-}
+
+  MAIN_CONCLUSION=$(python3 <<'PY' || true
+import json, os
+path = os.environ["MAIN_RUN_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    if isinstance(data, list) and data:
+        print(data[0].get("conclusion", "unknown"))
+    else:
+        print("unknown")
+except Exception:
+    print("unknown")
+PY
+  )
+  MAIN_CONCLUSION=${MAIN_CONCLUSION:-unknown}
+  rm -f "$MAIN_RUN_TMP"
+
+  if [[ -n "$MAIN_RUN_ID" && "$MAIN_CONCLUSION" == "failure" ]]; then
+    MAIN_JOBS_TMP=$(mktemp)
+    gh run view "$MAIN_RUN_ID" \
+      --repo "$REPO" \
+      --json jobs \
+      >"$MAIN_JOBS_TMP" 2>/dev/null || echo '{"jobs":[]}' >"$MAIN_JOBS_TMP"
+
+    export MAIN_JOBS_TMP FAILED_STAGE
+    STAGE_RED_ON_MAIN=$(python3 <<'PY' || true
+import json, os, sys
+stage = os.environ.get("FAILED_STAGE", "1")
+path = os.environ["MAIN_JOBS_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    jobs = data.get("jobs", []) if isinstance(data, dict) else []
+except Exception:
+    print("false")
+    sys.exit(0)
+if stage == "1":
+    check = {"lint", "typecheck", "unit"}
+elif stage == "2":
+    check = {"build-electron"}
+else:
+    check = {"e2e-shard-1", "e2e-shard-2", "e2e-shard-3", "e2e-shard-4", "ci"}
+for job in jobs:
+    if job.get("name", "") in check and job.get("conclusion", "") == "failure":
+        print("true")
+        sys.exit(0)
+print("false")
+PY
+    )
+    rm -f "$MAIN_JOBS_TMP"
+    [[ "$STAGE_RED_ON_MAIN" == "true" ]] && REPO_WIDE=true
+  fi
+fi
+
+if [[ "$REPO_WIDE" == "true" ]]; then
+  echo "Repo-wide ${FAILED_STAGE_DESC} failure detected (main also red) — minting ONE root infra ticket, skipping per-PR fix-request (SKY-998)"
+
+  INFRA_TITLE="[ci-infra] main ${FAILED_STAGE_DESC} red — repo-wide"
+  INFRA_LIST_TMP=$(mktemp)
+  trap 'rm -f "$DESC_FILE" "$LIST_FILE" "$FIX_LIST_FILE" "$INFRA_LIST_TMP"' EXIT
+
+  paperclipai issue list \
+    -C "$PAPERCLIP_COMPANY_ID" \
+    --status todo,in_progress,in_review,blocked \
+    --assignee-agent-id "$PAPERCLIP_CTO_AGENT_ID" \
+    --match "[ci-infra]" \
+    --json >"$INFRA_LIST_TMP" 2>/dev/null || echo '[]' >"$INFRA_LIST_TMP"
+
+  export INFRA_LIST_TMP INFRA_TITLE
+  EXISTING_INFRA=$(python3 <<'PY' || true
+import json, os
+title = os.environ["INFRA_TITLE"]
+path = os.environ["INFRA_LIST_TMP"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = fh.read().strip() or "[]"
+    data = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
+for it in issues:
+    if (it.get("title") or "") == title:
+        print(it.get("id") or "")
+        break
+PY
+  )
+  EXISTING_INFRA=${EXISTING_INFRA:-}
+  rm -f "$INFRA_LIST_TMP"
+
+  if [[ -n "$EXISTING_INFRA" ]]; then
+    echo "Root infra ticket ${EXISTING_INFRA} already open — skipping duplicate (dedup OK)"
+  else
+    echo "Creating root infra ticket: ${INFRA_TITLE}"
+    INFRA_DESC_TMP=$(mktemp)
+    trap 'rm -f "$DESC_FILE" "$LIST_FILE" "$FIX_LIST_FILE" "$INFRA_DESC_TMP"' EXIT
+    cat >"$INFRA_DESC_TMP" <<INFRADESC
+## Repo-wide CI failure — ${FAILED_STAGE_DESC}
+
+\`main\`'s HEAD CI is also red on **${FAILED_STAGE_DESC}**. Every open PR inherits this failure.
+
+This is the single root-cause ticket for the shared breakage on \`main\` (SKY-998 policy: one infra ticket per root cause, not one per open PR).
+
+### Context
+- **Failed stage:** ${FAILED_STAGE_DESC}
+- **Detected via:** PR #${PR_NUMBER} CI report (${RUN_URL})
+- **main run ID:** ${MAIN_RUN_ID:-unknown}
+
+### Action required
+Diagnose and fix the failing ${FAILED_STAGE_DESC} jobs on \`main\`. Per-PR auto-fix tickets for this stage are suppressed until \`main\` returns green (the report job auto-closes this ticket when main is green again).
+
+\`\`\`bash
+gh run view ${MAIN_RUN_ID:-<run-id>} --log-failed   # fetch main failure logs
+\`\`\`
+
+**Do NOT commit to \`main\` directly.** Open a fix PR, get it green, merge through the normal sign-off gate (SKY-3109).
+INFRADESC
+    paperclipai issue create \
+      -C "$PAPERCLIP_COMPANY_ID" \
+      --project-id "$PAPERCLIP_PROJECT_ID" \
+      --assignee-agent-id "$PAPERCLIP_CTO_AGENT_ID" \
+      --priority critical \
+      --title "$INFRA_TITLE" \
+      --description "$(cat "$INFRA_DESC_TMP")"
+    rm -f "$INFRA_DESC_TMP"
+  fi
+
+  # Comment on the PR's ping issue that it is blocked on the repo-wide failure.
+  # EXISTING_ID is only set when a prior ping issue existed for this PR; on first
+  # run, the ping issue was just created above without a captured ID — skip then.
+  if [[ -n "$EXISTING_ID" ]]; then
+    paperclipai issue comment "$EXISTING_ID" \
+      --body "⚠️ **Blocked on repo-wide ${FAILED_STAGE_DESC} failure on \`main\`.** Per-PR auto-fix ticket suppressed (SKY-998 / SKY-3907). Root-cause ticket: \`${INFRA_TITLE}\`."
+  fi
+
+  echo "Repo-wide failure — per-PR fix-request skipped."
+  exit 0
+fi
+
+# ── Per-PR fix-request (main is green; failure is PR-branch-specific) ─────────
 if [[ -n "$EXISTING_FIX" ]]; then
   # A fix-request is already open — add a retry comment instead of a duplicate issue.
   # The FE agent reads this comment to increment its retry_count.

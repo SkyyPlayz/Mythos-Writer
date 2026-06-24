@@ -701,11 +701,14 @@ jobs:
     # is never blocked by upstream skipped status (SKY-2421).
     # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
     # auto-fix stage detection (SKY-3006); it is already transitively needed.
+    # actions: read is required for gh run list / gh run view used by the
+    # repo-wide failure detection in notify-board.sh (SKY-3907).
     needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
     runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Checkout (for scripts/notify-board.sh)
         uses: actions/checkout@v4
@@ -730,4 +733,5 @@ jobs:
           PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
           PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
           PAPERCLIP_FE_AGENT_ID: b2f91d8c-36c6-4397-a5fc-a7cb61d6a64d
+          PAPERCLIP_CTO_AGENT_ID: 63388835-9c91-41d0-8852-ffc1b76daaec
         run: bash scripts/notify-board.sh
