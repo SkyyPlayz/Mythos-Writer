@@ -88,6 +88,8 @@ function seedUserData(userData: string, vaultDir: string, opts: SeedOptions = {}
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    rightSidebarVisible: true,
+    rightSidebarPanels: [{ id: 'scene-notes', collapsed: false }],
   };
 
   const vaultSettings = { vaultRoot: vaultDir };

@@ -745,6 +745,28 @@ export default function DesktopShell() {
     });
   }, []);
 
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') { handleTabChange('notes'); return; }
+    if (itemId === 'notes-vault') { handleNotesSubViewChange('editor'); handleTabChange('notes'); return; }
+    if (itemId === 'add-character') { handleTabChange('notes'); return; }
+    if (itemId === 'write-scene') {
+      handleSetView('editor');
+      handleTabChange('story');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
+
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
@@ -2836,6 +2858,7 @@ export default function DesktopShell() {
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
+  const showRightSidebarGRS = !inFocusOrDF || (focusPrefs.showRightSidebar ?? false);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
@@ -3446,7 +3469,7 @@ export default function DesktopShell() {
            undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
            This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
            settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
-      {grsVisible !== undefined && <GlobalRightSidebar
+      {grsVisible !== undefined && showRightSidebarGRS && <GlobalRightSidebar
         visible={grsVisible as boolean}
         width={grsWidth}
         panels={grsPanels}
@@ -3458,6 +3481,10 @@ export default function DesktopShell() {
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
+        gettingStartedProgress={gettingStartedProgress}
+        onGettingStartedAction={handleGettingStartedAction}
+        onDismissGettingStarted={handleDismissGettingStarted}
+        onToggleGsCollapsed={handleToggleGsCollapsed}
       />}
 
       {continuityPeekOverlayOpen && (
