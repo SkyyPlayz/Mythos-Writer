@@ -514,22 +514,20 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
   });
 
   test('AC-OB-08: blank story completion → Getting Started panel visible in right sidebar', async () => {
-    // Write minimal settings before the mock fires so DesktopShell's loadVault()
-    // reads rightSidebarVisible: true and opens the GRS for the Getting Started panel.
-    fs.writeFileSync(
-      path.join(userData, 'app-settings.json'),
-      JSON.stringify({
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        gettingStartedProgress: { completedItems: [], dismissed: false },
-        rightSidebarVisible: true,
-      }, null, 2),
-    );
-    await app.evaluate(({ ipcMain }) => {
+    await app.evaluate(({ ipcMain, app: eApp }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
       ipcMain.removeHandler('onboarding:complete');
-      ipcMain.handle('onboarding:complete', () => ({ ok: true }));
+      ipcMain.handle('onboarding:complete', () => {
+        // Replicate what the real handler writes so DesktopShell loads rightSidebarVisible=true
+        // (GRS only renders when the setting is explicitly set — see SKY-3179 / SKY-3337).
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const p = require('path'), f = require('fs');
+        const sp = p.join(eApp.getPath('userData'), 'app-settings.json');
+        const base = f.existsSync(sp) ? JSON.parse(f.readFileSync(sp, 'utf8')) : {};
+        f.writeFileSync(sp, JSON.stringify({ ...base, onboardingComplete: true, gettingStartedProgress: { completedItems: [], dismissed: false }, rightSidebarVisible: true }, null, 2));
+        return { ok: true };
+      });
     });
 
     await clickStep1Card(page, 'card-blank');

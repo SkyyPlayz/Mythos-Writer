@@ -43,6 +43,7 @@ function seedUserData(userData: string, vaultDir: string): void {
     apiKey: 'sk-ant-test-key-for-e2e',
     onboardingComplete: true,
     waScanInterval: 'manual' as const,
+    rightSidebarVisible: true,
     agents: {
       writingAssistant: {
         enabled: true,

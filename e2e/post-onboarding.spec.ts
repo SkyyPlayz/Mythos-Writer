@@ -52,6 +52,7 @@ function seedUserData(userData: string, vaultDir: string, opts: SeedOptions = {}
     onboardingStartMode: opts.onboardingStartMode ?? 'default-mythos-vault',
     firstLaunchAt: opts.firstLaunchAt ?? Date.now(),
     gettingStartedProgress: opts.gettingStartedProgress ?? undefined,
+    rightSidebarVisible: true,
     agents: {
       writingAssistant: {
         enabled: false,
