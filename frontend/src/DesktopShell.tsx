@@ -1081,8 +1081,15 @@ export default function DesktopShell() {
         setAppSettings(s);
         // SKY-3207 (B4): restore top-bar hidden state per-vault
         if (typeof s.topBarHidden === 'boolean') setTopBarHiddenRaw(s.topBarHidden);
-        // Restore global right sidebar state from persisted settings (SKY-1686)
-        setGrsVisible(s.rightSidebarVisible ?? false);
+        // Restore global right sidebar state from persisted settings (SKY-1686).
+        // On first launch rightSidebarVisible is undefined; auto-open the sidebar
+        // when the GettingStarted panel should be shown so it's immediately visible.
+        const initGsProgress = createInitialGettingStartedProgress(
+          undefined,
+          s.onboardingStartMode,
+          s.gettingStartedProgress,
+        );
+        setGrsVisible(s.rightSidebarVisible ?? isGettingStartedVisible(initGsProgress));
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
         if (Array.isArray(s.rightSidebarPanels) && s.rightSidebarPanels.length > 0) setGrsPanels(s.rightSidebarPanels as PanelConfig[]);
         // SKY-1694: restore left sidebar layout from persisted AppSettings
