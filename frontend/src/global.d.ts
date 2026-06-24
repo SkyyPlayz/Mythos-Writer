@@ -474,9 +474,6 @@ interface AppSettings {
   archiveScanBudget?: number;
   archiveStoryEditConsentGiven?: boolean;
 
-  // ── SKY-3207 (B4): hideable top bar ──
-  topBarHidden?: boolean;
-
   // ── Right sidebar persistence (SKY-1683 / PRD §8) ──
   rightSidebarVisible?: boolean;
   rightSidebarWidth?: number;

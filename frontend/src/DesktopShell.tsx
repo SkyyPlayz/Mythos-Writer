@@ -627,44 +627,6 @@ export default function DesktopShell() {
 
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
-  // ─── SKY-3207 (B4): Hideable top bar ───
-  const [topBarHidden, setTopBarHiddenRaw] = useState(false);
-  const [topBarPeekVisible, setTopBarPeekVisible] = useState(false);
-
-  const setTopBarHidden = useCallback((hidden: boolean) => {
-    setTopBarHiddenRaw(hidden);
-    if (!hidden) setTopBarPeekVisible(false);
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, topBarHidden: hidden };
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
-    });
-  }, []);
-
-  const toggleTopBar = useCallback(() => {
-    setTopBarHiddenRaw((prev) => {
-      const next = !prev;
-      if (!next) setTopBarPeekVisible(false);
-      setAppSettings((settings) => {
-        if (!settings) return settings;
-        const updated = { ...settings, topBarHidden: next };
-        window.api.settingsSet(updated).catch(() => {});
-        return updated;
-      });
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { hidden } = (e as CustomEvent<{ hidden: boolean }>).detail;
-      setTopBarHidden(hidden);
-    };
-    window.addEventListener(TOPBAR_HIDE_EVENT, handler);
-    return () => window.removeEventListener(TOPBAR_HIDE_EVENT, handler);
-  }, [setTopBarHidden]);
-
   // ─── SKY-1686: Global right-sidebar state ───
   // undefined = settings not yet loaded (sidebar not rendered at all, no space taken).
   // true/false = settings loaded with an explicit rightSidebarVisible value.
