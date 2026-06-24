@@ -449,6 +449,9 @@ jobs:
           echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
   build-macos:
+    # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
+    # On-demand ONLY — never on PRs or auto on main. Trigger via 'Run workflow' when fixing the mac build. (Skyy 2026-06-23)
+    if: github.event_name == 'workflow_dispatch'
     # macOS build: GitHub-hosted runner (required for macOS; no self-hosted macOS available).
     # Validates macOS Electron build and runs core E2E tests on native macOS.
     # Unsigned DMG is acceptable for PR CI (signing only needed for release builds).
