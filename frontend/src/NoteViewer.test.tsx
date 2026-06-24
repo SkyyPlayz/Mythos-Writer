@@ -1,17 +1,27 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteViewer from './NoteViewer';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
 const readVault = vi.fn();
+const entityList = vi.fn();
 
 beforeEach(() => {
   readNotesVault.mockResolvedValue({ content: 'See [[Scene: Chapter One/Opening Scene]] and [[Character: Elara]].' });
   writeNotesVault.mockResolvedValue({ path: 'Notes/Test.md', bytes: 1 });
   readVault.mockResolvedValue({ content: 'story-vault-content' });
-  (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault };
+  entityList.mockResolvedValue({ entities: [] });
+  (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, entityList };
 });
+
+afterEach(() => {
+  cleanup();
+});
+
+// ---------------------------------------------------------------------------
+// Legacy (Edit/Preview) behaviour preserved
+// ---------------------------------------------------------------------------
 
 describe('NoteViewer cross-tab links', () => {
   it('renders wiki links as clickable controls in preview mode', async () => {
@@ -70,5 +80,138 @@ describe('NoteViewer cross-tab links', () => {
     // Writes through notes vault, never touches the story vault
     await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', expect.any(String)));
     expect(readVault).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tri-mode toolbar (SKY-3208)
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer tri-mode toolbar (SKY-3208)', () => {
+  it('shows Source, Rich, and Preview mode buttons', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    expect(screen.getByRole('button', { name: 'Source' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Rich' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeTruthy();
+  });
+
+  it('defaults to Source mode showing textarea', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Test.md');
+    expect(textarea.tagName).toBe('TEXTAREA');
+    expect(screen.getByRole('button', { name: 'Source' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('switches to Preview mode when Preview button is clicked', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    await screen.findByTestId('note-viewer-preview');
+    expect(screen.queryByLabelText('Edit note: Test.md')).toBeNull();
+  });
+
+  it('calls onModeChange when mode switches', async () => {
+    const onModeChange = vi.fn();
+    render(<NoteViewer path="Notes/Test.md" onModeChange={onModeChange} />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(onModeChange).toHaveBeenCalledWith('preview');
+  });
+
+  it('legacy onPreviewModeChange fires with true when switching to Preview', async () => {
+    const onPreviewModeChange = vi.fn();
+    render(<NoteViewer path="Notes/Test.md" onPreviewModeChange={onPreviewModeChange} />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    expect(onPreviewModeChange).toHaveBeenCalledWith(true);
+  });
+
+  it('honours previewMode=true legacy prop by starting in Preview mode', async () => {
+    render(<NoteViewer path="Notes/Test.md" previewMode />);
+    await waitFor(() => expect(readNotesVault).toHaveBeenCalled());
+    await screen.findByTestId('note-viewer-preview');
+    expect(screen.queryByLabelText('Edit note: Test.md')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LC-2 fidelity guard (SKY-3208)
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer LC-2 fidelity guard', () => {
+  it('shows fidelity warning when switching to Rich mode with a table', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByLabelText('Edit note: Table.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+
+    await screen.findByRole('dialog', { name: 'Rich mode may lose content' });
+    expect(screen.getByText(/Markdown tables/i)).toBeTruthy();
+  });
+
+  it('shows fidelity warning when note has YAML frontmatter', async () => {
+    readNotesVault.mockResolvedValue({ content: '---\ntitle: My Note\n---\nContent.' });
+    render(<NoteViewer path="Notes/Frontmatter.md" />);
+    await screen.findByLabelText('Edit note: Frontmatter.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+
+    await screen.findByRole('dialog', { name: 'Rich mode may lose content' });
+    expect(screen.getByText(/YAML frontmatter/i)).toBeTruthy();
+  });
+
+  it('"Edit in Source" closes the warning and stays in Source mode', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByLabelText('Edit note: Table.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    await screen.findByRole('dialog', { name: 'Rich mode may lose content' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit in Source (safe)' }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('Edit note: Table.md')).toBeTruthy();
+  });
+
+  it('"Open in Rich anyway" dismisses the warning and enters Rich mode', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByLabelText('Edit note: Table.md');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    await screen.findByRole('dialog', { name: 'Rich mode may lose content' });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Open in Rich anyway' }));
+    });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // In Rich mode the Source textarea is gone
+    expect(screen.queryByLabelText('Edit note: Table.md')).toBeNull();
+  });
+
+  it('switches to Rich mode directly when content has no lossy features', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Just plain text with **bold** and [[link]].' });
+    render(<NoteViewer path="Notes/Plain.md" />);
+    await screen.findByLabelText('Edit note: Plain.md');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    });
+
+    // No warning dialog — switched immediately
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Source textarea is gone (Rich mode is active)
+    expect(screen.queryByLabelText('Edit note: Plain.md')).toBeNull();
   });
 });
