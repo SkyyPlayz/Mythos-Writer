@@ -108,8 +108,6 @@ type Api = {
     vaultName?: string;
     /** SKY-2008: genre selected on step1c; required for startMode=sample */
     sampleGenre?: SampleGenreId;
-    /** template variant for custom/blank vault setup */
-    customTemplate?: 'recommended' | 'blank';
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
@@ -522,18 +520,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const docxFileInputRef = useRef<HTMLInputElement>(null);
   const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
-  const [importMwPath, setImportMwPath] = useState('');
-  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
-  const [importMwMsg, setImportMwMsg] = useState('');
-  const [importObsNotesPath, setImportObsNotesPath] = useState('');
-  const [importObsStoryPath, setImportObsStoryPath] = useState('');
-  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
-  const [importRunning, setImportRunning] = useState(false);
-  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
-  const docxFileInputRef = useRef<HTMLInputElement>(null);
-  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // SKY-2007: load system path suggestions when the save-location step opens
   // SKY-2988: also load for the Custom Setup location picker
   useEffect(() => {
@@ -693,46 +679,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
-
-  async function handleCustomFinish() {
-    setScaffoldError('');
-    setFromCustomSetup(true);
-    setStartMode('blank');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const expanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      const res = await api().onboardingComplete({
-        startMode: 'blank',
-        customTemplate,
-        vaultParentPath: expanded,
-        vaultName: customVaultName.trim() || deriveVaultName(expanded),
-      });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
-      setScaffolding(false);
-    }
-  }
-
-
   // AC-L-05: first card gets initial focus when step1 mounts or returns
   const quickStartRef = useRef<HTMLButtonElement>(null);
 
@@ -868,6 +814,37 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
+  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
+  // main creates the default Mythos vault bundle under app data and seeds a
+  // "My First Story" scene. The backend keeps default-mythos-vault as a
+  // compatibility alias, but new UI reports startMode=quick-start.
+  async function handleQuickStart() {
+    setStartMode('quick-start');
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'quick-start' });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'quick-start',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
+      setScaffolding(false);
+    }
+  }
+
   function handleCreateCustom() {
     setStartMode(null);
     setSelectedTemplateId(null);
@@ -896,8 +873,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'open-existing',
         ...(res.firstSceneId && res.firstScenePath
@@ -1070,8 +1045,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'sample',
         ...(res.firstSceneId && res.firstScenePath
@@ -1092,6 +1065,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     templateCardTriggerRef.current = document.activeElement as HTMLElement;
     setStep('step1b-inner');
   }
+
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
@@ -1207,10 +1181,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         }
         const updated: AppSettings = {
           ...initialSettings,
-          ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-          gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
           onboardingComplete: true,
-          onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
             ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
             : {}),
@@ -1260,8 +1231,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
 
     // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
-    const sep = pathOptionsRef.current.sep ?? '/';
-    const storyDir = savePath.replace(sep === '\\' ? /\\+$/ : /\/+$/, '') + sep + trimmedTitle;
+    const storyDir = savePath.replace(/\/+$/, '') + '/' + trimmedTitle;
     try {
       const conflict = await api().validatePath(storyDir);
       if (conflict.exists && !conflict.isEmpty) {
@@ -1296,8 +1266,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1333,7 +1301,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const payload = fromCustomSetup
         ? {
             startMode: 'blank' as const,
-            customTemplate,
             vaultParentPath: customExpanded,
             vaultName: customVaultName.trim() || deriveVaultName(customExpanded),
           }
@@ -1360,8 +1327,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1547,33 +1512,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               title="Quick Start"
               description="One click — we set everything up for you."
               ctaLabel="Start &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-path-default"
+              onActivate={handleQuickStart}
+              testId="card-quick-start"
               cardRef={quickStartRef}
             />
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
-              title="Blank"
-              description="Start with an empty vault — choose your save location."
-              ctaLabel="Set up &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-path-blank"
-            />
-            <StartingPointCard
-              icon="&#x1F4DA;"
-              title="Sample Project"
-              description="Start with a genre-specific sample vault to explore the app."
-              ctaLabel="Browse &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-path-sample"
-            />
-            <StartingPointCard
-              icon="&#x1F527;"
               title="Custom"
               description="Fine-grained control: pick your location and starting point."
               ctaLabel="Set up &#x2192;"
               onActivate={handleCreateCustom}
-              testId="card-create-custom"
+              testId="card-custom"
             />
             <StartingPointCard
               icon="&#x1F4C2;"
@@ -1860,6 +1809,24 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                     </p>
                   </>
                 )}
+                <div className="gs-template-import-row">
+                  <button
+                    type="button"
+                    className="btn-secondary gs-template-import-btn"
+                    data-testid="template-import-btn"
+                    onClick={async () => {
+                      const res = await window.api.templateImport();
+                      if (res && 'error' in res) {
+                        showTemplateToast("This file doesn't appear to be a valid Mythos template.");
+                      } else if (res && !res.cancelled) {
+                        reloadTemplates();
+                        showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
+                      }
+                    }}
+                  >
+                    &#x2B06; Import template
+                  </button>
+                </div>
                 <div className="gs-template-import-row">
                   <button
                     type="button"
