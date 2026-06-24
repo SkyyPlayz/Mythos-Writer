@@ -755,18 +755,6 @@ export default function DesktopShell() {
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
 
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') { handleTabChange('notes'); return; }
-    if (itemId === 'notes-vault') { handleNotesSubViewChange('editor'); handleTabChange('notes'); return; }
-    if (itemId === 'add-character') { handleTabChange('notes'); return; }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
-
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
@@ -1720,6 +1708,18 @@ export default function DesktopShell() {
     tabShellRef.current = next;
     persistTabShell(next);
   }, [persistTabShell]);
+
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') { handleTabChange('notes'); return; }
+    if (itemId === 'notes-vault') { handleNotesSubViewChange('editor'); handleTabChange('notes'); return; }
+    if (itemId === 'add-character') { handleTabChange('notes'); return; }
+    if (itemId === 'write-scene') {
+      handleSetView('editor');
+      handleTabChange('story');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
     setSelectedScene(null);
