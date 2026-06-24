@@ -9,7 +9,7 @@ import {
 import { resolveAxisTokens } from './themeAxis';
 import { detectCloudProvider } from './lib/cloudSync';
 import MoveVaultWizard from './MoveVaultWizard';
-import { SETTINGS_CATEGORIES, SECTION_TO_CATEGORY, type SettingsCategoryId } from './settingsCategories';
+import { SETTINGS_CATEGORIES, SECTION_TO_CATEGORY, type SettingsCategoryId, type SettingsCategory } from './settingsCategories';
 import {
   DEFAULTS,
   LG_DEFAULTS,
@@ -576,11 +576,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         }
       }
     }
-    if (found) setActiveNavCat(found);
+    if (found) setActiveCategory(found as SettingsCategoryId);
   }, []);
 
-  const handleNavClick = useCallback((cat: SettingsNavCategory) => {
-    setActiveNavCat(cat.id);
+  const handleNavClick = useCallback((cat: SettingsCategory) => {
+    setActiveCategory(cat.id);
     const body = bodyRef.current;
     if (!body) return;
     const firstId = cat.sectionIds[0];
@@ -619,7 +619,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     );
     firstControl?.focus();
     const cat = SETTINGS_CATEGORIES.find((c) => c.sectionIds.includes(initialSection));
-    if (cat) setActiveNavCat(cat.id);
+    if (cat) setActiveCategory(cat.id);
   }, [initialSection]);
 
   if (loading) {
@@ -647,13 +647,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           <div className="settings-layout">
             <nav className="settings-cat-nav" aria-label="Settings categories">
               <ul className="settings-cat-nav-list" role="list">
-                {SETTINGS_CATEGORIES.map((cat) => (
+                {SETTINGS_CATEGORIES.map((cat, idx) => (
                   <li key={cat.id}>
                     <button
                       type="button"
+                      ref={(el) => { navBtnRefs.current[idx] = el!; }}
                       className={`settings-cat-nav-btn${activeCategory === cat.id ? ' settings-cat-nav-btn--active' : ''}`}
                       aria-current={activeCategory === cat.id ? 'page' : undefined}
-                      onClick={() => setActiveCategory(cat.id)}
+                      onClick={() => handleNavClick(cat)}
+                      onKeyDown={(e) => handleNavKeyDown(e, idx)}
+                      tabIndex={activeCategory === cat.id ? 0 : -1}
                       data-testid={`settings-cat-${cat.id}`}
                     >
                       {cat.label}
@@ -663,7 +666,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               </ul>
             </nav>
 
-            <div className="settings-body" data-active-cat={activeCategory}>
+            <div className="settings-body" ref={bodyRef} onScroll={handleBodyScroll} data-active-cat={activeCategory}>
 
               <ProviderSection
                 providerKind={providerKind}
