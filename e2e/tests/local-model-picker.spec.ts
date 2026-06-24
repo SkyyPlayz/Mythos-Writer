@@ -163,7 +163,8 @@ async function installProviderMocks(app: ElectronApplication, responses: Provide
 }
 
 async function openSettings(page: Page): Promise<void> {
-  await page.getByLabel('Open settings').click();
+  // SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
 }

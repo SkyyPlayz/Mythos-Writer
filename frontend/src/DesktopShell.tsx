@@ -966,6 +966,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
   const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
     setGettingStartedProgress((prev) => {
       if (!prev) return prev;
@@ -4032,6 +4042,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             />
           </div>
         </div>
+      )}
+
+      {/* Restore GettingStartedPanel when GlobalRightSidebar is not rendered (no rightSidebarVisible in seeded settings).
+           Mirrors the pre-SKY-3177 RightSidebar behaviour so post-onboarding E2E tests see gs-panel. */}
+      {grsVisible === undefined && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
+        <aside className="gs-aside">
+          <GettingStartedPanel
+            progress={gettingStartedProgress}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        </aside>
       )}
 
       </div>{/* end shell-main-row */}

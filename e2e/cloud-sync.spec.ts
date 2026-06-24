@@ -175,7 +175,8 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 async function openSettings(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Open settings' }).click();
+  // SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
 }
 
