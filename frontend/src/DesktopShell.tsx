@@ -990,17 +990,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-
-  const handleDismissGettingStarted = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
@@ -1077,6 +1066,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
     window.dispatchEvent(new CustomEvent('scene:saved'));
+  }, [selectedScene]);
+
+  const handleDraftRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
   }, [selectedScene]);
 
   const handleSceneRestore = useCallback((content: string) => {
