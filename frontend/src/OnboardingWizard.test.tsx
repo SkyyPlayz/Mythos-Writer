@@ -1705,15 +1705,11 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      // Fire the 500ms debounce, then let the Promise.all microtask chain inside
-      // validateCustomPathNow fully resolve before act flushes React state.
-      // Two separate act() calls can leave the 'valid' setState outside any act wrapper
-      // under CI load (M_pa_resolved fires between acts); the merged form guarantees
-      // the microtask chain completes inside the single act flush.
+      // runAllTimersAsync fires the 500ms debounce timer and then drains all
+      // resulting microtasks (the Promise.all chain in validateCustomPathNow)
+      // atomically inside act(), eliminating the CI-load timing flake.
       await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve(); // drain Promise.all internal handlers (p1, p2)
-        await Promise.resolve(); // let validateCustomPathNow resume and call setState
+        await vi.runAllTimersAsync();
       });
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
@@ -1733,9 +1729,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/home/user/NewVault' },
       });
       await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve();
-        await Promise.resolve();
+        await vi.runAllTimersAsync();
       });
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
@@ -1755,9 +1749,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/root/protected' },
       });
       await act(async () => {
-        vi.advanceTimersByTime(600);
-        await Promise.resolve();
-        await Promise.resolve();
+        await vi.runAllTimersAsync();
       });
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
