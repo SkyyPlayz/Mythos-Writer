@@ -206,11 +206,11 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
 
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────
 test('TC-SKY-814-05: Slider controls have aria-label and announce value', async () => {
-  // SKY-3216/D2: all agents-category sliders are disabled (autoApply/enabled=false in seed).
-  // The first non-disabled slider is in AppearanceSection (appearance category).
+  // SKY-3216/D2: scope to the appearance section to avoid matching hidden range inputs
+  // elsewhere in the DOM (the broad :not([disabled]) selector can resolve to a
+  // CSS-hidden element in another section before AppearanceSection in DOM order).
   await navigateSettingsCategory(page, 'Appearance');
-  // Find a slider (range input)
-  const slider = page.locator('input[type="range"]:not([disabled])').first();
+  const slider = page.locator('[data-settings-cat="appearance"] input[type="range"]').first();
   await expect(slider).toBeVisible();
 
   const ariaLabel = await slider.getAttribute('aria-label');
