@@ -158,6 +158,18 @@ test.describe('AC-OB-01: Default Mythos Vault', () => {
   });
 
   test('AC-OB-01: default layout card completes onboarding; DesktopShell and Getting Started panel render', async () => {
+    // Write minimal settings before the mock fires so DesktopShell's loadVault()
+    // reads rightSidebarVisible: true and opens the GRS for the Getting Started panel.
+    // The real onboarding:complete handler does this; the mock stub omits it.
+    fs.writeFileSync(
+      path.join(userData, 'app-settings.json'),
+      JSON.stringify({
+        onboardingComplete: true,
+        onboardingStartMode: 'quick-start',
+        gettingStartedProgress: { completedItems: [], dismissed: false },
+        rightSidebarVisible: true,
+      }, null, 2),
+    );
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
@@ -502,6 +514,17 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
   });
 
   test('AC-OB-08: blank story completion → Getting Started panel visible in right sidebar', async () => {
+    // Write minimal settings before the mock fires so DesktopShell's loadVault()
+    // reads rightSidebarVisible: true and opens the GRS for the Getting Started panel.
+    fs.writeFileSync(
+      path.join(userData, 'app-settings.json'),
+      JSON.stringify({
+        onboardingComplete: true,
+        onboardingStartMode: 'blank',
+        gettingStartedProgress: { completedItems: [], dismissed: false },
+        rightSidebarVisible: true,
+      }, null, 2),
+    );
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));

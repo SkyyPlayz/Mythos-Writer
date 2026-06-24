@@ -1044,12 +1044,14 @@ export default function DesktopShell() {
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
+    let cachedSettings: AppSettings | null = null;
     try {
       const [s, rootResult, vaultPaths] = await Promise.all([
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.vaultGetPaths?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
+      cachedSettings = s;
 
       let storyValid = true;
       let notesValid = true;
@@ -1067,6 +1069,13 @@ export default function DesktopShell() {
         setVaultBinding({ storyPath, notesPath, storyValid, notesValid });
       } else {
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
+      }
+
+      // Apply rightSidebarVisible before readManifest() — readManifest can throw on
+      // fresh installs (no vault yet), and grsVisible must be resolved regardless so
+      // GlobalRightSidebar renders and the Getting Started panel becomes visible.
+      if (s && typeof s.rightSidebarVisible === 'boolean') {
+        setGrsVisible(s.rightSidebarVisible);
       }
 
       const m = storyValid
@@ -1211,6 +1220,12 @@ export default function DesktopShell() {
       }
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
+      // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
+      // on fresh install). Without this, grsVisible stays undefined and
+      // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
+      if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
+        setGrsVisible(cachedSettings.rightSidebarVisible);
+      }
     } finally {
       setLoading(false);
     }
