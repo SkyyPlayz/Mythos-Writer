@@ -82,12 +82,14 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 
 // SKY-3216/D2: settings panel has category nav; navigate to the given category
 // before querying controls that live under it.
+// SKY-3230: extended timeout (10 s) for slow CI runners; wait for section to be
+// visible rather than a fixed 100 ms pause so the assertion can start immediately.
 async function navigateSettingsCategory(page: Page, category: string): Promise<void> {
-  const btn = page.locator('.settings-cat-nav-btn', { hasText: category });
-  if (await btn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await btn.click();
-    await page.waitForTimeout(100);
-  }
+  const catId = category.toLowerCase();
+  const btn = page.locator(`[data-testid="settings-cat-${catId}"]`);
+  await btn.waitFor({ state: 'visible', timeout: 10_000 });
+  await btn.click();
+  await page.locator(`[data-settings-cat="${catId}"]`).first().waitFor({ state: 'visible', timeout: 5_000 });
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
@@ -206,11 +208,11 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
 
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────
 test('TC-SKY-814-05: Slider controls have aria-label and announce value', async () => {
-  // SKY-3216/D2: all agents-category sliders are disabled (autoApply/enabled=false in seed).
-  // The first non-disabled slider is in AppearanceSection (appearance category).
+  // SKY-3216/D2: scope to the appearance section to avoid matching hidden range inputs
+  // elsewhere in the DOM (the broad :not([disabled]) selector can resolve to a
+  // CSS-hidden element in another section before AppearanceSection in DOM order).
   await navigateSettingsCategory(page, 'Appearance');
-  // Find a slider (range input)
-  const slider = page.locator('input[type="range"]:not([disabled])').first();
+  const slider = page.locator('[data-settings-cat="appearance"] input[type="range"]').first();
   await expect(slider).toBeVisible();
 
   const ariaLabel = await slider.getAttribute('aria-label');

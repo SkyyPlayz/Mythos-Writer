@@ -330,6 +330,10 @@ export const IPC_CHANNELS = {
   // the wizard never needs to send the full settings object back.
   ONBOARDING_COMPLETE: 'onboarding:complete',
 
+  // SKY-2638: Path 3 — import Obsidian vault dry-run + commit channels
+  ONBOARDING_IMPORT_DRY_RUN: 'onboarding:import-vault:dry-run',
+  ONBOARDING_IMPORT_COMMIT: 'onboarding:import-vault:commit',
+
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
   // and onboardingComplete so the wizard re-appears on next boot.
   ONBOARDING_RESET: 'onboarding:reset',
@@ -760,6 +764,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ONBOARDING_GET_SUGGESTED_PATHS]: (payload: never) => OnboardingGetSuggestedPathsResponse;
   [IPC_CHANNELS.ONBOARDING_OPEN_EXISTING_VAULT]: (payload: OnboardingOpenExistingVaultPayload) => OnboardingOpenExistingVaultResponse;
   [IPC_CHANNELS.ONBOARDING_DETECT_MYTHOS_VAULT]: (payload: OnboardingDetectMythosVaultPayload) => OnboardingDetectMythosVaultResponse;
+  // SKY-2638: Path 3 import channels
+  [IPC_CHANNELS.ONBOARDING_IMPORT_DRY_RUN]: (payload: OnboardingImportDryRunPayload) => Promise<VaultObsidianDryRunReport>;
+  [IPC_CHANNELS.ONBOARDING_IMPORT_COMMIT]: (payload: OnboardingImportCommitPayload) => Promise<OnboardingImportCommitResponse>;
   // SKY-130: session persistence
   [IPC_CHANNELS.SESSION_SCENE_SAVE]: (payload: SessionSaveScenePayload) => { saved: boolean };
   // SKY-156: Project Templates
@@ -1897,7 +1904,7 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
@@ -1907,7 +1914,7 @@ export interface AppSettings {
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -1997,7 +2004,7 @@ export interface LastOpenedScene {
  *  with no user input, seeds a first scene, and marks onboarding complete in
  *  a single round-trip. */
 export interface OnboardingCompletePayload {
-  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Required for blank / sample / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
@@ -2087,6 +2094,25 @@ export interface ObsidianImportPreview {
 export interface OnboardingDryRunObsidianResponse {
   preview?: ObsidianImportPreview;
   error?: string;
+}
+
+// ─── SKY-2638: Path 3 import vault channels ───
+
+export interface OnboardingImportDryRunPayload {
+  sourcePath: string;
+}
+
+export interface OnboardingImportCommitPayload {
+  sourcePath: string;
+}
+
+export interface OnboardingImportCommitResponse {
+  ok: boolean;
+  error?: string;
+  /** Number of collision files renamed with (Imported) suffix (SKY-2637) */
+  renamedCount?: number;
+  /** Number of notes with broken [[wiki-links]] (SKY-2637) */
+  brokenLinkCount?: number;
 }
 
 export interface SessionSaveScenePayload {

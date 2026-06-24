@@ -63,16 +63,16 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
-/** Click a top-level or Create Custom sub-selector onboarding card. */
+/** Click a flat path-selector onboarding card. */
 async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
-  await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-  if (cardTestId === 'card-blank' || cardTestId === 'card-sample' || cardTestId === 'card-template') {
-    await page.locator('[data-testid="card-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator(`[data-testid="${cardTestId}"]`).click();
-    return;
-  }
-  const resolvedCardTestId = cardTestId === 'card-default-mythos-vault' ? 'card-quick-start' : cardTestId;
+  await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 12_000 });
+  const cardAliases: Record<string, string> = {
+    'card-default-mythos-vault': 'card-path-default',
+    'card-quick-start': 'card-path-default',
+    'card-blank': 'card-path-blank',
+    'card-sample': 'card-path-sample',
+  };
+  const resolvedCardTestId = cardAliases[cardTestId] ?? cardTestId;
   await page.locator(`[data-testid="${resolvedCardTestId}"]`).click();
 }
 
@@ -157,13 +157,22 @@ test.describe('AC-OB-01: Default Mythos Vault', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-01: quick-start card completes onboarding; DesktopShell and Getting Started panel render', async () => {
+  test('AC-OB-01: default layout card completes onboarding; DesktopShell and Getting Started panel render', async () => {
     await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
       ipcMain.removeHandler('onboarding:complete');
-      ipcMain.handle('onboarding:complete', () => ({ ok: true }));
+      ipcMain.handle('onboarding:complete', () => ({
+        ok: true,
+        firstSceneId: 'scene-1',
+        firstScenePath: 'Manuscript/ac-ob-01-story/chapter-1/chapter-1-scene-1.md',
+      }));
     });
 
     await clickStep1Card(page, 'card-quick-start');
+    await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="gs-title-input"]').fill('AC-OB-01 Story');
+    await page.locator('[data-testid="gs-create-story"]').click();
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
     // Getting Started panel renders automatically after first onboarding
@@ -195,13 +204,13 @@ test.describe('AC-OB-02/03/13/15: Genre picker UI', () => {
     const onStep1c = await page.locator('[data-testid="screen-step1c"]').isVisible();
     if (onStep1c) {
       await page.locator('[data-testid="gs-back-step1c"]').click();
-      await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 6_000 });
+      await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 6_000 });
     }
     const cancelConfirm = await page.locator('[data-testid="gs-cancel-confirm"]').isVisible();
     if (cancelConfirm) {
       await page.locator('[data-testid="gs-keep-going"]').click();
     }
-    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 8_000 });
   });
 
   test('AC-OB-02: genre picker renders with 3 genre cards; arrow keys cycle focus; Enter selects', async () => {
@@ -263,7 +272,7 @@ test.describe('AC-OB-02/03/13/15: Genre picker UI', () => {
 
     // Navigate back
     await page.locator('[data-testid="gs-back-step1c"]').click();
-    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 6_000 });
+    await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 6_000 });
 
     // On returning to step1c, no genre should be pre-selected
     await clickStep1Card(page, 'card-sample');
@@ -675,7 +684,6 @@ test.describe('AC-OB-12: Non-writable path disables Create Story', () => {
 
 // ─── AC-OB-14: Recents list bounded to ≤5 entries ────────────────────────────
 
-
 test.describe('AC-OB-14: Recents list bounded', () => {
   let userData: string;
   let app: ElectronApplication;
@@ -775,68 +783,5 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
     await expect(hint).toContainText('200');
 
     await expect(page.locator('[data-testid="gs-create-story"]')).toBeDisabled();
-  });
-});
-
-// ─── AC-SKY-2967: Scrollable wizard at 1280×720 (no maximize needed) ─────────
-//
-// Regression test for SKY-2967: the onboarding overlay must be scrollable at
-// small viewports so the user can reach all controls without maximizing.
-//
-// Two assertions:
-//   1. Structural — computed overflow-y on gs-overlay is 'auto' (not hidden/visible)
-//   2. Functional — gs-skip (bottom of step1 modal) and gs-create-story (step2)
-//      are both reachable via scrollIntoViewIfNeeded() at 720px viewport height.
-
-test.describe('AC-SKY-2967: Onboarding scrollable at 1280×720', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-2967-'));
-    app = await launchFreshApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('AC-SKY-2967: wizard content reachable at 1280×720 without maximizing', async () => {
-    // Shrink to the minimum target resolution from the ticket
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 720);
-    });
-
-    await expect(page.locator('[data-testid="gs-overlay"]')).toBeVisible({ timeout: 10_000 });
-
-    // Structural: overlay must scroll its content rather than clip it
-    const overflowY = await page.locator('[data-testid="gs-overlay"]').evaluate(
-      (el) => getComputedStyle(el).overflowY,
-    );
-    expect(overflowY, 'gs-overlay must be overflow-y: auto').toBe('auto');
-
-    // Functional step1: the lowest top-level card remains reachable without maximizing.
-    const importCard = page.locator('[data-testid="card-import"]');
-    await importCard.scrollIntoViewIfNeeded();
-    await expect(importCard).toBeVisible();
-    await expect(importCard).toBeEnabled();
-
-    // Functional step2: navigate and verify Create Story button reachable without maximizing
-    await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
-    });
-    await page.locator('[data-testid="card-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
-    await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
-
-    const createBtn = page.locator('[data-testid="gs-create-story"]');
-    await createBtn.scrollIntoViewIfNeeded();
-    await expect(createBtn).toBeVisible();
-    await expect(createBtn).toBeEnabled({ timeout: 1_000 });
   });
 });

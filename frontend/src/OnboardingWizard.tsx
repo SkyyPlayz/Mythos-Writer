@@ -2,14 +2,21 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { type TruncatePathOptions } from './utils/truncatePath';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
-import { Button } from './components/ui/Button';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
-// SKY-2990: step-import is the 3-section Import/Open picker screen
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'step-import';
+type WizardStep =
+  | 'path-selector'
+  | 'step1b-inner'
+  | 'step1c'
+  | 'step2'
+  | 'step3'
+  // SKY-2638: Path 3 — Import Obsidian vault sub-flow
+  | 'import-picker'
+  | 'import-scanning'
+  | 'import-dry-run'
+  | 'import-importing';
 // SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
 // title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
 // backend alias during the onboarding v2.1 transition.
@@ -89,8 +96,6 @@ interface OnboardingWizardProps {
   initialSettings: AppSettings;
   onComplete: (settings: AppSettings) => void;
   onCancel?: () => void;
-  /** @internal Test-only prop: mount the wizard at a specific step */
-  _testInitialStep?: WizardStep;
 }
 
 // ─── Typed window.api access ──────────────────────────────────────────────────
@@ -119,11 +124,17 @@ type Api = {
   /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
   vaultGetSystemPaths?: () => Promise<SystemPaths>;
   settingsSet?: (settings: AppSettings) => Promise<{ saved: boolean; error?: string }>;
-  importDocxToStoryVault?: (filePaths: string[]) => Promise<{
-    ok: boolean;
-    importedStories: Array<{ filePath: string; storyId: string; storyTitle: string; sceneCount: number; firstScenePath?: string; firstSceneId?: string; warnings: string[] }>;
-    errors: Array<{ filePath: string; error: string }>;
+  // SKY-2638: Path 3 import vault channels
+  importVaultDryRun?: (sourcePath: string) => Promise<{
+    notesCount: number;
+    fatalError: string | null;
+    brokenLinks: Array<{ file: string; target: string }>;
+    nameCollisions: Array<{ name: string; file: string }>;
+    missingFrontmatter: string[];
+    restructured?: Array<{ from: string; to: string }>;
+    leftAsIs?: string[];
   }>;
+  importVaultCommit?: (sourcePath: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 function api(): Api {
@@ -133,14 +144,6 @@ function api(): Api {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_SAVE_PATH = '~/Documents/MythosWriter';
-
-// SKY-2988: extract last path segment as a vault display name
-function deriveVaultName(path: string): string {
-  const trimmed = path.trim().replace(/[/\\]+$/, '');
-  const parts = trimmed.split(/[/\\]/).filter(Boolean);
-  const last = parts[parts.length - 1] ?? '';
-  return last === '~' ? '' : last;
-}
 const INVALID_TITLE_RE = /[/\\:*?"<>|]/;
 const TITLE_MAX = 120;
 const AUTHOR_MAX = 80;
@@ -184,6 +187,18 @@ function buildSuggestedLocations(
   }
   const recentSet = new Set(recents.map((r) => r.trim()));
   return candidates.filter((c) => !recentSet.has(c.trim())).slice(0, 3);
+}
+
+// ─── SKY-2638: Dry-run report type ───────────────────────────────────────────
+
+interface DryRunReport {
+  notesCount: number;
+  fatalError: string | null;
+  brokenLinks: Array<{ file: string; target: string }>;
+  nameCollisions: Array<{ name: string; file: string }>;
+  missingFrontmatter: string[];
+  restructured?: Array<{ from: string; to: string }>;
+  leftAsIs?: string[];
 }
 
 // ─── ConflictDialog (SKY-2007 §3.3.4) ────────────────────────────────────────
@@ -255,42 +270,6 @@ function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongsi
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-interface StartingPointCardProps {
-  icon: string;
-  title: string;
-  description: string;
-  ctaLabel: string;
-  onActivate: () => void;
-  testId: string;
-  isSecondary?: boolean;
-  cardRef?: React.RefObject<HTMLButtonElement>;
-}
-
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, isSecondary, cardRef }: StartingPointCardProps) {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onActivate();
-    }
-  };
-  return (
-    <button
-      ref={cardRef}
-      className={`gs-card${isSecondary ? ' gs-card--secondary' : ''}`}
-      onClick={() => onActivate()}
-      onKeyDown={handleKeyDown}
-      data-testid={testId}
-      aria-label={`${title}: ${description}`}
-      type="button"
-    >
-      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
-      <span className="gs-card__title">{title}</span>
-      <span className="gs-card__desc">{description}</span>
-      <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
-    </button>
-  );
-}
-
 interface TemplateCardProps {
   template: TemplateItem;
   onSelect: () => void;
@@ -339,20 +318,22 @@ function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
           If you close now, you&apos;ll start fresh next time.
         </p>
         <div className="gs-confirm__actions">
-          <Button
-            variant="primary"
+          <button
+            className="btn-primary"
+            type="button"
             onClick={onKeepGoing}
             data-testid="gs-keep-going"
           >
             Keep Going
-          </Button>
-          <Button
-            variant="destructive"
+          </button>
+          <button
+            className="btn-ghost btn-destructive"
+            type="button"
             onClick={onCancelSetup}
             data-testid="gs-cancel-setup"
           >
             Cancel Setup
-          </Button>
+          </button>
         </div>
       </div>
     </div>
@@ -437,11 +418,49 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
   );
 }
 
+
+// ─── PathCard (path-selector step) ───────────────────────────────────────────
+
+interface PathCardProps {
+  testId: string;
+  icon: string;
+  title: string;
+  description: string;
+  isRecommended?: boolean;
+  isSelected: boolean;
+  tabIndex: number;
+  onActivate: () => void;
+}
+function PathCard({ testId, icon, title, description, isRecommended, isSelected, tabIndex, onActivate }: PathCardProps) {
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); }
+  }
+  return (
+    <button
+      role="radio"
+      aria-checked={isSelected}
+      className={`gs-card${isRecommended ? ' gs-card--recommended' : ''}`}
+      onClick={onActivate}
+      onKeyDown={handleKeyDown}
+      data-testid={testId}
+      tabIndex={tabIndex}
+      type="button"
+    >
+      {isRecommended && <span className="gs-card__badge" data-testid="badge-recommended">Recommended</span>}
+      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
+      <span className="gs-card__title">{title}</span>
+      <span className="gs-card__desc">{description}</span>
+    </button>
+  );
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export default function OnboardingWizard({ initialSettings, onComplete, onCancel, _testInitialStep }: OnboardingWizardProps) {
-  const [step, setStep] = useState<WizardStep>(_testInitialStep ?? 'step1');
+export default function OnboardingWizard({ initialSettings, onComplete, onCancel }: OnboardingWizardProps) {
+  const [step, setStep] = useState<WizardStep>('path-selector');
   const [startMode, setStartMode] = useState<StartMode | null>(null);
+  const [selectedPath, setSelectedPath] = useState<'default' | 'blank' | 'import' | 'sample' | null>(null);
+  const [ariaLiveMessage, setAriaLiveMessage] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   // SKY-2008: step1c genre picker state
   const [selectedSampleGenre, setSelectedSampleGenre] = useState<SampleGenreId | null>(null);
@@ -489,6 +508,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     Boolean(initialSettings.legacyVaultDetected && !initialSettings.legacyVaultDismissed),
   );
 
+  // SKY-2638: Path 3 import sub-flow state
+  const [importPickerPath, setImportPickerPath] = useState('');
+  const [importPickerError, setImportPickerError] = useState('');
+  const [importDryRunReport, setImportDryRunReport] = useState<DryRunReport | null>(null);
+  const [importCommitError, setImportCommitError] = useState('');
+
   // SKY-2007: vault picker polish state
   const [pathValidationState, setPathValidationState] = useState<PathValidationState>('idle');
   const [pathValidationMsg, setPathValidationMsg] = useState('');
@@ -498,34 +523,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const pathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── SKY-2988: Custom Setup v0.3 state ─────────────────────────────────────
-  const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
-  const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
-  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
-  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
-  const [customPathMsg, setCustomPathMsg] = useState('');
-  const [fromCustomSetup, setFromCustomSetup] = useState(false);
-  const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customPathInputRef = useRef<HTMLInputElement>(null);
-  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
-  const vaultNameManuallyEditedRef = useRef(false);
-
-  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
-  const [importMwPath, setImportMwPath] = useState('');
-  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
-  const [importMwMsg, setImportMwMsg] = useState('');
-  const [importObsNotesPath, setImportObsNotesPath] = useState('');
-  const [importObsStoryPath, setImportObsStoryPath] = useState('');
-  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
-  const [importRunning, setImportRunning] = useState(false);
-  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
-  const docxFileInputRef = useRef<HTMLInputElement>(null);
-  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // SKY-2007: load system path suggestions when the save-location step opens
-  // SKY-2988: also load for the Custom Setup location picker
   useEffect(() => {
-    if (step !== 'step2' && step !== 'custom-location') return;
+    if (step !== 'step2') return;
     api().vaultGetSystemPaths?.().then((sys) => {
       setSystemPaths(sys);
     }).catch(() => { /* non-fatal — suggestions stay hidden */ });
@@ -544,161 +544,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   pathOptionsRef.current = pathOptions;
 
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const templateCardTriggerRef = useRef<HTMLElement | null>(null);
-
-  // ─── SKY-2988: Custom Setup path validators ─────────────────────────────────
-
-  const validateCustomPathNow = useCallback(async (rawPath: string) => {
-    const opts = pathOptionsRef.current;
-    const expanded = rawPath.startsWith('~/')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath.startsWith('~\\')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath;
-
-    setCustomPathValidation('validating');
-    setCustomPathMsg('');
-    try {
-      const sep = opts.sep ?? '/';
-      const [base, mythosCheck] = await Promise.all([
-        api().validatePath(expanded),
-        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
-      ]);
-
-      if (!base.writable) {
-        setCustomPathValidation('not-writable');
-        setCustomPathMsg('This location is not writable. Choose a different folder.');
-        return;
-      }
-      if (mythosCheck.exists) {
-        setCustomPathValidation('conflict-mythos');
-        setCustomPathMsg('A Mythos vault already exists here.');
-        return;
-      }
-      setCustomPathValidation(base.exists ? 'valid' : 'new-path');
-      setCustomPathMsg('');
-    } catch {
-      setCustomPathValidation('error');
-      setCustomPathMsg('Could not validate this path. Check the folder and try again.');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleCustomPathChange = useCallback((value: string) => {
-    setCustomVaultPath(value);
-    if (!vaultNameManuallyEditedRef.current) {
-      setCustomVaultName(deriveVaultName(value));
-    }
-
-    if (customPathDebounceRef.current) clearTimeout(customPathDebounceRef.current);
-
-    const isWindows = pathOptionsRef.current.sep === '\\';
-    if (isWindows && value.length > 200) {
-      setCustomPathValidation('path-too-long');
-      setCustomPathMsg('Path must be 200 characters or fewer on Windows.');
-      return;
-    }
-
-    if (!value.trim()) {
-      setCustomPathValidation('idle');
-      setCustomPathMsg('');
-      return;
-    }
-
-    setCustomPathValidation('validating');
-    customPathDebounceRef.current = setTimeout(() => {
-      validateCustomPathNow(value);
-    }, 500);
-  }, [validateCustomPathNow]);
-
-  function handleCustomUsePath(path: string) {
-    const display = tildeify(path, pathOptionsRef.current.homeDir);
-    setCustomVaultPath(display);
-    if (!vaultNameManuallyEditedRef.current) {
-      setCustomVaultName(deriveVaultName(display));
-    }
-    validateCustomPathNow(path);
-  }
-
-  async function handleCustomBrowse() {
-    try {
-      const res = await api().chooseVaultFolder('Choose vault location');
-      if (!res.cancelled && res.path) {
-        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
-        setCustomVaultPath(display);
-        if (!vaultNameManuallyEditedRef.current) {
-          setCustomVaultName(deriveVaultName(display));
-        }
-        validateCustomPathNow(res.path);
-      }
-    } catch { /* picker cancelled or failed */ }
-  }
-
-  function handleCustomNext() {
-    if (customVaultName.trim() === '') {
-      customVaultNameInputRef.current?.focus();
-      return;
-    }
-    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
-    setStep('custom-template');
-  }
-
-  async function handleCustomFinish() {
-    setScaffoldError('');
-    setFromCustomSetup(true);
-    setStartMode('blank');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const expanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      const res = await api().onboardingComplete({
-        startMode: 'blank',
-        customTemplate,
-        vaultParentPath: expanded,
-        vaultName: customVaultName.trim() || deriveVaultName(expanded),
-      });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
-      setScaffolding(false);
-    }
-  }
-
-
-  // AC-L-05: first card gets initial focus when step1 mounts or returns
-  const quickStartRef = useRef<HTMLButtonElement>(null);
-
-  // AC-L-05: auto-focus first card when landing screen mounts or returns
-  useEffect(() => {
-    if (step === 'step1') {
-      quickStartRef.current?.focus();
-    }
-  }, [step]);
 
   // Auto-focus title input on step 2
   useEffect(() => {
     if (step === 'step2') {
       titleInputRef.current?.focus();
-    }
-    // SKY-2988: auto-focus path input on custom-location screen
-    if (step === 'custom-location') {
-      customPathInputRef.current?.focus();
     }
   }, [step]);
 
@@ -796,7 +646,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (startMode === 'template') {
       setStep('step1b-inner');
     } else {
-      setStep('step1b');
+      setStep('path-selector');
     }
   }
 
@@ -815,47 +665,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
-
-  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
-  // main creates the default Mythos vault bundle under app data and seeds a
-  // "My First Story" scene. The backend keeps default-mythos-vault as a
-  // compatibility alias, but new UI reports startMode=quick-start.
-  async function handleQuickStart() {
-    setStartMode('quick-start');
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const res = await api().onboardingComplete({ startMode: 'quick-start' });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'quick-start',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(updated);
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
-      setScaffolding(false);
-    }
-  }
-
-  function handleCreateCustom() {
-    setStartMode(null);
-    setSelectedTemplateId(null);
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setSampleError('');
-    setScaffoldError('');
-    setStep('step1b');
-  }
 
   async function handleOpenExistingVault(vaultPath?: string) {
     setStartMode('open-existing');
@@ -886,148 +695,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
       setScaffolding(false);
     }
-  }
-
-  // ─── SKY-2990: Import / Open screen handlers ────────────────────────────────
-
-  function resetImportState() {
-    setImportMwPath('');
-    setImportMwValidation('idle');
-    setImportMwMsg('');
-    setImportObsNotesPath('');
-    setImportObsStoryPath('');
-    setImportDocxFiles([]);
-    setImportErrorModal(null);
-    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
-  }
-
-  async function validateImportMwPath(raw: string) {
-    try {
-      const result = await api().validatePath(raw);
-      if (!result.exists) {
-        setImportMwValidation('invalid');
-        setImportMwMsg('Folder not found.');
-      } else if (!result.writable) {
-        setImportMwValidation('invalid');
-        setImportMwMsg('Folder is not accessible.');
-      } else {
-        setImportMwValidation('valid');
-        setImportMwMsg('Folder looks good.');
-      }
-    } catch {
-      setImportMwValidation('invalid');
-      setImportMwMsg('Could not check this path.');
-    }
-  }
-
-  function handleImportMwPathChange(value: string) {
-    setImportMwPath(value);
-    if (!value.trim()) {
-      setImportMwValidation('idle');
-      setImportMwMsg('');
-      return;
-    }
-    setImportMwValidation('validating');
-    setImportMwMsg('Checking…');
-    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
-    importMwDebounceRef.current = setTimeout(() => { void validateImportMwPath(value); }, 400);
-  }
-
-  async function handleImportMwBrowse() {
-    const picked = await api().chooseVaultFolder('Open existing Mythos vault');
-    if (picked.cancelled || !picked.path) return;
-    setImportMwPath(picked.path);
-    void validateImportMwPath(picked.path);
-  }
-
-  async function handleImportObsBrowse(slot: 'notes' | 'story') {
-    const title = slot === 'notes' ? 'Select Obsidian notes folder' : 'Select Obsidian story folder';
-    const picked = await api().chooseVaultFolder(title);
-    if (picked.cancelled || !picked.path) return;
-    if (slot === 'notes') setImportObsNotesPath(picked.path);
-    else setImportObsStoryPath(picked.path);
-  }
-
-  function handleDocxFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    setImportDocxFiles((prev) => {
-      const existing = new Set(prev.map((f) => f.name));
-      return [...prev, ...files.filter((f) => !existing.has(f.name))];
-    });
-    e.target.value = '';
-  }
-
-  function handleRemoveDocxFile(index: number) {
-    setImportDocxFiles((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleImportOrOpen() {
-    setImportRunning(true);
-    try {
-      if (importMwPath.trim()) {
-        const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: importMwPath.trim() });
-        if (!res.ok || res.error) {
-          setImportErrorModal({
-            title: "Can't open vault",
-            message: res.error ?? "This folder doesn't look like a Mythos Writer vault. Check the path and try again.",
-          });
-          return;
-        }
-        const updated: AppSettings = {
-          ...initialSettings,
-          onboardingComplete: true,
-          onboardingStartMode: 'open-existing',
-          ...(res.firstSceneId && res.firstScenePath
-            ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-            : {}),
-        };
-        onComplete(updated);
-        return;
-      }
-      if (importObsNotesPath || importObsStoryPath) {
-        setImportErrorModal({
-          title: 'Obsidian import coming soon',
-          message: 'Full Obsidian vault import is on the way. Stay tuned for updates!',
-        });
-        return;
-      }
-      if (importDocxFiles.length > 0) {
-        const filePaths = importDocxFiles.map((f) => (f as File & { path?: string }).path ?? f.name);
-        const res = await api().importDocxToStoryVault?.(filePaths);
-        if (!res || !res.ok || res.errors?.length) {
-          const detail = res?.errors?.map((e) => `${e.filePath}: ${e.error}`).join('\n') ?? '';
-          setImportErrorModal({
-            title: 'Import failed',
-            message: detail || 'Some files could not be imported.',
-          });
-          return;
-        }
-        onComplete({ ...initialSettings, onboardingComplete: true });
-        return;
-      }
-    } catch (e) {
-      setImportErrorModal({
-        title: 'Something went wrong',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred.',
-      });
-    } finally {
-      setImportRunning(false);
-    }
-  }
-
-
-  function handleSelectBlank() {
-    goToStep2FromMode('blank');
-  }
-
-  function handleSelectSample() {
-    // SKY-2008: go to genre picker (step1c) instead of form (step2)
-    setStartMode('sample');
-    setSampleError('');
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setStep('step1c');
   }
 
   async function handleStartSample() {
@@ -1063,11 +730,113 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
-  function handleSelectTemplate() {
-    templateCardTriggerRef.current = document.activeElement as HTMLElement;
-    setStep('step1b-inner');
+  // ─── Path selector actions (flat four-card flow) ────────────────────────────
+
+  async function handlePathSelect(path: 'default' | 'blank' | 'import' | 'sample') {
+    setSelectedPath(path);
+    const labels = { default: 'Default Layout', blank: 'Blank', import: 'Import', sample: 'Sample Project' };
+    setAriaLiveMessage(`${labels[path]} selected.`);
+    if (path === 'default' || path === 'blank') {
+      setStartMode('blank');
+      setTitleError(''); setSavePathError(''); setScaffoldError('');
+      setStep('step2');
+    } else if (path === 'import') {
+      handleSelectImport();
+    } else if (path === 'sample') {
+      setStartMode('sample');
+      setSelectedSampleGenre(null); setOpenAccordionGenre(null); setSampleError('');
+      setStep('step1c');
+    }
   }
 
+  function handlePathSelectorArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
+    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const idx = cards.indexOf(document.activeElement as HTMLElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % cards.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (idx - 1 + cards.length) % cards.length;
+    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
+  }
+
+    function handleSkip() {
+    api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
+    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
+    onComplete(updated);
+  }
+
+  // ─── SKY-2638: Path 3 — Import Obsidian vault actions ────────────────────────
+
+  function handleSelectImport() {
+    setImportPickerPath('');
+    setImportPickerError('');
+    setImportDryRunReport(null);
+    setImportCommitError('');
+    setStep('import-picker');
+  }
+
+  async function handleImportPickFolder() {
+    try {
+      const result = await api().pickFolder();
+      if (result.cancelled || !result.vaultRoot) return;
+      const picked = result.vaultRoot;
+      setImportPickerPath(picked);
+      setImportPickerError('');
+      // Validate vault shape: must have .obsidian/ directory (AC-OB-07)
+      const obsidianCheck = await api().validatePath(picked + '/.obsidian');
+      if (!obsidianCheck.exists) {
+        setImportPickerError("This doesn't look like an Obsidian vault. Select a folder that contains a .obsidian/ directory or at least one .md file.");
+        return;
+      }
+      // Vault shape OK — start dry-run
+      setStep('import-scanning');
+      try {
+        const report = await api().importVaultDryRun?.(picked);
+        if (!report) {
+          setImportPickerError('Dry-run failed — no response from main process.');
+          setStep('import-picker');
+          return;
+        }
+        setImportDryRunReport(report);
+        setStep('import-dry-run');
+      } catch (e) {
+        setImportPickerError(e instanceof Error ? e.message : 'Scan failed. Try again.');
+        setStep('import-picker');
+      }
+    } catch {
+      // pickFolder cancelled or errored — stay on picker
+    }
+  }
+
+  async function handleImportCommit() {
+    if (!importPickerPath) return;
+    setImportCommitError('');
+    setStep('import-importing');
+    try {
+      const commitRes = await api().importVaultCommit?.(importPickerPath);
+      if (commitRes && !commitRes.ok) {
+        setImportCommitError(commitRes.error ?? 'Import failed.');
+        setStep('import-dry-run');
+        return;
+      }
+      // Mark onboarding complete and navigate to vault browser
+      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: importPickerPath });
+      if (!res.ok || res.error) {
+        setImportCommitError(res.error ?? 'Import succeeded but onboarding completion failed.');
+        setStep('import-dry-run');
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'open-existing',
+      };
+      onComplete(updated);
+    } catch (e) {
+      setImportCommitError(e instanceof Error ? e.message : 'Import failed.');
+      setStep('import-dry-run');
+    }
+  }
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
@@ -1139,7 +908,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setPathValidationState('validating');
     pathDebounceRef.current = setTimeout(() => {
       validatePathNow(value);
-    }, 500);
+    }, 400);
   }, [validatePathNow]); // pathOptionsRef.current.sep is always fresh via the ref
 
   // SKY-2007: fill input from a suggestion or recent, then immediately validate
@@ -1297,18 +1066,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const expanded = savePath.startsWith('~')
         ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
         : savePath;
-      const customExpanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      const payload = fromCustomSetup
-        ? {
-            startMode: 'blank' as const,
-            vaultParentPath: customExpanded,
-            vaultName: customVaultName.trim() || deriveVaultName(customExpanded),
-          }
-        : startMode === 'quick-start' || startMode === 'default-mythos-vault'
+      const payload = startMode === 'quick-start' || startMode === 'default-mythos-vault'
         ? { startMode: 'quick-start' as const }
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
@@ -1354,7 +1112,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function handleOverlayKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
-      if (step === 'step3') return; // close disabled during scaffolding
+      if (step === 'step3' || step === 'import-scanning' || step === 'import-importing') return; // close disabled during active operations
       if (showConflictDialog) {
         setShowConflictDialog(false);
         return;
@@ -1368,7 +1126,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'step-import') {
+      if (step === 'path-selector' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'import-picker' || step === 'import-dry-run') {
         setShowCancelConfirm(true);
       }
     }
@@ -1378,10 +1136,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const userTemplates = templates.filter((t) => t.isUserTemplate);
   const hasBundledSelection = bundledTemplates.some((t) => t.id === selectedTemplateId);
   const hasUserSelection = userTemplates.some((t) => t.id === selectedTemplateId);
-
-  const importHasInput = Boolean(
-    importMwPath.trim() || importObsNotesPath || importObsStoryPath || importDocxFiles.length > 0,
-  );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -1394,6 +1148,16 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       onKeyDown={handleOverlayKeyDown}
       data-testid="gs-overlay"
     >
+      {/* Always-in-DOM aria-live region — AC-OB-23 */}
+      <p
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="wizard-live-region"
+        style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
+      >
+        {ariaLiveMessage}
+      </p>
       <Toast message={templateToastState?.message ?? null} level={templateToastState?.level} />
       {/* Confirm dialog */}
       {showCancelConfirm && (
@@ -1420,22 +1184,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               Use your existing ~/Mythos vaults, start fresh, or hide this migration prompt permanently.
             </p>
             <div className="gs-confirm__actions">
-              <Button
-                variant="primary"
+              <button
+                className="btn-primary"
+                type="button"
                 onClick={() => { setShowMigrationDialog(false); handleOpenExistingVault(initialSettings.legacyVaultPath); }}
                 data-testid="gs-migration-use"
               >
                 Use them
-              </Button>
-              <Button
-                variant="secondary"
+              </button>
+              <button
+                className="btn-secondary"
+                type="button"
                 onClick={() => setShowMigrationDialog(false)}
                 data-testid="gs-migration-start-fresh"
               >
                 Start fresh
-              </Button>
-              <Button
-                variant="tertiary"
+              </button>
+              <button
+                className="btn-ghost"
+                type="button"
                 onClick={() => {
                   const updated = { ...initialSettings, legacyVaultDismissed: true };
                   api().settingsSet?.(updated).catch(() => {});
@@ -1444,7 +1211,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 data-testid="gs-migration-never"
               >
                 Never show again
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -1467,15 +1234,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 &ldquo;{tmpl?.name ?? 'This template'}&rdquo; will be permanently removed. This cannot be undone.
               </p>
               <div className="gs-confirm__actions">
-                <Button
-                  variant="primary"
+                <button
+                  className="btn-primary"
+                  type="button"
                   onClick={() => setDeletingId(null)}
                   data-testid="template-delete-cancel"
                 >
                   Keep it
-                </Button>
-                <Button
-                  variant="destructive"
+                </button>
+                <button
+                  className="btn-ghost btn-destructive"
+                  type="button"
                   data-testid="template-delete-confirm"
                   onClick={async () => {
                     await api().templateDelete(deletingId);
@@ -1485,16 +1254,16 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   }}
                 >
                   Delete
-                </Button>
+                </button>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* ── Step 1: Choose your starting point ── */}
-      {step === 'step1' && (
-        <div className="gs-modal" data-testid="screen-step1">
+      {/* ── Path selector: flat four-card starting-point picker (AC-OB-01/02) ── */}
+      {step === 'path-selector' && (
+        <div className="gs-modal" data-testid="screen-path-selector">
           <div className="gs-modal__header">
             <span className="gs-step-label">Step 1 of 3</span>
             <button
@@ -1502,7 +1271,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               type="button"
               aria-label="Close setup"
               onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1"
+              data-testid="gs-close-btn-path-selector"
             >
               &#x2715;
             </button>
@@ -1510,115 +1279,60 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          <div className="gs-cards" role="group" aria-label="Choose how to get started">
-            <StartingPointCard
-              icon="&#x2728;"
-              title="Quick Start"
-              description="One click — we set everything up for you."
-              ctaLabel="Start &#x2192;"
-              onActivate={handleQuickStart}
-              testId="card-quick-start"
-              cardRef={quickStartRef}
+          <div
+            role="radiogroup"
+            aria-label="Choose how to get started"
+            className="gs-path-selector-grid"
+            data-testid="path-card-radiogroup"
+            onKeyDown={handlePathSelectorArrowKeys}
+          >
+            <PathCard
+              testId="card-path-default"
+              icon="&#x26A1;"
+              title="Default Layout"
+              description="Start with our recommended story structure."
+              isRecommended={true}
+              isSelected={selectedPath === 'default'}
+              tabIndex={selectedPath === null || selectedPath === 'default' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('default'); }}
             />
-            <StartingPointCard
-              icon="&#x270F;&#xFE0F;"
-              title="Custom"
-              description="Fine-grained control: pick your location and starting point."
-              ctaLabel="Set up &#x2192;"
-              onActivate={handleCreateCustom}
-              testId="card-custom"
-            />
-            <StartingPointCard
-              icon="&#x1F4C2;"
-              title="Import / Open Existing"
-              description="Open an existing vault, or bring in Obsidian or Word files."
-              ctaLabel="Import &#x2192;"
-              onActivate={() => { resetImportState(); setStep('step-import'); }}
-              testId="card-import"
-              isSecondary
-            />
-          </div>
-
-          {/* AC-L-07/AC-L-08: footer links */}
-          <div className="gs-landing-footer">
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={() => { resetImportState(); setStep('step-import'); }}
-              data-testid="gs-restart-link"
-            >
-              Restart an existing project?
-            </button>
-            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
-            <a
-              className="gs-footer-link"
-              href="https://mythoswriter.com/help"
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="gs-learn-more"
-            >
-              Learn more
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 1b: Create Custom sub-selector ── */}
-      {step === 'step1b' && (
-        <div className="gs-modal" data-testid="screen-step1b-options">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => {
-                setStartMode(null);
-                setSelectedTemplateId(null);
-                setSelectedSampleGenre(null);
-                setStep('step1');
-              }}
-              data-testid="gs-back-step1b-options"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Step 1 of 3</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1b-options"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Create a custom vault</h2>
-          <p className="gs-modal__subtitle">Choose what you want to start with.</p>
-          <div className="gs-cards" role="group" aria-label="Choose a custom vault starting point">
-            <StartingPointCard
+            <PathCard
+              testId="card-path-blank"
               icon="&#x1F4DD;"
-              title="Blank Slate"
-              description="Minimal vault, no pre-seeded content."
-              ctaLabel="Start blank &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-blank"
+              title="Blank"
+              description="Minimal vault with no pre-seeded content."
+              isSelected={selectedPath === 'blank'}
+              tabIndex={selectedPath === 'blank' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('blank'); }}
             />
-            <StartingPointCard
+            <PathCard
+              testId="card-path-import"
+              icon="&#x1F4C2;"
+              title="Import"
+              description="Open an existing Mythos vault from your computer."
+              isSelected={selectedPath === 'import'}
+              tabIndex={selectedPath === 'import' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('import'); }}
+            />
+            <PathCard
+              testId="card-path-sample"
               icon="&#x1F4DA;"
               title="Sample Project"
-              description="Pre-loaded story and notes example."
-              ctaLabel="Preview samples &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-sample"
-            />
-            <StartingPointCard
-              icon="&#x1F4CB;"
-              title="From Template"
-              description="Choose a reusable story, notes, or worldbuilding structure."
-              ctaLabel="Browse templates &#x2192;"
-              onActivate={handleSelectTemplate}
-              testId="card-template"
+              description="Explore a pre-loaded story and notes example."
+              isSelected={selectedPath === 'sample'}
+              tabIndex={selectedPath === 'sample' ? 0 : -1}
+              onActivate={() => { void handlePathSelect('sample'); }}
             />
           </div>
+
+          <button
+            className="gs-skip-link"
+            type="button"
+            onClick={handleSkip}
+            data-testid="gs-skip"
+          >
+            Skip &#x2014; open empty workspace
+          </button>
         </div>
       )}
 
@@ -1635,13 +1349,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-ghost btn-back"
               type="button"
-              onClick={() => {
-                setStep('step1b');
-                requestAnimationFrame(() => {
-                  const el = document.querySelector('[data-testid="card-template"]') as HTMLElement | null;
-                  el?.focus();
-                });
-              }}
+              onClick={() => { setStep('path-selector'); }}
               data-testid="gs-back-step1b"
             >
               <span aria-hidden="true">&#x2190;</span> Back
@@ -1863,7 +1571,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 setSelectedSampleGenre(null);
                 setOpenAccordionGenre(null);
                 setSampleError('');
-                setStep('step1');
+                setStep('path-selector');
               }}
               data-testid="gs-back-step1c"
             >
@@ -1941,6 +1649,247 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               <p className="gp-note">Sampling won&apos;t affect your own files.</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Import picker ── */}
+      {(step === 'import-picker' || step === 'import-scanning') && (
+        <div className="gs-modal" data-testid="screen-import-picker">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              aria-label="Back to starting point selection"
+              onClick={() => setStep('path-selector')}
+              data-testid="gs-back-import-picker"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Import Obsidian Vault</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-import-picker"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Choose your Obsidian vault</h2>
+          <p className="gs-modal__subtitle">
+            Select the folder that contains your Obsidian vault. We&apos;ll scan it for potential issues before importing.
+          </p>
+
+          <div className="gs-form__field">
+            <label className="gs-form__label" htmlFor="import-vault-path-input">Vault folder</label>
+            <div className="gs-path-row">
+              <input
+                id="import-vault-path-input"
+                className="gs-form__input gs-path-input"
+                type="text"
+                readOnly
+                value={importPickerPath}
+                placeholder="No folder selected"
+                data-testid="import-vault-path-input"
+                aria-label="Vault folder path"
+                spellCheck={false}
+              />
+            </div>
+            {importPickerError && (
+              <p className="gs-form__error" role="alert" data-testid="import-picker-error">
+                {importPickerError}
+              </p>
+            )}
+          </div>
+
+          <div className="gs-actions">
+            {step === 'import-scanning' ? (
+              <div className="gs-spinner" aria-label="Scanning vault" role="status" data-testid="import-scanning-spinner" />
+            ) : (
+              <button
+                className="btn-primary gs-actions__cta"
+                type="button"
+                onClick={() => { void handleImportPickFolder(); }}
+                disabled={!!importPickerError && !!importPickerPath}
+                data-testid="import-vault-scan-btn"
+              >
+                {importPickerPath ? 'Rescan folder&#x2026;' : 'Browse&#x2026;'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Dry-run report ── */}
+      {step === 'import-dry-run' && importDryRunReport && (
+        <div className="gs-modal gs-modal--wide" data-testid="screen-dry-run">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              aria-label="Back to vault picker"
+              onClick={() => setStep('import-picker')}
+              data-testid="back-from-dry-run"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Scan Results</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="gs-close-btn-dry-run"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <h2 className="gs-modal__title">Review before importing</h2>
+
+          <div className="dry-run-report" data-testid="dry-run-report">
+            {/* Fatal error banner */}
+            {importDryRunReport.fatalError && (
+              <div className="dry-run-banner" role="alert" data-testid="dry-run-fatal-error">
+                <strong>Import blocked:</strong> {importDryRunReport.fatalError}
+              </div>
+            )}
+
+            {importCommitError && (
+              <div className="dry-run-banner" role="alert" data-testid="dry-run-commit-error">
+                {importCommitError}
+              </div>
+            )}
+
+            {/* Notes count */}
+            <div className="dry-run-stat">
+              <span className="dry-run-stat-value" data-testid="dry-run-notes-count">
+                {importDryRunReport.notesCount}
+              </span>
+              <span className="dry-run-stat-label">notes found</span>
+            </div>
+
+            {/* Broken links */}
+            {importDryRunReport.brokenLinks.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-broken-links">
+                <summary className="dry-run-section-title dry-run-warn">
+                  &#x26A0; {importDryRunReport.brokenLinks.length} broken link{importDryRunReport.brokenLinks.length !== 1 ? 's' : ''}
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These [[wiki-links]] point to notes that don&apos;t exist:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.brokenLinks.slice(0, 30).map((bl, i) => (
+                      <li key={i}>
+                        <span className="dry-run-file">{bl.file}</span>
+                        {' — '}
+                        <span className="dry-run-link">{bl.target}</span>
+                      </li>
+                    ))}
+                    {importDryRunReport.brokenLinks.length > 30 && (
+                      <li className="dry-run-more">…and {importDryRunReport.brokenLinks.length - 30} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Name collisions */}
+            {importDryRunReport.nameCollisions.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-name-collisions">
+                <summary className="dry-run-section-title dry-run-warn">
+                  &#x26A0; {importDryRunReport.nameCollisions.length} name collision{importDryRunReport.nameCollisions.length !== 1 ? 's' : ''}
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These notes share a name with existing entities (will be renamed with an &ldquo;Imported&rdquo; suffix):</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.nameCollisions.slice(0, 20).map((nc, i) => (
+                      <li key={i} className="dry-run-file">{nc.name} — {nc.file}</li>
+                    ))}
+                    {importDryRunReport.nameCollisions.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.nameCollisions.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Missing frontmatter */}
+            {importDryRunReport.missingFrontmatter.length > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-missing-frontmatter">
+                <summary className="dry-run-section-title dry-run-info">
+                  &#x2139; {importDryRunReport.missingFrontmatter.length} note{importDryRunReport.missingFrontmatter.length !== 1 ? 's' : ''} missing frontmatter
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These notes will have frontmatter added automatically:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.missingFrontmatter.slice(0, 20).map((f, i) => (
+                      <li key={i} className="dry-run-file">{f}</li>
+                    ))}
+                    {importDryRunReport.missingFrontmatter.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.missingFrontmatter.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* Restructured files */}
+            {(importDryRunReport.restructured?.length ?? 0) > 0 && (
+              <details className="dry-run-section" data-testid="dry-run-restructured">
+                <summary className="dry-run-section-title dry-run-info">
+                  &#x1F4C1; {importDryRunReport.restructured!.length} file{importDryRunReport.restructured!.length !== 1 ? 's' : ''} will be reorganised
+                </summary>
+                <div className="dry-run-section__body">
+                  <p className="dry-run-section__count">These files will be moved to match the Notes Vault layout:</p>
+                  <ul className="dry-run-list">
+                    {importDryRunReport.restructured!.slice(0, 20).map((r, i) => (
+                      <li key={i}>
+                        <span className="dry-run-file">{r.from}</span>
+                        {' '}&#x2192;{' '}
+                        <span className="dry-run-file">{r.to}</span>
+                      </li>
+                    ))}
+                    {importDryRunReport.restructured!.length > 20 && (
+                      <li className="dry-run-more">…and {importDryRunReport.restructured!.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              </details>
+            )}
+
+            {/* All clear */}
+            {!importDryRunReport.fatalError &&
+              importDryRunReport.brokenLinks.length === 0 &&
+              importDryRunReport.nameCollisions.length === 0 &&
+              (importDryRunReport.restructured?.length ?? 0) === 0 && (
+                <p className="dry-run-ok">&#x2705; Everything looks good! Ready to import.</p>
+              )}
+
+            <p className="dry-run-snapshot-promise">
+              A snapshot of your vault will be created before import begins. You can roll back from Settings &rarr; Vault if needed.
+            </p>
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => { void handleImportCommit(); }}
+              disabled={!!importDryRunReport.fatalError}
+              data-testid="import-vault-btn"
+            >
+              Import Vault &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SKY-2638: Import in progress ── */}
+      {step === 'import-importing' && (
+        <div className="gs-modal" data-testid="screen-import-importing">
+          <h2 className="gs-modal__title">Importing your vault&#x2026;</h2>
+          <div className="gs-spinner" aria-label="Importing vault" role="status" data-testid="import-in-progress-spinner" />
+          <p className="gs-modal__subtitle">Registering your Obsidian vault as your Notes Vault&#x2026;</p>
         </div>
       )}
 
@@ -2162,235 +2111,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         </div>
       )}
 
-      {/* ── Custom Setup: Screen 1 — Install Location (SKY-2988) ── */}
-      {step === 'custom-location' && (
-        <div className="gs-modal" data-testid="screen-custom-location">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep('step1')}
-              data-testid="custom-location-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Custom Setup · 1 of 2</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-location-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Where should your vault live?</h2>
-
-          <div className="gs-form">
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="custom-vault-path-input">
-                Vault location <span aria-hidden="true">*</span>
-              </label>
-              <div className="gs-path-row">
-                <input
-                  id="custom-vault-path-input"
-                  ref={customPathInputRef}
-                  className={`gs-form__input gs-path-input${
-                    customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' || customPathValidation === 'error'
-                      ? ' gs-form__input--error'
-                      : customPathValidation === 'valid' || customPathValidation === 'new-path'
-                      ? ' gs-form__input--valid'
-                      : ''
-                  }`}
-                  type="text"
-                  value={customVaultPath}
-                  onChange={(e) => handleCustomPathChange(e.target.value)}
-                  data-testid="custom-vault-path-input"
-                  aria-label="Vault location path"
-                  aria-describedby="custom-path-hint"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <button
-                  className="btn-secondary gs-path-row__browse"
-                  type="button"
-                  onClick={handleCustomBrowse}
-                  data-testid="custom-vault-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-
-              {customPathMsg ? (
-                <p
-                  className={`gs-path-hint gs-path-hint--${
-                    customPathValidation === 'conflict-mythos' ? 'warn'
-                    : customPathValidation === 'error' || customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' ? 'error'
-                    : 'info'
-                  }`}
-                  id="custom-path-hint"
-                  role="alert"
-                  data-testid="custom-path-validation-hint"
-                >
-                  {customPathMsg}
-                </p>
-              ) : (
-                <p className="gs-form__hint" id="custom-path-hint">
-                  Your vault files will be created here. You can move them later.
-                </p>
-              )}
-
-              {suggestedLocations.length > 0 && (
-                <div className="gs-suggestions" data-testid="custom-location-suggestions">
-                  <span className="gs-suggestions__label">Suggested:</span>
-                  {suggestedLocations.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      className="gs-suggestion-pill"
-                      onClick={() => handleCustomUsePath(loc)}
-                      data-testid="custom-suggestion-pill"
-                      title={loc}
-                    >
-                      {tildeify(loc, pathOptions.homeDir)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="custom-vault-name-input">
-                Vault name <span aria-hidden="true">*</span>
-              </label>
-              <input
-                id="custom-vault-name-input"
-                ref={customVaultNameInputRef}
-                className="gs-form__input"
-                type="text"
-                value={customVaultName}
-                maxLength={TITLE_MAX}
-                placeholder="e.g., My Writing Vault"
-                aria-required="true"
-                onChange={(e) => {
-                  vaultNameManuallyEditedRef.current = true;
-                  setCustomVaultName(e.target.value);
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCustomNext(); }}
-                data-testid="custom-vault-name-input"
-              />
-              <p className="gs-form__hint">Auto-filled from your path — edit freely.</p>
-            </div>
-          </div>
-
-          <div className="gs-actions">
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={handleCustomNext}
-              disabled={
-                customPathValidation === 'idle' ||
-                customPathValidation === 'validating' ||
-                customPathValidation === 'not-writable' ||
-                customPathValidation === 'path-too-long' ||
-                customPathValidation === 'error' ||
-                customPathValidation === 'conflict-mythos' ||
-                !customVaultName.trim()
-              }
-              data-testid="custom-location-next"
-            >
-              Next &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Custom Setup: Screen 2 — Template Picker (SKY-2988) ── */}
-      {step === 'custom-template' && (
-        <div className="gs-modal" data-testid="screen-custom-template">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep('custom-location')}
-              data-testid="custom-template-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Custom Setup · 2 of 2</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-template-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Choose a starting template</h2>
-          <p className="gs-modal__subtitle">You can always change this later.</p>
-
-          <div
-            role="radiogroup"
-            aria-label="Starting template"
-            className="custom-template-options"
-            onKeyDown={handleGridArrowKeys}
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={customTemplate === 'recommended'}
-              className={`custom-template-card${customTemplate === 'recommended' ? ' custom-template-card--selected' : ''}`}
-              onClick={() => setCustomTemplate('recommended')}
-              data-testid="custom-template-recommended"
-            >
-              <span className="custom-template-card__icon" aria-hidden="true">&#x2728;</span>
-              <div className="custom-template-card__body">
-                <span className="custom-template-card__title">
-                  Recommended
-                  <span className="custom-template-card__badge">Default</span>
-                </span>
-                <span className="custom-template-card__desc">
-                  A ready-made structure with example scenes and notes to get you started.
-                </span>
-              </div>
-              <span className="custom-template-card__radio" aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              role="radio"
-              aria-checked={customTemplate === 'blank'}
-              className={`custom-template-card${customTemplate === 'blank' ? ' custom-template-card--selected' : ''}`}
-              onClick={() => setCustomTemplate('blank')}
-              data-testid="custom-template-blank"
-            >
-              <span className="custom-template-card__icon" aria-hidden="true">&#x1F4DD;</span>
-              <div className="custom-template-card__body">
-                <span className="custom-template-card__title">Start Blank</span>
-                <span className="custom-template-card__desc">
-                  An empty vault — pure canvas, no sample content.
-                </span>
-              </div>
-              <span className="custom-template-card__radio" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="gs-actions">
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={handleCustomFinish}
-              data-testid="custom-template-finish"
-            >
-              Finish &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── Step 3: Creating your story ── */}
       {step === 'step3' && (
         <div className="gs-modal" data-testid="screen-step3">
@@ -2403,8 +2123,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   ? 'Setting up your vault…'
                   : startMode === 'open-existing'
                   ? 'Opening your vault…'
-                  : fromCustomSetup
-                  ? 'Setting up your vault…'
                   : 'Setting up your story…'}
               </h2>
               <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
@@ -2415,8 +2133,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   ? 'Setting up your vault…'
                   : startMode === 'open-existing'
                   ? 'Validating the selected folder…'
-                  : fromCustomSetup
-                  ? 'Creating your vault structure…'
                   : 'Creating your folders and first scene…'}
               </p>
             </>
@@ -2448,198 +2164,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ) : null}
         </div>
       )}
-
-      {/* ── Import / Open ── */}
-      {step === 'step-import' && (
-        <div className="gs-modal gs-modal--import" data-testid="screen-step-import">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => { resetImportState(); setStep('step1'); }}
-              data-testid="gs-back-step-import"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step-import"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Import / Open</h2>
-          <p className="gs-modal__subtitle">Fill in at least one section, then click Import / Open.</p>
-
-          {/* Section 1: Open MW vault */}
-          <section className="import-section" aria-label="Open Mythos Writer vault" data-testid="import-section-mw">
-            <h3 className="import-section__title">Open Mythos Writer vault</h3>
-            <div className="import-field-row">
-              <input
-                type="text"
-                className="import-field-row__input"
-                placeholder="Path to vault folder…"
-                value={importMwPath}
-                onChange={(e) => handleImportMwPathChange(e.target.value)}
-                aria-label="Vault folder path"
-                data-testid="import-mw-path"
-              />
-              <button
-                type="button"
-                className="btn-secondary import-field-row__browse"
-                onClick={() => { void handleImportMwBrowse(); }}
-                data-testid="import-mw-browse"
-              >
-                Browse…
-              </button>
-            </div>
-            {importMwMsg && (
-              <p
-                className={`import-validation import-validation--${importMwValidation}`}
-                data-testid="import-mw-msg"
-                role="status"
-              >
-                {importMwMsg}
-              </p>
-            )}
-          </section>
-
-          {/* Section 2: Import Obsidian */}
-          <section className="import-section" aria-label="Import from Obsidian" data-testid="import-section-obs">
-            <h3 className="import-section__title">Import from Obsidian</h3>
-            <div className="import-slot">
-              <span className="import-slot__label">Notes vault</span>
-              <div className="import-field-row">
-                <input
-                  type="text"
-                  className="import-field-row__input"
-                  placeholder="Obsidian notes folder…"
-                  value={importObsNotesPath}
-                  readOnly
-                  aria-label="Obsidian notes vault folder"
-                  data-testid="import-obs-notes-path"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary import-field-row__browse"
-                  onClick={() => { void handleImportObsBrowse('notes'); }}
-                  data-testid="import-obs-notes-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-            </div>
-            <div className="import-slot">
-              <span className="import-slot__label">Story vault</span>
-              <div className="import-field-row">
-                <input
-                  type="text"
-                  className="import-field-row__input"
-                  placeholder="Obsidian story folder…"
-                  value={importObsStoryPath}
-                  readOnly
-                  aria-label="Obsidian story vault folder"
-                  data-testid="import-obs-story-path"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary import-field-row__browse"
-                  onClick={() => { void handleImportObsBrowse('story'); }}
-                  data-testid="import-obs-story-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 3: Word docs */}
-          <section className="import-section" aria-label="Import Word documents" data-testid="import-section-docx">
-            <h3 className="import-section__title">Import Word documents (.docx)</h3>
-            <button
-              type="button"
-              className="btn-secondary import-section__file-btn"
-              onClick={() => docxFileInputRef.current?.click()}
-              data-testid="import-docx-browse"
-            >
-              Add .docx files…
-            </button>
-            <input
-              ref={docxFileInputRef}
-              type="file"
-              multiple
-              accept=".docx"
-              style={{ display: 'none' }}
-              onChange={handleDocxFileChange}
-              data-testid="import-docx-input"
-              aria-label="Select Word documents to import"
-            />
-            {importDocxFiles.length > 0 && (
-              <ul className="import-docx-list" aria-label="Selected Word documents">
-                {importDocxFiles.map((f, i) => (
-                  <li key={`${f.name}-${i}`} className="import-docx-list__item">
-                    <span className="import-docx-list__name">{f.name}</span>
-                    <button
-                      type="button"
-                      className="btn-ghost import-docx-list__remove"
-                      aria-label={`Remove ${f.name}`}
-                      onClick={() => handleRemoveDocxFile(i)}
-                      data-testid={`import-docx-remove-${i}`}
-                    >
-                      &#x2715;
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <p className="import-tip" data-testid="import-tip">
-            Tip: fill in one section above, then click Import / Open.
-          </p>
-          <div className="import-actions">
-            <button
-              type="button"
-              className="btn-primary import-actions__submit"
-              disabled={!importHasInput || importRunning}
-              onClick={() => { void handleImportOrOpen(); }}
-              data-testid="import-action-btn"
-            >
-              {importRunning ? 'Importing…' : 'Import / Open →'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Import error modal */}
-      {importErrorModal && (
-        <div
-          className="gs-confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="import-error-title"
-          data-testid="import-error-modal"
-        >
-          <div className="gs-confirm">
-            <h3 className="gs-confirm__title" id="import-error-title">{importErrorModal.title}</h3>
-            <p className="gs-confirm__body">{importErrorModal.message}</p>
-            <div className="gs-confirm__actions">
-              <button
-                className="btn-primary"
-                type="button"
-                onClick={() => setImportErrorModal(null)}
-                data-testid="import-error-dismiss"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
