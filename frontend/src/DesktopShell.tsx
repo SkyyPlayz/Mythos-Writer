@@ -521,7 +521,10 @@ interface DragState {
   startWidth: number;
 }
 
-export default function DesktopShell() {
+export default function DesktopShell({ initialSettings }: { initialSettings?: AppSettings } = {}) {
+  // SKY-4259: ref so loadVault can read the post-onboarding settings that the wizard
+  // computed without needing it in the useCallback dep array.
+  const initialSettingsRef = useRef<AppSettings | undefined>(initialSettings);
   const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
@@ -1030,11 +1033,22 @@ export default function DesktopShell() {
     setLoading(true);
     setError(null);
     try {
-      const [s, rootResult, vaultPaths] = await Promise.all([
+      const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.vaultGetPaths?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
+      // SKY-4259: merge post-onboarding fields that the wizard computed but may not be
+      // on disk yet (E2E mocks replace onboarding:complete without writing settings).
+      // Only fills fields that are absent from disk; disk values always take precedence.
+      const initS = initialSettingsRef.current;
+      const s = sFromIpc && initS ? {
+        ...sFromIpc,
+        ...(typeof initS.rightSidebarVisible === 'boolean' && typeof sFromIpc.rightSidebarVisible !== 'boolean'
+          ? { rightSidebarVisible: initS.rightSidebarVisible } : {}),
+        ...(initS.gettingStartedProgress != null && sFromIpc.gettingStartedProgress == null
+          ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
+      } : sFromIpc;
 
       let storyValid = true;
       let notesValid = true;

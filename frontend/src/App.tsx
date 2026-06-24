@@ -117,7 +117,7 @@ function App() {
 
   return (
     <div className="root-layout">
-      <DesktopShell />
+      <DesktopShell initialSettings={'settings' in view ? view.settings : undefined} />
     </div>
   );
 }
