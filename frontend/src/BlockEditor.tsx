@@ -16,6 +16,7 @@ import { EntityMention } from './EntityMentionExtension';
 import { EntityMentionPickerExtension, mentionPickerKey, type MentionPickerState } from './EntityMentionPickerExtension';
 import EntityMentionPicker, { matchesEntityQuery } from './EntityMentionPicker';
 import { countWords } from './wordStats';
+import FormatToolbar from './FormatToolbar';
 import './BlockEditor.css';
 import './EntityMention.css';
 
@@ -517,6 +518,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           ))}
         </div>
       </div>
+      <FormatToolbar editor={editor} />
       <div
         className="tiptap-editor-wrap"
         ref={editorWrapRef}

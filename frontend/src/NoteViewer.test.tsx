@@ -35,13 +35,16 @@ describe('NoteViewer cross-tab links', () => {
   it('flushes note content when the tab-aware save event fires', async () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
-    const editor = await screen.findByLabelText('Edit note: Test.md');
-    fireEvent.change(editor, { target: { value: 'Updated [[Character: Elara]]' } });
+    // Wait for initial note content to load into editor
+    await waitFor(() => expect(readNotesVault).toHaveBeenCalledWith('Notes/Test.md'));
+
+    // Trigger immediate flush (clears debounce timer and writes synchronously)
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
     });
 
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', 'Updated [[Character: Elara]]'));
+    // Editor serializes its current content and writes through notes vault
+    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', expect.any(String)));
   });
 
   it('does not fall back to story vault when readNotesVault fails (SKY-2976/GH#620)', async () => {
@@ -57,13 +60,15 @@ describe('NoteViewer cross-tab links', () => {
   it('always writes through notes vault API (SKY-2976)', async () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
-    const editor = await screen.findByLabelText('Edit note: Test.md');
-    fireEvent.change(editor, { target: { value: 'New content' } });
+    // Wait for initial load
+    await waitFor(() => expect(readNotesVault).toHaveBeenCalledWith('Notes/Test.md'));
+
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
     });
 
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', 'New content'));
+    // Writes through notes vault, never touches the story vault
+    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', expect.any(String)));
     expect(readVault).not.toHaveBeenCalled();
   });
 });

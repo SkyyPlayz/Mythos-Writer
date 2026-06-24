@@ -208,6 +208,11 @@
   font-size: 0.9rem;
 }
 
+.tiptap-content .ProseMirror u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
   content: 'Start writing your scene\2026';
   color: var(--text-placeholder);

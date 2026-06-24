@@ -1,0 +1,158 @@
+/* FormatToolbar — Liquid Neon word-processor formatting bar (SKY-3205)
+ * All color values are design tokens. Zero bare hex literals on shipped surfaces.
+ */
+
+.fmt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-3);
+  background: var(--glass-fill-fallback);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-height: 36px;
+  /* Perf: contain layout changes inside this bar */
+  contain: layout style;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .fmt-toolbar {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
+  }
+}
+
+/* Invisible skeleton during editor init so the bar reserves its height */
+.fmt-toolbar--skeleton {
+  min-height: 36px;
+  pointer-events: none;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* ── Heading select ──────────────────────────────────────────────────────── */
+
+.fmt-heading-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-body);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  padding: 2px var(--space-2);
+  cursor: pointer;
+  height: 26px;
+  min-width: 104px;
+  transition: border-color var(--dur-hover-in) var(--ease-out),
+              color var(--dur-hover-in) var(--ease-out);
+}
+
+.fmt-heading-select:hover {
+  border-color: var(--border-strong);
+  color: var(--text-header);
+}
+
+.fmt-heading-select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.fmt-heading-select option {
+  background: var(--bg-elevated);
+  color: var(--text-body);
+}
+
+/* ── Vertical separator ──────────────────────────────────────────────────── */
+
+.fmt-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+/* ── Toolbar button ──────────────────────────────────────────────────────── */
+
+.fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 28×28 visible target, but min 32px implicit via padding so small targets
+     hit ≥44px when the toolbar is taller on wrap */
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--dur-hover-in) var(--ease-out),
+              color var(--dur-hover-in) var(--ease-out),
+              border-color var(--dur-hover-in) var(--ease-out);
+  /* Stop mousedown default so editor focus isn't stolen */
+  user-select: none;
+}
+
+.fmt-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-header);
+  border-color: var(--border-default);
+}
+
+.fmt-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+/* Active (pressed-down feedback via :active pseudo, 100ms) */
+.fmt-btn:active {
+  background: var(--bg-active);
+  transition-duration: var(--dur-press);
+}
+
+/* Active mark / node state */
+.fmt-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-light);
+  border-color: var(--accent-dim);
+}
+
+.fmt-btn.is-active:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Inline mark label styling ───────────────────────────────────────────── */
+
+.fmt-btn--bold   { font-weight: 700; }
+.fmt-btn--italic { font-style: italic; }
+.fmt-btn--underline {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fmt-btn--strike { text-decoration: line-through; }
+.fmt-btn--mono   { font-family: 'Courier New', Courier, monospace; font-size: 10px; }
+
+.fmt-list-icon {
+  font-size: 11px;
+  letter-spacing: -1px;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .fmt-btn,
+  .fmt-heading-select {
+    transition: none;
+  }
+}
