@@ -141,9 +141,14 @@ jobs:
         run: npm ci
 
       - name: Build (electron-vite)
+        # SKY-4207: clean out/ before building — it is gitignored and persists across
+        # runs on self-hosted runners; stale hashed renderer chunks accumulate and
+        # inflated the artifact to 1.4 GB on run 28113426547.
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron
+        run: |
+          rm -rf out/
+          npm run build:electron
 
       - name: Upload electron build for E2E shards
         uses: actions/upload-artifact@v4
@@ -151,6 +156,7 @@ jobs:
           name: electron-build-${{ github.run_id }}
           path: out/
           retention-days: 1
+          compression-level: 9
 
       - name: Stop WSL2 power keep-alive
         if: always()
