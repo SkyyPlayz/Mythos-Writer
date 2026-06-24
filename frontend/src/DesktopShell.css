@@ -1058,36 +1058,10 @@
   color: var(--success, #16a34a);
 }
 
-/* ─── Page Background (SKY-2097) ────────────────────────────────────────────
-   Writing-surface panel tint driven by --page-bg-* tokens.
-   applyPageBackgroundTokens() sets these at runtime from user prefs.            */
-
-.shell-editor-scene-wrap {
-  background: var(--page-bg-fill);
-  transition: background 200ms ease;
-}
-
-/* Liquid Neon only: subtle inset glow on the writing surface panel */
-[data-page-preset="liquid-neon"] .shell-editor-scene-wrap {
-  box-shadow: inset 0 0 80px var(--page-bg-glow-color);
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .shell-editor-scene-wrap {
-    backdrop-filter: blur(var(--page-bg-backdrop-blur));
-    -webkit-backdrop-filter: blur(var(--page-bg-backdrop-blur));
-  }
-}
-
-/* High-contrast: force a near-opaque dark surface for legibility (WCAG 1.4.3). */
-@media (prefers-contrast: more) {
-  .shell-editor-scene-wrap {
-    background: rgba(11, 14, 19, 0.97) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    box-shadow: none !important;
-  }
-}
+/* ─── Page Background (SKY-2097 / SKY-3625) ─────────────────────────────────
+   The writing-surface paper panel is now scoped to .tiptap-content (the text
+   column) inside BlockEditor.css. The scene wrap is intentionally transparent
+   so the app background shows through around the column. */
 
 /* Reduced motion: disable glow pulse by zeroing the glow intensity token. */
 @media (prefers-reduced-motion: reduce) {

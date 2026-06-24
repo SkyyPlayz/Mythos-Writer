@@ -5,6 +5,7 @@ import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRat
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 const notesTabCss = readFileSync(join(__dirname, 'NotesTabPanel.css'), 'utf8');
 const desktopShellCss = readFileSync(join(__dirname, 'DesktopShell.css'), 'utf8');
+const blockEditorCss = readFileSync(join(__dirname, 'BlockEditor.css'), 'utf8');
 
 describe('token contrast floor (MYT-517 UX gate)', () => {
   // The sub-muted text colour failed the 4.5:1 floor on lighter surfaces, so
@@ -492,5 +493,47 @@ describe('DesktopShell.css scrim wiring (SKY-2962)', () => {
     expect(scrimIdx).toBeGreaterThanOrEqual(0);
     expect(wallpaperIdx).toBeGreaterThanOrEqual(0);
     expect(scrimIdx).toBeLessThan(wallpaperIdx);
+  });
+});
+
+// ─── SKY-3625: Editor paper panel scoped to text column ──────────────────────
+
+describe('BlockEditor.css paper panel (SKY-3625)', () => {
+  it('.tiptap-content uses --page-bg-fill as its background', () => {
+    expect(blockEditorCss).toMatch(/\.tiptap-content\b[\s\S]*?background:\s*var\(--page-bg-fill\)/);
+  });
+
+  it('.tiptap-content has border-radius for the panel shape', () => {
+    expect(blockEditorCss).toMatch(/\.tiptap-content\b[\s\S]*?border-radius:/);
+  });
+
+  it('@supports backdrop-filter applies blur to .tiptap-content', () => {
+    expect(blockEditorCss).toMatch(
+      /@supports[^{]*backdrop-filter[\s\S]*?\.tiptap-content[\s\S]*?backdrop-filter:\s*blur\(var\(--page-bg-backdrop-blur\)\)/,
+    );
+  });
+
+  it('liquid-neon preset applies neon glow box-shadow to .tiptap-content', () => {
+    expect(blockEditorCss).toMatch(
+      /\[data-page-preset="liquid-neon"\]\s+\.tiptap-content[\s\S]*?box-shadow:/,
+    );
+  });
+
+  it('prefers-contrast: more forces near-opaque background on .tiptap-content', () => {
+    expect(blockEditorCss).toMatch(/prefers-contrast:\s*more[\s\S]*?\.tiptap-content[\s\S]*?background:/);
+  });
+});
+
+describe('PAGE_BACKGROUND_DEFAULTS migration default (SKY-3625)', () => {
+  it('default preset is liquid-neon (the glass panel)', () => {
+    expect(PAGE_BACKGROUND_DEFAULTS.preset).toBe('liquid-neon');
+  });
+
+  it('default opacity is 65 (semi-transparent glass)', () => {
+    expect(PAGE_BACKGROUND_DEFAULTS.opacity).toBe(65);
+  });
+
+  it('default blur is 12px', () => {
+    expect(PAGE_BACKGROUND_DEFAULTS.blur).toBe(12);
   });
 });
