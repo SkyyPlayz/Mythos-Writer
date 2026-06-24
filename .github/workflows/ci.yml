@@ -150,13 +150,14 @@ jobs:
           rm -rf out/
           npm run build:electron
 
-      - name: Upload electron build for E2E shards
-        uses: actions/upload-artifact@v4
+      - name: Cache electron build for E2E shards
+        # SKY-3872/SKY-4216: switched back to cache/save (separate 10 GB LRU quota)
+        # after upload-artifact hit artifact storage quota on run 28113426547.
+        # E2E shards fall back to a local rebuild on cache miss (SKY-3742).
+        uses: actions/cache/save@v4
         with:
-          name: electron-build-${{ github.run_id }}
           path: out/
-          retention-days: 1
-          compression-level: 9
+          key: electron-build-${{ github.run_id }}
 
       - name: Stop WSL2 power keep-alive
         if: always()
@@ -186,11 +187,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download electron build
-        uses: actions/download-artifact@v4
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          name: electron-build-${{ github.run_id }}
           path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -263,11 +273,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download electron build
-        uses: actions/download-artifact@v4
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          name: electron-build-${{ github.run_id }}
           path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -317,11 +336,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download electron build
-        uses: actions/download-artifact@v4
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          name: electron-build-${{ github.run_id }}
           path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
@@ -380,11 +408,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download electron build
-        uses: actions/download-artifact@v4
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
         with:
-          name: electron-build-${{ github.run_id }}
           path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
 
       - name: Install Xvfb (virtual display for Electron E2E)
         run: |
