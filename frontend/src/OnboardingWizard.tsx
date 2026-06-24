@@ -1527,7 +1527,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               description="Fine-grained control: pick your location and starting point."
               ctaLabel="Set up &#x2192;"
               onActivate={handleCreateCustom}
-              testId="card-custom"
+              testId="card-create-custom"
             />
             <StartingPointCard
               icon="&#x1F4C2;"

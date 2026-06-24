@@ -133,7 +133,7 @@ async function renderWizard(ui: ReactElement) {
 }
 
 async function openCustomOptions() {
-  fireEvent.click(screen.getByTestId('card-custom'));
+  fireEvent.click(screen.getByTestId('card-create-custom'));
   await flushAsyncEffects();
 }
 
@@ -225,7 +225,7 @@ describe('OnboardingWizard — Step 1', () => {
   it('shows three top-level starting-point cards (SKY-2987 3-path spec)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.getByTestId('card-custom')).toBeInTheDocument();
+    expect(screen.getByTestId('card-create-custom')).toBeInTheDocument();
     expect(screen.getByTestId('card-import')).toBeInTheDocument();
     expect(screen.queryByTestId('card-blank')).not.toBeInTheDocument();
     expect(screen.queryByTestId('card-create-custom')).not.toBeInTheDocument();
@@ -236,7 +236,7 @@ describe('OnboardingWizard — Step 1', () => {
   it('card labels match SKY-2970 spec copy (3-path redesign)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-custom')).toHaveTextContent('Custom');
+    expect(screen.getByTestId('card-create-custom')).toHaveTextContent('Custom');
     expect(screen.getByTestId('card-import')).toHaveTextContent('Import / Open Existing');
     await act(async () => {});
   });
@@ -265,7 +265,7 @@ describe('OnboardingWizard — Step 1', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
     expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-custom')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-create-custom')).not.toHaveClass('gs-card--secondary');
     await act(async () => {});
   });
 
