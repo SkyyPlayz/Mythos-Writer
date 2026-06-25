@@ -1,105 +1,96 @@
-// SKY-207: Scene properties panel — custom frontmatter fields editor.
-import { useState, useEffect, useRef } from 'react';
+import type { Scene, Story, Chapter } from './types';
+import DraftHistoryPanel from './DraftHistoryPanel';
 import './ScenePropertiesPanel.css';
 
-type FieldType = 'text' | 'number' | 'select';
-
-interface CustomFieldDef {
-  id: string;
-  name: string;
-  type: FieldType;
-  options?: string[];
-}
-
 interface Props {
-  sceneId: string;
+  scene: Scene | null;
+  chapter: Chapter | null;
+  story: Story | null;
+  currentContent?: string;
+  onDraftRestore?: (content: string) => void;
 }
 
-const SAVE_DEBOUNCE_MS = 800;
+export default function ScenePropertiesPanel({ scene, chapter, story, currentContent, onDraftRestore }: Props) {
+  if (!scene || !chapter || !story) {
+    return (
+      <div className="spp-empty">
+        <div className="spp-empty-icon" aria-hidden="true">🏷️</div>
+        <p>Select a scene to see its properties.</p>
+        <p className="spp-empty-sub">Word count, draft state, creation date, and more.</p>
+      </div>
+    );
+  }
 
-export default function ScenePropertiesPanel({ sceneId }: Props) {
-  const [fieldDefs, setFieldDefs] = useState<CustomFieldDef[]>([]);
-  const [values, setValues] = useState<Record<string, unknown>>({});
-  const [loaded, setLoaded] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wordCount = scene.blocks
+    .map((b) => b.content.trim().split(/\s+/).filter(Boolean).length)
+    .reduce((a, b) => a + b, 0);
 
-  useEffect(() => {
-    setLoaded(false);
-    Promise.all([
-      window.api.customFieldsList?.() as Promise<{ fields: CustomFieldDef[] }>,
-      window.api.scenePropsGet?.(sceneId) as Promise<{ customFields: Record<string, unknown> }>,
-    ])
-      .then(([defsRes, propsRes]) => {
-        setFieldDefs(defsRes?.fields ?? []);
-        setValues(propsRes?.customFields ?? {});
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
-  }, [sceneId]);
-
-  const handleChange = (name: string, value: unknown) => {
-    const next = { ...values, [name]: value };
-    setValues(next);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      window.api.scenePropsSet?.(sceneId, { [name]: value }).catch(() => {});
-    }, SAVE_DEBOUNCE_MS);
-  };
-
-  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
-
-  if (!loaded || fieldDefs.length === 0) return null;
+  const blocksByType = scene.blocks.reduce<Record<string, number>>((acc, b) => {
+    acc[b.type] = (acc[b.type] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
-    <div className="scene-props-panel" aria-label="Scene properties">
-      <span className="scene-props-label">Properties</span>
-      <div className="scene-props-fields">
-        {fieldDefs.map((def) => {
-          const val = values[def.name];
-          const fieldId = `scene-prop-${def.name}`;
-          return (
-            <div key={def.id} className="scene-props-field">
-              <label className="scene-props-field-label" htmlFor={fieldId}>
-                {def.name}
-              </label>
-              {def.type === 'text' && (
-                <input
-                  id={fieldId}
-                  className="scene-props-input"
-                  type="text"
-                  value={typeof val === 'string' ? val : ''}
-                  onChange={(e) => handleChange(def.name, e.target.value)}
-                  aria-label={def.name}
-                />
-              )}
-              {def.type === 'number' && (
-                <input
-                  id={fieldId}
-                  className="scene-props-input scene-props-input--number"
-                  type="number"
-                  value={typeof val === 'number' ? val : ''}
-                  onChange={(e) => handleChange(def.name, e.target.value === '' ? '' : Number(e.target.value))}
-                  aria-label={def.name}
-                />
-              )}
-              {def.type === 'select' && (
-                <select
-                  id={fieldId}
-                  className="scene-props-select"
-                  value={typeof val === 'string' ? val : ''}
-                  onChange={(e) => handleChange(def.name, e.target.value)}
-                  aria-label={def.name}
-                >
-                  <option value="">—</option>
-                  {(def.options ?? []).map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-              )}
+    <>
+      <div className="spp-root">
+        <div className="spp-group">
+          <div className="spp-label">Scene</div>
+          <div className="spp-value spp-title">{scene.title}</div>
+        </div>
+        <div className="spp-row">
+          <div className="spp-group">
+            <div className="spp-label">Story</div>
+            <div className="spp-value">{story.title}</div>
+          </div>
+          <div className="spp-group">
+            <div className="spp-label">Chapter</div>
+            <div className="spp-value">{chapter.title}</div>
+          </div>
+        </div>
+        <div className="spp-row">
+          <div className="spp-group">
+            <div className="spp-label">Words</div>
+            <div className="spp-value spp-stat">{wordCount.toLocaleString()}</div>
+          </div>
+          <div className="spp-group">
+            <div className="spp-label">Blocks</div>
+            <div className="spp-value spp-stat">{scene.blocks.length}</div>
+          </div>
+        </div>
+        <div className="spp-group">
+          <div className="spp-label">Draft state</div>
+          <div className={`spp-value spp-draft spp-draft--${scene.draftState ?? 'in-progress'}`}>
+            {scene.draftState ?? 'in-progress'}
+          </div>
+        </div>
+        {Object.keys(blocksByType).length > 0 && (
+          <div className="spp-group">
+            <div className="spp-label">Block breakdown</div>
+            <div className="spp-breakdown">
+              {Object.entries(blocksByType).map(([type, count]) => (
+                <span key={type} className="spp-breakdown-item">
+                  {type}: {count}
+                </span>
+              ))}
             </div>
-          );
-        })}
+          </div>
+        )}
+        <div className="spp-group">
+          <div className="spp-label">Last updated</div>
+          <div className="spp-value spp-date">{new Date(scene.updatedAt).toLocaleString()}</div>
+        </div>
+        <div className="spp-group">
+          <div className="spp-label">Created</div>
+          <div className="spp-value spp-date">{new Date(scene.createdAt).toLocaleString()}</div>
+        </div>
       </div>
-    </div>
+      {currentContent !== undefined && onDraftRestore && (
+        <DraftHistoryPanel
+          sceneId={scene.id}
+          currentContent={currentContent}
+          onRestore={onDraftRestore}
+        />
+      )}
+    </>
   );
 }

@@ -408,196 +408,68 @@ describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Surface 7 — RightSidebar tab bar (MYT-803 ARIA tab pattern)
+// Surface 7 — GRS panel accessibility (SceneNotesPanel, ScenePropertiesPanel)
 // ══════════════════════════════════════════════════════════════════════════════
-import RightSidebar from './RightSidebar';
+import SceneNotesPanel from './SceneNotesPanel';
+import ScenePropertiesPanel from './ScenePropertiesPanel';
 
-describe('Accessibility — RightSidebar tab bar (WCAG 4.1.2)', () => {
+describe('Accessibility — SceneNotesPanel (WCAG 4.1.2)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
 
-  it('notes tab active — no axe violations', async () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="notes"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
+  it('empty state — no axe violations', async () => {
+    const { container } = render(<SceneNotesPanel scene={null} />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('properties tab active — no axe violations', async () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="properties"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
-
-  it('ai tab active — no axe violations (includes AI sub-tabs)', async () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="ai"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
-
-  it('main tab elements carry correct ARIA roles and attributes', () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="properties"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-
-    const tablist = container.querySelector('[role="tablist"]');
-    expect(tablist).not.toBeNull();
-    expect(tablist?.getAttribute('aria-label')).toBe('Sidebar panels');
-
-    const tabs = container.querySelectorAll('[role="tab"]');
-    expect(tabs).toHaveLength(5); // notes, properties, ai, outline, continuity
-
-    const activeTab = container.querySelector('[aria-selected="true"]');
-    expect(activeTab?.id).toBe('rightsidebar-tab-properties');
-
-    const panel = container.querySelector('[role="tabpanel"]');
-    expect(panel).not.toBeNull();
-    expect(panel?.getAttribute('aria-labelledby')).toBe('rightsidebar-tab-properties');
-  });
-
-  it('roving tabIndex — active tab has tabIndex 0, others have -1', () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="ai"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-
-    const allTabs = container.querySelectorAll('[role="tab"]');
-    // Only main tabs here (ai tab is active)
-    const mainTabs = Array.from(allTabs).filter((el) =>
-      el.id.startsWith('rightsidebar-tab-'),
-    );
-    const activeMain = mainTabs.find((el) => el.getAttribute('aria-selected') === 'true');
-    const inactiveMain = mainTabs.filter((el) => el.getAttribute('aria-selected') === 'false');
-
-    expect(activeMain?.getAttribute('tabindex')).toBe('0');
-    for (const tab of inactiveMain) {
-      expect(tab.getAttribute('tabindex')).toBe('-1');
-    }
-  });
-
-  it('AI sub-tab elements carry correct ARIA roles and attributes', () => {
-    const { container } = render(
-      <RightSidebar
-        activeTab="ai"
-        onTabChange={() => {}}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-
-    const subtablist = container.querySelector('.ai-subtabs[role="tablist"]');
-    expect(subtablist).not.toBeNull();
-    expect(subtablist?.getAttribute('aria-label')).toBe('AI assistant panels');
-
-    const subTabs = container.querySelectorAll('[role="tab"][id^="ai-subtab-"]');
-    expect(subTabs).toHaveLength(3);
-
-    const activeSubTab = Array.from(subTabs).find(
-      (el) => el.getAttribute('aria-selected') === 'true',
-    );
-    expect(activeSubTab?.id).toBe('ai-subtab-writing');
-
-    const subPanel = container.querySelector('#ai-subtabpanel[role="tabpanel"]');
-    expect(subPanel).not.toBeNull();
-    expect(subPanel?.getAttribute('aria-labelledby')).toBe('ai-subtab-writing');
-  });
-
-  it('ArrowRight on main tabs moves focus and activates next tab', () => {
-    const onTabChange = vi.fn();
-    const { container } = render(
-      <RightSidebar
-        activeTab="notes"
-        onTabChange={onTabChange}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-
-    const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
-    fireEvent.keyDown(notesTab, { key: 'ArrowRight' });
-    expect(onTabChange).toHaveBeenCalledWith('properties');
-  });
-
-  it('ArrowLeft on main tabs wraps around to last tab', () => {
-    const onTabChange = vi.fn();
-    const { container } = render(
-      <RightSidebar
-        activeTab="notes"
-        onTabChange={onTabChange}
-        selectedScene={null}
-        selectedChapter={null}
-        selectedStory={null}
-      />,
-    );
-
-    const notesTab = container.querySelector('#rightsidebar-tab-notes') as HTMLElement;
-    fireEvent.keyDown(notesTab, { key: 'ArrowLeft' });
-    expect(onTabChange).toHaveBeenCalledWith('continuity'); // wraps to last tab
-  });
-
-  it('outline tab active — no axe violations', async () => {
-    const story = {
-      id: 's1', title: 'My Story', path: '/s', order: 0,
-      chapters: [{
-        id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, createdAt: '', updatedAt: '',
-        scenes: [
-          { id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
-          { id: 'sc2', title: 'Scene 2', path: '/s/ch1/sc2', order: 1, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' },
-        ],
-      }],
+  it('with scene — textarea has accessible label', () => {
+    const scene = {
+      id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0,
+      chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '',
     };
-    let container!: HTMLElement;
-    await act(async () => {
-      container = render(
-        <RightSidebar
-          activeTab="outline"
-          onTabChange={() => {}}
-          selectedScene={{ id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0, chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '' }}
-          selectedChapter={{ id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: story.chapters[0].scenes, createdAt: '', updatedAt: '' }}
-          selectedStory={story as any}
-        />,
-      ).container;
-      await Promise.resolve(); // flush outline.load() Promise → setNodes
-    });
+    const { container } = render(<SceneNotesPanel scene={scene as any} />);
+    const textarea = container.querySelector('textarea');
+    expect(textarea).not.toBeNull();
+    expect(textarea?.getAttribute('aria-label')).toBe('Scene notes');
+  });
+
+  it('with scene — no axe violations', async () => {
+    const scene = {
+      id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0,
+      chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '',
+    };
+    const { container } = render(<SceneNotesPanel scene={scene as any} />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+
+describe('Accessibility — ScenePropertiesPanel (WCAG 4.1.2)', () => {
+  beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+
+  it('empty state — no axe violations', async () => {
+    const { container } = render(
+      <ScenePropertiesPanel scene={null} chapter={null} story={null} />,
+    );
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
+  it('with scene/chapter/story — no axe violations', async () => {
+    const scene = {
+      id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0,
+      chapterId: 'ch1', storyId: 's1', draftState: 'in-progress',
+      blocks: [{ id: 'b1', type: 'paragraph', content: 'Hello world', order: 0 }],
+      createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-02T00:00:00.000Z',
+    };
+    const chapter = { id: 'ch1', title: 'Chapter 1', path: '/s/ch1', order: 0, scenes: [], createdAt: '', updatedAt: '' };
+    const story = { id: 's1', title: 'My Story', path: '/s', order: 0, chapters: [] };
+    const { container } = render(
+      <ScenePropertiesPanel scene={scene as any} chapter={chapter as any} story={story as any} />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

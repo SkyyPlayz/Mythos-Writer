@@ -79,6 +79,8 @@ function seedUserData(userData: string, vaultDir: string): void {
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    rightSidebarVisible: true,
+    rightSidebarPanels: [{ id: 'writing-assistant', collapsed: false }],
   };
 
   const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: vaultDir };
@@ -240,11 +242,14 @@ test.beforeAll(async () => {
   // Wait for scene editor to load.
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 8_000 });
 
-  // The right sidebar defaults to "notes"; click the "Assistant" outer tab so
-  // the AI sub-tabs (Writing / Vault / Archive) are rendered for the tests.
-  const assistantOuterTab = page.locator('button.sidebar-tab', { hasText: 'Assistant' });
-  await expect(assistantOuterTab).toBeVisible({ timeout: 4_000 });
-  await assistantOuterTab.click();
+  // The GlobalRightSidebar hosts Writing Assistant as a panel (not a tab).
+  // Ensure the Writing Assistant panel is expanded (it defaults to expanded).
+  const waPanel = page.locator('[data-panel-id="writing-assistant"]');
+  await expect(waPanel).toBeVisible({ timeout: 4_000 });
+  const waPanelHeader = waPanel.locator('[aria-label="Writing Assistant panel"]');
+  if ((await waPanelHeader.getAttribute('aria-expanded')) === 'false') {
+    await waPanelHeader.click();
+  }
 });
 
 test.afterAll(async () => {
@@ -263,15 +268,10 @@ test.afterAll(async () => {
 // ─── TC-WAT-01: Scan → tip card appears; Note-it removes it ──────────────────
 
 test('TC-WAT-01: manual scan returns tip card; Note-it removes it optimistically', async () => {
-  // The right sidebar should be visible in Normal Mode.
-  await expect(page.locator('.shell-right')).toBeVisible({ timeout: 4_000 });
+  // The GRS is visible (Writing Assistant is a panel, not a tab; no sub-tab needed).
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 
-  // Click the "Writing" sub-tab in the AI panel.
-  const writingTab = page.locator('[role="tab"]', { hasText: 'Writing' });
-  await expect(writingTab).toBeVisible({ timeout: 4_000 });
-  await writingTab.click();
-
-  // The Writing Assistant panel heartbeat section should be visible.
+  // The Writing Assistant panel heartbeat section is directly accessible.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 4_000 });
 
   // "Scan now" button should be enabled (scene is selected).

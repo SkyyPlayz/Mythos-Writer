@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { usePanelDrag } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
+import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
+import { isGettingStartedVisible, type GettingStartedProgress, type GettingStartedItemId } from './gettingStartedReducer';
 import './GlobalRightSidebar.css';
 import './PanelDragContext.css';
 
@@ -14,6 +16,9 @@ interface PanelConfig {
 }
 
 const PANEL_LABELS: Record<string, string> = {
+  'scene-notes': 'Scene Notes',
+  'scene-properties': 'Scene Properties',
+  'scene-outline': 'Outline',
   'writing-assistant': 'Writing Assistant',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
@@ -29,15 +34,21 @@ const PANEL_LABELS: Record<string, string> = {
 
 /** Right-sidebar-native panel IDs shown in the "Add Panel" picker. */
 const RIGHT_PANEL_IDS: PanelId[] = [
+  'scene-notes',
+  'scene-properties',
+  'scene-outline',
   'writing-assistant',
   'archive-continuity',
   'scene-preview',
 ];
 
 const DEFAULT_PANELS: PanelConfig[] = [
+  { id: 'scene-notes', collapsed: false },
+  { id: 'scene-properties', collapsed: false },
+  { id: 'scene-outline', collapsed: true },
   { id: 'writing-assistant', collapsed: false },
   { id: 'archive-continuity', collapsed: false },
-  { id: 'scene-preview', collapsed: false },
+  { id: 'scene-preview', collapsed: true },
 ];
 
 const SIDEBAR_MIN_WIDTH = 200;
@@ -236,6 +247,12 @@ export interface GlobalRightSidebarProps {
   onFloatPanel?: (panelId: SidebarPanelId) => void;
   /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
   onDockAsTab?: (panelId: SidebarPanelId) => void;
+
+  /** Getting Started panel state — rendered above the panel list when visible. */
+  gettingStartedProgress?: GettingStartedProgress | null;
+  onGettingStartedAction?: (itemId: GettingStartedItemId) => void;
+  onDismissGettingStarted?: () => void;
+  onToggleGsCollapsed?: () => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -253,6 +270,10 @@ export default function GlobalRightSidebar({
   leftPanelCount,
   onFloatPanel,
   onDockAsTab,
+  gettingStartedProgress,
+  onGettingStartedAction,
+  onDismissGettingStarted,
+  onToggleGsCollapsed,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -499,6 +520,15 @@ export default function GlobalRightSidebar({
           ⇒
         </button>
       </div>
+
+      {isGettingStartedVisible(gettingStartedProgress ?? null) && (
+        <GettingStartedPanel
+          progress={gettingStartedProgress!}
+          onAction={onGettingStartedAction ?? (() => {})}
+          onDismiss={onDismissGettingStarted ?? (() => {})}
+          onToggleCollapse={onToggleGsCollapsed ?? (() => {})}
+        />
+      )}
 
       <div className="grs-panel-list">
         {/* Drop zone before first panel */}

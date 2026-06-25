@@ -1,0 +1,58 @@
+.snp-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--space-3);
+}
+
+.snp-textarea {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  padding: var(--space-3);
+  resize: none;
+  font-family: inherit;
+  min-height: 200px;
+  transition: border-color 0.15s ease;
+}
+
+.snp-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.snp-textarea::placeholder {
+  color: var(--text-placeholder);
+}
+
+.snp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.snp-empty-icon {
+  font-size: 2rem;
+  margin-bottom: var(--space-3);
+  opacity: 0.5;
+}
+
+.snp-empty p {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.snp-empty-sub {
+  font-size: var(--text-xs) !important;
+  opacity: 0.7;
+}
