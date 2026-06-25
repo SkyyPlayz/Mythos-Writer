@@ -397,19 +397,18 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
 // ─── Navigation helpers ───────────────────────────────────────────────────────
 
 async function navigateToEditorView(page: Page): Promise<void> {
-  const legacyMenu = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
-  if (await legacyMenu.count()) {
-    await legacyMenu.click();
-  } else {
-    await page.getByRole('tab', { name: /^Story$/ }).click();
-  }
+  // After the GRS refactor the app uses data-testid based navigation.
+  // Click the Story tab then the Editor sub-view, mirroring writing-assistant-tips.spec.ts.
+  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('[data-testid="story-subview-editor"]').click();
 }
 
 /** Click a scene row in the StoryNavigator by its title. */
 async function openScene(page: Page, sceneTitle: string): Promise<void> {
   await navigateToEditorView(page);
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+
+  // Wait for the story navigator to fully render before looking for the scene row.
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
 
   const sceneRow = page.locator('.nav-scene-row', { hasText: sceneTitle });
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
