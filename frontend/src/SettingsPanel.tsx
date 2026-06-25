@@ -9,7 +9,7 @@ import {
 import { resolveAxisTokens } from './themeAxis';
 import { detectCloudProvider } from './lib/cloudSync';
 import MoveVaultWizard from './MoveVaultWizard';
-import { SETTINGS_CATEGORIES, SECTION_TO_CATEGORY, type SettingsCategoryId } from './settingsCategories';
+import { SETTINGS_CATEGORIES, SECTION_TO_CATEGORY, type SettingsCategoryId, type SettingsCategory } from './settingsCategories';
 import {
   DEFAULTS,
   LG_DEFAULTS,
@@ -57,12 +57,15 @@ interface Props {
   onSaved?: (settings: AppSettings) => void;
   focusPrefs?: FocusPrefs;
   onFocusPrefsChange?: (prefs: FocusPrefs) => void;
+  initialSection?: string;
 }
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialSection }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const navBtnRefs = useRef<HTMLButtonElement[]>([]);
 
   useEffect(() => {
     triggerRef.current = document.activeElement as HTMLElement;
@@ -556,6 +559,69 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, [resetConfirm]);
 
+  const handleBodyScroll = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const bodyTop = body.getBoundingClientRect().top;
+    let found: string | null = null;
+    let closestTop = -Infinity;
+    for (const cat of SETTINGS_CATEGORIES) {
+      for (const sId of cat.sectionIds) {
+        const el = body.querySelector(`#${sId}`);
+        if (!el) continue;
+        const top = el.getBoundingClientRect().top - bodyTop;
+        if (top <= 40 && top > closestTop) {
+          closestTop = top;
+          found = cat.id;
+        }
+      }
+    }
+    if (found) setActiveCategory(found as SettingsCategoryId);
+  }, []);
+
+  const handleNavClick = useCallback((cat: SettingsCategory) => {
+    setActiveCategory(cat.id);
+    const body = bodyRef.current;
+    if (!body) return;
+    const firstId = cat.sectionIds[0];
+    const el = body.querySelector<HTMLElement>(`#${firstId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const section = el.closest('section');
+    const firstControl = section?.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    firstControl?.focus();
+  }, []);
+
+  const handleNavKeyDown = useCallback((e: React.KeyboardEvent, idx: number) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const next = navBtnRefs.current[(idx + 1) % SETTINGS_CATEGORIES.length];
+      next?.focus();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const prev = navBtnRefs.current[(idx - 1 + SETTINGS_CATEGORIES.length) % SETTINGS_CATEGORIES.length];
+      prev?.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialSection) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const el = body.querySelector<HTMLElement>(`#${initialSection}`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    const section = el.closest('section');
+    const firstControl = section?.querySelector<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    firstControl?.focus();
+    const cat = SETTINGS_CATEGORIES.find((c) => c.sectionIds.includes(initialSection));
+    if (cat) setActiveCategory(cat.id);
+  }, [initialSection]);
+
   if (loading) {
     return (
       <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
@@ -581,13 +647,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           <div className="settings-layout">
             <nav className="settings-cat-nav" aria-label="Settings categories">
               <ul className="settings-cat-nav-list" role="list">
-                {SETTINGS_CATEGORIES.map((cat) => (
+                {SETTINGS_CATEGORIES.map((cat, idx) => (
                   <li key={cat.id}>
                     <button
                       type="button"
+                      ref={(el) => { navBtnRefs.current[idx] = el!; }}
                       className={`settings-cat-nav-btn${activeCategory === cat.id ? ' settings-cat-nav-btn--active' : ''}`}
                       aria-current={activeCategory === cat.id ? 'page' : undefined}
-                      onClick={() => setActiveCategory(cat.id)}
+                      onClick={() => handleNavClick(cat)}
+                      onKeyDown={(e) => handleNavKeyDown(e, idx)}
+                      tabIndex={activeCategory === cat.id ? 0 : -1}
                       data-testid={`settings-cat-${cat.id}`}
                     >
                       {cat.label}
@@ -597,7 +666,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               </ul>
             </nav>
 
-            <div className="settings-body" data-active-cat={activeCategory}>
+            <div className="settings-body" ref={bodyRef} onScroll={handleBodyScroll} data-active-cat={activeCategory}>
 
               <ProviderSection
                 providerKind={providerKind}
