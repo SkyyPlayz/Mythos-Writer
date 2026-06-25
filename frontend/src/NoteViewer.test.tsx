@@ -45,9 +45,9 @@ describe('NoteViewer cross-tab links', () => {
   it('flushes note content when the tab-aware save event fires', async () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
-    // Wait for loading to finish — Edit button only appears after setLoading(false),
+    // Wait for loading to finish — textarea only appears after setLoading(false),
     // which fires in .finally() after the .then() that calls setContent().
-    await screen.findByRole('button', { name: 'Edit' });
+    await screen.findByLabelText('Edit note: Test.md');
 
     // Trigger immediate flush (clears debounce timer and writes synchronously)
     await act(async () => {
@@ -79,7 +79,7 @@ describe('NoteViewer cross-tab links', () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
     // Wait for loading to finish so editor content is set before the flush fires
-    await screen.findByRole('button', { name: 'Edit' });
+    await screen.findByLabelText('Edit note: Test.md');
 
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
