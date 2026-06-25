@@ -129,6 +129,12 @@ function buildAppSettings(waEnabled = true): object {
     // which fires onerror immediately in headless Electron (no audio device).
     // The voice:speak IPC handler is mocked in installIpcMocks.
     tts: { enabled: true, provider: 'local', localBinaryPath: '/dev/null' },
+    // GRS (GlobalRightSidebar) only renders when rightSidebarVisible is an explicit boolean.
+    // Mark migration done + upgrade toast shown to prevent fire-and-forget settingsSet calls
+    // in loadVault that would queue before checkVaultConflicts and delay shell startup.
+    rightSidebarVisible: true,
+    notesTabUpgradeToastShown: true,
+    layoutMigrationDone: true,
   };
 }
 
@@ -412,38 +418,28 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 
 /**
  * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
- * Navigates away first so that the Writing Assistant panel remounts and clears
- * any in-memory tip-suppression state from prior tests.
+ * Collapses and re-expands the GRS panel to force a remount, clearing any
+ * in-memory tip-suppression state from prior tests.
  */
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
-  // Navigate away to force a component remount (clears suppressed-tip state).
-  const notesTab = page.getByRole('tab', { name: /^Notes$/ });
-  if (await notesTab.isVisible().catch(() => false)) await notesTab.click();
-
   await openScene(page, 'Lighthouse Scene');
-  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
-  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
-  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await showSidebarBtn.click();
-  }
+
+  // GRS uses role=button panel headers. Collapse then re-expand to force a remount
+  // (clears suppressed-tip state left over from prior tests).
   const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
-  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
-    await waHeader.click();
+  if ((await waHeader.getAttribute('aria-expanded')) === 'true') {
+    await waHeader.click(); // collapse → unmount content
   }
+  await waHeader.click(); // expand → remount content
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
-  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
-  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
-  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await showSidebarBtn.click();
-  }
+
+  // GRS uses role=button panel headers, not tabs.
   const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
-  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
     await waHeader.click();
   }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
@@ -1048,21 +1044,16 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
   // absent; no scans fire automatically."
 
   test('TC-WA-26: disabled WA shows disabled message and hides scan/chat UI', async () => {
-    // Navigate to Editor and open the Assistant tab.
+    // Navigate to Editor and expand the Writing Assistant panel in the GRS.
     const editorMenu = disabledPage.locator('.app-menu-view-btn', { hasText: 'Editor' });
     if (await editorMenu.count()) {
       await editorMenu.click();
     } else {
       await disabledPage.getByRole('tab', { name: /^Story$/ }).click();
     }
-    // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-    const showSidebarBtnD = disabledPage.getByRole('button', { name: 'Show right sidebar' });
-    if (await showSidebarBtnD.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await showSidebarBtnD.click();
-    }
-    const waHeaderD = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
-    if ((await waHeaderD.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
-      await waHeaderD.click();
+    const disabledWaHeader = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
+    if ((await disabledWaHeader.getAttribute('aria-expanded')) !== 'true') {
+      await disabledWaHeader.click();
     }
 
     // Panel renders in disabled state.
