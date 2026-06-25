@@ -45,16 +45,24 @@ describe('NoteViewer cross-tab links', () => {
   it('flushes note content when the tab-aware save event fires', async () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
-    // Wait for initial note content to load into editor
-    await waitFor(() => expect(readNotesVault).toHaveBeenCalledWith('Notes/Test.md'));
+    // Wait for loading to finish — Edit button only appears after setLoading(false),
+    // which fires in .finally() after the .then() that calls setContent().
+    await screen.findByRole('button', { name: 'Edit' });
 
     // Trigger immediate flush (clears debounce timer and writes synchronously)
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
     });
 
-    // Editor serializes its current content and writes through notes vault
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', expect.any(String)));
+    // The WikiLink serializer must preserve [[...]] tokens through the Tiptap
+    // round-trip — a passing-but-hollow assertion (any(String)) would not catch
+    // getMarkdown() returning '' or stripping wiki links (SKY-3971).
+    await waitFor(() =>
+      expect(writeNotesVault).toHaveBeenCalledWith(
+        'Notes/Test.md',
+        expect.stringContaining('[[Character: Elara]]'),
+      ),
+    );
   });
 
   it('does not fall back to story vault when readNotesVault fails (SKY-2976/GH#620)', async () => {
@@ -70,15 +78,21 @@ describe('NoteViewer cross-tab links', () => {
   it('always writes through notes vault API (SKY-2976)', async () => {
     render(<NoteViewer path="Notes/Test.md" />);
 
-    // Wait for initial load
-    await waitFor(() => expect(readNotesVault).toHaveBeenCalledWith('Notes/Test.md'));
+    // Wait for loading to finish so editor content is set before the flush fires
+    await screen.findByRole('button', { name: 'Edit' });
 
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
     });
 
-    // Writes through notes vault, never touches the story vault
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', expect.any(String)));
+    // Serialized content must contain the loaded wiki link (not an empty or
+    // hollow string), and must go through notes vault — never the story vault
+    await waitFor(() =>
+      expect(writeNotesVault).toHaveBeenCalledWith(
+        'Notes/Test.md',
+        expect.stringContaining('[[Scene: Chapter One/Opening Scene]]'),
+      ),
+    );
     expect(readVault).not.toHaveBeenCalled();
   });
 });
