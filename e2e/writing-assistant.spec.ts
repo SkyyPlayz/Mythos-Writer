@@ -130,11 +130,12 @@ function buildAppSettings(waEnabled = true): object {
     // The voice:speak IPC handler is mocked in installIpcMocks.
     tts: { enabled: true, provider: 'local', localBinaryPath: '/dev/null' },
     // GRS (GlobalRightSidebar) only renders when rightSidebarVisible is an explicit boolean.
-    // Mark migration done + upgrade toast shown to prevent fire-and-forget settingsSet calls
-    // in loadVault that would queue before checkVaultConflicts and delay shell startup.
+    // notesTabUpgradeToastShown prevents an extra fire-and-forget settingsSet during loadVault.
+    // Do NOT set layoutMigrationDone: the migration sets activeLayout.leftSidebar, which
+    // prevents the default WRITING_FOCUS layout (leftSidebar.visible=false) from collapsing
+    // the left sidebar and hiding .nav-scene-row / .nav-story-row in E2E tests.
     rightSidebarVisible: true,
     notesTabUpgradeToastShown: true,
-    layoutMigrationDone: true,
   };
 }
 
