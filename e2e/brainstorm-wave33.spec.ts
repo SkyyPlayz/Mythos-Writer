@@ -131,10 +131,10 @@ async function selectSort(page: Page, value: string): Promise<void> {
 
 /** Navigate to Brainstorm panel if not already there. */
 async function ensureBrainstorm(page: Page): Promise<void> {
-  const title = page.locator('.brainstorm-title');
-  if (!await title.isVisible({ timeout: 800 }).catch(() => false)) {
-    await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-    await expect(title).toBeVisible({ timeout: 8_000 });
+  const panel = page.locator('[data-testid="notes-brainstorm-panel"]');
+  if (!await panel.isVisible({ timeout: 800 }).catch(() => false)) {
+    await page.getByTestId('app-tab-notes').click();
+    await expect(panel).toBeVisible({ timeout: 8_000 });
   }
 }
 
@@ -190,9 +190,9 @@ test.beforeAll(async () => {
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to Brainstorm.
-  await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
-  await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 6_000 });
+  // Navigate to Brainstorm via Notes tab.
+  await page.getByTestId('app-tab-notes').click();
+  await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 6_000 });
 
   // Stub vault:manifest:read to return a proper nested manifest so scene picker works.
   // BrainstormPage.handleOpenInWritingPanel reads stories[].chapters[].scenes[] — our
@@ -286,11 +286,8 @@ test('TC-W3.3-DR-01: reorder card via keyboard; verify order persisted after rel
 
   // Verify persistence by navigating away and back (page.reload() is unreliable in
   // headless Electron; navigate-and-back exercises the same localStorage restore path).
-  const writingBtn = page.locator('.app-menu-view-btn', { hasText: 'Writing' });
-  if (await writingBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-    await writingBtn.click();
-    await page.waitForTimeout(400);
-  }
+  await page.getByTestId('app-tab-story').click();
+  await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
 
@@ -348,11 +345,8 @@ test('TC-W3.3-DR-02: Alt+Down moves card down in custom sort; order + persistenc
     expect(stored.customOrder.length).toBe(count);
   }
   // Navigate away and back to verify persistence (page.reload() is unreliable in headless Electron).
-  const writingBtn2 = page.locator('.app-menu-view-btn', { hasText: 'Writing' });
-  if (await writingBtn2.isVisible({ timeout: 500 }).catch(() => false)) {
-    await writingBtn2.click();
-    await page.waitForTimeout(400);
-  }
+  await page.getByTestId('app-tab-story').click();
+  await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
 
@@ -814,7 +808,6 @@ test('TC-W3.3-OWP-05: sceneAppendBrainstormNote error → error toast; no naviga
 
   // Verify we're still on the brainstorm page (no navigation).
   await ensureBrainstorm(page);
-  await expect(page.locator('.brainstorm-title')).toBeVisible();
 });
 
 // ─── TC-W3.3-OWP-06: Drawer CTA visible ──────────────────────────────────────
