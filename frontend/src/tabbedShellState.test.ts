@@ -174,4 +174,16 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
       expect(state.notesSubView).toBe(sv);
     });
   });
+
+  it('SKY-3213: preserves book sub-view on round-trip', () => {
+    const state = deserializeTabbedShellState({ storySubView: 'book' } as AppTabShellState);
+    expect(state.storySubView).toBe('book');
+  });
+
+  it('SKY-3213: preserves all valid story sub-views on round-trip', () => {
+    (['editor', 'kanban', 'structure', 'timeline', 'book'] as StorySubView[]).forEach((sv) => {
+      const state = deserializeTabbedShellState({ storySubView: sv } as AppTabShellState);
+      expect(state.storySubView).toBe(sv);
+    });
+  });
 });
