@@ -354,6 +354,7 @@ export default function NotesTabPanel({
                   activeStorySlug={activeStorySlug}
                   archiveContinuityEnabled={archiveContinuityEnabled}
                   activeScene={activeScene}
+                  compact
                 />
               </div>
             </div>

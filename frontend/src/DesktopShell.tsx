@@ -76,6 +76,7 @@ import OutlinePlanningPanel from './OutlinePlanningPanel';
 import SceneNotesPanel from './SceneNotesPanel';
 import ScenePropertiesPanel from './ScenePropertiesPanel';
 import WindowChrome from './components/ui/WindowChrome';
+import BrainstormPage from './BrainstormPage';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
@@ -2063,6 +2064,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         toggleTopBar();
         return;
       }
+      // SKY-3623: Ctrl/Cmd+3 — switch to Brainstorm tab.
+      if (mod && !e.shiftKey && !e.altKey && e.key === '3') {
+        e.preventDefault();
+        handleTabChange('brainstorm');
+        return;
+      }
       // SKY-1700: Ctrl+Shift+L — open layout picker (AC-W-09)
       if (mod && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
         e.preventDefault();
@@ -3688,6 +3695,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onSetWritingMode={setWritingMode}
           onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         />
+      )}
+      {/* SKY-3623: Brainstorm top-level tab panel */}
+      {tabShell.activeTab === 'brainstorm' && (
+        <div
+          id="app-tabpanel-brainstorm"
+          role="tabpanel"
+          aria-labelledby="app-tab-brainstorm"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        >
+          <BrainstormPage
+            onClose={() => {}}
+            enabled={agentFlags.brainstorm}
+            voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+            archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+            activeScene={selectedScene}
+            activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+            onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
+            onNavigateToEntity={(entityId) => {
+              window.api.entityRead(entityId).then((entity) => {
+                if (entity) {
+                  setSelectedEntity(entity);
+                  setView('editor');
+                  handleTabChange('story');
+                }
+              }).catch(() => {});
+            }}
+            onNavigateToScene={async (sceneId) => {
+              for (const story of stories) {
+                for (const chapter of story.chapters) {
+                  const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+                  if (scene) {
+                    handleSelectScene(scene, chapter, story);
+                    setView('editor');
+                    handleTabChange('story');
+                    return true;
+                  }
+                }
+              }
+              return false;
+            }}
+          />
+        </div>
       )}
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
