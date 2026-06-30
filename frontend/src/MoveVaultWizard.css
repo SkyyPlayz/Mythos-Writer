@@ -315,6 +315,10 @@
   50%       { opacity: 0.5; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .mv-test-testing { animation: none; }
+}
+
 .mv-test-ok {
   color: #4ade80;
   font-weight: 600;

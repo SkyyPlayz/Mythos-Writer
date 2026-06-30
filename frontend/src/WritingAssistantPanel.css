@@ -81,7 +81,7 @@
   background: transparent;
   color: var(--text-faint, rgba(255, 255, 255, 0.35));
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--dur-hover-in), color var(--dur-hover-in), border-color var(--dur-hover-in);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -778,7 +778,7 @@
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--dur-hover-in);
 }
 
 .writing-assistant-btn:hover:not(:disabled) {
@@ -1227,7 +1227,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  background: #1f0a0a;
+  background: var(--bg-inset);
   border: 1px solid #7f1d1d;
   border-radius: 6px;
   margin: 6px 12px;

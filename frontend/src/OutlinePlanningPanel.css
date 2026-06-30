@@ -35,7 +35,7 @@
   font-size: 1rem;
   line-height: 1;
   padding: 2px 8px;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out);
 }
 
 .opl-add-root-btn:hover {
@@ -71,7 +71,7 @@
   font-size: var(--text-sm, 14px);
   font-weight: 500;
   padding: 8px 20px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out);
 }
 
 .opl-empty-start-btn:hover {
@@ -134,7 +134,7 @@
   padding: 2px 4px 2px 0;
   border-left: 2px solid transparent;
   border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
-  transition: background 0.1s, border-color 0.1s;
+  transition: background var(--dur-press) var(--ease-out), border-color var(--dur-press) var(--ease-out);
   cursor: pointer;
   min-height: 28px;
 }
@@ -156,7 +156,7 @@
   font-size: 0.85rem;
   padding: 0 2px;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity var(--dur-press) var(--ease-out);
   flex-shrink: 0;
   user-select: none;
 }
@@ -179,8 +179,8 @@
   flex-shrink: 0;
   width: 22px;
   justify-content: center;
-  border-radius: 3px;
-  transition: color 0.1s, background 0.1s;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-press) var(--ease-out), background var(--dur-press) var(--ease-out);
 }
 
 .opl-fold-btn:hover {
@@ -248,7 +248,7 @@
   font-size: 0.85rem;
   padding: 2px 4px;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity var(--dur-press) var(--ease-out);
   border-radius: 3px;
   line-height: 1;
 }

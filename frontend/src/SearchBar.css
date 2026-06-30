@@ -13,7 +13,7 @@
   gap: 4px;
   background: var(--input-bg, rgba(255, 255, 255, 0.08));
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   padding: 2px 6px;
   height: 28px;
 }
@@ -91,7 +91,7 @@
   width: 100%;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: var(--text, #e8e8e8);
   cursor: pointer;
   font: inherit;

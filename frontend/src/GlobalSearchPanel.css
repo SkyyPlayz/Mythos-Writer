@@ -13,7 +13,7 @@
   background: var(--panel-bg, #1e1e2e);
   border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
   border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--elev-3);
   width: 640px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 112px);
@@ -63,7 +63,7 @@
 .gsp-scope-btn {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   color: var(--text-muted, rgba(232, 232, 232, 0.5));
   cursor: pointer;
   font-size: 11px;
@@ -90,7 +90,7 @@
   cursor: pointer;
   font-size: 13px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   line-height: 1;
   flex-shrink: 0;
   transition: background 0.1s, color 0.1s;
@@ -152,7 +152,7 @@
   background: none;
   color: var(--text-muted);
   border: 1px solid var(--border, #2a2a2a);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   font-family: inherit;
 }
@@ -169,7 +169,7 @@
   width: 100%;
   background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-xs);
   color: var(--text, #e8e8e8);
   cursor: pointer;
   font: inherit;
@@ -222,7 +222,7 @@
 .gsp-result-vault {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
   margin-top: 3px;
 }
@@ -258,7 +258,7 @@
 .gsp-result-type-chip {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
   margin-top: 3px;
   background: rgba(180, 140, 80, 0.18);

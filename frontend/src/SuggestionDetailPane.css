@@ -40,6 +40,10 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sdp-pane { animation: none; }
+}
+
 /* Header */
 .sdp-header {
   display: flex;

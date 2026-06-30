@@ -217,7 +217,7 @@
 
 .draft-history-confirm-actions button.primary {
   background: var(--color-accent);
-  color: #fff;
+  color: var(--text-header);
   border-color: var(--color-accent);
 }
 

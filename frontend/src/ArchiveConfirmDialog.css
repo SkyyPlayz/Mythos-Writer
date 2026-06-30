@@ -33,7 +33,7 @@
   border: 1px solid rgba(243, 139, 168, 0.4);
   border-radius: 6px;
   font-size: 0.85rem;
-  color: #f38ba8;
+  color: var(--state-danger);
 }
 
 .acd-actions {
@@ -62,13 +62,13 @@
 
 .acd-btn-match {
   background: var(--color-accent, #cba6f7);
-  color: #1e1e2e;
+  color: var(--bg-base);
   border-color: var(--color-accent, #cba6f7);
 }
 
 .acd-btn-match:hover:not(:disabled) {
-  background: #b891e6;
-  border-color: #b891e6;
+  background: var(--neon-violet);
+  border-color: var(--neon-violet);
 }
 
 .acd-btn-suggest {

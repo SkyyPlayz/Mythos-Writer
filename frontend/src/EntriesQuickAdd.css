@@ -116,6 +116,10 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .entries-qa-toast { animation: none; }
+}
+
 .entries-qa-undo-btn {
   padding: 2px 8px;
   font-size: 11px;
