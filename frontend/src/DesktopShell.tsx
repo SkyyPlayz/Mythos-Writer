@@ -769,7 +769,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
-  const [rightSidebarUserCollapsed, setRightSidebarUserCollapsed] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
   const [topBarHidden, setTopBarHidden] = useState(false);
@@ -935,6 +934,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleDismissGettingStarted = useCallback(() => {
     if (!gettingStartedProgress) return;
     persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
   }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleWaAutoApplyCategoriesChange = useCallback(
@@ -1254,6 +1258,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
+    let cachedSettings: AppSettings | null = null;
     try {
       const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
@@ -1425,6 +1430,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     } catch (e) {
       setError('Failed to load vault: ' + String(e));
+      // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
+      // on fresh install). Without this, grsVisible stays undefined and
+      // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
+      if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
+        setGrsVisible(cachedSettings.rightSidebarVisible);
+      }
     } finally {
       setLoading(false);
     }
@@ -2208,7 +2219,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (mod && !e.shiftKey && !e.altKey && e.key === ']') {
         e.preventDefault();
-        setRightSidebarUserCollapsed(prev => !prev);
+        handleGrsVisibilityChange(!(grsVisible ?? false));
         return;
       }
       // SKY-2094: Ctrl/Cmd+1 — switch to Story tab; Ctrl/Cmd+2 — switch to Notes tab.
