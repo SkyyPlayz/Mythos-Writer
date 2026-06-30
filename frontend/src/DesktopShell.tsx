@@ -1058,15 +1058,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ]);
       // SKY-4259: merge post-onboarding fields that the wizard computed but may not be
       // on disk yet (E2E mocks replace onboarding:complete without writing settings).
-      // Only fills fields that are absent from disk; disk values always take precedence.
+      // Disk values take precedence; initS fills absent fields or serves as full fallback
+      // when the disk has no settings yet (fresh install, sFromIpc = null).
       const initS = initialSettingsRef.current;
-      const s = sFromIpc && initS ? {
+      const s = sFromIpc ? {
         ...sFromIpc,
-        ...(typeof initS.rightSidebarVisible === 'boolean' && typeof sFromIpc.rightSidebarVisible !== 'boolean'
+        ...(typeof initS?.rightSidebarVisible === 'boolean' && typeof sFromIpc.rightSidebarVisible !== 'boolean'
           ? { rightSidebarVisible: initS.rightSidebarVisible } : {}),
-        ...(initS.gettingStartedProgress != null && sFromIpc.gettingStartedProgress == null
+        ...(initS?.gettingStartedProgress != null && sFromIpc.gettingStartedProgress == null
           ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
-      } : sFromIpc;
+      } : (initS ?? sFromIpc);
       cachedSettings = s;
 
       let storyValid = true;
