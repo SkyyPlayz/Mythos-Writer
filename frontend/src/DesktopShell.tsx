@@ -797,6 +797,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
+  const handleDraftRestore = useCallback((content: string) => {
+    if (!selectedScene) return;
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
+    setRestoreKey(k => k + 1);
+  }, [selectedScene]);
 
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
@@ -1734,18 +1746,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     tabShellRef.current = next;
     persistTabShell(next);
   }, [persistTabShell]);
-
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') { handleTabChange('notes'); return; }
-    if (itemId === 'notes-vault') { handleNotesSubViewChange('editor'); handleTabChange('notes'); return; }
-    if (itemId === 'add-character') { handleTabChange('notes'); return; }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
     setSelectedScene(null);
