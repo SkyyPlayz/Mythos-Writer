@@ -717,3 +717,14 @@
   color: var(--text-primary, #e2e8f0);
   background: rgba(255, 255, 255, 0.06);
 }
+
+/* Budget-held row indicator */
+.sr-budget-held {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-warning, #fbbf24);
+  margin-bottom: 4px;
+}
