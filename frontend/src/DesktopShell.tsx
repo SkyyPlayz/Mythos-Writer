@@ -2963,6 +2963,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
+            ttsSettings={appSettings?.tts}
           />
         );
       case 'archive-continuity':
