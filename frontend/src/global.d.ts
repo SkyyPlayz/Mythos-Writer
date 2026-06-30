@@ -266,6 +266,20 @@ interface EditModeConfig {
   showBetaRead: boolean;
 }
 
+/** SKY-3206: Story page size preset identifier. */
+type StoryPageSizePreset = 'letter' | 'a4' | 'a5' | 'manuscript' | 'custom';
+
+/** SKY-3206: Per-vault story page chrome preferences (presets, margins, font, spacing). */
+interface StoryPagePrefs {
+  sizePreset: StoryPageSizePreset;
+  customWidthPx?: number;
+  marginVertPx: number;
+  marginHorizPx: number;
+  fontFamily: 'serif' | 'sans' | 'mono';
+  fontSizePx: number;
+  lineHeight: number;
+}
+
 /** SKY-2097: Writing-surface panel appearance preset. */
 type PageBackgroundPreset = 'liquid-neon' | 'minimal' | 'paper' | 'dark-slate';
 
@@ -415,6 +429,8 @@ interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
+  /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
+  storyPagePrefsMap?: Record<string, StoryPagePrefs>;
   /** Voice IO settings (MYT-205 / SKY-1505). */
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
@@ -518,7 +534,7 @@ interface AppSettings {
 type AppTab = 'story' | 'notes' | 'brainstorm';
 
 /** SKY-2094: Sub-view within the Story tab. */
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';
+type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 /** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
 type NotesSubView = 'editor' | 'graph' | 'entities';

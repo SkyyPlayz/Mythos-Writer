@@ -71,7 +71,7 @@ export function serializeTabbedShellState(state: TabbedShellState): AppTabShellS
 }
 
 const VALID_APP_TABS: AppTab[] = ['story', 'notes', 'brainstorm'];
-const VALID_STORY_SUBVIEWS: StorySubView[] = ['editor', 'kanban', 'structure', 'timeline'];
+const VALID_STORY_SUBVIEWS: StorySubView[] = ['editor', 'kanban', 'structure', 'timeline', 'book'];
 const VALID_NOTES_SUBVIEWS: NotesSubView[] = ['editor', 'graph', 'entities'];
 
 /** Hydrate live state from persisted AppSettings, filling gaps with defaults. */

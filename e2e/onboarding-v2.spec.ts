@@ -65,7 +65,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 /** Click a flat path-selector onboarding card. */
 async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
-  await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 12_000 });
+  await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
   const cardAliases: Record<string, string> = {
     'card-default-mythos-vault': 'card-path-default',
     'card-quick-start': 'card-path-default',
@@ -216,13 +216,13 @@ test.describe('AC-OB-02/03/13/15: Genre picker UI', () => {
     const onStep1c = await page.locator('[data-testid="screen-step1c"]').isVisible();
     if (onStep1c) {
       await page.locator('[data-testid="gs-back-step1c"]').click();
-      await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 6_000 });
+      await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 6_000 });
     }
     const cancelConfirm = await page.locator('[data-testid="gs-cancel-confirm"]').isVisible();
     if (cancelConfirm) {
       await page.locator('[data-testid="gs-keep-going"]').click();
     }
-    await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 8_000 });
   });
 
   test('AC-OB-02: genre picker renders with 3 genre cards; arrow keys cycle focus; Enter selects', async () => {
@@ -284,7 +284,7 @@ test.describe('AC-OB-02/03/13/15: Genre picker UI', () => {
 
     // Navigate back
     await page.locator('[data-testid="gs-back-step1c"]').click();
-    await expect(page.locator('[data-testid="screen-path-selector"]')).toBeVisible({ timeout: 6_000 });
+    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 6_000 });
 
     // On returning to step1c, no genre should be pre-selected
     await clickStep1Card(page, 'card-sample');

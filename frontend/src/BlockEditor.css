@@ -87,24 +87,18 @@
 .tiptap-editor-wrap {
   flex: 1;
   overflow-y: auto;
-  padding: 2rem 2.5rem 3rem;
+  padding:
+    var(--story-page-pad-vert, 1.5rem)
+    var(--story-page-pad-horiz, 2rem);
   display: flex;
   justify-content: center;
-  align-items: flex-start;
 }
 
-/* Writing paper panel (SKY-3625) — constrained to the text column only.
-   The surrounding area is transparent so the app background shows through.
-   Styling is token-driven: applyPageBackgroundTokens() controls --page-bg-* at runtime. */
 .tiptap-content {
   width: 100%;
   max-width: 720px;
   background: var(--page-bg-fill);
-  border-radius: 12px;
-  padding: 2rem 2.5rem 3rem;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.22);
-  transition: background 200ms ease, box-shadow 200ms ease;
+  border-radius: var(--page-bg-radius, 8px);
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -115,17 +109,12 @@
 }
 
 [data-page-preset="liquid-neon"] .tiptap-content {
-  border-color: rgba(0, 240, 255, 0.10);
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.22), inset 0 0 60px var(--page-bg-glow-color);
+  box-shadow: 0 0 32px var(--page-bg-glow-color, rgba(167, 139, 250, 0.3));
 }
 
 @media (prefers-contrast: more) {
   .tiptap-content {
-    background: rgba(11, 14, 19, 0.97) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    box-shadow: none !important;
-    border-color: var(--text-muted) !important;
+    background: color-mix(in srgb, var(--page-bg-fill) 95%, Canvas 5%);
   }
 }
 
@@ -148,9 +137,9 @@
   outline: none;
   min-height: 60vh;
   color: var(--text-primary);
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 1rem;
-  line-height: 1.75;
+  font-family: var(--story-page-font-family, Georgia, 'Times New Roman', serif);
+  font-size: var(--story-page-font-size, 1rem);
+  line-height: var(--story-page-line-height, 1.75);
   caret-color: var(--accent-dim);
 }
 
@@ -238,11 +227,6 @@
   padding: 0;
   color: var(--accent-light);
   font-size: 0.9rem;
-}
-
-.tiptap-content .ProseMirror u {
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .tiptap-content .ProseMirror p.is-editor-empty:first-child::before {

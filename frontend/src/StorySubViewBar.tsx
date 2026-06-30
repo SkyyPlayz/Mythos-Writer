@@ -2,7 +2,7 @@
 // SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
 import './StorySubViewBar.css';
 
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline';
+type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 interface StorySubViewBarProps {
   activeSubView: string;
@@ -15,6 +15,7 @@ const SUB_VIEWS: { id: StorySubView; label: string }[] = [
   { id: 'kanban', label: 'Scene Crafter' },
   { id: 'structure', label: 'Structure' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'book', label: 'Book' },
 ];
 
 export default function StorySubViewBar({

@@ -1886,7 +1886,7 @@ export interface AppSettings {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). API key stored in SecretsStore under `provider.<agentName>.apiKey`. */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
   };
   theme: 'dark' | 'high-contrast';
   snapshots?: {
@@ -2094,6 +2094,10 @@ export interface ObsidianImportPreview {
 export interface OnboardingDryRunObsidianResponse {
   preview?: ObsidianImportPreview;
   error?: string;
+  /** Number of collision files renamed with (Imported) suffix (SKY-2637) */
+  renamedCount?: number;
+  /** Number of notes with broken [[wiki-links]] (SKY-2637) */
+  brokenLinkCount?: number;
 }
 
 // ─── SKY-2638: Path 3 import vault channels ───

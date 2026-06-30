@@ -421,6 +421,65 @@ export function resetPageBackgroundTokens(): void {
   root.removeAttribute('data-page-preset');
 }
 
+
+
+// ─── Story Page Chrome (SKY-3206) ────────────────────────────────────────────
+
+export const STORY_PAGE_PRESET_WIDTHS: Record<string, number> = {
+  letter: 680,
+  a4: 720,
+  a5: 510,
+  manuscript: 640,
+};
+
+const STORY_PAGE_FONT_STACKS: Record<string, string> = {
+  serif: "Georgia, 'Times New Roman', serif",
+  sans: "system-ui, -apple-system, 'Segoe UI', sans-serif",
+  mono: "'Courier New', Courier, monospace",
+};
+
+export interface StoryPagePrefs {
+  sizePreset: 'letter' | 'a4' | 'a5' | 'manuscript' | 'custom';
+  customWidthPx?: number;
+  marginVertPx: number;
+  marginHorizPx: number;
+  fontFamily: 'serif' | 'sans' | 'mono';
+  fontSizePx: number;
+  lineHeight: number;
+}
+
+export const STORY_PAGE_DEFAULTS: StoryPagePrefs = {
+  sizePreset: 'letter',
+  marginVertPx: 48,
+  marginHorizPx: 56,
+  fontFamily: 'serif',
+  fontSizePx: 16,
+  lineHeight: 1.7,
+};
+
+export function applyStoryPageTokens(prefs: Partial<StoryPagePrefs> | null | undefined): void {
+  if (typeof document === 'undefined') return;
+  const p: StoryPagePrefs = { ...STORY_PAGE_DEFAULTS, ...prefs };
+  const root = document.documentElement;
+  const widthPx =
+    p.sizePreset === 'custom' && p.customWidthPx != null
+      ? p.customWidthPx
+      : (STORY_PAGE_PRESET_WIDTHS[p.sizePreset] ?? STORY_PAGE_PRESET_WIDTHS.letter);
+  root.style.setProperty('--page-width-story', `${widthPx}px`);
+  root.style.setProperty('--story-page-pad-vert', `${p.marginVertPx}px`);
+  root.style.setProperty('--story-page-pad-horiz', `${p.marginHorizPx}px`);
+  root.style.setProperty('--story-page-font-family', STORY_PAGE_FONT_STACKS[p.fontFamily] ?? STORY_PAGE_FONT_STACKS.serif);
+  root.style.setProperty('--story-page-font-size', `${p.fontSizePx}px`);
+  root.style.setProperty('--story-page-line-height', String(p.lineHeight));
+}
+
+export function resetStoryPageTokens(): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  ['--page-width-story','--story-page-pad-vert','--story-page-pad-horiz',
+   '--story-page-font-family','--story-page-font-size','--story-page-line-height'].forEach(v => root.style.removeProperty(v));
+}
+
 /**
  * Reset all Liquid Neon inline style overrides (back to tokens.css defaults).
  * Called when the user selects "Reset to defaults".

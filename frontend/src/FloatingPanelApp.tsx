@@ -232,6 +232,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
             isActive={true}
             isPageFocused={true}
             onJumpToText={() => {}}
+            ttsSettings={settings?.tts}
           />
         );
       case 'archive-continuity':

@@ -5,7 +5,8 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, E
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
-import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens } from './theme';
+import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
+import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -28,9 +29,7 @@ import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
-import { stepScene, computeStepState } from './stepScene';
 import { useFocusMode } from './useFocusMode';
-import { TOPBAR_HIDE_EVENT } from './useTopBarVisibility';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
 import {
   createInitialGettingStartedProgress,
@@ -72,9 +71,6 @@ import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import StoryTimeline from './StoryTimeline';
 import AeonLaneView from './AeonLaneView';
-import OutlinePlanningPanel from './OutlinePlanningPanel';
-import SceneNotesPanel from './SceneNotesPanel';
-import ScenePropertiesPanel from './ScenePropertiesPanel';
 import WindowChrome from './components/ui/WindowChrome';
 import BrainstormPage from './BrainstormPage';
 import './DesktopShell.css';
@@ -503,6 +499,192 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
   );
 }
 
+// ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
+// Preview-only because C5 (virtualization) has not yet landed.
+
+interface FullBookPreviewViewProps {
+  story: Story | null;
+}
+
+function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLHeadingElement | null>(null);
+
+  useEffect(() => {
+    headerRef.current?.focus({ preventScroll: true });
+  }, [story?.id]);
+
+  const chapters = useMemo(
+    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
+    [story],
+  );
+
+  const chapterSections = useMemo(
+    () =>
+      chapters.map((ch) => ({
+        chapter: ch,
+        scenes: [...ch.scenes]
+          .sort((a, b) => a.order - b.order)
+          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
+      })),
+    [chapters],
+  );
+
+  const totalChapters = chapterSections.length;
+
+  const scrollToChapter = useCallback(
+    (idx: number) => {
+      if (!scrollRef.current || totalChapters === 0) return;
+      const wrapped = ((idx % totalChapters) + totalChapters) % totalChapters;
+      const el = scrollRef.current.querySelector<HTMLElement>(
+        `[data-chapter-idx="${wrapped}"]`,
+      );
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el?.focus({ preventScroll: true });
+    },
+    [totalChapters],
+  );
+
+  if (!story) {
+    return (
+      <div className="full-book-preview-empty" role="status" aria-live="polite">
+        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
+        <p className="full-book-preview-empty__title">No story selected</p>
+        <p className="full-book-preview-empty__hint">Select a story from the Editor view to read the full book.</p>
+      </div>
+    );
+  }
+
+  if (chapters.length === 0) {
+    return (
+      <div className="full-book-preview-empty" role="status">
+        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
+        <p className="full-book-preview-empty__title">{story.title}</p>
+        <p className="full-book-preview-empty__hint">No chapters yet. Add chapters and scenes in the Editor view.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={scrollRef}
+      className="full-book-preview-wrap"
+      role="document"
+      aria-label={`Full book preview: ${story.title}`}
+    >
+      <div className="full-book-preview">
+        <header className="full-book-preview__book-header">
+          <h1
+            ref={headerRef}
+            className="full-book-preview__story-title"
+            tabIndex={-1}
+          >
+            {story.title}
+          </h1>
+          <span className="full-book-preview__readonly-badge" role="note">
+            Preview — read only
+          </span>
+          {story.synopsis && (
+            <p className="full-book-preview__synopsis">{story.synopsis}</p>
+          )}
+        </header>
+
+        {chapterSections.map(({ chapter, scenes }, idx) => (
+          <section
+            key={chapter.id}
+            className="full-book-preview__chapter"
+            aria-labelledby={`fbp-ch-${chapter.id}`}
+            tabIndex={-1}
+            data-chapter-idx={idx}
+          >
+            <h2
+              className="full-book-preview__chapter-title"
+              id={`fbp-ch-${chapter.id}`}
+            >
+              {chapter.title}
+            </h2>
+            {scenes.length === 0 ? (
+              <p className="full-book-preview__no-content">
+                — no written scenes in this chapter —
+              </p>
+            ) : (
+              scenes.map((scene, si) => {
+                const sortedBlocks = [...scene.blocks]
+                  .sort((a, b) => a.order - b.order)
+                  .filter((b) => b.content.trim());
+                return (
+                  <article
+                    key={scene.id}
+                    className="full-book-preview__scene"
+                    aria-labelledby={`fbp-sc-${scene.id}`}
+                  >
+                    <h3
+                      className="full-book-preview__scene-title"
+                      id={`fbp-sc-${scene.id}`}
+                    >
+                      {scene.title}
+                    </h3>
+                    <div className="full-book-preview__scene-body">
+                      {sortedBlocks.map((block) => (
+                        <p
+                          key={block.id}
+                          className={`full-book-preview__block full-book-preview__block--${block.type}`}
+                        >
+                          {block.content}
+                        </p>
+                      ))}
+                    </div>
+                    {si < scenes.length - 1 && (
+                      <div
+                        className="full-book-preview__scene-sep"
+                        aria-hidden="true"
+                      >
+                        ✦ ✦ ✦
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            )}
+            <nav
+              className="full-book-preview__chapter-nav"
+              aria-label={`Navigate chapters (${idx + 1} of ${totalChapters})`}
+            >
+              <button
+                className="full-book-preview__nav-btn"
+                onClick={() => scrollToChapter(idx - 1)}
+                aria-label="Previous chapter (wraps to last)"
+              >
+                ← Prev
+              </button>
+              <span className="full-book-preview__nav-pos" aria-hidden="true">
+                {idx + 1} / {totalChapters}
+              </span>
+              <button
+                className="full-book-preview__nav-btn"
+                onClick={() => scrollToChapter(idx + 1)}
+                aria-label="Next chapter (wraps to first)"
+              >
+                Next →
+              </button>
+            </nav>
+          </section>
+        ))}
+
+        <footer className="full-book-preview__footer">
+          <button
+            className="full-book-preview__back-top"
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label="Back to top of book"
+          >
+            ↑ Back to top
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────
 
 /** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
@@ -585,52 +767,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
   const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
-  // SKY-1694 (Wave 2a): left sidebar panel zone layout
+  // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+  // SKY-3207 (B4): top bar hidden state
+  const [topBarHidden, setTopBarHidden] = useState(false);
+  const toggleTopBar = useCallback(() => setTopBarHidden((prev) => !prev), []);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
-
-  // ─── SKY-3207 (B4): Hideable top bar ───
-  const [topBarHidden, setTopBarHiddenRaw] = useState(false);
-  // Transient peek state when the user hovers the thin reveal strip
-  const [topBarPeekVisible, setTopBarPeekVisible] = useState(false);
-
-  const setTopBarHidden = useCallback((hidden: boolean) => {
-    setTopBarHiddenRaw(hidden);
-    if (!hidden) setTopBarPeekVisible(false);
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, topBarHidden: hidden };
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
-    });
-  }, []);
-
-  const toggleTopBar = useCallback(() => {
-    setTopBarHiddenRaw((prev) => {
-      const next = !prev;
-      if (!next) setTopBarPeekVisible(false);
-      setAppSettings((settings) => {
-        if (!settings) return settings;
-        const updated = { ...settings, topBarHidden: next };
-        window.api.settingsSet(updated).catch(() => {});
-        return updated;
-      });
-      return next;
-    });
-  }, []);
-
-  // Part C integration: listen for programmatic hide/show requests dispatched via useTopBarVisibility()
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { hidden } = (e as CustomEvent<{ hidden: boolean }>).detail;
-      setTopBarHidden(hidden);
-    };
-    window.addEventListener(TOPBAR_HIDE_EVENT, handler);
-    return () => window.removeEventListener(TOPBAR_HIDE_EVENT, handler);
-  }, [setTopBarHidden]);
-
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
 
   // ─── SKY-1686: Global right-sidebar state ───
@@ -684,6 +828,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     document.documentElement.dataset.activeTab = tabShell.activeTab;
   }, [tabShell.activeTab]);
+
+  // SKY-3206: story page chrome
+  const [pagePrefs, setPagePrefs] = useState<StoryPagePrefs>(STORY_PAGE_DEFAULTS);
+  const pageWrapRef = useRef<HTMLDivElement | null>(null);
+  const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+
+  // SKY-3206: Sync page prefs from settings when vault/settings change
+  useEffect(() => {
+    if (!appSettings || !activeVaultRoot) return;
+    const map = (appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap;
+    const prefs = map?.[activeVaultRoot] ?? STORY_PAGE_DEFAULTS;
+    setPagePrefs(prefs);
+  }, [appSettings, activeVaultRoot]);
+
+  useEffect(() => {
+    applyStoryPageTokens(pagePrefs);
+  }, [pagePrefs]);
+
 
   // SKY-1700 (Wave 2f): named workspace layouts
   const [workspaceLayouts, setWorkspaceLayouts] = useState<WorkspaceLayout[]>([]);
@@ -796,6 +959,47 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [],
   );
 
+  const handlePagePrefsChange = useCallback((newPrefs: StoryPagePrefs) => {
+    setPagePrefs(newPrefs);
+    applyStoryPageTokens(newPrefs);
+    if (!appSettings || !activeVaultRoot) return;
+    const updated = {
+      ...appSettings,
+      storyPagePrefsMap: {
+        ...(appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap,
+        [activeVaultRoot]: newPrefs,
+      },
+    };
+    window.api.settingsSet(updated as AppSettings).catch(() => {});
+  }, [appSettings, activeVaultRoot]);
+
+  const handlePageDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = pageWrapRef.current;
+    if (!el) return;
+    pageDragRef.current = { startX: e.clientX, startWidth: el.getBoundingClientRect().width };
+    const onMove = (ev: MouseEvent) => {
+      if (!pageDragRef.current) return;
+      const delta = ev.clientX - pageDragRef.current.startX;
+      const newW = Math.max(320, Math.min(1400, pageDragRef.current.startWidth + delta * 2));
+      document.documentElement.style.setProperty('--page-width-story', `${newW}px`);
+    };
+    const onUp = (ev: MouseEvent) => {
+      if (!pageDragRef.current) return;
+      const delta = ev.clientX - pageDragRef.current.startX;
+      const newW = Math.max(320, Math.min(1400, pageDragRef.current.startWidth + delta * 2));
+      pageDragRef.current = null;
+      const next: StoryPagePrefs = { ...pagePrefs, sizePreset: 'custom', customWidthPx: newW };
+      setPagePrefs(next);
+      handlePagePrefsChange(next);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handlePagePrefsChange, pagePrefs]);
+
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
     const content = editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n');
@@ -813,19 +1017,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
     window.dispatchEvent(new CustomEvent('scene:saved'));
-  }, [selectedScene]);
-
-  const handleDraftRestore = useCallback((content: string) => {
-    if (!selectedScene) return;
-    const restoredBlock: Block = {
-      id: generateId(),
-      type: 'prose',
-      content,
-      order: 0,
-      updatedAt: now(),
-    };
-    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
-    setRestoreKey(k => k + 1);
   }, [selectedScene]);
 
   const handleSceneRestore = useCallback((content: string) => {
@@ -1106,13 +1297,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
       }
 
-      // Apply rightSidebarVisible before readManifest() — readManifest can throw on
-      // fresh installs (no vault yet), and grsVisible must be resolved regardless so
-      // GlobalRightSidebar renders and the Getting Started panel becomes visible.
-      if (s && typeof s.rightSidebarVisible === 'boolean') {
-        setGrsVisible(s.rightSidebarVisible);
-      }
-
       const m = storyValid
         ? await window.api.readManifest() as Manifest
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
@@ -1123,17 +1307,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (s) {
         setAppSettings(s);
-        // SKY-3207 (B4): restore top-bar hidden state per-vault
-        if (typeof s.topBarHidden === 'boolean') setTopBarHiddenRaw(s.topBarHidden);
-        // Restore global right sidebar state from persisted settings (SKY-1686).
-        // On first launch rightSidebarVisible is undefined; auto-open the sidebar
-        // when the GettingStarted panel should be shown so it's immediately visible.
-        const initGsProgress = createInitialGettingStartedProgress(
-          undefined,
-          s.onboardingStartMode,
-          s.gettingStartedProgress,
-        );
-        setGrsVisible(s.rightSidebarVisible ?? isGettingStartedVisible(initGsProgress));
+        // Restore global right sidebar state from persisted settings (SKY-1686)
+        if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
         if (Array.isArray(s.rightSidebarPanels) && s.rightSidebarPanels.length > 0) setGrsPanels(s.rightSidebarPanels as PanelConfig[]);
         // SKY-1694: restore left sidebar layout from persisted AppSettings
@@ -1911,7 +2086,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const setWritingMode = useCallback((mode: WritingMode) => {
     let newLayout: LayoutPrefs = { ...layout, writingMode: mode };
     if (mode === 'edit') {
-      newLayout = { ...newLayout, leftTab: 'review' };
+      newLayout = { ...newLayout, leftTab: 'review', rightTab: 'ai' };
     }
     persistLayout(newLayout);
   }, [layout, persistLayout]);
@@ -2078,7 +2253,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
         e.preventDefault();
-        const el = document.querySelector<HTMLElement>('[data-testid="global-right-sidebar"] [role="button"], [data-testid="global-right-sidebar"] button');
+        const el = document.querySelector<HTMLElement>('.right-sidebar [role="tab"][aria-selected="true"], .right-sidebar button');
         el?.focus();
         return;
       }
@@ -2126,7 +2301,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, toggleTopBar, handleGrsVisibilityChange, grsVisible]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -2785,10 +2960,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
             onJumpToText={handleJumpToText}
-            ttsSettings={appSettings?.tts}
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
+            ttsSettings={appSettings?.tts}
           />
         );
       case 'archive-continuity':
@@ -2810,27 +2985,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             story={selectedStory}
           />
         );
-      case 'scene-notes':
-        return <SceneNotesPanel scene={activeSceneForSidebar} />;
-      case 'scene-properties':
-        return (
-          <ScenePropertiesPanel
-            scene={activeSceneForSidebar}
-            chapter={usePane2SidebarContext ? pane2Chapter : selectedChapter}
-            story={usePane2SidebarContext ? pane2Story : selectedStory}
-            currentContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
-            onDraftRestore={handleDraftRestore}
-          />
-        );
-      case 'scene-outline':
-        return (
-          <OutlinePlanningPanel
-            story={selectedStory}
-            onSelectScene={(sc, ch) => {
-              if (selectedStory) { handleSelectScene(sc, ch, selectedStory); setViewDepth('scene'); }
-            }}
-          />
-        );
       default:
         return null;
     }
@@ -2843,10 +2997,69 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
-    pane2Chapter, pane2Story, usePane2SidebarContext, handleDraftRestore,
   ]);
 
-  // ─── Unified step handler (AC-C-4: one stepScene handler) ────────────────
+  const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
+    if (!selectedStory || !selectedScene) return;
+    const allScenes: { scene: Scene; chapter: Chapter }[] = [];
+    for (const ch of [...selectedStory.chapters].sort((a, b) => a.order - b.order)) {
+      for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
+        allScenes.push({ scene: sc, chapter: ch });
+      }
+    }
+    const idx = allScenes.findIndex((s) => s.scene.id === selectedScene.id);
+    const nextIdx = direction === 'prev' ? idx - 1 : idx + 1;
+    if (nextIdx >= 0 && nextIdx < allScenes.length) {
+      const { scene, chapter } = allScenes[nextIdx];
+      handleSelectScene(scene, chapter, selectedStory);
+    }
+  }, [selectedStory, selectedScene, handleSelectScene]);
+
+  // ─── Header depth slider navigation (MYT-378) ───
+
+  const depthCanPrev = useMemo(() => {
+    if (!selectedStory) return false;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return false;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      return sorted.findIndex((s) => s.id === selectedScene.id) > 0;
+    }
+    if (viewDepth === 'chapter') {
+      if (!selectedChapter) return false;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      return sorted.findIndex((c) => c.id === selectedChapter.id) > 0;
+    }
+    return stories.findIndex((s) => s.id === selectedStory.id) > 0;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
+
+  const depthCanNext = useMemo(() => {
+    if (!selectedStory) return false;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return false;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      return idx >= 0 && idx < sorted.length - 1;
+    }
+    if (viewDepth === 'chapter') {
+      if (!selectedChapter) return false;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      return idx >= 0 && idx < sorted.length - 1;
+    }
+    const idx = stories.findIndex((s) => s.id === selectedStory.id);
+    return idx >= 0 && idx < stories.length - 1;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories]);
+
+  const depthContextLabel = useMemo(() => {
+    if (!selectedStory) return '';
+    if (viewDepth === 'scene' && selectedChapter && selectedScene) {
+      return `${selectedChapter.title} › ${selectedScene.title}`;
+    }
+    if (viewDepth === 'chapter' && selectedChapter) {
+      return `${selectedStory.title} › ${selectedChapter.title}`;
+    }
+    return selectedStory.title;
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory]);
 
   // §6: empty state — depth=scene but selected chapter has no scenes
   const depthIsEmpty = useMemo(
@@ -2854,31 +3067,93 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [viewDepth, selectedChapter],
   );
 
-  const { canPrev: depthCanPrev, canNext: depthCanNext, contextLabel: depthContextLabel } = useMemo(
-    () => computeStepState(viewDepth, selectedScene, selectedChapter, selectedStory, stories),
-    [viewDepth, selectedScene, selectedChapter, selectedStory, stories],
-  );
-
-  /**
-   * Single handler for all prev/next navigation (DepthSlider arrows, on-canvas
-   * edge arrows, BottomBar arrows, and Ctrl/Cmd+Alt+←→ keyboard shortcut).
-   * Delegates pure logic to stepScene(); applies the resulting target to state.
-   */
-  const handleStep = useCallback((direction: 'prev' | 'next') => {
-    const target = stepScene({ direction, depth: viewDepth, selectedScene, selectedChapter, selectedStory, stories });
-    if (!target) return;
-    if (target.scene && target.chapter) {
-      handleSelectScene(target.scene, target.chapter, target.story);
-    } else if (target.chapter) {
-      setSelectedScene(null);
-      setSelectedChapter(target.chapter);
-      setSelectedStory(target.story);
-      setSelectedEntity(null);
+  const handleDepthPrev = useCallback(() => {
+    if (!selectedStory) return;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      if (idx > 0) handleSelectScene(sorted[idx - 1], selectedChapter, selectedStory);
+    } else if (viewDepth === 'chapter') {
+      if (!selectedChapter) return;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (idx > 0) {
+        const prev = sorted[idx - 1];
+        const firstScene = [...prev.scenes].sort((a, b) => a.order - b.order)[0];
+        if (firstScene) {
+          handleSelectScene(firstScene, prev, selectedStory);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(prev);
+          setSelectedEntity(null);
+        }
+      }
     } else {
-      setSelectedScene(null);
-      setSelectedChapter(null);
-      setSelectedStory(target.story);
-      setSelectedEntity(null);
+      const idx = stories.findIndex((s) => s.id === selectedStory.id);
+      if (idx > 0) {
+        const prev = stories[idx - 1];
+        const firstCh = [...prev.chapters].sort((a, b) => a.order - b.order)[0];
+        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
+        if (firstSc && firstCh) {
+          handleSelectScene(firstSc, firstCh, prev);
+        } else if (firstCh) {
+          setSelectedScene(null);
+          setSelectedChapter(firstCh);
+          setSelectedStory(prev);
+          setSelectedEntity(null);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(null);
+          setSelectedStory(prev);
+          setSelectedEntity(null);
+        }
+      }
+    }
+  }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
+
+  const handleDepthNext = useCallback(() => {
+    if (!selectedStory) return;
+    if (viewDepth === 'scene') {
+      if (!selectedChapter || !selectedScene) return;
+      const sorted = [...selectedChapter.scenes].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((s) => s.id === selectedScene.id);
+      if (idx >= 0 && idx < sorted.length - 1) handleSelectScene(sorted[idx + 1], selectedChapter, selectedStory);
+    } else if (viewDepth === 'chapter') {
+      if (!selectedChapter) return;
+      const sorted = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+      const idx = sorted.findIndex((c) => c.id === selectedChapter.id);
+      if (idx >= 0 && idx < sorted.length - 1) {
+        const next = sorted[idx + 1];
+        const firstScene = [...next.scenes].sort((a, b) => a.order - b.order)[0];
+        if (firstScene) {
+          handleSelectScene(firstScene, next, selectedStory);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(next);
+          setSelectedEntity(null);
+        }
+      }
+    } else {
+      const idx = stories.findIndex((s) => s.id === selectedStory.id);
+      if (idx >= 0 && idx < stories.length - 1) {
+        const next = stories[idx + 1];
+        const firstCh = [...next.chapters].sort((a, b) => a.order - b.order)[0];
+        const firstSc = firstCh ? [...firstCh.scenes].sort((a, b) => a.order - b.order)[0] : null;
+        if (firstSc && firstCh) {
+          handleSelectScene(firstSc, firstCh, next);
+        } else if (firstCh) {
+          setSelectedScene(null);
+          setSelectedChapter(firstCh);
+          setSelectedStory(next);
+          setSelectedEntity(null);
+        } else {
+          setSelectedScene(null);
+          setSelectedChapter(null);
+          setSelectedStory(next);
+          setSelectedEntity(null);
+        }
+      }
     }
   }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, handleSelectScene]);
 
@@ -2945,15 +3220,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
-  // SKY-3207 (B4): top bar visibility — chrome shows when title bar is on AND user hasn't hidden it (or is peeking)
-  const showChrome = showTitleBar && (!topBarHidden || topBarPeekVisible);
-  const showPeekStrip = showTitleBar && topBarHidden && !topBarPeekVisible;
-
   const shellClasses = [
     'desktop-shell',
     `writing-mode-${writingMode}`,
     distractionFree && 'distraction-free',
-    topBarHidden && !distractionFree && 'desktop-shell--topbar-hidden',
     inFocusOrDF && !focusPrefs.showSidebarButtons && 'focus-hide-sidebar-btns',
     inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
     inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
@@ -2972,65 +3242,49 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
       <UpdateBanner />
-      {/* SKY-3207 (B4): peek strip — 8px hover target shown when top bar is hidden */}
-      {showPeekStrip && (
-        <div
-          className="topbar-peek-strip"
-          onMouseEnter={() => setTopBarPeekVisible(true)}
-          aria-hidden="true"
-          data-testid="topbar-peek-strip"
+      {showTitleBar && <WindowChrome />}
+      {showTitleBar && (
+        <AppMenuBar
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenHistory={() => setHistoryOpen(true)}
+          onSearchNavigate={handleSearchNavigate}
+          selectedStoryId={selectedStory?.id ?? null}
+          activeVaultRoot={activeVaultRoot}
+          onProjectSwitched={handleProjectSwitched}
+          onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
+          onToggleDistractionFree={toggleDistractionFree}
+          onToggleTopBar={toggleTopBar}
+          topBarHidden={topBarHidden}
+          onOpenTour={() => setTourOpen(true)}
+          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
+          requestText={requestText}
+          dockedTabs={dockedTabs}
+          activeDockedTabId={activeDockedTabId}
+          onDockedTabSelect={setActiveDockedTabId}
+          onDockedTabClose={handleTabClose}
+          onDockedTabReorder={handleTabReorder}
+          dockedPanelIds={dockedPanelIds}
+          onAddPanelAsNewTab={handleAddPanelAsNewTab}
         />
       )}
-      {/* SKY-3207 (B4): chrome wrapper — transparent in normal state, overlaid when peeking */}
-      {showChrome && (
+      {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
+      {showTitleBar && (
+        <TabBar
+          activeTab={tabShell.activeTab}
+          onTabChange={handleTabChange}
+        />
+      )}
+      {/* SKY-2098: per-tab vault badge */}
+      {showTitleBar && activeVaultBadge && (
         <div
-          className={`top-bar-chrome${topBarPeekVisible ? ' top-bar-chrome--peeking' : ''}`}
-          onMouseLeave={topBarPeekVisible ? () => setTopBarPeekVisible(false) : undefined}
-          data-testid="top-bar-chrome"
+          className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
+          aria-label={activeVaultBadgeLabel}
+          aria-live="polite"
+          data-testid="app-vault-badge"
         >
-          <WindowChrome />
-          <AppMenuBar
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenHistory={() => setHistoryOpen(true)}
-            onSearchNavigate={handleSearchNavigate}
-            selectedStoryId={selectedStory?.id ?? null}
-            activeVaultRoot={activeVaultRoot}
-            onProjectSwitched={handleProjectSwitched}
-            onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
-            onToggleDistractionFree={toggleDistractionFree}
-            onToggleTopBar={toggleTopBar}
-            topBarHidden={topBarHidden}
-            onOpenTour={() => setTourOpen(true)}
-            onOpenExport={(scope: ExportScope) => setExportScope(scope)}
-            requestText={requestText}
-            dockedTabs={dockedTabs}
-            activeDockedTabId={activeDockedTabId}
-            onDockedTabSelect={setActiveDockedTabId}
-            onDockedTabClose={handleTabClose}
-            onDockedTabReorder={handleTabReorder}
-            dockedPanelIds={dockedPanelIds}
-            onAddPanelAsNewTab={handleAddPanelAsNewTab}
-          />
-          {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
-          {showTabBar && (
-            <TabBar
-              activeTab={tabShell.activeTab}
-              onTabChange={handleTabChange}
-            />
-          )}
-          {/* SKY-2098: per-tab vault badge */}
-          {activeVaultBadge && (
-            <div
-              className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
-              aria-label={activeVaultBadgeLabel}
-              aria-live="polite"
-              data-testid="app-vault-badge"
-            >
-              <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
-                {activeVaultBadge}
-              </span>
-            </div>
-          )}
+          <span className="tab-bar-vault-badge__name" title={activeVaultBadgeTitle}>
+            {activeVaultBadge}
+          </span>
         </div>
       )}
       {showStatusOverlay && (
@@ -3089,7 +3343,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-      {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles. SKY-3626: writing mode removed, lives in editor toolbar. */}
+      {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles + writing mode. */}
       <StorySubViewBar
         activeSubView={view}
         onSubViewChange={handleSetView}
@@ -3170,6 +3424,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
+      {activeDockedTabId === null && view === 'book' && (
+        <div className="shell-book">
+          <FullBookPreviewView story={selectedStory ?? null} />
+        </div>
+      )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
       {showLeftSidebar && (
@@ -3210,7 +3469,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Center + bottom */}
       <div className="shell-center-column">
         <div className="shell-editor">
-          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker. SKY-3626: NFE writing mode added here. */}
+          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
           <div className="shell-editor-toolbar">
             {selectedStory && showTabBar && !splitWindowEnabled && (
               <DepthSlider
@@ -3218,8 +3477,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 onDepthChange={handleViewDepthChange}
                 canPrev={depthCanPrev}
                 canNext={depthCanNext}
-                onPrev={() => handleStep('prev')}
-                onNext={() => handleStep('next')}
+                onPrev={handleDepthPrev}
+                onNext={handleDepthNext}
                 contextLabel={depthContextLabel}
                 writingMode={writingMode}
                 isEmpty={depthIsEmpty}
@@ -3385,29 +3644,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               />
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
-                {/* AC-C-4: on-canvas edge arrows — route through unified handleStep */}
-                <button
-                  className="edge-arrow edge-arrow--prev"
-                  onClick={() => handleStep('prev')}
-                  disabled={!depthCanPrev}
-                  aria-label="Previous scene (Ctrl+Alt+←)"
-                  title="Previous (Ctrl+Alt+←)"
-                  data-testid="edge-arrow-prev"
-                  aria-hidden={!depthCanPrev}
-                >
-                  ‹
-                </button>
-                <button
-                  className="edge-arrow edge-arrow--next"
-                  onClick={() => handleStep('next')}
-                  disabled={!depthCanNext}
-                  aria-label="Next scene (Ctrl+Alt+→)"
-                  title="Next (Ctrl+Alt+→)"
-                  data-testid="edge-arrow-next"
-                  aria-hidden={!depthCanNext}
-                >
-                  ›
-                </button>
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"
@@ -3426,7 +3662,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     History
                   </button>
                 </div>
-                <div className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}>
+                <PageChromeToolbar
+                  prefs={pagePrefs}
+                  onPrefsChange={handlePagePrefsChange}
+                />
+                <div
+                  ref={pageWrapRef}
+                  className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
+                  style={{ position: 'relative' }}
+                >
                   <BlockEditor
                     key={`${selectedScene.id}-${restoreKey}`}
                     scene={selectedScene}
@@ -3465,6 +3709,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                       />
                     </div>
                   )}
+                  <div
+                    className="pct-drag-handle"
+                    onMouseDown={handlePageDragStart}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Drag to resize page width"
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      const cur = pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680;
+                      if (e.key === 'ArrowRight') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.min(1400, cur + 10) });
+                      else if (e.key === 'ArrowLeft') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.max(320, cur - 10) });
+                    }}
+                  />
                 </div>
                 {showSceneHistory && (
                   <SceneHistory
@@ -3531,7 +3788,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             selectedScene={selectedScene}
             selectedChapter={selectedChapter}
             selectedStory={selectedStory}
-            onNavigateScene={handleStep}
+            onNavigateScene={handleNavigateScene}
             activeNotePath={openedNotePath}
             activeNoteWordCount={openedNoteWordCount}
             isVoiceActive={voiceActive}
@@ -3691,9 +3948,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onSelectEntity={handleSelectEntity}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
-          writingMode={writingMode}
-          onSetWritingMode={setWritingMode}
-          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         />
       )}
       {/* SKY-3623: Brainstorm top-level tab panel */}

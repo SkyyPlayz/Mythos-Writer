@@ -1473,7 +1473,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       {/* ── Step 1: Choose your starting point ── */}
       {step === 'step1' && (
-        <div className="gs-modal" data-testid="screen-path-selector">
+        <div className="gs-modal" data-testid="screen-step1">
           <div className="gs-modal__header">
             <span className="gs-step-label">Step 1 of 3</span>
             <button
