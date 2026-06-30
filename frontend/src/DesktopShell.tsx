@@ -8,7 +8,6 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
-import RightSidebar from './RightSidebar';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -172,6 +171,10 @@ interface AppMenuBarProps {
   onProjectSwitched: (vaultRoot: string) => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
+  /** SKY-3207 (B4): toggle the top bar hidden state. */
+  onToggleTopBar: () => void;
+  /** SKY-3207 (B4): current hidden state — drives the toggle button aria-label. */
+  topBarHidden: boolean;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
   requestText: (label: string) => Promise<string | null>;
@@ -186,7 +189,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -301,6 +304,15 @@ function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedS
         dockedPanelIds={dockedPanelIds}
         onAddPanelAsNewTab={onAddPanelAsNewTab}
       />
+      <button
+        className="app-menu-topbar-btn"
+        onClick={onToggleTopBar}
+        aria-label={topBarHidden ? 'Show top bar' : 'Hide top bar'}
+        title={`${topBarHidden ? 'Show' : 'Hide'} top bar (Ctrl+Shift+H)`}
+        data-testid="toolbar-hide-topbar-btn"
+      >
+        ▲
+      </button>
       <button
         className="app-menu-df-btn"
         onClick={onToggleDistractionFree}
@@ -759,6 +771,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   const [rightSidebarUserCollapsed, setRightSidebarUserCollapsed] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+  // SKY-3207 (B4): top bar hidden state
+  const [topBarHidden, setTopBarHidden] = useState(false);
+  const toggleTopBar = useCallback(() => setTopBarHidden((prev) => !prev), []);
 
   const { distractionFree, toggle: toggleDistractionFree } = useFocusMode();
   const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle');
@@ -940,12 +955,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [],
   );
 
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
-
   const handlePagePrefsChange = useCallback((newPrefs: StoryPagePrefs) => {
     setPagePrefs(newPrefs);
     applyStoryPageTokens(newPrefs);
@@ -1006,19 +1015,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
-  const handleDraftRestore = useCallback((content: string) => {
-    if (!selectedScene) return;
-    const restoredBlock: Block = {
-      id: generateId(),
-      type: 'prose',
-      content,
-      order: 0,
-      updatedAt: now(),
-    };
-    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
-    setRestoreKey(k => k + 1);
-  }, [selectedScene]);
-
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
     const restoredBlock: Block = {
@@ -1035,10 +1031,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const handleJumpToText = useCallback((text: string) => {
     editorApiRef.current?.jumpToText(text);
-  }, []);
-
-  const handleInsertWikiLink = useCallback((link: string, anchorText: string) => {
-    editorApiRef.current?.insertWikiLink(link, anchorText);
   }, []);
 
   const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
@@ -2087,28 +2079,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     persistLayout(newLayout);
   }, [layout, persistLayout]);
-
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'notes-vault') {
-      handleNotesSubViewChange('editor');
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'add-character') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
   const handleToggleSplitWindow = useCallback(() => {
@@ -3271,6 +3241,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onProjectSwitched={handleProjectSwitched}
           onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
           onToggleDistractionFree={toggleDistractionFree}
+          onToggleTopBar={toggleTopBar}
+          topBarHidden={topBarHidden}
           onOpenTour={() => setTourOpen(true)}
           onOpenExport={(scope: ExportScope) => setExportScope(scope)}
           requestText={requestText}
@@ -3363,9 +3335,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <StorySubViewBar
         activeSubView={view}
         onSubViewChange={handleSetView}
-        writingMode={writingMode}
-        onSetWritingMode={setWritingMode}
-        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
       />
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
@@ -3784,67 +3753,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         )}
       </div>
 
-      {/* Right resize handle */}
-      {showRightSidebar && (
-        <div
-          role="separator"
-          aria-label="Resize right panel"
-          aria-orientation="vertical"
-          aria-valuenow={layout.rightWidth}
-          aria-valuemin={160}
-          aria-valuemax={500}
-          tabIndex={0}
-          className="shell-divider shell-divider-right"
-          onMouseDown={(e) => startDrag('right', e)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('right', +8); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('right', -8); }
-            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 160 }); }
-            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, rightWidth: 500 }); }
-          }}
-        />
-      )}
-
-      {/* Right sidebar */}
-      {showRightSidebar && (
-        <div className="shell-right" style={{ width: layout.rightWidth }}>
-          <RightSidebar
-            activeTab={layout.rightTab}
-            onTabChange={(tab) => persistLayout({ ...layout, rightTab: tab })}
-            selectedScene={activeSceneForSidebar}
-            selectedChapter={usePane2SidebarContext ? pane2Chapter : selectedChapter}
-            selectedStory={usePane2SidebarContext ? pane2Story : selectedStory}
-            writingAssistantEnabled={agentFlags.writingAssistant}
-            archiveEnabled={agentFlags.archive}
-            scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-            waScanInterval={appSettings?.waScanInterval}
-            cadenceTrigger={appSettings?.agents?.writingAssistant?.cadenceTrigger}
-            idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
-            idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
-            waAutoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
-            waAutoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
-            onWaAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
-            isPageFocused={view === 'editor'}
-            onJumpToText={handleJumpToText}
-            onInsertWikiLink={handleInsertWikiLink}
-            onWikiLinkSuggestionsChange={setWikiLinkSuggestions}
-            onGettingStartedAction={handleGettingStartedAction}
-            onDismissGettingStarted={handleDismissGettingStarted}
-            onToggleGsCollapsed={handleToggleGsCollapsed}
-            gettingStartedProgress={gettingStartedProgress}
-            onSelectScene={(sc, ch) => {
-              if (selectedStory) {
-                handleSelectScene(sc, ch, selectedStory);
-                setViewDepth('scene');
-              }
-            }}
-            currentSceneContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
-            onDraftRestore={handleDraftRestore}
-            editorSelectionText={editorSelectionText}
-            onOpenEntityNote={handleOpenContinuityEntityNote}
-          />
-        </div>
-      )}
       </div>}{/* end shell-panels */}
 
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.

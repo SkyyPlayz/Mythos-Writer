@@ -97,6 +97,25 @@
 .tiptap-content {
   width: 100%;
   max-width: 720px;
+  background: var(--page-bg-fill);
+  border-radius: var(--page-bg-radius, 8px);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .tiptap-content {
+    backdrop-filter: blur(var(--page-bg-backdrop-blur));
+    -webkit-backdrop-filter: blur(var(--page-bg-backdrop-blur));
+  }
+}
+
+[data-page-preset="liquid-neon"] .tiptap-content {
+  box-shadow: 0 0 32px var(--page-bg-glow-color, rgba(167, 139, 250, 0.3));
+}
+
+@media (prefers-contrast: more) {
+  .tiptap-content {
+    background: color-mix(in srgb, var(--page-bg-fill) 95%, Canvas 5%);
+  }
 }
 
 .block-editor-empty-hint {

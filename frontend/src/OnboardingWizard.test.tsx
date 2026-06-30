@@ -210,7 +210,7 @@ describe('OnboardingWizard — Step 1', () => {
 
   it('renders Step 1 with correct heading and subtitle', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
     await act(async () => {});
@@ -274,7 +274,7 @@ describe('OnboardingWizard — Step 1', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-path-default'));
     await waitFor(() => expect(screen.getByTestId('screen-step2')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -300,7 +300,7 @@ describe('OnboardingWizard — Step 1', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
     await act(async () => {});
   });
@@ -376,7 +376,7 @@ describe('OnboardingWizard — Cancel confirm dialog', () => {
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
     expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -719,7 +719,7 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
     await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
     fireEvent.click(screen.getByTestId('gs-back-step1c'));
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     // Re-entering step1c should have no selection
     await openSampleFlow();
     expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
@@ -1169,7 +1169,7 @@ describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
 describe('OnboardingWizard — AC coverage', () => {
   it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -1412,7 +1412,7 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
   it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
@@ -1432,7 +1432,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('card-import'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-path-selector')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -1601,7 +1601,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
     );
     fireEvent.click(screen.getByTestId('gs-back-step-import'));
-    await waitFor(() => expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
     await act(async () => {});
   });
 
@@ -1812,7 +1812,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     );
     fireEvent.click(screen.getByTestId('custom-location-back'));
     await act(async () => {});
-    expect(screen.getByTestId('screen-path-selector')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
   });
 
   it('AC-C-06: Next advances to custom-template when path is valid', async () => {
