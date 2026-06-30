@@ -1701,10 +1701,12 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       // runAllTimersAsync fires the 500ms debounce timer and then drains all
       // resulting microtasks (the Promise.all chain in validateCustomPathNow)
-      // atomically inside act(), eliminating the CI-load timing flake.
+      // atomically inside act(). flushAsyncEffects() drains any remaining
+      // Promise.all continuations whose setState batch lands after the act() gap.
       await act(async () => {
         await vi.runAllTimersAsync();
       });
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1725,6 +1727,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       await act(async () => {
         await vi.runAllTimersAsync();
       });
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1745,6 +1748,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       await act(async () => {
         await vi.runAllTimersAsync();
       });
+      await flushAsyncEffects();
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
