@@ -1891,6 +1891,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </button>
             )}
           </div>
+          <EntriesQuickAdd />
         </div>
 
         <div className="brainstorm-facts-col">
@@ -2250,8 +2251,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             )}
           </div>
           )}
-
-          <EntriesQuickAdd />
         </div>
       </div>
 
