@@ -77,7 +77,6 @@ import StoryTimeline from './StoryTimeline';
 import AeonLaneView from './AeonLaneView';
 import TrackTimeline from './TrackTimeline';
 import WindowChrome from './components/ui/WindowChrome';
-import BrainstormPage from './BrainstormPage';
 import './DesktopShell.css';
 
 const DEFAULT_LAYOUT: LayoutPrefs = {
