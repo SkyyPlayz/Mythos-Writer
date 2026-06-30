@@ -18,7 +18,7 @@ CEO_ID = "54e5de0a-25d8-4ed9-8148-bce7e377b232"
 
 # Parent issues for child routing (using UUIDs)
 FAILOVER_QUEUE_UUID = "79ed7dbc-8599-4585-b34b-a5443e83b791"  # SKY-2565 OPS Dispatch — Failover Queue
-TIERING_QUEUE_UUID = "79ed7dbc-8599-4585-b34b-a5443e83b791"   # Same parent for tiering children
+TIERING_QUEUE_UUID  = "f4cc5ff9-779b-4a15-aba0-81ab6e06f181"  # SKY-4335 OPS Dispatch — Tiering Queue
 
 
 def get_run_id() -> str:
@@ -33,7 +33,7 @@ def get_run_id() -> str:
 def api_call(method: str, endpoint: str, data: Optional[Dict] = None) -> Optional[Dict]:
     """Make a Paperclip API call using curl and the API key."""
     run_id = get_run_id()
-    base_url = os.environ.get("PAPERCLIP_API_URL", "http://localhost:8000")
+    base_url = os.environ.get("PAPERCLIP_API_URL", "http://127.0.0.1:3100")
     api_key = os.environ.get("PAPERCLIP_API_KEY")
 
     url = f"{base_url}{endpoint}"
@@ -273,10 +273,10 @@ Please investigate and recover this issue."""
 
     for issue in todo_issues:
         title = issue.get("title", "")
-        label_ids = issue.get("labelIds", [])
+        label_names = [lbl.get("name", "") for lbl in issue.get("labels", [])]
 
         # Skip if already has a tier label
-        if any("tier:" in str(lid) for lid in label_ids):
+        if any(name.startswith("tier:") for name in label_names):
             continue
 
         # Skip transient/automation tickets
@@ -329,7 +329,7 @@ Please investigate and recover this issue."""
     ceo_heavies = [
         i for i in all_issues
         if i.get("assigneeAgentId") == CEO_ID
-        and any("tier:heavy" in str(lid) for lid in i.get("labelIds", []))
+        and any(lbl.get("name") == "tier:heavy" for lbl in i.get("labels", []))
     ]
 
     ceo_agent = agents.get(CEO_ID, {})
