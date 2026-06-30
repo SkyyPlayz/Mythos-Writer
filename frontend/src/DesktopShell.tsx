@@ -66,6 +66,7 @@ import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
@@ -3014,6 +3015,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onSelectScene={(sc, ch) => {
               if (selectedStory) { handleSelectScene(sc, ch, selectedStory); setViewDepth('scene'); }
             }}
+          />
+        );
+      case 'brainstorm':
+        return (
+          <BrainstormPage
+            onClose={() => {}}
+            enabled={appSettings?.agents?.brainstorm?.enabled ?? true}
+            voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+            archiveContinuityEnabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+            activeScene={activeSceneForSidebar}
+            activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+            compact
           />
         );
       default:

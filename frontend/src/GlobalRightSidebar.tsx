@@ -20,6 +20,7 @@ const PANEL_LABELS: Record<string, string> = {
   'writing-assistant': 'Writing Assistant',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
+  brainstorm: 'Brainstorm',
   // Left panels that may be dragged over:
   stories: 'Story Navigator',
   entities: 'Entity Browser',
@@ -38,6 +39,7 @@ const RIGHT_PANEL_IDS: PanelId[] = [
   'writing-assistant',
   'archive-continuity',
   'scene-preview',
+  'brainstorm',
 ];
 
 const DEFAULT_PANELS: PanelConfig[] = [

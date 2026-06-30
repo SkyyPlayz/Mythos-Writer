@@ -199,4 +199,30 @@ describe('GlobalRightSidebar', () => {
       expect(handle).toHaveAttribute('draggable', 'true');
     });
   });
+
+  describe('brainstorm panel (SKY-3623)', () => {
+    it('lists Brainstorm in the Add Panel picker when not already added', () => {
+      const panels: PanelConfig[] = [
+        { id: 'writing-assistant', collapsed: false },
+      ];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
+      expect(screen.getByRole('menuitem', { name: 'Brainstorm' })).toBeInTheDocument();
+    });
+
+    it('renders the brainstorm panel body when added and expanded', () => {
+      const panels: PanelConfig[] = [
+        { id: 'brainstorm', collapsed: false },
+      ];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      expect(screen.getByLabelText(/brainstorm panel/i)).toBeInTheDocument();
+      expect(screen.getByTestId('brainstorm')).toBeInTheDocument();
+    });
+
+    it('renders a drag handle for the brainstorm panel', () => {
+      const panels: PanelConfig[] = [{ id: 'brainstorm', collapsed: false }];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      expect(screen.getByRole('button', { name: 'Move Brainstorm' })).toBeInTheDocument();
+    });
+  });
 });
