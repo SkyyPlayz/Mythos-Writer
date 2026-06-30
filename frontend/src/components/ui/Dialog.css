@@ -41,6 +41,14 @@
   width: min(560px, 100%);
 }
 
+.ln-dialog--destructive {
+  border-color: var(--state-danger);
+}
+
+.ln-dialog--destructive .ln-dialog-header {
+  border-bottom-color: color-mix(in srgb, var(--state-danger) 30%, var(--border-subtle));
+}
+
 /* Header */
 .ln-dialog-header {
   display: flex;
@@ -80,6 +88,11 @@
     color var(--dur-hover-in),
     background var(--dur-hover-in);
   flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ln-dialog-close:hover {

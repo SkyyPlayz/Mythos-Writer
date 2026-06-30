@@ -30,19 +30,19 @@
   right: 6px;
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.65rem;
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   line-height: 1;
   z-index: 2;
-  transition: color 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-out);
 }
 
 .lr-toggle-btn:hover {
-  color: #a1a1aa;
-  background: #27272a;
+  color: var(--text-body);
+  background: var(--bg-inset);
 }
 
 .lr-toggle-btn:focus-visible {
@@ -63,7 +63,7 @@
 .lr-panel {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   position: relative; /* needed for drag placeholder pseudo-elements */
 }
@@ -78,7 +78,7 @@
   align-items: center;
   gap: 4px;
   padding: 5px 6px;
-  background: #18181b;
+  background: var(--bg-surface);
   flex-shrink: 0;
   min-height: 32px;
 }
@@ -86,18 +86,18 @@
 .lr-panel-collapse-btn {
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.7rem;
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   line-height: 1;
   flex-shrink: 0;
-  transition: color 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-out);
 }
 
 .lr-panel-collapse-btn:hover {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .lr-panel-collapse-btn:focus-visible {
@@ -109,7 +109,7 @@
   flex: 1;
   font-size: 0.75rem;
   font-weight: 500;
-  color: #71717a;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -118,19 +118,19 @@
 .lr-panel-float-btn {
   background: none;
   border: none;
-  color: #3f3f46;
+  color: var(--border-strong);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   line-height: 1;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-out), background var(--dur-hover-in) var(--ease-out);
 }
 
 .lr-panel-float-btn:hover {
-  color: var(--color-accent, #00f0ff);
-  background: #27272a;
+  color: var(--accent);
+  background: var(--bg-inset);
 }
 
 .lr-panel-float-btn:focus-visible {
@@ -141,19 +141,19 @@
 .lr-panel-remove-btn {
   background: none;
   border: none;
-  color: #3f3f46;
+  color: var(--border-strong);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   line-height: 1;
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-out), background var(--dur-hover-in) var(--ease-out);
 }
 
 .lr-panel-remove-btn:hover {
-  color: #ef4444;
-  background: #27272a;
+  color: var(--state-danger);
+  background: var(--bg-inset);
 }
 
 .lr-panel-remove-btn:focus-visible {
@@ -178,19 +178,19 @@
   width: 100%;
   padding: 6px 8px;
   background: none;
-  border: 1px dashed #3f3f46;
-  border-radius: 6px;
-  color: #52525b;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
   font-size: 0.78rem;
   cursor: pointer;
   text-align: center;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out), background var(--dur-hover-in) var(--ease-out);
 }
 
 .lr-add-panel-btn:hover:not(:disabled) {
-  color: #a1a1aa;
-  border-color: #71717a;
-  background: #18181b;
+  color: var(--text-body);
+  border-color: var(--text-muted);
+  background: var(--bg-surface);
 }
 
 .lr-add-panel-btn:disabled {
@@ -208,10 +208,10 @@
   bottom: calc(100% + 4px);
   left: 8px;
   right: 8px;
-  background: #1c1c1f;
-  border: 1px solid #3f3f46;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  box-shadow: var(--elev-2);
   z-index: 10;
   overflow: hidden;
 }
@@ -222,16 +222,16 @@
   padding: 8px 12px;
   background: none;
   border: none;
-  color: #a1a1aa;
+  color: var(--text-body);
   font-size: 0.82rem;
   text-align: left;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background var(--dur-press) var(--ease-out), color var(--dur-press) var(--ease-out);
 }
 
 .lr-panel-picker-item:hover {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 .lr-panel-picker-item:focus-visible {
@@ -242,7 +242,7 @@
 /* Vault browser (preserved from original) */
 .vault-loading {
   padding: 16px;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -254,7 +254,7 @@
   height: 100%;
   padding: 24px 16px;
   text-align: center;
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .vault-empty-icon {
@@ -266,12 +266,12 @@
 .vault-empty p {
   margin: 0 0 6px;
   font-size: 0.85rem;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .vault-empty-sub {
   font-size: 0.78rem !important;
-  color: #3f3f46 !important;
+  color: var(--border-strong) !important;
 }
 
 /* Vault tree */
@@ -294,17 +294,17 @@
 }
 
 .vt-dir-row {
-  color: #a1a1aa;
+  color: var(--text-body);
   cursor: pointer;
 }
 
 .vt-dir-row:hover {
-  background: #18181b;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-header);
 }
 
 .vt-file-row {
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .vt-file-row.vt-md {
@@ -312,20 +312,20 @@
 }
 
 .vt-file-row.vt-md:hover {
-  background: #18181b;
-  color: #d4d4d8;
+  background: var(--bg-hover);
+  color: var(--text-body);
 }
 
 .vt-file-row.vt-selected {
-  background: #27272a;
-  color: #e4e4e7;
+  background: var(--selected);
+  color: var(--text-header);
 }
 
 .vt-chevron {
   font-size: 0.6rem;
   width: 10px;
   flex-shrink: 0;
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .vt-icon {

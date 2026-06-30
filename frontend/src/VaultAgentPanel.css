@@ -80,6 +80,10 @@
   50% { opacity: 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .va-cursor { animation: none; }
+}
+
 .va-error {
   font-size: 12px;
   color: #f87171;

@@ -54,6 +54,10 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .layout-picker-dropdown { animation: none; }
+}
+
 .layout-picker-section-label {
   font-size: 10px;
   font-weight: 600;

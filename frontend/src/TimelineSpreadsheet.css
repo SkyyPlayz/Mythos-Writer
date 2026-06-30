@@ -337,6 +337,11 @@
   to { transform: rotate(360deg); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .tls-saving-spinner,
+  .tls-loading-spinner { animation: none; }
+}
+
 /* ─── Group rows ─── */
 
 .tls-group-row {
@@ -485,7 +490,7 @@
   border: 1px solid var(--color-border, #3a3a5c);
   background: var(--color-surface, #1e1e2e);
   color: var(--color-text, #eee);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-1);
   font-size: 0.72rem;
 }
 

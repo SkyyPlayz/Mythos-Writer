@@ -801,6 +801,9 @@
   .voice-transcript-strip { transition: none !important; }
   .voice-countdown-ring { display: none; }
   .voice-countdown-text { display: block; }
+  .bs-cursor { animation: none; }
+  .brainstorm-toast { animation: none; }
+  .bs-bulk-toolbar { animation: none; }
 }
 
 /* Cancel button */

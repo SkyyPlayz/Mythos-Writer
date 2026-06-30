@@ -240,6 +240,10 @@ select:focus {
   50%       { opacity: 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .cursor { animation: none; }
+}
+
 /* Responsive */
 
 @media (max-width: 600px) {

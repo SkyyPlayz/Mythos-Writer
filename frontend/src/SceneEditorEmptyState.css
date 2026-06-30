@@ -44,6 +44,10 @@
   to { transform: rotate(360deg); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .se-empty-spinner { animation: none; }
+}
+
 /* Split-pane usage: fill the pane content area */
 .spe-content .se-empty-state {
   min-height: 200px;

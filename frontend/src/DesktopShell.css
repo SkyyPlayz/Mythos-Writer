@@ -108,7 +108,7 @@
   border-radius: var(--radius-sm);
   padding: 4px;
   z-index: 100;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  box-shadow: var(--elev-2);
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -227,7 +227,7 @@
   padding: 2px 7px;
   cursor: pointer;
   letter-spacing: 0.04em;
-  transition: color 0.1s, border-color 0.1s, background 0.1s;
+  transition: color var(--dur-press) var(--ease-out), border-color var(--dur-press) var(--ease-out), background var(--dur-press) var(--ease-out);
 }
 
 .nfe-mode-btn:hover {
@@ -459,7 +459,7 @@
   background: var(--accent, #7c5cff);
   color: var(--bg-canvas, #0b0e13);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   padding: 10px 28px;
   font-size: 0.95rem;
   font-weight: 600;
@@ -519,14 +519,14 @@
   background: var(--bg-panel, #2a2a2e);
   color: var(--text-primary, #f0f0f0);
   border: 1px solid var(--warning, #f5a623);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   padding: 0.6rem 1.1rem;
   font-size: 0.85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elev-1);
   z-index: 9999;
   white-space: nowrap;
   pointer-events: none;
-  animation: budget-toast-in 0.2s ease;
+  animation: budget-toast-in var(--dur-hover-in) var(--ease-out);
 }
 
 @keyframes budget-toast-in {
@@ -615,7 +615,7 @@
   padding: 4px 12px;
   background: var(--bg-control, #313244);
   border: 1px solid var(--border-subtle, #45475a);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
   font-size: 0.8rem;
   cursor: pointer;
@@ -637,7 +637,7 @@
   padding: 4px 12px;
   background: var(--bg-control, #313244);
   border: 1px solid var(--border-subtle, #45475a);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
   font-size: 0.8rem;
   cursor: pointer;
@@ -656,14 +656,14 @@
   background: var(--bg-panel, #2a2a2e);
   color: var(--text-primary, #f0f0f0);
   border: 1px solid #4b5563;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   padding: 0.5rem 1rem;
   font-size: 0.82rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--elev-1);
   z-index: 9998;
   white-space: nowrap;
   pointer-events: none;
-  animation: budget-toast-in 0.2s ease;
+  animation: budget-toast-in var(--dur-hover-in) var(--ease-out);
 }
 
 /* Voice listening badge (SKY-896) */
@@ -676,14 +676,14 @@
   align-items: center;
   gap: 6px;
   background: rgba(0, 0, 0, 0.78);
-  color: #ff5555;
-  border: 1px solid rgba(255, 85, 85, 0.4);
-  border-radius: 12px;
+  color: var(--state-danger);
+  border: 1px solid color-mix(in srgb, var(--state-danger) 40%, transparent);
+  border-radius: var(--radius-sm);
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 500;
   pointer-events: none;
-  animation: voice-badge-in 0.15s ease;
+  animation: voice-badge-in var(--dur-hover-in) var(--ease-out);
 }
 
 .voice-listening-badge::before {
@@ -692,7 +692,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ff5555;
+  background: var(--state-danger);
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
 
@@ -790,10 +790,10 @@
 
 .chapter-doc-scene {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   padding: 14px 18px;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out);
   background: var(--bg-surface);
 }
 
@@ -923,7 +923,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   z-index: 1000;
 }
 .prompt-modal {
@@ -932,10 +932,10 @@
   gap: 12px;
   min-width: 320px;
   padding: 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: var(--surface, #1e1b29);
   border: 1px solid var(--border, #353048);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-2);
 }
 .prompt-modal-label {
   font-size: 14px;
@@ -943,7 +943,7 @@
 }
 .prompt-modal-input {
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
   background: var(--bg, #15131f);
   color: inherit;
@@ -956,7 +956,7 @@
 }
 .prompt-modal-actions button {
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
   background: transparent;
   color: inherit;
@@ -1069,6 +1069,12 @@
     --page-bg-glow: 0;
     --page-bg-glow-color: transparent;
   }
+
+  .shell-loading-spinner { animation: none; }
+  .budget-toast { animation: none; }
+  .voice-listening-badge { animation: none; }
+  .voice-listening-badge::before { animation: none; }
+  .shell-editor-scene-wrap--flash { animation: none; }
 }
 
 /* ─── Focus Mode element toggles (SKY-325) ─── */
@@ -1110,16 +1116,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
 }
 
 .cross-tab-link-modal__card {
   width: min(420px, calc(100vw - 32px));
   padding: 18px;
   border: 1px solid var(--glass-border);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   background: var(--glass-fill-fallback, #111);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elev-3);
 }
 
 .cross-tab-link-modal__card h2 {
@@ -1141,7 +1147,7 @@
 
 .cross-tab-link-modal button {
   border: 1px solid var(--glass-border);
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
@@ -1173,7 +1179,7 @@
   z-index: 200;
   background: var(--glass-fill-fallback);
   border-bottom: 1px solid var(--glass-border);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--elev-2);
 }
 
 @supports (backdrop-filter: blur(1px)) {
