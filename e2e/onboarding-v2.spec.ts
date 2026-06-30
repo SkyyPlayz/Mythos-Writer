@@ -514,21 +514,12 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
   });
 
   test('AC-OB-08: blank story completion → Getting Started panel visible in right sidebar', async () => {
-    // Write minimal settings before the mock fires so DesktopShell's loadVault()
-    // reads rightSidebarVisible: true and opens the GRS for the Getting Started panel.
-    fs.writeFileSync(
-      path.join(userData, 'app-settings.json'),
-      JSON.stringify({
-        onboardingComplete: true,
-        onboardingStartMode: 'blank',
-        gettingStartedProgress: { completedItems: [], dismissed: false },
-        rightSidebarVisible: true,
-      }, null, 2),
-    );
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
       ipcMain.removeHandler('onboarding:complete');
+      // Electron main is bundled as ESM — require() is unavailable inside app.evaluate().
+      // GRS visibility now flows through initialSettings prop (SKY-4259) so no disk write needed.
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 

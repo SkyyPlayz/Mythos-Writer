@@ -280,8 +280,10 @@ test('TC-SKY-814-08: Settings can be fully navigated with keyboard only', async 
   const dialog = page.locator('[role="dialog"][aria-label="Settings"]');
   await expect(dialog).toBeVisible();
 
-  // Get all focusable elements in the dialog
+  // Get all focusable elements in the dialog; wait for content to render
+  // (the SKY-3216 extraction into sub-components can introduce a brief render delay).
   const focusables = dialog.locator('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  await expect(focusables.first()).toBeVisible({ timeout: 3_000 });
   const count = await focusables.count();
   expect(count).toBeGreaterThan(0);
 

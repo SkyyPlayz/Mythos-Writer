@@ -129,6 +129,13 @@ function buildAppSettings(waEnabled = true): object {
     // which fires onerror immediately in headless Electron (no audio device).
     // The voice:speak IPC handler is mocked in installIpcMocks.
     tts: { enabled: true, provider: 'local', localBinaryPath: '/dev/null' },
+    // GRS (GlobalRightSidebar) only renders when rightSidebarVisible is an explicit boolean.
+    // notesTabUpgradeToastShown prevents an extra fire-and-forget settingsSet during loadVault.
+    // Do NOT set layoutMigrationDone: the migration sets activeLayout.leftSidebar, which
+    // prevents the default WRITING_FOCUS layout (leftSidebar.visible=false) from collapsing
+    // the left sidebar and hiding .nav-scene-row / .nav-story-row in E2E tests.
+    rightSidebarVisible: true,
+    notesTabUpgradeToastShown: true,
   };
 }
 
@@ -391,19 +398,18 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
 // ─── Navigation helpers ───────────────────────────────────────────────────────
 
 async function navigateToEditorView(page: Page): Promise<void> {
-  const legacyMenu = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
-  if (await legacyMenu.count()) {
-    await legacyMenu.click();
-  } else {
-    await page.getByRole('tab', { name: /^Story$/ }).click();
-  }
+  // After the GRS refactor the app uses data-testid based navigation.
+  // Click the Story tab then the Editor sub-view, mirroring writing-assistant-tips.spec.ts.
+  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('[data-testid="story-subview-editor"]').click();
 }
 
 /** Click a scene row in the StoryNavigator by its title. */
 async function openScene(page: Page, sceneTitle: string): Promise<void> {
   await navigateToEditorView(page);
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+
+  // Wait for the story navigator to fully render before looking for the scene row.
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
 
   const sceneRow = page.locator('.nav-scene-row', { hasText: sceneTitle });
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
@@ -412,38 +418,28 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 
 /**
  * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
- * Navigates away first so that the Writing Assistant panel remounts and clears
- * any in-memory tip-suppression state from prior tests.
+ * Collapses and re-expands the GRS panel to force a remount, clearing any
+ * in-memory tip-suppression state from prior tests.
  */
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
-  // Navigate away to force a component remount (clears suppressed-tip state).
-  const notesTab = page.getByRole('tab', { name: /^Notes$/ });
-  if (await notesTab.isVisible().catch(() => false)) await notesTab.click();
-
   await openScene(page, 'Lighthouse Scene');
-  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
-  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
-  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await showSidebarBtn.click();
-  }
+
+  // GRS uses role=button panel headers. Collapse then re-expand to force a remount
+  // (clears suppressed-tip state left over from prior tests).
   const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
-  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
-    await waHeader.click();
+  if ((await waHeader.getAttribute('aria-expanded')) === 'true') {
+    await waHeader.click(); // collapse → unmount content
   }
+  await waHeader.click(); // expand → remount content
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
-  // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-  // Show the sidebar if hidden, then expand the Writing Assistant panel if collapsed.
-  const showSidebarBtn = page.getByRole('button', { name: 'Show right sidebar' });
-  if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await showSidebarBtn.click();
-  }
+
+  // GRS uses role=button panel headers, not tabs.
   const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
-  if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
     await waHeader.click();
   }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
@@ -1048,21 +1044,16 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
   // absent; no scans fire automatically."
 
   test('TC-WA-26: disabled WA shows disabled message and hides scan/chat UI', async () => {
-    // Navigate to Editor and open the Assistant tab.
+    // Navigate to Editor and expand the Writing Assistant panel in the GRS.
     const editorMenu = disabledPage.locator('.app-menu-view-btn', { hasText: 'Editor' });
     if (await editorMenu.count()) {
       await editorMenu.click();
     } else {
       await disabledPage.getByRole('tab', { name: /^Story$/ }).click();
     }
-    // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
-    const showSidebarBtnD = disabledPage.getByRole('button', { name: 'Show right sidebar' });
-    if (await showSidebarBtnD.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await showSidebarBtnD.click();
-    }
-    const waHeaderD = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
-    if ((await waHeaderD.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
-      await waHeaderD.click();
+    const disabledWaHeader = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
+    if ((await disabledWaHeader.getAttribute('aria-expanded')) !== 'true') {
+      await disabledWaHeader.click();
     }
 
     // Panel renders in disabled state.

@@ -2005,6 +2005,11 @@ const handlers: IpcHandlers = {
         completedItems: [],
         dismissed: !startMode || startMode === 'skip',
       };
+      // SKY-3179: legacy RightSidebar removed; GRS requires an explicit rightSidebarVisible=true
+      // to render. Auto-open on first non-skip onboarding so Getting Started panel is visible.
+      if (startMode && startMode !== 'skip' && typeof current.rightSidebarVisible !== 'boolean') {
+        patch.rightSidebarVisible = true;
+      }
       const recentVaultParentPaths = updateRecentVaultParentPaths(current.recentVaultParentPaths, recentParentPath);
       if (recentVaultParentPaths) patch.recentVaultParentPaths = recentVaultParentPaths;
       if (sampleGenre && startMode === 'sample') patch.lastSampleGenre = sampleGenre;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migrateV1Layout } from './WorkspaceLayoutManager';
+import { migrateV1Layout, BUILTIN_LAYOUTS } from './WorkspaceLayoutManager';
 
 function budget(): AgentBudgetSettings {
   return {
@@ -66,5 +66,45 @@ describe('migrateV1Layout', () => {
     }));
 
     expect(migrated.activeLayout?.tabShell).toEqual(existing);
+  });
+
+  it('migrates rightSidebarVisible=true to activeLayout.rightSidebar.visible=true', () => {
+    const migrated = migrateV1Layout(settingsFixture({
+      rightSidebarVisible: true,
+      rightSidebarWidth: 320,
+    }));
+
+    expect(migrated.activeLayout?.rightSidebar?.visible).toBe(true);
+    expect(migrated.activeLayout?.rightSidebar?.width).toBe(320);
+  });
+
+  it('migrates undefined rightSidebarVisible to visible=false (safe default)', () => {
+    const migrated = migrateV1Layout(settingsFixture({
+      rightSidebarVisible: undefined,
+    }));
+
+    expect(migrated.activeLayout?.rightSidebar?.visible).toBe(false);
+  });
+
+  it('sets layoutMigrationDone=true', () => {
+    const migrated = migrateV1Layout(settingsFixture());
+
+    expect(migrated.layoutMigrationDone).toBe(true);
+  });
+
+  it('seeds BUILTIN_LAYOUTS into workspaceLayouts', () => {
+    const migrated = migrateV1Layout(settingsFixture());
+
+    expect(migrated.workspaceLayouts).toEqual(BUILTIN_LAYOUTS);
+    expect(migrated.workspaceLayouts?.length).toBeGreaterThan(0);
+  });
+
+  it('preserves existing rightSidebarPanels when provided', () => {
+    const panels = [{ id: 'writing-assistant' as SidebarPanelId, collapsed: false }];
+    const migrated = migrateV1Layout(settingsFixture({
+      rightSidebarPanels: panels,
+    }));
+
+    expect(migrated.activeLayout?.rightSidebar?.panels).toEqual(panels);
   });
 });

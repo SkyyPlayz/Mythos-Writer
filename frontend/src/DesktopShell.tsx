@@ -41,6 +41,7 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import DockedTabBar from './DockedTabBar';
@@ -524,7 +525,10 @@ interface DragState {
   startWidth: number;
 }
 
-export default function DesktopShell() {
+export default function DesktopShell({ initialSettings }: { initialSettings?: AppSettings } = {}) {
+  // SKY-4259: ref so loadVault can read the post-onboarding settings that the wizard
+  // computed without needing it in the useCallback dep array.
+  const initialSettingsRef = useRef<AppSettings | undefined>(initialSettings);
   const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
@@ -761,6 +765,7 @@ export default function DesktopShell() {
       return next;
     });
   }, []);
+
 
   const handleDismissGettingStarted = useCallback(() => {
     if (!gettingStartedProgress) return;
@@ -1063,11 +1068,23 @@ export default function DesktopShell() {
     setError(null);
     let cachedSettings: AppSettings | null = null;
     try {
-      const [s, rootResult, vaultPaths] = await Promise.all([
+      const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
         (window.api.settingsGet?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.getVaultRoot?.() ?? Promise.resolve(null)).catch(() => null),
         (window.api.vaultGetPaths?.() ?? Promise.resolve(null)).catch(() => null),
       ]);
+      // SKY-4259: merge post-onboarding fields that the wizard computed but may not be
+      // on disk yet (E2E mocks replace onboarding:complete without writing settings).
+      // Disk values take precedence; initS fills absent fields or serves as full fallback
+      // when the disk has no settings yet (fresh install, sFromIpc = null).
+      const initS = initialSettingsRef.current;
+      const s = sFromIpc ? {
+        ...sFromIpc,
+        ...(typeof initS?.rightSidebarVisible === 'boolean' && typeof sFromIpc.rightSidebarVisible !== 'boolean'
+          ? { rightSidebarVisible: initS.rightSidebarVisible } : {}),
+        ...(initS?.gettingStartedProgress != null && sFromIpc.gettingStartedProgress == null
+          ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
+      } : (initS ?? sFromIpc);
       cachedSettings = s;
 
       let storyValid = true;
@@ -1748,18 +1765,6 @@ export default function DesktopShell() {
     persistTabShell(next);
   }, [persistTabShell]);
 
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') { handleTabChange('notes'); return; }
-    if (itemId === 'notes-vault') { handleNotesSubViewChange('editor'); handleTabChange('notes'); return; }
-    if (itemId === 'add-character') { handleTabChange('notes'); return; }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
-
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
     setSelectedScene(null);
     setSelectedChapter(null);
@@ -1771,6 +1776,28 @@ export default function DesktopShell() {
     setContinuityPeekOverlayOpen(false);
     checkGettingStartedItem('notes-vault');
   }, [checkGettingStartedItem, handleNotesSubViewChange, handleTabChange]);
+
+  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
+    checkGettingStartedItem(itemId);
+    if (itemId === 'brainstorm') {
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'notes-vault') {
+      handleNotesSubViewChange('editor');
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'add-character') {
+      handleTabChange('notes');
+      return;
+    }
+    if (itemId === 'write-scene') {
+      handleSetView('editor');
+      handleTabChange('story');
+      if (!selectedScene) editorApiRef.current?.focus();
+    }
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
 
   // SKY-2096: Notes left-sidebar width + collapsed state.
   const handleNotesSidebarWidthChange = useCallback((w: number) => {
@@ -2048,10 +2075,14 @@ export default function DesktopShell() {
         el?.focus();
         return;
       }
-      // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek panel
+      // SKY-2011: Ctrl/Cmd+Shift+K — open Continuity Peek or reveal GRS
       if (mod && e.shiftKey && !e.altKey && (e.key === 'K' || e.key === 'k')) {
         e.preventDefault();
-        setContinuityPeekOverlayOpen(true);
+        if ((layout.writingMode ?? 'normal') === 'focus') {
+          setContinuityPeekOverlayOpen(true);
+        } else if (!grsVisible) {
+          handleGrsVisibilityChange(true);
+        }
         focusContinuitySearch();
         return;
       }
@@ -2897,7 +2928,6 @@ export default function DesktopShell() {
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
-  const showRightSidebarGRS = !inFocusOrDF || (focusPrefs.showRightSidebar ?? false);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
@@ -3509,8 +3539,8 @@ export default function DesktopShell() {
            undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
            This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
            settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
-      {grsVisible !== undefined && showRightSidebarGRS && <GlobalRightSidebar
-        visible={grsVisible as boolean}
+      {grsVisible !== undefined && <GlobalRightSidebar
+        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar)}
         width={grsWidth}
         panels={grsPanels}
         onVisibilityChange={handleGrsVisibilityChange}
@@ -3522,10 +3552,14 @@ export default function DesktopShell() {
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
-        gettingStartedProgress={gettingStartedProgress}
-        onGettingStartedAction={handleGettingStartedAction}
-        onDismissGettingStarted={handleDismissGettingStarted}
-        onToggleGsCollapsed={handleToggleGsCollapsed}
+        headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
+          <GettingStartedPanel
+            progress={gettingStartedProgress!}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        ) : undefined}
       />}
 
       {continuityPeekOverlayOpen && (

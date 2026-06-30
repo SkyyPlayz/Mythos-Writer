@@ -844,6 +844,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'open-existing',
         ...(res.firstSceneId && res.firstScenePath
@@ -1016,6 +1018,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'sample',
         ...(res.firstSceneId && res.firstScenePath
@@ -1036,7 +1040,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     templateCardTriggerRef.current = document.activeElement as HTMLElement;
     setStep('step1b-inner');
   }
-
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
@@ -1152,6 +1155,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         }
         const updated: AppSettings = {
           ...initialSettings,
+          ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+          gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
           onboardingComplete: true,
           onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
@@ -1239,6 +1244,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1301,6 +1308,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
+        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
+        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath

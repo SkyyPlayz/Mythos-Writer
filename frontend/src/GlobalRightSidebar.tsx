@@ -1,8 +1,6 @@
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { usePanelDrag } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
-import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
-import { isGettingStartedVisible, type GettingStartedProgress, type GettingStartedItemId } from './gettingStartedReducer';
 import './GlobalRightSidebar.css';
 import './PanelDragContext.css';
 
@@ -251,11 +249,8 @@ export interface GlobalRightSidebarProps {
   /** SKY-1698: Dock a panel as a new custom tab in the main tab bar. */
   onDockAsTab?: (panelId: SidebarPanelId) => void;
 
-  /** Getting Started panel state — rendered above the panel list when visible. */
-  gettingStartedProgress?: GettingStartedProgress | null;
-  onGettingStartedAction?: (itemId: GettingStartedItemId) => void;
-  onDismissGettingStarted?: () => void;
-  onToggleGsCollapsed?: () => void;
+  /** Optional content rendered above the panel list (e.g. GettingStartedPanel). */
+  headerContent?: ReactNode;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -274,10 +269,7 @@ export default function GlobalRightSidebar({
   leftPanelCount,
   onFloatPanel,
   onDockAsTab,
-  gettingStartedProgress,
-  onGettingStartedAction,
-  onDismissGettingStarted,
-  onToggleGsCollapsed,
+  headerContent,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -525,14 +517,7 @@ export default function GlobalRightSidebar({
         </button>
       </div>
 
-      {isGettingStartedVisible(gettingStartedProgress ?? null) && (
-        <GettingStartedPanel
-          progress={gettingStartedProgress!}
-          onAction={onGettingStartedAction ?? (() => {})}
-          onDismiss={onDismissGettingStarted ?? (() => {})}
-          onToggleCollapse={onToggleGsCollapsed ?? (() => {})}
-        />
-      )}
+      {headerContent}
 
       <div className="grs-panel-list">
         {/* Drop zone before first panel */}
