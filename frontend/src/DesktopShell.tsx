@@ -3483,6 +3483,38 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 isEmpty={depthIsEmpty}
               />
             )}
+            {/* SKY-3626: N/F/E writing-mode controls — Story editor only (center, above page) */}
+            <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
+              <button
+                className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+                onClick={() => setWritingMode('normal')}
+                aria-pressed={writingMode === 'normal'}
+                title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+                data-testid="writing-mode-normal"
+              >N</button>
+              <button
+                className={`nfe-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+                onClick={() => setWritingMode('focus')}
+                aria-pressed={writingMode === 'focus'}
+                title="Focus mode — distraction-free"
+                data-testid="writing-mode-focus"
+              >F</button>
+              {writingMode === 'focus' && (
+                <button
+                  className="nfe-mode-prefs"
+                  onClick={() => setFocusModePrefsOpen(true)}
+                  title="Configure Focus mode panels"
+                  aria-label="Focus mode preferences"
+                >⚙</button>
+              )}
+              <button
+                className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+                onClick={() => setWritingMode('edit')}
+                aria-pressed={writingMode === 'edit'}
+                title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+                data-testid="writing-mode-edit"
+              >E</button>
+            </div>
             <button
               className="split-toggle-btn"
               onClick={handleToggleSplitWindow}
