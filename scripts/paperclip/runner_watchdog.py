@@ -65,9 +65,11 @@ def gh_api(path: str, method: str = "GET", body: Optional[dict] = None):
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req) as resp:
-            if resp.status in [200, 201, 204]:
+            if resp.status in [200, 201, 202, 204]:
                 if resp.status == 204:  # No content
                     return None
+                if resp.status == 202:  # Accepted (async, cancel endpoints return no body)
+                    return {}
                 return json.loads(resp.read().decode())
             else:
                 log(f"ERROR: GitHub API returned {resp.status} for {method} {path}")
