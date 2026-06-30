@@ -1892,6 +1892,15 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             )}
           </div>
           <EntriesQuickAdd />
+          {compact && proposals.length > 0 && (
+            <ProposalCard
+              proposals={proposals}
+              onConfirm={handleProposalConfirm}
+              onReject={handleProposalReject}
+              onDismissAll={handleProposalDismissAll}
+              onBrowseFolder={handleBrowseFolder}
+            />
+          )}
         </div>
 
         <div className="brainstorm-facts-col">
@@ -2056,7 +2065,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </button>
             </div>
           )}
-          {proposals.length > 0 ? (
+          {!compact && proposals.length > 0 ? (
             <ProposalCard
               proposals={proposals}
               onConfirm={handleProposalConfirm}
