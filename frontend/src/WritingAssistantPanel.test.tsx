@@ -1446,97 +1446,53 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
   });
 });
 
-describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
-  it('category toggles hidden when autoApply is false', () => {
-    render(<WritingAssistantPanel scene={null} autoApply={false} />);
-    expect(screen.queryByTestId('wa-auto-apply-categories')).not.toBeInTheDocument();
+// ---------------------------------------------------------------------------
+// Beta-Read error propagation (GH #740 regression)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — Beta-Read error propagation (GH #740)', () => {
+  it('shows the provider error message when betaReadScan returns { error }', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'ANTHROPIC_API_KEY is not set.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
+    });
   });
 
-  it('category toggles hidden when autoApply is not passed', () => {
-    render(<WritingAssistantPanel scene={null} />);
-    expect(screen.queryByTestId('wa-auto-apply-categories')).not.toBeInTheDocument();
+  it('does NOT show 0-comment success state when betaReadScan returns { error }', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'Provider timeout.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no comments/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/beta-read complete/i)).not.toBeInTheDocument();
   });
 
-  it('category toggle section shown when autoApply is true', () => {
-    render(<WritingAssistantPanel scene={null} autoApply />);
-    expect(screen.getByTestId('wa-auto-apply-categories')).toBeInTheDocument();
+  it('does NOT crash with TypeError when betaReadScan returns { error } (regression for GH #740)', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'Writing Assistant unavailable.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    expect(() => fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }))).not.toThrow();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Writing Assistant unavailable.');
+    });
   });
 
-  it('all 6 category pills rendered with correct labels', () => {
-    render(<WritingAssistantPanel scene={null} autoApply />);
-    const labels = [
-      'Punctuation', 'Spelling', 'Grammar', 'Sentence structure', 'Style / tone', 'Other',
-    ];
-    for (const label of labels) {
-      expect(
-        screen.getByRole('button', { name: new RegExp(`auto-apply ${label}`, 'i') }),
-      ).toBeInTheDocument();
-    }
-  });
+  it('shows error state when betaReadScan rejects with a network/IPC error', async () => {
+    mockBetaReadScan.mockRejectedValueOnce(new Error('IPC channel closed unexpectedly.'));
 
-  it('all category pills default to on (aria-pressed=true) when autoApplyCategories is undefined', () => {
-    render(<WritingAssistantPanel scene={null} autoApply />);
-    const pills = screen.getAllByRole('button', { name: /auto-apply/i });
-    expect(pills.length).toBe(6);
-    for (const pill of pills) {
-      expect(pill).toHaveAttribute('aria-pressed', 'true');
-    }
-  });
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
 
-  it('a category explicitly set to false renders as off (aria-pressed=false)', () => {
-    render(
-      <WritingAssistantPanel
-        scene={null}
-        autoApply
-        autoApplyCategories={{ spelling: false }}
-      />,
-    );
-    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
-    expect(spellingPill).toHaveAttribute('aria-pressed', 'false');
-    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
-    expect(grammarPill).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('clicking a pill calls onAutoApplyCategoriesChange with the toggled map', () => {
-    const onChange = vi.fn();
-    render(
-      <WritingAssistantPanel
-        scene={null}
-        autoApply
-        autoApplyCategories={{}}
-        onAutoApplyCategoriesChange={onChange}
-      />,
-    );
-    const spellingPill = screen.getByRole('button', { name: /auto-apply spelling/i });
-    fireEvent.click(spellingPill);
-    expect(onChange).toHaveBeenCalledTimes(1);
-    const [result] = onChange.mock.calls[0] as [Record<string, boolean>];
-    expect(result.spelling).toBe(false);
-    expect(result.grammar).toBe(true);
-    expect(result.punctuation).toBe(true);
-  });
-
-  it('clicking a disabled pill re-enables it and calls onChange', () => {
-    const onChange = vi.fn();
-    render(
-      <WritingAssistantPanel
-        scene={null}
-        autoApply
-        autoApplyCategories={{ grammar: false }}
-        onAutoApplyCategoriesChange={onChange}
-      />,
-    );
-    const grammarPill = screen.getByRole('button', { name: /auto-apply grammar/i });
-    expect(grammarPill).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(grammarPill);
-    expect(onChange).toHaveBeenCalledTimes(1);
-    const [result] = onChange.mock.calls[0] as [Record<string, boolean>];
-    expect(result.grammar).toBe(true);
-  });
-
-  it('toggling does not throw when no handler is provided', () => {
-    render(<WritingAssistantPanel scene={null} autoApply autoApplyCategories={{}} />);
-    const pill = screen.getByRole('button', { name: /auto-apply spelling/i });
-    expect(() => fireEvent.click(pill)).not.toThrow();
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('IPC channel closed unexpectedly.');
+    });
   });
 });

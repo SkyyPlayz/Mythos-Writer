@@ -458,7 +458,6 @@ test('TC-V-10e: Writing Assistant live region is always in DOM', async () => {
 //   - CSS classes: .brainstorm-mic-btn--idle/listening/processing/error
 //   - aria-pressed: false (idle), true (listening/processing/error)
 //   - data-testid="voice-transcript-strip" / .voice-transcript-strip--visible
-//   - .voice-countdown-ring (shown when listening + silenceSecondsLeft !== null)
 //   - data-testid="voice-alert" (aria-live="assertive") for SR announcements
 
 test.skip('TC-V-01a: mic button shows processing state (requires SpeechRecognition onresult — headless unsupported)', async () => {
@@ -504,23 +503,6 @@ test.skip('TC-V-02c: transcript strip no transition under prefers-reduced-motion
   const strip = page.locator('[data-testid="voice-transcript-strip"]');
   await expect(strip).toHaveCSS('transition-duration', '0s', { timeout: 2_000 });
   await cdpSession.send('Emulation.setEmulatedMedia', { features: [] });
-});
-
-test.skip('TC-V-03a: silence countdown ring appears after first speech result (requires SpeechRecognition onstart + silence timer — headless unsupported)', async () => {
-  // Selector: .voice-countdown-ring (SVG ring element within .brainstorm-mic-container)
-  await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
-  // Ring renders once SpeechRecognition fires an onresult; it fires each transcript event
-  const ring = page.locator('.voice-countdown-ring');
-  await expect(ring).toBeAttached({ timeout: 5_000 });
-});
-
-test.skip('TC-V-03b: silence countdown SR announcement (not implemented — countdown is visual-only; setAlertText only fires for cancel/error)', async () => {
-  // The silence countdown is purely visual (SVG ring + "Sending soon…" text, aria-hidden).
-  // No SR announcement is fired for the countdown; setAlertText is called only for
-  // "Voice input cancelled." and "Voice error: …". This test is intentionally skipped.
-  const alertRegion = page.locator('[data-testid="voice-alert"]');
-  await expect(alertRegion).toContainText(/sending in 1 second/i, { timeout: 5_000 });
 });
 
 test('TC-V-04a: Escape key cancels voice input and resets aria-pressed', async () => {
@@ -609,31 +591,3 @@ test('TC-V-11: all 4 mic states pass axe color-contrast rule', async () => {
   }
 });
 
-// ─── TC-V-12: Reduced-motion (pending SKY-1503) ───────────────────────────────
-//
-// AC-V-12: "Reduced-motion: all pulse animations and transcript-strip transitions
-// removed; silence countdown replaced with static text."
-// TC-V-02c above covers the transcript-strip transition-duration portion.
-
-test.skip('TC-V-12: silence countdown under prefers-reduced-motion (requires SpeechRecognition silence timer — headless unsupported)', async () => {
-  // Under reduced-motion: .voice-countdown-ring animation is stripped via CSS.
-  // .voice-countdown-text (static label) is always rendered alongside the ring;
-  // CSS @media prefers-reduced-motion shows the text instead of animating the ring.
-  const cdpSession = await page.context().newCDPSession(page);
-  await cdpSession.send('Emulation.setEmulatedMedia', {
-    features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-  });
-  await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
-  // Ring exists but its SVG animation CSS should have animation-duration: 0
-  const ring = page.locator('.voice-countdown-ring');
-  if (await ring.count() > 0) {
-    await expect(ring).toHaveCSS('animation-duration', '0s');
-  }
-  // Text element must be visible (CSS shows it under reduced-motion)
-  const countdownText = page.locator('.voice-countdown-text');
-  if (await countdownText.count() > 0) {
-    await expect(countdownText).toBeVisible();
-  }
-  await cdpSession.send('Emulation.setEmulatedMedia', { features: [] });
-});

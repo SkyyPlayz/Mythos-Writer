@@ -917,7 +917,7 @@ interface Window {
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
-    betaReadScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ comments: BetaReadComment[]; scannedAt: string }>;
+    betaReadScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ comments: BetaReadComment[]; scannedAt: string } | { error: string }>;
 
     // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
@@ -954,6 +954,7 @@ interface Window {
     sceneCrafterRenameLane: (payload: { storySlug: string; laneIndex: number; name: string }) => Promise<{ ok: true }>;
     sceneCrafterDeleteLane: (payload: { storySlug: string; laneIndex: number; force?: boolean }) => Promise<{ ok: boolean; cardCount: number }>;
     sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterSaveBoard: (payload: { storySlug: string; board: SceneCrafterBoard }) => Promise<{ ok: true }>;
     sceneCrafterClose?: (storySlug: string) => Promise<void>;
     onSceneCrafterExternalEdit?: (cb: (storySlug: string) => void) => () => void;
 

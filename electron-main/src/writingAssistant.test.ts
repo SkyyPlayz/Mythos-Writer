@@ -14,7 +14,7 @@
  *   §7  buildWritingAssistantUserContent — SEC-6 indirect prompt injection delimiter regression
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -42,6 +42,7 @@ import {
   buildWritingAssistantUserContent,
   extractFirstJsonArray,
 } from './writingAssistant.js';
+import { wrapIpcHandler, SafeIpcError } from './ipcErrors.js';
 import type { DatabaseSync } from 'node:sqlite';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -798,5 +799,77 @@ describe('buildWritingAssistantUserContent (§7)', () => {
     const longCtx = 'A'.repeat(50_000);
     const result = buildWritingAssistantUserContent(longCtx, 'Check the flow.');
     expect(result).toContain(longCtx);
+  });
+});
+
+// ─── §8 betaReadScan handler error propagation (GH #740) ─────────────────────
+// Verifies that the betaRead:scan IPC handler, wrapped with wrapIpcHandler,
+// converts a streamFromProvider failure into { error: string } rather than
+// swallowing it or returning a bogus 0-comment success.
+
+describe('betaReadScan handler — error propagation via wrapIpcHandler (§8)', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns { error } when streamFromProvider throws a generic Error', async () => {
+    const mockStream = vi.fn().mockImplementation(async function* () {
+      throw new Error('Provider unavailable: ANTHROPIC_API_KEY is not set.');
+    });
+
+    const handler = wrapIpcHandler(
+      'betaRead:scan',
+      async (_event: unknown, _payload: unknown) => {
+        let text = '';
+        for await (const token of mockStream()) {
+          text += token;
+        }
+        return { comments: [], scannedAt: new Date().toISOString(), text };
+      },
+    );
+
+    const result = await handler({}, { sceneId: 's1', prose: 'Test prose.', scenePath: '/s1.md' });
+    expect(result).toHaveProperty('error');
+    expect((result as { error: string }).error).toContain('ANTHROPIC_API_KEY is not set.');
+  });
+
+  it('returns { error } when streamFromProvider throws a SafeIpcError (message forwarded verbatim)', async () => {
+    const mockStream = vi.fn().mockImplementation(async function* () {
+      throw new SafeIpcError('Writing Assistant paused: daily cap reached.');
+    });
+
+    const handler = wrapIpcHandler(
+      'betaRead:scan',
+      async (_event: unknown, _payload: unknown) => {
+        for await (const _ of mockStream()) { /* consume */ }
+        return { comments: [], scannedAt: '' };
+      },
+    );
+
+    const result = await handler({}, {});
+    expect(result).toEqual({ error: 'Writing Assistant paused: daily cap reached.' });
+  });
+
+  it('does NOT return { comments, scannedAt } when streamFromProvider throws (no false-success)', async () => {
+    const mockStream = vi.fn().mockImplementation(async function* () {
+      throw new Error('Network timeout.');
+    });
+
+    const handler = wrapIpcHandler(
+      'betaRead:scan',
+      async (_event: unknown, _payload: unknown) => {
+        for await (const _ of mockStream()) { /* consume */ }
+        return { comments: [], scannedAt: new Date().toISOString() };
+      },
+    );
+
+    const result = await handler({}, {});
+    expect(result).not.toHaveProperty('comments');
+    expect(result).not.toHaveProperty('scannedAt');
+    expect(result).toHaveProperty('error');
   });
 });

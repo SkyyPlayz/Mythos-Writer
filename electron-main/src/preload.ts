@@ -429,7 +429,7 @@ contextBridge.exposeInMainWorld('api', {
   betaReadDismiss: (id: string) =>
     ipcRenderer.invoke('betaRead:dismiss', { id }),
   betaReadScan: (sceneId: string, prose: string, scenePath: string) =>
-    ipcRenderer.invoke('betaRead:scan', { sceneId, prose, scenePath }),
+    invokeEnvelope('betaRead:scan', { sceneId, prose, scenePath }),
 
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
@@ -886,6 +886,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene-crafter:delete-lane', payload),
   sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) =>
     ipcRenderer.invoke('scene-crafter:reorder-lanes', payload),
+  sceneCrafterSaveBoard: (payload: { storySlug: string; board: unknown }) =>
+    ipcRenderer.invoke('scene-crafter:save-board', payload),
 
   // SKY-1759: Scene Crafter file-watcher conflict detection
   sceneCrafterClose: (storySlug: string) =>

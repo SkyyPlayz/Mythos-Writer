@@ -492,3 +492,37 @@ describe('BlockEditor empty-scene entry', () => {
     await act(async () => {});
   });
 });
+
+describe('BlockEditor pending edit flush', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  it('flushes pending debounced edits before unmount so scene switches do not drop text', async () => {
+    const onBlocksChange = vi.fn();
+    let editorApi: { insertText: (text: string) => void } | undefined;
+    const { unmount } = render(
+      <BlockEditor
+        scene={makeBlankScene()}
+        onBlocksChange={onBlocksChange}
+        onDraftStateChange={vi.fn()}
+        onEditorReady={(api) => { editorApi = api; }}
+      />
+    );
+
+    await waitFor(() => expect(editorApi).toBeDefined());
+    await act(async () => {
+      editorApi!.insertText('Do not lose this edit.');
+    });
+    unmount();
+
+    expect(onBlocksChange).toHaveBeenCalledWith([
+      expect.objectContaining({ content: expect.stringContaining('Do not lose this edit.') }),
+    ]);
+  });
+});

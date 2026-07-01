@@ -129,6 +129,23 @@ describe('EntriesQuickAdd', () => {
     expect(writtenContent).toContain('A dragon who secretly helps the protagonist.');
   });
 
+  it('does not save a blank note when the stream ends without content', async () => {
+    render(<EntriesQuickAdd />);
+    fireEvent.change(screen.getByTestId('entries-qa-textarea'), {
+      target: { value: 'Keep this idea' },
+    });
+    fireEvent.click(screen.getByTestId('entries-qa-save-btn'));
+    await simulateStream(['   ', '\n\t']);
+
+    await waitFor(() => expect(screen.getByTestId('entries-qa-error')).toBeInTheDocument());
+    expect(screen.getByTestId('entries-qa-error').textContent).toContain(
+      'Generation produced no content',
+    );
+    expect(mockMkdirNotesVault).not.toHaveBeenCalled();
+    expect(mockWriteNotesVault).not.toHaveBeenCalled();
+    expect(screen.getByTestId('entries-qa-textarea')).toHaveValue('Keep this idea');
+  });
+
   it('clears textarea after successful save', async () => {
     render(<EntriesQuickAdd />);
     fireEvent.change(screen.getByTestId('entries-qa-textarea'), {

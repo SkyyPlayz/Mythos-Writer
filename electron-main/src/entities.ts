@@ -10,6 +10,7 @@ import {
   deleteVaultFile,
   parseFrontmatter,
   serializeFrontmatter,
+  yamlInlineQuote,
 } from './vault.js';
 import type { EntityEntry, EntityRelation, EntityRelationship, EntityRelationshipRow, Manifest } from './ipc.js';
 import { getReciprocal, parseRelationsBlock, serializeRelations, stripRelationsBlock } from './entityRelations.js';
@@ -42,8 +43,8 @@ function serializeEntityFrontmatter(fm: EntityFrontmatter, prose: string): strin
   // Write `aliases: []` even when empty so downstream readers (e.g. Linker)
   // can distinguish "no aliases defined yet" (undefined, no line) from
   // "migrated — confirmed no aliases" (explicit empty array).
-  if (fm.aliases !== undefined) lines.push(`aliases: [${fm.aliases.join(', ')}]`);
-  if (fm.tags?.length) lines.push(`tags: [${fm.tags.join(', ')}]`);
+  if (fm.aliases !== undefined) lines.push(`aliases: [${fm.aliases.map(yamlInlineQuote).join(', ')}]`);
+  if (fm.tags?.length) lines.push(`tags: [${fm.tags.map(yamlInlineQuote).join(', ')}]`);
   if (fm.properties && Object.keys(fm.properties).length > 0) {
     for (const [k, v] of Object.entries(fm.properties)) {
       lines.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);

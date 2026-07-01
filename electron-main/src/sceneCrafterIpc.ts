@@ -29,6 +29,7 @@ import type {
   SceneCrafterRenameLanePayload,
   SceneCrafterDeleteLanePayload,
   SceneCrafterReorderLanesPayload,
+  SceneCrafterSaveBoardPayload,
 } from './ipc.js';
 
 // ─── Internal helpers ───
@@ -201,6 +202,14 @@ export function handleReorderLanes(
   const [lane] = board.lanes.splice(payload.fromIndex, 1);
   board.lanes.splice(payload.toIndex, 0, lane);
   writeBoard(notesVaultRoot, payload.storySlug, board);
+  return { ok: true };
+}
+
+export function handleSaveBoard(
+  notesVaultRoot: string,
+  payload: SceneCrafterSaveBoardPayload
+): { ok: true } {
+  writeBoard(notesVaultRoot, payload.storySlug, payload.board);
   return { ok: true };
 }
 

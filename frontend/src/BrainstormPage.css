@@ -770,19 +770,6 @@
   flex-direction: column;
   align-items: center;
 }
-.voice-countdown-ring {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-}
-.voice-countdown-text {
-  display: none;
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  margin-top: 2px;
-}
 .voice-transcript-strip {
   max-height: 0;
   overflow: hidden;
@@ -808,8 +795,6 @@
   .brainstorm-mic-btn-recording,
   .brainstorm-mic-btn--listening { animation: none !important; }
   .voice-transcript-strip { transition: none !important; }
-  .voice-countdown-ring { display: none; }
-  .voice-countdown-text { display: block; }
   .bs-cursor { animation: none; }
   .brainstorm-toast { animation: none; }
   .bs-bulk-toolbar { animation: none; }

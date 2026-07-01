@@ -40,12 +40,16 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // Non-blocking, but a *thrown* failure must surface rather than vanish.
     try {
       const res = await window.api.draftsList(sceneId);
       setSnapshots(res.snapshots);
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      setError(`Couldn't load draft history: ${(err as Error).message}`);
+    }
   }, [sceneId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -54,32 +58,45 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
     if (selectedId === id) return;
     setSelectedId(id);
     setPreviewContent(null);
+    setError(null);
     try {
       const res = await window.api.draftsPreview(id);
       setPreviewContent(res.content);
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      setError(`Couldn't load this draft's preview: ${(err as Error).message}`);
+    }
   };
 
   const handleDelete = async (id: string) => {
+    setError(null);
     try {
+      // Only mutate local UI state *after* the delete resolves — a failed
+      // delete must not look like it succeeded.
       await window.api.draftsDelete(id);
       if (selectedId === id) {
         setSelectedId(null);
         setPreviewContent(null);
       }
       await load();
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      setError(`Couldn't delete this draft: ${(err as Error).message}`);
+    }
   };
 
   const handleConfirmRestore = async () => {
     if (!confirmId) return;
     setRestoring(true);
+    setError(null);
     try {
+      // Only close / notify the parent once the restore actually resolves;
+      // a failed restore must leave the dialog open and the store untouched.
       const res = await window.api.draftsRestore(confirmId, sceneId, currentContent);
       onRestore(res.content);
       setConfirmId(null);
       onClose();
-    } catch { /* non-fatal */ } finally {
+    } catch (err) {
+      setError(`Couldn't restore this draft: ${(err as Error).message}`);
+    } finally {
       setRestoring(false);
     }
   };
@@ -100,6 +117,20 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
             ×
           </button>
         </header>
+
+        {error && (
+          <div className="history-error" role="alert">
+            <span className="history-error-text">{error}</span>
+            <button
+              type="button"
+              className="history-error-dismiss"
+              onClick={() => setError(null)}
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <div className="history-body">
           <aside className="history-list" aria-label="Snapshot list">

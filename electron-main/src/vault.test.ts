@@ -269,6 +269,26 @@ describe('YAML frontmatter', () => {
     expect(prose).toBe('The prose.');
   });
 
+  // GH#611 / SKY-5159: inline-array values containing commas must be quoted on
+  // serialize and kept as one token on parse (naive comma-split would break them).
+  it('serializeFrontmatter quotes and round-trips array values with commas', () => {
+    const fm = { id: 'x2', tags: ['plain', 'Smith, John', 'a "b", c'] };
+    const serialized = serializeFrontmatter(fm, 'prose');
+    expect(serialized).toContain('tags: [plain, "Smith, John", "a \\"b\\", c"]');
+    const { frontmatter } = parseFrontmatter(serialized);
+    expect(frontmatter.tags).toEqual(['plain', 'Smith, John', 'a "b", c']);
+  });
+
+  it('parseFrontmatter still parses unquoted legacy arrays', () => {
+    const { frontmatter } = parseFrontmatter('---\nid: y1\ntags: [a, b, c]\n---\nprose');
+    expect(frontmatter.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('parseFrontmatter parses an empty array to []', () => {
+    const { frontmatter } = parseFrontmatter('---\nid: y2\naliases: []\n---\nprose');
+    expect(frontmatter.aliases).toEqual([]);
+  });
+
   // SKY-398 regression — fuzz crash artifact frontmatter-crash-ea5ffd7d
   // The crash input contains null bytes and high UTF-8 bytes that were crashing
   // the parser. parseFrontmatter must never throw on any byte sequence.

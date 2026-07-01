@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildEntryContent,
   parseEntryFrontmatter,
   buildBrainstormMessages,
   buildPromotedNoteContent,
   buildSceneCrafterPayload,
+  findAvailablePromotedNotePath,
   type EntrySourcePayload,
 } from './EntriesPanel';
 
@@ -179,6 +180,24 @@ describe('buildPromotedNoteContent', () => {
   it('escapes double-quote in entryPath', () => {
     const content = buildPromotedNoteContent('body', 'path"with"quotes.md', 'Story');
     expect(content).toContain('sourceEntry: "path\\"with\\"quotes.md"');
+  });
+});
+
+// ─── findAvailablePromotedNotePath ───────────────────────────────────────────
+
+describe('findAvailablePromotedNotePath', () => {
+  it('keeps the base note path when no file exists', async () => {
+    const exists = vi.fn().mockResolvedValue(false);
+
+    await expect(findAvailablePromotedNotePath('notes/dragon.md', exists)).resolves.toBe('notes/dragon.md');
+    expect(exists).toHaveBeenCalledWith('notes/dragon.md');
+  });
+
+  it('disambiguates duplicate quick-entry promotions instead of overwriting notes', async () => {
+    const existing = new Set(['notes/dragon.md', 'notes/dragon-2.md']);
+    const exists = vi.fn(async (path: string) => existing.has(path));
+
+    await expect(findAvailablePromotedNotePath('notes/dragon.md', exists)).resolves.toBe('notes/dragon-3.md');
   });
 });
 

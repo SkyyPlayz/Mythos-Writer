@@ -37,11 +37,13 @@
   border-radius: var(--radius-xs);
   line-height: 1;
   z-index: 2;
-transition: color var(--dur-hover-in);}
+  transition: color var(--dur-hover-in);
+}
 
 .lr-toggle-btn:hover {
   color: var(--text-body);
-background: var(--bg-elevated);}
+  background: var(--bg-elevated);
+}
 
 .lr-toggle-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -76,7 +78,8 @@ background: var(--bg-elevated);}
   align-items: center;
   gap: 4px;
   padding: 5px 6px;
-background: var(--bg-inset);  flex-shrink: 0;
+  background: var(--bg-inset);
+  flex-shrink: 0;
   min-height: 32px;
 }
 
@@ -115,7 +118,8 @@ background: var(--bg-inset);  flex-shrink: 0;
 .lr-panel-float-btn {
   background: none;
   border: none;
-color: var(--text-muted);  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--radius-xs);
@@ -125,8 +129,9 @@ color: var(--text-muted);  font-size: 0.9rem;
 }
 
 .lr-panel-float-btn:hover {
-color: var(--color-accent);
-  background: var(--bg-elevated);}
+  color: var(--color-accent);
+  background: var(--bg-elevated);
+}
 
 .lr-panel-float-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -136,7 +141,8 @@ color: var(--color-accent);
 .lr-panel-remove-btn {
   background: none;
   border: none;
-color: var(--text-muted);  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
   cursor: pointer;
   padding: 2px 5px;
   border-radius: var(--radius-xs);
@@ -147,7 +153,8 @@ color: var(--text-muted);  font-size: 0.9rem;
 
 .lr-panel-remove-btn:hover {
   color: var(--state-danger);
-background: var(--bg-elevated);}
+  background: var(--bg-elevated);
+}
 
 .lr-panel-remove-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -171,7 +178,8 @@ background: var(--bg-elevated);}
   width: 100%;
   padding: 6px 8px;
   background: none;
-border: 1px dashed var(--border-subtle);  border-radius: var(--radius-xs);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-xs);
   color: var(--text-muted);
   font-size: 0.78rem;
   cursor: pointer;
@@ -181,8 +189,9 @@ border: 1px dashed var(--border-subtle);  border-radius: var(--radius-xs);
 
 .lr-add-panel-btn:hover:not(:disabled) {
   color: var(--text-body);
-border-color: var(--border-subtle);
-  background: var(--bg-inset);}
+  border-color: var(--border-subtle);
+  background: var(--bg-inset);
+}
 
 .lr-add-panel-btn:disabled {
   opacity: 0.4;
@@ -199,8 +208,9 @@ border-color: var(--border-subtle);
   bottom: calc(100% + 4px);
   left: 8px;
   right: 8px;
-background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
   box-shadow: var(--elev-2);
   z-index: 10;
   overflow: hidden;
@@ -220,7 +230,8 @@ background: var(--bg-elevated);
 }
 
 .lr-panel-picker-item:hover {
-background: var(--bg-elevated);  color: var(--text-header);
+  background: var(--bg-elevated);
+  color: var(--text-header);
 }
 
 .lr-panel-picker-item:focus-visible {
@@ -260,8 +271,9 @@ background: var(--bg-elevated);  color: var(--text-header);
 
 .vault-empty-sub {
   font-size: 0.78rem !important;
-color: var(--text-muted);
-  opacity: 0.5;}
+  color: var(--text-muted);
+  opacity: 0.5;
+}
 
 /* Vault tree */
 .vault-tree {
@@ -315,7 +327,8 @@ color: var(--text-muted);
   width: 10px;
   flex-shrink: 0;
   color: var(--text-muted);
-opacity: 0.6;}
+  opacity: 0.6;
+}
 
 .vt-icon {
   font-size: 0.78rem;
