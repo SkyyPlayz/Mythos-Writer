@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { applyTheme } from './theme';
+import { DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import type { Story, Manifest } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
@@ -48,7 +49,11 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
     window.api.settingsGet().then((s) => {
       setSettings(s);
       applyTheme(s.theme ?? 'dark');
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error('[FloatingPanelApp] settings load failed, using defaults:', err);
+      setSettings(DEFAULTS);
+      applyTheme(DEFAULTS.theme ?? 'dark');
+    });
   }, []);
 
   // Refresh the manifest from disk into local state.
