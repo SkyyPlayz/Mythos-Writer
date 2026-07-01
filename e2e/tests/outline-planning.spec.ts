@@ -82,6 +82,14 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     // GRS only renders when rightSidebarVisible is explicitly true; scene-outline
     // panel is in DEFAULT_PANELS (collapsed:true) and openOutlinePanel() expands it.
     rightSidebarVisible: true,
+    // migrateV1Layout defaults rightSidebarPanels to [WA, Continuity, Scene Preview]
+    // when not seeded, replacing DEFAULT_PANELS (which has scene-outline). Seed the
+    // correct panels explicitly so scene-outline is present and openOutlinePanel works.
+    rightSidebarPanels: [
+      { id: 'scene-notes', collapsed: false },
+      { id: 'scene-properties', collapsed: false },
+      { id: 'scene-outline', collapsed: true },
+    ],
   };
 
   const vaultSettings = {
@@ -222,6 +230,11 @@ function readOutlineFile(filePath: string): unknown {
   }
 }
 
+// The beforeAll creates a full story+scenes fixture via real UI interactions.
+// With the always-mounted AppNavRail (SKY-3177) the cumulative worst-case is ~50s;
+// raise the suite timeout to 150s so it doesn't race.
+test.describe.configure({ timeout: 150_000 });
+
 // ─── Suite-level state ────────────────────────────────────────────────────────
 
 let userData: string;
@@ -280,7 +293,13 @@ test('AC-OPL-QA-02: Create first outline node, navigate away and back, node pers
   const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
   await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
 
-  // Click in the outline area to create first node or ensure focus
+  // If in empty state, click "Start planning" to create the first node.
+  const emptyStartBtn = page.locator('[data-testid="opl-start-btn"]');
+  if (await emptyStartBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await emptyStartBtn.click();
+  }
+
+  // Wait for the first title input to appear (created by Start planning or already exists).
   const firstNodeInput = page.locator('.opl-title-input').first();
   await firstNodeInput.waitFor({ state: 'visible', timeout: 6_000 });
   await firstNodeInput.click();

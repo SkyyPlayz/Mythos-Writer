@@ -253,7 +253,6 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   const nav = pg.getByRole('navigation', { name: 'Main navigation' });
   await expect(nav).toBeVisible({ timeout: 10_000 });
   await nav.getByRole('button', { name: 'Story' }).click();
-  await expect(pg.getByRole('button', { name: 'Timeline' })).toBeVisible({ timeout: 4_000 });
   const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
@@ -486,7 +485,6 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
   await expect(nav).toBeVisible({ timeout: 10_000 });
   await nav.getByRole('button', { name: 'Story' }).click();
-  await expect(page.getByRole('button', { name: 'Timeline' })).toBeVisible({ timeout: 4_000 });
   await page.locator('[data-testid="story-subview-timeline"]').click();
   await expect(root).toBeVisible({ timeout: 8_000 });
   // Confirm at least one scene row is in the DOM (data loaded) before Tab.
