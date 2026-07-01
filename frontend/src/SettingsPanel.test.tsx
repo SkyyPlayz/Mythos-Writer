@@ -1902,6 +1902,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('renders Nav-bar section with Story and Notes toggles', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('heading', { name: /nav-bar/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/enable story/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/enable notes/i)).toBeInTheDocument();
@@ -1909,6 +1912,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('renders start-collapsed, show-labels, show-icons toggles', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /show.*labels/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /show.*icons/i })).toBeInTheDocument();
@@ -1945,6 +1951,9 @@ describe('SKY-3218 nav-bar configuration', () => {
     mockSettingsGet.mockResolvedValue({ ...defaultSettings, navConfig: savedNavConfig });
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /show.*labels/i })).not.toBeChecked();
@@ -1954,6 +1963,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('persists toggled item state on save', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     const notesToggle = screen.getByLabelText(/enable notes/i);
     fireEvent.click(notesToggle);

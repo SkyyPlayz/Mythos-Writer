@@ -136,7 +136,7 @@ async function renderWizard(ui: ReactElement) {
 }
 
 async function openCustomOptions() {
-  fireEvent.click(screen.getByTestId('card-create-custom'));
+  fireEvent.click(screen.getByTestId('card-custom'));
   await flushAsyncEffects();
 }
 
@@ -225,28 +225,26 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows four top-level starting-point cards (SKY-2639 4-path spec)', async () => {
+  it('shows three top-level starting-point cards (Quick Start / Custom / Import)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-path-default')).toBeInTheDocument();
-    expect(screen.getByTestId('card-path-blank')).toBeInTheDocument();
-    expect(screen.getByTestId('card-path-sample')).toBeInTheDocument();
+    expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
+    expect(screen.getByTestId('card-custom')).toBeInTheDocument();
     expect(screen.getByTestId('card-import')).toBeInTheDocument();
     expect(screen.queryByTestId('card-open-existing')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match SKY-2639 spec copy (4-path redesign)', async () => {
+  it('card labels match 3-card design copy', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-path-default')).toHaveTextContent('Quick Start');
-    expect(screen.getByTestId('card-path-blank')).toHaveTextContent('Blank');
-    expect(screen.getByTestId('card-path-sample')).toHaveTextContent('Sample Project');
+    expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick Start');
+    expect(screen.getByTestId('card-custom')).toHaveTextContent('Custom');
     expect(screen.getByTestId('card-import')).toHaveTextContent('Import / Open Existing');
     await act(async () => {});
   });
 
   it('AC-L-05: first card (Quick Start) receives focus when Step 1 mounts', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(document.activeElement).toBe(screen.getByTestId('card-path-default'));
+    expect(document.activeElement).toBe(screen.getByTestId('card-quick-start'));
     await act(async () => {});
   });
 
@@ -267,31 +265,28 @@ describe('OnboardingWizard — Step 1', () => {
   it('AC-L-01: Import card has secondary CSS modifier for visual distinction', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-path-default')).not.toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-path-blank')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
+    expect(screen.getByTestId('card-custom')).not.toHaveClass('gs-card--secondary');
     await act(async () => {});
   });
 
-  // card-path-default navigates to step2 (title + save path form) — SKY-4262.
-  it('clicking Default card navigates to Step 2 (title + path form)', async () => {
+  // Quick Start card skips the form and goes directly to step3 (one-click setup — SKY-2639).
+  it('clicking Quick Start card goes directly to step3 (scaffolding screen)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-path-default'));
-    await waitFor(() => expect(screen.getByTestId('screen-step2')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('card-quick-start'));
+    await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('shows scaffold error UI when vault creation fails via Default card', async () => {
+  it('shows scaffold error UI when vault creation fails via Quick Start card', async () => {
     mockApi = makeApi({
       onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
     });
     (window as unknown as { api: unknown }).api = mockApi;
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-path-default'));
-    await waitFor(() => expect(screen.getByTestId('screen-step2')).toBeInTheDocument());
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
+    fireEvent.click(screen.getByTestId('card-quick-start'));
     await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
     expect(onComplete).not.toHaveBeenCalled();
@@ -1176,9 +1171,9 @@ describe('OnboardingWizard — AC coverage', () => {
     await act(async () => {});
   });
 
-  it('AC2: Step 1 shows five top-level starting-point cards', async () => {
+  it('AC2: Step 1 shows three top-level starting-point cards', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(5);
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
     await act(async () => {});
   });
 

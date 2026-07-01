@@ -6,6 +6,8 @@ import { detectCloudProvider } from './lib/cloudSync';
 import { SUGGESTION_CATEGORY_LABELS } from './types';
 import VaultSyncBadge from './components/VaultSyncBadge';
 import MoveVaultWizard from './MoveVaultWizard';
+import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
+import { NAV_RAIL_DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import './SettingsPanel.css';
 
 interface MicDevice {
@@ -909,6 +911,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // SKY-2973: Settings category navigation
   const [settingsCategory, setSettingsCategory] = useState<'vaults' | 'agents' | 'appearance'>('agents');
 
+  // SKY-3218: Nav-bar configuration
+  const [navConfig, setNavConfig] = useState<NavRailConfig>(NAV_RAIL_DEFAULTS);
+
   // Page background state (SKY-2097)
   const [pageBg, setPageBg] = useState<PageBackgroundSettings>({ ...PAGE_BACKGROUND_DEFAULTS });
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
@@ -919,8 +924,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     window.api.settingsGet().then((s) => {
       setSettings(s);
       if (s.liquidNeon) {
-        setLg({ ...LG_DEFAULTS, ...s.liquidNeon });
-        const bg = s.liquidNeon.background;
+        const raw = s.liquidNeon;
+        // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
+        // stored file path but no explicit bgMode field.
+        const bgModeOverride: Partial<LiquidNeonPrefs> =
+          (raw.background && raw.background !== 'default' && !raw.bgMode)
+            ? { bgMode: 'image' }
+            : {};
+        setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
+        const bg = raw.background;
         if (bg && bg !== 'default') {
           window.api.loadBgImage?.(bg)
             .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
@@ -954,6 +966,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       if (s.pageBackground) setPageBg({ ...PAGE_BACKGROUND_DEFAULTS, ...s.pageBackground });
+      setNavConfig(s.navConfig ?? NAV_RAIL_DEFAULTS);
       setLoading(false);
     }).catch(() => {
       setLoading(false);
@@ -1125,6 +1138,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         provider,
         liquidNeon: lg,
         pageBackground: pageBg,
+        navConfig,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
         agents: {
           ...settings.agents,
@@ -1143,7 +1157,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, onSaved, buildAgentProviderConfig]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -3286,6 +3300,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <p className="settings-hint">When off, page appearance applies to the active tab only (tab-specific theming lands in a future release).</p>
             </div>
           </section>
+
+          {/* ── Nav-bar configuration (SKY-3218) ── */}
+          <NavConfigSection navConfig={navConfig} setNavConfig={setNavConfig} setSavedOk={setSavedOk} />
           </>
           )}
 

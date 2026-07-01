@@ -1085,6 +1085,7 @@ interface Window {
       templateId?: string;
       vaultName?: string;
       sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
+      customTemplate?: 'recommended' | 'blank';
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
