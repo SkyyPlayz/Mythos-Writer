@@ -120,6 +120,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // Flag to break the auto-link → onUpdate → auto-link cycle
   const applyingAutoLinksRef = useRef(false);
   const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingChangeFlushRef = useRef<(() => void) | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
@@ -172,7 +173,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         setWordCount(countWords(getEditorMarkdown(ed)));
       }, WC_DEBOUNCE_MS);
       if (changeRef.current) clearTimeout(changeRef.current);
-      changeRef.current = setTimeout(() => {
+      const flushChange = () => {
+        pendingChangeFlushRef.current = null;
+        changeRef.current = null;
         // Auto on save: apply all auto-linker suggestions as a single transaction,
         // then read the updated markdown. The applyingAutoLinksRef flag prevents
         // the resulting onUpdate from triggering a second application cycle.
@@ -200,7 +203,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           order: 0,
           updatedAt: new Date().toISOString(),
         }]);
-      }, 800);
+      };
+      pendingChangeFlushRef.current = flushChange;
+      changeRef.current = setTimeout(flushChange, 800);
     },
     onSelectionUpdate({ editor: ed }) {
       syncMentionState(ed);
@@ -358,10 +363,12 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     );
   }, [editor, autoLinkerEntities, autoLinkerMode]);
 
-  // SKY-130: flush pending cursor debounce on unmount to avoid stale callbacks
+  // SKY-130 / SKY-5087: flush pending cursor + content debounce on unmount to avoid stale callbacks/data loss
   useEffect(() => {
     return () => {
       if (changeRef.current) clearTimeout(changeRef.current);
+      pendingChangeFlushRef.current?.();
+      pendingChangeFlushRef.current = null;
       if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
       if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
     };

@@ -503,6 +503,7 @@ export const IPC_CHANNELS = {
   SCENE_CRAFTER_RENAME_LANE: 'scene-crafter:rename-lane',
   SCENE_CRAFTER_DELETE_LANE: 'scene-crafter:delete-lane',
   SCENE_CRAFTER_REORDER_LANES: 'scene-crafter:reorder-lanes',
+  SCENE_CRAFTER_SAVE_BOARD: 'scene-crafter:save-board',
 
   // SKY-1759: Scene Crafter file-watcher conflict detection
   SCENE_CRAFTER_CLOSE: 'scene-crafter:close',
@@ -891,6 +892,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.SCENE_CRAFTER_RENAME_LANE]: (payload: SceneCrafterRenameLanePayload) => { ok: true };
   [IPC_CHANNELS.SCENE_CRAFTER_DELETE_LANE]: (payload: SceneCrafterDeleteLanePayload) => { ok: boolean; cardCount: number };
   [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) => { ok: true };
+  [IPC_CHANNELS.SCENE_CRAFTER_SAVE_BOARD]: (payload: SceneCrafterSaveBoardPayload) => { ok: true };
 
   // SKY-1759: Scene Crafter file-watcher — SCENE_CRAFTER_EXTERNAL_EDIT is a push-only
   // channel (webContents.send), so no handler entry is needed for it here.
@@ -4248,6 +4250,12 @@ export interface SceneCrafterReorderLanesPayload {
   fromIndex: number;
   toIndex: number;
 }
+
+export interface SceneCrafterSaveBoardPayload {
+  storySlug: string;
+  board: SceneCrafterBoard;
+}
+
 export interface SceneCrafterClosePayload {
   storySlug: string;
 }

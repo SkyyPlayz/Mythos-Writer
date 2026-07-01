@@ -52,6 +52,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     sceneCrafterRenameLane: vi.fn().mockResolvedValue({ ok: true }),
     sceneCrafterDeleteLane: vi.fn().mockResolvedValue({ ok: true, cardCount: 0 }),
     sceneCrafterReorderLanes: vi.fn().mockResolvedValue({ ok: true }),
+    sceneCrafterSaveBoard: vi.fn().mockResolvedValue({ ok: true }),
     onSceneCrafterExternalEdit: vi.fn().mockReturnValue(vi.fn()),
     sceneCrafterClose: vi.fn(),
     ...overrides,
@@ -268,9 +269,12 @@ describe('SceneCrafterPage — SKY-1805 post-merge bug fixes', () => {
 });
 
 describe('SceneCrafterPage — conflict banner', () => {
-  it('shows conflict actions on external-edit push and Use disk version reloads the board', async () => {
+  it('persists the current board when Keep my version resolves a conflict', async () => {
     let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const board = cloneBoard();
+    board.lanes[0].cards[0].title = 'Unsaved Local Beat';
     const api = makeApi({
+      sceneCrafterGetBoard: vi.fn().mockResolvedValue(board),
       onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
         externalEditHandler = cb;
         return vi.fn();
@@ -282,10 +286,13 @@ describe('SceneCrafterPage — conflict banner', () => {
     await act(async () => {
       externalEditHandler?.('Skyfall Chronicles');
     });
-    expect(await screen.findByRole('alert')).toHaveTextContent(/board changed on disk/i);
-    fireEvent.click(screen.getByRole('button', { name: /use disk version/i }));
+    fireEvent.click(screen.getByRole('button', { name: /keep my version/i }));
 
-    await waitFor(() => expect(api.sceneCrafterGetBoard).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.sceneCrafterSaveBoard).toHaveBeenCalledWith({
+      storySlug: 'Skyfall Chronicles',
+      board,
+    }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 

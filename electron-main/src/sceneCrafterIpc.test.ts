@@ -17,6 +17,7 @@ import {
   handleRenameLane,
   handleDeleteLane,
   handleReorderLanes,
+  handleSaveBoard,
   resolveBrainstormLane,
 } from './sceneCrafterIpc.js';
 
@@ -385,9 +386,32 @@ describe('§10 scene-crafter:reorder-lanes', () => {
   });
 });
 
-// ─── §11  resolveBrainstormLane ───────────────────────────────────────────────
+// ─── §11  save-board ──────────────────────────────────────────────────────────
 
-describe('§11 resolveBrainstormLane', () => {
+describe('§11 scene-crafter:save-board', () => {
+  let root: string;
+  beforeEach(() => { root = tmpDir(); seedBoard(root); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+  it('persists the supplied local board version', () => {
+    const board = readBoardDisk(root);
+    board.lanes[0].cards.push({
+      wikilink: 'notes/local-only',
+      title: 'Local Only',
+      done: false,
+      tags: [],
+      raw: '',
+    });
+
+    handleSaveBoard(root, { storySlug: STORY_SLUG, board });
+
+    expect(readBoardDisk(root).lanes[0].cards.map((card) => card.title)).toContain('Local Only');
+  });
+});
+
+// ─── §12  resolveBrainstormLane ───────────────────────────────────────────────
+
+describe('§12 resolveBrainstormLane', () => {
   let root: string;
   beforeEach(() => { root = tmpDir(); seedBoard(root); });
   afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
