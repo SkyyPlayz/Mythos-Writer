@@ -31,14 +31,12 @@ const PANEL_LABELS: Record<string, string> = {
   timeline: 'Timeline',
 };
 
-/** Right-sidebar-native panel IDs shown in the "Add Panel" picker. */
+/** Right-sidebar-native panel IDs shown in the "Add Panel" picker.
+ *  Writing Assistant, Continuity, and Scene Preview moved to the left sidebar (GH #633). */
 const RIGHT_PANEL_IDS: PanelId[] = [
   'scene-notes',
   'scene-properties',
   'scene-outline',
-  'writing-assistant',
-  'archive-continuity',
-  'scene-preview',
   'brainstorm',
 ];
 
@@ -46,9 +44,6 @@ const DEFAULT_PANELS: PanelConfig[] = [
   { id: 'scene-notes', collapsed: false },
   { id: 'scene-properties', collapsed: false },
   { id: 'scene-outline', collapsed: true },
-  { id: 'writing-assistant', collapsed: false },
-  { id: 'archive-continuity', collapsed: false },
-  { id: 'scene-preview', collapsed: true },
 ];
 
 const SIDEBAR_MIN_WIDTH = 200;
@@ -341,6 +336,19 @@ export default function GlobalRightSidebar({
     },
     [],
   );
+
+  // Clear popout placeholder when the popout window is closed (SKY-5158).
+  useEffect(() => {
+    const unsub = window.api?.onPanelPopoutClosed?.((panelId) => {
+      setPopoutPanels((prev) => {
+        if (!prev.has(panelId as PanelId)) return prev;
+        const next = new Set(prev);
+        next.delete(panelId as PanelId);
+        return next;
+      });
+    });
+    return () => unsub?.();
+  }, []);
 
   // ── Add-panel picker close on outside click ──────────────────────────────────
 

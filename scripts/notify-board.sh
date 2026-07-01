@@ -144,7 +144,10 @@ if ! command -v paperclipai >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "$LINT_RESULT" == "success" && "$TYPECHECK_RESULT" == "success" && "$UNIT_RESULT" == "success" && "$CI_RESULT" == "success" && "$BUILD_LINUX_RESULT" == "success" && "$BUILD_MACOS_RESULT" == "success" ]]; then
+# macOS packaging is owner-deferred and skipped on pull_request events in this
+# workflow; treat either success or skipped as acceptable for PR merge-gate
+# reporting so the notifier does not reclassify green product CI as red.
+if [[ "$LINT_RESULT" == "success" && "$TYPECHECK_RESULT" == "success" && "$UNIT_RESULT" == "success" && "$CI_RESULT" == "success" && "$BUILD_LINUX_RESULT" == "success" && ( "$BUILD_MACOS_RESULT" == "success" || "$BUILD_MACOS_RESULT" == "skipped" ) ]]; then
   CONCLUSION=success
 else
   CONCLUSION=failure
@@ -178,7 +181,7 @@ Per-job results:
 - \`build-linux\`: ${BUILD_LINUX_RESULT}
 - \`build-macos\`: ${BUILD_MACOS_RESULT}
 
-Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a `request_confirmation` routed to Ivy. **Ivy signs off routine/low-risk merges of already-approved scope directly** — that recorded Ivy sign-off is sufficient to merge. Ivy escalates **owner-reserved** merges to Skyy (release cuts, scope/product-direction changes, irreversible/high-risk or security-sensitive merges, anything not already owner-approved). Merge ONLY after a sign-off is recorded (chain: agent → CEO → Ivy → Skyy, SKY-3009). On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
+Action: evaluate merge gate. **GREEN ≠ merge.** If all required checks are green + reviewed + clean: PR is merge-READY — do NOT merge. Post it as ready-for-sign-off and open a \`request_confirmation\` routed to Ivy. **Ivy signs off routine/low-risk merges of already-approved scope directly** — that recorded Ivy sign-off is sufficient to merge. Ivy escalates **owner-reserved** merges to Skyy (release cuts, scope/product-direction changes, irreversible/high-risk or security-sensitive merges, anything not already owner-approved). Merge ONLY after a sign-off is recorded (chain: agent → CEO → Ivy → Skyy, SKY-3009). On red/conflict/high-risk: escalate via Ivy. No auto-merge on green under any path.
 EOF
 
 # Dedup: look for an already-open ping issue for this PR. The CLI's --match
@@ -216,16 +219,20 @@ EXISTING_ID=${EXISTING_ID:-}
 
 if [[ -n "$EXISTING_ID" ]]; then
   echo "Found open ping issue ${EXISTING_ID} for PR #${PR_NUMBER} — commenting instead of stacking duplicate"
-  paperclipai issue comment "$EXISTING_ID" --body "$(cat "$DESC_FILE")"
+  if ! paperclipai issue comment "$EXISTING_ID" --body "$(cat "$DESC_FILE")"; then
+    echo "::warning::Could not comment on existing ping issue ${EXISTING_ID}; continuing so board-notification auth does not fail green product CI." >&2
+  fi
 else
   echo "No open ping issue for PR #${PR_NUMBER} — creating new"
-  paperclipai issue create \
+  if ! paperclipai issue create \
     -C "$PAPERCLIP_COMPANY_ID" \
     --project-id "$PAPERCLIP_PROJECT_ID" \
     --assignee-agent-id "$PAPERCLIP_ASSIGNEE" \
     --priority high \
     --title "$TITLE" \
-    --description "$(cat "$DESC_FILE")"
+    --description "$(cat "$DESC_FILE")"; then
+    echo "::warning::Could not create Paperclip ping issue; continuing so board-notification auth does not fail product CI." >&2
+  fi
 fi
 
 # ── Auto-fix trigger (SKY-3006) ───────────────────────────────────────────────

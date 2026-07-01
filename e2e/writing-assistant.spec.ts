@@ -1061,9 +1061,14 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     } else {
       await disabledPage.getByRole('tab', { name: /^Story$/ }).click();
     }
-    const disabledWaHeader = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
-    if ((await disabledWaHeader.getAttribute('aria-expanded')) !== 'true') {
-      await disabledWaHeader.click();
+    // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
+    const showSidebarBtn = disabledPage.getByRole('button', { name: 'Show right sidebar' });
+    if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await showSidebarBtn.click();
+    }
+    const waHeader = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
+    if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
+      await waHeader.click();
     }
 
     // Panel renders in disabled state.

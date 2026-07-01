@@ -321,42 +321,40 @@ export function yamlInlineQuote(s: string): string {
 
 /**
  * Split the inside of a YAML inline array (`[ ... ]`) into values, honoring
- * double-quoted entries so a quoted comma (`"Smith, John"`) stays a single
- * token. Quoted values have their surrounding quotes stripped and `\"` / `\\`
- * escapes decoded; unquoted values are trimmed. Empty unquoted tokens are
- * dropped (matching the previous `filter(Boolean)` behavior), so `[]` and
- * `[a, ]` parse to `['... ']` without stray empties.
+ * both single- and double-quoted entries so a quoted comma (`"Smith, John"` or
+ * `'Smith, John'`) stays a single token. Double-quoted values additionally
+ * decode `\"` / `\\` escape sequences. Surrounding quotes are stripped.
+ * Unquoted values are trimmed. Empty unquoted tokens are dropped (matching the
+ * previous `filter(Boolean)` behavior), so `[]` and `[a, ]` parse cleanly.
  */
 function parseInlineArray(inner: string): string[] {
   const values: string[] = [];
   let cur = '';
-  let inQuotes = false;
-  let quoted = false; // current token opened with a double-quote
+  let quoteChar: '"' | "'" | null = null;
   const flush = () => {
-    if (quoted) {
+    if (quoteChar !== null) {
       values.push(cur);
     } else {
       const trimmed = cur.trim();
       if (trimmed) values.push(trimmed);
     }
     cur = '';
-    quoted = false;
+    quoteChar = null;
   };
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i];
-    if (inQuotes) {
-      if (ch === '\\' && i + 1 < inner.length) {
+    if (quoteChar !== null) {
+      if (quoteChar === '"' && ch === '\\' && i + 1 < inner.length) {
         cur += inner[i + 1];
         i++;
-      } else if (ch === '"') {
-        inQuotes = false;
+      } else if (ch === quoteChar) {
+        quoteChar = null;
       } else {
         cur += ch;
       }
-    } else if (ch === '"' && cur.trim() === '') {
+    } else if ((ch === '"' || ch === "'") && cur.trim() === '') {
       cur = '';
-      inQuotes = true;
-      quoted = true;
+      quoteChar = ch;
     } else if (ch === ',') {
       flush();
     } else {

@@ -54,7 +54,8 @@ test('Settings Account vault path uses runtime CSS truncation in Electron', asyn
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-    await page.getByLabel('Open settings').click();
+    // SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
+    await page.locator('.app-menu-gear-btn').click();
     // SKY-2973: vault path is in the Vaults tab; navigate there first
     await page.getByRole('tab', { name: 'Vaults' }).click();
     const pathDisplay = page.locator('.settings-vault-path-display');

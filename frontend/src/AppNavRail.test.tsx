@@ -117,6 +117,18 @@ describe('AppNavRail', () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onToggleCollapsed when toggle button is clicked', () => {
+    const onToggleCollapsed = vi.fn();
+    render(<AppNavRail {...makeProps({ onToggleCollapsed })} />);
+    fireEvent.click(screen.getByRole('button', { name: /collapse navigation/i }));
+    expect(onToggleCollapsed).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapse toggle shows expand label when collapsed', () => {
+    render(<AppNavRail {...makeProps({ collapsed: true })} />);
+    expect(screen.getByRole('button', { name: /expand navigation/i })).toBeInTheDocument();
+  });
+
   // ─── Keyboard navigation ─────────────────────────────────────────────────────
 
   it('moves focus to the next item on ArrowDown', () => {

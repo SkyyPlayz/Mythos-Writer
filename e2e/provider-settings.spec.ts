@@ -153,7 +153,7 @@ test.afterAll(async () => {
 
 test('TC-PROV-01: Ollama provider seeded in app-settings shows base URL and text model input', async () => {
   // Open settings
-  await page.click('[aria-label="Open settings"]');
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Provider selector should show 'ollama'
@@ -175,7 +175,7 @@ test('TC-PROV-01: Ollama provider seeded in app-settings shows base URL and text
 
 test('TC-PROV-02: Test connection with mocked local provider shows success', async () => {
   // Open settings
-  await page.click('[aria-label="Open settings"]');
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Click test connection
@@ -191,7 +191,7 @@ test('TC-PROV-02: Test connection with mocked local provider shows success', asy
 
 test('TC-PROV-03: "Use different provider for this agent" toggle shows inline provider form', async () => {
   // Open settings
-  await page.click('[aria-label="Open settings"]');
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Find the Brainstorm agent's provider override toggle
@@ -217,7 +217,7 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
 
 test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent model', async () => {
   // App was seeded with Ollama → per-agent model should be text input
-  await page.click('[aria-label="Open settings"]');
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Writing Assistant model input should be a text input (not a select)

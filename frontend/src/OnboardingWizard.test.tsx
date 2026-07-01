@@ -1684,27 +1684,43 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
   });
 
   it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
-    // validateCustomPathNow calls validatePath twice via Promise.all:
-    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
-    mockApi.validatePath = vi.fn(async (path: string) => (
+    mockApi.validatePath = vi.fn((path: string) => Promise.resolve(
       path.endsWith('/Story Vault/manifest.json')
         ? { exists: false, isEmpty: true, writable: true }
-        : { exists: true, isEmpty: false, writable: true }
+        : { exists: true, isEmpty: false, writable: true },
     ));
-
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-      target: { value: '/home/user/MyVault' },
-    });
-
-    // Use the real debounce instead of fake timers. Under full-suite/coverage
-    // runs the Promise.all continuation can commit after fake-timer drains,
-    // leaving this button disabled despite validation having resolved.
-    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled(), {
-      timeout: 1500,
-    });
+    vi.useFakeTimers();
+    try {
+      await renderWizard(
+        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+      );
+      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+        target: { value: '/home/user/MyVault' },
+      });
+      // Fire the 500ms debounce, then settle the two-stage Promise.all validation
+      // (base dir + Story Vault manifest) that validateCustomPathNow awaits before
+      // it calls setCustomPathValidation('valid'). A FIXED drain count is racy under
+      // CI load — SKY-5215 already bumped 5→8 and it still flaked — because the exact
+      // number of microtask ticks to resolve Promise.all([p1,p2]) + flush React's
+      // batched render is not constant. Instead, pump one microtask per iteration and
+      // re-flush React each act() boundary, checking the settled DOM BETWEEN act()s
+      // so the loop exits as soon as the button enables. Bounded so a genuine
+      // regression still fails instead of hanging.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      for (
+        let i = 0;
+        i < 50 && screen.getByTestId('custom-location-next').hasAttribute('disabled');
+        i++
+      ) {
+        await act(async () => { await Promise.resolve(); });
+      }
+      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+      await act(async () => {});
+    }
   });
 
   it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {

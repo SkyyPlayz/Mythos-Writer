@@ -222,18 +222,20 @@ test('§9.2 — 18 surface screenshots', async () => {
     const storyRow = page.locator('.nav-story-row').first();
     if (await storyRow.isVisible({ timeout: 3_000 }).catch(() => false)) {
       // Expand story → chapter → click scene
+      // force:true bypasses pointer-event interception from AppNavRail/grs-collapsed-edge
+      // during async layout settle — screenshot tests don't test click mechanics
       const expandStory = storyRow.locator('.nav-expand-btn, button').first();
-      if (await expandStory.isVisible()) await expandStory.click();
+      if (await expandStory.isVisible()) await expandStory.click({ force: true });
       await page.waitForTimeout(200);
       const chapterRow = page.locator('.nav-chapter-row').first();
       if (await chapterRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
         const expandChapter = chapterRow.locator('.nav-expand-btn, button').first();
-        if (await expandChapter.isVisible()) await expandChapter.click();
+        if (await expandChapter.isVisible()) await expandChapter.click({ force: true });
         await page.waitForTimeout(200);
       }
       const sceneRow = page.locator('.nav-scene-row').first();
       if (await sceneRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await sceneRow.click();
+        await sceneRow.click({ force: true });
         await page.waitForTimeout(500);
       }
     }

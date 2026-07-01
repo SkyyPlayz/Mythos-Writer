@@ -80,6 +80,7 @@ function seedUserData(userData: string, vaultDir: string): void {
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    // SKY-3177: GRS replaces RightSidebar; seed it visible with WA expanded.
     rightSidebarVisible: true,
     rightSidebarPanels: [{ id: 'writing-assistant', collapsed: false }],
   };
@@ -243,8 +244,8 @@ test.beforeAll(async () => {
   // Wait for scene editor to load.
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 8_000 });
 
-  // The GlobalRightSidebar hosts Writing Assistant as a panel (not a tab).
-  // Ensure the Writing Assistant panel is expanded (it defaults to expanded).
+  // SKY-3177: RightSidebar removed; WA panel is in GlobalRightSidebar.
+  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
   const waPanel = page.locator('[data-panel-id="writing-assistant"]');
   await expect(waPanel).toBeVisible({ timeout: 4_000 });
   const waPanelHeader = waPanel.locator('[aria-label="Writing Assistant panel"]');
@@ -269,10 +270,10 @@ test.afterAll(async () => {
 // ─── TC-WAT-01: Scan → tip card appears; Note-it removes it ──────────────────
 
 test('TC-WAT-01: manual scan returns tip card; Note-it removes it optimistically', async () => {
-  // The GRS is visible (Writing Assistant is a panel, not a tab; no sub-tab needed).
+  // SKY-3177: GRS replaces RightSidebar; WA is a panel, not a sub-tab.
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 
-  // The Writing Assistant panel heartbeat section is directly accessible.
+  // The Writing Assistant panel heartbeat section should be visible.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 4_000 });
 
   // "Scan now" button should be enabled (scene is selected).

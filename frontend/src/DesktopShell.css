@@ -298,6 +298,15 @@
   min-width: 0;
 }
 
+/* SKY-3177: shell-body — always-mounted AppNavRail + tabpanel content row */
+.shell-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Main panels row */
 /* SKY-1686: row wrapper that hosts view content + global right sidebar */
 .shell-main-row {
@@ -311,6 +320,15 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+/* GettingStartedPanel standalone aside — shown when GlobalRightSidebar is not rendered */
+.gs-aside {
+  flex-shrink: 0;
+  width: 280px;
+  overflow-y: auto;
+  border-left: 1px solid var(--color-border, #333);
+  background: var(--color-surface, #1e1e1e);
 }
 
 .shell-kanban {

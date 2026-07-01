@@ -128,8 +128,10 @@ test.afterAll(async () => {
 });
 
 test.beforeEach(async () => {
-  // Open Settings dialog via the toolbar gear button (no Ctrl+Comma handler is wired).
-  await page.getByRole('button', { name: 'Open settings' }).click();
+  // Open Settings dialog via the AppMenuBar toolbar gear button.
+  // SKY-3177 adds AppNavRail which also has aria-label="Open settings", so use
+  // the class-based selector to target the toolbar button specifically.
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5000 });
   // Wait for the settings panel to finish loading (loading state renders without category nav).
   // navigateSettingsCategory silently skips if nav buttons aren't visible within 2s — waiting

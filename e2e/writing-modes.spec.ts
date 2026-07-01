@@ -160,7 +160,8 @@ test('TC-WM-01: default mode is Normal — N button active, sidebars visible, no
   // The two-tab shell opens on the Story tab by default, so sidebars are rendered.
   await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]')).toHaveAttribute('aria-current', 'page', { timeout: 4_000 });
 
-  // Both sidebars must be present in the DOM.
+  // SKY-3177: .shell-right removed; GlobalRightSidebar (GRS) is always-mounted
+  // and independent of writing mode. Only the left sidebar responds to mode changes.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 });
@@ -173,7 +174,8 @@ test('TC-WM-02: Ctrl+Shift+F enters Focus mode and hides sidebars', async () => 
   const fBtn = page.locator('[data-testid="writing-mode-focus"]');
   await expect(fBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
-  // With default FocusPrefs (all false), sidebars must not be in the DOM.
+  // With default FocusPrefs (all false), left sidebar is removed from DOM.
+  // SKY-3177: .shell-right removed; GRS is independent of writing mode.
   await expect(page.locator('.shell-left')).not.toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="global-right-sidebar"]')).not.toBeVisible({ timeout: 4_000 });
 });
@@ -186,6 +188,7 @@ test('TC-WM-03: Ctrl+Shift+N restores Normal mode and sidebars', async () => {
   const nBtn = page.locator('[data-testid="writing-mode-normal"]');
   await expect(nBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
+  // SKY-3177: Only left sidebar responds to writing mode.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 });
@@ -198,7 +201,7 @@ test('TC-WM-04: Ctrl+Shift+E enters Edit mode, sidebars still visible', async ()
   const eBtn = page.locator('[data-testid="writing-mode-edit"]');
   await expect(eBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
 
-  // Edit mode keeps sidebars visible.
+  // Edit mode keeps left sidebar visible. SKY-3177: .shell-right removed.
   await expect(page.locator('.shell-left')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 4_000 });
 

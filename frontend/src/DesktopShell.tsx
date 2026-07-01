@@ -8,6 +8,9 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
+import AppNavRail from './AppNavRail';
+import WorkspaceTabBar from './WorkspaceTabBar';
+import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -43,9 +46,6 @@ import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRi
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
-import AppNavRail from './AppNavRail';
-import WorkspaceTabBar from './WorkspaceTabBar';
-import AccountModal from './AccountModal';
 import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
@@ -735,11 +735,6 @@ interface DragState {
   startWidth: number;
 }
 
-const NAV_ITEMS: NavRailItem[] = [
-  { id: 'story', label: 'Story', icon: '📖' },
-  { id: 'notes', label: 'Notes', icon: '📁' },
-];
-
 export default function DesktopShell({ initialSettings }: { initialSettings?: AppSettings } = {}) {
   // SKY-4259: ref so loadVault can read the post-onboarding settings that the wizard
   // computed without needing it in the useCallback dep array.
@@ -802,6 +797,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
+  // SKY-3177: AppNavRail collapse state + account modal
+  const [navRailCollapsed, setNavRailCollapsed] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
   const [topBarHidden, setTopBarHidden] = useState(false);
@@ -841,9 +839,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
   const [activeDockedTabId, setActiveDockedTabId] = useState<string | null>(null);
 
-  // SKY-3098 (v0.3): nav rail + workspace tab bar
-  const [navRailCollapsed, setNavRailCollapsed] = useState(false);
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  // SKY-3098 (v0.3): workspace tab bar
   const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => [
     { id: crypto.randomUUID(), kind: 'story-editor', title: 'Story', icon: '📖' },
     { id: crypto.randomUUID(), kind: 'notes-editor', title: 'Notes', icon: '📁' },
@@ -958,6 +954,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
   const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
     setGettingStartedProgress((prev) => {
       if (!prev) return prev;
@@ -971,17 +977,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return next;
     });
   }, []);
-
-
-  const handleDismissGettingStarted = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
@@ -2325,7 +2320,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
         e.preventDefault();
-        const el = document.querySelector<HTMLElement>('.right-sidebar [role="tab"][aria-selected="true"], .right-sidebar button');
+        const el = document.querySelector<HTMLElement>('[data-testid="global-right-sidebar"] [role="tab"][aria-selected="true"], [data-testid="global-right-sidebar"] [role="button"], [data-testid="global-right-sidebar"] button');
         el?.focus();
         return;
       }
@@ -2334,8 +2329,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         e.preventDefault();
         if ((layout.writingMode ?? 'normal') === 'focus') {
           setContinuityPeekOverlayOpen(true);
-        } else if (!grsVisible) {
+        } else {
           handleGrsVisibilityChange(true);
+          persistLayout({ ...layout, rightTab: 'continuity' });
         }
         focusContinuitySearch();
         return;
@@ -3412,6 +3408,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : 'Story'} vault: ${activeVaultBadge}`;
 
+  const NAV_ITEMS: NavRailItem[] = [
+    { id: 'story', label: 'Story', icon: '📖' },
+    { id: 'notes', label: 'Notes', icon: '📝' },
+  ];
+
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
@@ -4047,6 +4048,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             />
           </div>
         </div>
+      )}
+
+      {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
+           migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
+           without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
+           Condition: show whenever GRS is not open (grsVisible !== true). */}
+      {grsVisible !== true && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
+        <aside className="gs-aside">
+          <GettingStartedPanel
+            progress={gettingStartedProgress}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        </aside>
       )}
 
       </div>{/* end shell-main-row */}
