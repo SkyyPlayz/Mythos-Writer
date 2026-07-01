@@ -55,6 +55,8 @@ test('Settings Account vault path uses runtime CSS truncation in Electron', asyn
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
     await page.getByLabel('Open settings').click();
+    // SKY-2973: vault path is in the Vaults tab; navigate there first
+    await page.getByRole('tab', { name: 'Vaults' }).click();
     const pathDisplay = page.locator('.settings-vault-path-display');
     await expect(pathDisplay).toHaveAttribute('title', storyVault);
 
