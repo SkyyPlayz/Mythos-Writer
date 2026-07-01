@@ -57,6 +57,8 @@ interface Props {
   onWikiLinkClick?: (target: string) => void;
   /** SKY-2011: called when the editor selection changes, debounced by TipTap's onSelectionUpdate. */
   onSelectionChange?: (text: string) => void;
+  /** When false, suppress Tiptap's autofocus on mount (used in multi-editor views like ChapterContinuousView). */
+  autoFocus?: boolean;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -87,7 +89,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, onSelectionChange }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, onSelectionChange, autoFocus = true }: Props) {
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
@@ -160,7 +162,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const editor = useRichEditor({
     extraExtensions: [WikiLinkHintExtension, AutoLinkerExtension, EntityMention, EntityMentionPickerExtension],
     content: blocksToMarkdownBody(scene.blocks),
-    autofocus: initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end',
+    autofocus: !autoFocus ? false : (initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end'),
     onUpdate({ editor: ed }) {
       setIsEditorEmpty(ed.isEmpty);
       syncMentionState(ed);
@@ -243,9 +245,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
       } catch (_) { /* editor destroyed between render and effect */ }
     };
-    const focusTimer = setTimeout(focusEditor, 0);
+    const focusTimer = autoFocus ? setTimeout(focusEditor, 0) : undefined;
     const cb = onEditorReadyRef.current;
-    if (!cb) return () => clearTimeout(focusTimer);
+    if (!cb) return () => { if (focusTimer !== undefined) clearTimeout(focusTimer); };
 
     const findTextRange = (text: string): { from: number; to: number } | null => {
       const needle = text.toLowerCase();
@@ -314,7 +316,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       },
       focus: focusEditor,
     });
-    return () => clearTimeout(focusTimer);
+    return () => { if (focusTimer !== undefined) clearTimeout(focusTimer); };
   // Run only when the editor instance changes (new scene key causes remount)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);

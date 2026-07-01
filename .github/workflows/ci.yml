@@ -58,6 +58,9 @@ jobs:
           fi
           echo "Guard passed: no Windows-illegal filenames tracked."
 
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -78,6 +81,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -101,6 +107,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -156,6 +165,9 @@ jobs:
             -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" &
           echo "WSL2 sleep prevention started."
 
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -202,6 +214,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -289,6 +304,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -351,6 +369,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -423,6 +444,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -528,6 +552,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -608,6 +635,9 @@ jobs:
         # space from any prior run's leftovers before we start the build.
         if: github.event_name != 'pull_request'
         run: find /tmp -maxdepth 1 -name 'appimage_extracted_*' -type d -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'
@@ -733,6 +763,9 @@ jobs:
 
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request'
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'

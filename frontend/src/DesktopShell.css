@@ -861,6 +861,159 @@
   -webkit-box-orient: vertical;
 }
 
+/* ─── Chapter continuous view (SKY-3211 C2) — per-scene editable bands ─── */
+
+.chapter-continuous-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chapter-continuous-header {
+  padding: 20px 32px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.chapter-continuous-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chapter-continuous-scenes {
+  padding: 0 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.chapter-continuous-empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.chapter-continuous-scene {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 24px 0;
+  transition: background 0.1s;
+}
+
+.chapter-continuous-scene:last-child {
+  border-bottom: none;
+}
+
+.chapter-continuous-scene.active > .chapter-continuous-scene-header {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin-left: -15px;
+}
+
+.chapter-continuous-scene-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chapter-continuous-scene-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chapter-continuous-scene-index {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.chapter-continuous-scene-editor {
+  min-height: 120px;
+}
+
+/* ─── Chapter continuous view (SKY-3211 C2) — per-scene editable bands ─── */
+
+.chapter-continuous-view {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chapter-continuous-header {
+  padding: 20px 32px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.chapter-continuous-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chapter-continuous-scenes {
+  padding: 0 32px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.chapter-continuous-empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.chapter-continuous-scene {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 24px 0;
+}
+
+.chapter-continuous-scene:last-child {
+  border-bottom: none;
+}
+
+.chapter-continuous-scene.active .chapter-continuous-scene-header {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin-left: -15px;
+}
+
+.chapter-continuous-scene-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chapter-continuous-scene-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chapter-continuous-scene-index {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.chapter-continuous-scene-editor {
+  min-height: 120px;
+}
+
 /* ─── Book outline view (MYT-378) ─── */
 
 .book-outline-view {
