@@ -336,10 +336,10 @@ test('§9.3 — slider sweep at 0 / 0.5 / 1 (2 viewports)', async () => {
       await page.waitForTimeout(600);
     }
 
-    // Navigate to Appearance category — settings panel now has category nav
-    // (added in SKY-3216); #lg-softness is under Appearance which is hidden
-    // on the default General tab.
-    const appearanceNavBtn = page.locator('.settings-cat-nav-btn', { hasText: 'Appearance' });
+    // Navigate to Appearance tab — SKY-2973 split settings into Vaults/Agents/Appearance tabs;
+    // #lg-softness lives in Appearance which is NOT shown on the default Vaults tab.
+    // SKY-5060: .settings-cat-nav-btn was removed; tabs now use role="tab".
+    const appearanceNavBtn = page.getByRole('tab', { name: /appearance/i });
     if (await appearanceNavBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await appearanceNavBtn.click();
       await page.waitForTimeout(100);
