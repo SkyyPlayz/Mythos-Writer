@@ -52,6 +52,7 @@ function heatColor(words: number, dailyGoal: number): string {
 export default function ProgressDashboard({ stories }: Props) {
   const [stats, setStats] = useState<GoalsStats | null>(null);
   const [goalInput, setGoalInput] = useState('');
+  const [goalError, setGoalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -85,7 +86,15 @@ export default function ProgressDashboard({ stories }: Props) {
 
   const handleSaveGoal = useCallback(async () => {
     const n = parseStrictInt(goalInput);
-    if (n === null || n < 1) return;
+    if (n === null) {
+      setGoalError('Enter a whole number (e.g. 500).');
+      return;
+    }
+    if (n < 1) {
+      setGoalError('Goal must be at least 1.');
+      return;
+    }
+    setGoalError(null);
     setSaving(true);
     try {
       await window.api.goalsSetGoal(n);
@@ -241,11 +250,10 @@ export default function ProgressDashboard({ stories }: Props) {
         <div className="pd-goal-row">
           <input
             id="pd-goal-input"
-            type="number"
-            min={1}
-            max={100000}
+            type="text"
+            inputMode="numeric"
             value={goalInput}
-            onChange={(e) => setGoalInput(e.target.value)}
+            onChange={(e) => { setGoalInput(e.target.value); if (goalError) setGoalError(null); }}
             onKeyDown={handleGoalKeyDown}
             className="pd-goal-input"
             aria-label="Daily word count goal"
@@ -262,6 +270,11 @@ export default function ProgressDashboard({ stories }: Props) {
             {saving ? '…' : 'Save'}
           </button>
         </div>
+        {goalError && (
+          <p className="pd-goal-error" role="alert">
+            {goalError}
+          </p>
+        )}
       </section>
 
       <Toast message={toast?.message ?? null} level={toast?.level} />
