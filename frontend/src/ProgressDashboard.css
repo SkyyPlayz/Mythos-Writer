@@ -274,3 +274,9 @@
   outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: -2px;
 }
+
+.pd-goal-error {
+  font-size: 0.72rem;
+  color: #f87171;
+  margin: 4px 0 0;
+}
