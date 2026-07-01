@@ -89,6 +89,47 @@ const DEFAULT_LAYOUT: LayoutPrefs = {
   leftTab: 'stories',
 };
 
+// SKY-3618: Responsive layout constants
+/** Minimum pixels reserved for the center editor column at all times. */
+export const CENTER_MIN_WIDTH = 280;
+/** Minimum sidebar panel width — matches CSS min-width on .shell-left / .shell-right. */
+const PANEL_MIN_WIDTH = 160;
+/** Width of each resize divider strip. */
+const DIVIDER_WIDTH = 4;
+/** Approximate width of the GlobalRightSidebar collapsed-edge strip. */
+const GRS_COLLAPSED_STRIP_WIDTH = 36;
+
+/**
+ * Compute display widths for left and right panels so the center column
+ * always retains at least CENTER_MIN_WIDTH pixels.
+ *
+ * Stored layout values are unchanged; callers use returned values for rendering only.
+ */
+export function computeClampedSidebarWidths(
+  leftWidth: number,
+  rightWidth: number,
+  showLeft: boolean,
+  showRight: boolean,
+  panelsAvailableWidth: number,
+): { left: number; right: number } {
+  const dividers = (showLeft ? DIVIDER_WIDTH : 0) + (showRight ? DIVIDER_WIDTH : 0);
+  const maxForSidebars = panelsAvailableWidth - CENTER_MIN_WIDTH - dividers;
+
+  const activeLeft = showLeft ? leftWidth : 0;
+  const activeRight = showRight ? rightWidth : 0;
+  const total = activeLeft + activeRight;
+
+  if (total <= maxForSidebars || maxForSidebars <= 0) {
+    return { left: leftWidth, right: rightWidth };
+  }
+
+  const ratio = Math.max(0, maxForSidebars) / total;
+  return {
+    left: showLeft ? Math.max(PANEL_MIN_WIDTH, Math.floor(leftWidth * ratio)) : leftWidth,
+    right: showRight ? Math.max(PANEL_MIN_WIDTH, Math.floor(rightWidth * ratio)) : rightWidth,
+  };
+}
+
 function generateId(): string {
   return crypto.randomUUID();
 }
@@ -1097,6 +1138,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.suggestionsReject?.(id).catch(() => {});
   }, []);
   const dragState = useRef<DragState | null>(null);
+  // SKY-3618: window width for responsive sidebar clamping
+  const [windowInnerWidth, setWindowInnerWidth] = useState(() => window.innerWidth);
+  // Holds current effective drag maxima — updated each render, read stale-free in event handlers
+  const dragConstraintRef = useRef({ maxLeft: 500, maxRight: 500 });
 
   // ─── Beta-Read Mode (MYT-237) ───
 
@@ -2369,7 +2414,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (!dragState.current) return;
       const { target, startX, startWidth } = dragState.current;
       const delta = e.clientX - startX;
-      const newWidth = Math.max(160, Math.min(500, startWidth + (target === 'left' ? delta : -delta)));
+      // SKY-3618: use dynamically-computed max so center column always keeps CENTER_MIN_WIDTH
+      const dynamicMax = target === 'left' ? dragConstraintRef.current.maxLeft : dragConstraintRef.current.maxRight;
+      const newWidth = Math.max(PANEL_MIN_WIDTH, Math.min(dynamicMax, startWidth + (target === 'left' ? delta : -delta)));
       setLayout((prev) => {
         const next = { ...prev, [target === 'left' ? 'leftWidth' : 'rightWidth']: newWidth };
         return next;
@@ -2404,9 +2451,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const adjustPanelWidth = useCallback((target: 'left' | 'right', delta: number) => {
     const key = target === 'left' ? 'leftWidth' : 'rightWidth';
-    const newWidth = Math.max(160, Math.min(500, layout[key] + delta));
+    const dynamicMax = target === 'left' ? dragConstraintRef.current.maxLeft : dragConstraintRef.current.maxRight;
+    const newWidth = Math.max(PANEL_MIN_WIDTH, Math.min(dynamicMax, layout[key] + delta));
     persistLayout({ ...layout, [key]: newWidth });
   }, [layout, persistLayout]);
+
+  // SKY-3618: Update windowInnerWidth on resize so clamped sidebar widths recompute
+  useEffect(() => {
+    const onResize = () => setWindowInnerWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // SKY-1699: Split window drag — mousedown on the divider starts a drag tracking the ratio.
   const startSplitDrag = useCallback((e: React.MouseEvent) => {
@@ -3363,6 +3418,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
   const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
+
+  // SKY-3618: Compute clamped display widths so center column always gets >= CENTER_MIN_WIDTH pixels.
+  // The stored layout.leftWidth / layout.rightWidth are preserved unchanged; only the rendered width is clamped.
+  const grsEffectiveWidth =
+    grsVisible === true
+      ? Math.max(200, Math.min(600, grsWidth))
+      : grsVisible === false
+      ? GRS_COLLAPSED_STRIP_WIDTH
+      : 0;
+  const panelsAvailableWidth = windowInnerWidth - grsEffectiveWidth;
+  const { left: clampedLeftWidth } = computeClampedSidebarWidths(
+    layout.leftWidth,
+    layout.rightWidth,
+    showLeftSidebar,
+    false, // legacy shell-right removed; GRS manages the right panel independently
+    panelsAvailableWidth,
+  );
+  // Update drag maxima every render so onMouseMove sees fresh values (ref = no stale closure)
+  dragConstraintRef.current = {
+    maxLeft: Math.min(
+      500,
+      Math.max(PANEL_MIN_WIDTH, panelsAvailableWidth - CENTER_MIN_WIDTH - DIVIDER_WIDTH * 2),
+    ),
+    maxRight: Math.min(
+      500,
+      Math.max(PANEL_MIN_WIDTH, panelsAvailableWidth - CENTER_MIN_WIDTH - DIVIDER_WIDTH * 2 - (showLeftSidebar ? layout.leftWidth : 0)),
+    ),
+  };
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
@@ -3610,7 +3693,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
       {/* Left rail */}
       {showLeftSidebar && (
-        <div className="shell-left" style={{ width: layout.leftWidth }}>
+        <div className="shell-left" style={{ width: clampedLeftWidth }}>
           <LeftRail
             leftSidebarLayout={leftSidebarLayout}
             onLeftSidebarLayoutChange={persistLeftSidebarLayout}
@@ -3629,17 +3712,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           role="separator"
           aria-label="Resize left panel"
           aria-orientation="vertical"
-          aria-valuenow={layout.leftWidth}
-          aria-valuemin={160}
-          aria-valuemax={500}
+          aria-valuenow={clampedLeftWidth}
+          aria-valuemin={PANEL_MIN_WIDTH}
+          aria-valuemax={dragConstraintRef.current.maxLeft}
           tabIndex={0}
           className="shell-divider shell-divider-left"
           onMouseDown={(e) => startDrag('left', e)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowRight') { e.preventDefault(); adjustPanelWidth('left', +8); }
             else if (e.key === 'ArrowLeft') { e.preventDefault(); adjustPanelWidth('left', -8); }
-            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 160 }); }
-            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: 500 }); }
+            else if (e.key === 'Home') { e.preventDefault(); persistLayout({ ...layout, leftWidth: PANEL_MIN_WIDTH }); }
+            else if (e.key === 'End') { e.preventDefault(); persistLayout({ ...layout, leftWidth: dragConstraintRef.current.maxLeft }); }
           }}
         />
       )}
