@@ -1424,6 +1424,20 @@
   background: var(--state-danger-bg);
 }
 
+/* ── Danger zone (SKY-5161 / GH#615: in-app Clear All Data) ── */
+.settings-danger-zone {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--state-danger);
+}
+
+.settings-subsection-title {
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--state-danger);
+}
+
 /* ── Focus Mode toggles (SKY-325) ── */
 .settings-focus-toggle {
   display: flex;
