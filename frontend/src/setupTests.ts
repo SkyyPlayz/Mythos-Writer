@@ -50,6 +50,16 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock, writabl
 // jsdom does not implement scrollIntoView; stub it so components that call it don't throw.
 Element.prototype.scrollIntoView = () => {};
 
+// jsdom does not implement getClientRects; prosemirror-view calls it during scrollToSelection.
+// Without this stub, async scroll operations that fire after a test completes produce unhandled
+// TypeError exceptions that fail the suite even when all assertions pass.
+const emptyDOMRectList = Object.assign([] as DOMRect[], {
+  item: (_index: number): DOMRect | null => null,
+  [Symbol.iterator]: [][Symbol.iterator],
+}) as unknown as DOMRectList;
+Element.prototype.getClientRects = () => emptyDOMRectList;
+Range.prototype.getClientRects = () => emptyDOMRectList;
+
 // jsdom does not implement ResizeObserver; stub it so components that use it don't throw.
 // Tests that need to exercise resize callbacks should override this with vi.stubGlobal.
 class ResizeObserverStub {
