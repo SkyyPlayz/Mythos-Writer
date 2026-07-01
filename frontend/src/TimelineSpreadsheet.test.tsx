@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import TimelineSpreadsheet, { sortScenes, groupScenes, indexProposals } from './TimelineSpreadsheet';
+import TimelineSpreadsheet, { sortScenes, groupScenes, indexProposals, parseWordCount, WORD_COUNT_INVALID } from './TimelineSpreadsheet';
 import type { SpreadsheetScene, SceneGroup } from './TimelineSpreadsheet';
 import type { TimelineAIProposal } from './types';
 
@@ -153,6 +153,31 @@ describe('groupScenes', () => {
   });
 });
 
+// SKY-5146 / GH#627: word-count validation — reject partial-numeric input.
+describe('parseWordCount', () => {
+  it('accepts a plain non-negative integer', () => {
+    expect(parseWordCount('0')).toBe(0);
+    expect(parseWordCount('1200')).toBe(1200);
+  });
+
+  it('treats an empty string as an intentional clear', () => {
+    expect(parseWordCount('')).toBeUndefined();
+  });
+
+  it.each(['12abc', '5 words', '5.7', '-3', ' ', '1200 ', '+3', 'abc', '1e3', '0x10'])(
+    'rejects partial-numeric / malformed input %j',
+    input => {
+      expect(parseWordCount(input)).toBe(WORD_COUNT_INVALID);
+    },
+  );
+
+  it('never silently coerces partial-numeric text to a partial number', () => {
+    // The core bug: parseInt('12abc') === 12. parseWordCount must not do that.
+    expect(parseWordCount('12abc')).not.toBe(12);
+    expect(parseWordCount('5.7')).not.toBe(5);
+  });
+});
+
 // ─── Component tests ───
 
 const MOCK_SCENE_ENTRY = {
@@ -296,6 +321,44 @@ describe('TimelineSpreadsheet — inline edit', () => {
     const input = screen.getByTestId('cell-edit-scene-1-pov');
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(screen.queryByTestId('cell-edit-scene-1-pov')).not.toBeInTheDocument();
+  });
+
+  // SKY-5146 / GH#627: word-count cell must not persist partial-numeric input.
+  it('saves a valid integer word count', async () => {
+    await renderSheet();
+    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
+    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
+    fireEvent.change(input, { target: { value: '850' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect((window as any).api.timelineUpdateScene).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sceneId: 'scene-1',
+          timelineMetadata: expect.objectContaining({ wordCount: 850 }),
+        }),
+      );
+    });
+  });
+
+  it('rejects a decimal word count without saving (no-op)', async () => {
+    await renderSheet();
+    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
+    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
+    fireEvent.change(input, { target: { value: '5.7' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Edit closes, but nothing is persisted and the original value remains.
+    expect(screen.queryByTestId('cell-edit-scene-1-wordCount')).not.toBeInTheDocument();
+    expect((window as any).api.timelineUpdateScene).not.toHaveBeenCalled();
+    expect(screen.getByTestId('cell-scene-1-wordCount').textContent).toContain('1200');
+  });
+
+  it('rejects a negative word count without saving (no-op)', async () => {
+    await renderSheet();
+    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
+    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
+    fireEvent.change(input, { target: { value: '-3' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect((window as any).api.timelineUpdateScene).not.toHaveBeenCalled();
   });
 });
 

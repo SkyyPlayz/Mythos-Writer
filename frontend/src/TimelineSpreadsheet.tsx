@@ -39,6 +39,29 @@ export type ColKey = 'date' | 'pov' | 'arc' | 'wordCount' | 'mood' | 'location';
 export type SortCol = 'date' | 'pov' | 'arc';
 export type GroupBy = 'none' | 'arc' | 'character';
 
+/** Sentinel returned by {@link parseWordCount} when the raw input is not a valid
+ *  non-negative integer and must be rejected (no-op) rather than persisted. */
+export const WORD_COUNT_INVALID = Symbol('word-count-invalid');
+
+/**
+ * Validate a Words-cell string before it is persisted as `wordCount`.
+ *
+ * SKY-5146 / GH#627: the previous `parseInt(value, 10)` silently accepted
+ * partial-numeric text ("12abc" → 12, "5.7" → 5, "5 words" → 5), saving a wrong
+ * count. This accepts ONLY a fully-valid non-negative integer string, treats an
+ * empty cell as an intentional clear, and rejects everything else (partial
+ * numeric, decimals, signs, whitespace).
+ *
+ * @returns the integer when valid, `undefined` when the field was cleared, or
+ *   {@link WORD_COUNT_INVALID} when the input must be rejected.
+ */
+export function parseWordCount(raw: string): number | undefined | typeof WORD_COUNT_INVALID {
+  if (raw === '') return undefined; // empty cell → clear the count
+  if (!/^\d+$/.test(raw)) return WORD_COUNT_INVALID; // "12abc" / "5.7" / "-3" / " " → reject
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : WORD_COUNT_INVALID;
+}
+
 export interface SceneGroup {
   key: string;
   label: string;
@@ -410,6 +433,16 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
 
     const scene = scenes.find(s => s.id === sceneId);
     if (!scene) return;
+
+    // SKY-5146 / GH#627: validate word-count BEFORE mutating undo history so a
+    // rejected (partial-numeric) entry is a pure no-op that leaves the cell as-is.
+    let nextWordCount: number | undefined;
+    if (col === 'wordCount') {
+      const parsed = parseWordCount(value);
+      if (parsed === WORD_COUNT_INVALID) return; // reject: keep the previous value
+      nextWordCount = parsed;
+    }
+
     pushUndo();
 
     const payload: Parameters<typeof api.timelineUpdateScene>[0] = { sceneId };
@@ -437,9 +470,8 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
         wordCount: scene.wordCount ?? undefined,
       };
     } else if (col === 'wordCount') {
-      const n = parseInt(value, 10);
       payload.timelineMetadata = {
-        wordCount: Number.isNaN(n) ? undefined : n,
+        wordCount: nextWordCount,
         pov: scene.pov || undefined,
         mood: scene.mood || undefined,
       };
