@@ -309,6 +309,31 @@ describe('installCspHeaders — frame-ancestors enforcement via session header (
   });
 });
 
+// GH-753 / SKY-4776 — IPC sender-frame guards regression (PANEL_FLOAT_DOCK_BACK + PANEL_FLOAT_SET_PIN)
+describe('main.ts IPC sender-frame guards — GH-753 regression', () => {
+  const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
+
+  it('PANEL_FLOAT_DOCK_BACK handler checks isFromTopFrame', () => {
+    // Previously used _event (no frame inspection) — GH-753.
+    const match = mainSrc.match(/PANEL_FLOAT_DOCK_BACK[\s\S]{1,300}isFromTopFrame/);
+    expect(match).not.toBeNull();
+  });
+
+  it('PANEL_FLOAT_SET_PIN handler checks isFromTopFrame', () => {
+    // Previously lacked the frame guard — GH-753.
+    const match = mainSrc.match(/PANEL_FLOAT_SET_PIN[\s\S]{1,300}isFromTopFrame/);
+    expect(match).not.toBeNull();
+  });
+
+  it('no wrapIpcHandler callback uses _event as the IPC event parameter', () => {
+    // _event (prefixed underscore) means the handler never inspects senderFrame
+    // and therefore has no isFromTopFrame guard.  Any new handler that introduces
+    // this pattern must add the frame check and rename the param to event.
+    const unguarded = mainSrc.match(/wrapIpcHandler\([^,]+,\s*(?:async\s*)?\(_event[,)]/g) ?? [];
+    expect(unguarded).toHaveLength(0);
+  });
+});
+
 // GHSA-6v5v-wf23-fmfq — markdown-it DoS vulnerability regression test
 // The vulnerability is quadratic complexity in smartquotes rule via replaceAt operations.
 // Fixed in 14.2.0. This test ensures the fix is in place and the vulnerability doesn't resurface.

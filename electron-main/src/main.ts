@@ -5793,7 +5793,8 @@ function registerFloatingPanelHandlers(): void {
   }));
 
   // Dock-back: called from the floating panel window to return to sidebar.
-  ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, (_event, payload: { panelId: string }) => {
+  ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT_DOCK_BACK, (event, payload: { panelId: string }) => {
+    if (!isFromTopFrame(event)) return;
     const { panelId } = payload ?? {};
     if (!panelId) return;
     const s = floatingPanelWindows.get(panelId);
@@ -5804,6 +5805,7 @@ function registerFloatingPanelHandlers(): void {
 
   // Toggle always-on-top pin.
   ipcMain.handle(IPC_CHANNELS.PANEL_FLOAT_SET_PIN, wrapIpcHandler(IPC_CHANNELS.PANEL_FLOAT_SET_PIN, (event, payload: { panelId: string; alwaysOnTop: boolean }) => {
+    if (!isFromTopFrame(event)) return;
     const { panelId, alwaysOnTop } = payload ?? {};
     if (!panelId) return;
     const s = floatingPanelWindows.get(panelId);
