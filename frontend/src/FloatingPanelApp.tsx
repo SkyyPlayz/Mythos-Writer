@@ -83,13 +83,10 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
 
   // Listen for pin-changed events from main process.
   useEffect(() => {
-    const handler = (_: unknown, data: { panelId: string; alwaysOnTop: boolean }) => {
+    const unsub = window.api.onPanelFloatPinChanged?.((data) => {
       if (data.panelId === panelId) setAlwaysOnTop(data.alwaysOnTop);
-    };
-    (window as unknown as { ipcRenderer?: { on: (ch: string, h: typeof handler) => void; removeListener: (ch: string, h: typeof handler) => void } }).ipcRenderer?.on('panel:float-pin-changed', handler);
-    return () => {
-      (window as unknown as { ipcRenderer?: { removeListener: (ch: string, h: typeof handler) => void } }).ipcRenderer?.removeListener('panel:float-pin-changed', handler);
-    };
+    });
+    return () => unsub?.();
   }, [panelId]);
 
   // SKY-2966: Story navigator callbacks that communicate across windows.

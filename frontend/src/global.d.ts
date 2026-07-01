@@ -1332,6 +1332,7 @@ interface Window {
     panelFloatSetPin?: (panelId: string, alwaysOnTop: boolean) => Promise<void>;
     onPanelFloatClosed?: (callback: (data: { panelId: string; docked: boolean; bounds: { x: number; y: number; width: number; height: number } }) => void) => () => void;
     onPanelFloatBoundsChanged?: (callback: (data: { panelId: string; x: number; y: number; width: number; height: number }) => void) => () => void;
+    onPanelFloatPinChanged?: (callback: (data: { panelId: string; alwaysOnTop: boolean }) => void) => () => void;
 
     // SKY-2011: Continuity Peek — entity matching, search, read
     continuityMatchSelection?: (selectedText: string, notesVaultRoot: string) => Promise<{
