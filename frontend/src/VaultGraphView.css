@@ -122,7 +122,8 @@
   stroke: var(--ln-graph-edge-default);
   stroke-width: 1.5;
   stroke-linecap: round;
-  opacity: 1;
+  opacity: 0.85;
+  pointer-events: none;
   transition: opacity 120ms ease, stroke 120ms ease;
 }
 

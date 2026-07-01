@@ -250,7 +250,7 @@ describe('resolveCrossTabLink', () => {
 
       expect(result.status).toBe('none');
       expect(onNotify).toHaveBeenCalledOnce();
-      expect(onNotify).toHaveBeenCalledWith(expect.stringContaining('GhostNote'), 'warn');
+      expect(onNotify).toHaveBeenCalledWith('No note or scene found for "[[GhostNote]]"', 'warn');
     });
 
     it('does not fire onNotify when the untyped stem resolves successfully', () => {

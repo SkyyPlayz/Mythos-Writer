@@ -804,6 +804,22 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   const depthLabel = depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit);
   const visibleChips = chipsExpanded ? CHIP_DEFS : CHIP_DEFS.slice(0, MAX_VISIBLE_CHIPS);
   const hiddenCount = CHIP_DEFS.length > MAX_VISIBLE_CHIPS ? CHIP_DEFS.length - MAX_VISIBLE_CHIPS : 0;
+  const vaultScopeSelector = (
+    <div className="vgv-scope-selector" role="group" aria-label="Vault scope">
+      {(['notes', 'story', 'both'] as const).map((scope) => (
+        <button
+          key={scope}
+          type="button"
+          className={`vgv-scope-btn${vaultScope === scope ? ' vgv-scope-btn--active' : ''}`}
+          aria-pressed={vaultScope === scope}
+          data-testid={`vault-graph-scope-${scope}`}
+          onClick={() => setVaultScope(scope)}
+        >
+          {scope === 'notes' ? 'Notes' : scope === 'story' ? 'Story' : 'Both'}
+        </button>
+      ))}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -856,30 +872,39 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
   if (!graphData || graphData.nodes.length === 0) {
     return (
-      <div className="vgv-state vgv-state--empty" data-testid="vault-graph-empty">
-        <div className="vgv-empty-dots" aria-hidden="true">
-          <span className="vgv-empty-dot vgv-empty-dot--a" />
-          <span className="vgv-empty-dot vgv-empty-dot--b" />
-          <span className="vgv-empty-dot vgv-empty-dot--c" />
+      <section className="vgv-root" data-testid="vault-graph-view" aria-label="Vault Graph panel">
+        <header className="vgv-toolbar" ref={toolbarRef} tabIndex={-1}>
+          <div className="vgv-title-group">
+            <span className="vgv-title">Vault Graph</span>
+            <span className="vgv-count">0 notes · 0 links</span>
+          </div>
+          {vaultScopeSelector}
+        </header>
+        <div className="vgv-state vgv-state--empty" data-testid="vault-graph-empty">
+          <div className="vgv-empty-dots" aria-hidden="true">
+            <span className="vgv-empty-dot vgv-empty-dot--a" />
+            <span className="vgv-empty-dot vgv-empty-dot--b" />
+            <span className="vgv-empty-dot vgv-empty-dot--c" />
+          </div>
+          <p className="vgv-empty-copy">
+            Your notes haven&apos;t linked up yet. Add <span className="vgv-empty-wikilink">[[wiki-links]]</span> in your notes to see connections appear here.
+          </p>
+          <button
+            type="button"
+            className="vgv-empty-cta"
+            data-testid="vault-graph-open-note-cta"
+            onClick={() => {
+              if (mostRecentNotePath) {
+                onOpenNote?.(mostRecentNotePath);
+              } else {
+                onOpenNote?.('');
+              }
+            }}
+          >
+            Open a note →
+          </button>
         </div>
-        <p className="vgv-empty-copy">
-          Your notes haven&apos;t linked up yet. Add <span className="vgv-empty-wikilink">[[wiki-links]]</span> in your notes to see connections appear here.
-        </p>
-        <button
-          type="button"
-          className="vgv-empty-cta"
-          data-testid="vault-graph-open-note-cta"
-          onClick={() => {
-            if (mostRecentNotePath) {
-              onOpenNote?.(mostRecentNotePath);
-            } else {
-              onOpenNote?.('');
-            }
-          }}
-        >
-          Open a note →
-        </button>
-      </div>
+      </section>
     );
   }
 
@@ -895,20 +920,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           <span className="vgv-title">Vault Graph</span>
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         </div>
-        <div className="vgv-scope-selector" role="group" aria-label="Vault scope">
-          {(['notes', 'story', 'both'] as const).map((scope) => (
-            <button
-              key={scope}
-              type="button"
-              className={`vgv-scope-btn${vaultScope === scope ? ' vgv-scope-btn--active' : ''}`}
-              aria-pressed={vaultScope === scope}
-              data-testid={`vault-graph-scope-${scope}`}
-              onClick={() => setVaultScope(scope)}
-            >
-              {scope === 'notes' ? 'Notes' : scope === 'story' ? 'Story' : 'Both'}
-            </button>
-          ))}
-        </div>
+          {vaultScopeSelector}
         <input
           ref={searchRef}
           type="search"
