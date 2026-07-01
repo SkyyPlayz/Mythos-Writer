@@ -138,10 +138,14 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
     await completeQuickStart(pg);
 
     // Disk: Quick Start creates the default Mythos Vault bundle under the
-    // app userData vault parent. DEFAULT_MYTHOS_VAULT_NAME = 'Mythos Vault'.
-    const storyRoot = path.join(saveParent, 'Mythos Vault');
-    const storyVaultPath = path.join(storyRoot, 'Story Vault');
-    const notesVaultPath = path.join(storyRoot, 'Notes Vault');
+    // app userData vault parent and persists the active Story/Notes pair.
+    const vaultSettings = readVaultSettings(userData);
+    expect(vaultSettings.vaultRoot).toBeTruthy();
+    expect(vaultSettings.notesVaultRoot).toBeTruthy();
+    const storyVaultPath = vaultSettings.vaultRoot!;
+    const notesVaultPath = vaultSettings.notesVaultRoot!;
+    expect(path.dirname(path.dirname(storyVaultPath))).toBe(saveParent);
+    expect(path.dirname(path.dirname(notesVaultPath))).toBe(saveParent);
     expect(fs.existsSync(storyVaultPath)).toBe(true);
     expect(fs.existsSync(notesVaultPath)).toBe(true);
 
@@ -149,9 +153,6 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
     // writable.
     expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
 
-    // vault-settings.json is rewired to the new pair and onboardingComplete=true.
-    const vaultSettings = readVaultSettings(userData);
-    expect(vaultSettings.vaultRoot).toBe(storyVaultPath);
     expect(vaultSettings.notesVaultRoot).toBe(notesVaultPath);
   } finally {
     await app.close().catch(() => {});
@@ -160,11 +161,13 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
 
 test('TC-SKY-906-02: Quick Start avoids clobbering an existing default vault bundle', async () => {
   const saveParent = path.join(userData, 'vaults');
-  // Pre-create 'Mythos Vault' (the default name) with content to force
-  // pickUniqueMythosVaultName to pick 'Mythos Vault 2'.
-  const preexisting = path.join(saveParent, 'Mythos Vault');
-  fs.mkdirSync(preexisting, { recursive: true });
-  fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
+  // Pre-create both historical default names with content to force the
+  // collision-avoidance path without coupling this E2E test to naming churn.
+  const preexistingRoots = ['Mythos Vault', 'My First Vault'].map((name) => path.join(saveParent, name));
+  for (const preexistingRoot of preexistingRoots) {
+    fs.mkdirSync(preexistingRoot, { recursive: true });
+    fs.writeFileSync(path.join(preexistingRoot, 'user-data.md'), '# do not clobber\n', 'utf-8');
+  }
 
   seedAppSettingsNoOnboarding(userData);
   const app = await launchApp(userData, homeOverride);
@@ -172,15 +175,17 @@ test('TC-SKY-906-02: Quick Start avoids clobbering an existing default vault bun
     const pg = await firstWindow(app);
     await completeQuickStart(pg);
 
-    expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    const secondStoryVault = path.join(saveParent, 'Mythos Vault 2', 'Story Vault');
-    const secondNotesVault = path.join(saveParent, 'Mythos Vault 2', 'Notes Vault');
-    expect(fs.existsSync(secondStoryVault)).toBe(true);
-    expect(fs.existsSync(secondNotesVault)).toBe(true);
+    for (const preexistingRoot of preexistingRoots) {
+      expect(fs.readFileSync(path.join(preexistingRoot, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
+    }
 
     const vaultSettings = readVaultSettings(userData);
-    expect(vaultSettings.vaultRoot).toBe(secondStoryVault);
-    expect(vaultSettings.notesVaultRoot).toBe(secondNotesVault);
+    expect(vaultSettings.vaultRoot).toBeTruthy();
+    expect(vaultSettings.notesVaultRoot).toBeTruthy();
+    expect(fs.existsSync(vaultSettings.vaultRoot!)).toBe(true);
+    expect(fs.existsSync(vaultSettings.notesVaultRoot!)).toBe(true);
+    expect(preexistingRoots.some((root) => vaultSettings.vaultRoot === path.join(root, 'Story Vault'))).toBe(false);
+    expect(preexistingRoots.some((root) => vaultSettings.notesVaultRoot === path.join(root, 'Notes Vault'))).toBe(false);
   } finally {
     await app.close().catch(() => {});
   }

@@ -1686,34 +1686,25 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
   it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
     // validateCustomPathNow calls validatePath twice via Promise.all:
     // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
-    mockApi.validatePath = vi.fn()
-      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true })  // existing dir
-      .mockResolvedValueOnce({ exists: false, isEmpty: true, writable: true }); // no manifest
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/MyVault' },
-      });
-      // Advance the 500ms debounce AND drain the resulting Promise.all chain from
-      // validateCustomPathNow in the SAME act() boundary. Splitting into two act()
-      // calls is flaky: the first act() can conclude before the Promise.all
-      // continuation runs its setState, so React misses it and re-renders too late.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
+    mockApi.validatePath = vi.fn(async (path: string) => (
+      path.endsWith('/Story Vault/manifest.json')
+        ? { exists: false, isEmpty: true, writable: true }
+        : { exists: true, isEmpty: false, writable: true }
+    ));
+
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+    );
+    fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
+      target: { value: '/home/user/MyVault' },
+    });
+
+    // Use the real debounce instead of fake timers. Under full-suite/coverage
+    // runs the Promise.all continuation can commit after fake-timer drains,
+    // leaving this button disabled despite validation having resolved.
+    await waitFor(() => expect(screen.getByTestId('custom-location-next')).not.toBeDisabled(), {
+      timeout: 1500,
+    });
   });
 
   it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {

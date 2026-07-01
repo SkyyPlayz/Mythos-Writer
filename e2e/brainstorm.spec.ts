@@ -151,8 +151,10 @@ async function waitUntil(
 }
 
 async function openBrainstormPanel(): Promise<void> {
-  // SKY-3737: Brainstorm is now a dedicated top-level tab (full-screen, facts column visible).
-  await page.getByTestId('app-tab-brainstorm').click();
+  // SKY-3737/SKY-3218: Brainstorm is still a top-level panel, but the v0.3
+  // nav rail can show only Story/Notes. Use the supported Ctrl+3 shortcut
+  // instead of requiring a visible Brainstorm nav item.
+  await page.keyboard.press('Control+3');
   const panel = page.locator('#app-tabpanel-brainstorm');
   await expect(panel).toBeVisible({ timeout: 6_000 });
   await expect(panel.getByRole('button', { name: 'New session' })).toBeVisible();
