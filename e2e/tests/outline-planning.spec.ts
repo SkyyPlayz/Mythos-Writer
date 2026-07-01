@@ -79,6 +79,9 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    // GRS only renders when rightSidebarVisible is explicitly true; scene-outline
+    // panel is in DEFAULT_PANELS (collapsed:true) and openOutlinePanel() expands it.
+    rightSidebarVisible: true,
   };
 
   const vaultSettings = {
