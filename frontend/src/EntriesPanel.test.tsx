@@ -137,19 +137,44 @@ describe('buildPromotedNoteContent', () => {
     expect(content).toContain('My idea');
   });
 
-  it('includes a backlink to the source entry', () => {
+  it('includes a backlink to the source entry (quoted)', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'My Story');
-    expect(content).toContain('sourceEntry: Entries/abc.md');
+    expect(content).toContain("sourceEntry: 'Entries/abc.md'");
   });
 
-  it('includes story title in frontmatter', () => {
+  it('includes story title in frontmatter (quoted)', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'Epic Tale');
-    expect(content).toContain('story: Epic Tale');
+    expect(content).toContain("story: 'Epic Tale'");
   });
 
   it('uses "unknown" when story title is empty', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', '');
-    expect(content).toContain('story: unknown');
+    expect(content).toContain("story: 'unknown'");
+  });
+
+  it('escapes a colon in story title', () => {
+    const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'My Story: A Novel');
+    expect(content).toContain("story: 'My Story: A Novel'");
+    expect(content.split('---')).toHaveLength(3);
+  });
+
+  it('prevents frontmatter injection via newline in storyTitle', () => {
+    const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'Title\n---\nevil: injected');
+    // Exactly one closing delimiter — no extra --- injected into the output
+    expect((content.match(/\n---\n/g) ?? []).length).toBe(1);
+    // evil: must not appear as a standalone YAML key line
+    expect(content).not.toMatch(/^evil:/m);
+  });
+
+  it('prevents frontmatter injection via newline in entryPath', () => {
+    const content = buildPromotedNoteContent('idea', 'Entries/abc.md\n---\nevil: yes', 'Story');
+    expect((content.match(/\n---\n/g) ?? []).length).toBe(1);
+    expect(content).not.toMatch(/^evil:/m);
+  });
+
+  it('escapes single quotes in story title', () => {
+    const content = buildPromotedNoteContent('idea', 'Entries/abc.md', "It's a story");
+    expect(content).toContain("story: 'It''s a story'");
   });
 });
 

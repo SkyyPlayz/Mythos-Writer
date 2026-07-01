@@ -78,6 +78,16 @@ export function buildBrainstormMessages(
   ];
 }
 
+function yamlScalar(value: string): string {
+  // Single-quoted YAML scalar — safe against frontmatter injection.
+  // Internal single quotes are escaped by doubling ('').
+  // Newlines use double-quoted form with \n escape sequences.
+  if (value.includes('\n') || value.includes('\r')) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`;
+  }
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 export function buildPromotedNoteContent(
   body: string,
   entryPath: string,
@@ -87,8 +97,8 @@ export function buildPromotedNoteContent(
     '---',
     'type: note',
     'source: promoted-entry',
-    `sourceEntry: ${entryPath}`,
-    `story: ${storyTitle || 'unknown'}`,
+    `sourceEntry: ${yamlScalar(entryPath)}`,
+    `story: ${yamlScalar(storyTitle || 'unknown')}`,
     '---',
     '',
     body,
