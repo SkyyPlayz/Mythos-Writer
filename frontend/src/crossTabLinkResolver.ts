@@ -23,6 +23,7 @@ export interface CrossTabLinkContext {
   stories: Story[];
   entities: EntityEntry[];
   notePaths?: string[];
+  onNotify?: (message: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
 export interface CrossTabLinkResolution {
@@ -188,9 +189,89 @@ function resolveEntity(typeLabel: string, value: string, entities: EntityEntry[]
   }];
 }
 
+function resolveUntypedStem(rawTarget: string, context: CrossTabLinkContext): CrossTabLinkMatch[] {
+  // Strip [[stem#heading]] anchor and [[stem|alias]] alias before matching.
+  const stem = rawTarget.split('#')[0].split('|')[0].trim();
+  const needle = normalize(stem);
+
+  const matches: CrossTabLinkMatch[] = [];
+  const seenEntityIds = new Set<string>();
+
+  // 1. Entity name / alias exact match (any entity type, case-insensitive).
+  for (const entity of context.entities) {
+    const names = [entity.name, ...(entity.aliases ?? [])].map((n) => normalize(n));
+    if (names.includes(needle) || basenameNoExt(entity.path) === needle) {
+      if (!seenEntityIds.has(entity.id)) {
+        seenEntityIds.add(entity.id);
+        matches.push({
+          kind: 'entity',
+          label: `${ENTITY_TYPE_LABELS[entity.type]}: ${entity.name}`,
+          entityId: entity.id,
+          entityPath: entity.path,
+          entity,
+        });
+      }
+    }
+  }
+
+  // 2. Plain note path stem match — only when no entity matched above.
+  if (matches.length === 0) {
+    for (const notePath of context.notePaths ?? []) {
+      if (basenameNoExt(notePath) === needle) {
+        const id = `note:${notePath}`;
+        if (!seenEntityIds.has(id)) {
+          seenEntityIds.add(id);
+          const name = notePath.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? stem;
+          const entity: EntityEntry = { id, name, type: 'other', path: notePath, createdAt: '', updatedAt: '' };
+          matches.push({
+            kind: 'entity',
+            label: entity.name,
+            entityId: id,
+            entityPath: notePath,
+            entity,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Story scene title or filename stem match (always checked — can produce ambiguity with entity).
+  for (const story of context.stories) {
+    for (const chapter of story.chapters) {
+      for (const scene of chapter.scenes) {
+        if (normalize(scene.title) === needle || basenameNoExt(scene.path) === needle) {
+          matches.push({
+            kind: 'scene',
+            label: `${chapter.title} / ${scene.title}`,
+            storyId: story.id,
+            chapterId: chapter.id,
+            sceneId: scene.id,
+            scene,
+            chapter,
+            story,
+          });
+        }
+      }
+    }
+  }
+
+  return matches;
+}
+
 export function resolveCrossTabLink(rawTarget: string, context: CrossTabLinkContext): CrossTabLinkResolution {
   const typed = parseTypedTarget(rawTarget);
-  if (!typed) return { status: 'none', rawTarget, matches: [] };
+  if (!typed) {
+    const matches = resolveUntypedStem(rawTarget, context);
+    if (matches.length === 0) {
+      context.onNotify?.(`No note found for "[[${rawTarget}]]"`, 'warn');
+      return { status: 'none', rawTarget, matches: [] };
+    }
+    return {
+      status: matches.length === 1 ? 'single' : 'ambiguous',
+      rawTarget,
+      matches,
+    };
+  }
 
   const matches = normalize(typed.type) === 'scene'
     ? resolveScene(typed.value, context.stories)
