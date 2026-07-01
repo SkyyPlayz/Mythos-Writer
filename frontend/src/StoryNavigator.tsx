@@ -190,7 +190,7 @@ export default function StoryNavigator({
             </div>
 
             {expandedStories.has(story.id) &&
-              story.chapters.sort((a, b) => a.order - b.order).map((chapter) => {
+              [...story.chapters].sort((a, b) => a.order - b.order).map((chapter) => {
                 const chapterWordCount = chapter.scenes.reduce(
                   (sum, sc) => sum + (sceneWordCounts.get(sc.id) ?? 0),
                   0,
