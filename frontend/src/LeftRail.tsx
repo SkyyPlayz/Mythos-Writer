@@ -4,8 +4,9 @@ import type { DragSidebar } from './PanelDragContext';
 import './LeftRail.css';
 import './PanelDragContext.css';
 
-/** All panels that can appear in the left sidebar — used for the add-panel picker. */
-const LEFT_PANELS: { id: LeftPanelId; label: string }[] = [
+/** All panels that can appear in the left sidebar — used for the add-panel picker.
+ *  Includes Writing Assistant, Continuity, and Scene Preview moved from the right sidebar (GH #633). */
+const LEFT_PANELS: { id: SidebarPanelId; label: string }[] = [
   { id: 'stories', label: 'Story Navigator' },
   { id: 'entities', label: 'Entity Browser' },
   { id: 'vault', label: 'Vault Browser' },
@@ -13,6 +14,9 @@ const LEFT_PANELS: { id: LeftPanelId; label: string }[] = [
   { id: 'review', label: 'Suggestion Review' },
   { id: 'progress', label: 'Writing Goals' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'writing-assistant', label: 'Writing Assistant' },
+  { id: 'archive-continuity', label: 'Continuity' },
+  { id: 'scene-preview', label: 'Scene Preview' },
 ];
 
 /** All right-sidebar panels (can be dragged into the left rail). */

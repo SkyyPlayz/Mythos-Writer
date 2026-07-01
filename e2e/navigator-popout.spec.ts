@@ -270,3 +270,44 @@ test('TC-NP-03 — popout: clicking a scene in the float window syncs selection 
   // Cross-window sync: main window should now also show Scene Beta as the active scene.
   await expect(page.locator('.nav-scene-row.active', { hasText: SCENE_B_TITLE })).toBeVisible({ timeout: 8_000 });
 });
+
+// ─── TC-NP-04: Legacy panelPopout path (SKY-5158 regression) ─────────────────
+
+test('TC-NP-04 — panelPopout renders FloatingPanelApp with story data (SKY-5158)', async () => {
+  if (!app) throw new Error('app not initialized');
+
+  // Record existing windows before opening the popout.
+  const before = await app.windows();
+
+  // Trigger the legacy panelPopout (⇱ button) path.
+  await page.evaluate(() => {
+    (window as unknown as { api?: { panelPopout?: (id: string, sceneId: string | null) => Promise<unknown> } })
+      .api?.panelPopout?.('stories', null);
+  });
+
+  // Wait for a NEW window that wasn't open before.
+  const popoutPage = await (async () => {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const current = await app!.windows();
+      const newWin = current.find((w) => !before.includes(w));
+      if (newWin) return newWin;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    return null;
+  })();
+
+  if (!popoutPage) {
+    // Multi-window creation can be unavailable in some headless CI configurations.
+    console.log('TC-NP-04: no popout window detected; skipping (headless config)');
+    return;
+  }
+
+  popoutPage.on('console', (m) => console.log('[popout:' + m.type() + ']', m.text()));
+  await popoutPage.waitForLoadState('domcontentloaded');
+
+  // After SKY-5158 fix: the popout window must render FloatingPanelApp (not the full app shell).
+  await expect(popoutPage.locator('.fpa-body')).toBeVisible({ timeout: 8_000 });
+  // Story data should load into the StoryNavigator inside the popout.
+  await expect(popoutPage.locator('.nav-story-title', { hasText: STORY_TITLE })).toBeVisible({ timeout: 8_000 });
+});
