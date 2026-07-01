@@ -1,5 +1,6 @@
 // SKY-10: Legacy single-file-per-chapter migration.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -126,6 +127,23 @@ describe('applyMigrationPlan — execution + reversibility', () => {
     expect(buildMigrationPlans(vaultRoot)).toEqual([]);
   });
 
+  it('rejects an unknown planId (GH#636)', () => {
+    writeLegacyChapter(vaultRoot, storyRel, 'Ch.md', 'prose');
+    expect(() => applyMigrationPlan(vaultRoot, storyRel, crypto.randomUUID())).toThrow(
+      /unknown or stale/i,
+    );
+  });
+
+  it('rejects a stale plan when the file set expands after dry-run (GH#636)', () => {
+    writeLegacyChapter(vaultRoot, storyRel, 'Ch1.md', 'prose1');
+    const [plan] = buildMigrationPlans(vaultRoot);
+    // Add a new legacy file after the dry-run, expanding the detected set.
+    writeLegacyChapter(vaultRoot, storyRel, 'Ch2.md', 'prose2');
+    expect(() => applyMigrationPlan(vaultRoot, plan.storyPath, plan.planId)).toThrow(
+      /stale/i,
+    );
+  });
+
   it('handles a chapter file without headings as a single Scene One', () => {
     writeLegacyChapter(
       vaultRoot,
@@ -140,5 +158,31 @@ describe('applyMigrationPlan — execution + reversibility', () => {
     expect(files).toContain('chapter.md');
     const sceneFiles = files.filter((f) => f !== 'chapter.md');
     expect(sceneFiles).toHaveLength(1);
+  });
+});
+
+describe('security — storyPathHint containment (GH#634)', () => {
+  let vaultRoot: string;
+  const storyRel = path.posix.join('Manuscript', 'A Story');
+
+  beforeEach(() => {
+    vaultRoot = seedVault();
+  });
+
+  afterEach(() => {
+    fs.rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  it('rejects a "../.." traversal hint', () => {
+    expect(() => buildMigrationPlans(vaultRoot, '../..')).toThrow(/path traversal denied/i);
+  });
+
+  it('rejects an absolute path hint', () => {
+    expect(() => buildMigrationPlans(vaultRoot, '/etc/passwd')).toThrow(/path traversal denied/i);
+  });
+
+  it('accepts a valid vault-relative Manuscript/<story> hint', () => {
+    writeLegacyChapter(vaultRoot, storyRel, 'Ch.md', 'prose');
+    expect(() => buildMigrationPlans(vaultRoot, storyRel)).not.toThrow();
   });
 });
