@@ -445,6 +445,25 @@ async function openAssistantTab(page: Page): Promise<void> {
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
+function assistantPrompt(page: Page) {
+  return page.getByRole('textbox', { name: 'Writing assistant prompt' });
+}
+
+async function fillAssistantPrompt(page: Page, text: string) {
+  const input = assistantPrompt(page);
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await expect(input).toBeEnabled({ timeout: 5_000 });
+  await input.fill(text);
+  await expect(input).toHaveValue(text);
+  return input;
+}
+
+async function submitAssistantPrompt(page: Page, text: string) {
+  const input = await fillAssistantPrompt(page, text);
+  await input.press('Enter');
+  await expect(page.locator('.wa-user-bubble', { hasText: text }).last()).toBeVisible({ timeout: 3_000 });
+}
+
 // ─── Module-level state ───────────────────────────────────────────────────────
 
 let userData: string;
@@ -649,8 +668,10 @@ test('TC-WA-09: Enter submits; empty prompt is no-op', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
-  const input = page.locator('.writing-assistant-input');
+  const input = assistantPrompt(page);
   const askBtn = page.getByRole('button', { name: 'Ask' });
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await expect(input).toBeEnabled({ timeout: 5_000 });
 
   // Empty prompt: Ask button must be disabled.
   await input.fill('');
@@ -688,9 +709,7 @@ test('TC-WA-10: streaming cursor appears during response streaming', async () =>
   await installIpcMocks(app!, { chatDelayMs: 200 });
   await openWritingAssistantWithScene(page);
 
-  const input = page.locator('.writing-assistant-input');
-  await input.fill('Give me pacing advice.');
-  await input.press('Enter');
+  await submitAssistantPrompt(page, 'Give me pacing advice.');
 
   // Cursor must be visible during streaming.
   await expect(page.locator('.wa-cursor')).toBeVisible({ timeout: 6_000 });
@@ -717,9 +736,7 @@ test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel
   await installIpcMocks(app!, { chatDelayMs: 500 });
   await openWritingAssistantWithScene(page);
 
-  const input = page.locator('.writing-assistant-input');
-  await input.fill('Describe the mood of this scene.');
-  await input.press('Enter');
+  await submitAssistantPrompt(page, 'Describe the mood of this scene.');
 
   // During streaming: Cancel must be visible, Ask must be gone.
   const cancelBtn = page.locator('.wa-btn-cancel-inline');
@@ -773,8 +790,7 @@ test('TC-WA-17: "beta read" prompt triggers Beta-Read scan', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
-  const input = page.locator('.writing-assistant-input');
-  await input.fill('beta read this scene');
+  const input = await fillAssistantPrompt(page, 'beta read this scene');
   await input.press('Enter');
 
   // Beta-Read panel must appear with the mock comments.
@@ -902,9 +918,7 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await openWritingAssistantWithScene(page);
 
   // Send a prompt to get a suggestion card with a Hear button.
-  const input = page.locator('.writing-assistant-input');
-  await input.fill('Rate this opening paragraph.');
-  await input.press('Enter');
+  await submitAssistantPrompt(page, 'Rate this opening paragraph.');
 
   // Wait for the Hear button to appear on the completed response card.
   const hearBtn = page.locator('.wa-hear-btn').first();
@@ -932,18 +946,14 @@ test('TC-WA-24: starting second Hear cancels first card playback', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
-  const input = page.locator('.writing-assistant-input');
-
   // Send two messages to produce two suggestion cards.
-  await input.fill('What is the mood of this scene?');
-  await input.press('Enter');
+  await submitAssistantPrompt(page, 'What is the mood of this scene?');
   await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
     MOCK_CHAT_RESPONSE,
     { timeout: 12_000 },
   );
 
-  await input.fill('Suggest a title for this scene.');
-  await input.press('Enter');
+  await submitAssistantPrompt(page, 'Suggest a title for this scene.');
   await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
     MOCK_CHAT_RESPONSE,
     { timeout: 12_000 },

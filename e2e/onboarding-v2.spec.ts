@@ -58,7 +58,7 @@ async function launchFreshApp(
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const page = await app.firstWindow();
+  const page = await app.firstWindow({ timeout: 60_000 });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
