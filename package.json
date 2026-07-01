@@ -60,6 +60,7 @@
     "test:e2e:continuity-peek": "playwright test e2e/continuity-peek.spec.ts --reporter=list",
     "test:e2e:scene-crafter": "playwright test e2e/tests/sceneCrafter.spec.ts --reporter=list",
     "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list",
+    "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list",
     "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh"
