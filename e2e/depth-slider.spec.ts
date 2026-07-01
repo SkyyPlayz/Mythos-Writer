@@ -254,3 +254,150 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     await expect(page.locator('.depth-context-label')).toContainText('Scene One', { timeout: 4_000 });
   });
 });
+
+// ─── Cross-chapter navigation (SKY-5156 / GH #631) ──────────────────────────
+//
+//   TC-DS-XC-01  Next at last scene of a chapter enters the next chapter
+//   TC-DS-XC-02  Prev at first scene of a chapter returns to the previous chapter
+//   TC-DS-XC-03  Prev disabled at the very first scene of the story
+//   TC-DS-XC-04  Next disabled at the very last scene of the story
+//
+// Regression guard for the depth→editor wiring: at scene depth the header
+// arrows step across chapter boundaries (bounded at the story's first/last
+// scene), not just within the current chapter.
+
+const XC_STORY_ID = 'xc-story-01';
+const XC_CH1_ID = 'xc-ch-01';
+const XC_CH2_ID = 'xc-ch-02';
+const XC_SCENE_A = 'xc-sc-a';
+const XC_SCENE_B = 'xc-sc-b';
+const XC_SCENE_C = 'xc-sc-c';
+
+function seedCrossChapterVault(vaultDir: string): void {
+  const ch1Dir = path.join(vaultDir, 'Manuscript', XC_STORY_ID, XC_CH1_ID);
+  const ch2Dir = path.join(vaultDir, 'Manuscript', XC_STORY_ID, XC_CH2_ID);
+  fs.mkdirSync(ch1Dir, { recursive: true });
+  fs.mkdirSync(ch2Dir, { recursive: true });
+
+  fs.writeFileSync(path.join(ch1Dir, `${XC_SCENE_A}.md`), makeSceneContent(XC_SCENE_A, 'Scene A', 0));
+  fs.writeFileSync(path.join(ch1Dir, `${XC_SCENE_B}.md`), makeSceneContent(XC_SCENE_B, 'Scene B', 1));
+  fs.writeFileSync(path.join(ch2Dir, `${XC_SCENE_C}.md`), makeSceneContent(XC_SCENE_C, 'Scene C', 0));
+
+  const now = new Date(Date.now() - 5_000).toISOString();
+  const scene = (id: string, title: string, chId: string, order: number) => ({
+    id,
+    title,
+    path: `Manuscript/${XC_STORY_ID}/${chId}/${id}.md`,
+    order,
+    draftState: 'in-progress',
+    blocks: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  const manifest = {
+    schemaVersion: 1,
+    version: '2.0.0',
+    vaultRoot: vaultDir,
+    stories: [
+      {
+        id: XC_STORY_ID,
+        title: 'Cross Chapter Story',
+        createdAt: now,
+        updatedAt: now,
+        chapters: [
+          {
+            id: XC_CH1_ID,
+            title: 'Chapter One',
+            order: 0,
+            path: `Manuscript/${XC_STORY_ID}/${XC_CH1_ID}`,
+            createdAt: now,
+            updatedAt: now,
+            scenes: [scene(XC_SCENE_A, 'Scene A', XC_CH1_ID, 0), scene(XC_SCENE_B, 'Scene B', XC_CH1_ID, 1)],
+          },
+          {
+            id: XC_CH2_ID,
+            title: 'Chapter Two',
+            order: 1,
+            path: `Manuscript/${XC_STORY_ID}/${XC_CH2_ID}`,
+            createdAt: now,
+            updatedAt: now,
+            scenes: [scene(XC_SCENE_C, 'Scene C', XC_CH2_ID, 0)],
+          },
+        ],
+      },
+    ],
+    scenes: [],
+    entities: [],
+    suggestions: [],
+    chapters: [],
+    provenance: {},
+    boardReferences: [],
+  };
+  fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+}
+
+test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
+  let userData: string;
+  let vaultDir: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  const depthSlider = () => page.getByTestId('depth-slider');
+  const nextBtn = () => depthSlider().getByRole('button', { name: /next/i });
+  const prevBtn = () => depthSlider().getByRole('button', { name: /previous/i });
+  const contextLabel = () => page.locator('.depth-context-label');
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-xc-'));
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-xc-vault-'));
+    seedCrossChapterVault(vaultDir);
+    seedUserData(userData, vaultDir);
+    app = await launchApp(userData);
+    page = await app.firstWindow();
+    page.on('dialog', (d) => d.dismiss().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
+    // Select Scene A (first scene of the story)
+    const sceneA = page.locator('.nav-scene-row').first();
+    await expect(sceneA).toBeVisible({ timeout: 10_000 });
+    await sceneA.click();
+    await expect(depthSlider()).toBeVisible({ timeout: 6_000 });
+    await expect(contextLabel()).toContainText('Scene A', { timeout: 4_000 });
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test('TC-DS-XC-03: Prev disabled at the very first scene of the story', async () => {
+    await expect(prevBtn()).toBeDisabled({ timeout: 4_000 });
+    await expect(nextBtn()).toBeEnabled({ timeout: 4_000 });
+  });
+
+  test('TC-DS-XC-01: Next at the last scene of a chapter enters the next chapter', async () => {
+    // Scene A → Scene B (within Chapter One)
+    await nextBtn().click();
+    await expect(contextLabel()).toContainText('Scene B', { timeout: 4_000 });
+    // Scene B is the last scene of Chapter One → Next crosses into Chapter Two
+    await nextBtn().click();
+    await expect(contextLabel()).toContainText('Chapter Two', { timeout: 4_000 });
+    await expect(contextLabel()).toContainText('Scene C', { timeout: 4_000 });
+    // Still rendering the scene editor, not a chapter/book view
+    await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
+  });
+
+  test('TC-DS-XC-04: Next disabled at the very last scene of the story', async () => {
+    await expect(nextBtn()).toBeDisabled({ timeout: 4_000 });
+    await expect(prevBtn()).toBeEnabled({ timeout: 4_000 });
+  });
+
+  test('TC-DS-XC-02: Prev at the first scene of a chapter returns to the previous chapter', async () => {
+    // From Scene C (first + only scene of Chapter Two) → back into Chapter One's Scene B
+    await prevBtn().click();
+    await expect(contextLabel()).toContainText('Scene B', { timeout: 4_000 });
+    await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
+  });
+});
