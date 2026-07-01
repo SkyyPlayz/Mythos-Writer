@@ -139,17 +139,46 @@ describe('buildPromotedNoteContent', () => {
 
   it('includes a backlink to the source entry', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'My Story');
-    expect(content).toContain('sourceEntry: Entries/abc.md');
+    expect(content).toContain('sourceEntry: "Entries/abc.md"');
   });
 
   it('includes story title in frontmatter', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', 'Epic Tale');
-    expect(content).toContain('story: Epic Tale');
+    expect(content).toContain('story: "Epic Tale"');
   });
 
   it('uses "unknown" when story title is empty', () => {
     const content = buildPromotedNoteContent('idea', 'Entries/abc.md', '');
-    expect(content).toContain('story: unknown');
+    expect(content).toContain('story: "unknown"');
+  });
+
+  it('escapes colon in story title — prevents YAML key injection', () => {
+    const content = buildPromotedNoteContent('body', 'path.md', 'Title: Injected');
+    const lines = content.split('\n');
+    // Colon must not create a new YAML key outside the quoted scalar
+    const extraKeys = lines.filter((l) => l.startsWith('Injected:'));
+    expect(extraKeys).toHaveLength(0);
+    expect(content).toContain('story: "Title: Injected"');
+  });
+
+  it('escapes newline in story title — prevents YAML line-break injection', () => {
+    const content = buildPromotedNoteContent('body', 'path.md', 'Normal\ntype: injected');
+    const lines = content.split('\n');
+    const injectedLines = lines.filter((l) => l.startsWith('type: injected'));
+    expect(injectedLines).toHaveLength(0);
+    expect(content).toContain('"Normal\\ntype: injected"');
+  });
+
+  it('escapes frontmatter fence in entryPath — prevents document-boundary injection', () => {
+    const content = buildPromotedNoteContent('body', '---\ntype: injected\n---', 'Story');
+    const typeLines = content.split('\n').filter((l) => l === 'type: injected');
+    expect(typeLines).toHaveLength(0);
+    expect(content).toContain('sourceEntry: "---\\ntype: injected\\n---"');
+  });
+
+  it('escapes double-quote in entryPath', () => {
+    const content = buildPromotedNoteContent('body', 'path"with"quotes.md', 'Story');
+    expect(content).toContain('sourceEntry: "path\\"with\\"quotes.md"');
   });
 });
 
