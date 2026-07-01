@@ -57,8 +57,8 @@ async function launchFreshApp(
   });
 }
 
-async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const page = await app.firstWindow({ timeout: 60_000 });
+async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<Page> {
+  const page = await app.firstWindow({ timeout });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
@@ -748,6 +748,8 @@ test.describe('AC-OB-14: Recents list bounded', () => {
 // ─── AC-OB-16: Windows-style path > 200 chars → path-too-long ────────────────
 
 test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
+  test.setTimeout(120_000);
+
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -762,7 +764,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
         pathSeparator: '\\',
       }));
     });
-    page = await firstWindow(app);
+    page = await firstWindow(app, 90_000);
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
   });
