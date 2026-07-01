@@ -16,6 +16,7 @@ import {
   sceneOpacity,
   stepFocusedScene,
 } from './timelineFilters';
+import { parseStrictInt } from './utils/parseStrictInt';
 
 // ─── Display types ───
 

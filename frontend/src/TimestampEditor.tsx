@@ -3,6 +3,7 @@
 // Rendered inside or beside the BlockDetail popover when "Edit timestamp" is clicked.
 // Calls onConfirm(day, time); the parent supplies the sceneId closure.
 import { useState, useCallback, useId } from 'react';
+import { parseStrictInt } from './utils/parseStrictInt';
 import './TimestampEditor.css';
 
 type StoryTimeOfDay =
@@ -81,8 +82,8 @@ export default function TimestampEditor({
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setInputStr(e.target.value);
-      const parsed = parseInt(e.target.value, 10);
-      if (!Number.isNaN(parsed)) {
+      const parsed = parseStrictInt(e.target.value);
+      if (parsed !== null) {
         setDay(clampDay(parsed, safeMax));
       }
     },
@@ -90,8 +91,8 @@ export default function TimestampEditor({
   );
 
   const handleInputBlur = useCallback(() => {
-    const parsed = parseInt(inputStr, 10);
-    const clamped = clampDay(Number.isNaN(parsed) ? 1 : parsed, safeMax);
+    const parsed = parseStrictInt(inputStr);
+    const clamped = clampDay(parsed === null ? 1 : parsed, safeMax);
     setDay(clamped);
     setInputStr(String(clamped));
   }, [inputStr, safeMax]);
@@ -106,8 +107,8 @@ export default function TimestampEditor({
 
   const doConfirm = useCallback(async () => {
     if (pending) return;
-    const parsed = parseInt(inputStr, 10);
-    const finalDay = clampDay(Number.isNaN(parsed) ? 1 : parsed, safeMax);
+    const parsed = parseStrictInt(inputStr);
+    const finalDay = clampDay(parsed === null ? 1 : parsed, safeMax);
     if (finalDay < 1 || finalDay > safeMax) {
       setError(`Day must be between 1 and ${safeMax}.`);
       return;
