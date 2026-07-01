@@ -638,7 +638,7 @@ export default function OutlinePlanningPanel({ story, onSelectScene }: Props) {
   const flat = flattenVisible(nodes, collapsed);
 
   return (
-    <div className="opl-panel" data-testid="opl-panel" aria-label="Outline planning panel">
+    <div className="opl-panel outline-planning-panel" data-testid="outline-planning-panel" aria-label="Outline planning panel">
       <div className="opl-header">
         <span className="opl-header-title">Outline</span>
         <button

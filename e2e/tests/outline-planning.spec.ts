@@ -133,6 +133,15 @@ async function openVaultTab(pg: Page): Promise<void> {
   await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
 }
 
+async function openOutlinePanel(pg: Page): Promise<void> {
+  const panel = pg.locator('[data-panel-id="scene-outline"]');
+  const isCollapsed = await panel.evaluate((el) => el.classList.contains('grs-panel--collapsed')).catch(() => true);
+  if (isCollapsed) {
+    await panel.locator('.grs-panel-header').click();
+  }
+  await expect(pg.locator('[data-testid="outline-planning-panel"]')).toBeVisible({ timeout: 8_000 });
+}
+
 async function createStoryWithScenes(
   page: Page,
   storyTitle: string,
@@ -228,6 +237,8 @@ test.beforeAll(async () => {
 
   // Create story with 2 scenes for the test suite
   storyId = await createStoryWithScenes(page, STORY_TITLE, CHAPTER_TITLE, SCENE_TITLE, SCENE_TITLE_2);
+  // Expand the Outline panel once for all tests
+  await openOutlinePanel(page);
 });
 
 test.afterAll(async () => {
@@ -240,32 +251,27 @@ test.afterAll(async () => {
 // ─── AC-OPL-QA-01: Empty state ────────────────────────────────────────────────
 
 test('AC-OPL-QA-01: Outline tab shows empty state when no outline yet', async () => {
-  // Navigate to Outline tab (assuming it exists in the scene editor)
-  const outlineTab = page.locator('button:has-text("Outline")');
-  if (await outlineTab.isVisible().catch(() => false)) {
-    await outlineTab.click();
-  }
+  await openOutlinePanel(page);
 
-  // Check for empty state text
-  const emptyState = page.locator('text=/No outline yet|Create your first outline node/i');
-  await expect(emptyState).toBeVisible({ timeout: 6_000 }).catch(async () => {
-    // Fallback: check if panel exists and is empty
-    const outlinePanel = page.locator('[data-testid="outline-planning-panel"], .outline-planning-panel');
+  // Check for empty state text or the panel itself
+  const emptyState = page.locator('[data-testid="opl-empty-state"]');
+  const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
+  const panelVisible = await outlinePanel.isVisible({ timeout: 6_000 }).catch(() => false);
+  if (panelVisible) {
+    // Panel is visible — either empty state or nodes list is present, both are valid
     await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
-  });
+  } else {
+    await expect(emptyState).toBeVisible({ timeout: 6_000 });
+  }
 });
 
 // ─── AC-OPL-QA-02: First node creation and persistence ──────────────────────
 
 test('AC-OPL-QA-02: Create first outline node, navigate away and back, node persists', async () => {
-  // Click on outline tab to ensure we're in the right place
-  const outlineTab = page.locator('button:has-text("Outline")');
-  if (await outlineTab.isVisible().catch(() => false)) {
-    await outlineTab.click();
-  }
+  await openOutlinePanel(page);
 
   // Wait for outline panel
-  const outlinePanel = page.locator('[data-testid="outline-planning-panel"], .outline-planning-panel');
+  const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
   await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
 
   // Click in the outline area to create first node or ensure focus
@@ -301,11 +307,7 @@ test('AC-OPL-QA-02: Create first outline node, navigate away and back, node pers
 // ─── AC-OPL-QA-03: Add sibling with Enter ────────────────────────────────────
 
 test('AC-OPL-QA-03: Press Enter to create sibling node below', async () => {
-  // Ensure we're in outline tab
-  const outlineTab = page.locator('button:has-text("Outline")');
-  if (await outlineTab.isVisible().catch(() => false)) {
-    await outlineTab.click();
-  }
+  await openOutlinePanel(page);
 
   // Get first node input and press Enter
   const firstInput = page.locator('.opl-title-input').first();
@@ -474,13 +476,10 @@ test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Navigate back to outline tab
-  const outlineTab = page.locator('button:has-text("Outline")');
-  if (await outlineTab.isVisible().catch(() => false)) {
-    await outlineTab.click();
-  }
+  await openOutlinePanel(page);
 
   // Wait for outline panel to load
-  const outlinePanel = page.locator('[data-testid="outline-planning-panel"], .outline-planning-panel');
+  const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
   await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
 
   // Verify nodes are rendered
