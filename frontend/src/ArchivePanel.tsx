@@ -85,6 +85,7 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [manualScanning, setManualScanning] = useState(false);
   const [scanStatus, setScanStatus] = useState('');
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -102,14 +103,17 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
         const parsed = rows.map(parseItem).filter(Boolean) as ArchiveItem[];
         setItems(parsed);
         setIsLive(true);
+        setLoadError('');
       } else if (!isCancelled()) {
         setItems(MOCK_ITEMS);
         setIsLive(false);
+        setLoadError('');
       }
     } catch {
       if (!isCancelled()) {
-        setItems(MOCK_ITEMS);
-        setIsLive(false);
+        setItems([]);
+        setIsLive(true);
+        setLoadError("Couldn't load archive suggestions. Try Scan now.");
       }
     }
   }, []);
@@ -243,6 +247,12 @@ export default function ArchivePanel({ scene, onJumpToText, onInsertWikiLink, en
       {!isLive && (
         <div className="ap-mock-banner" role="note">
           Preview mode — live API not yet connected.
+        </div>
+      )}
+
+      {loadError && (
+        <div className="ap-error" role="alert">
+          {loadError}
         </div>
       )}
 

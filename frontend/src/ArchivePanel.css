@@ -23,6 +23,15 @@
   padding: 5px 8px;
 }
 
+.ap-error {
+  font-size: 11px;
+  color: var(--state-danger);
+  background: color-mix(in srgb, var(--state-danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--state-danger) 40%, transparent);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
 .ap-no-scene {
   font-size: 12px;
   color: var(--text-muted);

@@ -138,6 +138,15 @@ describe('ArchivePanel — card render', () => {
     expect(screen.getByText('No wiki-link suggestions.')).toBeInTheDocument();
   });
 
+  it('shows live archive items without preview banner when suggestionsList succeeds', async () => {
+    render(<ArchivePanel {...defaultProps} />);
+
+    await waitFor(() =>
+      expect(screen.getByText('The Foundry appears here but was destroyed in chapter 1.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
   it('falls back to mock data when suggestionsList is not on the API', async () => {
     setApi({ suggestionsList: undefined });
     render(<ArchivePanel {...defaultProps} />);
@@ -145,6 +154,20 @@ describe('ArchivePanel — card render', () => {
       expect(screen.getByRole('note')).toHaveTextContent('Preview mode'),
     );
     expect(screen.getAllByRole('article').length).toBeGreaterThan(0);
+  });
+
+  it('shows an error and no mock cards when live suggestionsList rejects', async () => {
+    mockSuggestionsList.mockRejectedValue(new Error('archive unavailable'));
+
+    render(<ArchivePanel {...defaultProps} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't load archive suggestions. Try Scan now.",
+    );
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(screen.queryByText('The Foundry appears in this scene but was destroyed in chapter 1.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Detected reference to a known entity — add a wiki-link.')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('article')).toHaveLength(0);
   });
 });
 
