@@ -69,6 +69,9 @@ import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
+import SceneNotesPanel from './SceneNotesPanel';
+import ScenePropertiesPanel from './ScenePropertiesPanel';
+import OutlinePlanningPanel from './OutlinePlanningPanel';
 import StoryTimeline from './StoryTimeline';
 import AeonLaneView from './AeonLaneView';
 import WindowChrome from './components/ui/WindowChrome';
@@ -2985,6 +2988,27 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             story={selectedStory}
           />
         );
+      case 'scene-notes':
+        return <SceneNotesPanel scene={activeSceneForSidebar} />;
+      case 'scene-properties':
+        return (
+          <ScenePropertiesPanel
+            scene={activeSceneForSidebar}
+            chapter={usePane2SidebarContext ? pane2Chapter : selectedChapter}
+            story={usePane2SidebarContext ? pane2Story : selectedStory}
+            currentContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
+            onDraftRestore={handleSceneRestore}
+          />
+        );
+      case 'scene-outline':
+        return (
+          <OutlinePlanningPanel
+            story={selectedStory}
+            onSelectScene={(sc, ch) => {
+              if (selectedStory) { handleSelectScene(sc, ch, selectedStory); setViewDepth('scene'); }
+            }}
+          />
+        );
       default:
         return null;
     }
@@ -2997,6 +3021,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
+    pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
