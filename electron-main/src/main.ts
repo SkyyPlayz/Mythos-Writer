@@ -203,6 +203,7 @@ import {
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
+import { isUnderRoot } from './pathSecurity.js';
 import {
   defaultMythosVaultsParentPath,
   defaultNotesVaultRootPath,
@@ -4785,8 +4786,10 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.DAILY_NOTE_OPEN_TODAY]: (): import('./ipc.js').DailyNoteOpenTodayResponse => {
     const settings = loadAppSettings();
     const jm = settings.journalMode;
-    const noteFolder = jm?.noteFolder ?? 'Daily Notes';
     const notesRoot = getNotesVaultRoot();
+    // Validate noteFolder against the notes vault root; fall back to default on violation.
+    const rawFolder = jm?.noteFolder ?? 'Daily Notes';
+    const noteFolder = isUnderRoot(notesRoot, rawFolder) ? rawFolder : 'Daily Notes';
     ensureNotesVaultDir();
 
     // Today in local time YYYY-MM-DD using UTC-noon trick avoids DST edge issues
@@ -4816,8 +4819,10 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.DAILY_NOTE_GET_STREAK]: (): import('./ipc.js').DailyNoteGetStreakResponse => {
     const settings = loadAppSettings();
-    const noteFolder = settings.journalMode?.noteFolder ?? 'Daily Notes';
     const notesRoot = getNotesVaultRoot();
+    // Validate noteFolder against the notes vault root; fall back to default on violation.
+    const rawFolder = settings.journalMode?.noteFolder ?? 'Daily Notes';
+    const noteFolder = isUnderRoot(notesRoot, rawFolder) ? rawFolder : 'Daily Notes';
     const absFolder = path.join(notesRoot, noteFolder);
 
     const now = new Date();

@@ -5,6 +5,7 @@ import path from 'path';
 import { SCHEMA_VERSION } from './manifest.js';
 import { parseFrontmatter, defaultManifest, reindexVault, writeManifest, CHAPTER_META_FILENAME } from './vault.js';
 import { reindexEntities } from './entities.js';
+import { isUnderRoot } from './pathSecurity.js';
 import type { Manifest, VaultIntegrityReport, VaultRebuildManifestResponse } from './ipc.js';
 
 /**
@@ -70,7 +71,12 @@ export function checkIntegrity(manifest: Manifest, vaultRoot: string): VaultInte
   const corruptedEntries: string[] = [];
 
   for (const { id, relPath } of manifestEntries) {
-    const absPath = path.isAbsolute(relPath) ? relPath : path.join(vaultRoot, relPath);
+    // Reject absolute paths and ../  traversal — report as corrupted rather than reading them.
+    if (!isUnderRoot(vaultRoot, relPath)) {
+      corruptedEntries.push(id);
+      continue;
+    }
+    const absPath = path.resolve(vaultRoot, relPath);
     if (!fs.existsSync(absPath)) {
       orphanedManifestEntries.push(id);
       continue;

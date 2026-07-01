@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { EventEmitter } from 'events';
+import { isUnderRoot } from './pathSecurity.js';
 
 /** Emits 'snapshot-saved' (payload: SceneSnapshot) after each successful write. */
 export const snapshotEvents = new EventEmitter();
@@ -143,10 +144,14 @@ export function deleteAllSnapshotsVault(vaultRoot: string): number {
   if (!fs.existsSync(snapshotsRoot)) return 0;
   let total = 0;
   for (const entry of fs.readdirSync(snapshotsRoot)) {
+    // Use lstatSync (not statSync) so symlinks are not followed.
     const sceneDir = path.join(snapshotsRoot, entry);
     try {
-      if (!fs.statSync(sceneDir).isDirectory()) continue;
+      const lstat = fs.lstatSync(sceneDir);
+      if (lstat.isSymbolicLink() || !lstat.isDirectory()) continue;
     } catch { continue; }
+    // Defense in depth: skip any entry that somehow resolves outside snapshotsRoot.
+    if (!isUnderRoot(snapshotsRoot, entry)) continue;
     for (const f of fs.readdirSync(sceneDir).filter((f) => f.endsWith('.json'))) {
       try { fs.unlinkSync(path.join(sceneDir, f)); total++; } catch { /* ignore */ }
     }
