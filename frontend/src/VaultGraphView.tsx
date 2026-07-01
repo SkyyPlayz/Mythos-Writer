@@ -29,11 +29,13 @@ const GRAPH_CATEGORIES = [
   'history',
   'systems',
   'items',
+  'scenes',
   'misc',
   'default',
 ] as const;
 
 type GraphCategory = (typeof GRAPH_CATEGORIES)[number];
+type VaultGraphScope = 'notes' | 'story' | 'both';
 
 const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   characters: 'Characters',
@@ -42,10 +44,10 @@ const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   history: 'History',
   systems: 'Systems',
   items: 'Items',
+  scenes: 'Scenes',
   misc: 'Misc',
   default: 'Default',
 };
-
 // Ordered chip list per spec (bottom toolbar)
 const CHIP_DEFS: { key: GraphCategory; label: string }[] = [
   { key: 'characters', label: 'Characters' },
@@ -54,9 +56,9 @@ const CHIP_DEFS: { key: GraphCategory; label: string }[] = [
   { key: 'history', label: 'History' },
   { key: 'systems', label: 'Systems' },
   { key: 'items', label: 'Items' },
+  { key: 'scenes', label: 'Scenes' },
   { key: 'misc', label: 'Misc' },
 ];
-
 const ALL_CHIP_KEYS = new Set<GraphCategory>(CHIP_DEFS.map((c) => c.key));
 
 export interface GraphNode {
@@ -64,6 +66,10 @@ export interface GraphNode {
   label: string;
   path: string;
   category?: string;
+  vault?: 'notes' | 'story';
+  storyId?: string;
+  chapterId?: string;
+  sceneId?: string;
   degree?: number;
   folder?: string;
   tags?: string[];
@@ -73,6 +79,7 @@ export interface GraphEdge {
   source: string;
   target: string;
   weight?: number;
+  crossVault?: boolean;
 }
 
 export interface VaultGraphData {
@@ -104,7 +111,9 @@ const SKELETON_EDGES: Array<[number, number]> = [
 
 interface Props {
   onOpenNote?: (path: string) => void;
+  onOpenScene?: (storyId: string, chapterId: string, sceneId: string) => void;
   mostRecentNotePath?: string;
+  initialVaultScope?: VaultGraphScope;
 }
 
 function isGraphCategory(value: string): value is GraphCategory {
@@ -122,8 +131,8 @@ function categoryFromFolder(folder?: string): GraphCategory {
   if (normalized) return 'misc';
   return 'default';
 }
-
 function nodeCategory(node: GraphNode): GraphCategory {
+  if (node.vault === 'story') return 'scenes';
   const normalized = (node.category ?? '').trim().toLowerCase().replace(/\s+/g, '-');
   if (isGraphCategory(normalized)) return normalized;
   return categoryFromFolder(node.folder);
@@ -131,6 +140,16 @@ function nodeCategory(node: GraphNode): GraphCategory {
 
 function nodeDegree(node: GraphNode, neighbours: Map<string, Set<string>>): number {
   return node.degree ?? neighbours.get(node.id)?.size ?? 0;
+}
+
+function graphNodeFillToken(category: GraphCategory): string {
+  if (category === 'scenes') return 'var(--ln-graph-node-scenes, var(--ln-graph-node-highlight))';
+  return `var(--ln-graph-node-${category})`;
+}
+
+function graphNodeStrokeToken(category: GraphCategory): string {
+  if (category === 'scenes') return 'var(--ln-graph-border-scenes, var(--ln-graph-border-highlight))';
+  return `var(--ln-graph-border-${category})`;
 }
 
 export function computeNodeRadius(degree: number): number {
@@ -437,7 +456,8 @@ function isNodeInViewport(
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props) {
+export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultScope = 'notes', mostRecentNotePath }: Props) {
+  const [vaultScope, setVaultScope] = useState<VaultGraphScope>(initialVaultScope);
   const [graphData, setGraphData] = useState<VaultGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSpinner, setShowSpinner] = useState(false);
@@ -459,11 +479,16 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
   const [showAll, setShowAll] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasLoadedGraphRef = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const isInitialLoad = !hasLoadedGraphRef.current;
 
+    setLoading(isInitialLoad);
+    setShowSpinner(false);
+    setError(null);
     spinnerTimerRef.current = setTimeout(() => {
       if (!cancelled) setShowSpinner(true);
     }, LOADING_SPINNER_DELAY_MS);
@@ -476,11 +501,19 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
           throw new Error('Vault graph IPC handlers are not available.');
         }
 
-        const [nodeResponse, edgeResponse] = await Promise.all([nodesHandler(), edgesHandler()]);
+        const [nodeResponse, edgeResponse] = await Promise.all([nodesHandler(vaultScope), edgesHandler(vaultScope)]);
         const nodes = normalizeNodeResponse(nodeResponse);
         const edges = normalizeEdgeResponse(edgeResponse);
         if (!nodes || !edges) throw new Error('Vault graph IPC handlers returned an invalid payload.');
-        if (!cancelled) setGraphData({ nodes, edges });
+        if (!cancelled) {
+          hasLoadedGraphRef.current = true;
+          setGraphData({ nodes, edges });
+          setSelectedNodeId(null);
+          setKeyboardFocusedNodeId(null);
+          setHoveredNodeId(null);
+          setShowAll(false);
+          setBannerDismissed(false);
+        }
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
       } finally {
@@ -494,7 +527,7 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
       cancelled = true;
       if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
     };
-  }, []);
+  }, [vaultScope]);
 
   // Truncation (top-500 by degree when vault is large, unless "show all" is active)
   const truncatedData = useMemo(() => {
@@ -738,8 +771,12 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
 
   const selectNode = useCallback((node: PositionedNode) => {
     setSelectedNodeId(node.id);
+    if (node.vault === 'story' && node.storyId && node.chapterId && node.sceneId) {
+      onOpenScene?.(node.storyId, node.chapterId, node.sceneId);
+      return;
+    }
     onOpenNote?.(node.path);
-  }, [onOpenNote]);
+  }, [onOpenNote, onOpenScene]);
 
   const handleSearchKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' && searchMatchIds && searchMatchIds.size > 0) {
@@ -858,6 +895,20 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
           <span className="vgv-title">Vault Graph</span>
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         </div>
+        <div className="vgv-scope-selector" role="group" aria-label="Vault scope">
+          {(['notes', 'story', 'both'] as const).map((scope) => (
+            <button
+              key={scope}
+              type="button"
+              className={`vgv-scope-btn${vaultScope === scope ? ' vgv-scope-btn--active' : ''}`}
+              aria-pressed={vaultScope === scope}
+              data-testid={`vault-graph-scope-${scope}`}
+              onClick={() => setVaultScope(scope)}
+            >
+              {scope === 'notes' ? 'Notes' : scope === 'story' ? 'Story' : 'Both'}
+            </button>
+          ))}
+        </div>
         <input
           ref={searchRef}
           type="search"
@@ -926,11 +977,12 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
               const target = nodeById.get(edge.target);
               if (!source || !target) return null;
               const dimmed = hoverVisibleIds ? (!hoverVisibleIds.has(edge.source) || !hoverVisibleIds.has(edge.target)) : false;
+              const crossVault = edge.crossVault || source.vault !== target.vault;
               return (
                 <line
                   key={`${edge.source}-${edge.target}`}
                   data-testid={edgeTestId(edge)}
-                  className={`vgv-graph-edge${dimmed ? ' vgv-graph-edge--dimmed' : ''}`}
+                  className={`vgv-graph-edge${crossVault ? ' vgv-graph-edge--cross-vault' : ''}${dimmed ? ' vgv-graph-edge--dimmed' : ''}`}
                   x1={source.x}
                   y1={source.y}
                   x2={target.x}
@@ -946,6 +998,8 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
               const selected = selectedNodeId === node.id;
               const keyboardFocused = keyboardFocusedNodeId === node.id;
               const label = displayLabel(node.label);
+              const fillToken = graphNodeFillToken(node.categoryKey);
+              const strokeToken = graphNodeStrokeToken(node.categoryKey);
 
               let nodeClass = 'vgv-graph-node';
               if (hoverDimmed) nodeClass += ' vgv-graph-node--dimmed';
@@ -959,7 +1013,7 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
                   key={node.id}
                   role="button"
                   tabIndex={-1}
-                  aria-label={`Open note ${label}`}
+                  aria-label={`${node.vault === 'story' ? 'Open scene' : 'Open note'} ${label}`}
                   data-testid={`vault-node-${node.id}`}
                   className={nodeClass}
                   transform={`translate(${node.x} ${node.y})`}
@@ -981,11 +1035,11 @@ export default function VaultGraphView({ onOpenNote, mostRecentNotePath }: Props
                     data-testid="vault-graph-node-circle"
                     className={`vgv-node-circle vgv-node-circle--${node.categoryKey}`}
                     r={node.radius}
-                    fill={`var(--ln-graph-node-${node.categoryKey})`}
-                    stroke={`var(--ln-graph-border-${node.categoryKey})`}
+                    fill={fillToken}
+                    stroke={strokeToken}
                     style={{
-                      '--vgv-node-fill': `var(--ln-graph-node-${node.categoryKey})`,
-                      '--vgv-node-stroke': `var(--ln-graph-border-${node.categoryKey})`,
+                      '--vgv-node-fill': fillToken,
+                      '--vgv-node-stroke': strokeToken,
                     } as CSSProperties}
                   />
                   <text className="vgv-node-label" y={node.radius + 14}>{label}</text>

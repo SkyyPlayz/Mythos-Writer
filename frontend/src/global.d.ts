@@ -939,21 +939,26 @@ interface Window {
     vaultGraphData: () => Promise<unknown>;
 
     // Notes Vault graph — in-memory link index with degree + category (SKY-1756 / SKY-1743)
-    vaultGraphNodes: () => Promise<{
-      nodes: Array<{
+    vaultGraphNodes: (scope?: 'notes' | 'story' | 'both') => Promise<{
+      nodes: {
         id: string;
         label: string;
         path: string;
-        category: 'characters' | 'locations' | 'factions' | 'history' | 'systems' | 'items' | 'misc' | 'default';
+        category: 'characters' | 'locations' | 'factions' | 'history' | 'systems' | 'items' | 'scenes' | 'misc' | 'default';
+        vault?: 'notes' | 'story';
+        storyId?: string;
+        chapterId?: string;
+        sceneId?: string;
         degree: number;
-      }>;
+      }[];
     }>;
-    vaultGraphEdges: () => Promise<{
-      edges: Array<{
+    vaultGraphEdges: (scope?: 'notes' | 'story' | 'both') => Promise<{
+      edges: {
         source: string;
         target: string;
         weight: number;
-      }>;
+        crossVault?: boolean;
+      }[];
     }>;
 
     // Timeline v0 (SKY-2438/SKY-2463) — manifest-backed timeline

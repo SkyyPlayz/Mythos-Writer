@@ -32,6 +32,38 @@
   flex: 1;
 }
 
+.vgv-scope-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+}
+
+.vgv-scope-btn {
+  min-width: 48px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.vgv-scope-btn--active {
+  background: color-mix(in srgb, var(--ln-graph-border-highlight, var(--text-accent)) 22%, transparent);
+  color: var(--text-body);
+}
+
+.vgv-scope-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--ln-graph-border-highlight));
+  outline-offset: 1px;
+}
+
 .vgv-title {
   color: var(--text-header);
   font-family: var(--font-sans);
@@ -94,6 +126,11 @@
   transition: opacity 120ms ease, stroke 120ms ease;
 }
 
+.vgv-graph-edge--cross-vault {
+  stroke: var(--ln-graph-edge-cross-vault, var(--ln-graph-border-highlight));
+  stroke-dasharray: 6 5;
+}
+
 .vgv-graph-edge--dimmed {
   stroke: var(--ln-graph-edge-dimmed);
   opacity: 0.55;
@@ -123,6 +160,7 @@
 .vgv-node-circle--history { filter: var(--ln-graph-glow-history); }
 .vgv-node-circle--systems { filter: var(--ln-graph-glow-systems); }
 .vgv-node-circle--items { filter: var(--ln-graph-glow-items); }
+.vgv-node-circle--scenes { filter: var(--ln-graph-glow-scenes, var(--ln-graph-glow-highlight)); }
 .vgv-node-circle--misc { filter: var(--ln-graph-glow-misc); }
 .vgv-node-circle--default { filter: var(--ln-graph-glow-default); }
 
@@ -242,6 +280,7 @@
 .vgv-legend-swatch--history { --vgv-swatch-fill: var(--ln-graph-node-history); --vgv-swatch-stroke: var(--ln-graph-border-history); }
 .vgv-legend-swatch--systems { --vgv-swatch-fill: var(--ln-graph-node-systems); --vgv-swatch-stroke: var(--ln-graph-border-systems); }
 .vgv-legend-swatch--items { --vgv-swatch-fill: var(--ln-graph-node-items); --vgv-swatch-stroke: var(--ln-graph-border-items); }
+.vgv-legend-swatch--scenes { --vgv-swatch-fill: var(--ln-graph-node-scenes, var(--ln-graph-node-highlight)); --vgv-swatch-stroke: var(--ln-graph-border-scenes, var(--ln-graph-border-highlight)); }
 .vgv-legend-swatch--misc { --vgv-swatch-fill: var(--ln-graph-node-misc); --vgv-swatch-stroke: var(--ln-graph-border-misc); }
 .vgv-legend-swatch--default { --vgv-swatch-fill: var(--ln-graph-node-default); --vgv-swatch-stroke: var(--ln-graph-border-default); }
 
