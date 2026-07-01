@@ -5,14 +5,16 @@ import NoteViewer from './NoteViewer';
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
 const readVault = vi.fn();
+const writeVault = vi.fn();
 const entityList = vi.fn();
 
 beforeEach(() => {
   readNotesVault.mockResolvedValue({ content: 'See [[Scene: Chapter One/Opening Scene]] and [[Character: Elara]].' });
   writeNotesVault.mockResolvedValue({ path: 'Notes/Test.md', bytes: 1 });
   readVault.mockResolvedValue({ content: 'story-vault-content' });
+  writeVault.mockResolvedValue({ path: 'Story/Test.md', bytes: 1 });
   entityList.mockResolvedValue({ entities: [] });
-  (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, entityList };
+  (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, writeVault, entityList };
 });
 
 afterEach(() => {
@@ -227,5 +229,98 @@ describe('NoteViewer LC-2 fidelity guard', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     // Source textarea is gone (Rich mode is active)
     expect(screen.queryByLabelText('Edit note: Plain.md')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Save-failure surfacing (GH#616 / SKY-5151)
+//
+// The editor previously swallowed write errors in a no-op catch, so a rejected
+// or { error } save left the user believing their note was persisted. These
+// regressions assert that failures raise an accessible alert, never imply the
+// note is saved, and clear once a save succeeds or the user edits again.
+//
+// NoteViewer funnels every write through writeNotesVault (SKY-2976), so both
+// Notes-vault and Story-vault notes share this exact failure surface. We cover
+// both failure representations the IPC layer can produce: a rejected promise
+// and a resolved { error } envelope.
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer save-failure surfacing (GH#616)', () => {
+  async function loadAndFlush(path = 'Notes/Test.md') {
+    render(<NoteViewer path={path} />);
+    await screen.findByLabelText(`Edit note: ${path.split('/').pop()}`);
+    await act(async () => {
+      window.dispatchEvent(new Event('mythos:save-note'));
+    });
+  }
+
+  it('shows an accessible alert when a save is rejected', async () => {
+    writeNotesVault.mockRejectedValue(new Error('EIO: disk failure'));
+
+    await loadAndFlush();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Failed to save');
+    expect(alert.textContent).toContain('not persisted');
+    // Must NOT imply the note is saved.
+    expect(screen.queryByText(/^Saved /)).toBeNull();
+  });
+
+  it('shows an accessible alert when a save resolves with an { error } envelope', async () => {
+    writeNotesVault.mockResolvedValue({ error: 'EACCES: permission denied' });
+
+    await loadAndFlush();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Failed to save');
+    expect(screen.queryByText(/^Saved /)).toBeNull();
+  });
+
+  it('clears the error and shows a saved stamp once a later save succeeds (Retry)', async () => {
+    writeNotesVault.mockRejectedValueOnce(new Error('transient network drop'));
+
+    await loadAndFlush();
+    await screen.findByRole('alert');
+
+    // Retry now hits the default resolving mock — the save must persist and the
+    // alert must clear, replaced by a "Saved" stamp.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect(await screen.findByText(/^Saved /)).toBeTruthy();
+  });
+
+  it('clears the error as soon as the writer edits again', async () => {
+    writeNotesVault.mockRejectedValueOnce(new Error('transient'));
+
+    render(<NoteViewer path="Notes/Test.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Test.md');
+    await act(async () => {
+      window.dispatchEvent(new Event('mythos:save-note'));
+    });
+    await screen.findByRole('alert');
+
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'writer keeps typing' } });
+    });
+
+    // Editing is treated as a retry — the stale error is dropped immediately.
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('surfaces a Story-vault note save failure through the same alert', async () => {
+    // Story-vault notes still route through writeNotesVault; a failure there must
+    // be surfaced identically rather than silently dropped.
+    readNotesVault.mockResolvedValue({ content: 'Story vault note body.' });
+    writeNotesVault.mockRejectedValue(new Error('ENOSPC: no space left'));
+
+    await loadAndFlush('Story/Chapter.md');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Failed to save');
+    expect(screen.queryByText(/^Saved /)).toBeNull();
   });
 });
