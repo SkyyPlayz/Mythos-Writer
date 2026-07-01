@@ -123,11 +123,14 @@ function App() {
 }
 
 // SKY-1697: Top-level router — runs once at module load time before any React rendering.
-// The hash is set by main.ts when creating a floating panel BrowserWindow and never changes
-// while the window is alive, so it's safe to read once here.
+// The hash is set by main.ts when creating a floating panel or popout BrowserWindow and never
+// changes while the window is alive, so it's safe to read once here.
+// SKY-5158: also handle legacy #/popout/ route — same FloatingPanelApp renderer.
 const _floatingHash = window.location.hash;
 const _floatingPanelId = _floatingHash.startsWith('#/floating-panel/')
   ? decodeURIComponent(_floatingHash.replace('#/floating-panel/', '').split('?')[0])
+  : _floatingHash.startsWith('#/popout/')
+  ? decodeURIComponent(_floatingHash.replace('#/popout/', '').split('?')[0])
   : null;
 
 function AppRoot() {
