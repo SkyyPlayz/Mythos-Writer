@@ -757,6 +757,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-v2-16-'));
     app = await launchFreshApp(userData);
+    page = await firstWindow(app, 90_000);
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:getPaths');
       ipcMain.handle('vault:getPaths', () => ({
@@ -764,7 +765,6 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
         pathSeparator: '\\',
       }));
     });
-    page = await firstWindow(app, 90_000);
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
   });
