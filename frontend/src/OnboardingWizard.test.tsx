@@ -1702,14 +1702,18 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      // runAllTimersAsync fires the 500ms debounce timer and then drains all
-      // resulting microtasks (the Promise.all chain in validateCustomPathNow)
-      // atomically inside act(). flushAsyncEffects() drains any remaining
-      // Promise.all continuations whose setState batch lands after the act() gap.
+      // Advance the 500ms debounce AND drain the resulting Promise.all chain from
+      // validateCustomPathNow in the SAME act() boundary. Splitting into two act()
+      // calls is flaky: the first act() can conclude before the Promise.all
+      // continuation runs its setState, so React misses it and re-renders too late.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
       });
-      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1729,8 +1733,12 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
       });
-      await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
@@ -1750,8 +1758,12 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
       });
-      await flushAsyncEffects();
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
       expect(screen.getByTestId('custom-location-next')).toBeDisabled();
     } finally {
