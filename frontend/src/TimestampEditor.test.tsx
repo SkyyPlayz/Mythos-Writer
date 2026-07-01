@@ -305,6 +305,94 @@ describe('TimestampEditor', () => {
     expect(sel.tagName.toLowerCase()).toBe('select');
   });
 
+  // ── SKY-5149: multi-digit day input ──────────────────────────────────────
+
+  it('typing a multi-digit day digit-by-digit then confirming saves the fully typed value', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<TimestampEditor {...makeProps({ currentDay: 1, maxDay: 30, onConfirm })} />);
+
+    const input = screen.getByTestId('te-day-input') as HTMLInputElement;
+
+    // Simulate typing "30" one digit at a time: "3" then "30"
+    fireEvent.change(input, { target: { value: '3' } });
+    fireEvent.change(input, { target: { value: '30' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('te-confirm'));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith(30, 'morning');
+  });
+
+  it('intermediate partial digit in field is the committed value when user confirms mid-type', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<TimestampEditor {...makeProps({ currentDay: 1, maxDay: 30, onConfirm })} />);
+
+    const input = screen.getByTestId('te-day-input') as HTMLInputElement;
+
+    // User typed only "3" — field shows "3"; confirm fires at this partial state
+    fireEvent.change(input, { target: { value: '3' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('te-confirm'));
+    });
+
+    // "3" is what the field currently holds — that is the committed value, not an earlier or later digit
+    expect(onConfirm).toHaveBeenCalledWith(3, 'morning');
+  });
+
+  it('empty / NaN input on confirm falls back to day 1 without error', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<TimestampEditor {...makeProps({ currentDay: 5, maxDay: 10, onConfirm })} />);
+
+    const input = screen.getByTestId('te-day-input') as HTMLInputElement;
+
+    // User clears the field completely
+    fireEvent.change(input, { target: { value: '' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('te-confirm'));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith(1, 'morning');
+    expect(screen.queryByTestId('te-error')).not.toBeInTheDocument();
+  });
+
+  it('out-of-range typed day is clamped to maxDay on confirm', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<TimestampEditor {...makeProps({ currentDay: 1, maxDay: 10, onConfirm })} />);
+
+    const input = screen.getByTestId('te-day-input') as HTMLInputElement;
+
+    // Type a value that exceeds maxDay
+    fireEvent.change(input, { target: { value: '99' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('te-confirm'));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith(10, 'morning');
+  });
+
+  it('blur normalises out-of-range input; subsequent confirm uses the normalised value', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined);
+    render(<TimestampEditor {...makeProps({ currentDay: 1, maxDay: 10, onConfirm })} />);
+
+    const input = screen.getByTestId('te-day-input') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: '30' } });
+    fireEvent.blur(input);
+
+    // After blur, the input should show the clamped value
+    expect(input.value).toBe('10');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('te-confirm'));
+    });
+
+    expect(onConfirm).toHaveBeenCalledWith(10, 'morning');
+  });
+
   // ── Edge cases ────────────────────────────────────────────────────────────
 
   it('clamps currentDay to 1 when maxDay is 1', () => {
