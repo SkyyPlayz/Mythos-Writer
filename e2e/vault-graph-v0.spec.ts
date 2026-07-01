@@ -102,8 +102,14 @@ async function navigateToGraph(page: Page): Promise<void> {
   // doesn't block setLiveMessage() calls (TC-GV-12 live region assertions).
   await page.emulateMedia({ reducedMotion: 'no-preference' });
 
+  const mainNav = page.locator('nav[aria-label="Main navigation"]');
+  await expect(mainNav).toBeVisible({ timeout: 12_000 });
+  const storyTab = mainNav.getByRole('button', { name: 'Story' });
+  const notesTab = mainNav.getByRole('button', { name: 'Notes' });
+
   // Navigate away to reset state — use the Story Timeline sub-view (exists in every fixture).
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await expect(storyTab).toBeVisible({ timeout: 5_000 });
+  await storyTab.click();
   const timelineBtn = page.locator('[data-testid="story-subview-timeline"]');
   if (await timelineBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await timelineBtn.click();
@@ -111,7 +117,8 @@ async function navigateToGraph(page: Page): Promise<void> {
   }
 
   // Graph now lives under the Notes tab's Graph sub-view.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  await expect(notesTab).toBeVisible({ timeout: 5_000 });
+  await notesTab.click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
   await expect(page.locator('[data-testid="vault-graph-view"], [data-testid="vault-graph-empty"]')).toBeVisible({ timeout: 15_000 });
 }

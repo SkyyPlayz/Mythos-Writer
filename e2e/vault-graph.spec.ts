@@ -137,7 +137,11 @@ test.afterAll(async () => {
 });
 
 async function openGraphView(): Promise<void> {
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  const mainNav = page.locator('nav[aria-label="Main navigation"]');
+  await expect(mainNav).toBeVisible({ timeout: 12_000 });
+  const notesTab = mainNav.getByRole('button', { name: 'Notes' });
+  await expect(notesTab).toBeVisible({ timeout: 5_000 });
+  await notesTab.click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
 }
 

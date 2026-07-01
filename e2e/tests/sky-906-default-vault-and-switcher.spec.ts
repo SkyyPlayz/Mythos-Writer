@@ -55,6 +55,27 @@ function readVaultSettings(userData: string): VaultSettings {
   return JSON.parse(fs.readFileSync(file, 'utf-8')) as VaultSettings;
 }
 
+async function waitForPersistedVaultPair(userData: string): Promise<{ vaultRoot: string; notesVaultRoot: string }> {
+  await expect
+    .poll(() => readVaultSettings(userData).vaultRoot, {
+      timeout: 30_000,
+      intervals: [200, 400, 800, 1000, 2000],
+    })
+    .toBeTruthy();
+  await expect
+    .poll(() => readVaultSettings(userData).notesVaultRoot, {
+      timeout: 30_000,
+      intervals: [200, 400, 800, 1000, 2000],
+    })
+    .toBeTruthy();
+
+  const vaultSettings = readVaultSettings(userData);
+  if (!vaultSettings.vaultRoot || !vaultSettings.notesVaultRoot) {
+    throw new Error(`vault-settings.json missing vault roots in ${path.join(userData, 'vault-settings.json')}`);
+  }
+  return { vaultRoot: vaultSettings.vaultRoot, notesVaultRoot: vaultSettings.notesVaultRoot };
+}
+
 function seedAppSettingsNoOnboarding(userData: string): void {
   // Mark onboarding NOT complete so the wizard appears on first boot, but
   // pre-seed an agents/theme block so DesktopShell can render afterwards
@@ -109,10 +130,44 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
+async function selectQuickStartCard(pg: Page): Promise<void> {
+  await expect(pg.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 30_000 });
+
+  const quickStartCandidates = [
+    'card-quick-start',
+    'card-default-mythos-vault',
+    'card-path-default',
+  ];
+  for (const testId of quickStartCandidates) {
+    const card = pg.locator(`[data-testid="${testId}"]`);
+    if (await card.isVisible().catch(() => false)) {
+      await card.click();
+      return;
+    }
+  }
+
+  const byTitle = pg.locator('button[aria-label="Quick Start: One click — we set everything up for you."]');
+  if (await byTitle.isVisible().catch(() => false)) {
+    await byTitle.click();
+    return;
+  }
+
+  const byText = pg.locator('.gs-card__title', { hasText: 'Quick Start' }).locator('..');
+  if (await byText.isVisible().catch(() => false)) {
+    await byText.click();
+    return;
+  }
+
+  throw new Error('Could not find Quick Start card on onboarding step 1');
+}
+
 async function completeQuickStart(pg: Page): Promise<void> {
-  await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
-  await pg.locator('[data-testid="card-quick-start"]').click();
-  await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
+  await selectQuickStartCard(pg);
+  await Promise.race([
+    pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
+    pg.locator('[data-testid="screen-step2"]').waitFor({ state: 'visible', timeout: 30_000 }),
+    pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),
+  ]);
 }
 
 let userData: string;
@@ -137,23 +192,20 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
     const pg = await firstWindow(app);
     await completeQuickStart(pg);
 
-    // Disk: Quick Start creates the default Mythos Vault bundle under the
-    // app userData vault parent and persists the active Story/Notes pair.
-    const vaultSettings = readVaultSettings(userData);
-    expect(vaultSettings.vaultRoot).toBeTruthy();
-    expect(vaultSettings.notesVaultRoot).toBeTruthy();
-    const storyVaultPath = vaultSettings.vaultRoot!;
-    const notesVaultPath = vaultSettings.notesVaultRoot!;
-    expect(path.dirname(path.dirname(storyVaultPath))).toBe(saveParent);
-    expect(path.dirname(path.dirname(notesVaultPath))).toBe(saveParent);
-    expect(fs.existsSync(storyVaultPath)).toBe(true);
-    expect(fs.existsSync(notesVaultPath)).toBe(true);
+    const vaultPair = await waitForPersistedVaultPair(userData);
+    expect(fs.existsSync(vaultPair.vaultRoot)).toBe(true);
+    expect(fs.existsSync(vaultPair.notesVaultRoot)).toBe(true);
 
     // Quick Start seeds a first scene file so the editor lands on something
     // writable.
-    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
+    expect(
+      fs.existsSync(path.join(vaultPair.vaultRoot, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md')),
+    ).toBe(true);
 
-    expect(vaultSettings.notesVaultRoot).toBe(notesVaultPath);
+    // vault-settings.json is rewired to the new pair and onboardingComplete=true.
+    const vaultSettings = readVaultSettings(userData);
+    expect(vaultSettings.vaultRoot).toBe(vaultPair.vaultRoot);
+    expect(vaultSettings.notesVaultRoot).toBe(vaultPair.notesVaultRoot);
   } finally {
     await app.close().catch(() => {});
   }

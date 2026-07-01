@@ -250,7 +250,10 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 
   // Switch to the Timeline sub-view in the Story tab.
-  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  const nav = pg.getByRole('navigation', { name: 'Main navigation' });
+  await expect(nav).toBeVisible({ timeout: 10_000 });
+  await nav.getByRole('button', { name: 'Story' }).click();
+  await expect(pg.getByRole('button', { name: 'Timeline' })).toBeVisible({ timeout: 4_000 });
   const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
@@ -480,7 +483,10 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // Use a generous timeout: the component must remount and complete its async
   // IPC load (timelineGetScenes) before the root div renders — 4 s was too
   // tight on loaded CI runners.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  const nav = page.getByRole('navigation', { name: 'Main navigation' });
+  await expect(nav).toBeVisible({ timeout: 10_000 });
+  await nav.getByRole('button', { name: 'Story' }).click();
+  await expect(page.getByRole('button', { name: 'Timeline' })).toBeVisible({ timeout: 4_000 });
   await page.locator('[data-testid="story-subview-timeline"]').click();
   await expect(root).toBeVisible({ timeout: 8_000 });
   // Confirm at least one scene row is in the DOM (data loaded) before Tab.
@@ -660,4 +666,3 @@ test.describe('SKY-797 — perf gate', () => {
     ).toBeLessThanOrEqual(FRAME_BUDGET_MS);
   });
 });
-
