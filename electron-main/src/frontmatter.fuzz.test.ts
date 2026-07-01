@@ -6,10 +6,16 @@
 // Background: SKY-398 and SKY-414 both stemmed from frontmatter parser surprises.
 //
 // Design contract of the current parser (document it, don't assume it):
-//   • Array elements are split on literal commas — no YAML-structured parsing.
+//   • Array elements are split on commas OUTSIDE double quotes; a double-quoted
+//     element may contain commas and keeps them (GH#611 / SKY-5159). Unquoted
+//     elements still split on every literal comma.
+//   • Double-quoted array elements have their surrounding quotes stripped and
+//     `\"` / `\\` escapes decoded; the serializer re-quotes only values that
+//     contain a comma, quote, backslash, or newline — so the round-trip is stable.
 //   • Array element values are NOT individually type-coerced; they stay as strings.
-//   • Nested brackets are NOT structurally parsed; the outer [] is split on all commas.
-//     The string-level round-trip is preserved because the serializer joins them back.
+//   • Nested brackets are NOT structurally parsed; the outer [] is split on all
+//     top-level commas. The string-level round-trip is preserved because the
+//     serializer joins them back.
 //   • Scalar values ARE type-coerced: "true"/"false" → boolean, numeric strings → number.
 //   • Null/undefined values are silently omitted during serialization.
 //   • Leading/trailing whitespace is trimmed on both keys and values.
@@ -141,10 +147,16 @@ describe('parseFrontmatter — mixed-type array element coercion', () => {
     expect(frontmatter.arr).toEqual(['null', 'undefined', 'none']);
   });
 
-  it('heterogeneous: [1, "two", true, null] — quoted string keeps its quotes', () => {
+  it('heterogeneous: [1, "two", true, null] — quoted string is unquoted', () => {
     const { frontmatter } = parseFrontmatter(raw('arr: [1, "two", true, null]'));
-    // Quotes are part of the string element (not stripped by the parser).
-    expect(frontmatter.arr).toEqual(['1', '"two"', 'true', 'null']);
+    // GH#611 / SKY-5159: double-quotes are structural — surrounding quotes are
+    // stripped so a quoted element (e.g. one containing a comma) is one token.
+    expect(frontmatter.arr).toEqual(['1', 'two', 'true', 'null']);
+  });
+
+  it('quoted array element may contain a comma (GH#611)', () => {
+    const { frontmatter } = parseFrontmatter(raw('arr: [plain, "Smith, John", tail]'));
+    expect(frontmatter.arr).toEqual(['plain', 'Smith, John', 'tail']);
   });
 
   it('heterogeneous round-trip', () => {

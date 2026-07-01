@@ -259,6 +259,65 @@ describe('aliases frontmatter serialization', () => {
     const read = readEntity(tmpDir, manifest, entry.id);
     expect(read!.aliases).toEqual(['the Weaver', 'Aria Voss']);
   });
+
+  // GH#611 / SKY-5159: aliases/tags containing commas must be quoted on
+  // serialize and parsed back as a single token, not split on the comma.
+  it('quotes an alias containing a comma', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'John Smith',
+      type: 'character',
+      aliases: ['Smith, John'],
+    });
+    const raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).toContain('aliases: ["Smith, John"]');
+  });
+
+  it('round-trips a comma-containing alias as a single token', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'John Smith',
+      type: 'character',
+      aliases: ['Smith, John'],
+    });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.aliases).toEqual(['Smith, John']);
+  });
+
+  it('round-trips a mix of plain and comma-containing aliases', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Multi',
+      type: 'character',
+      aliases: ['Plain', 'Smith, John', 'the Weaver'],
+    });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.aliases).toEqual(['Plain', 'Smith, John', 'the Weaver']);
+  });
+
+  it('round-trips tags containing commas', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Tagged',
+      type: 'character',
+      tags: ['plain-tag', 'genre: sci-fi, fantasy'],
+    });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.tags).toEqual(['plain-tag', 'genre: sci-fi, fantasy']);
+  });
+
+  it('round-trips an alias containing double-quotes', () => {
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Quoted',
+      type: 'character',
+      aliases: ['the "Great" one', 'A, B "C"'],
+    });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.aliases).toEqual(['the "Great" one', 'A, B "C"']);
+  });
+
+  it('survives a comma alias through an update round-trip', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Editable', type: 'character' });
+    updateEntity(tmpDir, manifest, entry.id, { aliases: ['Doe, Jane', 'JD'] });
+    const read = readEntity(tmpDir, manifest, entry.id);
+    expect(read!.aliases).toEqual(['Doe, Jane', 'JD']);
+  });
 });
 
 describe('migrateEntityAliases', () => {

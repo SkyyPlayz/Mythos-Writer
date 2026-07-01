@@ -305,6 +305,68 @@ interface Frontmatter {
   [key: string]: unknown;
 }
 
+/**
+ * Quote a scalar for a YAML inline array (`[a, b]`) when it contains a comma,
+ * double-quote, backslash, or newline. Without this, the naive comma-split
+ * parser below would break a value like `Smith, John` into two tokens
+ * (GH#611 / SKY-5159). Backslashes and double-quotes are escaped inside the
+ * quoted form so they round-trip through {@link parseInlineArray}.
+ */
+export function yamlInlineQuote(s: string): string {
+  if (/[,"\\\n]/.test(s)) {
+    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return s;
+}
+
+/**
+ * Split the inside of a YAML inline array (`[ ... ]`) into values, honoring
+ * double-quoted entries so a quoted comma (`"Smith, John"`) stays a single
+ * token. Quoted values have their surrounding quotes stripped and `\"` / `\\`
+ * escapes decoded; unquoted values are trimmed. Empty unquoted tokens are
+ * dropped (matching the previous `filter(Boolean)` behavior), so `[]` and
+ * `[a, ]` parse to `['... ']` without stray empties.
+ */
+function parseInlineArray(inner: string): string[] {
+  const values: string[] = [];
+  let cur = '';
+  let inQuotes = false;
+  let quoted = false; // current token opened with a double-quote
+  const flush = () => {
+    if (quoted) {
+      values.push(cur);
+    } else {
+      const trimmed = cur.trim();
+      if (trimmed) values.push(trimmed);
+    }
+    cur = '';
+    quoted = false;
+  };
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (inQuotes) {
+      if (ch === '\\' && i + 1 < inner.length) {
+        cur += inner[i + 1];
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"' && cur.trim() === '') {
+      cur = '';
+      inQuotes = true;
+      quoted = true;
+    } else if (ch === ',') {
+      flush();
+    } else {
+      cur += ch;
+    }
+  }
+  flush();
+  return values;
+}
+
 export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose: string } {
   // Null bytes (\x00) are not valid in YAML; strip them before processing
   // (SKY-398: prevents ambiguous key comparisons in fuzz roundtrip checks).
@@ -328,11 +390,7 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
     const val = line.slice(colon + 1).trim();
     // Parse arrays like `tags: [a, b]`
     if (val.startsWith('[') && val.endsWith(']')) {
-      fm[key] = val
-        .slice(1, -1)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      fm[key] = parseInlineArray(val.slice(1, -1));
     } else if (val === 'true') {
       fm[key] = true;
     } else if (val === 'false') {
@@ -350,7 +408,7 @@ export function serializeFrontmatter(fm: Frontmatter, prose: string): string {
   const lines: string[] = ['---'];
   for (const [key, val] of Object.entries(fm)) {
     if (Array.isArray(val)) {
-      lines.push(`${key}: [${val.join(', ')}]`);
+      lines.push(`${key}: [${val.map((v) => yamlInlineQuote(String(v))).join(', ')}]`);
     } else if (val !== undefined && val !== null) {
       lines.push(`${key}: ${val}`);
     }
