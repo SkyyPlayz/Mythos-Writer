@@ -60,6 +60,13 @@ function formatAge(isoDate: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function isEditableTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof Element)) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return (el as HTMLElement).contentEditable === 'true' || (el as HTMLElement).contentEditable === 'plaintext-only';
+}
+
 export default function SuggestionDetailPane({
   suggestion,
   onClose,
@@ -98,6 +105,8 @@ export default function SuggestionDetailPane({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      // Don't steal A/R/I from text inputs — user may be typing in a search/filter field
+      if (isEditableTarget(e.target)) return;
       if (e.key === 'a' || e.key === 'A') { e.stopPropagation(); onAccept(suggestion.id); return; }
       if (e.key === 'r' || e.key === 'R') { e.stopPropagation(); onReject(suggestion.id); return; }
       if ((e.key === 'i' || e.key === 'I') && onIgnore) { e.stopPropagation(); onIgnore(suggestion.id); }

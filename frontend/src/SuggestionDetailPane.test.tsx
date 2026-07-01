@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import SuggestionDetailPane, { type UnifiedSuggestion } from './SuggestionDetailPane';
 
 const handlers = {
@@ -55,5 +55,64 @@ describe('SuggestionDetailPane', () => {
 
     expect(screen.queryByRole('button', { name: /before/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/Original scene text/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('SuggestionDetailPane — A/R/I keyboard shortcuts text-input guard', () => {
+  it('fires onAccept when A is pressed outside a text input', () => {
+    const onAccept = vi.fn();
+    render(
+      <SuggestionDetailPane suggestion={makeSuggestion()} {...handlers} onAccept={onAccept} />,
+    );
+    fireEvent.keyDown(document, { key: 'a' });
+    expect(onAccept).toHaveBeenCalledWith('sug-1');
+  });
+
+  it('does NOT fire onAccept when A is pressed while focused in an <input>', () => {
+    const onAccept = vi.fn();
+    render(
+      <>
+        <input type="text" data-testid="search" />
+        <SuggestionDetailPane suggestion={makeSuggestion()} {...handlers} onAccept={onAccept} />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByTestId('search'), { key: 'a' });
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onReject when R is pressed while focused in a <textarea>', () => {
+    const onReject = vi.fn();
+    render(
+      <>
+        <textarea data-testid="notes" />
+        <SuggestionDetailPane suggestion={makeSuggestion()} {...handlers} onReject={onReject} />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByTestId('notes'), { key: 'r' });
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire onIgnore when I is pressed while focused in an <input>', () => {
+    const onIgnore = vi.fn();
+    render(
+      <>
+        <input type="text" data-testid="search" />
+        <SuggestionDetailPane suggestion={makeSuggestion()} {...handlers} onIgnore={onIgnore} />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByTestId('search'), { key: 'i' });
+    expect(onIgnore).not.toHaveBeenCalled();
+  });
+
+  it('still fires onClose when Escape is pressed inside a text input', () => {
+    const onClose = vi.fn();
+    render(
+      <>
+        <input type="text" data-testid="search" />
+        <SuggestionDetailPane suggestion={makeSuggestion()} {...handlers} onClose={onClose} />
+      </>,
+    );
+    fireEvent.keyDown(screen.getByTestId('search'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
   });
 });
