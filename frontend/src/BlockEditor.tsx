@@ -245,9 +245,9 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         editor.chain().focus(initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end').run();
       } catch (_) { /* editor destroyed between render and effect */ }
     };
-    const focusTimer = setTimeout(focusEditor, 0);
+    const focusTimer = autoFocus ? setTimeout(focusEditor, 0) : undefined;
     const cb = onEditorReadyRef.current;
-    if (!cb) return () => clearTimeout(focusTimer);
+    if (!cb) return () => { if (focusTimer !== undefined) clearTimeout(focusTimer); };
 
     const findTextRange = (text: string): { from: number; to: number } | null => {
       const needle = text.toLowerCase();
@@ -316,7 +316,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       },
       focus: focusEditor,
     });
-    return () => clearTimeout(focusTimer);
+    return () => { if (focusTimer !== undefined) clearTimeout(focusTimer); };
   // Run only when the editor instance changes (new scene key causes remount)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
