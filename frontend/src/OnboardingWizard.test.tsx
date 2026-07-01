@@ -1689,11 +1689,11 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
   });
 
   it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
-    // validateCustomPathNow calls validatePath twice via Promise.all:
-    // first for the base path (should exist+writable), second for Story Vault manifest (should not exist)
-    mockApi.validatePath = vi.fn()
-      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true })  // existing dir
-      .mockResolvedValueOnce({ exists: false, isEmpty: true, writable: true }); // no manifest
+    mockApi.validatePath = vi.fn((path: string) => Promise.resolve(
+      path.endsWith('/Story Vault/manifest.json')
+        ? { exists: false, isEmpty: true, writable: true }
+        : { exists: true, isEmpty: false, writable: true },
+    ));
     vi.useFakeTimers();
     try {
       await renderWizard(

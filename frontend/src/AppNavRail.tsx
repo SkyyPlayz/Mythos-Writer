@@ -19,6 +19,7 @@ export default function AppNavRail({
   onOpenSettings,
   navItems,
   collapsed,
+  onToggleCollapsed,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
 
@@ -78,7 +79,7 @@ export default function AppNavRail({
         ))}
       </div>
 
-      {/* Settings — pinned to bottom */}
+      {/* Settings + collapse toggle — pinned to bottom */}
       <div className="nav-rail__bottom">
         <button
           type="button"
@@ -90,6 +91,15 @@ export default function AppNavRail({
           {!collapsed && (
             <span className="nav-rail__settings-label">Settings</span>
           )}
+        </button>
+        <button
+          type="button"
+          className="nav-rail__toggle"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
+        >
+          <span aria-hidden="true">{collapsed ? '›' : '‹'}</span>
         </button>
       </div>
     </nav>

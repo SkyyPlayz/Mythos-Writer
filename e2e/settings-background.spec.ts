@@ -143,8 +143,8 @@ test.afterAll(async () => {
 
 // ─── TC-SKY-3219-01: stored path survives Settings open → Save ────────────────
 test('TC-SKY-3219-01: Save preserves background image path in stored settings', async () => {
-  // Open Settings.
-  await page.getByRole('button', { name: 'Open settings' }).click();
+  // Open Settings. SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
 
   // Click Save without changing anything.
@@ -175,8 +175,8 @@ test('TC-SKY-3219-02: Save does not reset --bg-app-image CSS variable to default
   expect(bgBefore).not.toContain(DEFAULT_GRADIENT_MARKER);
   expect(bgBefore).toContain('data:');
 
-  // Open Settings and Save.
-  await page.getByRole('button', { name: 'Open settings' }).click();
+  // Open Settings and Save. SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
+  await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });

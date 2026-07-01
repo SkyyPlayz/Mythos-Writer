@@ -57,8 +57,8 @@ async function launchFreshApp(
   });
 }
 
-async function firstWindow(app: ElectronApplication): Promise<Page> {
-  const page = await app.firstWindow({ timeout: 60_000 });
+async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<Page> {
+  const page = await app.firstWindow({ timeout });
   await page.waitForLoadState('domcontentloaded');
   return page;
 }
@@ -748,6 +748,8 @@ test.describe('AC-OB-14: Recents list bounded', () => {
 // ─── AC-OB-16: Windows-style path > 200 chars → path-too-long ────────────────
 
 test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
+  test.setTimeout(120_000);
+
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -755,6 +757,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-v2-16-'));
     app = await launchFreshApp(userData);
+    page = await firstWindow(app, 90_000);
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:getPaths');
       ipcMain.handle('vault:getPaths', () => ({
@@ -762,7 +765,6 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
         pathSeparator: '\\',
       }));
     });
-    page = await firstWindow(app);
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
   });

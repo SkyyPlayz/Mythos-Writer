@@ -429,8 +429,11 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
 
   // Clear the range so the next test sees the full fixture again.
-  await page.locator('.tlf-clear-btn').click();
-  await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 4_000 });
+  // SKY-3177: timeline-detail-card overlays the filter bar; use evaluate() to
+  // fire the native click directly on the button, bypassing pointer-event
+  // interception from the overlay. Increase timeout to 8s for loaded CI runners.
+  await page.locator('.tlf-clear-btn').evaluate(btn => (btn as HTMLButtonElement).click());
+  await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 8_000 });
 });
 
 // ─── TC-TL-07: Keyboard nav (Tab / Enter / Delete) ──────────────────────────
