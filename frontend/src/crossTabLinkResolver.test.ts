@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveCrossTabLink } from './crossTabLinkResolver';
 import type { EntityEntry, Story } from './types';
 
@@ -123,5 +123,158 @@ describe('resolveCrossTabLink', () => {
       'Character: Elara Voss',
       'Character: Elara Moon',
     ]);
+  });
+
+  describe('untyped [[stem]] resolution', () => {
+    it('resolves a plain stem to an entity by exact name match', () => {
+      const result = resolveCrossTabLink('Elara Voss', {
+        stories: [],
+        entities: [entity()],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({
+        kind: 'entity',
+        entityId: 'entity-1',
+        label: 'Character: Elara Voss',
+      });
+    });
+
+    it('resolves a plain stem to an entity by alias match', () => {
+      const result = resolveCrossTabLink('Elara', {
+        stories: [],
+        entities: [entity()],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({
+        kind: 'entity',
+        entityId: 'entity-1',
+        label: 'Character: Elara Voss',
+      });
+    });
+
+    it('resolves a plain stem to a note path when no entity matches', () => {
+      const result = resolveCrossTabLink('World Notes', {
+        stories: [],
+        entities: [],
+        notePaths: ['Misc/World Notes.md', 'Other/Another.md'],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({
+        kind: 'entity',
+        entityPath: 'Misc/World Notes.md',
+        label: 'World Notes',
+      });
+    });
+
+    it('resolves a plain stem to a scene by title match', () => {
+      const result = resolveCrossTabLink('Opening Scene', {
+        stories: [story()],
+        entities: [],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({
+        kind: 'scene',
+        sceneId: 'scene-1',
+        label: 'Chapter One / Opening Scene',
+      });
+    });
+
+    it('resolves a plain stem to a scene by filename stem match', () => {
+      const result = resolveCrossTabLink('Opening Scene', {
+        stories: [story()],
+        entities: [],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({
+        kind: 'scene',
+        sceneId: 'scene-1',
+      });
+    });
+
+    it('returns ambiguous when stem matches both an entity and a scene', () => {
+      const ambiguousEntity = entity({ name: 'Opening Scene', path: 'Characters/Opening Scene.md', aliases: [] });
+      const result = resolveCrossTabLink('Opening Scene', {
+        stories: [story()],
+        entities: [ambiguousEntity],
+      });
+
+      expect(result.status).toBe('ambiguous');
+      expect(result.matches).toHaveLength(2);
+      expect(result.matches.some((m) => m.kind === 'entity')).toBe(true);
+      expect(result.matches.some((m) => m.kind === 'scene')).toBe(true);
+    });
+
+    it('strips a heading anchor before resolution', () => {
+      const result = resolveCrossTabLink('Elara Voss#background', {
+        stories: [],
+        entities: [entity()],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({ kind: 'entity', entityId: 'entity-1' });
+    });
+
+    it('strips an alias suffix before resolution', () => {
+      const result = resolveCrossTabLink('Elara Voss|The Hero', {
+        stories: [],
+        entities: [entity()],
+      });
+
+      expect(result.status).toBe('single');
+      expect(result.matches[0]).toMatchObject({ kind: 'entity', entityId: 'entity-1' });
+    });
+
+    it('returns status none when no entity, note, or scene matches', () => {
+      const result = resolveCrossTabLink('NonExistentTarget', {
+        stories: [],
+        entities: [],
+        notePaths: ['Misc/Other.md'],
+      });
+
+      expect(result.status).toBe('none');
+      expect(result.matches).toHaveLength(0);
+    });
+
+    it('fires onNotify when unresolved stem returns status none', () => {
+      const onNotify = vi.fn();
+      const result = resolveCrossTabLink('GhostNote', {
+        stories: [],
+        entities: [],
+        onNotify,
+      });
+
+      expect(result.status).toBe('none');
+      expect(onNotify).toHaveBeenCalledOnce();
+      expect(onNotify).toHaveBeenCalledWith(expect.stringContaining('GhostNote'), 'warn');
+    });
+
+    it('does not fire onNotify when the untyped stem resolves successfully', () => {
+      const onNotify = vi.fn();
+      resolveCrossTabLink('Elara Voss', {
+        stories: [],
+        entities: [entity()],
+        onNotify,
+      });
+
+      expect(onNotify).not.toHaveBeenCalled();
+    });
+
+    it('does not return a note path match when an entity already matched the stem', () => {
+      const result = resolveCrossTabLink('Elara', {
+        stories: [],
+        entities: [entity()],
+        notePaths: ['Notes/Elara.md'],
+      });
+
+      // Entity match takes priority; note path not included to avoid duplicate
+      expect(result.status).toBe('single');
+      expect(result.matches).toHaveLength(1);
+      expect(result.matches[0]).toMatchObject({ kind: 'entity', entityId: 'entity-1' });
+    });
   });
 });

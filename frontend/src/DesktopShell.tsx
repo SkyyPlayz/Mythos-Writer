@@ -745,6 +745,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
   const { toast: upgradeToastState, showToast: showUpgradeToast } = useToast(5000);
+  const { toast: wikiLinkToastState, showToast: showWikiLinkToast } = useToast(3000);
 
   // ─── Voice state (SKY-322) ───
   const [voiceActive, setVoiceActive] = useState(false);
@@ -2855,13 +2856,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [handleSelectScene, handleTabChange, handleNotesSubViewChange]);
 
   const handleWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, { stories, entities: allEntities, notePaths: allNotePaths });
+    const resolution = resolveCrossTabLink(target, {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+      onNotify: showWikiLinkToast,
+    });
     if (resolution.status === 'single') {
       applyCrossTabLinkMatch(resolution.matches[0]);
     } else if (resolution.status === 'ambiguous') {
       setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
     }
-  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, stories]);
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, showWikiLinkToast, stories]);
 
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
@@ -4051,6 +4057,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />
+      <Toast message={wikiLinkToastState?.message ?? null} level={wikiLinkToastState?.level} className="app-toast--stacked" />
       {voiceListening && (
         <div className="voice-listening-badge" role="status" aria-live="polite" aria-label="Voice input active">
           Listening…
