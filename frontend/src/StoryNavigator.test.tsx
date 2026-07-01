@@ -44,6 +44,20 @@ describe('StoryNavigator', () => {
     expect(screen.getByText('Scene Two')).toBeInTheDocument();
   });
 
+  it('does not reorder the passed-in chapters array during render', () => {
+    const laterChapter: Chapter = { ...chapter1, id: 'ch-later', title: 'Later Chapter', order: 1, scenes: [] };
+    const earlierChapter: Chapter = { ...chapter1, id: 'ch-earlier', title: 'Earlier Chapter', order: 0, scenes: [] };
+    const story: Story = {
+      ...story1,
+      chapters: [laterChapter, earlierChapter],
+    };
+    const originalChapterIds = story.chapters.map((chapter) => chapter.id);
+
+    render(<StoryNavigator {...makeProps({ stories: [story] })} />);
+
+    expect(story.chapters.map((chapter) => chapter.id)).toEqual(originalChapterIds);
+  });
+
   it('shows draft badge for non-in-progress scenes', () => {
     render(<StoryNavigator {...makeProps()} />);
     expect(screen.getByText('review')).toBeInTheDocument();
