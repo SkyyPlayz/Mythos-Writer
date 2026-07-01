@@ -10,4 +10,5 @@ build/*.node
 test-results
 playwright-report
 # Paperclip / Claude Code agent worktrees — never commit nested git repos
+.paperclip/
 .claude/
