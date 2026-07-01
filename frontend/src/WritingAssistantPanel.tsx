@@ -340,6 +340,7 @@ export default function WritingAssistantPanel({
     setError(null);
     try {
       const result = await window.api.betaReadScan(scene.id, prose, scene.path);
+      if ('error' in result) throw new Error(result.error);
       setBetaReadComments(result.comments);
       setBetaReadLastScannedAt(result.scannedAt);
       announce(`Beta-Read complete with ${result.comments.length} ${result.comments.length === 1 ? 'comment' : 'comments'}.`);
