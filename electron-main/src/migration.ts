@@ -24,6 +24,14 @@ import type {
 const MANUSCRIPT_DIR = 'Manuscript';
 const RESERVED_TOP_LEVEL_FILES = new Set(['Outline.md', 'Synopsis.md']);
 
+// In-process plan registry: planId → { storyPath, fileSet }.
+// buildMigrationPlans writes an entry; applyMigrationPlan reads it to reject
+// unknown planIds and to block apply when NEW files appear that weren't in the
+// original dry-run (stale-plan protection for GH#636).
+// Files that have already been migrated (no longer detected) are fine —
+// that is the idempotent case.
+const _planRegistry = new Map<string, { storyPath: string; fileSet: ReadonlySet<string> }>();
+
 interface DetectedLegacyChapter {
   storyDir: string; // vault-relative, posix
   storyName: string;
@@ -166,7 +174,11 @@ function safeSlug(title: string): string {
 }
 
 function describeStoryRoots(vaultRoot: string, storyPathHint?: string): string[] {
-  if (storyPathHint) return [storyPathHint];
+  if (storyPathHint) {
+    // Reject ../.. escapes, absolute paths, and symlink escapes before any fs access (GH#634).
+    realSafePath(vaultRoot, storyPathHint, false);
+    return [storyPathHint];
+  }
   const manuscriptAbs = path.join(vaultRoot, MANUSCRIPT_DIR);
   if (!fs.existsSync(manuscriptAbs)) return [];
   return fs
@@ -228,8 +240,10 @@ export function buildMigrationPlans(vaultRoot: string, storyPathHint?: string): 
       });
     }
 
+    const planId = crypto.randomUUID();
+    _planRegistry.set(planId, { storyPath: storyDir, fileSet: new Set(detected) });
     plans.push({
-      planId: crypto.randomUUID(),
+      planId,
       storyPath: storyDir,
       detectedLegacyFiles: detected,
       changes,
@@ -275,7 +289,24 @@ export function applyMigrationPlan(
   storyPath: string,
   planId: string,
 ): MigrationApplyResult {
+  // Reject unknown or mismatched planIds (GH#636).
+  const registered = _planRegistry.get(planId);
+  if (!registered || registered.storyPath !== storyPath) {
+    throw new Error(`Unknown or stale migration planId: ${planId}`);
+  }
+
   const legacy = detectLegacyChaptersForStory(vaultRoot, storyPath);
+
+  // Reject apply if new legacy files appeared since the dry-run (GH#636).
+  // Already-migrated files (no longer detected) are fine — that is the
+  // idempotent case; only UNEXPECTED additions invalidate the plan.
+  const unexpected = legacy.filter((i) => !registered.fileSet.has(i.legacyFile));
+  if (unexpected.length > 0) {
+    throw new Error(
+      'Migration plan is stale: new legacy files detected since the dry-run was built.',
+    );
+  }
+
   let appliedChanges = 0;
   const snapshotsWritten: string[] = [];
 
