@@ -18,7 +18,29 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  # SKY-4970: Single serialized setup job prevents concurrent npm cache restore I/O
+  # bottleneck. On the single WSL2 self-hosted runner, 5+ parallel setup-node steps each
+  # restoring ~1.4GB npm cache saturate disk I/O and cause hangs. This job runs first,
+  # restores the Actions npm cache and runs npm ci once (populating ~/.npm), then all
+  # downstream jobs skip the cache restore and use the warm local npm cache instead.
+  setup:
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
   lint:
+    needs: [setup]
     runs-on: self-hosted
     timeout-minutes: 10
 
@@ -40,7 +62,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm; restoring
+          # 1.4GB cache concurrently across parallel jobs saturated WSL2 disk I/O.
 
       - name: Install dependencies
         run: npm ci
@@ -49,6 +72,7 @@ jobs:
         run: npm run lint -w frontend
 
   typecheck:
+    needs: [setup]
     runs-on: self-hosted
     timeout-minutes: 15
 
@@ -59,7 +83,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -71,6 +95,7 @@ jobs:
         run: npm run typecheck -w electron-main
 
   unit:
+    needs: [setup]
     runs-on: self-hosted
     timeout-minutes: 20
 
@@ -81,7 +106,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -135,7 +160,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -182,7 +207,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -268,7 +293,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -331,7 +356,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -403,7 +428,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         run: npm ci
@@ -545,6 +570,7 @@ jobs:
     # `if: always()` — a known GH Actions quirk with multiple skipped upstream jobs.
     # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
     # with `success` and push/workflow_dispatch does the full packaging.
+    needs: [setup]
     runs-on: self-hosted
     timeout-minutes: 40
     concurrency:
@@ -588,7 +614,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         if: github.event_name != 'pull_request'
@@ -693,6 +719,7 @@ jobs:
     # steps are gated at step level instead.
     # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
     # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    needs: [setup]
     runs-on: self-hosted
     timeout-minutes: 40
     continue-on-error: true
@@ -712,7 +739,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
+          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
 
       - name: Install dependencies
         if: github.event_name != 'pull_request'
