@@ -990,6 +990,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+
+  const handleDismissGettingStarted = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleToggleGsCollapsed = useCallback(() => {
+    if (!gettingStartedProgress) return;
+    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
+  }, [gettingStartedProgress, persistGettingStartedProgress]);
+
+  const handleDismissSampleProjectBanner = useCallback(() => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, sampleProjectBannerDismissed: true } as AppSettings;
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
@@ -1325,6 +1344,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { rightSidebarVisible: initS.rightSidebarVisible } : {}),
         ...(initS?.gettingStartedProgress != null && sFromIpc.gettingStartedProgress == null
           ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
+        ...(initS?.onboardingStartMode != null && sFromIpc.onboardingStartMode == null
+          ? { onboardingStartMode: initS.onboardingStartMode } : {}),
+        ...(initS?.lastSampleGenre != null && sFromIpc.lastSampleGenre == null
+          ? { lastSampleGenre: initS.lastSampleGenre } : {}),
       } : (initS ?? sFromIpc);
       cachedSettings = s;
 
@@ -3389,6 +3412,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : 'Story'} vault: ${activeVaultBadge}`;
+  const showSampleProjectBanner = appSettings?.onboardingStartMode === 'sample'
+    && !appSettings.sampleProjectBannerDismissed;
 
   const NAV_ITEMS: NavRailItem[] = [
     { id: 'story', label: 'Story', icon: '📖' },
@@ -3517,6 +3542,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         onSubViewChange={handleSetView}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
       />
+      {showSampleProjectBanner && (
+        <div
+          className="sample-project-banner"
+          data-testid="gs-sample-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="sample-project-banner__copy">
+            <strong>Sample project</strong>
+            <span>Explore the seeded scenes, characters, and notes, or replace them whenever you are ready.</span>
+          </div>
+          <button
+            type="button"
+            className="sample-project-banner__dismiss"
+            data-testid="gs-sample-banner-dismiss"
+            aria-label="Dismiss sample project banner"
+            onClick={handleDismissSampleProjectBanner}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
       <div className="shell-main-row">
       {/* SKY-1698: active docked tab shows its panels in the main area */}
