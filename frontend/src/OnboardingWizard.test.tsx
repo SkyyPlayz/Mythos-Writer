@@ -123,6 +123,9 @@ async function flushAsyncEffects() {
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
   });
 }
 
@@ -1704,7 +1707,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       // atomically inside act(). flushAsyncEffects() drains any remaining
       // Promise.all continuations whose setState batch lands after the act() gap.
       await act(async () => {
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(500);
       });
       await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
@@ -1725,7 +1728,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/home/user/NewVault' },
       });
       await act(async () => {
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(500);
       });
       await flushAsyncEffects();
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
@@ -1746,7 +1749,7 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
         target: { value: '/root/protected' },
       });
       await act(async () => {
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(500);
       });
       await flushAsyncEffects();
       expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
