@@ -809,6 +809,33 @@ describe('realSafePath — symlink escapes are rejected', () => {
     expect(names).not.toContain('escape.txt');
   });
 
+  // GH#622: a single unreadable subdirectory must not abort the entire listing.
+  it('listVaultFiles skips unreadable subdirectories and continues (GH#622)', () => {
+    if (process.getuid && process.getuid() === 0) return; // root bypasses chmod
+    fs.writeFileSync(path.join(tmpDir, 'top.md'), 'top');
+    const readableDir = path.join(tmpDir, 'readable');
+    fs.mkdirSync(readableDir);
+    fs.writeFileSync(path.join(readableDir, 'note.md'), 'note');
+    const lockedDir = path.join(tmpDir, 'locked');
+    fs.mkdirSync(lockedDir);
+    fs.writeFileSync(path.join(lockedDir, 'secret.md'), 'secret');
+    fs.chmodSync(lockedDir, 0o000);
+
+    let result: ReturnType<typeof listVaultFiles>;
+    try {
+      result = listVaultFiles(tmpDir);
+    } finally {
+      fs.chmodSync(lockedDir, 0o700);
+    }
+
+    const names = result!.items.map((i) => i.name);
+    expect(names).toContain('top.md');
+    expect(names).toContain('readable');
+    expect(names).toContain('note.md');
+    // The locked directory itself appears in the parent listing but its contents are skipped
+    expect(names).not.toContain('secret.md');
+  });
+
   it('realSafePath rejects a parent-directory symlink escape (new file write)', () => {
     const escapeDir = os.tmpdir();
     fs.symlinkSync(escapeDir, path.join(tmpDir, 'escape-dir'));

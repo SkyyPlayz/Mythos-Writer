@@ -200,6 +200,30 @@ describe('reindexEntities', () => {
     reindexEntities(tmpDir, manifest);
     expect(manifest.entities).toHaveLength(1);
   });
+
+  // GH#632: one unreadable type directory must not abort the whole index.
+  it('skips unreadable type directories and continues indexing others (GH#632)', () => {
+    if (process.getuid && process.getuid() === 0) return; // root bypasses chmod
+
+    const goodEntry = createEntity(tmpDir, manifest, { name: 'Lyra', type: 'character' });
+    // Create a second type directory and lock it
+    const lockedTypeDir = path.join(tmpDir, 'entities', 'locations');
+    fs.mkdirSync(lockedTypeDir, { recursive: true });
+    fs.writeFileSync(path.join(lockedTypeDir, 'city.md'), '---\nid: fake-loc\nname: Midcity\ntype: location\n---\n');
+    fs.chmodSync(lockedTypeDir, 0o000);
+
+    manifest.entities = [];
+    try {
+      reindexEntities(tmpDir, manifest);
+    } finally {
+      fs.chmodSync(lockedTypeDir, 0o700);
+    }
+
+    // The readable character type must still be indexed
+    expect(manifest.entities.some((e) => e.id === goodEntry.id)).toBe(true);
+    // The locked location type is simply skipped — no throw, and count is 1 not 2
+    expect(manifest.entities).toHaveLength(1);
+  });
 });
 
 describe('aliases frontmatter serialization', () => {

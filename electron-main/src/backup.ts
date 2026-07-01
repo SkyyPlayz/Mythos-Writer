@@ -176,9 +176,12 @@ export async function restoreAppData(options: RestoreOptions): Promise<RestoreRe
   }
 
   if (!options.overwrite) {
+    // GH#629: include vault manifests so a restore onto an existing vault always requires confirmation.
     const sentinels = [
       path.join(options.userDataPath, 'app-settings.json'),
       path.join(options.userDataPath, 'vault-settings.json'),
+      path.join(options.storyVaultRoot, 'manifest.json'),
+      path.join(options.notesVaultRoot, 'manifest.json'),
     ];
     if (sentinels.some((f) => fs.existsSync(f))) {
       return {

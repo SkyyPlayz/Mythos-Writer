@@ -89,6 +89,31 @@ describe('validatePathForVault', () => {
   });
 });
 
+// GH#610: validatePathForVault must not throw on unreadable directories.
+describe('validatePathForVault — unreadable directory (GH#610)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-unreadable-'));
+  });
+
+  afterEach(() => {
+    fs.chmodSync(tmpDir, 0o700);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('degrades gracefully when the target directory cannot be listed', () => {
+    if (process.getuid && process.getuid() === 0) return; // root can always read
+    fs.writeFileSync(path.join(tmpDir, 'existing.md'), 'data');
+    fs.chmodSync(tmpDir, 0o000);
+    // Must not throw; returns exists=true, isEmpty=false, error set
+    const result = validatePathForVault(tmpDir, HOME);
+    expect(result.exists).toBe(true);
+    expect(result.isEmpty).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
+
 describe('isExistingUsableVaultRoot', () => {
   let tmpDir: string;
 
