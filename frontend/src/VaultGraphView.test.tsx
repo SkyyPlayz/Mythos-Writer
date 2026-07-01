@@ -10,13 +10,33 @@ import { readContrastFloors } from './themeAxis';
 
 const MOCK_DATA: VaultGraphData = {
   nodes: [
-    { id: 'characters/ava.md', label: 'Ava.md', path: 'Characters/Ava.md', category: 'characters', degree: 2 },
-    { id: 'locations/citadel.md', label: 'Citadel.md', path: 'Locations/Citadel.md', category: 'locations', degree: 1 },
-    { id: 'items/orb.md', label: 'Orb.md', path: 'Items/Orb.md', category: 'items', degree: 1 },
+    { id: 'characters/ava.md', label: 'Ava.md', path: 'Characters/Ava.md', category: 'characters', vault: 'notes', degree: 2 },
+    { id: 'locations/citadel.md', label: 'Citadel.md', path: 'Locations/Citadel.md', category: 'locations', vault: 'notes', degree: 1 },
+    { id: 'items/orb.md', label: 'Orb.md', path: 'Items/Orb.md', category: 'items', vault: 'notes', degree: 1 },
   ],
   edges: [
     { source: 'characters/ava.md', target: 'locations/citadel.md', weight: 1 },
     { source: 'characters/ava.md', target: 'items/orb.md', weight: 1 },
+  ],
+};
+
+const MIXED_VAULT_DATA: VaultGraphData = {
+  nodes: [
+    { id: 'characters/ava.md', label: 'Ava.md', path: 'Characters/Ava.md', category: 'characters', vault: 'notes', degree: 1 },
+    {
+      id: 'story:story-1:chapter-1:scene-1',
+      label: 'Scene One',
+      path: 'Story/Chapter One/Scene One.md',
+      category: 'scenes',
+      vault: 'story',
+      storyId: 'story-1',
+      chapterId: 'chapter-1',
+      sceneId: 'scene-1',
+      degree: 1,
+    },
+  ],
+  edges: [
+    { source: 'characters/ava.md', target: 'story:story-1:chapter-1:scene-1', weight: 1, crossVault: true },
   ],
 };
 
@@ -37,7 +57,55 @@ describe('VaultGraphView', () => {
 
     expect((window as any).api.vaultGraphNodes).toHaveBeenCalledTimes(1);
     expect((window as any).api.vaultGraphEdges).toHaveBeenCalledTimes(1);
+    expect((window as any).api.vaultGraphNodes).toHaveBeenCalledWith('notes');
+    expect((window as any).api.vaultGraphEdges).toHaveBeenCalledWith('notes');
     expect(screen.getByText(/3 notes · 2 links/)).toBeInTheDocument();
+  });
+
+  it('renders vault scope selector with Notes selected by default', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+
+    const scopeGroup = screen.getByRole('group', { name: /vault scope/i });
+    expect(within(scopeGroup).getByRole('button', { name: /notes/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(scopeGroup).getByRole('button', { name: /story/i })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(scopeGroup).getByRole('button', { name: /both/i })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('selecting Story scope reloads graph data with scope=story', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const scopeGroup = screen.getByRole('group', { name: /vault scope/i });
+    await act(async () => {
+      fireEvent.click(within(scopeGroup).getByRole('button', { name: /^story$/i }));
+    });
+
+    expect((window as any).api.vaultGraphNodes).toHaveBeenLastCalledWith('story');
+    expect((window as any).api.vaultGraphEdges).toHaveBeenLastCalledWith('story');
+    expect(within(scopeGroup).getByRole('button', { name: /^story$/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('supports mixed-vault story nodes, story routing, and cross-vault edge styling', async () => {
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MIXED_VAULT_DATA.nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MIXED_VAULT_DATA.edges }),
+    };
+    const onOpenNote = vi.fn();
+    const onOpenScene = vi.fn();
+
+    render(<VaultGraphView initialVaultScope="both" onOpenNote={onOpenNote} onOpenScene={onOpenScene} />);
+
+    const sceneNode = await screen.findByRole('button', { name: /open scene Scene One/i });
+    expect(within(sceneNode).getByTestId('vault-graph-node-circle')).toHaveClass('vgv-node-circle--scenes');
+    expect(screen.getByRole('button', { name: /scenes filter/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('vault-edge-characters/ava.md__story:story-1:chapter-1:scene-1')).toHaveClass('vgv-graph-edge--cross-vault');
+
+    fireEvent.click(sceneNode);
+
+    expect(onOpenScene).toHaveBeenCalledWith('story-1', 'chapter-1', 'scene-1');
+    expect(onOpenNote).not.toHaveBeenCalled();
   });
 
   it('renders circular category-token nodes with radius based on degree', async () => {

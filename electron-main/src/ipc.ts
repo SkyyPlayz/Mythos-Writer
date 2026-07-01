@@ -679,8 +679,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.ARCHIVE_STATUS]: (payload: never) => ArchiveStatusResponse;
   [IPC_CHANNELS.VAULT_GRAPH_DATA]: (payload: never) => Promise<VaultGraphDataResponse>;
   // SKY-1756: Notes Vault graph — in-memory link index with degree + category
-  [IPC_CHANNELS.VAULT_GRAPH_NODES]: (payload: never) => VaultGraphNodesResponse;
-  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: (payload: never) => VaultGraphEdgesResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_NODES]: (payload: VaultGraphScopePayload | VaultGraphScope | undefined) => VaultGraphNodesResponse;
+  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: (payload: VaultGraphScopePayload | VaultGraphScope | undefined) => VaultGraphEdgesResponse;
   [IPC_CHANNELS.CHAPTER_CREATE]: (payload: ChapterCreatePayload) => ChapterEntry;
   [IPC_CHANNELS.SCENE_CREATE]: (payload: SceneCreatePayload) => SceneEntry;
   [IPC_CHANNELS.CHAPTER_LIST]: (payload: ChapterListPayload) => ChapterListResponse;
@@ -2728,14 +2728,25 @@ export type VaultGraphCategory =
   | 'history'
   | 'systems'
   | 'items'
+  | 'scenes'
   | 'misc'
   | 'default';
+
+export type VaultGraphScope = 'notes' | 'story' | 'both';
+
+export interface VaultGraphScopePayload {
+  scope?: VaultGraphScope;
+}
 
 export interface VaultGraphNodeV2 {
   id: string;
   label: string;
   path: string;
   category: VaultGraphCategory;
+  vault?: 'notes' | 'story';
+  storyId?: string;
+  chapterId?: string;
+  sceneId?: string;
   /** Count of unique edges this node participates in (in + out, undirected). */
   degree: number;
 }
@@ -2745,6 +2756,7 @@ export interface VaultGraphEdgeV2 {
   target: string;
   /** Number of [[...]] references from source to target in the source file. */
   weight: number;
+  crossVault?: boolean;
 }
 
 export interface VaultGraphNodesResponse {
