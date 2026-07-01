@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Story } from './types';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
+import { parseStrictInt } from './utils/parseStrictInt';
 import './ProgressDashboard.css';
 
 interface HeatmapEntry {
@@ -83,8 +84,8 @@ export default function ProgressDashboard({ stories }: Props) {
   }, [loadStats]);
 
   const handleSaveGoal = useCallback(async () => {
-    const n = parseInt(goalInput, 10);
-    if (isNaN(n) || n < 1) return;
+    const n = parseStrictInt(goalInput);
+    if (n === null || n < 1) return;
     setSaving(true);
     try {
       await window.api.goalsSetGoal(n);

@@ -16,7 +16,6 @@ import {
   sceneOpacity,
   stepFocusedScene,
 } from './timelineFilters';
-
 // ─── Display types ───
 
 export interface SpreadsheetScene {

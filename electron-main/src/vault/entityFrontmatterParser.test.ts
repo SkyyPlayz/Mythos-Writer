@@ -46,4 +46,16 @@ describe('parseEntityFrontmatter', () => {
     const { aliases } = parseEntityFrontmatter(content);
     expect(aliases).toEqual(['foo', 'bar']);
   });
+
+  it('keeps quoted aliases containing commas intact (GH#611)', () => {
+    const content = '---\naliases: ["Smith, John", Margot]\ntype: Character\n---\n';
+    const { aliases } = parseEntityFrontmatter(content);
+    expect(aliases).toEqual(['Smith, John', 'Margot']);
+  });
+
+  it('strips surrounding quotes from single quoted aliases with commas', () => {
+    const content = "---\naliases: ['Doe, Jane']\n---\n";
+    const { aliases } = parseEntityFrontmatter(content);
+    expect(aliases).toEqual(['Doe, Jane']);
+  });
 });
