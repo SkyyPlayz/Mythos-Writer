@@ -263,7 +263,7 @@ export function resolveCrossTabLink(rawTarget: string, context: CrossTabLinkCont
   if (!typed) {
     const matches = resolveUntypedStem(rawTarget, context);
     if (matches.length === 0) {
-      context.onNotify?.(`No note found for "[[${rawTarget}]]"`, 'warn');
+      context.onNotify?.(`No note or scene found for "[[${rawTarget}]]"`, 'warn');
       return { status: 'none', rawTarget, matches: [] };
     }
     return {
