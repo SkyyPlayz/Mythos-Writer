@@ -28,20 +28,34 @@
   flex-shrink: 0;
 }
 
+/* GH #619: the "‹ Prev / Next ›" page-nav buttons used bare dark hex (near-zero
+   contrast on the dark bottom bar). Bring them onto the shared glass/neon tokens:
+   legible elevated glass fill + neon-tinted border + neon hover glow. */
 .bottom-nav-btn {
-  background: none;
-  border: 1px solid #27272a;
-  border-radius: 4px;
-  color: #71717a;
+  background: var(--bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border-default));
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-body);
   padding: 2px 8px;
   font-size: 0.78rem;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color var(--dur-hover-in, 150ms) var(--ease-out, ease),
+              border-color var(--dur-hover-in, 150ms) var(--ease-out, ease),
+              box-shadow var(--dur-hover-in, 150ms) var(--ease-out, ease),
+              background var(--dur-hover-in, 150ms) var(--ease-out, ease);
 }
 
 .bottom-nav-btn:hover:not(:disabled) {
-  color: #a1a1aa;
-  border-color: #3f3f46;
+  color: var(--text-header);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.bottom-nav-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-color: var(--accent);
 }
 
 .bottom-nav-btn:disabled {
