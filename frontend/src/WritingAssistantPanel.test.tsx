@@ -1445,3 +1445,54 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
     expect(() => fireEvent.click(pill)).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Beta-Read error propagation (GH #740 regression)
+// ---------------------------------------------------------------------------
+describe('WritingAssistantPanel — Beta-Read error propagation (GH #740)', () => {
+  it('shows the provider error message when betaReadScan returns { error }', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'ANTHROPIC_API_KEY is not set.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
+    });
+  });
+
+  it('does NOT show 0-comment success state when betaReadScan returns { error }', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'Provider timeout.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no comments/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/beta-read complete/i)).not.toBeInTheDocument();
+  });
+
+  it('does NOT crash with TypeError when betaReadScan returns { error } (regression for GH #740)', async () => {
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'Writing Assistant unavailable.' });
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    expect(() => fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }))).not.toThrow();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Writing Assistant unavailable.');
+    });
+  });
+
+  it('shows error state when betaReadScan rejects with a network/IPC error', async () => {
+    mockBetaReadScan.mockRejectedValueOnce(new Error('IPC channel closed unexpectedly.'));
+
+    render(<WritingAssistantPanel scene={betaReadScene} />);
+    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('IPC channel closed unexpectedly.');
+    });
+  });
+});

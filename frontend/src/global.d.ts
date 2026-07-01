@@ -895,7 +895,7 @@ interface Window {
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
-    betaReadScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ comments: BetaReadComment[]; scannedAt: string }>;
+    betaReadScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ comments: BetaReadComment[]; scannedAt: string } | { error: string }>;
 
     // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
