@@ -164,6 +164,13 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         draftState: 'in-progress' as const,
         createdAt: nowStr, updatedAt: nowStr,
       };
+      // Write the scene file first; only record the manifest entry after the
+      // file exists on disk. Reversed order can leave an orphaned manifest entry
+      // if the file write fails or is interrupted (GH #731).
+      await window.api.writeVault?.(
+        scene.path,
+        `---\nid: ${id}\ntitle: "${title.trim().replace(/"/g, '\\"')}"\ndraftState: in-progress\nupdatedAt: ${nowStr}\n---\n\n`,
+      );
       const updatedStories = m.stories.map((s) =>
         s.id !== storyId ? s : {
           ...s,
@@ -173,8 +180,6 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         }
       );
       await window.api.writeManifest({ ...m, stories: updatedStories });
-      // Also write the empty scene file so the editor can open it.
-      window.api.writeVault?.(scene.path, `---\nid: ${id}\ntitle: "${title.trim().replace(/"/g, '\\"')}"\ndraftState: in-progress\nupdatedAt: ${nowStr}\n---\n\n`).catch(() => {});
       setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
