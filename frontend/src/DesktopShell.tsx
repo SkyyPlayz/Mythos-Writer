@@ -1068,19 +1068,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.dispatchEvent(new CustomEvent('scene:saved'));
   }, [selectedScene]);
 
-  const handleDraftRestore = useCallback((content: string) => {
-    if (!selectedScene) return;
-    const restoredBlock: Block = {
-      id: generateId(),
-      type: 'prose',
-      content,
-      order: 0,
-      updatedAt: now(),
-    };
-    setSelectedScene(prev => prev ? { ...prev, blocks: [restoredBlock], updatedAt: now() } : null);
-    setRestoreKey(k => k + 1);
-  }, [selectedScene]);
-
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
     const restoredBlock: Block = {
@@ -2315,7 +2302,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (mod && e.shiftKey && !e.altKey && (e.key === 'R' || e.key === 'r')) {
         e.preventDefault();
-        const el = document.querySelector<HTMLElement>('.right-sidebar [role="tab"][aria-selected="true"], .right-sidebar button');
+        const el = document.querySelector<HTMLElement>('[data-testid="global-right-sidebar"] [role="tab"][aria-selected="true"], [data-testid="global-right-sidebar"] [role="button"], [data-testid="global-right-sidebar"] button');
         el?.focus();
         return;
       }
