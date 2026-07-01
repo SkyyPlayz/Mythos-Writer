@@ -151,6 +151,7 @@ async function createStoryWithScenes(
   chapterTitle: string,
   sceneTitle1: string,
   sceneTitle2: string,
+  vaultDir: string,
 ): Promise<string> {
   // Create story via VaultBrowser
   await openVaultTab(page);
@@ -159,14 +160,6 @@ async function createStoryWithScenes(
   await expect(
     page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: storyTitle }),
   ).toBeVisible({ timeout: 8_000 });
-
-  // Get story ID from the vault browser by finding the story element's data
-  const storyEl = page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: storyTitle });
-  const storyRow = storyEl.locator('..');
-  const storyId = await storyRow.evaluate((el) => {
-    const parent = el.closest('[data-story-id]');
-    return parent?.getAttribute('data-story-id') || '';
-  });
 
   // Create chapter
   await page.locator('[data-testid="vb-story-vault"]')
@@ -198,16 +191,26 @@ async function createStoryWithScenes(
     page.locator('[data-testid="vb-story-vault"] .vb-scene-row .vb-name', { hasText: sceneTitle2 }),
   ).toBeVisible({ timeout: 6_000 });
 
-  // Click on the story to open it in the editor and navigate to Outline tab
-  await storyEl.click();
+  // Click a scene row to trigger handleSelectScene → setSelectedStory in DesktopShell.
+  // Clicking the story tree-toggle only expands the tree; it does NOT set selectedStory.
+  const firstSceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: sceneTitle1 });
+  await firstSceneRow.click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 10_000 });
 
-  return storyId;
+  // Wait for the 900ms manifest-save debounce, then read the story's path from disk.
+  // story.path is set by DesktopShell createStory as "stories/{uuid}".
+  await page.waitForTimeout(1_200);
+  const manifestPath = path.join(vaultDir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  const storyObj = (manifest.stories as Array<{ title: string; path: string }>)
+    .find((s) => s.title === storyTitle);
+  return storyObj?.path ?? '';
 }
 
-async function getOutlineFilePath(vaultDir: string, storyId: string): Promise<string> {
-  // Story vaults are stored at {vaultRoot}/stories/{storyId}/
-  return path.join(vaultDir, 'stories', storyId, 'outline-nodes.json');
+async function getOutlineFilePath(vaultDir: string, storyPath: string): Promise<string> {
+  // OUTLINE_LOAD/SAVE IPC joins storyPath (e.g. "stories/{uuid}") with getVaultRoot(),
+  // so the file lives at {vaultRoot}/{storyPath}/outline-nodes.json.
+  return path.join(vaultDir, storyPath, 'outline-nodes.json');
 }
 
 function readOutlineFile(filePath: string): unknown {
@@ -226,7 +229,7 @@ let vaultDir: string;
 let notesVaultDir: string;
 let app: ElectronApplication | undefined;
 let page: Page;
-let storyId: string;
+let storyPath: string;
 
 test.beforeAll(async () => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-opl-'));
@@ -238,8 +241,8 @@ test.beforeAll(async () => {
   page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Create story with 2 scenes for the test suite
-  storyId = await createStoryWithScenes(page, STORY_TITLE, CHAPTER_TITLE, SCENE_TITLE, SCENE_TITLE_2);
+  // Create story with 2 scenes for the test suite; returns the story's manifest path.
+  storyPath = await createStoryWithScenes(page, STORY_TITLE, CHAPTER_TITLE, SCENE_TITLE, SCENE_TITLE_2, vaultDir);
   // Expand the Outline panel once for all tests
   await openOutlinePanel(page);
 });
@@ -287,7 +290,7 @@ test('AC-OPL-QA-02: Create first outline node, navigate away and back, node pers
   await page.waitForTimeout(600);
 
   // Read the outline file to verify persistence
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   let savedData = readOutlineFile(outlineFilePath);
   expect(savedData).not.toBeNull();
   expect((savedData as any)?.nodes?.[0]?.title).toBe('First outline node');
@@ -330,7 +333,7 @@ test('AC-OPL-QA-03: Press Enter to create sibling node below', async () => {
   await page.waitForTimeout(600);
 
   // Verify in file
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const savedData = readOutlineFile(outlineFilePath) as any;
   expect(savedData?.nodes?.length).toBeGreaterThanOrEqual(2);
   expect(savedData?.nodes?.[1]?.title).toBe('Second outline node');
@@ -349,7 +352,7 @@ test('AC-OPL-QA-04: Press Tab to indent second node as child of first', async ()
   await page.waitForTimeout(600);
 
   // Verify in file: second node should now be a child of first
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const savedData = readOutlineFile(outlineFilePath) as any;
   expect(savedData?.nodes?.[0]?.children?.length).toBe(1);
   expect(savedData?.nodes?.[0]?.children?.[0]?.title).toBe('Second outline node');
@@ -374,7 +377,7 @@ test('AC-OPL-QA-05: Press Shift+Tab to promote child back to root level', async 
   await page.waitForTimeout(600);
 
   // Verify in file: second node should be back at root level
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const savedData = readOutlineFile(outlineFilePath) as any;
   expect(savedData?.nodes?.length).toBeGreaterThanOrEqual(2);
   expect(savedData?.nodes?.[1]?.title).toBe('Second outline node');
@@ -461,7 +464,7 @@ test('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', 
   await page.waitForTimeout(600);
 
   // Verify in file
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const savedData = readOutlineFile(outlineFilePath) as any;
   expect(savedData?.nodes?.[0]?.linkedSceneId).toBeTruthy();
 });
@@ -470,13 +473,19 @@ test('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', 
 
 test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.json', async () => {
   // Before reload, verify current state
-  const outlineFilePath = await getOutlineFilePath(vaultDir, storyId);
+  const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const beforeReload = readOutlineFile(outlineFilePath) as any;
   expect(beforeReload?.nodes?.length).toBeGreaterThanOrEqual(1);
 
   // Hard reload the window
   await page.reload();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // After reload selectedStory is null; click a scene to restore it via handleSelectScene.
+  await openVaultTab(page);
+  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
+  await sceneRow.waitFor({ state: 'visible', timeout: 8_000 });
+  await sceneRow.click();
 
   // Navigate back to outline tab
   await openOutlinePanel(page);

@@ -5779,11 +5779,19 @@ const handlers: IpcHandlers = {
   },
 
   // SKY-3026: Outline planning surface
+  // story.path is a relative path ("stories/{uuid}"); join with vault root so the
+  // outline file is written inside the vault directory, not relative to process cwd.
   [IPC_CHANNELS.OUTLINE_LOAD]: (payload: OutlineLoadPayload) => {
-    return loadOutline(payload.storyVaultPath);
+    const absPath = path.isAbsolute(payload.storyVaultPath)
+      ? payload.storyVaultPath
+      : path.join(getVaultRoot(), payload.storyVaultPath);
+    return loadOutline(absPath);
   },
   [IPC_CHANNELS.OUTLINE_SAVE]: (payload: OutlineSavePayload): OutlineSaveResponse => {
-    saveOutline(payload.storyVaultPath, payload.data);
+    const absPath = path.isAbsolute(payload.storyVaultPath)
+      ? payload.storyVaultPath
+      : path.join(getVaultRoot(), payload.storyVaultPath);
+    saveOutline(absPath, payload.data);
     return { saved: true };
   },
 
