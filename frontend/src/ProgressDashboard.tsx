@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Story } from './types';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import './ProgressDashboard.css';
 
 interface HeatmapEntry {
@@ -52,6 +54,7 @@ export default function ProgressDashboard({ stories }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const { toast, showToast } = useToast();
 
   const totalWords = computeTotalWords(stories);
 
@@ -86,12 +89,13 @@ export default function ProgressDashboard({ stories }: Props) {
     try {
       await window.api.goalsSetGoal(n);
       await loadStats();
-    } catch {
-      // non-fatal
+    } catch (err) {
+      console.error('Failed to save daily goal:', err);
+      showToast('Failed to save goal. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
-  }, [goalInput, loadStats]);
+  }, [goalInput, loadStats, showToast]);
 
   const handleGoalKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -109,10 +113,12 @@ export default function ProgressDashboard({ stories }: Props) {
       await window.api.goalsResetStreak();
       setResetConfirm(false);
       await loadStats();
-    } catch {
+    } catch (err) {
+      console.error('Failed to reset streak:', err);
       setResetConfirm(false);
+      showToast('Failed to reset streak. Please try again.', 'error');
     }
-  }, [resetConfirm, loadStats]);
+  }, [resetConfirm, loadStats, showToast]);
 
   if (loading) {
     return (
@@ -256,6 +262,8 @@ export default function ProgressDashboard({ stories }: Props) {
           </button>
         </div>
       </section>
+
+      <Toast message={toast?.message ?? null} level={toast?.level} />
     </div>
   );
 }
