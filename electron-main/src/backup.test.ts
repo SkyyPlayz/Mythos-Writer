@@ -248,6 +248,66 @@ describe('restoreAppData — overwrite guard', () => {
   });
 });
 
+// GH#629: overwrite guard must also fire when a vault manifest already exists.
+describe('restoreAppData — overwrite guard: vault manifest sentinels (GH#629)', () => {
+  it('refuses to overwrite when only the story vault manifest exists', async () => {
+    const storyVault = mkTmp();
+    const out = path.join(mkTmp(), 'backup.mwbackup');
+
+    // Create backup from a pristine state (no settings files)
+    await backupAppData({
+      userDataPath: mkTmp(),
+      storyVaultRoot: mkTmp(),
+      notesVaultRoot: mkTmp(),
+      appVersion: '0.1.0',
+      manifestSchemaVersion: 0,
+      outputPath: out,
+    });
+
+    // Target has a story vault manifest but no app-settings.json
+    fs.writeFileSync(path.join(storyVault, 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    const result = await restoreAppData({
+      archivePath: out,
+      userDataPath: mkTmp(),
+      storyVaultRoot: storyVault,
+      notesVaultRoot: mkTmp(),
+      overwrite: false,
+    });
+
+    expect(result.restored).toBe(false);
+    expect(result.requiresConfirmation).toBe(true);
+  });
+
+  it('refuses to overwrite when only the notes vault manifest exists', async () => {
+    const notesVault = mkTmp();
+    const out = path.join(mkTmp(), 'backup.mwbackup');
+
+    await backupAppData({
+      userDataPath: mkTmp(),
+      storyVaultRoot: mkTmp(),
+      notesVaultRoot: mkTmp(),
+      appVersion: '0.1.0',
+      manifestSchemaVersion: 0,
+      outputPath: out,
+    });
+
+    // Target has only a notes vault manifest
+    fs.writeFileSync(path.join(notesVault, 'manifest.json'), JSON.stringify({ schemaVersion: 1 }));
+
+    const result = await restoreAppData({
+      archivePath: out,
+      userDataPath: mkTmp(),
+      storyVaultRoot: mkTmp(),
+      notesVaultRoot: notesVault,
+      overwrite: false,
+    });
+
+    expect(result.restored).toBe(false);
+    expect(result.requiresConfirmation).toBe(true);
+  });
+});
+
 describe('restoreAppData — error cases', () => {
   it('throws on missing archive file', async () => {
     await expect(

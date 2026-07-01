@@ -239,15 +239,28 @@ export function listVaultFiles(
   const items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> = [];
 
   function walk(dir: string, prefix: string) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    // GH#622: skip unreadable subdirectories instead of aborting the entire scan.
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
       if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
       const fullPath = path.join(dir, entry.name);
       const relativePath = path.join(prefix, entry.name);
+      let modifiedAt: string;
+      try {
+        modifiedAt = new Date(fs.statSync(fullPath).mtime).toISOString();
+      } catch {
+        modifiedAt = new Date(0).toISOString();
+      }
       items.push({
         path: relativePath,
         name: entry.name,
         isDirectory: entry.isDirectory(),
-        modifiedAt: new Date(fs.statSync(fullPath).mtime).toISOString(),
+        modifiedAt,
       });
       if (entry.isDirectory()) walk(fullPath, relativePath);
     }

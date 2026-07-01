@@ -79,6 +79,12 @@ export function validatePathForVault(p: string, homeDir: string): ValidatePathRe
     writable = true;
   } catch { /* not writable */ }
 
-  const entries = fs.readdirSync(resolved);
-  return { exists: true, isEmpty: entries.length === 0, writable };
+  // GH#610: readdirSync throws EACCES/EPERM on unreadable directories; degrade gracefully.
+  let isEmpty = false;
+  try {
+    isEmpty = fs.readdirSync(resolved).length === 0;
+  } catch {
+    return { exists: true, isEmpty: false, writable, error: 'could not read directory contents' };
+  }
+  return { exists: true, isEmpty, writable };
 }

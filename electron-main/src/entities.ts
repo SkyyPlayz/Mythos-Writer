@@ -490,11 +490,24 @@ export function reindexEntities(vaultRoot: string, manifest: Manifest): void {
 
   const known = new Map(manifest.entities.map((e) => [e.id, e]));
 
-  for (const typePluralDir of fs.readdirSync(entityDir, { withFileTypes: true })) {
+  // GH#632: guard both readdir levels — a single unreadable type directory must not abort the whole index.
+  let typeDirs: fs.Dirent[];
+  try {
+    typeDirs = fs.readdirSync(entityDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const typePluralDir of typeDirs) {
     if (!typePluralDir.isDirectory()) continue;
     const typeDir = path.join(entityDir, typePluralDir.name);
 
-    for (const file of fs.readdirSync(typeDir, { withFileTypes: true })) {
+    let files: fs.Dirent[];
+    try {
+      files = fs.readdirSync(typeDir, { withFileTypes: true });
+    } catch {
+      continue; // skip this type directory and continue with others
+    }
+    for (const file of files) {
       if (!file.name.endsWith('.md') || file.isDirectory()) continue;
       const relPath = `entities/${typePluralDir.name}/${file.name}`;
       const fullPath = path.join(typeDir, file.name);
