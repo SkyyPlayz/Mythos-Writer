@@ -109,14 +109,9 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function completeDefaultLayout(pg: Page, storyTitle: string, saveParent: string): Promise<void> {
-  await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-  await pg.locator('[data-testid="card-path-default"]').click();
-  await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 10_000 });
-  await pg.locator('[data-testid="gs-title-input"]').fill(storyTitle);
-  await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
-  await expect(pg.locator('[data-testid="gs-create-story"]')).toBeEnabled({ timeout: 10_000 });
-  await pg.locator('[data-testid="gs-create-story"]').click();
+async function completeQuickStart(pg: Page): Promise<void> {
+  await pg.locator('[data-testid="card-quick-start"]').waitFor({ timeout: 30_000 });
+  await pg.locator('[data-testid="card-quick-start"]').click();
   await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
 }
 
@@ -140,19 +135,19 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await completeDefaultLayout(pg, 'My First Story', saveParent);
+    await completeQuickStart(pg);
 
-    // Disk: the flat Default Layout flow creates a Story/Notes pair below the
-    // step-2 save parent and nests the story by title.
-    const storyRoot = path.join(saveParent, 'My First Story');
+    // Disk: Quick Start creates the default Mythos Vault bundle under the
+    // app userData vault parent. DEFAULT_MYTHOS_VAULT_NAME = 'Mythos Vault'.
+    const storyRoot = path.join(saveParent, 'Mythos Vault');
     const storyVaultPath = path.join(storyRoot, 'Story Vault');
     const notesVaultPath = path.join(storyRoot, 'Notes Vault');
     expect(fs.existsSync(storyVaultPath)).toBe(true);
     expect(fs.existsSync(notesVaultPath)).toBe(true);
 
-    // The blank/default layout seeds a first scene file so the editor lands on
-    // something writable. Blank-mode story folders are slugged.
-    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'my-first-story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
+    // Quick Start seeds a first scene file so the editor lands on something
+    // writable.
+    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.
     const vaultSettings = readVaultSettings(userData);
@@ -163,9 +158,11 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
   }
 });
 
-test('TC-SKY-906-02: default layout blocks an existing story directory without clobbering it', async () => {
+test('TC-SKY-906-02: Quick Start avoids clobbering an existing default vault bundle', async () => {
   const saveParent = path.join(userData, 'vaults');
-  const preexisting = path.join(saveParent, 'Existing Story');
+  // Pre-create 'Mythos Vault' (the default name) with content to force
+  // pickUniqueMythosVaultName to pick 'Mythos Vault 2'.
+  const preexisting = path.join(saveParent, 'Mythos Vault');
   fs.mkdirSync(preexisting, { recursive: true });
   fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
@@ -173,18 +170,17 @@ test('TC-SKY-906-02: default layout blocks an existing story directory without c
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-path-default"]').click();
-    await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="gs-title-input"]').fill('Existing Story');
-    await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
-    await expect(pg.locator('[data-testid="gs-create-story"]')).toBeEnabled({ timeout: 10_000 });
-    await pg.locator('[data-testid="gs-create-story"]').click();
+    await completeQuickStart(pg);
 
-    await expect(pg.locator('[data-testid="gs-title-error"]')).toBeVisible({ timeout: 30_000 });
-    await expect(pg.locator('[data-testid="gs-title-error"]')).toContainText('already exists');
     expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    expect(readVaultSettings(userData).vaultRoot).toBeUndefined();
+    const secondStoryVault = path.join(saveParent, 'Mythos Vault 2', 'Story Vault');
+    const secondNotesVault = path.join(saveParent, 'Mythos Vault 2', 'Notes Vault');
+    expect(fs.existsSync(secondStoryVault)).toBe(true);
+    expect(fs.existsSync(secondNotesVault)).toBe(true);
+
+    const vaultSettings = readVaultSettings(userData);
+    expect(vaultSettings.vaultRoot).toBe(secondStoryVault);
+    expect(vaultSettings.notesVaultRoot).toBe(secondNotesVault);
   } finally {
     await app.close().catch(() => {});
   }

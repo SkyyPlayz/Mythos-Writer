@@ -428,12 +428,19 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
 
-  // Clear the range so the next test sees the full fixture again.
-  // TC-TL-03 leaves the detail card in `selected` state; it can intercept
-  // pointer events over the filter bar. force:true dispatches the click
-  // directly to the button without the overlay check.
-  await page.locator('.tlf-clear-btn').click({ force: true });
-  await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 4_000 });
+  // Clear the range so the next test sees the full fixture again. TC-TL-03 can
+  // leave the detail card in `selected` state over the filter area, so avoid a
+  // coordinate click that can be intercepted; focusing the real button and
+  // pressing Enter exercises the same accessible control path.
+  const clearDateRange = page.getByRole('button', { name: 'Clear date range' });
+  await clearDateRange.focus();
+  await page.keyboard.press('Enter');
+  // Wait for the controlled inputs to clear first — confirms React applied the
+  // filter reset before we check that the hidden rows reappear.
+  await expect(page.locator('#tlf-date-from')).toHaveValue('', { timeout: 8_000 });
+  await expect(page.locator('#tlf-date-to')).toHaveValue('', { timeout: 8_000 });
+  await expect(clearDateRange).toHaveCount(0, { timeout: 8_000 });
+  await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 8_000 });
 });
 
 // ─── TC-TL-07: Keyboard nav (Tab / Enter / Delete) ──────────────────────────

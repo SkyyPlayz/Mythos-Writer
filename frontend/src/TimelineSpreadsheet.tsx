@@ -670,7 +670,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   // Skips when an editable element owns focus so cell editing keeps native key behaviour.
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') {
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') {
       return;
     }
     const mod = e.ctrlKey || e.metaKey;
