@@ -112,7 +112,8 @@ export default function EntriesQuickAdd({ onEntrySaved }: Props) {
 
       const generatedBody = streamTextRef.current.trim();
       if (!generatedBody) {
-        throw new Error('Generated entry was empty. Nothing saved.');
+        setError('Generation produced no content — nothing saved.');
+        return;
       }
 
       const fileName = makeFilename(trimmed);
