@@ -349,6 +349,9 @@ export default function NoteViewer({
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // GH#616: surface autosave failures instead of silently dropping them, so a
+  // writer never loses changes to a save they believe succeeded.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [fidelityWarning, setFidelityWarning] = useState<LossyFeature[] | null>(null);
   const [pendingMode, setPendingMode] = useState<NoteViewerMode | null>(null);
 
@@ -377,8 +380,12 @@ export default function NoteViewer({
       const r = await window.api.writeNotesVault(path, text);
       if ('error' in r) throw new Error(r.error);
       setSavedAt(new Date().toLocaleTimeString());
+      setSaveError(null);
     } catch {
-      // non-fatal
+      // GH#616: the write did NOT persist. Surface an actionable error and make
+      // sure we do not imply the note is saved (clear any stale "Saved" stamp).
+      setSavedAt(null);
+      setSaveError('Failed to save — changes not persisted.');
     } finally {
       setSaving(false);
     }
@@ -389,6 +396,7 @@ export default function NoteViewer({
     setContent(text);
     onWordCountChange?.(countWords(text));
     setSavedAt(null);
+    setSaveError(null); // GH#616: editing is a retry — drop the stale error until the next save resolves.
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveContent(text), 800);
   }, [saveContent, onWordCountChange]);
@@ -397,6 +405,7 @@ export default function NoteViewer({
     setContent(text);
     onWordCountChange?.(countWords(text));
     setSavedAt(null);
+    setSaveError(null); // GH#616: editing is a retry — drop the stale error until the next save resolves.
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveContent(text), 800);
   }, [saveContent, onWordCountChange]);
@@ -479,6 +488,18 @@ export default function NoteViewer({
         <span className="note-viewer-save-status" aria-live="polite">
           {saving ? 'Saving…' : savedAt ? `Saved ${savedAt}` : ''}
         </span>
+        {saveError && (
+          <span className="note-viewer-save-error" role="alert">
+            {saveError}{' '}
+            <button
+              type="button"
+              className="note-viewer-save-retry"
+              onClick={flushSave}
+            >
+              Retry
+            </button>
+          </span>
+        )}
         <div className="note-mode-group" role="group" aria-label="Editor mode">
           {(Object.keys(MODE_LABELS) as NoteViewerMode[]).map((m) => (
             <button
