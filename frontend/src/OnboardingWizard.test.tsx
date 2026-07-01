@@ -1702,18 +1702,25 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
       fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
         target: { value: '/home/user/MyVault' },
       });
-      // Advance the 500ms debounce AND drain the resulting Promise.all chain from
-      // validateCustomPathNow in the SAME act() boundary. Splitting into two act()
-      // calls is flaky: the first act() can conclude before the Promise.all
-      // continuation runs its setState, so React misses it and re-renders too late.
+      // Fire the 500ms debounce, then settle the two-stage Promise.all validation
+      // (base dir + Story Vault manifest) that validateCustomPathNow awaits before
+      // it calls setCustomPathValidation('valid'). A FIXED drain count is racy under
+      // CI load — SKY-5215 already bumped 5→8 and it still flaked — because the exact
+      // number of microtask ticks to resolve Promise.all([p1,p2]) + flush React's
+      // batched render is not constant. Instead, pump one microtask per iteration and
+      // re-flush React each act() boundary, checking the settled DOM BETWEEN act()s
+      // so the loop exits as soon as the button enables. Bounded so a genuine
+      // regression still fails instead of hanging.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(500);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
       });
+      for (
+        let i = 0;
+        i < 50 && screen.getByTestId('custom-location-next').hasAttribute('disabled');
+        i++
+      ) {
+        await act(async () => { await Promise.resolve(); });
+      }
       expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
     } finally {
       vi.useRealTimers();
