@@ -78,6 +78,17 @@ export function buildBrainstormMessages(
   ];
 }
 
+/** Wraps a string in a YAML double-quoted scalar, escaping chars that would break frontmatter. */
+function yamlScalar(value: string): string {
+  const escaped = value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+  return `"${escaped}"`;
+}
+
 export function buildPromotedNoteContent(
   body: string,
   entryPath: string,
@@ -87,8 +98,8 @@ export function buildPromotedNoteContent(
     '---',
     'type: note',
     'source: promoted-entry',
-    `sourceEntry: ${entryPath}`,
-    `story: ${storyTitle || 'unknown'}`,
+    `sourceEntry: ${yamlScalar(entryPath)}`,
+    `story: ${yamlScalar(storyTitle || 'unknown')}`,
     '---',
     '',
     body,
