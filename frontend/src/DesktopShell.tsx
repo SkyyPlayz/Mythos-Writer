@@ -2808,6 +2808,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, [stories, handleSelectScene]);
 
+  const handleOpenGraphScene = useCallback((storyId: string, chapterId: string, sceneId: string) => {
+    const story = stories.find((candidate) => candidate.id === storyId);
+    const chapter = story?.chapters.find((candidate) => candidate.id === chapterId);
+    const scene = chapter?.scenes.find((candidate) => candidate.id === sceneId);
+    if (!story || !chapter || !scene) return;
+
+    setOpenedNotePath(null);
+    handleSelectScene(scene, chapter, story);
+    setView('editor');
+    setViewDepth('scene');
+    handleTabChange('story');
+  }, [stories, handleSelectScene, handleTabChange]);
+
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
     setSelectedScene(null);
@@ -2946,7 +2959,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         );
       case 'vault-graph':
-        return <VaultGraphView onOpenNote={handleOpenSceneByPath} />;
+        return <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />;
       case 'review':
         return <SuggestionReview onOpenVaultPath={handleOpenSceneByPath} />;
       case 'progress':
@@ -2999,7 +3012,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleSelectScene, setViewDepth, createStory, createChapter, createScene,
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
-    handleOpenSceneByPath, setVaultContext, setExportScope, appSettings,
+    handleOpenSceneByPath, handleOpenGraphScene, setVaultContext, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
@@ -3921,6 +3934,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             setOpenedNotePath(path);
             handleNotesSubViewChange('editor');
           }}
+          onOpenScene={handleOpenGraphScene}
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}

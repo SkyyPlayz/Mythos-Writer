@@ -988,6 +988,155 @@ function buildTE(manifest: import('./ipc.js').Manifest, scope: import('./ipc.js'
 }
 
 
+
+// ─── Cross-vault graph helpers (SKY-4711) ───────────────────────────────────
+type VaultGraphScopeLocal = 'notes' | 'story' | 'both';
+type ScopedGraphNode = {
+  id: string;
+  label: string;
+  path: string;
+  category: 'characters' | 'locations' | 'factions' | 'history' | 'systems' | 'items' | 'scenes' | 'misc' | 'default';
+  degree: number;
+  vault: 'notes' | 'story';
+  storyId?: string;
+  chapterId?: string;
+  sceneId?: string;
+};
+type ScopedGraphEdge = { source: string; target: string; weight: number; crossVault?: boolean };
+
+const GRAPH_WIKI_LINK_RE = /\[\[([^\]|#\n]+?)(?:[|#][^\]\n]*)?\]\]/g;
+
+function normalizeVaultGraphScope(payload: unknown): VaultGraphScopeLocal {
+  const candidate = typeof payload === 'string'
+    ? payload
+    : payload && typeof payload === 'object' && 'scope' in payload
+      ? (payload as { scope?: unknown }).scope
+      : undefined;
+  return candidate === 'story' || candidate === 'both' ? candidate : 'notes';
+}
+
+function graphLookupKeys(value: string): string[] {
+  const trimmed = value.trim();
+  const withoutExt = trimmed.replace(/\.md$/i, '');
+  return Array.from(new Set([
+    trimmed.toLowerCase(),
+    withoutExt.toLowerCase(),
+    path.basename(withoutExt).toLowerCase(),
+  ]));
+}
+
+function indexGraphTarget(map: Map<string, string>, key: string, id: string): void {
+  for (const lookup of graphLookupKeys(key)) map.set(lookup, id);
+}
+
+function extractGraphTargets(content: string): string[] {
+  const targets: string[] = [];
+  GRAPH_WIKI_LINK_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = GRAPH_WIKI_LINK_RE.exec(content)) !== null) {
+    const target = match[1]?.trim();
+    if (target) targets.push(target);
+  }
+  return targets;
+}
+
+function sceneGraphContent(scene: Manifest['stories'][number]['chapters'][number]['scenes'][number], vaultRoot: string): string {
+  const blockText = (scene.blocks ?? []).map((block) => block.content).join('\n');
+  try {
+    const fileText = readVaultFile(vaultRoot, scene.path).content;
+    return `${fileText}\n${blockText}`;
+  } catch {
+    return blockText;
+  }
+}
+
+function buildScopedVaultGraph(scope: VaultGraphScopeLocal): { nodes: ScopedGraphNode[]; edges: ScopedGraphEdge[] } {
+  const includeNotes = scope === 'notes' || scope === 'both';
+  const includeStory = scope === 'story' || scope === 'both';
+  const nodes: ScopedGraphNode[] = [];
+  const contentById = new Map<string, string>();
+  const lookupToId = new Map<string, string>();
+  const vaultById = new Map<string, 'notes' | 'story'>();
+
+  if (includeNotes) {
+    const notesVaultRoot = getNotesVaultRoot();
+    for (const note of getGraphNodes(notesVaultRoot)) {
+      const node: ScopedGraphNode = { ...note, vault: 'notes', degree: 0 };
+      nodes.push(node);
+      vaultById.set(node.id, 'notes');
+      indexGraphTarget(lookupToId, node.path, node.id);
+      indexGraphTarget(lookupToId, node.label, node.id);
+      try { contentById.set(node.id, readVaultFile(notesVaultRoot, node.path).content); } catch {}
+    }
+  }
+
+  if (includeStory) {
+    const manifest = readManifest(getManifestPath());
+    const vaultRoot = getVaultRoot();
+    for (const story of manifest.stories ?? []) {
+      for (const chapter of story.chapters ?? []) {
+        for (const scene of chapter.scenes ?? []) {
+          const id = `story:${story.id}/${chapter.id}/${scene.id}`;
+          const node: ScopedGraphNode = {
+            id,
+            label: scene.title,
+            path: scene.path,
+            category: 'scenes',
+            degree: 0,
+            vault: 'story',
+            storyId: story.id,
+            chapterId: chapter.id,
+            sceneId: scene.id,
+          };
+          nodes.push(node);
+          vaultById.set(id, 'story');
+          indexGraphTarget(lookupToId, scene.title, id);
+          indexGraphTarget(lookupToId, scene.path, id);
+          indexGraphTarget(lookupToId, scene.id, id);
+          contentById.set(id, sceneGraphContent(scene, vaultRoot));
+        }
+      }
+    }
+  }
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edgeWeights = new Map<string, number>();
+  for (const [sourceId, content] of contentById) {
+    if (!nodeIds.has(sourceId)) continue;
+    for (const target of extractGraphTargets(content)) {
+      let targetId: string | undefined;
+      for (const key of graphLookupKeys(target)) {
+        targetId = lookupToId.get(key);
+        if (targetId) break;
+      }
+      if (!targetId || targetId === sourceId || !nodeIds.has(targetId)) continue;
+      const edgeKey = `${sourceId}\u0000${targetId}`;
+      edgeWeights.set(edgeKey, (edgeWeights.get(edgeKey) ?? 0) + 1);
+    }
+  }
+
+  const degreeNeighbours = new Map<string, Set<string>>();
+  const edges: ScopedGraphEdge[] = [];
+  for (const [edgeKey, weight] of edgeWeights) {
+    const [source, target] = edgeKey.split('\u0000');
+    edges.push({
+      source,
+      target,
+      weight,
+      crossVault: vaultById.get(source) !== vaultById.get(target),
+    });
+    const sourceNeighbours = degreeNeighbours.get(source) ?? new Set<string>();
+    sourceNeighbours.add(target);
+    degreeNeighbours.set(source, sourceNeighbours);
+    const targetNeighbours = degreeNeighbours.get(target) ?? new Set<string>();
+    targetNeighbours.add(source);
+    degreeNeighbours.set(target, targetNeighbours);
+  }
+
+  for (const node of nodes) node.degree = degreeNeighbours.get(node.id)?.size ?? 0;
+  return { nodes, edges };
+}
+
 // ─── IPC Handlers ───
 const handlers: IpcHandlers = {
   // MYT-774: renderer-facing vault channels enforce dotfile + extension policy
@@ -3149,14 +3298,22 @@ const handlers: IpcHandlers = {
   },
 
   // ─── Notes Vault Graph — in-memory link index (SKY-1756 / SKY-1743) ───
-  [IPC_CHANNELS.VAULT_GRAPH_NODES]: () => {
-    const notesVaultRoot = getNotesVaultRoot();
-    return { nodes: getGraphNodes(notesVaultRoot) };
+  [IPC_CHANNELS.VAULT_GRAPH_NODES]: (payload) => {
+    const scope = normalizeVaultGraphScope(payload);
+    if (scope === 'notes') {
+      const notesVaultRoot = getNotesVaultRoot();
+      return { nodes: getGraphNodes(notesVaultRoot).map((node) => ({ ...node, vault: 'notes' as const })) };
+    }
+    return { nodes: buildScopedVaultGraph(scope).nodes };
   },
 
-  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: () => {
-    const notesVaultRoot = getNotesVaultRoot();
-    return { edges: getGraphEdges(notesVaultRoot) };
+  [IPC_CHANNELS.VAULT_GRAPH_EDGES]: (payload) => {
+    const scope = normalizeVaultGraphScope(payload);
+    if (scope === 'notes') {
+      const notesVaultRoot = getNotesVaultRoot();
+      return { edges: getGraphEdges(notesVaultRoot) };
+    }
+    return { edges: buildScopedVaultGraph(scope).edges };
   },
 
   // ─── Archive Agent (MYT-157) ───

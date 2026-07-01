@@ -46,6 +46,7 @@ export interface NotesTabPanelProps {
   onCreateChapter: (storyId: string) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
+  onOpenScene?: (storyId: string, chapterId: string, sceneId: string) => void;
   onExport?: (scope: ExportScope) => void;
   journalModeEnabled?: boolean;
   // BrainstormPage passthrough
@@ -91,6 +92,7 @@ export default function NotesTabPanel({
   onCreateChapter,
   onCreateScene,
   onOpenFile,
+  onOpenScene,
   onExport,
   journalModeEnabled,
   brainstormEnabled,
@@ -301,7 +303,7 @@ export default function NotesTabPanel({
           )}
           {notesSubView === 'graph' && (
             <div className="notes-graph-view" data-testid="notes-graph-view">
-              <VaultGraphView onOpenNote={onOpenFile} />
+              <VaultGraphView onOpenNote={onOpenFile} onOpenScene={onOpenScene} />
             </div>
           )}
           {notesSubView === 'entities' && (

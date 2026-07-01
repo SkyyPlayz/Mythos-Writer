@@ -508,8 +508,8 @@ contextBridge.exposeInMainWorld('api', {
   vaultGraphData: () => ipcRenderer.invoke('vault:graph-data', undefined),
 
   // Notes Vault graph — in-memory link index with degree + category (SKY-1756 / SKY-1743)
-  vaultGraphNodes: () => ipcRenderer.invoke('vault:graph:nodes', undefined),
-  vaultGraphEdges: () => ipcRenderer.invoke('vault:graph:edges', undefined),
+  vaultGraphNodes: (scope?: 'notes' | 'story' | 'both') => ipcRenderer.invoke('vault:graph:nodes', scope),
+  vaultGraphEdges: (scope?: 'notes' | 'story' | 'both') => ipcRenderer.invoke('vault:graph:edges', scope),
 
   // Timeline v0 (SKY-2438/SKY-2463) — manifest-backed timeline
   timelineList: () =>
