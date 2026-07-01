@@ -990,17 +990,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-
-  const handleDismissGettingStarted = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
   const handleDismissSampleProjectBanner = useCallback(() => {
     setAppSettings((prev) => {
       if (!prev) return prev;
@@ -1009,6 +998,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return updated;
     });
   }, []);
+
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
