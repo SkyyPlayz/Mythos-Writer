@@ -60,6 +60,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     onVaultNotesUpdated: vi.fn().mockReturnValue(() => {}),
     sttStart: vi.fn(),
     sttStop: vi.fn(),
+    voiceTranscribe: vi.fn().mockResolvedValue({ text: 'axe test transcript', confidence: 0.95 }),
     // TTS stubs — required by useTtsPlayer (SKY-1504)
     voiceSpeak: vi.fn().mockResolvedValue({ speakId: 'stub-speak' }),
     voiceSpeakCancel: vi.fn(),
@@ -129,9 +130,38 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  // ── Voice IO AC-V-05: aria-pressed on mic toggle (SKY-1503 merged) ─────────
-  // SKY-1503 landed via PR #457. In jsdom, getSpeechRecognitionCtor() returns null
-  // so startVoice() takes the IPC fallback path → setVoiceState('listening') immediately.
+  // ── Voice IO AC-V-05: aria-pressed on mic toggle ─────────────────────────────
+  // SKY-3187: voice now uses MediaRecorder + voice:transcribe IPC (getUserMedia is async).
+
+  let mockMediaRecorder: typeof MediaRecorder | null = null;
+
+  beforeEach(() => {
+    class FakeMR {
+      static isTypeSupported = vi.fn(() => false);
+      state = 'inactive';
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['audio']) });
+        this.onstop?.();
+      }
+    }
+    mockMediaRecorder = FakeMR as unknown as typeof MediaRecorder;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).MediaRecorder = FakeMR;
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }) },
+      writable: true, configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (mockMediaRecorder) delete (global as any).MediaRecorder;
+    mockMediaRecorder = null;
+  });
 
   it('AC-V-05: mic button has aria-pressed=false in idle state', () => {
     const { container } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
@@ -140,17 +170,20 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
     expect(micBtn?.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('AC-V-05: mic button has aria-pressed=true while recording', () => {
+  it('AC-V-05: mic button has aria-pressed=true while recording', async () => {
     const { getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
-    // MIC_ARIA_LABELS.idle = "Start voice input" (SKY-1503)
     const micBtn = getByRole('button', { name: /start voice input/i });
     fireEvent.click(micBtn);
-    expect(micBtn.getAttribute('aria-pressed')).toBe('true');
+    // getUserMedia is async; wait for listening state
+    await waitFor(() => expect(micBtn.getAttribute('aria-pressed')).toBe('true'));
   });
 
   it('AC-V-05: axe passes on brainstorm mic in recording state', async () => {
     const { container, getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
-    fireEvent.click(getByRole('button', { name: /start voice input/i }));
+    const micBtn = getByRole('button', { name: /start voice input/i });
+    fireEvent.click(micBtn);
+    await waitFor(() => expect(micBtn.getAttribute('aria-pressed')).toBe('true'));
+    await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
