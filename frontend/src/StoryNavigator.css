@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #1e1e1e;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .nav-title {
@@ -32,13 +32,13 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .nav-add-btn {
   background: transparent;
-  border: 1px solid #3f3f46;
-  color: #71717a;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
   border-radius: 4px;
   width: 22px;
   height: 22px;
@@ -51,8 +51,8 @@
 }
 
 .nav-add-btn:hover {
-  border-color: #7c3aed;
-  color: #a78bfa;
+  border-color: var(--accent-violet);
+  color: var(--accent-violet);
 }
 
 .nav-tree {
@@ -63,7 +63,7 @@
 
 .nav-empty {
   padding: 1rem;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.8rem;
   text-align: center;
   display: flex;
@@ -73,8 +73,8 @@
 }
 
 .nav-empty-cta {
-  background: var(--accent, #7c5cff);
-  color: var(--bg-canvas, #0b0e13);
+  background: var(--accent);
+  color: var(--bg-canvas);
   border: none;
   border-radius: 6px;
   padding: 7px 18px;
@@ -103,12 +103,13 @@
 }
 
 .nav-story-row:hover {
-  background: #161616;
+  background: var(--bg-hover);
 }
 
 .nav-chevron {
   font-size: 0.65rem;
-  color: #52525b;
+  color: var(--text-muted);
+  opacity: 0.6;
   width: 10px;
   flex-shrink: 0;
 }
@@ -116,8 +117,8 @@
 .nav-story-title {
   flex: 1;
   font-size: 0.85rem;
-  font-weight: 600;
-  color: #a78bfa;
+  font-weight: 700;
+  color: var(--accent-violet);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -126,7 +127,7 @@
 .nav-inline-add {
   background: transparent;
   border: none;
-  color: #3f3f46;
+  color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0 0.2rem;
@@ -140,7 +141,7 @@
 }
 
 .nav-inline-add:hover {
-  color: #a78bfa;
+  color: var(--accent-violet);
 }
 
 /* Chapter */
@@ -159,13 +160,13 @@
 }
 
 .nav-chapter-row:hover {
-  background: #161616;
+  background: var(--bg-hover);
 }
 
 .nav-chapter-title {
   flex: 1;
   font-size: 0.82rem;
-  color: #a1a1aa;
+  color: var(--text-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,39 +185,42 @@
 }
 
 .nav-scene-row:hover {
-  background: #161616;
+  background: var(--bg-hover);
 }
 
 .nav-scene-row.active {
-  background: #1a1030;
-  border-right: 2px solid #7c3aed;
+  background: var(--accent-soft);
+  border-right: 2px solid var(--accent-violet);
 }
 
 .nav-scene-icon {
   font-size: 0.45rem;
-  color: #3f3f46;
+  color: var(--text-muted);
+  opacity: 0.5;
 }
 
 .nav-scene-row.active .nav-scene-icon {
-  color: #7c3aed;
+  color: var(--accent-violet);
+  opacity: 1;
 }
 
 .nav-scene-title {
   flex: 1;
   font-size: 0.8rem;
-  color: #71717a;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .nav-scene-row.active .nav-scene-title {
-  color: #c4b5fd;
+  color: var(--accent-violet);
 }
 
 .nav-wordcount {
   font-size: 0.65rem;
-  color: #3f3f46;
+  color: var(--text-muted);
+  opacity: 0.5;
   white-space: nowrap;
   flex-shrink: 0;
   padding: 0 0.15rem;
@@ -226,35 +230,35 @@
   font-size: 0.65rem;
   padding: 0.1rem 0.35rem;
   border-radius: 10px;
-  background: #1a1a1a;
-  color: #52525b;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
 }
 
 .nav-draft-badge.draft-review {
-  background: #1c1007;
-  color: #fcd34d;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-text);
 }
 
 .nav-draft-badge.draft-final {
-  background: #052e16;
-  color: #86efac;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 /* Focus rings — all interactive tree items */
 .nav-add-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 .nav-story-toggle:focus-visible,
 .nav-chapter-toggle:focus-visible,
 .nav-inline-add:focus-visible {
-  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
 .nav-scene-row:focus-visible {
-  outline: 2px solid var(--focus-ring, #7c3aed);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -274,6 +278,6 @@
 }
 
 .vs-template-cta:hover {
-  border-color: var(--accent-cyan, #00d4ff);
-  color: var(--accent-cyan, #00d4ff);
+  border-color: var(--accent);
+  color: var(--accent);
 }
