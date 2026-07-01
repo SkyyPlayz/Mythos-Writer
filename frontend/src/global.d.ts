@@ -932,6 +932,7 @@ interface Window {
     sceneCrafterRenameLane: (payload: { storySlug: string; laneIndex: number; name: string }) => Promise<{ ok: true }>;
     sceneCrafterDeleteLane: (payload: { storySlug: string; laneIndex: number; force?: boolean }) => Promise<{ ok: boolean; cardCount: number }>;
     sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) => Promise<{ ok: true }>;
+    sceneCrafterSaveBoard: (payload: { storySlug: string; board: SceneCrafterBoard }) => Promise<{ ok: true }>;
     sceneCrafterClose?: (storySlug: string) => Promise<void>;
     onSceneCrafterExternalEdit?: (cb: (storySlug: string) => void) => () => void;
 

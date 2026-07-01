@@ -123,6 +123,22 @@ function slugify(text: string): string {
   );
 }
 
+export async function findAvailablePromotedNotePath(
+  basePath: string,
+  exists: (path: string) => Promise<boolean>,
+): Promise<string> {
+  if (!(await exists(basePath))) return basePath;
+
+  const match = basePath.match(/^(.*?)(\.md)?$/i);
+  const stem = match?.[1] ?? basePath;
+  const extension = match?.[2] ?? '';
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const candidate = `${stem}-${suffix}${extension}`;
+    if (!(await exists(candidate))) return candidate;
+  }
+  throw new Error('Could not find an available note filename.');
+}
+
 function makeEntryPath(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -334,7 +350,11 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       setPromotingId(entry.id);
       try {
         const slug = slugify(entry.body);
-        const notePath = `${NOTES_DIR}/${slug}.md`;
+        const baseNotePath = `${NOTES_DIR}/${slug}.md`;
+        const notePath = await findAvailablePromotedNotePath(baseNotePath, async (path) => {
+          const existing = await window.api.readNotesVault(path);
+          return !('error' in existing);
+        });
         const noteContent = buildPromotedNoteContent(entry.body, entry.path, storyTitle);
         const mkNoteResult = await window.api.mkdirNotesVault(NOTES_DIR);
         if ('error' in mkNoteResult) throw new Error(mkNoteResult.error);

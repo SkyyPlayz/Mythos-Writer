@@ -214,6 +214,17 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
     }
   }
 
+  async function keepLocalVersion() {
+    if (!board) return;
+    try {
+      await window.api.sceneCrafterSaveBoard({ storySlug, board });
+      setConflicted(false);
+      setRetryAction(null);
+    } catch {
+      setRetryAction(() => keepLocalVersion);
+    }
+  }
+
   function openDiff() {
     prevFocusRef.current = document.activeElement as HTMLElement;
     setDiffOpen(true);
@@ -335,7 +346,7 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
         <div className="scene-crafter-conflict" role="alert">
           <strong>Board changed on disk.</strong>
           <span>Choose which version to keep before making more edits.</span>
-          <button onClick={() => setConflicted(false)}>Keep my version</button>
+          <button onClick={() => void keepLocalVersion()}>Keep my version</button>
           <button onClick={() => { setConflicted(false); void loadBoard(); }}>Use disk version</button>
           <button onClick={openDiff}>See diff</button>
         </div>

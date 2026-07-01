@@ -110,9 +110,14 @@ export default function EntriesQuickAdd({ onEntrySaved }: Props) {
         });
       });
 
+      const generatedBody = streamTextRef.current.trim();
+      if (!generatedBody) {
+        throw new Error('Generated entry was empty. Nothing saved.');
+      }
+
       const fileName = makeFilename(trimmed);
       const filePath = `Entries/${fileName}`;
-      const noteContent = buildNoteContent(new Date().toISOString(), streamTextRef.current);
+      const noteContent = buildNoteContent(new Date().toISOString(), generatedBody);
 
       try {
         await window.api.mkdirNotesVault('Entries');

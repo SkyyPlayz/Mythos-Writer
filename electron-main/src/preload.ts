@@ -886,6 +886,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('scene-crafter:delete-lane', payload),
   sceneCrafterReorderLanes: (payload: { storySlug: string; fromIndex: number; toIndex: number }) =>
     ipcRenderer.invoke('scene-crafter:reorder-lanes', payload),
+  sceneCrafterSaveBoard: (payload: { storySlug: string; board: unknown }) =>
+    ipcRenderer.invoke('scene-crafter:save-board', payload),
 
   // SKY-1759: Scene Crafter file-watcher conflict detection
   sceneCrafterClose: (storySlug: string) =>

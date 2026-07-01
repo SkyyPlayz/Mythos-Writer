@@ -172,6 +172,7 @@ import {
   type SceneCrafterRenameLanePayload,
   type SceneCrafterDeleteLanePayload,
   type SceneCrafterReorderLanesPayload,
+  type SceneCrafterSaveBoardPayload,
   type SceneCrafterClosePayload,
   type SceneCrafterSuggestionAcceptPayload,
   type SceneCrafterSuggestionRejectPayload,
@@ -195,6 +196,7 @@ import {
   handleRenameLane,
   handleDeleteLane,
   handleReorderLanes,
+  handleSaveBoard,
 } from './sceneCrafterIpc.js';
 import {
   acceptSceneCrafterCardSuggestion,
@@ -5726,6 +5728,8 @@ const handlers: IpcHandlers = {
     handleDeleteLane(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.SCENE_CRAFTER_REORDER_LANES]: (payload: SceneCrafterReorderLanesPayload) =>
     handleReorderLanes(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.SCENE_CRAFTER_SAVE_BOARD]: (payload: SceneCrafterSaveBoardPayload) =>
+    handleSaveBoard(getNotesVaultRoot(), payload),
 
   // SKY-1759: stop the board watcher when the renderer closes the scene crafter.
   [IPC_CHANNELS.SCENE_CRAFTER_CLOSE]: async (_payload: SceneCrafterClosePayload) => {
