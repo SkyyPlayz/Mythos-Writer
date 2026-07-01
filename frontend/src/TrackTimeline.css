@@ -1,0 +1,240 @@
+/* SKY-3182 — TrackTimeline SVG canvas shell.
+ * Liquid Neon tokens only; no hardcoded hex values.
+ */
+
+/* ─── Root ───────────────────────────────────────────────────────────────── */
+
+.tt-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-app, var(--color-surface));
+  outline: none;
+  position: relative;
+}
+
+.tt-root:focus-visible {
+  outline: 2px solid var(--color-accent, #00f0ff);
+  outline-offset: -2px;
+}
+
+/* ─── Canvas wrapper ─────────────────────────────────────────────────────── */
+
+.tt-canvas-wrap {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* ─── SVG canvas ─────────────────────────────────────────────────────────── */
+
+.tt-svg {
+  display: block;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.tt-svg--dragging {
+  cursor: grabbing;
+}
+
+/* ─── Axis background ────────────────────────────────────────────────────── */
+
+.tt-axis-bg {
+  fill: color-mix(in srgb, var(--color-surface, #1e1e2e) 80%, transparent);
+}
+
+/* ─── Track background ───────────────────────────────────────────────────── */
+
+.tt-track-bg {
+  fill: color-mix(in srgb, var(--color-surface, #1e1e2e) 40%, transparent);
+}
+
+/* ─── Grid lines ─────────────────────────────────────────────────────────── */
+
+.tt-gridline {
+  stroke: var(--color-border, #3a3a5c);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
+
+/* ─── Axis border ────────────────────────────────────────────────────────── */
+
+.tt-axis-border {
+  stroke: var(--color-border, #3a3a5c);
+  stroke-width: 1;
+}
+
+/* ─── Axis tick labels ───────────────────────────────────────────────────── */
+
+.tt-axis-label {
+  fill: var(--text-muted, #8a9bb0);
+  font-size: 10px;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ─── Scene slot markers ─────────────────────────────────────────────────── */
+
+.tt-slot-marker {
+  stroke: var(--neon-violet, #a78bfa);
+  stroke-width: 2;
+  opacity: 0.8;
+}
+
+.tt-slot-marker--undated {
+  stroke: var(--text-muted, #8a9bb0);
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
+}
+
+/* ─── Scene text labels ──────────────────────────────────────────────────── */
+
+.tt-scene-label {
+  fill: var(--text-body, #d4d0e8);
+  font-size: 11px;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+  font-weight: 500;
+}
+
+.tt-scene-date {
+  fill: var(--text-muted, #8a9bb0);
+  font-size: 9px;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ─── Gap indicators ─────────────────────────────────────────────────────── */
+
+.tt-gap-band {
+  fill: color-mix(in srgb, var(--neon-cyan, #00f0ff) 6%, transparent);
+}
+
+.tt-gap-label {
+  fill: color-mix(in srgb, var(--neon-cyan, #00f0ff) 70%, var(--text-muted, #8a9bb0));
+  font-size: 9px;
+  font-family: inherit;
+  pointer-events: none;
+  user-select: none;
+  font-style: italic;
+}
+
+/* ─── Loading overlay ────────────────────────────────────────────────────── */
+
+.tt-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: color-mix(in srgb, var(--bg-app, var(--color-surface)) 70%, transparent);
+}
+
+.tt-loading-spinner {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border, #3a3a5c);
+  border-top-color: var(--color-accent, #00f0ff);
+  border-radius: 50%;
+  animation: tt-spin 0.7s linear infinite;
+}
+
+@keyframes tt-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tt-loading-text {
+  color: var(--text-muted, #8a9bb0);
+  font-size: 0.875rem;
+}
+
+/* ─── Error state ────────────────────────────────────────────────────────── */
+
+.tt-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+}
+
+.tt-error__msg {
+  color: var(--color-danger, #f87171);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ─── Empty states ───────────────────────────────────────────────────────── */
+
+.tt-root--empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.tt-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 2rem;
+}
+
+.tt-empty-state__msg {
+  color: var(--text-muted, #8a9bb0);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ─── Status bar ─────────────────────────────────────────────────────────── */
+
+.tt-status {
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 1rem;
+  border-top: 1px solid var(--color-border, #3a3a5c);
+  color: var(--text-muted, #8a9bb0);
+  font-size: 0.72rem;
+  flex-shrink: 0;
+  min-height: 24px;
+  background: var(--color-surface, #1e1e2e);
+}
+
+/* ─── High contrast overrides ────────────────────────────────────────────── */
+
+[data-contrast="high"] .tt-axis-label {
+  fill: var(--text-body, #ffffff);
+  opacity: 1;
+}
+
+[data-contrast="high"] .tt-scene-label {
+  fill: var(--text-header, #ffffff);
+}
+
+[data-contrast="high"] .tt-gridline {
+  stroke: var(--color-border, #6a6a9c);
+  opacity: 0.9;
+}
+
+[data-contrast="high"] .tt-slot-marker {
+  opacity: 1;
+  stroke-width: 2.5;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-loading-spinner {
+    animation: none;
+  }
+}
