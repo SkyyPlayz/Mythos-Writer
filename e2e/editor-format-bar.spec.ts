@@ -173,3 +173,48 @@ test('FB-03: heading select applies an H2 and stays in sync with the cursor', as
     await app.close().catch(() => undefined);
   }
 });
+
+test('FB-04: heading select offers H1-H6 and each level round-trips through the markdown save (SKY-5777)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const editor = page.locator('.tiptap-editor-wrap .ProseMirror');
+    const headingSelect = page.locator('select[aria-label="Heading level"]');
+
+    // All six levels must be reachable from the dropdown, not just H1-H3.
+    for (let level = 1; level <= 6; level++) {
+      await expect(headingSelect.locator(`option[value="h${level}"]`)).toHaveCount(1);
+    }
+
+    for (let level = 1; level <= 6; level++) {
+      await editor.click();
+      await page.keyboard.press('Control+End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type(`Heading Level ${level}`);
+      await headingSelect.selectOption(`h${level}`);
+      await expect(editor.locator(`h${level}`, { hasText: `Heading Level ${level}` })).toBeVisible();
+      await expect(headingSelect).toHaveValue(`h${level}`);
+    }
+
+    // Wait past the debounce so the scene file is written, then verify every
+    // level survived the markdown save with the correct number of `#`.
+    await page.waitForTimeout(1_600);
+    const sceneFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.md')) sceneFiles.push(full);
+      }
+    };
+    walk(vaultDir);
+    const sceneBody = sceneFiles.map((f) => fs.readFileSync(f, 'utf-8')).join('\n');
+    for (let level = 1; level <= 6; level++) {
+      expect(sceneBody).toContain(`${'#'.repeat(level)} Heading Level ${level}`);
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
