@@ -1,4 +1,5 @@
 /* SKY-3097 (v0.3): WorkspaceTabBar - Obsidian-style draggable/closeable tabs */
+/* SKY-5704 (GH#643 Tabs-1): scroll-overflow strip + drag affordance polish */
 
 .wtb-root {
   display: flex;
@@ -10,11 +11,44 @@
   overflow: hidden;
 }
 
+/* SKY-5704: the tab strip scrolls independently so the pinned + button
+   (a sibling, outside this wrapper) always stays reachable when there are
+   more tabs than fit in the available width. */
+.wtb-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.wtb-tabs-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.wtb-tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+
+.wtb-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .wtb-tab-slot {
   position: relative;
   display: flex;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* SKY-5704: clear "picked up" affordance on the tab being dragged. */
+.wtb-tab-slot--dragging .wtb-tab {
+  opacity: 0.45;
 }
 
 .wtb-tab-slot--drop-target .wtb-tab {
@@ -107,9 +141,10 @@
   opacity: 1;
 }
 
-.wtb-empty {
+/* SKY-5704: with no tabs open, let the (now-empty) scroll strip grow so the
+   + button keeps its prior right-aligned resting position. */
+.wtb-tabs-scroll--empty {
   flex: 1;
-  min-width: 0;
 }
 
 .wtb-new-tab-btn {
