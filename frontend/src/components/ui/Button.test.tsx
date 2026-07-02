@@ -212,6 +212,18 @@ describe('Button — Liquid Neon token compliance', () => {
     expect(m?.[1]).toContain('transition: none');
   });
 
+  it('high-contrast block removes box-shadow from primary hover', () => {
+    const css = readButtonCss();
+    const m = css.match(/\[data-contrast="high"\]\s*\.btn--primary:hover[^{]*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('box-shadow: none');
+  });
+
+  it('high-contrast block uses 2px solid border on primary', () => {
+    const css = readButtonCss();
+    const m = css.match(/\[data-contrast="high"\]\s*\.btn--primary\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('2px');
+  });
+
   it('base .btn class uses border-radius token', () => {
     const css = readButtonCss();
     const base = cssRule(css, '.btn');

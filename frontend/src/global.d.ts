@@ -519,6 +519,12 @@ interface AppSettings {
     };
     /** SKY-2094 (Phase 2 #1): two-tab app shell state. */
     tabShell?: AppTabShellState;
+    /** SKY-3098 (v0.3): nav rail collapsed state. */
+    navRailCollapsed?: boolean;
+    /** SKY-3098 (v0.3): workspace tab bar tabs. */
+    workspaceTabs?: WorkspaceTab[];
+    /** SKY-3098 (v0.3): active workspace tab id. */
+    activeWorkspaceTabId?: string | null;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──
@@ -594,6 +600,22 @@ interface DockedTab {
   id: string;
   /** Ordered list of panel IDs shown in this tab (max 5). */
   panels: SidebarPanelId[];
+}
+
+/** SKY-3097 (v0.3): Content kind for a workspace tab. */
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph';
+
+/** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
+interface WorkspaceTab {
+  /** Stable UUID. */
+  id: string;
+  kind: WorkspaceTabKind;
+  title: string;
+  /** Emoji or icon character displayed in the tab. */
+  icon: string;
+  /** Vault-relative path for editor tabs. */
+  docPath?: string;
+  storyId?: string;
 }
 
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */
@@ -1066,6 +1088,7 @@ interface Window {
       templateId?: string;
       vaultName?: string;
       sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
+      customTemplate?: 'recommended' | 'blank';
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
@@ -1391,6 +1414,7 @@ interface Window {
     // SKY-3189 (G3): true when running in a packaged Electron build.
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
     isPackaged?: boolean;
+
 
   };
 

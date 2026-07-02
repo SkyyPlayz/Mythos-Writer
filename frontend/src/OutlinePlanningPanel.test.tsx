@@ -106,7 +106,7 @@ describe('OutlinePlanningPanel', () => {
   describe('AC-OPL-UI-01: renders planning surface', () => {
     it('shows the outline panel when a story is selected', async () => {
       await renderWithStory();
-      expect(screen.getByTestId('opl-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('outline-planning-panel')).toBeInTheDocument();
     });
 
     it('shows no-story state when story is null', async () => {

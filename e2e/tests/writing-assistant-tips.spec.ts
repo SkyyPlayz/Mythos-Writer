@@ -230,7 +230,7 @@ test.beforeAll(async () => {
   );
 
   // Navigate to the Story tab's Editor sub-view, where the editor chrome is rendered.
-  await page.locator('[data-testid="app-tab-story"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await page.locator('[data-testid="story-subview-editor"]').click();
 
   // Wait for the story navigator to render — stories and chapters start expanded by default.

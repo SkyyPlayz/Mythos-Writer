@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { PanelChrome, PanelHeader, PanelBody, PanelFooter } from './PanelChrome';
+
+const PANEL_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/PanelChrome.css'), 'utf-8');
 
 describe('PanelHeader', () => {
   it('renders title text', () => {
@@ -104,5 +108,40 @@ describe('PanelChrome', () => {
   it('passes className to pc-chrome', () => {
     render(<PanelChrome className="extra">x</PanelChrome>);
     expect(document.querySelector('.pc-chrome.extra')).toBeTruthy();
+  });
+});
+
+// ─── Liquid Neon a11y — CSS regression ───────────────────────────────────────
+
+describe('PanelChrome — Liquid Neon a11y CSS', () => {
+  it('header title uses --text-header token', () => {
+    const m = PANEL_CSS.match(/\.pc-header-title\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--text-header)');
+  });
+
+  it('subtitle uses --text-muted token', () => {
+    const m = PANEL_CSS.match(/\.pc-header-subtitle\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--text-muted)');
+  });
+
+  it('panel surface uses --bg-panel token (token-driven in high-contrast)', () => {
+    const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--bg-panel)');
+  });
+
+  it('border uses --border-subtle token', () => {
+    const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
+    expect(m?.[1] ?? '').toContain('var(--border-subtle)');
+  });
+
+  it('buttons in the actions slot are naturally focusable via Tab', () => {
+    render(
+      <PanelHeader
+        title="T"
+        actions={<button data-testid="action-btn">Settings</button>}
+      />,
+    );
+    const btn = screen.getByTestId('action-btn');
+    expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
 });

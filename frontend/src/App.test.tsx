@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 
 const mockManifest = {
@@ -140,7 +140,8 @@ describe('App — onboarding gate (SKY-152)', () => {
 
     render(<App />);
 
-    const notesTab = await screen.findByTestId('app-tab-notes');
+    const navRail = await screen.findByRole('navigation', { name: 'Main navigation' });
+    const notesTab = within(navRail).getByRole('button', { name: 'Notes' });
     fireEvent.click(notesTab);
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /no notes vault/i })).toBeInTheDocument());

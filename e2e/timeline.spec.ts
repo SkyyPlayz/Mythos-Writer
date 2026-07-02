@@ -250,7 +250,9 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 
   // Switch to the Timeline sub-view in the Story tab.
-  await pg.locator('[data-testid="app-tab-story"]').click();
+  const nav = pg.getByRole('navigation', { name: 'Main navigation' });
+  await expect(nav).toBeVisible({ timeout: 10_000 });
+  await nav.getByRole('button', { name: 'Story' }).click();
   const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
@@ -428,11 +430,18 @@ test('TC-TL-06: date range filter hides scenes outside [from, to]', async () => 
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toHaveCount(0);
   await expect(page.locator(`[data-testid="row-${SCENE_3.id}"]`)).toHaveCount(0);
 
-  // Clear the range so the next test sees the full fixture again.
-  // SKY-3177: timeline-detail-card overlays the filter bar; use evaluate() to
-  // fire the native click directly on the button, bypassing pointer-event
-  // interception from the overlay. Increase timeout to 8s for loaded CI runners.
-  await page.locator('.tlf-clear-btn').evaluate(btn => (btn as HTMLButtonElement).click());
+  // Clear the range so the next test sees the full fixture again. TC-TL-03 can
+  // leave the detail card in `selected` state over the filter area, so avoid a
+  // coordinate click that can be intercepted; focusing the real button and
+  // pressing Enter exercises the same accessible control path.
+  const clearDateRange = page.getByRole('button', { name: 'Clear date range' });
+  await clearDateRange.focus();
+  await page.keyboard.press('Enter');
+  // Wait for the controlled inputs to clear first — confirms React applied the
+  // filter reset before we check that the hidden rows reappear.
+  await expect(page.locator('#tlf-date-from')).toHaveValue('', { timeout: 8_000 });
+  await expect(page.locator('#tlf-date-to')).toHaveValue('', { timeout: 8_000 });
+  await expect(clearDateRange).toHaveCount(0, { timeout: 8_000 });
   await expect(page.locator(`[data-testid="row-${SCENE_2.id}"]`)).toBeVisible({ timeout: 8_000 });
 });
 
@@ -473,7 +482,9 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // Use a generous timeout: the component must remount and complete its async
   // IPC load (timelineGetScenes) before the root div renders — 4 s was too
   // tight on loaded CI runners.
-  await page.locator('[data-testid="app-tab-story"]').click();
+  const nav = page.getByRole('navigation', { name: 'Main navigation' });
+  await expect(nav).toBeVisible({ timeout: 10_000 });
+  await nav.getByRole('button', { name: 'Story' }).click();
   await page.locator('[data-testid="story-subview-timeline"]').click();
   await expect(root).toBeVisible({ timeout: 8_000 });
   // Confirm at least one scene row is in the DOM (data loaded) before Tab.
@@ -653,4 +664,3 @@ test.describe('SKY-797 — perf gate', () => {
     ).toBeLessThanOrEqual(FRAME_BUDGET_MS);
   });
 });
-

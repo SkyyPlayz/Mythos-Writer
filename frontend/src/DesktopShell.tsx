@@ -9,6 +9,7 @@ import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStor
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
+import WorkspaceTabBar from './WorkspaceTabBar';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -45,9 +46,7 @@ import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRi
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
-import DockedTabBar from './DockedTabBar';
 import SplitEditorPane from './SplitEditorPane';
-import TabBar from './TabBar';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import { resolveCrossTabLink, type CrossTabLinkMatch } from './crossTabLinkResolver';
@@ -225,18 +224,10 @@ interface AppMenuBarProps {
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
   requestText: (label: string) => Promise<string | null>;
-  // SKY-1698 (Wave 2d): docked tab bar props
-  dockedTabs: DockedTab[];
-  activeDockedTabId: string | null;
-  onDockedTabSelect: (tabId: string) => void;
-  onDockedTabClose: (tabId: string, action: 'send-to-sidebar' | 'remove') => void;
-  onDockedTabReorder: (fromIndex: number, toIndex: number) => void;
-  dockedPanelIds: SidebarPanelId[];
-  onAddPanelAsNewTab: (panelId: SidebarPanelId) => void;
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText, dockedTabs, activeDockedTabId, onDockedTabSelect, onDockedTabClose, onDockedTabReorder, dockedPanelIds, onAddPanelAsNewTab }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -341,16 +332,6 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
         </div>
       </div>
       <SearchBar onNavigate={onSearchNavigate} />
-      {/* SKY-1698 (Wave 2d): custom panel tabs right of built-in tabs (AC-T-04) */}
-      <DockedTabBar
-        dockedTabs={dockedTabs}
-        activeDockedTabId={activeDockedTabId}
-        onTabSelect={onDockedTabSelect}
-        onTabClose={onDockedTabClose}
-        onTabReorder={onDockedTabReorder}
-        dockedPanelIds={dockedPanelIds}
-        onAddPanelAsNewTab={onAddPanelAsNewTab}
-      />
       <button
         className="app-menu-topbar-btn"
         onClick={onToggleTopBar}
@@ -380,7 +361,7 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
       <button
         className="app-menu-gear-btn"
         onClick={onOpenSettings}
-        aria-label="Open settings"
+        aria-label="Settings"
         title="Settings"
       >
         ⚙
@@ -898,6 +879,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-1698 (Wave 2d): custom panel tabs in the main tab bar
   const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
   const [activeDockedTabId, setActiveDockedTabId] = useState<string | null>(null);
+
+  // SKY-3098 (v0.3): workspace tab bar
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => [
+    { id: crypto.randomUUID(), kind: 'story-editor', title: 'Story', icon: '📖' },
+    { id: crypto.randomUUID(), kind: 'notes-editor', title: 'Notes', icon: '📁' },
+  ]);
+  const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState<string | null>(null);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -1439,6 +1427,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (Array.isArray(s.activeLayout?.dockedTabs) && s.activeLayout!.dockedTabs!.length > 0) {
           setDockedTabs(s.activeLayout!.dockedTabs!);
         }
+        // SKY-3098: restore nav rail + workspace tabs.
+        if (typeof s.activeLayout?.navRailCollapsed === 'boolean') {
+          setNavRailCollapsed(s.activeLayout.navRailCollapsed);
+        }
+        if (Array.isArray(s.activeLayout?.workspaceTabs) && s.activeLayout.workspaceTabs.length > 0) {
+          setWorkspaceTabs(s.activeLayout.workspaceTabs);
+          setActiveWorkspaceTabId(s.activeLayout.activeWorkspaceTabId ?? null);
+        }
         // SKY-1699: restore split window ratio from persisted AppSettings.
         if (typeof s.activeLayout?.splitWindow?.splitRatio === 'number') {
           setSplitRatio(s.activeLayout.splitWindow.splitRatio);
@@ -1762,6 +1758,38 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+  // SKY-3098 (v0.3): Persist nav rail collapsed state.
+  const persistNavRailCollapsed = useCallback((collapsed: boolean) => {
+    setNavRailCollapsed(collapsed);
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, navRailCollapsed: collapsed },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // SKY-3098 (v0.3): Persist workspace tabs + active tab id.
+  const persistWorkspaceTabs = useCallback((tabs: WorkspaceTab[], activeId: string | null) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        activeLayout: {
+          ...prev.activeLayout,
+          leftSidebar: leftSidebarLayoutRef.current,
+          workspaceTabs: tabs,
+          activeWorkspaceTabId: activeId,
+        },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
   // SKY-2094: Persist tab shell state to AppSettings.
   const persistTabShell = useCallback((next: TabbedShellState) => {
     setAppSettings((prev) => {
@@ -1788,6 +1816,40 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     tabShellRef.current = { ...tabShellRef.current, activeTab: tab };
     persistTabShell({ ...tabShellRef.current, activeTab: tab });
   }, [persistTabShell]);
+
+  // SKY-3098 (v0.3): Workspace tab handlers.
+  const handleWorkspaceTabSelect = useCallback((tabId: string) => {
+    setActiveWorkspaceTabId(tabId);
+    const tab = workspaceTabs.find((t) => t.id === tabId);
+    if (tab) {
+      if (tab.kind === 'notes-editor' || tab.kind === 'vault-graph' || tab.kind === 'entities') {
+        handleTabChange('notes');
+      } else {
+        handleTabChange('story');
+        if (tab.kind === 'kanban') setView('kanban');
+        else if (tab.kind === 'timeline') setView('timeline');
+        else setView('editor');
+      }
+    }
+    persistWorkspaceTabs(workspaceTabs, tabId);
+  }, [workspaceTabs, handleTabChange, persistWorkspaceTabs]);
+
+  const handleWorkspaceTabClose = useCallback((tabId: string) => {
+    const next = workspaceTabs.filter((t) => t.id !== tabId);
+    if (next.length === 0) return; // never close the last tab
+    const newActiveId = tabId === activeWorkspaceTabId ? (next[0]?.id ?? null) : activeWorkspaceTabId;
+    setWorkspaceTabs(next);
+    setActiveWorkspaceTabId(newActiveId);
+    persistWorkspaceTabs(next, newActiveId);
+  }, [workspaceTabs, activeWorkspaceTabId, persistWorkspaceTabs]);
+
+  const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    const arr = [...workspaceTabs];
+    const [removed] = arr.splice(fromIndex, 1);
+    arr.splice(toIndex, 0, removed);
+    setWorkspaceTabs(arr);
+    persistWorkspaceTabs(arr, activeWorkspaceTabId);
+  }, [workspaceTabs, activeWorkspaceTabId, persistWorkspaceTabs]);
 
   const focusContinuitySearch = useCallback(() => {
     window.setTimeout(() => {
@@ -1984,50 +2046,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleDockPanelAsTab = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
     handleTabBarDrop(panelId, sourceSidebar, -1);
   }, [handleTabBarDrop]);
-
-  // SKY-1698: Close a custom tab (AC-T-06).
-  const handleTabClose = useCallback((tabId: string, action: 'send-to-sidebar' | 'remove') => {
-    setDockedTabs((prev) => {
-      const tab = prev.find((t) => t.id === tabId);
-      if (!tab) return prev;
-      if (action === 'send-to-sidebar') {
-        setGrsPanels((cur) => {
-          const toAdd = tab.panels.filter((id) => !cur.some((p) => p.id === id));
-          const next = [...cur, ...toAdd.map((id) => ({ id, collapsed: false as const }))];
-          persistGrsSettings({ panels: next });
-          return next;
-        });
-      }
-      const arr = prev.filter((t) => t.id !== tabId);
-      persistDockedTabs(arr);
-      return arr;
-    });
-    setActiveDockedTabId((prev) => (prev === tabId ? null : prev));
-  }, [persistGrsSettings, persistDockedTabs]);
-
-  // SKY-1698: Reorder custom tabs by drag (AC-T-05).
-  const handleTabReorder = useCallback((fromIndex: number, toIndex: number) => {
-    setDockedTabs((prev) => {
-      const arr = [...prev];
-      const [removed] = arr.splice(fromIndex, 1);
-      arr.splice(toIndex > fromIndex ? toIndex - 1 : toIndex, 0, removed);
-      persistDockedTabs(arr);
-      return arr;
-    });
-  }, [persistDockedTabs]);
-
-  // SKY-1698: Add a panel as a new tab from the [+] picker.
-  const handleAddPanelAsNewTab = useCallback((panelId: SidebarPanelId) => {
-    const inRight = grsPanels.some((p) => p.id === panelId);
-    handleTabBarDrop(panelId, inRight ? 'right' : 'left', -1);
-  }, [grsPanels, handleTabBarDrop]);
-
-  // SKY-1698: flat list of panel IDs already placed in docked tabs (for [+] picker filter).
-  // Must be before early returns (loading/error) to satisfy rules-of-hooks.
-  const dockedPanelIds = useMemo<SidebarPanelId[]>(
-    () => dockedTabs.flatMap((t) => t.panels),
-    [dockedTabs],
-  );
 
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
   // SKY-2094: also persists story sub-view to tab shell state.
@@ -3513,24 +3531,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenTour={() => setTourOpen(true)}
           onOpenExport={(scope: ExportScope) => setExportScope(scope)}
           requestText={requestText}
-          dockedTabs={dockedTabs}
-          activeDockedTabId={activeDockedTabId}
-          onDockedTabSelect={setActiveDockedTabId}
-          onDockedTabClose={handleTabClose}
-          onDockedTabReorder={handleTabReorder}
-          dockedPanelIds={dockedPanelIds}
-          onAddPanelAsNewTab={handleAddPanelAsNewTab}
         />
       )}
-      {/* SKY-2094 (Phase 2 #1): two-tab switcher — Story / Notes */}
-      {showTitleBar && (
-        <TabBar
-          activeTab={tabShell.activeTab}
-          onTabChange={handleTabChange}
-        />
-      )}
-      {/* SKY-2098: per-tab vault badge */}
-      {showTitleBar && activeVaultBadge && (
+      {/* SKY-3098: AppNavRail + main content column */}
+      <div className="desktop-shell__body">
+        {showTitleBar && (
+          <AppNavRail
+            activeSection={tabShell.activeTab}
+            onSectionChange={handleTabChange}
+            onOpenAccount={() => setAccountModalOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            navItems={NAV_ITEMS}
+            collapsed={navRailCollapsed}
+            onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}
+          />
+        )}
+        <div className="desktop-shell__main-col">
+        {showTitleBar && (
+          <WorkspaceTabBar
+            tabs={workspaceTabs}
+            activeTabId={activeWorkspaceTabId}
+            onTabSelect={handleWorkspaceTabSelect}
+            onTabClose={handleWorkspaceTabClose}
+            onTabReorder={handleWorkspaceTabReorder}
+            onNewTab={() => {}}
+          />
+        )}
+        {/* SKY-2098: per-tab vault badge */}
+        {showTitleBar && activeVaultBadge && (
         <div
           className={`tab-bar-vault-badge${activeVaultBadgeMissing ? ' tab-bar-vault-badge--missing' : ''}`}
           aria-label={activeVaultBadgeLabel}
@@ -3595,17 +3623,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
-      {/* SKY-3177: shell-body — persistent AppNavRail + tabpanel content side by side */}
-      <div className="shell-body">
-      <AppNavRail
-        activeSection={tabShell.activeTab}
-        onSectionChange={handleTabChange}
-        onOpenAccount={() => setAccountModalOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        navItems={NAV_ITEMS}
-        collapsed={navRailCollapsed}
-        onToggleCollapsed={() => setNavRailCollapsed((prev) => !prev)}
-      />
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
@@ -4303,7 +4320,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
-      </div>{/* end shell-body */}
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
           <div className="cross-tab-link-modal__card">
@@ -4364,7 +4380,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onDuplicate={handleLayoutDuplicate}
         />
       )}
-      <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      {/* SKY-3098 (v0.3): AccountModal — wired to nav rail brand glyph */}
+      {accountModalOpen && (
+        <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      )}
+        </div>{/* end desktop-shell__main-col */}
+      </div>{/* end desktop-shell__body */}
     </div>
     </PanelDragProvider>
   );

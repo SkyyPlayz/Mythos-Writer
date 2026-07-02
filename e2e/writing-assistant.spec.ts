@@ -398,9 +398,9 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
 // ─── Navigation helpers ───────────────────────────────────────────────────────
 
 async function navigateToEditorView(page: Page): Promise<void> {
-  // After the GRS refactor the app uses data-testid based navigation.
-  // Click the Story tab then the Editor sub-view, mirroring writing-assistant-tips.spec.ts.
-  await page.locator('[data-testid="app-tab-story"]').click();
+  // SKY-3097/3098: AppNavRail replaced the old TabBar; use aria-label navigation.
+  // Mirrors the pattern in writing-assistant-tips.spec.ts.
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
   await page.locator('[data-testid="story-subview-editor"]').click();
 }
 

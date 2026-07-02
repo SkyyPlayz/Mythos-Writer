@@ -15,9 +15,10 @@ export default function NavConfigSection({ navConfig, setNavConfig, setSavedOk }
         <ul className="nav-config-item-list" aria-label="Nav-bar sections">
           {navConfig.items.map((item, index) => (
             <li key={item.id} className="nav-config-item">
-              <label className="settings-toggle nav-config-item-toggle" aria-label={`Enable ${item.label}`}>
+              <label className="settings-toggle nav-config-item-toggle">
                 <input
                   type="checkbox"
+                  aria-label={`Enable ${item.label}`}
                   checked={item.enabled}
                   onChange={(e) => {
                     setNavConfig((prev) => ({

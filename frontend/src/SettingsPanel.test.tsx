@@ -72,18 +72,30 @@ beforeEach(() => {
 });
 
 describe('SettingsPanel', () => {
-  it('renders all sections after loading', async () => {
+  it('renders all sections after loading — SKY-2973: category nav exists + agents tab visible by default', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
+    // Agents tab is the default: agent sections visible
     expect(screen.getAllByText(/writing assistant/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getAllByText(/archive agent/i)[0]).toBeInTheDocument();
+    // Category nav tabs exist
+    expect(screen.getByRole('tab', { name: /vaults/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /agents/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /appearance/i })).toBeInTheDocument();
+    // Appearance heading is NOT in the DOM until that tab is selected
+    expect(screen.queryByRole('heading', { name: /^appearance$/i })).not.toBeInTheDocument();
+    // Switch to Appearance tab and verify the heading appears
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
   });
 
   it('offers dark and high-contrast appearance choices and applies on change', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    // SKY-2973: appearance settings live in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     const dark = screen.getByRole('radio', { name: /liquid neon/i }) as HTMLInputElement;
     const highContrast = screen.getByRole('radio', { name: /high contrast/i }) as HTMLInputElement;
@@ -95,6 +107,44 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ theme: 'high-contrast' }));
+  });
+
+  // ── SKY-2973: Settings category navigation ──
+
+  it('SKY-2973: renders Vaults / Agents / Appearance tabs', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByRole('tab', { name: /vaults/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /agents/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /appearance/i })).toBeInTheDocument();
+  });
+
+  it('SKY-2973: Agents tab is active by default, shows agent content', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    expect(screen.getByRole('tab', { name: /agents/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument();
+    // Vault and Appearance content NOT in DOM when agents is active
+    expect(screen.queryByRole('heading', { name: /^vault paths$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^appearance$/i })).not.toBeInTheDocument();
+  });
+
+  it('SKY-2973: clicking Vaults tab shows vault sections', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    fireEvent.click(screen.getByRole('tab', { name: /vaults/i }));
+    expect(screen.getByRole('tab', { name: /vaults/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+  });
+
+  it('SKY-2973: clicking Appearance tab shows appearance sections', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+    expect(screen.getByRole('tab', { name: /appearance/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
   it('loads settings from IPC on mount', async () => {
@@ -665,6 +715,8 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
+    // SKY-2973: Advanced button is in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     fireEvent.click(screen.getByRole('button', { name: /advanced/i }));
     expect(screen.getByRole('dialog', { name: /advanced ui settings/i })).toBeInTheDocument();
 
@@ -1077,26 +1129,34 @@ describe('SettingsPanel', () => {
   it('renders Telemetry section with opt-in toggle', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Telemetry lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('heading', { name: /^telemetry$/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /enable telemetry/i })).toBeInTheDocument();
   });
 
   it('telemetry toggle is off by default', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Telemetry lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
   });
 
   it('shows telemetry data list', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('list', { name: /telemetry data items/i }));
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Telemetry lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('list', { name: /telemetry data items/i })).toBeInTheDocument();
   });
 
   it('telemetry toggle change is included in saved settings', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Telemetry lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable telemetry/i }));
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -1109,7 +1169,9 @@ describe('SettingsPanel', () => {
   it('telemetry restores enabled state from loaded settings', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, telemetry: { enabled: true, sessionId: 'abc' } });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('checkbox', { name: /enable telemetry/i }));
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Telemetry lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable telemetry/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
   });
@@ -1840,6 +1902,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('renders Nav-bar section with Story and Notes toggles', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('heading', { name: /nav-bar/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/enable story/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/enable notes/i)).toBeInTheDocument();
@@ -1847,6 +1912,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('renders start-collapsed, show-labels, show-icons toggles', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
     expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /show.*labels/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /show.*icons/i })).toBeInTheDocument();
@@ -1883,6 +1951,9 @@ describe('SKY-3218 nav-bar configuration', () => {
     mockSettingsGet.mockResolvedValue({ ...defaultSettings, navConfig: savedNavConfig });
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     expect(screen.getByRole('checkbox', { name: /start collapsed/i })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: /show.*labels/i })).not.toBeChecked();
@@ -1892,6 +1963,9 @@ describe('SKY-3218 nav-bar configuration', () => {
 
   it('persists toggled item state on save', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // SKY-2973: Nav-bar config lives in the Appearance tab
+    fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     const notesToggle = screen.getByLabelText(/enable notes/i);
     fireEvent.click(notesToggle);

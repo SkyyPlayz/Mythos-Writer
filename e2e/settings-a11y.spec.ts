@@ -84,12 +84,17 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 // before querying controls that live under it.
 // SKY-3230: extended timeout (10 s) for slow CI runners; wait for section to be
 // visible rather than a fixed 100 ms pause so the assertion can start immediately.
+// SKY-5094: PR #768 replaced class/data-testid selectors with role="tab" on .settings-cat-nav__tab.
+// 'General' is no longer a tab — map it to 'Agents' (closest equivalent).
 async function navigateSettingsCategory(page: Page, category: string): Promise<void> {
-  const catId = category.toLowerCase();
-  const btn = page.locator(`[data-testid="settings-cat-${catId}"]`);
-  await btn.waitFor({ state: 'visible', timeout: 10_000 });
-  await btn.click();
-  await page.locator(`[data-settings-cat="${catId}"]`).first().waitFor({ state: 'visible', timeout: 5_000 });
+  const aliasMap: Record<string, string> = { general: 'Agents' };
+  const tabLabel = aliasMap[category.toLowerCase()]
+    ?? (category.charAt(0).toUpperCase() + category.slice(1));
+  const tab = page.getByRole('tab', { name: tabLabel });
+  await tab.waitFor({ state: 'visible', timeout: 10_000 });
+  await tab.click();
+  // Wait for section content to render (no data-settings-cat attribute in new UI)
+  await expect(page.locator('.settings-section').first()).toBeVisible({ timeout: 5_000 });
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
@@ -131,7 +136,8 @@ test.beforeEach(async () => {
   // Wait for the settings panel to finish loading (loading state renders without category nav).
   // navigateSettingsCategory silently skips if nav buttons aren't visible within 2s — waiting
   // here ensures TC-SKY-814-05 (Appearance slider) and others find their category correctly.
-  await expect(page.locator('.settings-cat-nav-btn').first()).toBeVisible({ timeout: 10_000 });
+  // SKY-5094: PR #768 renamed .settings-cat-nav-btn → .settings-cat-nav__tab.
+  await expect(page.locator('.settings-cat-nav__tab').first()).toBeVisible({ timeout: 10_000 });
 });
 
 test.afterEach(async () => {
@@ -218,7 +224,8 @@ test('TC-SKY-814-05: Slider controls have aria-label and announce value', async 
   // elsewhere in the DOM (the broad :not([disabled]) selector can resolve to a
   // CSS-hidden element in another section before AppearanceSection in DOM order).
   await navigateSettingsCategory(page, 'Appearance');
-  const slider = page.locator('[data-settings-cat="appearance"] input[type="range"]').first();
+  // SKY-5094: no data-settings-cat attribute in new UI; scope to tabpanel instead
+  const slider = page.locator('[role="tabpanel"] input[type="range"]').first();
   await expect(slider).toBeVisible();
 
   const ariaLabel = await slider.getAttribute('aria-label');
@@ -320,13 +327,11 @@ test('TC-SKY-814-09: Settings dialog has accessible structure (axe scan in SKY-8
 
 // ─── TC-SKY-814-10: Section headings use proper heading hierarchy ────────────────
 test('TC-SKY-814-10: Settings sections have proper heading structure', async () => {
-  // SKY-3216/D2: first section in DOM order is ProviderSection (data-settings-cat="agents"),
-  // hidden when General tab is active. Navigate to General to ensure sections are visible.
-  await navigateSettingsCategory(page, 'General');
+  // SKY-3216/D2: navigate to a settings category before querying section headings.
+  // SKY-5094: 'General' is no longer a tab in PR #768; navigateSettingsCategory maps it to 'Agents'.
+  // The section-visibility wait is now inside navigateSettingsCategory.
+  await navigateSettingsCategory(page, 'Agents');
   const sections = page.locator('[class*="settings-section"]');
-  // Wait for a visible general-category section instead of the first DOM entry.
-  await page.locator('.settings-section[data-settings-cat="general"]').first()
-    .waitFor({ state: 'visible', timeout: 5_000 });
   const count = await sections.count();
   expect(count).toBeGreaterThan(0);
 

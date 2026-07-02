@@ -51,3 +51,9 @@ Add `(status, created_at DESC)`, `(scene_id, status, created_at DESC)`, and `(it
 When a stale CI-monitor routine is suspected, first compare the routine `status`/`lastTriggeredAt` with the latest execution issue and agent run logs: `c8fa0c64` had been archived after producing done issue `SKY-2190`, while FoundingEngineer `error` came from Claude Sonnet 429s (`claude_transient_upstream`), not missing CI disposition.
 
 ---
+
+## Nav-rail selector migration: scan ALL CI-path E2E files when replacing a nav component (SKY-3380)
+
+**2026-06-21** — When a global nav component is replaced (e.g. DockedTabBar → AppNavRail), the commit that wires it into DesktopShell must update *every* E2E spec that is in a CI shard, not just the ones explicitly listed in the diff. The SKY-3097/3098 wiring commit updated `notes-tab.spec.ts`, `cross-tab-links.spec.ts`, etc. but missed 5 CI-path specs across all 4 shards (`brainstorm`, `writing-modes`, `writing-assistant-tips`, `vault-graph-v0`, `entries`), reddening every shard. Fix: before merging a nav-component swap, run `grep -r "app-tab-notes\|app-tab-story\|app-tab-bar" e2e/` and update every hit that appears in a CI shard. (CTO)
+
+---

@@ -55,6 +55,27 @@ function readVaultSettings(userData: string): VaultSettings {
   return JSON.parse(fs.readFileSync(file, 'utf-8')) as VaultSettings;
 }
 
+async function waitForPersistedVaultPair(userData: string): Promise<{ vaultRoot: string; notesVaultRoot: string }> {
+  await expect
+    .poll(() => readVaultSettings(userData).vaultRoot, {
+      timeout: 30_000,
+      intervals: [200, 400, 800, 1000, 2000],
+    })
+    .toBeTruthy();
+  await expect
+    .poll(() => readVaultSettings(userData).notesVaultRoot, {
+      timeout: 30_000,
+      intervals: [200, 400, 800, 1000, 2000],
+    })
+    .toBeTruthy();
+
+  const vaultSettings = readVaultSettings(userData);
+  if (!vaultSettings.vaultRoot || !vaultSettings.notesVaultRoot) {
+    throw new Error(`vault-settings.json missing vault roots in ${path.join(userData, 'vault-settings.json')}`);
+  }
+  return { vaultRoot: vaultSettings.vaultRoot, notesVaultRoot: vaultSettings.notesVaultRoot };
+}
+
 function seedAppSettingsNoOnboarding(userData: string): void {
   // Mark onboarding NOT complete so the wizard appears on first boot, but
   // pre-seed an agents/theme block so DesktopShell can render afterwards
@@ -109,15 +130,44 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function completeDefaultLayout(pg: Page, storyTitle: string, saveParent: string): Promise<void> {
-  await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-  await pg.locator('[data-testid="card-path-default"]').click();
-  await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 10_000 });
-  await pg.locator('[data-testid="gs-title-input"]').fill(storyTitle);
-  await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
-  await expect(pg.locator('[data-testid="gs-create-story"]')).toBeEnabled({ timeout: 10_000 });
-  await pg.locator('[data-testid="gs-create-story"]').click();
-  await pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 });
+async function selectQuickStartCard(pg: Page): Promise<void> {
+  await expect(pg.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 30_000 });
+
+  const quickStartCandidates = [
+    'card-quick-start',
+    'card-default-mythos-vault',
+    'card-path-default',
+  ];
+  for (const testId of quickStartCandidates) {
+    const card = pg.locator(`[data-testid="${testId}"]`);
+    if (await card.isVisible().catch(() => false)) {
+      await card.click();
+      return;
+    }
+  }
+
+  const byTitle = pg.locator('button[aria-label="Quick Start: One click — we set everything up for you."]');
+  if (await byTitle.isVisible().catch(() => false)) {
+    await byTitle.click();
+    return;
+  }
+
+  const byText = pg.locator('.gs-card__title', { hasText: 'Quick Start' }).locator('..');
+  if (await byText.isVisible().catch(() => false)) {
+    await byText.click();
+    return;
+  }
+
+  throw new Error('Could not find Quick Start card on onboarding step 1');
+}
+
+async function completeQuickStart(pg: Page): Promise<void> {
+  await selectQuickStartCard(pg);
+  await Promise.race([
+    pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
+    pg.locator('[data-testid="screen-step2"]').waitFor({ state: 'visible', timeout: 30_000 }),
+    pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),
+  ]);
 }
 
 let userData: string;
@@ -140,51 +190,54 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await completeDefaultLayout(pg, 'My First Story', saveParent);
+    await completeQuickStart(pg);
 
-    // Disk: the flat Default Layout flow creates a Story/Notes pair below the
-    // step-2 save parent and nests the story by title.
-    const storyRoot = path.join(saveParent, 'My First Story');
-    const storyVaultPath = path.join(storyRoot, 'Story Vault');
-    const notesVaultPath = path.join(storyRoot, 'Notes Vault');
-    expect(fs.existsSync(storyVaultPath)).toBe(true);
-    expect(fs.existsSync(notesVaultPath)).toBe(true);
+    const vaultPair = await waitForPersistedVaultPair(userData);
+    expect(fs.existsSync(vaultPair.vaultRoot)).toBe(true);
+    expect(fs.existsSync(vaultPair.notesVaultRoot)).toBe(true);
 
-    // The blank/default layout seeds a first scene file so the editor lands on
-    // something writable. Blank-mode story folders are slugged.
-    expect(fs.existsSync(path.join(storyVaultPath, 'Manuscript', 'my-first-story', 'chapter-1', 'chapter-1-scene-1.md'))).toBe(true);
+    // Quick Start seeds a first scene file so the editor lands on something
+    // writable.
+    expect(
+      fs.existsSync(path.join(vaultPair.vaultRoot, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md')),
+    ).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.
     const vaultSettings = readVaultSettings(userData);
-    expect(vaultSettings.vaultRoot).toBe(storyVaultPath);
-    expect(vaultSettings.notesVaultRoot).toBe(notesVaultPath);
+    expect(vaultSettings.vaultRoot).toBe(vaultPair.vaultRoot);
+    expect(vaultSettings.notesVaultRoot).toBe(vaultPair.notesVaultRoot);
   } finally {
     await app.close().catch(() => {});
   }
 });
 
-test('TC-SKY-906-02: default layout blocks an existing story directory without clobbering it', async () => {
+test('TC-SKY-906-02: Quick Start avoids clobbering an existing default vault bundle', async () => {
   const saveParent = path.join(userData, 'vaults');
-  const preexisting = path.join(saveParent, 'Existing Story');
-  fs.mkdirSync(preexisting, { recursive: true });
-  fs.writeFileSync(path.join(preexisting, 'user-data.md'), '# do not clobber\n', 'utf-8');
+  // Pre-create both historical default names with content to force the
+  // collision-avoidance path without coupling this E2E test to naming churn.
+  const preexistingRoots = ['Mythos Vault', 'My First Vault'].map((name) => path.join(saveParent, name));
+  for (const preexistingRoot of preexistingRoots) {
+    fs.mkdirSync(preexistingRoot, { recursive: true });
+    fs.writeFileSync(path.join(preexistingRoot, 'user-data.md'), '# do not clobber\n', 'utf-8');
+  }
 
   seedAppSettingsNoOnboarding(userData);
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await pg.locator('[data-testid="card-path-default"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="card-path-default"]').click();
-    await pg.locator('[data-testid="screen-step2"]').waitFor({ timeout: 30_000 });
-    await pg.locator('[data-testid="gs-title-input"]').fill('Existing Story');
-    await pg.locator('[data-testid="gs-save-path"]').fill(saveParent);
-    await expect(pg.locator('[data-testid="gs-create-story"]')).toBeEnabled({ timeout: 10_000 });
-    await pg.locator('[data-testid="gs-create-story"]').click();
+    await completeQuickStart(pg);
 
-    await expect(pg.locator('[data-testid="gs-title-error"]')).toBeVisible({ timeout: 30_000 });
-    await expect(pg.locator('[data-testid="gs-title-error"]')).toContainText('already exists');
-    expect(fs.readFileSync(path.join(preexisting, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    expect(readVaultSettings(userData).vaultRoot).toBeUndefined();
+    for (const preexistingRoot of preexistingRoots) {
+      expect(fs.readFileSync(path.join(preexistingRoot, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
+    }
+
+    const vaultSettings = readVaultSettings(userData);
+    expect(vaultSettings.vaultRoot).toBeTruthy();
+    expect(vaultSettings.notesVaultRoot).toBeTruthy();
+    expect(fs.existsSync(vaultSettings.vaultRoot!)).toBe(true);
+    expect(fs.existsSync(vaultSettings.notesVaultRoot!)).toBe(true);
+    expect(preexistingRoots.some((root) => vaultSettings.vaultRoot === path.join(root, 'Story Vault'))).toBe(false);
+    expect(preexistingRoots.some((root) => vaultSettings.notesVaultRoot === path.join(root, 'Notes Vault'))).toBe(false);
   } finally {
     await app.close().catch(() => {});
   }

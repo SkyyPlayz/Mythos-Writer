@@ -66,17 +66,30 @@ async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<
   return page;
 }
 
-/** Click a flat path-selector onboarding card. */
+/** Click a start-path card, adapting legacy onboarding-v2 test IDs to the v0.3 flow. */
 async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-  const cardAliases: Record<string, string> = {
-    'card-default-mythos-vault': 'card-path-default',
-    'card-quick-start': 'card-path-default',
-    'card-blank': 'card-path-blank',
-    'card-sample': 'card-path-sample',
-  };
-  const resolvedCardTestId = cardAliases[cardTestId] ?? cardTestId;
-  await page.locator(`[data-testid="${resolvedCardTestId}"]`).click();
+
+  if (cardTestId === 'card-default-mythos-vault' || cardTestId === 'card-quick-start' || cardTestId === 'card-path-default') {
+    await page.locator('[data-testid="card-quick-start"]').click();
+    return;
+  }
+
+  if (cardTestId === 'card-blank' || cardTestId === 'card-path-blank') {
+    await page.locator('[data-testid="card-custom"]').click();
+    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="card-blank"]').click();
+    return;
+  }
+
+  if (cardTestId === 'card-sample' || cardTestId === 'card-path-sample') {
+    await page.locator('[data-testid="card-custom"]').click();
+    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="card-sample"]').click();
+    return;
+  }
+
+  await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
 /** Navigate from step1 to the step2 form via the blank card. */
@@ -94,6 +107,14 @@ async function navigateToStep2(app: ElectronApplication, page: Page): Promise<vo
 async function navigateToStep1c(page: Page): Promise<void> {
   await clickStep1Card(page, 'card-sample');
   await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
+}
+
+async function expectGettingStartedPanel(page: Page): Promise<void> {
+  const showRightSidebar = page.getByRole('button', { name: 'Show right sidebar' });
+  if (await showRightSidebar.isVisible().catch(() => false)) {
+    await showRightSidebar.click();
+  }
+  await expect(page.getByRole('region', { name: 'Getting Started' })).toBeVisible({ timeout: 5_000 });
 }
 
 /** Write a minimal app-settings.json into userData before launching the app. */
@@ -185,13 +206,10 @@ test.describe('AC-OB-01: Default Mythos Vault', () => {
     });
 
     await clickStep1Card(page, 'card-quick-start');
-    await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="gs-title-input"]').fill('AC-OB-01 Story');
-    await page.locator('[data-testid="gs-create-story"]').click();
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
     // Getting Started panel renders automatically after first onboarding
-    await expect(page.locator('[data-testid="gs-panel"]')).toBeVisible({ timeout: 5_000 });
+    await expectGettingStartedPanel(page);
   });
 });
 
@@ -533,7 +551,7 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     // The Getting Started panel must be present in the right sidebar
-    await expect(page.locator('[data-testid="gs-panel"]')).toBeVisible({ timeout: 5_000 });
+    await expectGettingStartedPanel(page);
   });
 });
 

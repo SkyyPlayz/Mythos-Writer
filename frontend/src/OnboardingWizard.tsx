@@ -108,7 +108,6 @@ type Api = {
     vaultName?: string;
     /** SKY-2008: genre selected on step1c; required for startMode=sample */
     sampleGenre?: SampleGenreId;
-    /** template variant for custom/blank vault setup */
     customTemplate?: 'recommended' | 'blank';
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
@@ -680,7 +679,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
-
   // AC-L-05: first card gets initial focus when step1 mounts or returns
   const quickStartRef = useRef<HTMLButtonElement>(null);
 
@@ -816,6 +814,37 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
+  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
+  // main creates the default Mythos vault bundle under app data and seeds a
+  // "My First Story" scene. The backend keeps default-mythos-vault as a
+  // compatibility alias, but new UI reports startMode=quick-start.
+  async function handleQuickStart() {
+    setStartMode('quick-start');
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'quick-start' });
+      if (!res.ok || res.error) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
+        setScaffolding(false);
+        return;
+      }
+      const updated: AppSettings = {
+        ...initialSettings,
+        onboardingComplete: true,
+        onboardingStartMode: 'quick-start',
+        ...(res.firstSceneId && res.firstScenePath
+          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
+          : {}),
+      };
+      onComplete(updated);
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
+      setScaffolding(false);
+    }
+  }
+
   function handleCreateCustom() {
     setStartMode(null);
     setSelectedTemplateId(null);
@@ -844,8 +873,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'open-existing',
         ...(res.firstSceneId && res.firstScenePath
@@ -1018,8 +1045,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       }
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         onboardingStartMode: 'sample',
         ...(res.firstSceneId && res.firstScenePath
@@ -1040,6 +1065,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     templateCardTriggerRef.current = document.activeElement as HTMLElement;
     setStep('step1b-inner');
   }
+
 
   // ─── Step 2 actions ─────────────────────────────────────────────────────────
 
@@ -1155,8 +1181,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         }
         const updated: AppSettings = {
           ...initialSettings,
-          ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-          gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
           onboardingComplete: true,
           onboardingStartMode: 'open-existing',
           ...(res.firstSceneId && res.firstScenePath
@@ -1244,8 +1268,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1308,8 +1330,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
       const updated: AppSettings = {
         ...initialSettings,
-        ...(typeof initialSettings.rightSidebarVisible !== 'boolean' ? { rightSidebarVisible: true } : {}),
-        gettingStartedProgress: initialSettings.gettingStartedProgress ?? { completedItems: [], dismissed: false },
         onboardingComplete: true,
         ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
         ...(res.firstSceneId && res.firstScenePath
@@ -1495,33 +1515,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               title="Quick Start"
               description="One click — we set everything up for you."
               ctaLabel="Start &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-path-default"
+              onActivate={handleQuickStart}
+              testId="card-quick-start"
               cardRef={quickStartRef}
             />
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
-              title="Blank"
-              description="Start with an empty vault — choose your save location."
-              ctaLabel="Set up &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-path-blank"
-            />
-            <StartingPointCard
-              icon="&#x1F4DA;"
-              title="Sample Project"
-              description="Start with a genre-specific sample vault to explore the app."
-              ctaLabel="Browse &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-path-sample"
-            />
-            <StartingPointCard
-              icon="&#x1F527;"
               title="Custom"
               description="Fine-grained control: pick your location and starting point."
               ctaLabel="Set up &#x2192;"
               onActivate={handleCreateCustom}
-              testId="card-create-custom"
+              testId="card-custom"
             />
             <StartingPointCard
               icon="&#x1F4C2;"

@@ -83,7 +83,7 @@ async function waitUntil(
  */
 async function clickCustomStartingPoint(page: Page, cardTestId: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-  await page.locator('[data-testid="card-create-custom"]').click();
+  await page.locator('[data-testid="card-custom"]').click();
   await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
   await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
