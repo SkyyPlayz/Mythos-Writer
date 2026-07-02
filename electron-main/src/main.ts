@@ -1219,6 +1219,14 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     return { vaultRoot: getVaultRoot() };
   },
+  // SKY-5790: reveal the current Story Vault root in the OS file manager
+  // (Finder/Explorer/etc.) — the path always comes from the main process's
+  // own vault-root state, never from renderer input.
+  [IPC_CHANNELS.VAULT_REVEAL_FOLDER]: async () => {
+    ensureVaultDir();
+    const err = await shell.openPath(getVaultRoot());
+    return { opened: err === '' };
+  },
   [IPC_CHANNELS.VAULT_IMPORT]: async (payload: VaultImportPayload) => {
     // MYT-360: Validate token — must come from a user-selected folder picker
     const validated = validateRegistrationToken(payload.registrationToken);
