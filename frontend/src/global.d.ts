@@ -419,6 +419,8 @@ interface AppSettings {
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
   lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
+  /** SKY-2553: one-time post-onboarding sample-project banner dismissal. */
+  sampleProjectBannerDismissed?: boolean;
   /** SKY-1188: first post-onboarding timestamp, written once. */
   firstLaunchAt?: string;
   /** SKY-2098: one-time upgrade notice for existing users moved to the two-tab shell. */

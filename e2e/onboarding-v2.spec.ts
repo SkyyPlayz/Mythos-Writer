@@ -58,6 +58,9 @@ async function launchFreshApp(
 }
 
 async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<Page> {
+  // Playwright's default firstWindow timeout is 30 s regardless of playwright.config.ts.
+  // On our loaded self-hosted runner, the 16th electron app in a shard can take longer
+  // to show its first window — match the global 60 s test timeout to prevent false flakes.
   const page = await app.firstWindow({ timeout });
   await page.waitForLoadState('domcontentloaded');
   return page;
