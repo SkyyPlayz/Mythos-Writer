@@ -24,10 +24,14 @@ const MARGIN_MIN = 0;
 const MARGIN_MAX = 120;
 const FONT_MIN = 12;
 const FONT_MAX = 24;
+const LINE_HEIGHT_MIN = 1.2;
+const LINE_HEIGHT_MAX = 2.4;
+const LINE_HEIGHT_STEP = 0.1;
 
 export default function PageChromeToolbar({ prefs, onPrefsChange }: Props) {
   const marginSliderId = useId();
   const fontSizeId = useId();
+  const lineHeightId = useId();
 
   const setPreset = useCallback((key: StoryPagePrefs['sizePreset']) => {
     onPrefsChange({ ...prefs, sizePreset: key, customWidthPx: STORY_PAGE_PRESET_WIDTHS[key] });
@@ -43,6 +47,10 @@ export default function PageChromeToolbar({ prefs, onPrefsChange }: Props) {
 
   const setFontSize = useCallback((value: number) => {
     onPrefsChange({ ...prefs, fontSizePx: value });
+  }, [prefs, onPrefsChange]);
+
+  const setLineHeight = useCallback((value: number) => {
+    onPrefsChange({ ...prefs, lineHeight: value });
   }, [prefs, onPrefsChange]);
 
   const handleReset = useCallback(() => {
@@ -127,6 +135,30 @@ export default function PageChromeToolbar({ prefs, onPrefsChange }: Props) {
           aria-valuetext={`${prefs.fontSizePx}px`}
         />
         <span className="pct-slider-val" aria-hidden="true">{prefs.fontSizePx}px</span>
+      </div>
+
+      <div className="pct-divider" aria-hidden="true" />
+
+      {/* Line spacing */}
+      <div className="pct-group" role="group" aria-label="Line spacing">
+        <label className="pct-label" htmlFor={lineHeightId}>
+          Line spacing
+        </label>
+        <input
+          id={lineHeightId}
+          type="range"
+          className="pct-slider pct-slider--sm"
+          min={LINE_HEIGHT_MIN}
+          max={LINE_HEIGHT_MAX}
+          step={LINE_HEIGHT_STEP}
+          value={prefs.lineHeight}
+          onChange={e => setLineHeight(Number(e.target.value))}
+          aria-valuemin={LINE_HEIGHT_MIN}
+          aria-valuemax={LINE_HEIGHT_MAX}
+          aria-valuenow={prefs.lineHeight}
+          aria-valuetext={`${prefs.lineHeight.toFixed(1)}×`}
+        />
+        <span className="pct-slider-val" aria-hidden="true">{prefs.lineHeight.toFixed(1)}×</span>
       </div>
 
       <div className="pct-divider" aria-hidden="true" />

@@ -5,8 +5,8 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import BlockEditor from './BlockEditor';
-import type { Scene } from './types';
+import BlockEditor, { blocksToMarkdownBody } from './BlockEditor';
+import type { Block, Scene } from './types';
 import { WikiLink } from './WikiLinkExtension';
 import { installActWarningGuard } from './testActWarningGuard';
 
@@ -74,6 +74,24 @@ describe('BlockEditor markdown round-trip', () => {
     const md = '### Act Three';
     const out = roundTrip(md);
     expect(out.trim()).toBe('### Act Three');
+  });
+
+  it('heading h4', () => {
+    const md = '#### Beat Four';
+    const out = roundTrip(md);
+    expect(out.trim()).toBe('#### Beat Four');
+  });
+
+  it('heading h5', () => {
+    const md = '##### Beat Five';
+    const out = roundTrip(md);
+    expect(out.trim()).toBe('##### Beat Five');
+  });
+
+  it('heading h6', () => {
+    const md = '###### Beat Six';
+    const out = roundTrip(md);
+    expect(out.trim()).toBe('###### Beat Six');
   });
 
   it('bold preserves marked text', () => {
@@ -524,5 +542,88 @@ describe('BlockEditor pending edit flush', () => {
     expect(onBlocksChange).toHaveBeenCalledWith([
       expect.objectContaining({ content: expect.stringContaining('Do not lose this edit.') }),
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SKY-5777 — heading-survives-backup hardening
+// ---------------------------------------------------------------------------
+
+function makeSceneWithBlocks(blocks: Block[]): Scene {
+  const timestamp = '2026-07-02T00:00:00.000Z';
+  return {
+    id: 'scene-headings',
+    title: 'Heading Levels Scene',
+    path: 'stories/story-1/chapters/chapter-1/scenes/headings.md',
+    order: 0,
+    chapterId: 'chapter-1',
+    storyId: 'story-1',
+    blocks,
+    draftState: 'in-progress',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+
+describe('blocksToMarkdownBody heading level hardening', () => {
+  it('preserves the # run already present on a legacy heading block instead of collapsing it to H1', () => {
+    const blocks: Block[] = HEADING_LEVELS.map((level, i) => ({
+      id: `h${level}`,
+      type: 'heading',
+      content: `${'#'.repeat(level)} Heading ${level}`,
+      order: i,
+      updatedAt: '2026-07-02T00:00:00.000Z',
+    }));
+
+    const out = blocksToMarkdownBody(blocks);
+
+    for (const level of HEADING_LEVELS) {
+      expect(out).toContain(`${'#'.repeat(level)} Heading ${level}`);
+    }
+    // Regression guard for the original bug: every heading used to come out as "# ...".
+    expect(out).not.toContain('# #');
+  });
+
+  it('falls back to a single # when a heading block carries no level marker at all', () => {
+    const blocks: Block[] = [
+      { id: 'h', type: 'heading', content: 'Untitled Heading', order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ];
+    expect(blocksToMarkdownBody(blocks)).toBe('# Untitled Heading');
+  });
+});
+
+describe('BlockEditor scene backup/restore heading round trip', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: { entityList: vi.fn().mockResolvedValue({ entities: [] }) },
+      configurable: true,
+    });
+  });
+
+  it('preserves H1-H6 levels when a scene is restored from its Block[] snapshot', async () => {
+    const headingMarkdown = HEADING_LEVELS
+      .map((level) => `${'#'.repeat(level)} Heading ${level}`)
+      .join('\n\n');
+    const scene = makeSceneWithBlocks([
+      { id: 'prose-1', type: 'prose', content: headingMarkdown, order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ]);
+
+    let editorApi: { getMarkdown: () => string } | undefined;
+    render(
+      <BlockEditor
+        scene={scene}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        onEditorReady={(api) => { editorApi = api; }}
+      />
+    );
+
+    await waitFor(() => expect(editorApi).toBeDefined());
+    const restored = editorApi!.getMarkdown();
+    for (const level of HEADING_LEVELS) {
+      expect(restored).toContain(`${'#'.repeat(level)} Heading ${level}`);
+    }
   });
 });

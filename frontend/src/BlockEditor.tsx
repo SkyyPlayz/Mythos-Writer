@@ -66,13 +66,23 @@ const DRAFT_STATE_LABELS: Record<DraftState, string> = {
 /** Story-only extensions layered onto the shared RichTextEditor core. */
 const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension];
 
+// Block.type === 'heading' carries no dedicated level field — a heading's level
+// (H1–H6) lives in its own leading `#` run inside `content` (e.g. "## Chapter Two"),
+// the same way every other Markdown source in this app represents it. Preserve
+// that run verbatim so headings survive the legacy Block[] snapshot/restore path
+// at the level they were written; only fall back to H1 when content carries no
+// heading marker at all (e.g. bare heading text with no `#` prefix).
+const HEADING_PREFIX_RE = /^#{1,6}(?=\s|$)/;
+
 export function blocksToMarkdownBody(blocks: Block[]): string {
   const sorted = [...blocks].sort((a, b) => a.order - b.order);
   const lines: string[] = [];
   for (const block of sorted) {
     if (!block.content.trim()) continue;
     switch (block.type) {
-      case 'heading': lines.push(`# ${block.content}`); break;
+      case 'heading':
+        lines.push(HEADING_PREFIX_RE.test(block.content) ? block.content : `# ${block.content}`);
+        break;
       case 'dialogue': lines.push(`> ${block.content}`); break;
       case 'action': lines.push(`**${block.content}**`); break;
       case 'description': lines.push(`*${block.content}*`); break;
