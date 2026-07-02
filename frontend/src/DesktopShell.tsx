@@ -3226,6 +3226,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
             ttsSettings={appSettings?.tts}
+            voiceEnabled={appSettings?.voice?.enabled ?? false}
           />
         );
       case 'archive-continuity':
@@ -4192,6 +4193,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onActiveNoteWordCountChange={setOpenedNoteWordCount}
           onCloseActiveNote={() => setOpenedNotePath(null)}
           onWikiLinkClick={handleWikiLinkClick}
+          resolvedWikiLinkTitles={wikiLinkTitleIndex}
+          wikiLinkCandidates={wikiLinkCandidates}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}
