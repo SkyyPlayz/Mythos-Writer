@@ -14,6 +14,15 @@ export default function ArchiveAgentSection({
     setSavedOk(false);
   };
 
+  // SKY-3200: nested agents.archive.sceneCrafterSuggestions patch.
+  const setSceneCrafterSuggestions = (value: { enabled: boolean; cadence: number }) => {
+    setSettings((p) => ({
+      ...p,
+      agents: { ...p.agents, archive: { ...p.agents.archive, sceneCrafterSuggestions: value } },
+    }));
+    setSavedOk(false);
+  };
+
   return (
     <section className="settings-section" aria-labelledby="section-archive-agent" data-settings-cat="agents" data-testid="archive-agent-section">
       <h3 className="settings-section-title" id="section-archive-agent">Archive Agent</h3>
@@ -172,6 +181,50 @@ export default function ArchiveAgentSection({
             onChange={(e) => update({ archiveScanBudget: Number(e.target.value) })}
           />
           <p className="settings-hint" id="archive-scan-budget-hint">Limits AI token spend per scan. Higher values allow deeper analysis.</p>
+        </div>
+
+        {/* SKY-3200 (E4b): Archive → Scene Crafter suggestion emit */}
+        <div className="settings-field settings-field-inline">
+          <label className="settings-toggle" htmlFor="archive-scene-crafter-suggestions-enabled">
+            <input
+              type="checkbox"
+              id="archive-scene-crafter-suggestions-enabled"
+              data-testid="archive-scene-crafter-suggestions-enabled"
+              checked={settings.agents.archive.sceneCrafterSuggestions?.enabled ?? false}
+              onChange={(e) => setSceneCrafterSuggestions({
+                enabled: e.target.checked,
+                cadence: settings.agents.archive.sceneCrafterSuggestions?.cadence ?? 1800,
+              })}
+            />
+            <span className="settings-toggle-track" />
+            <span className="settings-toggle-label">Suggest Scene Crafter cards</span>
+          </label>
+        </div>
+        <p className="settings-hint">
+          Archive scans the vault for characters and locations missing a Scene Crafter card and proposes
+          them in the Suggestion Inbox. Suggestion-only — Archive never adds cards to the board itself;
+          you choose whether to accept each one.
+        </p>
+
+        <div className="settings-field">
+          <label className="settings-label" htmlFor="archive-scene-crafter-suggestions-cadence">Suggestion cadence</label>
+          <select
+            id="archive-scene-crafter-suggestions-cadence"
+            data-testid="archive-scene-crafter-suggestions-cadence"
+            className="settings-input settings-select"
+            disabled={!(settings.agents.archive.sceneCrafterSuggestions?.enabled ?? false)}
+            value={String(settings.agents.archive.sceneCrafterSuggestions?.cadence ?? 1800)}
+            onChange={(e) => setSceneCrafterSuggestions({
+              enabled: settings.agents.archive.sceneCrafterSuggestions?.enabled ?? false,
+              cadence: Number(e.target.value),
+            })}
+          >
+            <option value="900">15 min</option>
+            <option value="1800">30 min</option>
+            <option value="3600">1 hr</option>
+            <option value="14400">4 hr</option>
+          </select>
+          <p className="settings-hint">Minimum time between automatic Scene Crafter suggestion passes.</p>
         </div>
       </fieldset>
     </section>
