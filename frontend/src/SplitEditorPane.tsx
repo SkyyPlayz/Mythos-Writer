@@ -2,6 +2,7 @@ import { type CSSProperties, useState, useRef, useEffect, useMemo } from 'react'
 import type { Scene, Chapter, Story, Block, EntityEntry } from './types';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import type { AutoLinkerMode } from './AutoLinkerExtension';
+import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import './SplitEditorPane.css';
@@ -142,6 +143,12 @@ export interface SplitEditorPaneProps {
   autoLinkerEntities?: EntityEntry[];
   autoLinkerMode?: AutoLinkerMode;
   onEntityClick?: (entityId: string) => void;
+  /** SKY-5702: called when the user clicks a [[wiki link]] in this pane. */
+  onWikiLinkClick?: (target: string) => void;
+  /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  /** SKY-5702: cross-vault candidate list for the [[ autocomplete popup. */
+  wikiLinkCandidates?: WikiLinkCandidate[];
   /** When true, shows loading empty state instead of the editor. */
   sceneLoading?: boolean;
   /** Flex grow value for split container sizing. */
@@ -163,6 +170,9 @@ export default function SplitEditorPane({
   autoLinkerEntities,
   autoLinkerMode = 'suggest',
   onEntityClick,
+  onWikiLinkClick,
+  resolvedWikiLinkTitles,
+  wikiLinkCandidates,
   sceneLoading = false,
   style,
 }: SplitEditorPaneProps) {
@@ -214,6 +224,9 @@ export default function SplitEditorPane({
             autoLinkerEntities={autoLinkerEntities}
             autoLinkerMode={autoLinkerMode}
             onEntityClick={onEntityClick}
+            onWikiLinkClick={onWikiLinkClick}
+            resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+            wikiLinkCandidates={wikiLinkCandidates}
           />
         ) : (
           <SceneEditorEmptyState

@@ -362,7 +362,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-3:
-    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0
+    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -426,6 +426,9 @@ jobs:
 
       - name: E2E — Vault Graph v0 AC-GV-01..12 (SKY-1767)
         run: xvfb-run --auto-servernum npm run test:e2e:vault-graph-v0
+
+      - name: E2E — Wiki-link autocomplete popup (SKY-5702 / GH#650 WL-1)
+        run: xvfb-run --auto-servernum npm run test:e2e:wiki-link-autocomplete
 
       - name: Upload E2E report on failure
         if: failure()

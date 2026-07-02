@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { countWords } from './wordStats';
 import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
+import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import RichTextEditor from './RichTextEditor';
 import './NoteViewer.css';
 
@@ -13,6 +14,10 @@ interface Props {
   mode?: NoteViewerMode;
   onModeChange?: (mode: NoteViewerMode) => void;
   onWikiLinkClick?: (target: string) => void;
+  /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  /** SKY-5702: cross-vault candidate list for the [[ autocomplete popup. */
+  wikiLinkCandidates?: WikiLinkCandidate[];
   onWordCountChange?: (wordCount: number) => void;
   onClose?: () => void;
   /** @deprecated Use `mode` + `onModeChange`. Kept for callers that have not migrated. */
@@ -125,12 +130,14 @@ interface RichEditorProps {
   content: string;
   onChange: (text: string) => void;
   onWikiLinkClick?: (target: string) => void;
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  wikiLinkCandidates?: WikiLinkCandidate[];
   fileName: string;
 }
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEditorProps) {
+function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, fileName }: RichEditorProps) {
   return (
     <div className="note-rich-editor">
       <RichTextEditor
@@ -138,6 +145,8 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEd
         suppressInitialChange
         onChangeMarkdown={onChange}
         onWikiLinkClick={onWikiLinkClick}
+        resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+        wikiLinkCandidates={wikiLinkCandidates}
         wrapClassName="note-rich-editor-wrap"
         contentClassName="note-tiptap-content"
         wrapAriaLabel={`Rich edit note: ${fileName}`}
@@ -206,6 +215,8 @@ export default function NoteViewer({
   mode: modeProp,
   onModeChange,
   onWikiLinkClick,
+  resolvedWikiLinkTitles,
+  wikiLinkCandidates,
   onWordCountChange,
   onClose,
   previewMode,
@@ -416,6 +427,8 @@ export default function NoteViewer({
           content={content}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}
+          resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+          wikiLinkCandidates={wikiLinkCandidates}
           fileName={fileName}
         />
       )}

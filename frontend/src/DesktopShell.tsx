@@ -51,7 +51,7 @@ import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import BrainstormPage from './BrainstormPage';
-import { resolveCrossTabLink, type CrossTabLinkMatch } from './crossTabLinkResolver';
+import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import {
   tabbedShellReducer,
   DEFAULT_TABBED_SHELL_STATE,
@@ -3071,6 +3071,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, [allEntities, allNotePaths, applyCrossTabLinkMatch, showWikiLinkToast, stories]);
 
+  // SKY-5702: normalized cross-vault title index feeding the editors'
+  // resolved/unresolved [[wiki link]] styling, plus the flat candidate list
+  // for the `[[` autocomplete popup. Both rebuilt only when the underlying
+  // vault state actually changes.
+  const wikiLinkTitleIndex = useMemo(
+    () => buildWikiLinkTitleIndex({ stories, entities: allEntities, notePaths: allNotePaths }),
+    [stories, allEntities, allNotePaths],
+  );
+  const wikiLinkCandidates = useMemo(
+    () => buildWikiLinkCandidates({ stories, entities: allEntities, notePaths: allNotePaths }),
+    [stories, allEntities, allNotePaths],
+  );
+
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
       // Navigate to scene by docId
@@ -3817,6 +3830,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   autoLinkerEntities={allEntities}
                   autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   onEntityClick={handleEntityMentionClick}
+                  onWikiLinkClick={handleWikiLinkClick}
+                  resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                  wikiLinkCandidates={wikiLinkCandidates}
                   style={{ flex: splitRatio }}
                 />
                 <div
@@ -3843,6 +3859,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   autoLinkerEntities={allEntities}
                   autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   onEntityClick={handleEntityMentionClick}
+                  onWikiLinkClick={handleWikiLinkClick}
+                  resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                  wikiLinkCandidates={wikiLinkCandidates}
                   style={{ flex: 100 - splitRatio }}
                 />
               </div>
@@ -3932,6 +3951,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     onCursorPosChange={handleCursorPosChange}
                     onEntityClick={handleEntityMentionClick}
                     onWikiLinkClick={handleWikiLinkClick}
+                    resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                    wikiLinkCandidates={wikiLinkCandidates}
                     onSelectionChange={setEditorSelectionText}
                     emptySceneHint={
                       isGettingStartedVisible(gettingStartedProgress) &&
@@ -3995,6 +4016,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 previewMode={notePreviewMode}
                 onPreviewModeChange={setNotePreviewMode}
                 onWikiLinkClick={handleWikiLinkClick}
+                resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                wikiLinkCandidates={wikiLinkCandidates}
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
               />
