@@ -120,7 +120,10 @@ async function navigateToGraph(page: Page): Promise<void> {
   await expect(notesTab).toBeVisible({ timeout: 5_000 });
   await notesTab.click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
-  await expect(page.locator('[data-testid="vault-graph-view"], [data-testid="vault-graph-empty"]')).toBeVisible({ timeout: 15_000 });
+  // vault-graph-view is the panel's root section, rendered for both the empty
+  // and populated states (the empty state nests vault-graph-empty inside it) —
+  // matching it alone avoids a strict-mode violation on the OR-selector.
+  await expect(page.locator('[data-testid="vault-graph-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 // ─── Suite A — Rich-topology vault ───────────────────────────────────────────
