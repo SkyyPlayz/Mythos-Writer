@@ -1,4 +1,4 @@
-/* AccountModal — v0.3 placeholder (SKY-3096) */
+/* AccountModal — local profile / app info (SKY-5790, GH#643 GAP-1) */
 
 .am-title {
   font-size: var(--text-lg, 18px);
@@ -10,31 +10,137 @@
 .am-body {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+}
+
+.am-identity-row {
+  display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 32px 24px;
-  text-align: center;
+  gap: 14px;
 }
 
 .am-brand-glyph {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-lg, 12px);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 36px;
+  font-size: 26px;
   font-weight: 700;
   box-shadow: var(--neon-glow-strong);
 }
 
-.am-tagline {
-  font-size: var(--text-sm, 13px);
-  color: var(--text-muted, rgba(255,255,255,0.5));
+.am-identity-text {
+  min-width: 0;
+}
+
+.am-app-name {
   margin: 0;
-  max-width: 240px;
+  color: var(--text-header);
+  font-size: var(--text-md, 14px);
+  font-weight: 600;
+}
+
+.am-app-version {
+  margin: 2px 0 0;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  font-size: var(--text-sm, 13px);
+}
+
+.am-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+}
+
+.am-section-title {
+  margin: 0;
+  color: var(--text-header);
+  font-size: var(--text-sm, 13px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.am-vault-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.am-vault-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-inset, rgba(255, 255, 255, 0.03));
+}
+
+.am-vault-label {
+  margin: 0;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.am-vault-value {
+  margin: 0;
+  color: var(--text-body);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: var(--text-sm, 13px);
+  overflow-wrap: anywhere;
+}
+
+.am-btn-secondary {
+  align-self: flex-start;
+  padding: 7px 16px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.2));
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text-body);
+  font-family: inherit;
+  font-size: var(--text-sm, 13px);
+  cursor: pointer;
+  transition: background var(--dur-hover-in, 120ms) ease, color var(--dur-hover-in, 120ms) ease;
+}
+
+.am-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-active, rgba(255, 255, 255, 0.1));
+  color: var(--text-header);
+}
+
+.am-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.am-btn-secondary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.am-inline-error {
+  margin: 0;
+  color: var(--state-danger, #ef4444);
+  font-size: var(--text-sm, 13px);
+}
+
+.am-update-status {
+  margin: 0;
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+  font-size: var(--text-sm, 13px);
 }
 
 .am-footer {
@@ -65,7 +171,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .am-dismiss {
+  .am-dismiss,
+  .am-btn-secondary {
     transition: none;
   }
 }

@@ -743,6 +743,8 @@ interface Window {
     writeManifest: (manifest: unknown) => Promise<unknown>;
     openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
     getVaultRoot: () => Promise<{ vaultRoot: string }>;
+    /** SKY-5790: reveal the current Story Vault root in the OS file manager. */
+    revealVaultFolder: () => Promise<{ opened: boolean }>;
     importVault: (sourcePath: string, registrationToken: string) => Promise<{ imported: number; skipped: number; errors: string[] }>;
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
     pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }>;
@@ -890,7 +892,7 @@ interface Window {
     getUpdateInfo: () => Promise<{ version: string; releaseNotes: string | null } | null>;
     installUpdate: (quit?: boolean) => Promise<{ ok: boolean; reason?: string }>;
     /** MYT-337: stable/beta channel update check; returns { available, version, releaseNotes } */
-    appCheckForUpdate: () => Promise<unknown>;
+    appCheckForUpdate: () => Promise<{ available: boolean; version: string | null; releaseNotes: string | null }>;
     /** MYT-337: schedule install on next quit; does not trigger immediate restart */
     appInstallUpdate: () => Promise<unknown>;
 

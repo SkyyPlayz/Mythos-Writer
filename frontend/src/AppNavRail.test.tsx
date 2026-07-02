@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AppNavRail from './AppNavRail';
 import AccountModal from './AccountModal';
+
+function stubApi(overrides: Partial<Window['api']> = {}) {
+  (window as unknown as { api: Partial<Window['api']> }).api = overrides;
+}
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -173,6 +177,10 @@ describe('AppNavRail', () => {
 // ─── AccountModal ─────────────────────────────────────────────────────────────
 
 describe('AccountModal', () => {
+  afterEach(() => {
+    delete (window as unknown as { api?: unknown }).api;
+  });
+
   it('renders nothing when open=false', () => {
     render(<AccountModal open={false} onClose={vi.fn()} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -188,11 +196,101 @@ describe('AccountModal', () => {
     expect(screen.getByText('Mythos Account')).toBeInTheDocument();
   });
 
-  it('shows placeholder text about upcoming account features', () => {
+  // ─── App version (AC-1) ────────────────────────────────────────────────────
+
+  it('shows the app version from getAppInfo', async () => {
+    stubApi({
+      getAppInfo: vi.fn().mockResolvedValue({ platform: 'linux', electronVersion: '30.0.0', appVersion: '0.4.2' }),
+    });
     render(<AccountModal open onClose={vi.fn()} />);
-    expect(
-      screen.getByText(/account features coming soon/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Version 0.4.2')).toBeInTheDocument();
+  });
+
+  it('shows a fallback when getAppInfo is unavailable', () => {
+    render(<AccountModal open onClose={vi.fn()} />);
+    expect(screen.getByText('Version unavailable')).toBeInTheDocument();
+  });
+
+  // ─── Vault names (AC-2) ─────────────────────────────────────────────────────
+
+  it('shows Story Vault and Notes Vault paths from vaultGetPaths', async () => {
+    stubApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/home/user/Mythos/My Novel/Story Vault',
+        notesVaultPath: '/home/user/Mythos/My Novel/Notes Vault',
+        homeDir: '/home/user',
+        pathSeparator: '/',
+      }),
+    });
+    render(<AccountModal open onClose={vi.fn()} />);
+    expect(await screen.findByTitle('/home/user/Mythos/My Novel/Story Vault')).toBeInTheDocument();
+    expect(screen.getByTitle('/home/user/Mythos/My Novel/Notes Vault')).toBeInTheDocument();
+    expect(screen.getByText('Story Vault')).toBeInTheDocument();
+    expect(screen.getByText('Notes Vault')).toBeInTheDocument();
+  });
+
+  it('shows "Not configured" when no vault paths are available', () => {
+    render(<AccountModal open onClose={vi.fn()} />);
+    expect(screen.getAllByText('Not configured')).toHaveLength(2);
+  });
+
+  // ─── Open Vault Folder (AC-3) ───────────────────────────────────────────────
+
+  it('disables "Open Vault Folder" when no vault is configured', () => {
+    render(<AccountModal open onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Open Vault Folder' })).toBeDisabled();
+  });
+
+  it('calls revealVaultFolder when "Open Vault Folder" is clicked', async () => {
+    const revealVaultFolder = vi.fn().mockResolvedValue({ opened: true });
+    stubApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({ storyVaultPath: '/vault/story', notesVaultPath: '/vault/notes' }),
+      revealVaultFolder,
+    });
+    render(<AccountModal open onClose={vi.fn()} />);
+    const btn = await screen.findByRole('button', { name: 'Open Vault Folder' });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    fireEvent.click(btn);
+    await waitFor(() => expect(revealVaultFolder).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows an inline error when revealVaultFolder fails', async () => {
+    stubApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({ storyVaultPath: '/vault/story', notesVaultPath: '/vault/notes' }),
+      revealVaultFolder: vi.fn().mockResolvedValue({ opened: false }),
+    });
+    render(<AccountModal open onClose={vi.fn()} />);
+    const btn = await screen.findByRole('button', { name: 'Open Vault Folder' });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    fireEvent.click(btn);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not open the vault folder.');
+  });
+
+  // ─── Check for Updates (AC-4) ───────────────────────────────────────────────
+
+  it('calls appCheckForUpdate and reports when already up to date', async () => {
+    const appCheckForUpdate = vi.fn().mockResolvedValue({ available: false, version: null, releaseNotes: null });
+    stubApi({ appCheckForUpdate });
+    render(<AccountModal open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(await screen.findByText(/no update available/i)).toBeInTheDocument();
+    expect(appCheckForUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the available version when an update is available', async () => {
+    stubApi({
+      appCheckForUpdate: vi.fn().mockResolvedValue({ available: true, version: '0.5.0', releaseNotes: null }),
+    });
+    render(<AccountModal open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(await screen.findByText('Update available: v0.5.0')).toBeInTheDocument();
+  });
+
+  it('reports an error when appCheckForUpdate rejects', async () => {
+    stubApi({ appCheckForUpdate: vi.fn().mockRejectedValue(new Error('offline')) });
+    render(<AccountModal open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(await screen.findByText('Could not check for updates.')).toBeInTheDocument();
   });
 
   it('calls onClose when the Close button is clicked', () => {

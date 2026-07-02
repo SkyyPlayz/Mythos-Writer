@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('api', {
   // Vault folder management
   openVaultFolder: () => ipcRenderer.invoke('vault:open-folder', undefined),
   getVaultRoot: () => ipcRenderer.invoke('vault:get-root', undefined),
+  // SKY-5790: reveal the current Story Vault root in the OS file manager.
+  revealVaultFolder: () => ipcRenderer.invoke('vault:revealFolder', undefined),
 
   // Two-vault paths (SKY-9 / MYT-608) — Story Vault + Notes Vault path
   // management surface used by the Settings panel. `vaultSetPaths` triggers

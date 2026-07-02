@@ -35,6 +35,9 @@ export const IPC_CHANNELS = {
   // Vault folder management
   VAULT_OPEN_FOLDER: 'vault:open-folder',
   VAULT_GET_ROOT: 'vault:get-root',
+  // SKY-5790: reveal the current Story Vault root in the OS file manager
+  // (distinct from VAULT_OPEN_FOLDER, which opens a picker to switch vaults).
+  VAULT_REVEAL_FOLDER: 'vault:revealFolder',
   VAULT_IMPORT: 'vault:import',
   VAULT_REINDEX: 'vault:reindex',
   VAULT_WATCH_START: 'vault:watch-start',
@@ -620,6 +623,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_MANIFEST_WRITE]: (payload: ManifestWritePayload) => ManifestWriteResponse;
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: (payload: never) => Promise<VaultOpenFolderResponse>;
   [IPC_CHANNELS.VAULT_GET_ROOT]: (payload: never) => VaultGetRootResponse;
+  [IPC_CHANNELS.VAULT_REVEAL_FOLDER]: (payload: never) => Promise<VaultRevealFolderResponse>;
   [IPC_CHANNELS.VAULT_IMPORT]: (payload: VaultImportPayload) => Promise<VaultImportResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_REINDEX]: (payload: never) => VaultReindexResponse;
   [IPC_CHANNELS.VAULT_WATCH_START]: (payload: never) => Promise<{ watching: boolean }>;
@@ -1262,6 +1266,12 @@ export interface VoicePickBinaryResponse {
 
 export interface VaultGetRootResponse {
   vaultRoot: string;
+}
+
+/** Response from VAULT_REVEAL_FOLDER (SKY-5790). `opened` is false when the
+ * OS shell failed to open the vault root (e.g. it no longer exists). */
+export interface VaultRevealFolderResponse {
+  opened: boolean;
 }
 
 export interface VaultImportPayload {
