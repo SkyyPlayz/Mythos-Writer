@@ -311,3 +311,59 @@
   background: var(--color-danger, #f85149);
   color: #fff;
 }
+
+/* GH #631: heading-focus — hide out-of-section blocks; document unchanged */
+.heading-focus-hidden {
+  display: none;
+}
+
+.heading-focus-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.heading-focus-select {
+  background: var(--bg-panel);
+  color: var(--text-body);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--text-xs, 11px);
+  padding: 2px 4px;
+}
+
+.heading-focus-select:focus-visible,
+.heading-focus-step:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.heading-focus-step {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 4px);
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.heading-focus-step:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-body);
+}
+
+.heading-focus-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.heading-focus-pos {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted);
+  min-width: 28px;
+  text-align: center;
+}

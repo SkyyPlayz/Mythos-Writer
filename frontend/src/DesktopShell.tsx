@@ -36,6 +36,7 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
+import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
@@ -457,13 +458,14 @@ function SceneEditorBand({ scene, index, isActive, onBlocksChange, onDraftStateC
 
 interface ChapterContinuousViewProps {
   chapter: Chapter;
+  storyId?: string;
   selectedSceneId: string | null;
   onBlocksChange: (sceneId: string, blocks: Block[]) => void;
   onDraftStateChange: (sceneId: string, state: DraftState) => void;
   onSceneFocus: (scene: Scene) => void;
 }
 
-function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
+function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
   const sortedScenes = useMemo(
     () => [...chapter.scenes].sort((a, b) => a.order - b.order),
     [chapter.scenes],
@@ -481,6 +483,8 @@ function ChapterContinuousView({ chapter, selectedSceneId, onBlocksChange, onDra
       <header className="chapter-continuous-header">
         <h2 className="chapter-continuous-title">{chapter.title}</h2>
       </header>
+      {/* GH #631: chapter-owned interlude prose (chapter.md), not part of any scene. */}
+      <ChapterInterlude key={chapter.path} chapter={chapter} storyId={storyId} />
       <div className="chapter-continuous-scenes" ref={containerRef}>
         {sortedScenes.length === 0 ? (
           <p className="chapter-continuous-empty" role="status">No scenes in this chapter yet.</p>
@@ -3969,6 +3973,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <div className="shell-depth-view-wrap">
                 <ChapterContinuousView
                   chapter={selectedChapter}
+                  storyId={selectedStory?.id}
                   selectedSceneId={selectedScene?.id ?? null}
                   onBlocksChange={handleChapterSceneBlocksChange}
                   onDraftStateChange={handleChapterSceneDraftStateChange}
@@ -4021,6 +4026,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   <BlockEditor
                     key={`${selectedScene.id}-${restoreKey}`}
                     scene={selectedScene}
+                    enableHeadingFocus
                     onBlocksChange={handleBlocksChange}
                     onDraftStateChange={handleDraftStateChange}
                     onEditorReady={handleEditorReady}
