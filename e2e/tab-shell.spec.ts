@@ -63,15 +63,17 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      const storyNav = mainNav.getByRole('button', { name: 'Story' });
+      const notesNav = mainNav.getByRole('button', { name: 'Notes' });
+      const workspaceTabs = page.getByRole('tablist', { name: 'Workspace tabs' });
 
-      const storyTab = page.locator('[data-testid="app-tab-story"]');
-      const notesTab = page.locator('[data-testid="app-tab-notes"]');
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
+      await expect(workspaceTabs).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
 
-      await expect(storyTab).toBeVisible();
-      await expect(notesTab).toBeVisible();
-      await expect(storyTab).toHaveAttribute('aria-selected', 'true');
-      await expect(notesTab).toHaveAttribute('aria-selected', 'false');
+      await expect(storyNav).toHaveAttribute('aria-current', 'page');
+      await expect(notesNav).not.toHaveAttribute('aria-current', 'page');
 
       // Story tabpanel visible, notes tabpanel absent
       await expect(page.locator('#app-tabpanel-story')).toBeVisible();
@@ -85,12 +87,14 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const notesNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' });
+      const storyNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' });
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
+      await notesNav.click();
 
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'false');
+      await expect(notesNav).toHaveAttribute('aria-current', 'page');
+      await expect(storyNav).not.toHaveAttribute('aria-current', 'page');
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
       await expect(page.locator('#app-tabpanel-story')).not.toBeVisible();
     } finally {
@@ -116,9 +120,9 @@ test.describe('TabBar — tab switching and persistence', () => {
       }, { storyVaultDir, notesVaultDir });
 
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
 
       await expect(page.getByRole('heading', { name: 'No Notes vault' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Create a Notes vault' })).toBeVisible();
@@ -147,7 +151,7 @@ test.describe('TabBar — tab switching and persistence', () => {
       }, { storyVaultDir, notesVaultDir });
 
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
       await expect(page.getByRole('heading', { name: 'No Story vault' })).toBeVisible();
       await expect(page.getByText('Start your first story to begin writing.')).toBeVisible();
@@ -164,9 +168,11 @@ test.describe('TabBar — tab switching and persistence', () => {
     let app = await launchApp(userData);
     try {
       let page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
-      await page.locator('[data-testid="app-tab-notes"]').click();
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true');
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      const notesNav = mainNav.getByRole('button', { name: 'Notes' });
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
+      await notesNav.click();
+      await expect(notesNav).toHaveAttribute('aria-current', 'page');
       // Give settings debounce time to flush to disk
       await page.waitForTimeout(600);
     } finally {
@@ -177,9 +183,17 @@ test.describe('TabBar — tab switching and persistence', () => {
     app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      const notesPanel = page.locator('#app-tabpanel-notes');
+      const storyPanel = page.locator('#app-tabpanel-story');
+      if (await mainNav.count()) {
+        const notesNav = mainNav.getByRole('button', { name: 'Notes' });
+        await expect(mainNav).toBeVisible({ timeout: 12_000 });
+        await expect(notesNav).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      }
+      await expect(storyPanel).not.toBeVisible();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
+      await expect(notesPanel).toBeVisible();
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -189,13 +203,16 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      const storyNav = mainNav.getByRole('button', { name: 'Story' });
+      const notesNav = mainNav.getByRole('button', { name: 'Notes' });
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
 
       await page.keyboard.press('Control+2');
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(notesNav).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
       await page.keyboard.press('Control+1');
-      await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(storyNav).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -205,35 +222,41 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      const storyNav = mainNav.getByRole('button', { name: 'Story' });
+      const notesNav = mainNav.getByRole('button', { name: 'Notes' });
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
 
-      // Focus Story tab (currently selected, tabIndex=0)
-      await page.locator('[data-testid="app-tab-story"]').focus();
-      await page.keyboard.press('ArrowRight');
+      // Focus Story button (currently selected), then move focus down.
+      await storyNav.focus();
+      await page.keyboard.press('ArrowDown');
 
-      // ArrowRight from story → notes, and notes becomes selected
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      // ArrowDown from story → focus notes; activate with Enter.
+      await expect(notesNav).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(notesNav).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
     } finally {
       await app.close().catch(() => undefined);
     }
   });
 
-  test('tab changes are announced through a polite status region', async () => {
+  test('tab changes expose active section through ARIA current state', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
-      const announcement = page.locator('[data-testid="app-tab-announcement"]');
-      await expect(announcement).toHaveAttribute('role', 'status');
-      await expect(announcement).toHaveAttribute('aria-live', 'polite');
-      await expect(announcement).toContainText('Story tab selected');
+      const storyNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' });
+      const notesNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' });
+      const appVaultBadge = page.locator('[data-testid="app-vault-badge"]');
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
-      await expect(announcement).toContainText('Notes tab selected');
+      await expect(storyNav).toHaveAttribute('aria-current', 'page');
+      await expect(appVaultBadge).toHaveAttribute('aria-label', /Story vault:/);
+      await expect(notesNav).not.toHaveAttribute('aria-current', 'page');
 
-      await page.locator('[data-testid="app-tab-story"]').click();
-      await expect(announcement).toContainText('Story tab selected');
+      await notesNav.click();
+      await expect(notesNav).toHaveAttribute('aria-current', 'page');
+      await expect(appVaultBadge).toHaveAttribute('aria-label', /Notes vault:/);
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -243,13 +266,19 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const storyNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' });
+      const notesNav = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' });
+      await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
       const badge = page.locator('[data-testid="app-vault-badge"]');
       await expect(badge).toHaveAttribute('aria-label', /Story vault:/);
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await notesNav.click();
+      await expect(notesNav).toHaveAttribute('aria-current', 'page');
       await expect(badge).toHaveAttribute('aria-label', /Notes vault:/);
+      await storyNav.click();
+      await expect(storyNav).toHaveAttribute('aria-current', 'page');
+      await expect(badge).toHaveAttribute('aria-label', /Story vault:/);
     } finally {
       await app.close().catch(() => undefined);
     }

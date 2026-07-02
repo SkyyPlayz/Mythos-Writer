@@ -304,7 +304,7 @@ test('TC-CP-06: entity card shows required fields and View full note opens the n
   await expect(card.locator('.entity-card-excerpt')).not.toContainText('**');
 
   await card.getByRole('button', { name: 'View full note: Marcus' }).click();
-  await expect(page.locator('#app-tab-notes')).toHaveAttribute('aria-selected', 'true', { timeout: 6_000 });
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
   await expect(page.locator('.note-viewer-editor')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+1' : 'Control+1');

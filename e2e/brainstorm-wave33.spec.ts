@@ -130,10 +130,31 @@ async function selectSort(page: Page, value: string): Promise<void> {
 }
 
 /** Navigate to Brainstorm panel if not already there. */
+async function expandBrainstormPanelIfNeeded(page: Page): Promise<void> {
+  const panel = page.locator('[data-testid="notes-brainstorm-panel"]');
+  if (await panel.isVisible({ timeout: 400 }).catch(() => false)) return;
+
+  const expandBtn = page.locator('[data-testid="notes-brainstorm-expand"]');
+  if (await expandBtn.isVisible({ timeout: 400 }).catch(() => false)) {
+    await expandBtn.click();
+    await panel.waitFor({ state: 'visible', timeout: 3_000 });
+    return;
+  }
+
+  const notesTab = page
+    .getByRole('navigation', { name: 'Main navigation' })
+    .getByRole('button', { name: 'Notes' });
+  if (await notesTab.isVisible()) {
+    await notesTab.click();
+    await panel.waitFor({ state: 'visible', timeout: 3_000 });
+  }
+}
+
 async function ensureBrainstorm(page: Page): Promise<void> {
+  await expandBrainstormPanelIfNeeded(page);
   const panel = page.locator('[data-testid="notes-brainstorm-panel"]');
   if (!await panel.isVisible({ timeout: 800 }).catch(() => false)) {
-    await page.getByTestId('app-tab-notes').click();
+    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
     await expect(panel).toBeVisible({ timeout: 8_000 });
   }
 }
@@ -191,7 +212,7 @@ test.beforeAll(async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Navigate to Brainstorm via Notes tab.
-  await page.getByTestId('app-tab-notes').click();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 6_000 });
 
   // Stub vault:manifest:read to return a proper nested manifest so scene picker works.
@@ -286,7 +307,7 @@ test('TC-W3.3-DR-01: reorder card via keyboard; verify order persisted after rel
 
   // Verify persistence by navigating away and back (page.reload() is unreliable in
   // headless Electron; navigate-and-back exercises the same localStorage restore path).
-  await page.getByTestId('app-tab-story').click();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }).click();
   await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
@@ -345,7 +366,7 @@ test('TC-W3.3-DR-02: Alt+Down moves card down in custom sort; order + persistenc
     expect(stored.customOrder.length).toBe(count);
   }
   // Navigate away and back to verify persistence (page.reload() is unreliable in headless Electron).
-  await page.getByTestId('app-tab-story').click();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }).click();
   await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
