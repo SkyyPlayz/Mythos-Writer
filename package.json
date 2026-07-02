@@ -62,6 +62,9 @@
     "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list",
     "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list",
     "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list",
+    "test:e2e:editor-format-bar": "playwright test e2e/editor-format-bar.spec.ts --reporter=list",
+    "test:e2e:editor-page-chrome": "playwright test e2e/editor-page-chrome.spec.ts --reporter=list",
+    "test:e2e:notes-parity": "playwright test e2e/notes-parity.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh"
   },
