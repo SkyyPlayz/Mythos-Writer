@@ -1505,6 +1505,42 @@ a.gs-footer-link:focus-visible {
 .import-actions { display: flex; justify-content: flex-end; }
 .import-actions__submit { min-width: 160px; }
 
+/* ─── SKY-2993: Obsidian dry-run report view ─────────────────────────────────── */
+
+.import-actions--split { justify-content: space-between; }
+
+.obs-report__path {
+  font-size: 0.8125rem;
+  color: var(--text-body, #bfd6e8);
+  overflow-wrap: anywhere;
+  margin: 0 0 var(--space-2, 8px);
+}
+
+.obs-report__stats {
+  list-style: none;
+  margin: 0 0 var(--space-2, 8px);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px) var(--space-4, 16px);
+  font-size: 0.875rem;
+  color: var(--text-body, #bfd6e8);
+}
+
+.obs-report__meta {
+  font-size: 0.8125rem;
+  color: var(--text-muted, rgba(191, 214, 232, 0.55));
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.obs-report__progress {
+  font-size: 0.8125rem;
+  color: var(--text-muted, rgba(191, 214, 232, 0.55));
+  margin: 0 0 var(--space-3, 12px);
+  text-align: center;
+}
+
 @media (forced-colors: active) {
   .import-section { border-color: ButtonText; forced-color-adjust: auto; }
   .import-field-row__input {

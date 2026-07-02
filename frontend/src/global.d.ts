@@ -1099,6 +1099,7 @@ interface Window {
     // SKY-2993: Obsidian vault importer
     importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string }>;
     dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
+    onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
