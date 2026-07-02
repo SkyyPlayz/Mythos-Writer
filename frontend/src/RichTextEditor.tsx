@@ -59,6 +59,13 @@ export interface RichTextEditorProps {
   onSelectionUpdate?: (editor: Editor) => void;
   /** Called when the user activates a [[wiki link]]. */
   onWikiLinkClick?: (target: string) => void;
+  /**
+   * Story-only legacy behaviour (SKY-2099): when a click lands outside a
+   * [data-wiki-link] element but the surrounding text contains exactly one
+   * plain-text [[wiki link]], treat the click as activating it. Off by default —
+   * in Notes a body click must never navigate away from the open note.
+   */
+  plainTextWikiLinkFallback?: boolean;
   /** Called when the user clicks an @-entity chip. */
   onEntityClick?: (entityId: string) => void;
   /** Render the shared formatting toolbar. Defaults to true. */
@@ -91,6 +98,7 @@ export default function RichTextEditor({
   onUpdate,
   onSelectionUpdate,
   onWikiLinkClick,
+  plainTextWikiLinkFallback = false,
   onEntityClick,
   showToolbar = true,
   wrapClassName,
@@ -273,15 +281,17 @@ export default function RichTextEditor({
     }
 
     // Fallback: an unambiguous plain-text [[wiki link]] (not yet parsed into a node).
-    for (const text of [target.textContent ?? '', editor?.state.doc.textBetween(0, editor.state.doc.content.size, '\n') ?? '']) {
-      const plainTextWikiLinks = Array.from(text.matchAll(/\[\[([^\]]+)\]\]/g));
-      if (plainTextWikiLinks.length === 1) {
-        e.preventDefault();
-        onWikiLinkClickRef.current?.(plainTextWikiLinks[0][1]);
-        return;
+    if (plainTextWikiLinkFallback) {
+      for (const text of [target.textContent ?? '', editor?.state.doc.textBetween(0, editor.state.doc.content.size, '\n') ?? '']) {
+        const plainTextWikiLinks = Array.from(text.matchAll(/\[\[([^\]]+)\]\]/g));
+        if (plainTextWikiLinks.length === 1) {
+          e.preventDefault();
+          onWikiLinkClickRef.current?.(plainTextWikiLinks[0][1]);
+          return;
+        }
       }
     }
-  }, [editor]);
+  }, [editor, plainTextWikiLinkFallback]);
 
   // Compute picker position from the @-trigger doc position.
   let pickerTop = 0;

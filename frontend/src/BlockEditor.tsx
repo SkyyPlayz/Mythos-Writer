@@ -383,6 +383,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         onBeforeFlush={handleBeforeFlush}
         onChangeMarkdown={handleChangeMarkdown}
         onWikiLinkClick={onWikiLinkClick}
+        plainTextWikiLinkFallback
         onEntityClick={onEntityClick}
         wrapRef={editorWrapRef}
         wrapClassName="tiptap-editor-wrap"

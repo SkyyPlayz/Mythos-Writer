@@ -154,6 +154,13 @@ test('NP-03: wiki-links render and click-delegate in Notes rich mode', async () 
     const wikiLink = page.locator('.note-viewer .ProseMirror [data-wiki-link]');
     await expect(wikiLink).toBeVisible();
     await expect(wikiLink).toHaveAttribute('data-wiki-link', 'Character: Elara');
+
+    // Clicking plain body text must NOT activate the link (the Story-only
+    // plain-text fallback stays out of Notes) — the note stays open.
+    await page.locator('.note-viewer .ProseMirror').click({ position: { x: 10, y: 10 } });
+    await page.waitForTimeout(300);
+    await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
+    await expect(page.locator('.note-viewer-error')).toHaveCount(0);
   } finally {
     await app.close().catch(() => undefined);
   }

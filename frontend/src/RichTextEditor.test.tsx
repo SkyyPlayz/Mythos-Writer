@@ -188,6 +188,36 @@ describe('RichTextEditor wiki-link delegation', () => {
     unmount();
   });
 
+  it('does NOT navigate on body clicks in the default (Notes) config, even with one [[link]] present', async () => {
+    // Regression net: the Story-only plain-text fallback treats any click as
+    // activating an unambiguous [[link]]. Leaking it into Notes made a body
+    // click navigate away from the open note ("Could not load note.").
+    const onWikiLinkClick = vi.fn();
+    const { editor, unmount } = await mountCore({
+      content: 'Prose around [[Character: Elara]] and more prose.\n',
+      onWikiLinkClick,
+    });
+
+    fireEvent.click(editor.view.dom);
+
+    expect(onWikiLinkClick).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('Story config keeps the plain-text [[link]] click fallback (SKY-2099)', async () => {
+    const onWikiLinkClick = vi.fn();
+    const { editor, unmount } = await mountCore({
+      content: 'Mentioning [[Location: Harbor]] in plain prose.\n',
+      onWikiLinkClick,
+      plainTextWikiLinkFallback: true,
+    });
+
+    fireEvent.click(editor.view.dom);
+
+    expect(onWikiLinkClick).toHaveBeenCalledWith('Location: Harbor');
+    unmount();
+  });
+
   it('delegates entity-chip clicks to onEntityClick', async () => {
     const onEntityClick = vi.fn();
     const { unmount } = await mountCore({
