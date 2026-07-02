@@ -205,6 +205,117 @@ describe('WorkspaceTabBar arrow-key focus', () => {
   });
 });
 
+// ── Keyboard reorder (SKY-5704) ───────────────────────────────────────────────
+
+describe('WorkspaceTabBar keyboard reorder', () => {
+  it('Ctrl+Shift+ArrowRight moves the focused tab one slot right', async () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA] = screen.getAllByRole('tab');
+    await act(async () => { tabA.focus(); });
+    fireEvent.keyDown(tabA, { key: 'ArrowRight', ctrlKey: true, shiftKey: true });
+    expect(onTabReorder).toHaveBeenCalledWith(0, 1);
+  });
+
+  it('Ctrl+Shift+ArrowLeft moves the focused tab one slot left', async () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [, tabB] = screen.getAllByRole('tab');
+    await act(async () => { tabB.focus(); });
+    fireEvent.keyDown(tabB, { key: 'ArrowLeft', ctrlKey: true, shiftKey: true });
+    expect(onTabReorder).toHaveBeenCalledWith(1, 0);
+  });
+
+  it('does not reorder past the first or last slot', async () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA, tabB] = screen.getAllByRole('tab');
+    await act(async () => { tabA.focus(); });
+    fireEvent.keyDown(tabA, { key: 'ArrowLeft', ctrlKey: true, shiftKey: true });
+    await act(async () => { tabB.focus(); });
+    fireEvent.keyDown(tabB, { key: 'ArrowRight', ctrlKey: true, shiftKey: true });
+    expect(onTabReorder).not.toHaveBeenCalled();
+  });
+
+  it('keeps focus on the moved tab after the parent re-sorts the tabs prop', async () => {
+    const onTabReorder = vi.fn();
+    const { rerender } = render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA] = screen.getAllByRole('tab');
+    await act(async () => { tabA.focus(); });
+    fireEvent.keyDown(tabA, { key: 'ArrowRight', ctrlKey: true, shiftKey: true });
+    // Simulate the parent applying the reorder and passing new tabs down.
+    await act(async () => {
+      rerender(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_B, TAB_A], activeTabId: 'tab-a', onTabReorder })} />);
+    });
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Chapter One' }));
+  });
+
+  it('announces the move via the live region for assistive tech', async () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA] = screen.getAllByRole('tab');
+    await act(async () => { tabA.focus(); });
+    fireEvent.keyDown(tabA, { key: 'ArrowRight', ctrlKey: true, shiftKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent('Chapter One moved to position 2 of 2');
+  });
+
+  it('plain ArrowRight without Ctrl+Shift still only moves focus, not order', async () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA] = screen.getAllByRole('tab');
+    await act(async () => { tabA.focus(); });
+    fireEvent.keyDown(tabA, { key: 'ArrowRight' });
+    expect(onTabReorder).not.toHaveBeenCalled();
+  });
+});
+
+// ── Drag affordance (SKY-5704) ────────────────────────────────────────────────
+
+describe('WorkspaceTabBar drag affordance', () => {
+  it('applies a dragging class to the source tab slot while dragging', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const [tabA] = screen.getAllByRole('tab');
+    const dt = makeDT();
+    fireEvent.dragStart(tabA, { dataTransfer: dt });
+    expect(tabA.closest('.wtb-tab-slot')).toHaveClass('wtb-tab-slot--dragging');
+    fireEvent.dragEnd(tabA, { dataTransfer: dt });
+    expect(tabA.closest('.wtb-tab-slot')).not.toHaveClass('wtb-tab-slot--dragging');
+  });
+
+  it('announces the move via the live region when dropped', () => {
+    const onTabReorder = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabReorder })} />);
+    const [tabA, tabB] = screen.getAllByRole('tab');
+    const dt = makeDT();
+    fireEvent.dragStart(tabA, { dataTransfer: dt });
+    fireEvent.dragOver(tabB, { dataTransfer: dt });
+    fireEvent.drop(tabB, { dataTransfer: dt });
+    expect(screen.getByRole('status')).toHaveTextContent('Chapter One moved to position 2 of 2');
+  });
+});
+
+// ── Overflow scroll strip (SKY-5704) ──────────────────────────────────────────
+
+describe('WorkspaceTabBar overflow scroll strip', () => {
+  it('renders tabs inside a dedicated scroll container, with + button outside it', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const scrollStrip = document.querySelector('.wtb-tabs-scroll');
+    expect(scrollStrip).toBeTruthy();
+    expect(scrollStrip?.contains(screen.getByRole('tab', { name: 'Chapter One' }))).toBe(true);
+    expect(scrollStrip?.contains(screen.getByTestId('wtb-new-tab-btn'))).toBe(false);
+  });
+
+  it('scrolls the active tab into view when activeTabId changes', async () => {
+    const { rerender } = render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-a' })} />);
+    const tabC = screen.getByRole('tab', { name: 'Chapter Three' });
+    const spy = vi.spyOn(tabC, 'scrollIntoView');
+    await act(async () => {
+      rerender(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-c' })} />);
+    });
+    expect(spy).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+  });
+});
+
 // ── Global keyboard shortcuts ─────────────────────────────────────────────────
 
 describe('WorkspaceTabBar global keyboard shortcuts', () => {
