@@ -320,15 +320,13 @@ async function openBrainstormWithScene(page: Page): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 10_000 });
   await sceneRow.click();
 
-  // Open Notes/Brainstorm tab
-  const notesTab = page.getByTestId('app-tab-notes');
-  if (await notesTab.isVisible()) {
-    const brainstormTitle = page.locator('.brainstorm-title');
-    if (!(await brainstormTitle.isVisible().catch(() => false))) {
-      await notesTab.click();
-    }
-    await expect(brainstormTitle).toBeVisible({ timeout: 8_000 });
-  }
+  // Open the top-level Story Assist brainstorm tab (Ctrl/Cmd+3), which renders
+  // the non-compact BrainstormPage and keeps this test aligned with
+  // continuity layout.
+  await page.keyboard.press('Control+3');
+
+  const brainstormPanel = page.locator('[aria-labelledby="app-tab-brainstorm"]');
+  await expect(brainstormPanel).toBeVisible({ timeout: 8_000 });
 }
 
 // ─── TC-AA-01: Not-scanned state ─────────────────────────────────────────────
@@ -451,7 +449,7 @@ test('TC-AA-04: seeded SQLite issue appears as InconsistencyCard with severity b
 
     // Three action buttons present
     await expect(card.getByRole('button', { name: /match archive/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /suggest edit/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /suggest story change/i })).toBeVisible();
     await expect(card.getByRole('button', { name: /ignore/i })).toBeVisible();
   } finally {
     await closeApp(app);
