@@ -9,6 +9,9 @@ build/*.node
 # Playwright run artifacts
 test-results
 playwright-report
+e2e-report
+e2e-visual-artifacts
+/app-screenshot.png
 # Paperclip / Claude Code agent worktrees — never commit nested git repos
 .claude/
 .paperclip/
