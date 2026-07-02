@@ -9,6 +9,44 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-beta.1] — 2026-07-02
+
+### Added
+
+- **App shell overhaul (v0.3 UX)** — An always-mounted navigation rail on the left edge, Settings reorganized into categories, and first-class workspace tabs: reorder tabs with the keyboard, scroll overflowing tab strips, open any panel as a tab, and pick new tabs from a dedicated picker. The nav rail itself is customizable. ([PR #768](https://github.com/SkyyPlayz/Mythos-Writer/pull/768), [#674](https://github.com/SkyyPlayz/Mythos-Writer/pull/674), [#817](https://github.com/SkyyPlayz/Mythos-Writer/pull/817))
+- **Wiki links in the editor** — Type `[[` for entity autocomplete with alias support; unresolved links get distinct styling, wiki-link candidates surface in the Notes tab, and links feed the vault graph view. ([PR #821](https://github.com/SkyyPlayz/Mythos-Writer/pull/821), [#814](https://github.com/SkyyPlayz/Mythos-Writer/pull/814))
+- **Chapter continuous view** — Read a whole chapter as one flow with per-scene editable bands, a heading-driven (H1–H6) view model, and depth navigation that crosses chapter boundaries. ([PR #664](https://github.com/SkyyPlayz/Mythos-Writer/pull/664), [#684](https://github.com/SkyyPlayz/Mythos-Writer/pull/684), [#790](https://github.com/SkyyPlayz/Mythos-Writer/pull/790))
+- **Richer text formatting** — H4–H6 headings, a line-spacing control, and paragraph/heading text alignment that persists across sessions. Notes and Manuscript now share a single rich-text editor core with a formalized mark schema. ([PR #823](https://github.com/SkyyPlayz/Mythos-Writer/pull/823), [#825](https://github.com/SkyyPlayz/Mythos-Writer/pull/825), [#820](https://github.com/SkyyPlayz/Mythos-Writer/pull/820), [#808](https://github.com/SkyyPlayz/Mythos-Writer/pull/808))
+- **AEON timeline track interactions** — Hover tooltips, detail popovers, per-track context menus, and full keyboard navigation on timeline tracks; scene markers render only in the visible viewport for smooth scrolling on long timelines. ([PR #816](https://github.com/SkyyPlayz/Mythos-Writer/pull/816), [#824](https://github.com/SkyyPlayz/Mythos-Writer/pull/824))
+- **Archive → Scene Crafter suggestions** — The Archive agent can emit scene suggestions directly onto the Scene Crafter board, gated behind a settings toggle. ([PR #822](https://github.com/SkyyPlayz/Mythos-Writer/pull/822))
+- **Account modal** — Shows your local profile and app info (version, vault locations) with a reveal-in-file-manager shortcut. ([PR #827](https://github.com/SkyyPlayz/Mythos-Writer/pull/827))
+- **Multi-vault graph scope selector** — Choose which vaults feed the graph view. ([PR #778](https://github.com/SkyyPlayz/Mythos-Writer/pull/778))
+- **In-app "Clear All Data" control** — Reset the app to a fresh state without hunting for files on disk. ([PR #788](https://github.com/SkyyPlayz/Mythos-Writer/pull/788))
+- **Responsive layout clamping** — Sidebars clamp so the editor always retains a usable minimum width on narrow windows. ([PR #704](https://github.com/SkyyPlayz/Mythos-Writer/pull/704))
+
+### Changed
+
+- **Panel homes** — The Brainstorm panel moved into the global right sidebar; Writing Assistant, Continuity, and Preview panels moved to the left sidebar, with pop-out behavior fixed along the way. ([PR #761](https://github.com/SkyyPlayz/Mythos-Writer/pull/761), [#807](https://github.com/SkyyPlayz/Mythos-Writer/pull/807), [#803](https://github.com/SkyyPlayz/Mythos-Writer/pull/803))
+- **Sample-project banner** — Now dismissible instead of permanent. ([PR #787](https://github.com/SkyyPlayz/Mythos-Writer/pull/787))
+
+### Fixed
+
+- **Auto-update was silently disabled in every shipped build** — The updater required a runtime environment flag (`MYTHOS_AUTO_UPDATE=1`) that the release pipeline only set in the CI build shell, so no packaged binary ever checked for updates. Packaged builds now auto-update by default; `MYTHOS_AUTO_UPDATE=0` remains as an explicit kill switch, and dev/test builds stay inert.
+- **Numeric input validation** — Daily-goal, Timeline word-count, and timestamp day-entry fields no longer accept or mangle partial/invalid numeric input. ([PR #800](https://github.com/SkyyPlayz/Mythos-Writer/pull/800), [#796](https://github.com/SkyyPlayz/Mythos-Writer/pull/796), [#793](https://github.com/SkyyPlayz/Mythos-Writer/pull/793), [#804](https://github.com/SkyyPlayz/Mythos-Writer/pull/804))
+- **Errors surfaced instead of swallowed** — NoteViewer saves, draft history, Progress Dashboard streak resets, archive loads, and beta-read scans now report failures to the user instead of silently pretending success. ([PR #792](https://github.com/SkyyPlayz/Mythos-Writer/pull/792), [#795](https://github.com/SkyyPlayz/Mythos-Writer/pull/795), [#791](https://github.com/SkyyPlayz/Mythos-Writer/pull/791), [#786](https://github.com/SkyyPlayz/Mythos-Writer/pull/786), [#785](https://github.com/SkyyPlayz/Mythos-Writer/pull/785))
+- **Vault-read resilience** — Unreadable directories are skipped and vault metadata is honored instead of failing the whole vault scan. ([PR #780](https://github.com/SkyyPlayz/Mythos-Writer/pull/780))
+- **Write-order safety in floating panels** — Scene files are written before the manifest, preventing manifest/file skew if the app is interrupted mid-save. ([PR #801](https://github.com/SkyyPlayz/Mythos-Writer/pull/801))
+- **Quick-entry persistence** — Blank quick-entry saves are rejected, and scene/quick-entry persistence is guarded against partial writes. ([PR #782](https://github.com/SkyyPlayz/Mythos-Writer/pull/782), [#781](https://github.com/SkyyPlayz/Mythos-Writer/pull/781))
+- **Frontmatter escaping** — Inline-array frontmatter values containing commas are quoted correctly. ([PR #799](https://github.com/SkyyPlayz/Mythos-Writer/pull/799))
+- **Sidebar layout regressions** — No more doubled right sidebar in Notes mode; the global right sidebar persists across Notes and Brainstorm modes. ([PR #812](https://github.com/SkyyPlayz/Mythos-Writer/pull/812), [#811](https://github.com/SkyyPlayz/Mythos-Writer/pull/811))
+- **Settings tab keyboard navigation** — Category tabs regained full ARIA APG arrow-key navigation after a regression. ([PR #815](https://github.com/SkyyPlayz/Mythos-Writer/pull/815))
+
+### Security
+
+- **Path-containment guards** — Snapshots, journal, and vault-integrity IPC handlers now resolve and contain paths before touching disk. ([PR #774](https://github.com/SkyyPlayz/Mythos-Writer/pull/774))
+- **Backup hardening** — Backup archives redact secrets, and restore is protected against zip-slip extraction attacks. ([PR #773](https://github.com/SkyyPlayz/Mythos-Writer/pull/773))
+- **Floating-panel IPC guards** — Dock-back and pin IPC channels now verify the sender frame. ([PR #770](https://github.com/SkyyPlayz/Mythos-Writer/pull/770))
+
 ## [0.2.0-beta.2] — 2026-06-17
 
 ### Added
@@ -106,7 +144,8 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Initial internal release.
 
-[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0-beta.2...HEAD
+[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.1...HEAD
+[0.3.0-beta.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0-beta.2...v0.3.0-beta.1
 [0.2.0-beta.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0...v0.2.0-beta.2
 [0.2.0]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/SkyyPlayz/Mythos-Writer/releases/tag/v0.1.0
