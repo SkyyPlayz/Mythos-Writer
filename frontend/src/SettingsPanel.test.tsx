@@ -1285,6 +1285,50 @@ describe('Archive Agent settings section (AC-CC-09)', () => {
   });
 });
 
+// ── Archive → Scene Crafter suggestions settings (SKY-3200 / Part E · E4b) ──
+
+describe('Archive → Scene Crafter suggestions settings', () => {
+  it('suggestions toggle is disabled by default and cadence select is disabled with it', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
+    const toggle = screen.getByTestId('archive-scene-crafter-suggestions-enabled') as HTMLInputElement;
+    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
+    expect(toggle.checked).toBe(false);
+    expect(cadence.disabled).toBe(true);
+  });
+
+  it('enabling the toggle enables the cadence select and persists both fields on save', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
+    fireEvent.click(screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
+    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
+    expect(cadence.disabled).toBe(false);
+
+    fireEvent.change(cadence, { target: { value: '3600' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.archive.sceneCrafterSuggestions).toEqual({ enabled: true, cadence: 3600 });
+  });
+
+  it('respects a persisted enabled=true, cadence value on load', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        archive: { ...defaultSettings.agents.archive, sceneCrafterSuggestions: { enabled: true, cadence: 900 } },
+      },
+    });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
+    const toggle = screen.getByTestId('archive-scene-crafter-suggestions-enabled') as HTMLInputElement;
+    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
+    expect(toggle.checked).toBe(true);
+    expect(cadence.disabled).toBe(false);
+    expect(cadence.value).toBe('900');
+  });
+});
+
 // ── SKY-2440: per-agent model picker + API key settings ──
 
 describe('Per-agent provider override (SKY-2440)', () => {

@@ -388,7 +388,7 @@ interface AppSettings {
     /** Per-agent `provider` overrides the global provider for that agent (SKY-683). */
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderConfig; voiceEnabled?: boolean; micDeviceId?: string } & AgentBudgetSettings;
-    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig } & AgentBudgetSettings;
+    archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
   };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
