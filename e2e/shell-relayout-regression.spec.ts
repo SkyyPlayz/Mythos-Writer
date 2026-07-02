@@ -100,18 +100,14 @@ test.describe('Shell relayout — single GlobalRightSidebar across modes', () =>
     await expect(page.locator(RIGHT_SIDEBAR_SEL)).toHaveCount(1, { timeout: 10_000 });
   });
 
-  // KNOWN GAP (SKY-5592): GlobalRightSidebar is mounted inside the
-  // `tabShell.activeTab === 'story'` block in DesktopShell.tsx (opens ~3636, closes ~4217),
-  // so it fully unmounts (not just hides) outside Story mode. This violates A5's "single
-  // right sidebar in all modes" AC. Un-skip once SKY-5592 lands.
-  test.fixme('exactly one right sidebar element renders in Notes mode', async () => {
+  test('exactly one right sidebar element renders in Notes mode', async () => {
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
     await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }))
       .toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
     await expect(page.locator(RIGHT_SIDEBAR_SEL)).toHaveCount(1, { timeout: 10_000 });
   });
 
-  test.fixme('exactly one right sidebar element renders in Brainstorm mode', async () => {
+  test('exactly one right sidebar element renders in Brainstorm mode', async () => {
     await page.keyboard.press(CTRL3);
     await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator(RIGHT_SIDEBAR_SEL)).toHaveCount(1, { timeout: 10_000 });
