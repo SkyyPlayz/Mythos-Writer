@@ -1,15 +1,6 @@
-import type { AgentName, AgentOverrideState, ProviderKind, TestConnectionStatus } from '../settingsPanelTypes';
-
 interface ArchiveAgentSectionProps {
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
-  setAgentField: <A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(agent: A, field: K, value: AppSettings['agents'][A][K]) => void;
-  agentOverrides: Record<AgentName, AgentOverrideState>;
-  agentTestStatus: Record<AgentName, TestConnectionStatus>;
-  agentTestMsg: Record<AgentName, string>;
-  setAgentOverride: <K extends keyof AgentOverrideState>(agentName: AgentName, field: K, value: AgentOverrideState[K]) => void;
-  onAgentTest: (agentName: AgentName) => void;
-  providerKind: ProviderKind;
   setSavedOk: (ok: boolean) => void;
 }
 

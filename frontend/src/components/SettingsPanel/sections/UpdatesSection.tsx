@@ -6,7 +6,7 @@ interface UpdatesSectionProps {
 
 export default function UpdatesSection({ settings, setSettings, setSavedOk }: UpdatesSectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-updates" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-updates" data-settings-cat="appearance">
       <h3 className="settings-section-title" id="section-updates">Updates</h3>
       <div className="settings-field">
         <label className="settings-label">Update Channel</label>

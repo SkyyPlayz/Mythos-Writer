@@ -22,7 +22,7 @@ export default function ApiKeySection({
   setSavedOk,
 }: ApiKeySectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-api-key" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-api-key" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-api-key">API Key</h3>
       <div className="settings-field">
         <label className="settings-label" htmlFor="api-key-input">Anthropic API Key</label>
