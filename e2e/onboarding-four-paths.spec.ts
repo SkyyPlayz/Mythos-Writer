@@ -31,10 +31,9 @@
  *   AC-OB-25  onboarding:import-vault:dry-run IPC channel registered in preload
  *
  * Test strategy:
- *   - All ACs 01-14, 16-25 are active: four-card selector (SKY-2635) and import
- *     dry-run IPC (SKY-2638 scope absorbed into main branch) are implemented.
- *   - AC-OB-15 (sample banner) remains skipped: the banner UI is not yet implemented
- *     on the writing page.
+ *   - All ACs 01-25 are active: four-card selector (SKY-2635), sample banner
+ *     (SKY-2553), and import dry-run IPC (SKY-2638 scope absorbed into main
+ *     branch) are implemented.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/onboarding-four-paths.spec.ts --reporter=list
@@ -823,11 +822,9 @@ test.describe('AC-OB-15: Path 4 sample banner dismissed permanently', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test.skip(true, 'AC-OB-15: blocked on SKY-2553 frontend — sample banner not yet implemented on writing page');
-
   test('AC-OB-15: sample banner visible after Path 4 completion; dismissing hides it permanently', async () => {
     await stubOnboardingComplete(app);
-    await expect(page.locator(SELECTOR.pathSelector)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
 
