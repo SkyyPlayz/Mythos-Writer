@@ -4286,9 +4286,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
            undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
            This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
            settings arrive, which caused TC-TL-06 detail-card pointer-event regression.
-           SKY-5592: moved out of story-only conditional so it persists in Notes and Brainstorm modes. */}
+           SKY-5592: moved out of story-only conditional so it persists in Notes and Brainstorm modes.
+           Forced into its collapsed-edge state (not unmounted) while NotesTabPanel's own embedded
+           Brainstorm sidebar is expanded, so the two right-hand panels never both show full-width at
+           once — avoids the double-sidebar duplication that a naive always-visible mount would cause. */}
       {grsVisible !== undefined && <GlobalRightSidebar
-        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar)}
+        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar) && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed)}
         width={grsWidth}
         panels={grsPanels}
         onVisibilityChange={handleGrsVisibilityChange}
@@ -4345,8 +4348,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
            migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
            without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
-           Condition: show whenever GRS is not open (grsVisible !== true). */}
-      {grsVisible !== true && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
+           Condition: show whenever GRS is not open (grsVisible !== true).
+           SKY-5592: also suppressed while NotesTabPanel's own embedded Brainstorm sidebar is expanded —
+           otherwise this fallback stacks as a second full right-hand panel next to it in Notes mode. */}
+      {grsVisible !== true && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed) && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
         <aside className="gs-aside">
           <GettingStartedPanel
             progress={gettingStartedProgress}

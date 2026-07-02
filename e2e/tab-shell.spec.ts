@@ -313,6 +313,15 @@ test.describe('GlobalRightSidebar — persists across all top-level tabs (SKY-55
 
       const grs = page.locator('[data-testid="global-right-sidebar"], .grs-collapsed-edge');
       await expect(grs).toHaveCount(1, { timeout: 4_000 });
+
+      // SKY-5592 follow-up: NotesTabPanel has its own embedded Brainstorm sidebar
+      // (data-testid="notes-brainstorm-panel"), distinct from GlobalRightSidebar. When it's
+      // expanded, GRS must fall back to its collapsed-edge state so the two never both
+      // render full-width at once (single right sidebar in spirit, not just by testid).
+      const notesBrainstormPanel = page.locator('[data-testid="notes-brainstorm-panel"]');
+      if (await notesBrainstormPanel.count() > 0) {
+        await expect(page.locator('[data-testid="global-right-sidebar"]')).toHaveCount(0);
+      }
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -325,7 +334,10 @@ test.describe('GlobalRightSidebar — persists across all top-level tabs (SKY-55
       const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
       await expect(mainNav).toBeVisible({ timeout: 12_000 });
 
-      await mainNav.getByRole('button', { name: 'Brainstorm' }).click();
+      // Brainstorm has no nav-rail button — it's reached via Ctrl+3 (see
+      // DesktopShell.tsx "Story Assist" tooltip) or from within Notes/Story.
+      await page.keyboard.press('Control+3');
+      await expect(page.locator('#app-tabpanel-brainstorm')).toBeVisible({ timeout: 8_000 });
 
       const grs = page.locator('[data-testid="global-right-sidebar"], .grs-collapsed-edge');
       await expect(grs).toHaveCount(1, { timeout: 4_000 });
