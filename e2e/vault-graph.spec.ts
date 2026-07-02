@@ -137,9 +137,9 @@ test.afterAll(async () => {
 });
 
 async function openGraphView(): Promise<void> {
-  const notesTab = page.locator('[data-testid="app-tab-notes"]');
+  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]');
   await expect(notesTab).toBeVisible({ timeout: 12_000 });
-  if ((await notesTab.getAttribute('aria-selected')) !== 'true') {
+  if ((await notesTab.getAttribute('aria-current')) !== 'page') {
     await notesTab.click();
   }
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
