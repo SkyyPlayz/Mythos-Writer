@@ -6,7 +6,7 @@ interface JournalSectionProps {
 
 export default function JournalSection({ settings, setSettings, setSavedOk }: JournalSectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-journal" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-journal" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-journal">Journal Mode</h3>
       <div className="settings-field">
         <label className="settings-checkbox-label">
