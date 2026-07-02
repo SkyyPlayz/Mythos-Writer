@@ -661,6 +661,16 @@
   min-height: 0;
 }
 
+/* GH #631: relative wrapper so the edge arrows stay pinned while the
+   chapter/book depth views scroll internally. */
+.shell-depth-view-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 /* AC-C-4: on-canvas edge-arrow navigation */
 .edge-arrow {
   position: absolute;

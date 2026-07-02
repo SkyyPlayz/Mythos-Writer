@@ -2006,9 +2006,10 @@ describe('SKY-3218 nav-bar configuration', () => {
 
     const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
     expect(saved.navConfig).toBeDefined();
-    expect(saved.navConfig?.items).toHaveLength(2);
+    expect(saved.navConfig?.items).toHaveLength(3);
     expect(saved.navConfig?.items[0].id).toBe('story');
     expect(saved.navConfig?.items[1].id).toBe('notes');
+    expect(saved.navConfig?.items[2].id).toBe('brainstorm');
     expect(saved.navConfig?.showLabels).toBe(true);
     expect(saved.navConfig?.showIcons).toBe(true);
     expect(saved.navConfig?.collapsedDefault).toBe(false);

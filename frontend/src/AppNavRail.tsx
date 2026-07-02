@@ -10,6 +10,9 @@ export interface AppNavRailProps {
   navItems: NavRailItem[];
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** SKY-3218: honor the user's nav-bar customization (Settings → Nav-bar). */
+  showLabels?: boolean;
+  showIcons?: boolean;
 }
 
 export default function AppNavRail({
@@ -20,8 +23,16 @@ export default function AppNavRail({
   navItems,
   collapsed,
   onToggleCollapsed,
+  showLabels = true,
+  showIcons = true,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
+
+  // A collapsed rail only has room for the icon; and when the user hides
+  // labels, icons become the only visible affordance — so at least one of the
+  // two is always rendered (aria-labels keep every state accessible).
+  const renderIcons = showIcons || collapsed || !showLabels;
+  const renderLabels = !collapsed && showLabels;
 
   const handleNavKeyDown = useCallback(
     (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -71,8 +82,10 @@ export default function AppNavRail({
             aria-label={item.label}
             aria-current={activeSection === item.id ? 'page' : undefined}
           >
-            <span className="nav-rail__item-icon" aria-hidden="true">{item.icon}</span>
-            {!collapsed && (
+            {renderIcons && (
+              <span className="nav-rail__item-icon" aria-hidden="true">{item.icon}</span>
+            )}
+            {renderLabels && (
               <span className="nav-rail__item-label">{item.label}</span>
             )}
           </button>

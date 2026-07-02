@@ -10,6 +10,9 @@ import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
+import WorkspaceTabPicker from './WorkspaceTabPicker';
+import { createOrFocusTab, tabKindForSection } from './workspaceTabKinds';
+import { NAV_RAIL_DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -32,6 +35,7 @@ import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
+import DepthEdgeArrows from './DepthEdgeArrows';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
@@ -890,6 +894,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { id: crypto.randomUUID(), kind: 'notes-editor', title: 'Notes', icon: '📁' },
   ]);
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState<string | null>(null);
+  // GH #643: "+" new-tab content picker.
+  const [tabPickerOpen, setTabPickerOpen] = useState(false);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -1434,6 +1440,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         // SKY-3098: restore nav rail + workspace tabs.
         if (typeof s.activeLayout?.navRailCollapsed === 'boolean') {
           setNavRailCollapsed(s.activeLayout.navRailCollapsed);
+        } else if (s.navConfig?.collapsedDefault === true) {
+          // SKY-3218: no explicit session state yet — honor the configured
+          // "start collapsed" preference.
+          setNavRailCollapsed(true);
         }
         if (Array.isArray(s.activeLayout?.workspaceTabs) && s.activeLayout.workspaceTabs.length > 0) {
           setWorkspaceTabs(s.activeLayout.workspaceTabs);
@@ -1825,21 +1835,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistTabShell]);
 
   // SKY-3098 (v0.3): Workspace tab handlers.
+  // Route the shell (section + story sub-view) to show a tab kind's content.
+  const routeToTabKind = useCallback((kind: WorkspaceTabKind) => {
+    if (kind === 'notes-editor' || kind === 'vault-graph' || kind === 'entities') {
+      handleTabChange('notes');
+    } else if (kind === 'brainstorm') {
+      handleTabChange('brainstorm');
+    } else {
+      handleTabChange('story');
+      if (kind === 'kanban') setView('kanban');
+      else if (kind === 'timeline') setView('timeline');
+      else setView('editor');
+    }
+  }, [handleTabChange]);
+
   const handleWorkspaceTabSelect = useCallback((tabId: string) => {
     setActiveWorkspaceTabId(tabId);
     const tab = workspaceTabs.find((t) => t.id === tabId);
-    if (tab) {
-      if (tab.kind === 'notes-editor' || tab.kind === 'vault-graph' || tab.kind === 'entities') {
-        handleTabChange('notes');
-      } else {
-        handleTabChange('story');
-        if (tab.kind === 'kanban') setView('kanban');
-        else if (tab.kind === 'timeline') setView('timeline');
-        else setView('editor');
-      }
-    }
+    if (tab) routeToTabKind(tab.kind);
     persistWorkspaceTabs(workspaceTabs, tabId);
-  }, [workspaceTabs, handleTabChange, persistWorkspaceTabs]);
+  }, [workspaceTabs, routeToTabKind, persistWorkspaceTabs]);
+
+  // GH #643: opening content from the nav rail or the "+" picker focuses the
+  // existing tab of that kind, or appends a new one.
+  const focusOrCreateTab = useCallback((kind: WorkspaceTabKind) => {
+    const result = createOrFocusTab(workspaceTabs, kind);
+    if (result.created) setWorkspaceTabs(result.tabs);
+    setActiveWorkspaceTabId(result.activeId);
+    persistWorkspaceTabs(result.tabs, result.activeId);
+  }, [workspaceTabs, persistWorkspaceTabs]);
+
+  const openWorkspaceTabKind = useCallback((kind: WorkspaceTabKind) => {
+    focusOrCreateTab(kind);
+    routeToTabKind(kind);
+  }, [focusOrCreateTab, routeToTabKind]);
+
+  // Nav-rail section click: same tab create/focus, but route through plain
+  // handleTabChange so the Story section keeps restoring the last sub-view
+  // (routeToTabKind forces the editor sub-view, which is tab-click semantics).
+  const handleNavSectionChange = useCallback((tab: AppTab) => {
+    focusOrCreateTab(tabKindForSection(tab));
+    handleTabChange(tab);
+  }, [focusOrCreateTab, handleTabChange]);
 
   const handleWorkspaceTabClose = useCallback((tabId: string) => {
     const next = workspaceTabs.filter((t) => t.id !== tabId);
@@ -3189,6 +3226,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
             ttsSettings={appSettings?.tts}
+            voiceEnabled={appSettings?.voice?.enabled ?? false}
           />
         );
       case 'archive-continuity':
@@ -3337,6 +3375,27 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return { pane1: countBlocks(selectedScene), pane2: countBlocks(pane2Scene) };
   }, [splitWindowEnabled, selectedScene, pane2Scene]);
 
+  // SKY-3218 / GH #643: derive nav-rail items from the user's saved navConfig
+  // (Settings → Appearance → Nav-bar). Newer default items missing from an
+  // older saved config are appended so upgrades surface new sections; an
+  // all-disabled config falls back to the defaults so the rail never strands
+  // the user.
+  const savedNavConfig = appSettings?.navConfig;
+  const navItems = useMemo<NavRailItem[]>(() => {
+    const savedItems = savedNavConfig?.items ?? [];
+    const merged = [
+      ...savedItems,
+      ...NAV_RAIL_DEFAULTS.items.filter((d) => !savedItems.some((i) => i.id === d.id)),
+    ];
+    const enabled = merged
+      .filter((i) => i.enabled)
+      .sort((a, b) => a.order - b.order)
+      .map(({ id, label, icon }) => ({ id, label, icon }));
+    return enabled.length > 0
+      ? enabled
+      : NAV_RAIL_DEFAULTS.items.map(({ id, label, icon }) => ({ id, label, icon }));
+  }, [savedNavConfig]);
+
   if (loading) {
     return (
       <div className="shell-loading">
@@ -3432,10 +3491,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const showSampleProjectBanner = appSettings?.onboardingStartMode === 'sample'
     && !appSettings.sampleProjectBannerDismissed;
 
-  const NAV_ITEMS: NavRailItem[] = [
-    { id: 'story', label: 'Story', icon: '📖' },
-    { id: 'notes', label: 'Notes', icon: '📝' },
-  ];
+  const navRailConfig = appSettings?.navConfig;
 
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
@@ -3464,12 +3520,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         {showTitleBar && (
           <AppNavRail
             activeSection={tabShell.activeTab}
-            onSectionChange={handleTabChange}
+            onSectionChange={handleNavSectionChange}
             onOpenAccount={() => setAccountModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
-            navItems={NAV_ITEMS}
+            navItems={navItems}
             collapsed={navRailCollapsed}
             onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}
+            showLabels={navRailConfig?.showLabels ?? true}
+            showIcons={navRailConfig?.showIcons ?? true}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -3480,7 +3538,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
             onTabReorder={handleWorkspaceTabReorder}
-            onNewTab={() => {}}
+            onNewTab={() => setTabPickerOpen(true)}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -3889,25 +3947,50 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 </div>
               </div>
             ) : viewDepth === 'book' && selectedStory ? (
-              <BookOutlineView
-                story={selectedStory}
-                selectedChapterId={selectedChapter?.id ?? null}
-                selectedSceneId={selectedScene?.id ?? null}
-                onSelectScene={(sc, ch) => {
-                  handleSelectScene(sc, ch, selectedStory);
-                  setViewDepth('scene');
-                }}
-              />
+              <div className="shell-depth-view-wrap">
+                <BookOutlineView
+                  story={selectedStory}
+                  selectedChapterId={selectedChapter?.id ?? null}
+                  selectedSceneId={selectedScene?.id ?? null}
+                  onSelectScene={(sc, ch) => {
+                    handleSelectScene(sc, ch, selectedStory);
+                    setViewDepth('scene');
+                  }}
+                />
+                <DepthEdgeArrows
+                  depth="book"
+                  canPrev={depthCanPrev}
+                  canNext={depthCanNext}
+                  onPrev={handleDepthPrev}
+                  onNext={handleDepthNext}
+                />
+              </div>
             ) : viewDepth === 'chapter' && selectedChapter ? (
-              <ChapterContinuousView
-                chapter={selectedChapter}
-                selectedSceneId={selectedScene?.id ?? null}
-                onBlocksChange={handleChapterSceneBlocksChange}
-                onDraftStateChange={handleChapterSceneDraftStateChange}
-                onSceneFocus={handleChapterSceneFocus}
-              />
+              <div className="shell-depth-view-wrap">
+                <ChapterContinuousView
+                  chapter={selectedChapter}
+                  selectedSceneId={selectedScene?.id ?? null}
+                  onBlocksChange={handleChapterSceneBlocksChange}
+                  onDraftStateChange={handleChapterSceneDraftStateChange}
+                  onSceneFocus={handleChapterSceneFocus}
+                />
+                <DepthEdgeArrows
+                  depth="chapter"
+                  canPrev={depthCanPrev}
+                  canNext={depthCanNext}
+                  onPrev={handleDepthPrev}
+                  onNext={handleDepthNext}
+                />
+              </div>
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
+                <DepthEdgeArrows
+                  depth="scene"
+                  canPrev={depthCanPrev}
+                  canNext={depthCanNext}
+                  onPrev={handleDepthPrev}
+                  onNext={handleDepthNext}
+                />
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"
@@ -4110,6 +4193,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onActiveNoteWordCountChange={setOpenedNoteWordCount}
           onCloseActiveNote={() => setOpenedNotePath(null)}
           onWikiLinkClick={handleWikiLinkClick}
+          resolvedWikiLinkTitles={wikiLinkTitleIndex}
+          wikiLinkCandidates={wikiLinkCandidates}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}
@@ -4352,6 +4437,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-3098 (v0.3): AccountModal — wired to nav rail brand glyph */}
       {accountModalOpen && (
         <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      )}
+      {/* GH #643: "+" new-tab content picker */}
+      {tabPickerOpen && (
+        <WorkspaceTabPicker
+          open={tabPickerOpen}
+          onClose={() => setTabPickerOpen(false)}
+          onPick={openWorkspaceTabKind}
+        />
       )}
         </div>{/* end desktop-shell__main-col */}
       </div>{/* end desktop-shell__body */}
