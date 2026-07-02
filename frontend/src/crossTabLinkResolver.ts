@@ -60,11 +60,11 @@ const ENTITY_TYPE_ALIASES: Record<string, EntityType> = {
   other: 'other',
 };
 
-function normalize(value: string): string {
+export function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/\.md$/i, '').replace(/\\/g, '/');
 }
 
-function basenameNoExt(value: string): string {
+export function basenameNoExt(value: string): string {
   const normalized = value.replace(/\\/g, '/');
   return normalize(normalized.split('/').pop() ?? normalized);
 }
@@ -256,6 +256,93 @@ function resolveUntypedStem(rawTarget: string, context: CrossTabLinkContext): Cr
   }
 
   return matches;
+}
+
+// ─── Wiki-link title index (SKY-5702: resolved/unresolved inline styling) ───
+
+export interface WikiLinkTitleIndexContext {
+  stories: Story[];
+  entities: EntityEntry[];
+  notePaths?: string[];
+}
+
+/**
+ * Build a flat set of normalized, resolvable stems (entity names/aliases,
+ * note path stems, scene titles/path stems) across both vaults. Cheap O(1)
+ * membership checks let the editor mark [[wiki links]] as unresolved without
+ * re-running full cross-tab resolution on every decoration pass.
+ */
+export function buildWikiLinkTitleIndex(context: WikiLinkTitleIndexContext): Set<string> {
+  const titles = new Set<string>();
+  for (const entity of context.entities) {
+    titles.add(normalize(entity.name));
+    for (const alias of entity.aliases ?? []) titles.add(normalize(alias));
+    titles.add(basenameNoExt(entity.path));
+  }
+  for (const notePath of context.notePaths ?? []) {
+    titles.add(basenameNoExt(notePath));
+  }
+  for (const story of context.stories) {
+    for (const chapter of story.chapters) {
+      for (const scene of chapter.scenes) {
+        titles.add(normalize(scene.title));
+        titles.add(basenameNoExt(scene.path));
+      }
+    }
+  }
+  return titles;
+}
+
+export interface WikiLinkCandidate {
+  /** Stable React key — not a persisted document id. */
+  key: string;
+  title: string;
+  /** Entity type, 'scene', or 'other' for a plain note. */
+  kind: string;
+  vault: 'story' | 'notes';
+}
+
+/**
+ * Build the flat, deduplicated list of linkable titles across both vaults for
+ * the `[[` autocomplete popup (SKY-5702). Client-side and synchronous — built
+ * from the same live `stories`/`entities`/`notePaths` state the app already
+ * holds, so a note or scene created moments ago is linkable immediately
+ * (unlike the FTS `searchVault` index, which only reindexes on vault-watcher
+ * events and can lag behind just-created content).
+ */
+export function buildWikiLinkCandidates(context: WikiLinkTitleIndexContext): WikiLinkCandidate[] {
+  const candidates: WikiLinkCandidate[] = [];
+  const seenStems = new Set<string>();
+
+  for (const entity of context.entities) {
+    seenStems.add(normalize(entity.name));
+    candidates.push({ key: `entity:${entity.id}`, title: entity.name, kind: entity.type, vault: 'notes' });
+  }
+  for (const notePath of context.notePaths ?? []) {
+    const stem = basenameNoExt(notePath);
+    if (seenStems.has(stem)) continue; // an entity already covers this title
+    seenStems.add(stem);
+    const title = notePath.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? notePath;
+    candidates.push({ key: `note:${notePath}`, title, kind: 'other', vault: 'notes' });
+  }
+  for (const story of context.stories) {
+    for (const chapter of story.chapters) {
+      for (const scene of chapter.scenes) {
+        candidates.push({ key: `scene:${scene.id}`, title: scene.title, kind: 'scene', vault: 'story' });
+      }
+    }
+  }
+
+  return candidates;
+}
+
+/** True if `rawTarget` (a wikiLink node's `target` attr) resolves to a known title. */
+export function isWikiLinkTargetResolved(rawTarget: string, titleIndex: ReadonlySet<string>): boolean {
+  const stem = rawTarget.split('#')[0].split('|')[0].trim();
+  const typed = parseTypedTarget(stem);
+  const needle = normalize(typed ? typed.value : stem);
+  if (!needle) return true; // empty target — nothing to flag as broken
+  return titleIndex.has(needle);
 }
 
 export function resolveCrossTabLink(rawTarget: string, context: CrossTabLinkContext): CrossTabLinkResolution {

@@ -9,12 +9,18 @@ import type { AnyExtension, Editor } from '@tiptap/core';
 import { EntityMention } from './EntityMentionExtension';
 import { EntityMentionPickerExtension, mentionPickerKey, type MentionPickerState } from './EntityMentionPickerExtension';
 import EntityMentionPicker, { matchesEntityQuery } from './EntityMentionPicker';
+import { WikiLinkPickerExtension, wikiLinkPickerKey, type WikiLinkPickerState } from './WikiLinkPickerExtension';
+import WikiLinkPicker, { buildWikiLinkPickerItems, type WikiLinkCandidate, type WikiLinkPickerItem } from './WikiLinkPicker';
+import { WIKI_LINK_RESOLUTION_META } from './WikiLinkResolutionExtension';
 import type { EntityEntry } from './types';
 import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import FormatToolbar from './FormatToolbar';
 import './EntityMention.css';
+import './WikiLinkPicker.css';
 
 const INACTIVE_MENTION: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
+const INACTIVE_WIKI_LINK: WikiLinkPickerState = { active: false, query: '', from: 0, to: 0 };
+const EMPTY_WIKI_LINK_CANDIDATES: WikiLinkCandidate[] = [];
 
 const CHANGE_DEBOUNCE_MS = 800;
 
@@ -68,6 +74,19 @@ export interface RichTextEditorProps {
   plainTextWikiLinkFallback?: boolean;
   /** Called when the user clicks an @-entity chip. */
   onEntityClick?: (entityId: string) => void;
+  /**
+   * SKY-5702: normalized set of resolvable note/story titles (from
+   * `buildWikiLinkTitleIndex`), used to mark [[wiki links]] with no matching
+   * target as `.wiki-link-unresolved`. Omit to skip resolved/unresolved
+   * styling entirely.
+   */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  /**
+   * SKY-5702: cross-vault candidate list (from `buildWikiLinkCandidates`) the
+   * `[[` autocomplete popup filters client-side. Omit to disable the popup
+   * (typed `[[links]]` still parse and click-navigate as before).
+   */
+  wikiLinkCandidates?: WikiLinkCandidate[];
   /** Render the shared formatting toolbar. Defaults to true. */
   showToolbar?: boolean;
   /** Class for the positioned wrapper div around the editable surface. */
@@ -100,6 +119,8 @@ export default function RichTextEditor({
   onWikiLinkClick,
   plainTextWikiLinkFallback = false,
   onEntityClick,
+  resolvedWikiLinkTitles,
+  wikiLinkCandidates = EMPTY_WIKI_LINK_CANDIDATES,
   showToolbar = true,
   wrapClassName,
   contentClassName,
@@ -116,6 +137,15 @@ export default function RichTextEditor({
   // @-trigger position. Cleared when the trigger position changes (new '@' typed).
   const mentionSuppressedFromRef = useRef<number>(-1);
   const [mentionSuppressed, setMentionSuppressed] = useState(false);
+
+  // SKY-5702: [[wiki-link autocomplete popup — mirrors the @-mention picker
+  // state shape above. Candidates are filtered client-side (synchronous) from
+  // the `wikiLinkCandidates` prop rather than an async search IPC call, so a
+  // note/scene created moments ago is linkable immediately.
+  const [wikiLinkState, setWikiLinkState] = useState<WikiLinkPickerState>(INACTIVE_WIKI_LINK);
+  const [wikiLinkSelectedIndex, setWikiLinkSelectedIndex] = useState(0);
+  const wikiLinkSuppressedFromRef = useRef<number>(-1);
+  const [wikiLinkSuppressed, setWikiLinkSuppressed] = useState(false);
 
   const innerWrapRef = useRef<HTMLDivElement | null>(null);
   const setWrapEl = useCallback((el: HTMLDivElement | null) => {
@@ -153,6 +183,7 @@ export default function RichTextEditor({
   }, []);
 
   useEffect(() => { setMentionSelectedIndex(0); }, [mentionState.query]);
+  useEffect(() => { setWikiLinkSelectedIndex(0); }, [wikiLinkState.query]);
 
   const syncMentionState = useCallback((ed: Editor) => {
     if (!editorMountedRef.current) return;
@@ -164,13 +195,24 @@ export default function RichTextEditor({
     setMentionState(ps);
   }, []);
 
+  const syncWikiLinkState = useCallback((ed: Editor) => {
+    if (!editorMountedRef.current) return;
+    const ws = wikiLinkPickerKey.getState(ed.state) ?? INACTIVE_WIKI_LINK;
+    // Clear suppression when the '[[' trigger moves to a new position
+    if (ws.active && ws.from !== wikiLinkSuppressedFromRef.current) {
+      setWikiLinkSuppressed(false);
+    }
+    setWikiLinkState(ws);
+  }, []);
+
   const editor = useRichEditor({
     content,
     editable,
     autofocus,
-    extraExtensions: [...(extraExtensions ?? []), EntityMention, EntityMentionPickerExtension],
+    extraExtensions: [...(extraExtensions ?? []), EntityMention, EntityMentionPickerExtension, WikiLinkPickerExtension],
     onUpdate({ editor: ed }) {
       syncMentionState(ed);
+      syncWikiLinkState(ed);
       onUpdateRef.current?.(ed);
       if (!initializedRef.current) return;
       if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
@@ -185,6 +227,7 @@ export default function RichTextEditor({
     },
     onSelectionUpdate({ editor: ed }) {
       syncMentionState(ed);
+      syncWikiLinkState(ed);
       onSelectionUpdateRef.current?.(ed);
     },
   });
@@ -208,6 +251,15 @@ export default function RichTextEditor({
     };
   }, [editor]);
 
+  // SKY-5702: push the resolved-title index into the WikiLinkResolution plugin
+  // whenever the vault state (or the editor instance) changes.
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(
+      editor.state.tr.setMeta(WIKI_LINK_RESOLUTION_META, resolvedWikiLinkTitles ?? new Set())
+    );
+  }, [editor, resolvedWikiLinkTitles]);
+
   // Flush a pending debounced change on unmount so surface switches never drop text.
   // flushPendingOnUnmount is config, read once by design.
   useEffect(() => {
@@ -230,8 +282,49 @@ export default function RichTextEditor({
     editor.view.focus();
   }, [editor, mentionState]);
 
+  // Insert a wikiLink node at the current '[[' trigger position (SKY-5702).
+  const insertWikiLinkItem = useCallback((item: WikiLinkPickerItem) => {
+    if (!editor || !wikiLinkState.active) return;
+    const { from, to } = wikiLinkState;
+    const nodeType = editor.schema.nodes.wikiLink;
+    if (!nodeType) return;
+    const target = item.type === 'candidate' ? item.candidate.title : item.title;
+    const node = nodeType.create({ target });
+    editor.view.dispatch(editor.state.tr.delete(from, to).insert(from, node));
+    editor.view.focus();
+  }, [editor, wikiLinkState]);
+
+  const wikiLinkItems = buildWikiLinkPickerItems(wikiLinkCandidates, wikiLinkState.query);
+
   // Keyboard handling for the mention picker in capture phase (runs before Tiptap).
   const handlePickerKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // The [[ picker takes priority when both triggers are somehow active at once.
+    if (wikiLinkState.active && !wikiLinkSuppressed) {
+      if (wikiLinkItems.length === 0) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWikiLinkSelectedIndex((i) => Math.min(i + 1, wikiLinkItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        e.stopPropagation();
+        setWikiLinkSelectedIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter') {
+        const target = wikiLinkItems[wikiLinkSelectedIndex];
+        if (target) {
+          e.preventDefault();
+          e.stopPropagation();
+          insertWikiLinkItem(target);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        wikiLinkSuppressedFromRef.current = wikiLinkState.from;
+        setWikiLinkSuppressed(true);
+      }
+      return;
+    }
+
     if (!mentionState.active || mentionSuppressed) return;
     const filtered = entities.filter((ent) => matchesEntityQuery(ent, mentionState.query)).slice(0, 10);
     if (filtered.length === 0) return;
@@ -257,7 +350,7 @@ export default function RichTextEditor({
       mentionSuppressedFromRef.current = mentionState.from;
       setMentionSuppressed(true);
     }
-  }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention]);
+  }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention, wikiLinkState, wikiLinkSuppressed, wikiLinkItems, wikiLinkSelectedIndex, insertWikiLinkItem]);
 
   // Event delegation for entity-chip and wiki-link clicks.
   const handleEditorClick = useCallback((e: React.MouseEvent) => {
@@ -296,13 +389,29 @@ export default function RichTextEditor({
   // Compute picker position from the @-trigger doc position.
   let pickerTop = 0;
   let pickerLeft = 0;
-  const showPicker = mentionState.active && !mentionSuppressed;
+  // The [[ picker takes priority when both triggers are somehow active at once
+  // (matches the keyboard-handling priority above).
+  const showWikiLinkPicker = wikiLinkState.active && !wikiLinkSuppressed;
+  const showPicker = !showWikiLinkPicker && mentionState.active && !mentionSuppressed;
   if (showPicker && editor && innerWrapRef.current) {
     try {
       const coords = editor.view.coordsAtPos(mentionState.from);
       const wrapRect = innerWrapRef.current.getBoundingClientRect();
       pickerTop = coords.bottom - wrapRect.top + 4;
       pickerLeft = coords.left - wrapRect.left;
+    } catch {
+      // coordsAtPos can throw if position is out of range; ignore
+    }
+  }
+
+  let wikiPickerTop = 0;
+  let wikiPickerLeft = 0;
+  if (showWikiLinkPicker && editor && innerWrapRef.current) {
+    try {
+      const coords = editor.view.coordsAtPos(wikiLinkState.from);
+      const wrapRect = innerWrapRef.current.getBoundingClientRect();
+      wikiPickerTop = coords.bottom - wrapRect.top + 4;
+      wikiPickerLeft = coords.left - wrapRect.left;
     } catch {
       // coordsAtPos can throw if position is out of range; ignore
     }
@@ -330,6 +439,16 @@ export default function RichTextEditor({
             left={pickerLeft}
             selectedIndex={mentionSelectedIndex}
             onSelect={insertEntityMention}
+          />
+        )}
+        {showWikiLinkPicker && (
+          <WikiLinkPicker
+            items={wikiLinkItems}
+            query={wikiLinkState.query}
+            top={wikiPickerTop}
+            left={wikiPickerLeft}
+            selectedIndex={wikiLinkSelectedIndex}
+            onSelect={insertWikiLinkItem}
           />
         )}
         <EditorContent editor={editor} className={contentClassName} />

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveCrossTabLink } from './crossTabLinkResolver';
+import { resolveCrossTabLink, buildWikiLinkTitleIndex, isWikiLinkTargetResolved } from './crossTabLinkResolver';
 import type { EntityEntry, Story } from './types';
 
 const now = '2026-06-17T00:00:00.000Z';
@@ -276,5 +276,53 @@ describe('resolveCrossTabLink', () => {
       expect(result.matches).toHaveLength(1);
       expect(result.matches[0]).toMatchObject({ kind: 'entity', entityId: 'entity-1' });
     });
+  });
+});
+
+describe('buildWikiLinkTitleIndex / isWikiLinkTargetResolved (SKY-5702)', () => {
+  it('resolves a scene title from the story vault', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [story()], entities: [] });
+    expect(isWikiLinkTargetResolved('Opening Scene', index)).toBe(true);
+  });
+
+  it('resolves an entity name and its aliases from the notes vault', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [entity()] });
+    expect(isWikiLinkTargetResolved('Elara Voss', index)).toBe(true);
+    expect(isWikiLinkTargetResolved('Elara', index)).toBe(true);
+  });
+
+  it('resolves a plain note path stem', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [], notePaths: ['Inbox/Research Notes.md'] });
+    expect(isWikiLinkTargetResolved('Research Notes', index)).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [entity()] });
+    expect(isWikiLinkTargetResolved('elara voss', index)).toBe(true);
+  });
+
+  it('strips a [[Target|Alias]] pipe before matching', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [entity()] });
+    expect(isWikiLinkTargetResolved('Elara Voss|Voss', index)).toBe(true);
+  });
+
+  it('strips a [[Target#heading]] anchor before matching', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [story()], entities: [] });
+    expect(isWikiLinkTargetResolved('Opening Scene#Notes', index)).toBe(true);
+  });
+
+  it('strips a typed [[character: Target]] prefix before matching', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [entity()] });
+    expect(isWikiLinkTargetResolved('character: Elara Voss', index)).toBe(true);
+  });
+
+  it('reports an unknown title as unresolved', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [story()], entities: [entity()] });
+    expect(isWikiLinkTargetResolved('Nobody Here', index)).toBe(false);
+  });
+
+  it('treats an empty target as resolved (nothing to flag as broken)', () => {
+    const index = buildWikiLinkTitleIndex({ stories: [], entities: [] });
+    expect(isWikiLinkTargetResolved('', index)).toBe(true);
   });
 });

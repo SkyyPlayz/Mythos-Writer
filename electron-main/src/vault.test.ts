@@ -491,6 +491,59 @@ describe('Obsidian-compatible scene files', () => {
     expect(after.customFields?.mood).toBe('tense');
     expect(after.customFields?.tension).toBe(5); // preserved
   });
+
+  // SKY-5705 (GH #642): the vault I/O layer must never mangle prose — it only
+  // ever splits/rejoins YAML frontmatter around an opaque prose string. These
+  // tests pin that a full Word-like-formatting document (headings, lists,
+  // bold/italic/underline/strike, blockquote, code block, wiki-links) written
+  // through the Story persistence path comes back out byte-identical.
+  const FULL_MARK_SET_PROSE =
+    '# Heading One\n\n' +
+    '## Heading Two\n\n' +
+    'Some **bold**, *italic*, <u>underlined</u>, ~~struck~~ and `code` text, ' +
+    'plus a [[Character: Elara]] link.\n\n' +
+    '- bullet one\n' +
+    '- bullet two\n\n' +
+    '1. ordered one\n' +
+    '2. ordered two\n\n' +
+    '> a quoted line\n\n' +
+    '```\nconst x = 1;\n```\n';
+
+  it('writeSceneFile / readSceneFile round-trip the full mark set byte-identically', () => {
+    writeSceneFile(tmpDir, 'full-marks.md', {
+      id: 'full-marks-1',
+      title: 'Full Mark Set',
+      prose: FULL_MARK_SET_PROSE,
+    });
+    const read = readSceneFile(tmpDir, 'full-marks.md');
+    expect(read.prose).toBe(FULL_MARK_SET_PROSE);
+  });
+
+  it('writeSceneFileAtomic / readSceneFile round-trip the full mark set byte-identically', () => {
+    writeSceneFileAtomic(tmpDir, 'full-marks-atomic.md', {
+      id: 'full-marks-2',
+      title: 'Full Mark Set Atomic',
+      prose: FULL_MARK_SET_PROSE,
+    });
+    const read = readSceneFile(tmpDir, 'full-marks-atomic.md');
+    expect(read.prose).toBe(FULL_MARK_SET_PROSE);
+  });
+
+  it('Notes vault I/O (readVaultFile/writeVaultFileAtomic) round-trips the full mark set byte-identically', () => {
+    // Notes rich mode has no frontmatter/prose split (SKY-3204) — the whole
+    // file is written and read back verbatim, so this pins the same
+    // full-mark-set body survives that separate, simpler path unchanged.
+    writeVaultFileAtomic(tmpDir, 'note-full-marks.md', FULL_MARK_SET_PROSE);
+    const { content } = readVaultFile(tmpDir, 'note-full-marks.md');
+    expect(content).toBe(FULL_MARK_SET_PROSE);
+  });
+
+  it('an old plain-prose scene file (no marks) still round-trips without loss (backward-compat)', () => {
+    const plain = 'Just plain prose with no formatting at all.\n';
+    writeSceneFile(tmpDir, 'plain-old-scene.md', { id: 'plain-1', title: 'Plain', prose: plain });
+    const read = readSceneFile(tmpDir, 'plain-old-scene.md');
+    expect(read.prose).toBe(plain);
+  });
 });
 
 describe('Entity files', () => {

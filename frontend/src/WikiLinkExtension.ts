@@ -1,11 +1,23 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
- * TipTap inline node for [[wiki-link]] tokens.
+ * TipTap inline node for [[wiki-link]] and [[wiki-link|Alias]] tokens.
  *
  * tiptap-markdown v0.9 escapes square brackets, so without this extension
  * [[Elara]] serialises as \[\[Elara\]\].  By storing wiki-links as an atom
  * node we bypass the text serialiser entirely and emit them verbatim.
+ *
+ * `target` is the resolution key (used for click navigation / backlinks);
+ * `alias`, when present, is the display text — mirrors the Obsidian
+ * `[[Target|Alias]]` convention (SKY-5702 / GH#650 WL-1).
  *
  * The `addStorage().markdown` shape is read by tiptap-markdown's
  * getMarkdownSpec() to wire up both the markdown-it inline parser rule and
@@ -23,6 +35,10 @@ export const WikiLink = Node.create({
         default: '',
         parseHTML: (el) => (el as HTMLElement).getAttribute('data-wiki-link') ?? '',
       },
+      alias: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-wiki-link-alias') || null,
+      },
     };
   },
 
@@ -31,10 +47,14 @@ export const WikiLink = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
+    const target = node.attrs.target as string;
+    const alias = node.attrs.alias as string | null;
+    const attrs: Record<string, string> = { 'data-wiki-link': target };
+    if (alias) attrs['data-wiki-link-alias'] = alias;
     return [
       'span',
-      mergeAttributes(HTMLAttributes, { 'data-wiki-link': node.attrs.target }),
-      `[[${node.attrs.target}]]`,
+      mergeAttributes(HTMLAttributes, attrs),
+      `[[${alias || target}]]`,
     ];
   },
 
@@ -44,13 +64,15 @@ export const WikiLink = Node.create({
         // Called by tiptap-markdown's MarkdownSerializer to emit the node.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         serialize(state: any, node: any) {
-          state.write(`[[${node.attrs.target}]]`);
+          const target = node.attrs.target as string;
+          const alias = node.attrs.alias as string | null;
+          state.write(alias ? `[[${target}|${alias}]]` : `[[${target}]]`);
         },
         parse: {
           // Called once by MarkdownParser with the markdown-it instance.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           setup(md: any) {
-            // Inline rule: match [[target]] and emit a custom token.
+            // Inline rule: match [[target]] or [[target|alias]] and emit a custom token.
             md.inline.ruler.before(
               'link',
               'wiki_link',
@@ -65,9 +87,13 @@ export const WikiLink = Node.create({
                 if (closeAt < 0) return false;
 
                 if (!silent) {
-                  const target = state.src.slice(pos + 2, closeAt);
+                  const inner = state.src.slice(pos + 2, closeAt);
+                  const pipeAt = inner.indexOf('|');
+                  const target = pipeAt < 0 ? inner : inner.slice(0, pipeAt);
+                  const alias = pipeAt < 0 ? '' : inner.slice(pipeAt + 1);
                   const token = state.push('wiki_link', '', 0);
                   token.attrSet('data-wiki-link', target);
+                  if (alias) token.attrSet('data-wiki-link-alias', alias);
                 }
 
                 state.pos = closeAt + 2;
@@ -83,12 +109,11 @@ export const WikiLink = Node.create({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             md.renderer.rules['wiki_link'] = (tokens: any[], idx: number) => {
               const target = tokens[idx].attrGet('data-wiki-link') ?? '';
-              const escaped = target
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-              return `<span data-wiki-link="${escaped}">[[${escaped}]]</span>`;
+              const alias = tokens[idx].attrGet('data-wiki-link-alias') ?? '';
+              const escapedTarget = escapeHtml(target);
+              const aliasAttr = alias ? ` data-wiki-link-alias="${escapeHtml(alias)}"` : '';
+              const display = escapeHtml(alias || target);
+              return `<span data-wiki-link="${escapedTarget}"${aliasAttr}>[[${display}]]</span>`;
             };
           },
         },

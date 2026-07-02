@@ -1,0 +1,100 @@
+/* ── Inline [[wiki link]] rendering (Rich editor) ────────────────────── */
+
+[data-wiki-link] {
+  display: inline;
+  border-radius: 4px;
+  padding: 0 2px;
+  color: var(--neon-cyan, #00e5ff);
+  background: rgba(0, 229, 255, 0.1);
+  cursor: pointer;
+  transition: background 0.15s ease, outline-color 0.15s ease;
+}
+
+[data-wiki-link]:hover {
+  background: rgba(0, 229, 255, 0.2);
+}
+
+/* SKY-5702: unresolved targets get a distinct, unmistakably "broken" look
+   before the reader ever clicks — dashed underline + muted amber tone. */
+.wiki-link-unresolved [data-wiki-link],
+[data-wiki-link].wiki-link-unresolved {
+  color: var(--color-warning-text, #fbbf24);
+  background: var(--color-warning-bg, rgba(251, 191, 36, 0.12));
+  border-bottom: 1px dashed var(--color-warning-border, rgba(251, 191, 36, 0.4));
+}
+
+.wiki-link-unresolved [data-wiki-link]:hover,
+[data-wiki-link].wiki-link-unresolved:hover {
+  background: var(--color-warning-bg, rgba(251, 191, 36, 0.22));
+}
+
+/* ── [[ ]] autocomplete picker dropdown ──────────────────────────────── */
+
+.wiki-link-picker {
+  position: absolute;
+  z-index: 200;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  min-width: 220px;
+  max-width: 360px;
+  background: var(--color-surface, #1a1f2e);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.wiki-link-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-text, #e0e6f0);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wiki-link-picker-item:hover,
+.wiki-link-picker-item.selected {
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.wiki-link-picker-item--create {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wiki-link-picker-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.wiki-link-picker-kind {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(0, 229, 255, 0.55);
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.wiki-link-picker-kind--create {
+  color: var(--color-warning-text, #fbbf24);
+  background: var(--color-warning-bg, rgba(251, 191, 36, 0.12));
+  border-color: var(--color-warning-border, rgba(251, 191, 36, 0.4));
+}
+
+.wiki-link-picker-empty {
+  padding: 8px 12px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #8590a6);
+  white-space: nowrap;
+}
