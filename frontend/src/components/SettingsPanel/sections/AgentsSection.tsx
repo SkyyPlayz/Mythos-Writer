@@ -92,7 +92,6 @@ interface AgentsSectionProps {
   setCategoryAutoApply: (agent: keyof AppSettings['agents'], category: SuggestionCategory, enabled: boolean) => void;
   setAgentOverride: <K extends keyof AgentOverrideState>(agentName: AgentName, field: K, value: AgentOverrideState[K]) => void;
   onAgentTest: (agentName: AgentName) => void;
-  setSavedOk: (ok: boolean) => void;
   micDevices: MicDevice[];
   refreshMicDevices: () => void;
 }

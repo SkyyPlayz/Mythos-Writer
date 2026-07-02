@@ -8,10 +8,8 @@ interface VaultPathsSectionProps {
   vaultsSavedOk: boolean;
   setVaultsSavedOk: React.Dispatch<React.SetStateAction<boolean>>;
   vaultsError: string | null;
-  setVaultsError: React.Dispatch<React.SetStateAction<string | null>>;
   onPickVaultFolder: (which: 'storyVaultPath' | 'notesVaultPath') => void;
   onSaveVaults: () => void;
-  onOpenMoveWizard: () => void;
 }
 
 export default function VaultPathsSection({
