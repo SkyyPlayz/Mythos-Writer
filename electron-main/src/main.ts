@@ -202,6 +202,7 @@ import {
   acceptSceneCrafterCardSuggestion,
   rejectSceneCrafterCardSuggestion,
 } from './sceneCrafterSuggestions.js';
+import { generateSceneCrafterSuggestions } from './archiveSceneCrafterGenerator.js';
 import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
@@ -3334,6 +3335,8 @@ const handlers: IpcHandlers = {
       const manifest = readManifest(getManifestPath());
       reindexEntities(getVaultRoot(), manifest);
       index = buildArchiveIndex(getVaultRoot(), manifest);
+      // SKY-3200 §4a: post-index trigger.
+      maybeGenerateSceneCrafterSuggestions(deriveStorySlugFromScenePath(manifest, payload.scenePath));
     }
     const ignores = listArchiveIgnores().map<ArchiveIgnoreKey>((ig) => ({
       entity_id: ig.entity_id,
@@ -6331,7 +6334,13 @@ const SETTINGS_DEFAULTS: AppSettings = {
   agents: {
     writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...AGENT_BUDGET_DEFAULTS },
+    archive: {
+      enabled: true,
+      model: 'claude-sonnet-4-6',
+      continuityCheckIntervalSeconds: 60,
+      sceneCrafterSuggestions: { enabled: false, cadence: 1800 },
+      ...AGENT_BUDGET_DEFAULTS,
+    },
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
@@ -7482,6 +7491,59 @@ Output ONLY these JSON objects, one per line. Identify 2–5 issues. No other te
   }));
 }
 
+// ─── Archive → Scene Crafter suggestion generator (SKY-3200 / SKY-3199 §4) ──
+// Gap detection only — Archive proposes scene_crafter_card suggestions via DB
+// insert; it never reads or writes the board file. Gated on
+// settings.agents.archive.sceneCrafterSuggestions.{enabled,cadence}. Fires from
+// three trigger sites: post-index (ARCHIVE_SCAN), post-continuity-scan (when
+// findings > 0), and the existing archive cadence heartbeat.
+
+/** Resolve the storySlug (= last segment of the story's manuscript path) that owns a scene path. */
+function deriveStorySlugFromScenePath(manifest: Manifest, scenePath: string): string | null {
+  for (const story of manifest.stories) {
+    if (scenePath === story.path || scenePath.startsWith(`${story.path}/`)) {
+      return story.path.split('/').filter(Boolean).pop() ?? null;
+    }
+  }
+  return null;
+}
+
+/** Resolve the storySlug that owns a scene id. */
+function deriveStorySlugFromSceneId(manifest: Manifest, sceneId: string): string | null {
+  for (const story of manifest.stories) {
+    for (const chapter of story.chapters) {
+      if (chapter.scenes.some((s) => s.id === sceneId)) {
+        return story.path.split('/').filter(Boolean).pop() ?? null;
+      }
+    }
+  }
+  return null;
+}
+
+let _lastSceneCrafterGenAt = 0;
+
+/** Fire the Archive → Scene Crafter gap-detection generator, throttled by the configured cadence. */
+function maybeGenerateSceneCrafterSuggestions(storySlug: string | null): void {
+  try {
+    if (!storySlug) return;
+    const settings = loadAppSettings();
+    if (!settings.agents.archive.enabled) return;
+    const sc = settings.agents.archive.sceneCrafterSuggestions;
+    if (!sc?.enabled) return;
+
+    const cadenceMs = Math.max(0, sc.cadence) * 1000;
+    const now = Date.now();
+    if (_lastSceneCrafterGenAt !== 0 && now - _lastSceneCrafterGenAt < cadenceMs) return;
+
+    const index = getArchiveIndex();
+    if (!index) return;
+
+    const board = handleGetBoard(getNotesVaultRoot(), { storyId: '', storySlug });
+    generateSceneCrafterSuggestions(index, board, storySlug, new Date().toISOString());
+    _lastSceneCrafterGenAt = now;
+  } catch { /* non-fatal — generator must never crash main process */ }
+}
+
 // ─── Continuity drift check IPC handler (SKY-445/SKY-458) ────────────────────
 // Pure text analysis — no LLM. Builds the lore fixture from the current archive
 // index, runs cross-chapter contradiction detection, logs results per chapter,
@@ -7577,6 +7639,15 @@ async function runArchiveContScan(
     try {
       insertContinuityIssue(itemToDbRow(item));
     } catch { /* non-fatal — duplicate ids or db closed */ }
+  }
+
+  // SKY-3200 §4b: post-continuity-scan trigger — only when the scan found something
+  // (zero findings = no narrative signal for gap detection either).
+  if (items.length > 0) {
+    try {
+      const manifest = readManifest(getManifestPath());
+      maybeGenerateSceneCrafterSuggestions(deriveStorySlugFromSceneId(manifest, sceneId));
+    } catch { /* non-fatal */ }
   }
 
   const tokenUsed = Math.ceil((systemPrompt.length + userContent.length + text.length) / 4);
@@ -7685,6 +7756,13 @@ function startArchiveContScheduler(): void {
 
       const scope = currentSettings.archiveScanScope ?? 'active_scene';
       const items = await runArchiveContScan(latestSceneId, latestProse, scope);
+
+      // SKY-3200 §4c: cadence trigger — inherits this heartbeat's own zero-issue
+      // back-off, so no additional throttle condition beyond the shared cadence gate.
+      try {
+        const manifest = readManifest(getManifestPath());
+        maybeGenerateSceneCrafterSuggestions(deriveStorySlugFromSceneId(manifest, latestSceneId));
+      } catch { /* non-fatal */ }
 
       // Back-off: after 3 consecutive zero-issue scans, double interval (max 7200 s).
       if (items.length === 0) {
