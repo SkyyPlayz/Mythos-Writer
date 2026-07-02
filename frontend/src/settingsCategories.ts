@@ -2,10 +2,15 @@
  * Settings category registry — maps each section-* DOM id to exactly one
  * display category.  The coverage test (settingsCategories.test.ts) verifies
  * no orphan or duplicate mappings exist relative to the sections actually
- * rendered in SettingsPanel.tsx.
+ * rendered in SettingsPanel.tsx / components/SettingsPanel/sections/*.
+ *
+ * This is the single source of truth for the 3-tab structure (Vaults /
+ * Agents / Appearance) — SettingsPanel.tsx imports SETTINGS_CATEGORIES to
+ * drive its category nav instead of maintaining a second, hand-written list
+ * (SKY-5694).
  */
 
-export type SettingsCategoryId = 'general' | 'vaults' | 'agents' | 'appearance';
+export type SettingsCategoryId = 'vaults' | 'agents' | 'appearance';
 
 export interface SettingsCategory {
   id: SettingsCategoryId;
@@ -16,27 +21,16 @@ export interface SettingsCategory {
 
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
-    id: 'general',
-    label: 'General',
-    sectionIds: [
-      'section-api-key',
-      'section-autolinker',
-      'section-journal',
-      'section-scene-fields',
-      'section-updates',
-      'section-telemetry',
-    ],
-  },
-  {
     id: 'vaults',
     label: 'Vaults',
     sectionIds: [
       'section-account',
       'section-vault-paths',
       'section-vault-health',
+      'section-vault-danger-zone',
+      'section-scene-fields',
       'section-snapshots',
       'section-versions',
-      'section-vault-danger-zone',
     ],
   },
   {
@@ -44,7 +38,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     label: 'Agents',
     sectionIds: [
       'section-providers',
+      'section-api-key',
       'section-agents',
+      'section-autolinker',
+      'section-journal',
       'section-archive-agent',
       'section-voice',
     ],
@@ -53,10 +50,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'appearance',
     label: 'Appearance',
     sectionIds: [
+      'section-updates',
       'section-theme',
       'section-page-appearance',
       'section-nav-config',
       'section-focus-mode',
+      'section-telemetry',
     ],
   },
 ] as const;
