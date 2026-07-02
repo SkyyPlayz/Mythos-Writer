@@ -298,3 +298,200 @@
     border-top-color: var(--text-muted);
   }
 }
+
+
+/* ─── F4: Hover tooltip ─────────────────────────────────────────── */
+
+.aeon-tooltip {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  background: var(--glass-fill-fallback);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  max-width: 240px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-body);
+}
+
+.aeon-tooltip__title {
+  font-weight: 600;
+  color: var(--text-heading, var(--text-body));
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aeon-tooltip__meta {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ─── F4: Detail popover ────────────────────────────────────────── */
+
+.aeon-popover {
+  position: fixed;
+  z-index: 50;
+  background: var(--glass-fill-fallback);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  max-width: 320px;
+  color: var(--text-body);
+  animation: aeon-popover-in 140ms var(--ease-out, ease-out) both;
+}
+
+@keyframes aeon-popover-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.aeon-popover__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.aeon-popover__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading, var(--text-body));
+  line-height: 1.3;
+  flex: 1 1 0;
+}
+
+.aeon-popover__close {
+  flex-shrink: 0;
+  appearance: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 4px;
+  transition: color 100ms;
+}
+
+.aeon-popover__close:hover,
+.aeon-popover__close:focus-visible {
+  color: var(--text-body);
+  outline: 2px solid var(--focus-ring, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+.aeon-popover__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.aeon-popover__arcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.aeon-popover__arc-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-subtle, rgba(255,255,255,0.06));
+  border: 1px solid var(--border-subtle);
+  border-radius: 100px;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--text-body);
+}
+
+.aeon-popover__arc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--neon-cyan);
+  flex-shrink: 0;
+}
+
+.aeon-popover__open-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 5px 12px;
+  width: 100%;
+  text-align: center;
+  transition: background 100ms, color 100ms;
+}
+
+.aeon-popover__open-btn:hover,
+.aeon-popover__open-btn:focus-visible {
+  background: color-mix(in srgb, var(--neon-cyan) 14%, transparent);
+  outline: 2px solid var(--focus-ring, var(--neon-cyan));
+  outline-offset: 2px;
+}
+
+/* ─── F4: Context menu ──────────────────────────────────────────── */
+
+.aeon-context-menu {
+  position: fixed;
+  z-index: 200;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--glass-fill-fallback);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 160px;
+  animation: aeon-popover-in 120ms var(--ease-out, ease-out) both;
+}
+
+.aeon-context-item {
+  appearance: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-body);
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 5px;
+  width: 100%;
+  text-align: left;
+  transition: background 80ms, color 80ms;
+}
+
+.aeon-context-item:hover,
+.aeon-context-item:focus-visible {
+  background: color-mix(in srgb, var(--neon-cyan) 10%, transparent);
+  color: var(--neon-cyan);
+  outline: none;
+}
+
+/* ─── F4: Reduced motion ────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .aeon-popover,
+  .aeon-context-menu {
+    animation: none;
+  }
+}
