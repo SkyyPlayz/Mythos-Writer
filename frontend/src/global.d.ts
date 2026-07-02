@@ -603,7 +603,7 @@ interface DockedTab {
 }
 
 /** SKY-3097 (v0.3): Content kind for a workspace tab. */
-type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph';
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm';
 
 /** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
 interface WorkspaceTab {

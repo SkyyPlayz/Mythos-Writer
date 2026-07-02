@@ -105,6 +105,34 @@ describe('AppNavRail', () => {
     expect(screen.getByText('Settings')).toBeInTheDocument();
   });
 
+  // ─── SKY-3218: navConfig showLabels / showIcons ──────────────────────────────
+
+  it('hides item labels when showLabels=false (icons remain)', () => {
+    render(<AppNavRail {...makeProps({ showLabels: false })} />);
+    expect(screen.queryByText('Story')).not.toBeInTheDocument();
+    expect(screen.getByText('📖')).toBeInTheDocument();
+    // Buttons stay accessible via aria-label.
+    expect(screen.getByRole('button', { name: 'Story' })).toBeInTheDocument();
+  });
+
+  it('hides item icons when showIcons=false (labels remain)', () => {
+    render(<AppNavRail {...makeProps({ showIcons: false })} />);
+    expect(screen.queryByText('📖')).not.toBeInTheDocument();
+    expect(screen.getByText('Story')).toBeInTheDocument();
+  });
+
+  it('still renders icons when collapsed even if showIcons=false', () => {
+    render(<AppNavRail {...makeProps({ showIcons: false, collapsed: true })} />);
+    expect(screen.getByText('📖')).toBeInTheDocument();
+    expect(screen.queryByText('Story')).not.toBeInTheDocument();
+  });
+
+  it('falls back to icons when both labels and icons are hidden', () => {
+    render(<AppNavRail {...makeProps({ showLabels: false, showIcons: false })} />);
+    expect(screen.getByText('📖')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Story' })).toBeInTheDocument();
+  });
+
   // ─── Account modal trigger ───────────────────────────────────────────────────
 
   it('calls onOpenAccount when the brand glyph button is clicked', () => {

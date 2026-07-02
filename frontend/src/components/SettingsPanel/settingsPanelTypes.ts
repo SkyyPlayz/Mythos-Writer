@@ -195,6 +195,7 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
   items: [
     { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 0 },
     { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 1 },
+    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 2 },
   ],
   collapsedDefault: false,
   showLabels: true,
