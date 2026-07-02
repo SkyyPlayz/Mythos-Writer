@@ -50,6 +50,24 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock, writabl
 // jsdom does not implement scrollIntoView; stub it so components that call it don't throw.
 Element.prototype.scrollIntoView = () => {};
 
+// jsdom does not implement layout, so getClientRects is missing on Element/Range.
+// ProseMirror's scrollToSelection path calls it asynchronously after transactions
+// (surfaces as an unhandled TypeError in editor tests, SKY-5423/SKY-3209). Stub it
+// to return a single zero rect — an empty list would push ProseMirror onto a
+// getBoundingClientRect fallback that jsdom also lacks on Range/Text targets.
+const zeroRect = () => ({
+  x: 0, y: 0, top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0,
+  toJSON: () => ({}),
+}) as DOMRect;
+const zeroRectList = () => [zeroRect()] as unknown as DOMRectList;
+if (!Element.prototype.getClientRects) {
+  Element.prototype.getClientRects = zeroRectList;
+}
+if (typeof Range !== 'undefined') {
+  if (!Range.prototype.getClientRects) Range.prototype.getClientRects = zeroRectList;
+  if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = zeroRect;
+}
+
 // jsdom does not implement ResizeObserver; stub it so components that use it don't throw.
 // Tests that need to exercise resize callbacks should override this with vi.stubGlobal.
 class ResizeObserverStub {

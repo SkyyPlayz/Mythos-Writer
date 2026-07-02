@@ -1,16 +1,16 @@
 import { useEditor } from '@tiptap/react';
 import type { AnyExtension, Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from '../WikiLinkExtension';
 
 /**
  * Shared Tiptap editor hook for all rich-text surfaces (Story/Notes).
  *
- * Base extensions always included: StarterKit · Underline · WikiLink · Markdown.
- * Story-specific extensions (WikiLinkHint, AutoLinker, EntityMention, etc.)
- * are passed via `extraExtensions`.
+ * Base extensions always included: StarterKit (which bundles Underline in
+ * Tiptap v3) · WikiLink · Markdown.
+ * Surface-specific extensions (and the shared mention stack, appended by
+ * `<RichTextEditor>`) are passed via `extraExtensions`.
  *
  * All other `useEditor` options are forwarded unchanged so callers retain
  * full control over autofocus, content, callbacks, etc.
@@ -51,7 +51,7 @@ export function useRichEditor({
   onSelectionUpdate,
 }: UseRichEditorOptions): Editor | null {
   return useEditor({
-    extensions: [StarterKit, Underline, WikiLink, Markdown, ...extraExtensions],
+    extensions: [StarterKit, WikiLink, Markdown, ...extraExtensions],
     content,
     editable,
     autofocus,
