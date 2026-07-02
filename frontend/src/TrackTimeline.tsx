@@ -15,6 +15,7 @@ const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 4.0;
 const VIEWPORT_STORAGE_KEY = 'tt-viewport-v1';
 const SAVE_DEBOUNCE_MS = 600;
+const VIEWPORT_BUFFER_PX = 400; // render markers within this screen-space buffer beyond the visible viewport
 
 const MS_DAY = 86_400_000;
 const MS_WEEK = 7 * MS_DAY;
@@ -275,6 +276,7 @@ export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackT
   const [offsetY, setOffsetY] = useState(stored?.offsetY ?? 0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(1024);
   const dragRef = useRef<{
     startX: number;
     startY: number;
@@ -314,6 +316,20 @@ export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackT
       .catch((err: unknown) => setError(String(err)))
       .finally(() => setLoading(false));
   }, [story, api]);
+
+  // Track container width so marker windowing (below) knows the visible screen-space range.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth || 1024);
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width || 1024);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const persistViewport = useCallback((vp: ViewportState) => {
     if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
@@ -406,6 +422,16 @@ export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackT
     () => (spacingMode === 'proportional' ? computeGaps(placed, minTs, maxTs) : []),
     [placed, minTs, maxTs, spacingMode],
   );
+
+  // SKY-5738 — window scene markers to the visible viewport + buffer so pan/zoom stays
+  // interactive at large scene counts (mirrors AeonLaneView's visibleCards windowing).
+  // screen_x = offsetX + content_x * zoom, so solve for the content-space range whose
+  // screen_x falls within [0 - buffer, containerWidth + buffer].
+  const visiblePlaced = useMemo(() => {
+    const visStart = (-offsetX - VIEWPORT_BUFFER_PX) / zoom;
+    const visEnd = (containerWidth - offsetX + VIEWPORT_BUFFER_PX) / zoom;
+    return placed.filter(p => p.x >= visStart && p.x <= visEnd);
+  }, [placed, offsetX, zoom, containerWidth]);
 
   const svgHeight = AXIS_HEIGHT + TRACK_HEIGHT + 16;
   const svgWidth = Math.max(totalWidth + AXIS_LEFT, 600);
@@ -535,8 +561,8 @@ export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackT
                   </text>
                 </g>
               ))}
-              {/* Scene markers */}
-              {placed.map(p => (
+              {/* Scene markers — windowed to the visible viewport + buffer (SKY-5738) */}
+              {visiblePlaced.map(p => (
                 <g
                   key={p.raw.id}
                   aria-label={`Scene: ${p.raw.title}${p.raw.date ? `, ${formatDisplayDate(p.raw.date)}` : ''}`}

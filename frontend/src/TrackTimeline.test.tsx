@@ -143,6 +143,28 @@ describe('TrackTimeline', () => {
     expect(screen.getByText('Scene 2')).toBeInTheDocument();
   });
 
+  it('SKY-5738: windows scene markers to the visible viewport, omitting far off-screen scenes', async () => {
+    // 20 uniformly-spaced dated scenes (SLOT_WIDTH=140px apart) — scene 20 sits
+    // ~2668px into content space, well past the default ~1424px visible+buffer
+    // range at containerWidth fallback (1024) / offsetX=0 / zoom=1.
+    const manyScenes = Array.from({ length: 20 }, (_, i) => ({
+      id: `scene-${i}`,
+      title: `Scene ${i + 1}`,
+      chronologicalTime: {
+        date: `2024-01-${String(i + 1).padStart(2, '0')}`,
+        confidence: 0.8,
+        isEstimated: false,
+        source: 'manual',
+      },
+    }));
+    stubApi(manyScenes);
+    const story = makeStory();
+    render(<TrackTimeline story={story} />);
+    await screen.findByTestId('tt-svg');
+    expect(screen.getByText('Scene 1')).toBeInTheDocument();
+    expect(screen.queryByText('Scene 20')).not.toBeInTheDocument();
+  });
+
   it('SVG has accessible aria-label mentioning story title', async () => {
     stubApi(makeScenes(2));
     const story = makeStory({ title: 'My Story' });
