@@ -3632,6 +3632,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onClose={() => setTemplatePickerOpen(false)}
         />
       )}
+      {/* SKY-5592: outer flex row — GlobalRightSidebar persists across all top-level tabs (Story/Notes/Brainstorm) */}
+      <div className="shell-main-row">
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
@@ -3663,8 +3665,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           </button>
         </div>
       )}
-      {/* SKY-1686: shell-main-row wraps all view-specific content + global right sidebar */}
-      <div className="shell-main-row">
       {/* SKY-1698: active docked tab shows its panels in the main area */}
       {activeDockedTabId !== null && (() => {
         const activeTab = dockedTabs.find((t) => t.id === activeDockedTabId);
@@ -4139,82 +4139,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       </div>
 
       </div>}{/* end shell-panels */}
-
-      {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
-           undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
-           This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
-           settings arrive, which caused TC-TL-06 detail-card pointer-event regression. */}
-      {grsVisible !== undefined && <GlobalRightSidebar
-        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar)}
-        width={grsWidth}
-        panels={grsPanels}
-        onVisibilityChange={handleGrsVisibilityChange}
-        onWidthChange={handleGrsWidthChange}
-        onPanelsChange={handleGrsPanelsChange}
-        renderPanelContent={renderSidebarPanel}
-        continuityIssueCount={continuityCount}
-        reviewBadgeCount={proposedCount}
-        leftPanelCount={leftSidebarLayout.panels.length}
-        onFloatPanel={(id) => handleFloatPanel(id, 'right')}
-        onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
-        headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
-          <GettingStartedPanel
-            progress={gettingStartedProgress!}
-            onAction={handleGettingStartedAction}
-            onDismiss={handleDismissGettingStarted}
-            onToggleCollapse={handleToggleGsCollapsed}
-          />
-        ) : undefined}
-      />}
-
-      {continuityPeekOverlayOpen && (
-        <div
-          className="continuity-focus-overlay-backdrop"
-          onMouseDown={() => setContinuityPeekOverlayOpen(false)}
-        >
-          <div
-            className="continuity-focus-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Continuity Peek"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="continuity-focus-overlay-header">
-              <h2 className="continuity-focus-overlay-title">Continuity Peek</h2>
-              <button
-                type="button"
-                className="continuity-focus-overlay-close"
-                aria-label="Close Continuity Peek"
-                onClick={() => setContinuityPeekOverlayOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            <ContinuityPeekPanel
-              selectionText={editorSelectionText}
-              autoFocusSearch
-              onOpenEntityNote={handleOpenContinuityEntityNote}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
-           migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
-           without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
-           Condition: show whenever GRS is not open (grsVisible !== true). */}
-      {grsVisible !== true && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
-        <aside className="gs-aside">
-          <GettingStartedPanel
-            progress={gettingStartedProgress}
-            onAction={handleGettingStartedAction}
-            onDismiss={handleDismissGettingStarted}
-            onToggleCollapse={handleToggleGsCollapsed}
-          />
-        </aside>
-      )}
-
-      </div>{/* end shell-main-row */}
       </div>)}{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
       {tabShell.activeTab === 'notes' && !vaultBinding.notesValid && (
@@ -4358,6 +4282,81 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
+      {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
+           undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
+           This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
+           settings arrive, which caused TC-TL-06 detail-card pointer-event regression.
+           SKY-5592: moved out of story-only conditional so it persists in Notes and Brainstorm modes. */}
+      {grsVisible !== undefined && <GlobalRightSidebar
+        visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar)}
+        width={grsWidth}
+        panels={grsPanels}
+        onVisibilityChange={handleGrsVisibilityChange}
+        onWidthChange={handleGrsWidthChange}
+        onPanelsChange={handleGrsPanelsChange}
+        renderPanelContent={renderSidebarPanel}
+        continuityIssueCount={continuityCount}
+        reviewBadgeCount={proposedCount}
+        leftPanelCount={leftSidebarLayout.panels.length}
+        onFloatPanel={(id) => handleFloatPanel(id, 'right')}
+        onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
+        headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
+          <GettingStartedPanel
+            progress={gettingStartedProgress!}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        ) : undefined}
+      />}
+
+      {continuityPeekOverlayOpen && (
+        <div
+          className="continuity-focus-overlay-backdrop"
+          onMouseDown={() => setContinuityPeekOverlayOpen(false)}
+        >
+          <div
+            className="continuity-focus-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Continuity Peek"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="continuity-focus-overlay-header">
+              <h2 className="continuity-focus-overlay-title">Continuity Peek</h2>
+              <button
+                type="button"
+                className="continuity-focus-overlay-close"
+                aria-label="Close Continuity Peek"
+                onClick={() => setContinuityPeekOverlayOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <ContinuityPeekPanel
+              selectionText={editorSelectionText}
+              autoFocusSearch
+              onOpenEntityNote={handleOpenContinuityEntityNote}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
+           migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
+           without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
+           Condition: show whenever GRS is not open (grsVisible !== true). */}
+      {grsVisible !== true && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
+        <aside className="gs-aside">
+          <GettingStartedPanel
+            progress={gettingStartedProgress}
+            onAction={handleGettingStartedAction}
+            onDismiss={handleDismissGettingStarted}
+            onToggleCollapse={handleToggleGsCollapsed}
+          />
+        </aside>
+      )}
+      </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
           <div className="cross-tab-link-modal__card">

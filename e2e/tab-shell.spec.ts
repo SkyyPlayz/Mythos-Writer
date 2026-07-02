@@ -284,3 +284,53 @@ test.describe('TabBar — tab switching and persistence', () => {
     }
   });
 });
+
+// SKY-5592: GlobalRightSidebar must remain mounted in Notes and Brainstorm modes (Part A · A5 AC).
+test.describe('GlobalRightSidebar — persists across all top-level tabs (SKY-5592)', () => {
+  let tempRoot: string;
+  let userData: string;
+  let vaultDir: string;
+
+  test.beforeEach(() => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-grs-persist-'));
+    userData = path.join(tempRoot, 'userData');
+    vaultDir = path.join(tempRoot, 'vault');
+    seedUserData(userData, vaultDir);
+  });
+
+  test.afterEach(() => {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test('exactly one right sidebar element renders in Notes mode', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
+
+      await mainNav.getByRole('button', { name: 'Notes' }).click();
+
+      const grs = page.locator('[data-testid="global-right-sidebar"], .grs-collapsed-edge');
+      await expect(grs).toHaveCount(1, { timeout: 4_000 });
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  test('exactly one right sidebar element renders in Brainstorm mode', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+      await expect(mainNav).toBeVisible({ timeout: 12_000 });
+
+      await mainNav.getByRole('button', { name: 'Brainstorm' }).click();
+
+      const grs = page.locator('[data-testid="global-right-sidebar"], .grs-collapsed-edge');
+      await expect(grs).toHaveCount(1, { timeout: 4_000 });
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+});
