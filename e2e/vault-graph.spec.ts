@@ -137,12 +137,16 @@ test.afterAll(async () => {
 });
 
 async function openGraphView(): Promise<void> {
-  const mainNav = page.locator('nav[aria-label="Main navigation"]');
-  await expect(mainNav).toBeVisible({ timeout: 12_000 });
-  const notesTab = mainNav.getByRole('button', { name: 'Notes' });
-  await expect(notesTab).toBeVisible({ timeout: 5_000 });
-  await notesTab.click();
-  await page.locator('[data-testid="notes-subview-graph"]').click();
+  const notesTab = page.locator('[data-testid="app-tab-notes"]');
+  await expect(notesTab).toBeVisible({ timeout: 12_000 });
+  if ((await notesTab.getAttribute('aria-selected')) !== 'true') {
+    await notesTab.click();
+  }
+  await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
+
+  const notesGraph = page.locator('[data-testid="notes-subview-graph"]');
+  await expect(notesGraph).toBeVisible({ timeout: 6_000 });
+  await notesGraph.click();
 }
 
 // ─── TC-G-01: Graph view mounts ───────────────────────────────────────────────
@@ -209,13 +213,13 @@ test('TC-G-03: ThemeContrastSlider sets --lg-neon; soft=0.60, sharp=0.35', async
   await expect(settingsBtn).toBeVisible({ timeout: 6_000 });
   await settingsBtn.click();
 
-  // Navigate to Appearance category — settings panel now has category nav
-  // (added in SKY-3216); the theme slider lives under Appearance, which is
-  // hidden when the panel opens on the default General tab.
-  const appearanceNavBtn = page.getByRole('tab', { name: /appearance/i });
+  // Navigate to Appearance category in settings. Older builds expose this as
+  // plain buttons under `.settings-cat-nav` (no tab role), so locate by text.
+  const settingsCatNav = page.locator('.settings-cat-nav');
+  await expect(settingsCatNav).toBeVisible({ timeout: 6_000 });
+  const appearanceNavBtn = settingsCatNav.locator('button', { hasText: /^appearance$/i });
   await expect(appearanceNavBtn).toBeVisible({ timeout: 6_000 });
   await appearanceNavBtn.click();
-  await expect(appearanceNavBtn).toHaveAttribute('aria-selected', 'true');
 
   // Wait for settings panel slider (now visible under Appearance tab)
   const slider = page.locator('[data-testid="theme-contrast-slider"]');
