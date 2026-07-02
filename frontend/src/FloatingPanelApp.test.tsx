@@ -4,9 +4,24 @@
  * before the manifest is updated; if the file write fails the manifest must
  * not be touched.
  */
+// SKY-5133 — verify FloatingPanelApp subscribes to pin-changed via the
+// contextBridge-exposed helper (window.api.onPanelFloatPinChanged) rather than
+// the raw, unexposed window.ipcRenderer channel.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, act, screen, fireEvent, waitFor } from '@testing-library/react';
 import FloatingPanelApp from './FloatingPanelApp';
+
+vi.mock('./WritingAssistantPanel', () => ({ default: () => <div data-testid="wa-panel" /> }));
+vi.mock('./ContinuityPanel', () => ({ default: () => <div data-testid="cont-panel" /> }));
+vi.mock('./ScenePreviewPanel', () => ({ default: () => <div data-testid="sp-panel" /> }));
+// StoryNavigator intentionally not mocked — SKY-5154 tests need the real component
+// to trigger handleNavCreateScene and verify write-order behaviour.
+vi.mock('./EntityBrowser', () => ({ default: () => <div data-testid="eb-panel" /> }));
+vi.mock('./components/VaultBrowser', () => ({ default: () => <div data-testid="vb-panel" /> }));
+vi.mock('./SuggestionReview', () => ({ default: () => <div data-testid="sr-panel" /> }));
+vi.mock('./ProgressDashboard', () => ({ default: () => <div data-testid="pd-panel" /> }));
+vi.mock('./VaultGraphView', () => ({ default: () => <div data-testid="vg-panel" /> }));
+vi.mock('./StoryTimeline', () => ({ default: () => <div data-testid="st-panel" /> }));
 
 const STORY_ID = 'story-abc';
 const CHAPTER_ID = 'chapter-xyz';
@@ -50,6 +65,7 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     onNavigatorSceneSynced: vi.fn().mockReturnValue(() => {}),
     navigatorSelectScene: vi.fn().mockResolvedValue(undefined),
     navigatorReportManifest: vi.fn().mockResolvedValue(undefined),
+    onPanelFloatPinChanged: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
 }
@@ -60,6 +76,7 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
     readManifest: vi.fn().mockResolvedValue({ stories: [], entities: [], suggestions: [], scenes: [], chapters: [] }),
     onNavigatorManifestChanged: undefined,
     onNavigatorSceneSynced: undefined,
+    onPanelFloatPinChanged: vi.fn().mockReturnValue(() => {}),
     ...overrides,
   };
 }
@@ -167,5 +184,55 @@ describe('FloatingPanelApp — handleNavCreateScene write order (GH #731 / SKY-5
     await new Promise((r) => setTimeout(r, 20));
     expect(writeVault).not.toHaveBeenCalled();
     expect(writeManifest).not.toHaveBeenCalled();
+  });
+});
+
+describe('FloatingPanelApp — onPanelFloatPinChanged wiring (SKY-5133)', () => {
+  it('subscribes via window.api.onPanelFloatPinChanged on mount', async () => {
+    const unsub = vi.fn();
+    const onPin = vi.fn().mockReturnValue(unsub);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = { ...(window as any).api, onPanelFloatPinChanged: onPin };
+
+    const { unmount } = render(<FloatingPanelApp panelId="writing-assistant" />);
+    await act(async () => {});
+
+    expect(onPin).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(unsub).toHaveBeenCalledTimes(1);
+  });
+
+  it('sets alwaysOnTop when callback fires with matching panelId', async () => {
+    let cb: ((data: { panelId: string; alwaysOnTop: boolean }) => void) | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = {
+      ...(window as any).api,
+      onPanelFloatPinChanged: vi.fn().mockImplementation((fn) => { cb = fn; return () => {}; }),
+    };
+
+    render(<FloatingPanelApp panelId="writing-assistant" />);
+    await act(async () => {});
+
+    expect(screen.getByRole('button', { name: 'Pin on top' })).toHaveAttribute('aria-pressed', 'false');
+
+    await act(async () => { cb?.({ panelId: 'writing-assistant', alwaysOnTop: true }); });
+
+    expect(screen.getByRole('button', { name: 'Unpin — disable always on top' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('ignores payloads for a different panelId', async () => {
+    let cb: ((data: { panelId: string; alwaysOnTop: boolean }) => void) | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = {
+      ...(window as any).api,
+      onPanelFloatPinChanged: vi.fn().mockImplementation((fn) => { cb = fn; return () => {}; }),
+    };
+
+    render(<FloatingPanelApp panelId="writing-assistant" />);
+    await act(async () => {});
+
+    await act(async () => { cb?.({ panelId: 'other-panel', alwaysOnTop: true }); });
+
+    expect(screen.getByRole('button', { name: 'Pin on top' })).toHaveAttribute('aria-pressed', 'false');
   });
 });

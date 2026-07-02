@@ -809,6 +809,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('panel:float-bounds', handler);
   },
 
+  onPanelFloatPinChanged: (cb: (data: { panelId: string; alwaysOnTop: boolean }) => void) => {
+    const handler = (_: unknown, data: { panelId: string; alwaysOnTop: boolean }) => cb(data);
+    ipcRenderer.on('panel:float-pin-changed', handler);
+    return () => ipcRenderer.removeListener('panel:float-pin-changed', handler);
+  },
+
   // SKY-2966: story navigator popout cross-window sync
   navigatorSelectScene: (sceneId: string) =>
     ipcRenderer.invoke('navigator:select-scene', { sceneId }),
