@@ -1,18 +1,9 @@
 // SKY-204 / SKY-3208 / SKY-3624: Notes tri-mode editor — Source (textarea) / Rich (TipTap) / Preview.
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
-import { WikiLink } from './WikiLinkExtension';
-import { EntityMention } from './EntityMentionExtension';
-import { EntityMentionPickerExtension, mentionPickerKey, type MentionPickerState } from './EntityMentionPickerExtension';
-import EntityMentionPicker, { matchesEntityQuery } from './EntityMentionPicker';
-import type { EntityEntry } from './types';
 import { countWords } from './wordStats';
 import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
-import FormatToolbar from './FormatToolbar';
+import RichTextEditor from './RichTextEditor';
 import './NoteViewer.css';
-import './EntityMention.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'preview';
 
@@ -130,8 +121,6 @@ function renderMarkdownPreview(content: string, onWikiLinkClick?: (target: strin
 // Rich-mode TipTap editor (inner component, mounted only when mode='rich')
 // ---------------------------------------------------------------------------
 
-const INACTIVE_MENTION: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
-
 interface RichEditorProps {
   content: string;
   onChange: (text: string) => void;
@@ -139,138 +128,20 @@ interface RichEditorProps {
   fileName: string;
 }
 
+// Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
+// base extensions (including Underline) and entity @-mention picker as Story.
 function NoteRichEditor({ content, onChange, onWikiLinkClick, fileName }: RichEditorProps) {
-  const [entities, setEntities] = useState<EntityEntry[]>([]);
-  const [mentionState, setMentionState] = useState<MentionPickerState>(INACTIVE_MENTION);
-  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
-  const mentionSuppressedFromRef = useRef<number>(-1);
-  const [mentionSuppressed, setMentionSuppressed] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-  const onWikiLinkClickRef = useRef(onWikiLinkClick);
-  onWikiLinkClickRef.current = onWikiLinkClick;
-  const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Guard so the initial load does not fire onChange with the same content.
-  const initializedRef = useRef(false);
-  // Guard to skip onSelectionUpdate state setters until the component is mounted,
-  // preventing React act() warnings from TipTap's internal initialization.
-  const editorMountedRef = useRef(false);
-
-  useEffect(() => {
-    window.api.entityList().then(({ entities: list }) => setEntities(list)).catch(() => {});
-  }, []);
-
-  useEffect(() => { setMentionSelectedIndex(0); }, [mentionState.query]);
-
-  const syncMentionState = useCallback((editor: ReturnType<typeof useEditor>) => {
-    // Skip pre-mount to prevent act() warnings from TipTap initialization events.
-    if (!editor || !editorMountedRef.current) return;
-    const ps = mentionPickerKey.getState(editor.state) ?? INACTIVE_MENTION;
-    if (ps.active && ps.from !== mentionSuppressedFromRef.current) setMentionSuppressed(false);
-    setMentionState(ps);
-  }, []);
-
-  const editor = useEditor({
-    extensions: [StarterKit, WikiLink, EntityMention, EntityMentionPickerExtension, Markdown],
-    content,
-    onUpdate({ editor: ed }) {
-      syncMentionState(ed);
-      if (!initializedRef.current) return;
-      if (changeRef.current) clearTimeout(changeRef.current);
-      changeRef.current = setTimeout(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const raw = (ed.storage as any).markdown.getMarkdown() as string;
-        onChangeRef.current(raw.endsWith('\n') ? raw : `${raw}\n`);
-      }, 800);
-    },
-    onSelectionUpdate({ editor: ed }) { syncMentionState(ed); },
-  });
-
-  // Mark as initialized after the first render cycle.
-  useEffect(() => {
-    if (editor) {
-      editorMountedRef.current = true;
-      const timer = setTimeout(() => { initializedRef.current = true; }, 0);
-      return () => {
-        clearTimeout(timer);
-        editorMountedRef.current = false;
-      };
-    }
-  }, [editor]);
-
-  useEffect(() => {
-    return () => { if (changeRef.current) clearTimeout(changeRef.current); };
-  }, []);
-
-  const insertEntityMention = useCallback((entity: EntityEntry) => {
-    if (!editor || !mentionState.active) return;
-    const { from, to } = mentionState;
-    const nodeType = editor.schema.nodes.entityMention;
-    if (!nodeType) return;
-    const node = nodeType.create({ entityId: entity.id, label: entity.name });
-    editor.view.dispatch(editor.state.tr.delete(from, to).insert(from, node));
-    editor.view.focus();
-  }, [editor, mentionState]);
-
-  const handlePickerKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!mentionState.active || mentionSuppressed) return;
-    const filtered = entities.filter((ent) => matchesEntityQuery(ent, mentionState.query)).slice(0, 10);
-    if (filtered.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault(); e.stopPropagation();
-      setMentionSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault(); e.stopPropagation();
-      setMentionSelectedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      const t = filtered[mentionSelectedIndex];
-      if (t) { e.preventDefault(); e.stopPropagation(); insertEntityMention(t); }
-    } else if (e.key === 'Escape') {
-      e.preventDefault(); e.stopPropagation();
-      mentionSuppressedFromRef.current = mentionState.from;
-      setMentionSuppressed(true);
-    }
-  }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention]);
-
-  const handleEditorClick = useCallback((e: React.MouseEvent) => {
-    const t = e.target as HTMLElement;
-    const wikiEl = t.closest('[data-wiki-link]') as HTMLElement | null;
-    if (wikiEl?.dataset.wikiLink) { e.preventDefault(); onWikiLinkClickRef.current?.(wikiEl.dataset.wikiLink); }
-  }, []);
-
-  const showPicker = mentionState.active && !mentionSuppressed;
-  let pickerTop = 0, pickerLeft = 0;
-  if (showPicker && editor && wrapRef.current) {
-    try {
-      const coords = editor.view.coordsAtPos(mentionState.from);
-      const rect = wrapRef.current.getBoundingClientRect();
-      pickerTop = coords.bottom - rect.top + 4;
-      pickerLeft = coords.left - rect.left;
-    } catch { /* pos out of range */ }
-  }
-
   return (
-    <div
-      className="note-rich-editor-wrap"
-      ref={wrapRef}
-      style={{ position: 'relative', flex: 1, overflow: 'hidden' }}
-      onKeyDownCapture={handlePickerKeyDown}
-      onClickCapture={handleEditorClick}
-      aria-label={`Rich edit note: ${fileName}`}
-    >
-      {showPicker && (
-        <EntityMentionPicker
-          entities={entities}
-          query={mentionState.query}
-          top={pickerTop}
-          left={pickerLeft}
-          selectedIndex={mentionSelectedIndex}
-          onSelect={insertEntityMention}
-        />
-      )}
-      <FormatToolbar editor={editor} />
-      <EditorContent editor={editor} className="note-tiptap-content" />
+    <div className="note-rich-editor">
+      <RichTextEditor
+        content={content}
+        suppressInitialChange
+        onChangeMarkdown={onChange}
+        onWikiLinkClick={onWikiLinkClick}
+        wrapClassName="note-rich-editor-wrap"
+        contentClassName="note-tiptap-content"
+        wrapAriaLabel={`Rich edit note: ${fileName}`}
+      />
     </div>
   );
 }
@@ -393,6 +264,9 @@ export default function NoteViewer({
 
   const handleSourceChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
+    // Sync the ref immediately — a change flushed during unmount never re-renders,
+    // so the unmount save below would otherwise persist stale content.
+    contentRef.current = text;
     setContent(text);
     onWordCountChange?.(countWords(text));
     setSavedAt(null);
@@ -402,6 +276,7 @@ export default function NoteViewer({
   }, [saveContent, onWordCountChange]);
 
   const handleRichChange = useCallback((text: string) => {
+    contentRef.current = text;
     setContent(text);
     onWordCountChange?.(countWords(text));
     setSavedAt(null);

@@ -30,6 +30,16 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(features.map((f) => f.key)).toContain('rawHtml');
   });
 
+  it('does NOT flag <u> underline — the shared editor core round-trips it losslessly (SKY-3204)', () => {
+    const md = 'An <u>underlined</u> word saved from Rich mode.';
+    expect(detectLossyFeatures(md)).toEqual([]);
+  });
+
+  it('still flags other tags starting with u (e.g. <ul>) as raw HTML', () => {
+    const md = 'A list <ul><li>item</li></ul> in HTML.';
+    expect(detectLossyFeatures(md).map((f) => f.key)).toContain('rawHtml');
+  });
+
   it('detects Obsidian callout blocks', () => {
     const md = '> [!NOTE]\n> This is a callout.';
     const features = detectLossyFeatures(md);
