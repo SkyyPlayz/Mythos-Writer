@@ -3,12 +3,14 @@ import type { AnyExtension, Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from '../WikiLinkExtension';
+import { WikiLinkResolutionExtension } from '../WikiLinkResolutionExtension';
 
 /**
  * Shared Tiptap editor hook for all rich-text surfaces (Story/Notes).
  *
  * Base extensions always included: StarterKit (which bundles Underline in
- * Tiptap v3) · WikiLink · Markdown.
+ * Tiptap v3) · WikiLink · WikiLinkResolution (SKY-5702 unresolved-link
+ * styling) · Markdown.
  * Surface-specific extensions (and the shared mention stack, appended by
  * `<RichTextEditor>`) are passed via `extraExtensions`.
  *
@@ -51,7 +53,7 @@ export function useRichEditor({
   onSelectionUpdate,
 }: UseRichEditorOptions): Editor | null {
   return useEditor({
-    extensions: [StarterKit, WikiLink, Markdown, ...extraExtensions],
+    extensions: [StarterKit, WikiLink, WikiLinkResolutionExtension, Markdown, ...extraExtensions],
     content,
     editable,
     autofocus,

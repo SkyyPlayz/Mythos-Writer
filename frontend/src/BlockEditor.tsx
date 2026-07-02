@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { Block, Scene, DraftState, EntityEntry } from './types';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
+import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import {
   AutoLinkerExtension,
   AUTO_LINKER_META,
@@ -51,6 +52,10 @@ interface Props {
   onEntityClick?: (entityId: string) => void;
   /** SKY-2099: called when user clicks a [[typed wiki link]]. */
   onWikiLinkClick?: (target: string) => void;
+  /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  /** SKY-5702: cross-vault candidate list for the [[ autocomplete popup. */
+  wikiLinkCandidates?: WikiLinkCandidate[];
   /** SKY-2011: called when the editor selection changes, debounced by TipTap's onSelectionUpdate. */
   onSelectionChange?: (text: string) => void;
   /** When false, suppress Tiptap's autofocus on mount (used in multi-editor views like ChapterContinuousView). */
@@ -86,7 +91,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, onSelectionChange, autoFocus = true }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
@@ -385,6 +390,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         onWikiLinkClick={onWikiLinkClick}
         plainTextWikiLinkFallback
         onEntityClick={onEntityClick}
+        resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+        wikiLinkCandidates={wikiLinkCandidates}
         wrapRef={editorWrapRef}
         wrapClassName="tiptap-editor-wrap"
         contentClassName="tiptap-content"
