@@ -788,6 +788,9 @@ function AutoApplyCategoryToggles({
   );
 }
 
+const SETTINGS_CATS = ['vaults', 'agents', 'appearance'] as const;
+type SettingsCat = (typeof SETTINGS_CATS)[number];
+
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -909,7 +912,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
 
   // SKY-2973: Settings category navigation
-  const [settingsCategory, setSettingsCategory] = useState<'vaults' | 'agents' | 'appearance'>('agents');
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCat>('agents');
+  const settingsCatNavRef = useRef<HTMLElement>(null);
 
   // SKY-3218: Nav-bar configuration
   const [navConfig, setNavConfig] = useState<NavRailConfig>(NAV_RAIL_DEFAULTS);
@@ -1347,6 +1351,27 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, []);
 
+  const handleSettingsCategoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>) => {
+    const idx = SETTINGS_CATS.indexOf(settingsCategory);
+    if (idx < 0) return;
+    let next = settingsCategory;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      next = SETTINGS_CATS[(idx + 1) % SETTINGS_CATS.length];
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      next = SETTINGS_CATS[(idx + SETTINGS_CATS.length - 1) % SETTINGS_CATS.length];
+    } else if (e.key === 'Home') {
+      next = SETTINGS_CATS[0];
+    } else if (e.key === 'End') {
+      next = SETTINGS_CATS[SETTINGS_CATS.length - 1];
+    } else {
+      return;
+    }
+    e.preventDefault();
+    setSettingsCategory(next);
+    const btn = settingsCatNavRef.current?.querySelector<HTMLElement>(`[data-tabkey="${next}"]`);
+    btn?.focus();
+  }, [settingsCategory]);
+
   const handleTestConnection = useCallback(async () => {
     setTestConnectionStatus('testing');
     setTestConnectionMsg('');
@@ -1513,13 +1538,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
-        <nav className="settings-cat-nav" role="tablist" aria-label="Settings categories">
-          {(['vaults', 'agents', 'appearance'] as const).map((cat) => (
+        <nav
+          className="settings-cat-nav"
+          role="tablist"
+          aria-label="Settings categories"
+          ref={settingsCatNavRef}
+          onKeyDown={handleSettingsCategoryKeyDown}
+        >
+          {SETTINGS_CATS.map((cat) => (
             <button
               key={cat}
               role="tab"
+              id={`settings-category-tab-${cat}`}
+              data-tabkey={cat}
               className={`settings-cat-nav__tab${settingsCategory === cat ? ' settings-cat-nav__tab--active' : ''}`}
               aria-selected={settingsCategory === cat}
+              aria-controls="settings-category-panel"
+              tabIndex={settingsCategory === cat ? 0 : -1}
               onClick={() => setSettingsCategory(cat)}
             >
               {cat === 'vaults' ? 'Vaults' : cat === 'agents' ? 'Agents' : 'Appearance'}
@@ -1527,7 +1562,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           ))}
         </nav>
 
-        <div className="settings-body" role="tabpanel">
+        <div className="settings-body" role="tabpanel" id="settings-category-panel" aria-labelledby={`settings-category-tab-${settingsCategory}`}>
 
           {settingsCategory === 'agents' && (
           <>
