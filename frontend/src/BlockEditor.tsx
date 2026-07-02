@@ -1,5 +1,5 @@
-import { EditorContent } from '@tiptap/react';
 import { useRef, useState, useEffect, useCallback } from 'react';
+import type { Editor } from '@tiptap/core';
 import type { Block, Scene, DraftState, EntityEntry } from './types';
 import { WikiLinkHintExtension, WIKI_LINK_HINT_META, type WLSuggestion } from './WikiLinkHintExtension';
 import {
@@ -9,14 +9,10 @@ import {
   collectAutoLinkerRanges,
   type AutoLinkerMode,
 } from './AutoLinkerExtension';
-import { EntityMention } from './EntityMentionExtension';
-import { EntityMentionPickerExtension, mentionPickerKey, type MentionPickerState } from './EntityMentionPickerExtension';
-import EntityMentionPicker, { matchesEntityQuery } from './EntityMentionPicker';
 import { countWords } from './wordStats';
-import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
-import FormatToolbar from './FormatToolbar';
+import { getEditorMarkdown } from './lib/useRichEditor';
+import RichTextEditor from './RichTextEditor';
 import './BlockEditor.css';
-import './EntityMention.css';
 
 export interface BlockEditorApi {
   jumpToText: (text: string) => void;
@@ -67,7 +63,8 @@ const DRAFT_STATE_LABELS: Record<DraftState, string> = {
   final: 'Final',
 };
 
-const INACTIVE_MENTION: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
+/** Story-only extensions layered onto the shared RichTextEditor core. */
+const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension];
 
 export function blocksToMarkdownBody(blocks: Block[]): string {
   const sorted = [...blocks].sort((a, b) => a.order - b.order);
@@ -90,6 +87,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 const WC_DEBOUNCE_MS = 250;
 
 export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, onSelectionChange, autoFocus = true }: Props) {
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
     scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
@@ -102,15 +100,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     id: string; link: string; anchor: string; top: number; left: number;
   } | null>(null);
 
-  // SKY-616: entity mention state
-  const [entities, setEntities] = useState<EntityEntry[]>([]);
-  const [mentionState, setMentionState] = useState<MentionPickerState>(INACTIVE_MENTION);
-  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
-  // Tracks whether user dismissed the picker with Escape for the current @-trigger position.
-  // Cleared when the trigger position changes (new '@' typed).
-  const mentionSuppressedFromRef = useRef<number>(-1);
-  const [mentionSuppressed, setMentionSuppressed] = useState(false);
-
   const onAcceptWikiLinkRef = useRef(onAcceptWikiLink);
   onAcceptWikiLinkRef.current = onAcceptWikiLink;
   const onRejectWikiLinkRef = useRef(onRejectWikiLink);
@@ -119,8 +108,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   autoLinkerModeRef.current = autoLinkerMode;
   // Flag to break the auto-link → onUpdate → auto-link cycle
   const applyingAutoLinksRef = useRef(false);
-  const changeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingChangeFlushRef = useRef<(() => void) | null>(null);
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
@@ -128,10 +115,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onEditorReadyRef.current = onEditorReady;
   const onBetaReadRef = useRef(onBetaReadRequest);
   onBetaReadRef.current = onBetaReadRequest;
-  const onEntityClickRef = useRef(onEntityClick);
-  onEntityClickRef.current = onEntityClick;
-  const onWikiLinkClickRef = useRef(onWikiLinkClick);
-  onWikiLinkClickRef.current = onWikiLinkClick;
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
   const editorWrapRef = useRef<HTMLDivElement | null>(null);
@@ -140,104 +123,74 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   onCursorPosChangeRef.current = onCursorPosChange;
   const cursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // SKY-616: load entities once on scene mount
-  useEffect(() => {
-    window.api.entityList().then(({ entities: list }) => setEntities(list)).catch(() => {});
+  const handleEditorUpdate = useCallback((ed: Editor) => {
+    setIsEditorEmpty(ed.isEmpty);
+    // Word count: debounced at 250ms so typing stays smooth
+    if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
+    wcDebounceRef.current = setTimeout(() => {
+      setWordCount(countWords(getEditorMarkdown(ed)));
+    }, WC_DEBOUNCE_MS);
   }, []);
 
-  // SKY-616: reset selected index when query changes
-  useEffect(() => {
-    setMentionSelectedIndex(0);
-  }, [mentionState.query]);
-
-  const syncMentionState = useCallback((editor: ReturnType<typeof useRichEditor>) => {
-    if (!editor) return;
-    const ps = mentionPickerKey.getState(editor.state) ?? INACTIVE_MENTION;
-    // Clear suppression when the '@' trigger moves to a new position
-    if (ps.active && ps.from !== mentionSuppressedFromRef.current) {
-      setMentionSuppressed(false);
+  // Auto on save: apply all auto-linker suggestions as a single transaction just
+  // before the debounced flush serializes. The applyingAutoLinksRef flag prevents
+  // the resulting onUpdate from triggering a second application cycle.
+  const handleBeforeFlush = useCallback((ed: Editor) => {
+    if (autoLinkerModeRef.current !== 'auto' || applyingAutoLinksRef.current) return;
+    const linkerState = getAutoLinkerState(ed.state);
+    if (!linkerState || linkerState.entities.length === 0) return;
+    const ranges = collectAutoLinkerRanges(ed.state.doc, linkerState.entities);
+    if (ranges.length === 0) return;
+    applyingAutoLinksRef.current = true;
+    const sorted = [...ranges].sort((a, b) => b.from - a.from);
+    let tr = ed.state.tr;
+    for (const r of sorted) {
+      const wikiNode = ed.schema.nodes['wikiLink']?.create({ target: r.target });
+      if (wikiNode) tr = tr.replaceWith(r.from, r.to, wikiNode);
     }
-    setMentionState(ps);
+    ed.view.dispatch(tr);
+    applyingAutoLinksRef.current = false;
   }, []);
 
-  const editor = useRichEditor({
-    extraExtensions: [WikiLinkHintExtension, AutoLinkerExtension, EntityMention, EntityMentionPickerExtension],
-    content: blocksToMarkdownBody(scene.blocks),
-    autofocus: !autoFocus ? false : (initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end'),
-    onUpdate({ editor: ed }) {
-      setIsEditorEmpty(ed.isEmpty);
-      syncMentionState(ed);
-      // Word count: debounced at 250ms so typing stays smooth
-      if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
-      wcDebounceRef.current = setTimeout(() => {
-        setWordCount(countWords(getEditorMarkdown(ed)));
-      }, WC_DEBOUNCE_MS);
-      if (changeRef.current) clearTimeout(changeRef.current);
-      const flushChange = () => {
-        pendingChangeFlushRef.current = null;
-        changeRef.current = null;
-        // Auto on save: apply all auto-linker suggestions as a single transaction,
-        // then read the updated markdown. The applyingAutoLinksRef flag prevents
-        // the resulting onUpdate from triggering a second application cycle.
-        if (autoLinkerModeRef.current === 'auto' && !applyingAutoLinksRef.current) {
-          const linkerState = getAutoLinkerState(ed.state);
-          if (linkerState && linkerState.entities.length > 0) {
-            const ranges = collectAutoLinkerRanges(ed.state.doc, linkerState.entities);
-            if (ranges.length > 0) {
-              applyingAutoLinksRef.current = true;
-              const sorted = [...ranges].sort((a, b) => b.from - a.from);
-              let tr = ed.state.tr;
-              for (const r of sorted) {
-                const wikiNode = ed.schema.nodes['wikiLink']?.create({ target: r.target });
-                if (wikiNode) tr = tr.replaceWith(r.from, r.to, wikiNode);
-              }
-              ed.view.dispatch(tr);
-              applyingAutoLinksRef.current = false;
-            }
-          }
-        }
-        onBlocksChangeRef.current([{
-          id: blockIdRef.current,
-          type: 'prose',
-          content: getEditorMarkdown(ed),
-          order: 0,
-          updatedAt: new Date().toISOString(),
-        }]);
-      };
-      pendingChangeFlushRef.current = flushChange;
-      changeRef.current = setTimeout(flushChange, 800);
-    },
-    onSelectionUpdate({ editor: ed }) {
-      syncMentionState(ed);
-      const { from, to } = ed.state.selection;
-      const text = from === to ? '' : ed.state.doc.textBetween(from, to, ' ');
-      const trimmed = text.trim();
-      setSelectionText(trimmed);
-      onSelectionChangeRef.current?.(trimmed);
-      if (trimmed.length > 3 && editorWrapRef.current) {
-        // Position the bubble relative to the editorWrap using the native selection
-        const nativeSel = window.getSelection();
-        if (nativeSel && nativeSel.rangeCount > 0) {
-          const range = nativeSel.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          const wrapRect = editorWrapRef.current.getBoundingClientRect();
-          setBetaReadBubble({
-            top: rect.top - wrapRect.top - 36,
-            left: Math.max(0, rect.left - wrapRect.left + rect.width / 2 - 52),
-          });
-        } else {
-          setBetaReadBubble(null);
-        }
+  const handleChangeMarkdown = useCallback((markdown: string) => {
+    onBlocksChangeRef.current([{
+      id: blockIdRef.current,
+      type: 'prose',
+      content: markdown,
+      order: 0,
+      updatedAt: new Date().toISOString(),
+    }]);
+  }, []);
+
+  const handleSelectionUpdate = useCallback((ed: Editor) => {
+    const { from, to } = ed.state.selection;
+    const text = from === to ? '' : ed.state.doc.textBetween(from, to, ' ');
+    const trimmed = text.trim();
+    setSelectionText(trimmed);
+    onSelectionChangeRef.current?.(trimmed);
+    if (trimmed.length > 3 && editorWrapRef.current) {
+      // Position the bubble relative to the editorWrap using the native selection
+      const nativeSel = window.getSelection();
+      if (nativeSel && nativeSel.rangeCount > 0) {
+        const range = nativeSel.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        const wrapRect = editorWrapRef.current.getBoundingClientRect();
+        setBetaReadBubble({
+          top: rect.top - wrapRect.top - 36,
+          left: Math.max(0, rect.left - wrapRect.left + rect.width / 2 - 52),
+        });
       } else {
         setBetaReadBubble(null);
       }
-      // SKY-130: debounced cursor position reporting for session persistence
-      if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
-      cursorDebounceRef.current = setTimeout(() => {
-        onCursorPosChangeRef.current?.(from);
-      }, 500);
-    },
-  });
+    } else {
+      setBetaReadBubble(null);
+    }
+    // SKY-130: debounced cursor position reporting for session persistence
+    if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
+    cursorDebounceRef.current = setTimeout(() => {
+      onCursorPosChangeRef.current?.(from);
+    }, 500);
+  }, []);
 
   // Expose jump-to-text and insert-wiki-link APIs to the parent once the editor is ready
   useEffect(() => {
@@ -270,13 +223,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
       return result;
     };
 
-    const getMarkdown = (): string => {
-      // tiptap-markdown adds storage.markdown at runtime; cast to bypass static type gap
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = (editor.storage as any).markdown.getMarkdown() as string;
-      return raw.endsWith('\n') ? raw : `${raw}\n`;
-    };
-
     cb({
       jumpToText: (text: string) => {
         const range = findTextRange(text);
@@ -302,7 +248,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           }).run();
         }
       },
-      getMarkdown,
+      getMarkdown: () => getEditorMarkdown(editor),
       applyAutoLinks: () => {
         const linkerState = getAutoLinkerState(editor.state);
         if (!linkerState || linkerState.mode === 'off') return;
@@ -363,12 +309,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     );
   }, [editor, autoLinkerEntities, autoLinkerMode]);
 
-  // SKY-130 / SKY-5087: flush pending cursor + content debounce on unmount to avoid stale callbacks/data loss
+  // SKY-130 / SKY-5087: the shared core flushes the pending content debounce on
+  // unmount; clear the wrapper-owned cursor + word-count debounces here.
   useEffect(() => {
     return () => {
-      if (changeRef.current) clearTimeout(changeRef.current);
-      pendingChangeFlushRef.current?.();
-      pendingChangeFlushRef.current = null;
       if (cursorDebounceRef.current) clearTimeout(cursorDebounceRef.current);
       if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
     };
@@ -407,93 +351,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     editor?.commands.setTextSelection(editor.state.selection.from);
   }, [selectionText, editor]);
 
-  // SKY-616: insert an entityMention node at the current @-trigger position
-  const insertEntityMention = useCallback((entity: EntityEntry) => {
-    if (!editor || !mentionState.active) return;
-    const { from, to } = mentionState;
-    const nodeType = editor.schema.nodes.entityMention;
-    if (!nodeType) return;
-    const node = nodeType.create({ entityId: entity.id, label: entity.name });
-    const tr = editor.state.tr.delete(from, to).insert(from, node);
-    editor.view.dispatch(tr);
-    editor.view.focus();
-  }, [editor, mentionState]);
-
-  // SKY-616: keyboard handling for the mention picker in capture phase (runs before TipTap)
-  const handlePickerKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!mentionState.active || mentionSuppressed) return;
-    const filtered = entities.filter((ent) => matchesEntityQuery(ent, mentionState.query)).slice(0, 10);
-    if (filtered.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      e.stopPropagation();
-      setMentionSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      e.stopPropagation();
-      setMentionSelectedIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      const target = filtered[mentionSelectedIndex];
-      if (target) {
-        e.preventDefault();
-        e.stopPropagation();
-        insertEntityMention(target);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      mentionSuppressedFromRef.current = mentionState.from;
-      setMentionSuppressed(true);
-    }
-  }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention]);
-
-  // SKY-616/SKY-2099: event delegation for entity and wiki-link clicks.
-  const handleEditorClick = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    const chip = target.closest('.entity-mention-chip') as HTMLElement | null;
-    if (chip) {
-      const entityId = chip.dataset.entityId;
-      if (entityId) {
-        e.preventDefault();
-        onEntityClickRef.current?.(entityId);
-        return;
-      }
-    }
-
-    const wikiLink = target.closest('[data-wiki-link]') as HTMLElement | null;
-    const linkTarget = wikiLink?.dataset.wikiLink;
-    if (linkTarget) {
-      e.preventDefault();
-      onWikiLinkClickRef.current?.(linkTarget);
-      return;
-    }
-
-    for (const text of [target.textContent ?? '', editor?.state.doc.textBetween(0, editor.state.doc.content.size, '\n') ?? '']) {
-      const plainTextWikiLinks = Array.from(text.matchAll(/\[\[([^\]]+)\]\]/g));
-      if (plainTextWikiLinks.length === 1) {
-        e.preventDefault();
-        onWikiLinkClickRef.current?.(plainTextWikiLinks[0][1]);
-        return;
-      }
-    }
-  }, [editor]);
-
-  // Compute picker position from the @-trigger doc position
-  let pickerTop = 0;
-  let pickerLeft = 0;
-  const showPicker = mentionState.active && !mentionSuppressed;
-  if (showPicker && editor && editorWrapRef.current) {
-    try {
-      const coords = editor.view.coordsAtPos(mentionState.from);
-      const wrapRect = editorWrapRef.current.getBoundingClientRect();
-      pickerTop = coords.bottom - wrapRect.top + 4;
-      pickerLeft = coords.left - wrapRect.left;
-    } catch {
-      // coordsAtPos can throw if position is out of range; ignore
-    }
-  }
-
   return (
     <div className="block-editor">
       <div className="block-editor-toolbar">
@@ -516,15 +373,22 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
           ))}
         </div>
       </div>
-      <FormatToolbar editor={editor} />
-      <div
-        className="tiptap-editor-wrap"
-        ref={editorWrapRef}
-        style={{ position: 'relative' }}
-        onKeyDownCapture={handlePickerKeyDown}
-        onClickCapture={handleEditorClick}
-        onMouseOver={handleHintMouseOver}
-        onMouseLeave={handleHintMouseLeave}
+      <RichTextEditor
+        content={blocksToMarkdownBody(scene.blocks)}
+        extraExtensions={STORY_EXTENSIONS}
+        autofocus={!autoFocus ? false : (initialCursorPos && initialCursorPos > 0 ? Math.max(1, initialCursorPos) : 'end')}
+        onEditorChange={setEditor}
+        onUpdate={handleEditorUpdate}
+        onSelectionUpdate={handleSelectionUpdate}
+        onBeforeFlush={handleBeforeFlush}
+        onChangeMarkdown={handleChangeMarkdown}
+        onWikiLinkClick={onWikiLinkClick}
+        onEntityClick={onEntityClick}
+        wrapRef={editorWrapRef}
+        wrapClassName="tiptap-editor-wrap"
+        contentClassName="tiptap-content"
+        onWrapMouseOver={handleHintMouseOver}
+        onWrapMouseLeave={handleHintMouseLeave}
       >
         {hintTooltip && (
           <div
@@ -568,23 +432,12 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             Beta-Read
           </button>
         )}
-        {showPicker && (
-          <EntityMentionPicker
-            entities={entities}
-            query={mentionState.query}
-            top={pickerTop}
-            left={pickerLeft}
-            selectedIndex={mentionSelectedIndex}
-            onSelect={insertEntityMention}
-          />
-        )}
         {isEditorEmpty && emptySceneHint && (
           <div className="block-editor-empty-hint" aria-live="polite">
             {emptySceneHint}
           </div>
         )}
-        <EditorContent editor={editor} className="tiptap-content" />
-      </div>
+      </RichTextEditor>
     </div>
   );
 }
