@@ -95,6 +95,10 @@ export interface VoiceSpeakChunkEvent {
 
 export interface VoiceSpeakDoneEvent {
   speakId: string;
+  /** Encoding of the streamed chunks: 'pcm' = 16-bit mono LE (Piper --output-raw); 'mp3' = cloud stream. */
+  format?: 'pcm' | 'mp3';
+  /** PCM sample rate in Hz — only meaningful when format === 'pcm'. */
+  sampleRate?: number;
 }
 
 export interface VoiceSpeakErrorEvent {
@@ -346,7 +350,7 @@ export function registerVoiceHandlers(
     }
 
     try {
-      return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings, getSettings());
+      return await transcribeAudio(audioBuf, payload.mimeType ?? 'audio/webm', sttSettings, getSettings(), payload.language);
     } catch (err) {
       const { category, error } = sanitizeVoiceError('voice:transcribe', 'n/a', err);
       return { error, category };
@@ -418,31 +422,49 @@ function pushError(getSender: GetSender, event: VoiceErrorEvent): void {
 // ─── STT adapter (MYT-338) ────────────────────────────────────────────────────
 
 /**
+ * Normalizes a BCP-47 language tag (e.g. 'en-US') to the ISO-639 code ('en')
+ * expected by Whisper — the cloud `language` multipart field and the
+ * whisper.cpp `-l` flag. Returns undefined for anything that is not a plain
+ * 2–8 letter code so renderer-supplied values cannot inject into the
+ * multipart body or spawn args. Exported for unit testing.
+ */
+export function normalizeLanguage(language?: string): string | undefined {
+  if (!language) return undefined;
+  const code = language.split('-')[0]?.trim().toLowerCase() ?? '';
+  return /^[a-z]{2,8}$/.test(code) ? code : undefined;
+}
+
+/**
  * Selects local or cloud STT based on `settings.provider` and runs transcription.
  * Exported for unit testing of adapter selection logic.
  *
  * When `appSettings` is provided and contains a voice-capable provider
  * (see `getVoiceProvider`), the cloud API key and base URL are resolved from
  * that provider. Falls back to `settings.cloudApiKey` for legacy configs.
+ *
+ * `language` is an optional BCP-47 hint (settings.voice.inputLanguage);
+ * absent = engine auto-detect.
  */
 export async function transcribeAudio(
   audio: Buffer,
   mimeType: string,
   settings: SttSettings,
   appSettings?: { provider?: ProviderConfig },
+  language?: string,
 ): Promise<VoiceTranscribeResponse> {
   if (!settings.enabled) {
     throw new InvalidVoiceInputError('STT is disabled in settings (stt.enabled = false)');
   }
 
   const provider = settings.provider ?? 'auto';
+  const lang = normalizeLanguage(language);
 
   if (provider === 'local' || provider === 'auto') {
     const binPath = settings.localBinaryPath;
     if (binPath && fs.existsSync(binPath)) {
       const gate = checkSpawnPath(binPath);
       if (gate.ok) {
-        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType);
+        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType, lang);
       }
       if (provider === 'local') {
         throw new InvalidVoiceInputError(`Local STT refused: ${gate.error}`);
@@ -485,23 +507,28 @@ export async function transcribeAudio(
     throw new InvalidVoiceInputError(`STT cloudEndpoint rejected: ${urlError}`);
   }
 
-  return transcribeCloud(endpoint, apiKey, audio, mimeType);
+  return transcribeCloud(endpoint, apiKey, audio, mimeType, lang);
 }
 
 async function transcribeLocal(
   binaryPath: string,
   audio: Buffer,
   mimeType: string,
+  language?: string,
 ): Promise<VoiceTranscribeResponse> {
   // Caller (transcribeAudio) is responsible for the MYT-788 trusted-set gate
-  // and passes in the resolved real-path of the binary.
+  // and passes in the resolved real-path of the binary. `language` is already
+  // normalized/validated by transcribeAudio (normalizeLanguage).
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
   const tmpFile = path.join(os.tmpdir(), `mythos-stt-${crypto.randomUUID()}.${ext}`);
 
   try {
     fs.writeFileSync(tmpFile, audio);
     const text = await new Promise<string>((resolve, reject) => {
-      const proc = spawn(binaryPath, [tmpFile, '--no-prints', '--no-timestamps'], {
+      const args = [tmpFile, '--no-prints', '--no-timestamps'];
+      // whisper.cpp language hint (-l LANG); omitted = auto-detect.
+      if (language) args.push('-l', language);
+      const proc = spawn(binaryPath, args, {
         timeout: 30_000,
       });
       const stdoutChunks: Buffer[] = [];
@@ -531,12 +558,15 @@ async function transcribeCloud(
   apiKey: string,
   audio: Buffer,
   mimeType: string,
+  language?: string,
 ): Promise<VoiceTranscribeResponse> {
   const boundary = `----VoiceBoundary${crypto.randomBytes(8).toString('hex')}`;
   const filename =
     mimeType.includes('wav') ? 'recording.wav' :
     mimeType.includes('mp3') ? 'recording.mp3' : 'recording.webm';
 
+  // `language` is already normalized/validated by transcribeAudio
+  // (normalizeLanguage) so it is safe to embed in the multipart body.
   const body = Buffer.concat([
     Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType || 'audio/webm'}\r\n\r\n`,
@@ -544,7 +574,9 @@ async function transcribeCloud(
     ),
     audio,
     Buffer.from(
-      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--${boundary}--\r\n`,
+      `\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
+      (language ? `--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n` : '') +
+      `--${boundary}--\r\n`,
       'utf-8',
     ),
   ]);
@@ -599,8 +631,11 @@ async function speakAsync(
         const binGate = checkSpawnPath(binPath);
         const modelGate = checkSpawnPath(modelPath);
         if (binGate.ok && modelGate.ok) {
-          await speakWithPiper(binGate.realPath ?? binPath, modelGate.realPath ?? modelPath, text, signal, sendChunk);
-          pushSpeakDone(getSender, speakId);
+          const resolvedModel = modelGate.realPath ?? modelPath;
+          await speakWithPiper(binGate.realPath ?? binPath, resolvedModel, text, signal, sendChunk);
+          // Piper's --output-raw emits headerless 16-bit mono PCM — the renderer
+          // needs the sample rate from the model config to build an AudioBuffer.
+          pushSpeakDone(getSender, speakId, 'pcm', readPiperSampleRate(resolvedModel));
           return;
         }
         if (provider === 'local') {
@@ -639,7 +674,7 @@ async function speakAsync(
       throw new InvalidVoiceInputError(`TTS cloudEndpoint rejected: ${urlError}`);
     }
     await speakWithCloud(endpoint, apiKey, text, voiceId, signal, sendChunk);
-    pushSpeakDone(getSender, speakId);
+    pushSpeakDone(getSender, speakId, 'mp3');
   } catch (err) {
     if (signal.aborted) return; // clean cancellation — no error event
     const { category, error } = sanitizeVoiceError('voice:speak:error', speakId, err);
@@ -654,11 +689,33 @@ async function speakAsync(
   }
 }
 
-function pushSpeakDone(getSender: GetSender, speakId: string): void {
+function pushSpeakDone(
+  getSender: GetSender,
+  speakId: string,
+  format?: 'pcm' | 'mp3',
+  sampleRate?: number,
+): void {
   const sender = getSender();
   if (sender && !sender.isDestroyed()) {
-    sender.send(VOICE_SPEAK_DONE, { speakId } satisfies VoiceSpeakDoneEvent);
+    sender.send(VOICE_SPEAK_DONE, { speakId, format, sampleRate } satisfies VoiceSpeakDoneEvent);
   }
+}
+
+/** Piper's common default rate — used when the model config is missing or malformed. */
+export const PIPER_DEFAULT_SAMPLE_RATE = 22050;
+
+/**
+ * Reads the sample rate from a Piper model's sidecar config (`<model>.json`,
+ * shipped next to the .onnx) — `audio.sample_rate`. Exported for unit testing.
+ */
+export function readPiperSampleRate(modelPath: string): number {
+  try {
+    const raw = fs.readFileSync(`${modelPath}.json`, 'utf-8');
+    const parsed = JSON.parse(raw) as { audio?: { sample_rate?: unknown } };
+    const rate = parsed?.audio?.sample_rate;
+    if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) return rate;
+  } catch { /* missing/unreadable config → default below */ }
+  return PIPER_DEFAULT_SAMPLE_RATE;
 }
 
 async function speakWithPiper(

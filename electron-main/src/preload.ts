@@ -459,8 +459,8 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('voice:error', handler);
   },
   // voiceTranscribe (MYT-338) — single-shot transcription; returns { text, confidence } or { error }
-  voiceTranscribe: (audio: ArrayBuffer, mimeType?: string) =>
-    ipcRenderer.invoke('voice:transcribe', { audio, mimeType }),
+  voiceTranscribe: (audio: ArrayBuffer, mimeType?: string, language?: string) =>
+    ipcRenderer.invoke('voice:transcribe', { audio, mimeType, language }),
 
   // TTS (MYT-339) — text-to-speech for agent replies; disabled by default (tts.enabled = false)
   voiceSpeak: (text: string, voiceId?: string) =>
@@ -472,8 +472,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('voice:speak:chunk', handler);
     return () => ipcRenderer.removeListener('voice:speak:chunk', handler);
   },
-  onVoiceSpeakDone: (cb: (event: { speakId: string }) => void) => {
-    const handler = (_: unknown, data: { speakId: string }) => cb(data);
+  onVoiceSpeakDone: (cb: (event: { speakId: string; format?: 'pcm' | 'mp3'; sampleRate?: number }) => void) => {
+    const handler = (_: unknown, data: { speakId: string; format?: 'pcm' | 'mp3'; sampleRate?: number }) => cb(data);
     ipcRenderer.on('voice:speak:done', handler);
     return () => ipcRenderer.removeListener('voice:speak:done', handler);
   },

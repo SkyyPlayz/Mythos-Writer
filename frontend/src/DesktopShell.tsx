@@ -3227,6 +3227,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
             ttsSettings={appSettings?.tts}
             voiceEnabled={appSettings?.voice?.enabled ?? false}
+            voicePrefs={appSettings?.voice}
           />
         );
       case 'archive-continuity':
