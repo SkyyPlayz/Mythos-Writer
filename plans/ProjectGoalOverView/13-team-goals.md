@@ -10,6 +10,7 @@ The Board has already documented the product vision, feature goals, design decis
 
 ## Where to look
 
+0. **Goals & current plan (start here for the big picture)** → [`plans/GOALS.md`](../GOALS.md) — the mission, product vision, current target (Beta 2), engineering standard, and locked decisions — and [`plans/BETA-2-ROADMAP.md`](../BETA-2-ROADMAP.md) — the parts A–I and live status.
 1. **Start here** → [`plans/ProjectGoalOverView/01-overview.md`](01-overview.md) — core product vision, guiding principles, and the two-vault model.
 2. **Feature goals** → all numbered files in this folder (`02-storage-and-organization.md`, `03-writing-experience-and-modes.md`, ..., `12-visual-design-system.md`).
 3. **Decisions log** → [`plans/ProjectGoalOverView/00-decisions-log.md`](00-decisions-log.md) — CEO and Board decisions already made.
