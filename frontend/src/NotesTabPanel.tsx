@@ -221,7 +221,7 @@ export default function NotesTabPanel({
             aria-label="Open current note in Brainstorm"
             data-testid="notes-open-brainstorm-btn"
             onClick={() => {
-              const name = activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? 'this note';
+              const name = activeNotePath.split(/[\\/]/).pop()?.replace(/\.md$/, '') ?? 'this note';
               onOpenBrainstorm(`Brainstorm ideas about "${name}"`);
             }}
             type="button"

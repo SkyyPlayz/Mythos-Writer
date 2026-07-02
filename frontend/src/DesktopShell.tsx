@@ -1783,6 +1783,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
+    if (tab !== 'brainstorm') {
+      setBrainstormSeedPrompt(null);
+    }
     if (tab === 'story') {
       // Restore the story sub-view the user was in before switching to Notes.
       setView(tabShellRef.current.storySubView);

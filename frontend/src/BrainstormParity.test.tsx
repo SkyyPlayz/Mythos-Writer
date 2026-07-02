@@ -139,11 +139,25 @@ describe('NotesTabPanel — Open in Brainstorm (SKY-3201 AC2)', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('notes-open-brainstorm-btn'));
-    expect(onOpenBrainstorm).toHaveBeenCalledOnce();
+    expect(onOpenBrainstorm).toHaveBeenCalledTimes(1);
     const [seedText] = onOpenBrainstorm.mock.calls[0];
     expect(seedText).toContain('Aria Voss');
     expect(typeof seedText).toBe('string');
     expect(seedText.length).toBeGreaterThan(0);
+  });
+
+  it('derives seed text from Windows-style note paths', () => {
+    const onOpenBrainstorm = vi.fn();
+    render(
+      <NotesTabPanel
+        {...NOTES_PANEL_BASE_PROPS}
+        activeNotePath="C:\\Users\\Author\\Notes\\Riven\\Riven Notes\\Riven.md"
+        onOpenBrainstorm={onOpenBrainstorm}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('notes-open-brainstorm-btn'));
+    const [seedText] = onOpenBrainstorm.mock.calls[0];
+    expect(seedText).toContain('Riven');
   });
 });
 
