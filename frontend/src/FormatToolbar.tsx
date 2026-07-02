@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import './FormatToolbar.css';
 
-type HeadingLevel = 1 | 2 | 3;
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+const HEADING_LEVELS: HeadingLevel[] = [1, 2, 3, 4, 5, 6];
 
 function getActiveHeadingValue(editor: Editor): string {
-  if (editor.isActive('heading', { level: 1 })) return 'h1';
-  if (editor.isActive('heading', { level: 2 })) return 'h2';
-  if (editor.isActive('heading', { level: 3 })) return 'h3';
+  for (const level of HEADING_LEVELS) {
+    if (editor.isActive('heading', { level })) return `h${level}`;
+  }
   return 'body';
 }
 
@@ -80,6 +82,9 @@ export default function FormatToolbar({ editor }: Props) {
         <option value="h1">H1 — Heading 1</option>
         <option value="h2">H2 — Heading 2</option>
         <option value="h3">H3 — Heading 3</option>
+        <option value="h4">H4 — Heading 4</option>
+        <option value="h5">H5 — Heading 5</option>
+        <option value="h6">H6 — Heading 6</option>
       </select>
 
       <div className="fmt-sep" role="separator" aria-orientation="vertical" />

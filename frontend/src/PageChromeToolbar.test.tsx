@@ -65,6 +65,22 @@ describe('PageChromeToolbar', () => {
     expect(onChange.mock.calls[0][0].fontSizePx).toBe(18);
   });
 
+  it('calls onPrefsChange when line-spacing slider changes', () => {
+    const onChange = vi.fn();
+    render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={onChange} />);
+    const slider = screen.getByRole('slider', { name: /line spacing/i });
+    fireEvent.change(slider, { target: { value: '2.1' } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0].lineHeight).toBe(2.1);
+  });
+
+  it('displays the current line-spacing value', () => {
+    render(<PageChromeToolbar prefs={{ ...defaultPrefs, lineHeight: 2 }} onPrefsChange={() => {}} />);
+    const slider = screen.getByRole('slider', { name: /line spacing/i });
+    expect(slider.getAttribute('value')).toBe('2');
+    expect(screen.getByText('2.0×')).toBeDefined();
+  });
+
   it('switches font family when a font button is clicked', () => {
     const onChange = vi.fn();
     render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={onChange} />);

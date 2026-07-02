@@ -127,6 +127,35 @@ test('PC-02: size presets switch the page width and report active state accessib
   }
 });
 
+test('PC-04: line-spacing slider visibly changes and persists the page line height (SKY-5777)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const lineSpacingSlider = page.locator('[aria-label="Line spacing"] input.pct-slider');
+    await expect(lineSpacingSlider).toBeVisible();
+
+    const initialLineHeight = await page
+      .locator('.story-page-canvas')
+      .evaluate((el) => getComputedStyle(el).getPropertyValue('--story-page-line-height').trim());
+
+    await lineSpacingSlider.fill('2.2');
+    await lineSpacingSlider.dispatchEvent('change');
+
+    await expect(lineSpacingSlider).toHaveValue('2.2');
+    await expect(page.locator('.pct-slider-val', { hasText: '2.2×' })).toBeVisible();
+
+    const updatedLineHeight = await page
+      .locator('.story-page-canvas')
+      .evaluate((el) => getComputedStyle(el).getPropertyValue('--story-page-line-height').trim());
+    expect(updatedLineHeight).not.toEqual(initialLineHeight);
+    expect(updatedLineHeight).toBe('2.2');
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
 test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (owner decision)', async () => {
   const notePath = path.join(notesDir, 'chromeless.md');
   fs.writeFileSync(notePath, '# Minimal\n\nNotes keep minimal page chrome.\n');

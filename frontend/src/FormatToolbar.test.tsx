@@ -123,6 +123,22 @@ describe('FormatToolbar', () => {
     expect(select.value).toBe('h2');
   });
 
+  it.each([4, 5, 6] as const)('heading select offers and shows h%i when active', (level) => {
+    const editor = makeEditorMock({ [`heading-${level}`]: true });
+    render(<FormatToolbar editor={editor as never} />);
+    const select = screen.getByRole('combobox', { name: 'Heading level' }) as HTMLSelectElement;
+    expect(select.value).toBe(`h${level}`);
+    expect(screen.getByRole('option', { name: new RegExp(`^H${level} `) })).toBeTruthy();
+  });
+
+  it.each([4, 5, 6] as const)('heading select change to h%i calls toggleHeading with that level', (level) => {
+    const editor = makeEditorMock();
+    render(<FormatToolbar editor={editor as never} />);
+    const select = screen.getByRole('combobox', { name: 'Heading level' });
+    fireEvent.change(select, { target: { value: `h${level}` } });
+    expect(editor._chain['toggleHeading']).toHaveBeenCalledWith({ level });
+  });
+
   it('bold button has is-active class when bold is active', () => {
     const editor = makeEditorMock({ bold: true });
     render(<FormatToolbar editor={editor as never} />);
