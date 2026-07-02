@@ -15,6 +15,7 @@ import { WikiLinkHintExtension } from './WikiLinkHintExtension';
 import { AutoLinkerExtension } from './AutoLinkerExtension';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import { installActWarningGuard } from './testActWarningGuard';
+import { RICH_TEXT_SCHEMA } from './lib/richTextSchema';
 
 installActWarningGuard();
 
@@ -69,6 +70,16 @@ describe('RichTextEditor shared extension set', () => {
   // extension list without Underline and without the shared serializer.
   const SHARED_BASE = ['underline', 'wikiLink', 'markdown', 'entityMention', 'entityMentionPicker', 'bold', 'italic', 'strike', 'heading', 'bulletList', 'orderedList', 'blockquote', 'code', 'codeBlock'];
 
+  it('mounts every mark/node named in the shared RICH_TEXT_SCHEMA (SKY-5705 contract)', async () => {
+    // Keeps lib/richTextSchema.ts honest: if a mark is added to the schema
+    // doc but never actually wired into useRichEditor's extension list (or
+    // vice versa), this fails instead of silently drifting.
+    const { editor, unmount } = await mountCore();
+    const names = extensionNames(editor);
+    for (const mark of RICH_TEXT_SCHEMA) expect(names).toContain(mark.name);
+    unmount();
+  });
+
   it('Notes config (no extras) mounts the full shared base, including Underline', async () => {
     const { editor, unmount } = await mountCore();
     const names = extensionNames(editor);
@@ -119,6 +130,72 @@ describe('RichTextEditor markdown round-trip', () => {
     const md = 'An <u>underlined</u> word.\n';
     const { editor, unmount } = await mountCore({ content: md });
     expect(getEditorMarkdown(editor)).toContain('<u>underlined</u>');
+    unmount();
+  });
+
+  // SKY-5705: every mark in RICH_TEXT_SCHEMA round-trips through the shared
+  // core, not just the two marks the original SKY-3204 extraction happened
+  // to pin (bold/italic were covered above; this closes strike, lists,
+  // blockquote and code block, which were previously only exercised by
+  // BlockEditor's separate, non-shared test editor).
+  const FULL_MARK_SET_MD =
+    '# Heading One\n\n' +
+    '## Heading Two\n\n' +
+    'Some **bold**, *italic*, <u>underlined</u>, ~~struck~~ and `code` text, ' +
+    'plus a [[Character: Elara]] link.\n\n' +
+    '- bullet one\n' +
+    '- bullet two\n\n' +
+    '1. ordered one\n' +
+    '2. ordered two\n\n' +
+    '> a quoted line\n\n' +
+    '```\nconst x = 1;\n```\n';
+
+  it('round-trips the full mark set (headings, lists, blockquote, code block, strike) through the shared core', async () => {
+    const { editor, unmount } = await mountCore({ content: FULL_MARK_SET_MD });
+    const out = getEditorMarkdown(editor);
+    expect(out).toContain('# Heading One');
+    expect(out).toContain('## Heading Two');
+    expect(out).toContain('**bold**');
+    expect(out).toContain('*italic*');
+    expect(out).toContain('<u>underlined</u>');
+    expect(out).toContain('~~struck~~');
+    expect(out).toContain('`code`');
+    expect(out).toContain('[[Character: Elara]]');
+    expect(out).toContain('- bullet one');
+    expect(out).toContain('- bullet two');
+    expect(out).toContain('1. ordered one');
+    expect(out).toContain('2. ordered two');
+    expect(out).toContain('> a quoted line');
+    expect(out).toContain('```\nconst x = 1;\n```');
+    unmount();
+  });
+
+  it('Story and Notes configs serialize the same full-mark-set document byte-identically', async () => {
+    // This is the ticket's core ask: "a doc saved in one editor reopens with
+    // identical formatting in the other where shared." Story adds extra
+    // extensions (wiki-link hinting, auto-linker) that only affect live
+    // editing behaviour, not the persisted Markdown — so the two configs
+    // must produce exactly the same serialized output for the same input.
+    const { editor: storyEditor, unmount: unmountStory } = await mountCore({
+      content: FULL_MARK_SET_MD,
+      extraExtensions: STORY_EXTRAS,
+    });
+    const { editor: notesEditor, unmount: unmountNotes } = await mountCore({ content: FULL_MARK_SET_MD });
+
+    expect(getEditorMarkdown(storyEditor)).toBe(getEditorMarkdown(notesEditor));
+
+    unmountStory();
+    unmountNotes();
+  });
+
+  it('loads a plain pre-existing document (no formatting) without loss (backward-compat)', async () => {
+    // Old scene/note files predate every mark above. Nothing here has ever
+    // needed a content migration because prose is stored as plain Markdown
+    // text and re-parsed on load — this pins that "no marks" documents stay
+    // byte-stable so a future extension/serializer change can't regress it.
+    const md = 'Just plain prose with no formatting at all.\n';
+    const { editor, unmount } = await mountCore({ content: md });
+    expect(getEditorMarkdown(editor)).toBe(md);
     unmount();
   });
 });
