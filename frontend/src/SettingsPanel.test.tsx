@@ -147,6 +147,38 @@ describe('SettingsPanel', () => {
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
+  it('SKY-5691: settings category tabs support arrow-key navigation (roving tabIndex)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const vaultTab = screen.getByRole('tab', { name: /vaults/i }) as HTMLButtonElement;
+    const agentsTab = screen.getByRole('tab', { name: /agents/i }) as HTMLButtonElement;
+    const appearanceTab = screen.getByRole('tab', { name: /appearance/i }) as HTMLButtonElement;
+
+    // Default: agents tab has tabIndex=0, others -1
+    expect(agentsTab.tabIndex).toBe(0);
+    expect(vaultTab.tabIndex).toBe(-1);
+    expect(appearanceTab.tabIndex).toBe(-1);
+
+    // ArrowRight: Agents → Appearance, focus moves
+    agentsTab.focus();
+    fireEvent.keyDown(agentsTab, { key: 'ArrowRight' });
+    await waitFor(() => expect(appearanceTab).toHaveFocus());
+    expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
+    expect(agentsTab).toHaveAttribute('aria-selected', 'false');
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument());
+
+    // ArrowRight wraps: Appearance → Vaults
+    fireEvent.keyDown(appearanceTab, { key: 'ArrowRight' });
+    await waitFor(() => expect(vaultTab).toHaveFocus());
+    expect(vaultTab).toHaveAttribute('aria-selected', 'true');
+
+    // ArrowLeft: Vaults → Appearance
+    fireEvent.keyDown(vaultTab, { key: 'ArrowLeft' });
+    await waitFor(() => expect(appearanceTab).toHaveFocus());
+    expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('loads settings from IPC on mount', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-...3456' });
 
