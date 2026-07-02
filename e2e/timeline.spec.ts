@@ -1025,17 +1025,12 @@ test.describe('SKY-3186 — AEON Track perf gate (500×10)', () => {
     fs.rmSync(perfTrkNotesVaultDir, { recursive: true, force: true });
   });
 
-  // KNOWN GAP — SKY-5738: TrackTimeline renders every scene unconditionally
-  // (frontend/src/TrackTimeline.tsx:539, `{placed.map(p => ...)}`) with no
-  // windowing, unlike TimelineSpreadsheet (.tls-row virtualization) and
-  // AeonLaneView (F3/SKY-3183's windowed render). Measured against main
-  // (fc48c2dc) in this exact xvfb environment: only 17 rAF samples/2s at 500
-  // scenes vs 69 for the equivalent (passing) spreadsheet perf test — this is
-  // a Track-specific rendering issue, not environment overhead. Both
-  // assertions below are real, correctly-scoped budgets and must be restored
-  // to `test(...)` once SKY-5738 windows the marker rendering — do not loosen
-  // the budgets or delete the assertions to make this pass.
-  test.fixme('500 scenes × 10 arcs — median frame interval <=60ms, p95 (paint) <=100ms during a pan sweep', async () => {
+  // SKY-5738 (fixed): TrackTimeline now windows scene marker rendering to the
+  // visible viewport + a 400px buffer (frontend/src/TrackTimeline.tsx
+  // `visiblePlaced`), mirroring AeonLaneView's windowed render. Previously it
+  // mapped over every `placed` scene unconditionally and measured only 17 rAF
+  // samples/2s at 500 scenes vs 69 for the equivalent spreadsheet perf test.
+  test('500 scenes × 10 arcs — median frame interval <=60ms, p95 (paint) <=100ms during a pan sweep', async () => {
     await expect(
       perfTrkPage.locator('[data-testid="tt-content-group"] g[aria-label^="Scene:"]').first(),
     ).toBeVisible({ timeout: 10_000 });
@@ -1083,7 +1078,11 @@ test.describe('SKY-3186 — AEON Track perf gate (500×10)', () => {
     });
 
     console.log('[perf:track]', JSON.stringify(result));
-    expect(result.markers, 'fixture must render scene markers for the sample to be meaningful').toBeGreaterThanOrEqual(100);
+    // SKY-5738: markers are now windowed to the visible viewport + buffer, so at 500
+    // scenes only a small on-screen subset renders (not the full fixture) — that's the
+    // fix, not a regression. `sampled` (below) is what proves the timing run was
+    // meaningful; this just guards against the fixture rendering nothing at all.
+    expect(result.markers, 'fixture must render at least one scene marker for the sample to be meaningful').toBeGreaterThan(0);
     expect(result.sampled, 'must collect a meaningful frame sample').toBeGreaterThan(30);
     expect(
       result.medianMs,
@@ -1095,9 +1094,9 @@ test.describe('SKY-3186 — AEON Track perf gate (500×10)', () => {
     ).toBeLessThanOrEqual(PAINT_BUDGET_MS);
   });
 
-  // KNOWN GAP — SKY-5738 (see above): a single zoom step at 500 unwindowed
-  // scenes measured 663ms, well over the 200ms AC budget.
-  test.fixme('a single zoom step updates the rendered transform within 200ms', async () => {
+  // SKY-5738 (fixed, see above): a single zoom step at 500 unwindowed scenes
+  // previously measured 663ms, well over the 200ms AC budget.
+  test('a single zoom step updates the rendered transform within 200ms', async () => {
     const zoomIn = perfTrkPage.locator('[data-testid="zoom-in-btn"]');
     const contentGroup = perfTrkPage.locator('[data-testid="tt-content-group"]');
     const before = await contentGroup.getAttribute('transform');
