@@ -49,6 +49,7 @@ import type { DragSidebar } from './PanelDragContext';
 import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
+import BrainstormPage from './BrainstormPage';
 import { resolveCrossTabLink, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import {
   tabbedShellReducer,
@@ -67,7 +68,6 @@ import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
 import WritingAssistantPanel from './WritingAssistantPanel';
-import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
@@ -833,6 +833,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [openedNoteWordCount, setOpenedNoteWordCount] = useState(0);
   const [notePreviewMode, setNotePreviewMode] = useState(false);
   const [notesBrainstormCollapsed, setNotesBrainstormCollapsed] = useState(false);
+  /** SKY-3201: seed prompt pre-filled in the standalone Brainstorm tab (Notes/Story Assist context).
+   *  Cleared after BrainstormPage mounts so navigating back doesn't re-seed with stale text. */
+  const [brainstormSeedPrompt, setBrainstormSeedPrompt] = useState<string | null>(null);
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
   const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
@@ -1808,6 +1811,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
+    if (tab !== 'brainstorm') {
+      setBrainstormSeedPrompt(null);
+    }
     if (tab === 'story') {
       // Restore the story sub-view the user was in before switching to Notes.
       setView(tabShellRef.current.storySubView);
@@ -2216,6 +2222,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLayout(newLayout);
   }, [layout, persistLayout]);
 
+
   // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
   const handleToggleSplitWindow = useCallback(() => {
     setSplitWindowEnabled((prev) => {
@@ -2347,7 +2354,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         handleGrsVisibilityChange(!(grsVisible ?? false));
         return;
       }
-      // SKY-2094: Ctrl/Cmd+1 — switch to Story tab; Ctrl/Cmd+2 — switch to Notes tab.
+      // SKY-2094: Ctrl/Cmd+1 — Story tab; Ctrl/Cmd+2 — Notes tab; SKY-3201: Ctrl/Cmd+3 — Brainstorm tab.
       if (mod && !e.shiftKey && !e.altKey && e.key === '1') {
         e.preventDefault();
         handleTabChange('story');
@@ -3497,12 +3504,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const activeVaultBadge = tabShell.activeTab === 'notes'
     ? (vaultBinding.notesValid ? labelFromPath(vaultBinding.notesPath) : 'No Notes vault')
-    : (vaultBinding.storyValid ? labelFromPath(vaultBinding.storyPath || activeVaultRoot) : 'No Story vault');
+    : tabShell.activeTab === 'brainstorm'
+      ? (vaultBinding.storyValid ? labelFromPath(vaultBinding.storyPath || activeVaultRoot) : 'No Story vault')
+      : (vaultBinding.storyValid ? labelFromPath(vaultBinding.storyPath || activeVaultRoot) : 'No Story vault');
   const activeVaultBadgeTitle = tabShell.activeTab === 'notes'
     ? vaultBinding.notesPath
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
-  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : 'Story'} vault: ${activeVaultBadge}`;
+  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Brainstorm' : 'Story'} vault: ${activeVaultBadge}`;
   const showSampleProjectBanner = appSettings?.onboardingStartMode === 'sample'
     && !appSettings.sampleProjectBannerDismissed;
 
@@ -3831,6 +3840,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 data-testid="writing-mode-edit"
               >E</button>
             </div>
+            {/* SKY-3201: Story Assist — open Brainstorm tab seeded with active scene context */}
+            {selectedScene && agentFlags.brainstorm && (
+              <button
+                className="story-assist-btn"
+                type="button"
+                aria-label="Open Brainstorm with current scene context (Story Assist)"
+                data-testid="story-assist-btn"
+                title="Story Assist — open Brainstorm with this scene's context (Ctrl+3)"
+                onClick={() => {
+                  const excerpt = selectedScene.blocks.map((b) => b.content).join(' ').slice(0, 300);
+                  const seed = excerpt.trim()
+                    ? `Story Assist: help me develop the scene "${selectedScene.title}". Here's what I have so far:\n\n${excerpt}…`
+                    : `Story Assist: help me develop the scene "${selectedScene.title}".`;
+                  setBrainstormSeedPrompt(seed);
+                  handleTabChange('brainstorm');
+                }}
+              >
+                ✦ Story Assist
+              </button>
+            )}
             <button
               className="split-toggle-btn"
               onClick={handleToggleSplitWindow}
@@ -4276,6 +4305,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onSelectEntity={handleSelectEntity}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+          writingMode={writingMode}
+          onSetWritingMode={setWritingMode}
+          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
+          onOpenBrainstorm={(seedText) => {
+            setBrainstormSeedPrompt(seedText);
+            handleTabChange('brainstorm');
+          }}
         />
       )}
       {/* SKY-3623: Brainstorm top-level tab panel */}
@@ -4284,10 +4320,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           id="app-tabpanel-brainstorm"
           role="tabpanel"
           aria-labelledby="app-tab-brainstorm"
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
         >
           <BrainstormPage
-            onClose={() => {}}
+            key={brainstormSeedPrompt ?? 'brainstorm'}
+            onClose={() => handleTabChange('story')}
             enabled={agentFlags.brainstorm}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
@@ -4317,6 +4354,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               }
               return false;
             }}
+            seedPrompt={brainstormSeedPrompt ?? undefined}
           />
         </div>
       )}
