@@ -1,14 +1,18 @@
 import { useEditor } from '@tiptap/react';
 import type { AnyExtension, Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import TextAlign from '@tiptap/extension-text-align';
 import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from '../WikiLinkExtension';
+import { AlignedParagraph, AlignedHeading } from './alignedBlocks';
 
 /**
  * Shared Tiptap editor hook for all rich-text surfaces (Story/Notes).
  *
- * Base extensions always included: StarterKit (which bundles Underline in
- * Tiptap v3) · WikiLink · Markdown.
+ * Base extensions always included: StarterKit (paragraph/heading disabled in
+ * favor of the alignment-aware variants below; StarterKit still bundles
+ * Underline in Tiptap v3) · AlignedParagraph/AlignedHeading · TextAlign ·
+ * WikiLink · Markdown.
  * Surface-specific extensions (and the shared mention stack, appended by
  * `<RichTextEditor>`) are passed via `extraExtensions`.
  *
@@ -51,7 +55,15 @@ export function useRichEditor({
   onSelectionUpdate,
 }: UseRichEditorOptions): Editor | null {
   return useEditor({
-    extensions: [StarterKit, WikiLink, Markdown, ...extraExtensions],
+    extensions: [
+      StarterKit.configure({ paragraph: false, heading: false }),
+      AlignedParagraph,
+      AlignedHeading,
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
+      WikiLink,
+      Markdown,
+      ...extraExtensions,
+    ],
     content,
     editable,
     autofocus,
