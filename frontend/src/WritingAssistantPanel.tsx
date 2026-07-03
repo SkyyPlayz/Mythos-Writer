@@ -84,6 +84,8 @@ interface Props {
   voiceEnabled?: boolean;
   /** G2: TTS engine config. When absent or unconfigured, OS speechSynthesis is used as default. */
   ttsSettings?: TtsEngineSettings;
+  /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language). Field names match VoiceSettings — pass appSettings.voice straight through. */
+  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
@@ -156,6 +158,7 @@ export default function WritingAssistantPanel({
   onJumpToText,
   voiceEnabled = false,
   ttsSettings,
+  voicePrefs,
   cadenceTrigger,
   idleHeartbeatConstantInterval,
   idleDebounceSeconds,
@@ -202,7 +205,7 @@ export default function WritingAssistantPanel({
   const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
 
-  const tts = useTtsPlayer(ttsSettings);
+  const tts = useTtsPlayer(ttsSettings, voicePrefs);
 
   const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
@@ -595,6 +598,8 @@ export default function WritingAssistantPanel({
     useVoiceDictation({
       onTranscript: useCallback((text: string) => { waVoiceTranscriptRef.current(text); }, []),
       onError: useCallback((msg: string) => { waVoiceErrorRef.current(msg); }, []),
+      micDeviceId: voicePrefs?.micDeviceId,
+      inputLanguage: voicePrefs?.inputLanguage,
     });
   // Wire refs now that announce and setPrompt are in scope.
   waVoiceTranscriptRef.current = (text: string) => {

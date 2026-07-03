@@ -15,10 +15,17 @@ vi.mock('electron', () => ({
   },
 }));
 
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
 import {
   VoiceRegistry,
   registerVoiceHandlers,
   transcribeAudio,
+  normalizeLanguage,
+  readPiperSampleRate,
+  PIPER_DEFAULT_SAMPLE_RATE,
   categorizeVoiceError,
   voiceErrorUserMessage,
   VOICE_ERROR_CATEGORIES,
@@ -1332,6 +1339,164 @@ describe('voice error scrubbing (MYT-793 acceptance)', () => {
   });
 });
 
+
+// ─── STT language hint (voice pipeline Part G) ───────────────────────────────
+
+describe('normalizeLanguage', () => {
+  it('normalizes a BCP-47 tag to its primary subtag', () => {
+    expect(normalizeLanguage('en-US')).toBe('en');
+    expect(normalizeLanguage('zh-Hans-CN')).toBe('zh');
+  });
+
+  it('lowercases and passes through plain ISO codes', () => {
+    expect(normalizeLanguage('EN')).toBe('en');
+    expect(normalizeLanguage('fr')).toBe('fr');
+    expect(normalizeLanguage('auto')).toBe('auto');
+  });
+
+  it('returns undefined for absent or empty input', () => {
+    expect(normalizeLanguage(undefined)).toBeUndefined();
+    expect(normalizeLanguage('')).toBeUndefined();
+  });
+
+  it('rejects values that are not plain letter codes (injection guard)', () => {
+    expect(normalizeLanguage('en\r\nContent-Disposition: form-data')).toBeUndefined();
+    expect(normalizeLanguage('e')).toBeUndefined();
+    expect(normalizeLanguage('12')).toBeUndefined();
+    expect(normalizeLanguage('../etc')).toBeUndefined();
+  });
+});
+
+describe('voice:transcribe language plumbing', () => {
+  beforeEach(() => { handleMap.clear(); onMap.clear(); });
+
+  function cloudSttSettings(): AppSettings {
+    return makeSettings(undefined, {
+      enabled: true,
+      provider: 'cloud',
+      cloudEndpoint: 'http://stt.local/v1/audio/transcriptions',
+      cloudApiKey: 'k',
+    });
+  }
+
+  it('adds a normalized language field to the cloud multipart body', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'bonjour' }),
+    } as Response);
+
+    registerVoiceHandlers(() => null, cloudSttSettings);
+    await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav', language: 'fr-FR' });
+
+    const body = (fetchSpy.mock.calls[0][1] as RequestInit).body as Buffer;
+    const bodyStr = body.toString('utf-8');
+    expect(bodyStr).toContain('name="language"');
+    expect(bodyStr).toContain('\r\nfr\r\n');
+    fetchSpy.mockRestore();
+  });
+
+  it('omits the language field when no language is provided', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'hi' }),
+    } as Response);
+
+    registerVoiceHandlers(() => null, cloudSttSettings);
+    await invokeHandle('voice:transcribe', { audio: Buffer.from('x'), mimeType: 'audio/wav' });
+
+    const body = (fetchSpy.mock.calls[0][1] as RequestInit).body as Buffer;
+    expect(body.toString('utf-8')).not.toContain('name="language"');
+    fetchSpy.mockRestore();
+  });
+
+  it('drops renderer-supplied language values that fail validation', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ text: 'hi' }),
+    } as Response);
+
+    registerVoiceHandlers(() => null, cloudSttSettings);
+    await invokeHandle('voice:transcribe', {
+      audio: Buffer.from('x'),
+      mimeType: 'audio/wav',
+      language: 'en"\r\ninjected: header',
+    });
+
+    const body = (fetchSpy.mock.calls[0][1] as RequestInit).body as Buffer;
+    expect(body.toString('utf-8')).not.toContain('name="language"');
+    expect(body.toString('utf-8')).not.toContain('injected');
+    fetchSpy.mockRestore();
+  });
+});
+
+// ─── Piper sample-rate config (voice pipeline Part G) ────────────────────────
+
+describe('readPiperSampleRate', () => {
+  it('reads audio.sample_rate from the model sidecar config', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-piper-test-'));
+    const modelPath = path.join(dir, 'voice.onnx');
+    try {
+      fs.writeFileSync(`${modelPath}.json`, JSON.stringify({ audio: { sample_rate: 16000 } }));
+      expect(readPiperSampleRate(modelPath)).toBe(16000);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the default rate when the config is missing', () => {
+    expect(readPiperSampleRate('/no/such/model.onnx')).toBe(PIPER_DEFAULT_SAMPLE_RATE);
+  });
+
+  it('falls back to the default rate when the config is malformed', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-piper-test-'));
+    const modelPath = path.join(dir, 'voice.onnx');
+    try {
+      fs.writeFileSync(`${modelPath}.json`, 'not-json{');
+      expect(readPiperSampleRate(modelPath)).toBe(PIPER_DEFAULT_SAMPLE_RATE);
+      fs.writeFileSync(`${modelPath}.json`, JSON.stringify({ audio: { sample_rate: 'fast' } }));
+      expect(readPiperSampleRate(modelPath)).toBe(PIPER_DEFAULT_SAMPLE_RATE);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── voice:speak done-event audio metadata (voice pipeline Part G) ───────────
+
+describe('voice:speak done event metadata', () => {
+  beforeEach(() => { handleMap.clear(); onMap.clear(); });
+
+  it('cloud TTS done event carries format mp3 so the renderer can decode it', async () => {
+    const doneEvents: Array<{ speakId: string; format?: string; sampleRate?: number }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:done') doneEvents.push(data as { speakId: string; format?: string });
+      },
+      isDestroyed: () => false,
+    };
+    const mockReader = {
+      read: vi.fn()
+        .mockResolvedValueOnce({ done: false, value: new Uint8Array([1]) })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      body: { getReader: () => mockReader },
+    } as unknown as Response);
+
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts.local', cloudApiKey: 'k' }),
+    );
+    const { speakId } = (await invokeHandle('voice:speak', { text: 'Hello' })) as { speakId: string };
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(doneEvents).toHaveLength(1);
+    expect(doneEvents[0].speakId).toBe(speakId);
+    expect(doneEvents[0].format).toBe('mp3');
+    fetchSpy.mockRestore();
+  });
+});
 
 // ─── Integration: local binary (gated on WHISPER_BIN env var) ────────────────
 
