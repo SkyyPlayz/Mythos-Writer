@@ -36,6 +36,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-vault-health',
       'section-snapshots',
       'section-versions',
+      'section-backup',
       'section-vault-danger-zone',
     ],
   },
