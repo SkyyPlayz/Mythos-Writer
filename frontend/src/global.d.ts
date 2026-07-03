@@ -1048,6 +1048,11 @@ interface Window {
     writingModeSet: (payload: { mode?: WritingMode; focusFlags?: Partial<FocusModeFlags>; editConfig?: Partial<EditModeConfig> }) => Promise<{ mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }>;
     onWritingModeChanged: (cb: (data: { mode: WritingMode; focusFlags: FocusModeFlags; editConfig: EditModeConfig }) => void) => () => void;
 
+    // App data backup / restore (MYT-346) — save/open dialogs are main-owned
+    // (SKY-699 / SKY-700), so the renderer never supplies a filesystem path.
+    backupAppData: () => Promise<{ path: string | null; bytes: number; cancelled: boolean } | { error: string }>;
+    restoreAppData: (confirmed?: boolean) => Promise<{ restored: boolean; details: string[]; requiresConfirmation?: boolean; cancelled?: boolean } | { error: string }>;
+
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.

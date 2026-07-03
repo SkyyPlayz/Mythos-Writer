@@ -22,6 +22,7 @@ import JournalSection from './components/SettingsPanel/sections/JournalSection';
 import SceneFieldsSection from './components/SettingsPanel/sections/SceneFieldsSection';
 import SnapshotsSection from './components/SettingsPanel/sections/SnapshotsSection';
 import VersionHistorySection from './components/SettingsPanel/sections/VersionHistorySection';
+import BackupSection from './components/SettingsPanel/sections/BackupSection';
 import ArchiveAgentSection from './components/SettingsPanel/sections/ArchiveAgentSection';
 import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
@@ -737,6 +738,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <SnapshotsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
               <VersionHistorySection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+              <BackupSection />
             </>
           )}
 

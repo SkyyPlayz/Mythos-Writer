@@ -138,6 +138,15 @@ describe('SettingsPanel', () => {
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
+  it('MYT-346: Vaults tab shows the Back up & restore section', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    fireEvent.click(screen.getByRole('tab', { name: /vaults/i }));
+    expect(screen.getByRole('heading', { name: /back up & restore/i })).toBeInTheDocument();
+    expect(screen.getByTestId('backup-app-data-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('restore-app-data-btn')).toBeInTheDocument();
+  });
+
   it('SKY-2973: clicking Appearance tab shows appearance sections', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
