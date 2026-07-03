@@ -9,6 +9,32 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0-beta.2] — 2026-07-03
+
+### Added
+
+- **Split panes** — Drag a workspace tab to the right edge of the window (or Shift+click / Shift+Enter a tab) to open Scene Crafter, Timeline, Entities, Graph, or Brainstorm in a right-hand split pane beside your editor. The pane persists across restarts. ([PR #844](https://github.com/SkyyPlayz/Mythos-Writer/pull/844))
+- **Timeline view switcher** — One timeline home with a Spreadsheet | AEON | AEON Track toggle and a group-by control (arc/chapter/character/location); your view choice and grouping persist across restarts. ([PR #838](https://github.com/SkyyPlayz/Mythos-Writer/pull/838))
+- **Hear replies in Brainstorm** — Per-reply Hear/Stop buttons and a session mute toggle, matching the Writing Assistant's voice controls. ([PR #841](https://github.com/SkyyPlayz/Mythos-Writer/pull/841))
+- **Back up & restore app data** — Buttons in Settings → Vaults export all app-private data (manifests, snapshots, suggestion DB) to a single archive and restore it, with a native file picker and a confirm step. ([PR #839](https://github.com/SkyyPlayz/Mythos-Writer/pull/839))
+- **Obsidian vault import** — Onboarding Path 3 now really imports: a dry-run report (file counts, folders, samples) before anything is touched, then import with inline, retryable errors. ([PR #831](https://github.com/SkyyPlayz/Mythos-Writer/pull/831))
+- **Text alignment buttons** — Left/center/right/justify in the format toolbar for both Story and Notes editors; unaligned documents stay byte-identical on disk. ([PR #837](https://github.com/SkyyPlayz/Mythos-Writer/pull/837))
+- **Chapter interlude text** — Chapter-owned prose (an epigraph or interlude that belongs to no scene) is editable in Chapter view. ([PR #830](https://github.com/SkyyPlayz/Mythos-Writer/pull/830))
+- **Heading focus (H1–H6 views)** — Narrow the scene editor to a single heading section, Word-outline style, and step between same-level headings; scene version backups always keep the full text. ([PR #830](https://github.com/SkyyPlayz/Mythos-Writer/pull/830))
+- **Nav rail customization that works** — The Settings nav-bar section (items, order, labels/icons, start collapsed) now actually drives the rail; Brainstorm joins the rail; the "+" tab button opens a content picker; on-canvas edge arrows step scenes/chapters from the page edges. ([PR #829](https://github.com/SkyyPlayz/Mythos-Writer/pull/829))
+- **Graph quality-of-life** — The Notes/Story/Both scope filter persists across sessions, and scene nodes in the pop-out graph window open in the main window. ([PR #835](https://github.com/SkyyPlayz/Mythos-Writer/pull/835))
+
+### Changed
+
+- **Settings internals re-modularized** — SettingsPanel is a thin orchestrator over extracted section components again (no visible change). ([PR #836](https://github.com/SkyyPlayz/Mythos-Writer/pull/836))
+- **Design polish (Part H)** — Low-contrast text fixed to meet the 4.5:1 floor, the worst bare-color CSS migrated to Liquid Neon tokens with a regression ratchet, and reduced-motion now also covers smooth scrolling. ([PR #834](https://github.com/SkyyPlayz/Mythos-Writer/pull/834))
+
+### Fixed
+
+- **Auto-update now works in shipped builds** — Packaged binaries previously had the updater silently disabled by a build-shell-only environment flag; it is now on by default when packaged (`MYTHOS_AUTO_UPDATE=0` remains a kill switch). This is the first release whose binaries can self-update to the next one. ([PR #833](https://github.com/SkyyPlayz/Mythos-Writer/pull/833))
+- **Voice is audible and obeys your settings** — Locally- and cloud-synthesized speech is actually played (previously only the OS fallback voice made sound), and volume, rate, voice, persistent mute, microphone device, and input language all take effect; the Writing Assistant mic is reachable in the real app. ([PR #832](https://github.com/SkyyPlayz/Mythos-Writer/pull/832), [#829](https://github.com/SkyyPlayz/Mythos-Writer/pull/829))
+- **Notes tab wiki links** — The `[[` autocomplete popup was permanently empty and every link rendered as unresolved in the primary Notes tab. ([PR #829](https://github.com/SkyyPlayz/Mythos-Writer/pull/829))
+
 ## [0.3.0-beta.1] — 2026-07-02
 
 ### Added
