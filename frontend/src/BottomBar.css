@@ -8,7 +8,7 @@
   border-top: 1px solid var(--glass-border);
   flex-shrink: 0;
   font-size: 0.78rem;
-  color: #52525b;
+  color: var(--text-muted);
   user-select: none;
   position: relative;
   z-index: 10;
@@ -76,26 +76,28 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .bottom-sep {
   margin: 0 4px;
-  color: #3f3f46;
+  /* Decorative glyph between breadcrumb parts — dimmed via opacity per tokens.css. */
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 
 .bottom-scene-name {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .bottom-stats {
   white-space: nowrap;
   flex-shrink: 0;
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .bottom-hint {
-  color: #3f3f46;
+  color: var(--text-muted);
 }
 
 .bottom-draft {
@@ -110,21 +112,21 @@
 }
 
 .draft-in-progress {
-  background: #1c1917;
-  color: #78716c;
-  border: 1px solid #44403c;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
 }
 
 .draft-review {
-  background: #1c1400;
-  color: #fbbf24;
-  border: 1px solid #92400e;
+  background: var(--state-warning-bg);
+  color: var(--state-warning);
+  border: 1px solid var(--color-warning-border);
 }
 
 .draft-final {
-  background: #052e16;
-  color: #4ade80;
-  border: 1px solid #166534;
+  background: var(--state-success-bg);
+  color: var(--state-success);
+  border: 1px solid var(--color-success-border);
 }
 
 .bottom-daily-goal {
@@ -133,8 +135,8 @@
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 500;
-  color: #71717a;
-  border: 1px solid #27272a;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
   background: transparent;
   cursor: default;
   outline-offset: 2px;
@@ -155,7 +157,7 @@
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  color: #f87171;
+  color: var(--state-danger);
   font-size: 0.72rem;
   font-weight: 500;
 }
@@ -164,7 +166,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #f87171;
+  background: var(--state-danger);
   animation: voice-pulse 1.2s ease-in-out infinite;
 }
 

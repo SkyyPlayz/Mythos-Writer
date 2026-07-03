@@ -8,9 +8,9 @@
   gap: 0;
   padding: 0;
   border-radius: 6px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #e2e8f0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-header);
   font-size: 13px;
   z-index: 9000;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
@@ -19,13 +19,13 @@
 }
 
 .update-banner--ready {
-  border-color: #22c55e;
-  background: #14532d;
+  border-color: var(--state-success);
+  background: var(--state-success-bg);
 }
 
 .update-banner--downloading {
-  border-color: #3b82f6;
-  background: #1e3a5f;
+  border-color: var(--state-info);
+  background: color-mix(in srgb, var(--state-info) 18%, var(--bg-inset));
 }
 
 .update-banner__main {
@@ -52,10 +52,10 @@
 }
 
 .update-banner__install {
-  background: #22c55e;
+  background: var(--state-success);
   border: none;
   border-radius: 4px;
-  color: #052e16;
+  color: var(--text-on-accent);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -65,14 +65,14 @@
 }
 
 .update-banner__install:hover {
-  background: #16a34a;
+  background: color-mix(in srgb, var(--state-success) 78%, var(--bg-canvas));
 }
 
 .update-banner__defer {
   background: transparent;
-  border: 1px solid #4ade80;
+  border: 1px solid var(--state-success);
   border-radius: 4px;
-  color: #4ade80;
+  color: var(--state-success);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -87,9 +87,9 @@
 
 .update-banner__notes-toggle {
   background: transparent;
-  border: 1px solid #475569;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 2px 8px;
@@ -98,14 +98,14 @@
 }
 
 .update-banner__notes-toggle:hover {
-  color: #e2e8f0;
-  border-color: #64748b;
+  color: var(--text-header);
+  border-color: var(--border-hover);
 }
 
 .update-banner__close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
   padding: 0 2px;
@@ -113,11 +113,11 @@
 }
 
 .update-banner__close:hover {
-  color: #e2e8f0;
+  color: var(--text-header);
 }
 
 .update-banner__notes {
-  border-top: 1px solid #334155;
+  border-top: 1px solid var(--border-default);
   padding: 8px 12px;
   max-height: 160px;
   overflow-y: auto;
@@ -126,7 +126,7 @@
 .update-banner__notes-body {
   margin: 0;
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--text-body);
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;

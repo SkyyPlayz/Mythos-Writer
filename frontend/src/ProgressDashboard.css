@@ -1,11 +1,13 @@
 /* Writing Goals & Progress Dashboard (SKY-154) */
 
 .progress-dashboard {
-  --hm-0: #1c1c1f;
-  --hm-1: #1a3a2e;
-  --hm-2: #266b4e;
-  --hm-3: #3aa870;
-  --hm-4: #4ade80;
+  /* Heatmap intensity scale — data-viz exception: sequential ramp derived from tokens
+     (steps mix --state-success into --bg-inset), no bare hex literals. */
+  --hm-0: var(--bg-elevated);
+  --hm-1: color-mix(in srgb, var(--state-success) 25%, var(--bg-inset));
+  --hm-2: color-mix(in srgb, var(--state-success) 50%, var(--bg-inset));
+  --hm-3: color-mix(in srgb, var(--state-success) 75%, var(--bg-inset));
+  --hm-4: var(--state-success);
   display: flex;
   flex-direction: column;
   padding: 12px 12px 24px;
@@ -15,13 +17,13 @@
 
 .pd-loading {
   padding: 24px 16px;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .pd-section {
   padding: 12px 0;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--border-separator);
 }
 
 .pd-section--last {
@@ -33,7 +35,7 @@
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #52525b;
+  color: var(--text-muted);
   margin: 0 0 8px;
 }
 
@@ -48,27 +50,27 @@
 .pd-big {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #e4e4e7;
+  color: var(--text-header);
   line-height: 1;
 }
 
 .pd-sep {
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .pd-sub-num {
   font-size: 0.88rem;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .pd-unit {
   font-size: 0.72rem;
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .pd-check {
-  color: #4ade80;
+  color: var(--state-success);
   font-size: 0.85rem;
   margin-left: 2px;
 }
@@ -76,26 +78,26 @@
 .pd-bar-track {
   height: 6px;
   border-radius: 3px;
-  background: #27272a;
+  background: var(--bg-elevated);
   overflow: hidden;
   margin-bottom: 4px;
 }
 
 .pd-bar-fill {
   height: 100%;
-  background: #7c3aed;
+  background: var(--accent-violet);
   border-radius: 3px;
   transition: width 0.35s ease, background 0.25s ease;
   min-width: 2px;
 }
 
 .pd-bar-fill--done {
-  background: #4ade80;
+  background: var(--state-success);
 }
 
 .pd-pct {
   font-size: 0.7rem;
-  color: #52525b;
+  color: var(--text-muted);
   text-align: right;
 }
 
@@ -119,9 +121,9 @@
 
 .pd-reset-btn {
   font-size: 0.7rem;
-  color: #71717a;
+  color: var(--text-muted);
   background: none;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 3px 8px;
   cursor: pointer;
@@ -129,13 +131,13 @@
 }
 
 .pd-reset-btn:hover {
-  color: #fca5a5;
-  border-color: #fca5a5;
+  color: var(--text-btn-danger);
+  border-color: var(--text-btn-danger);
 }
 
 .pd-reset-btn--warn {
-  color: #f87171;
-  border-color: #f87171;
+  color: var(--state-danger);
+  border-color: var(--state-danger);
 }
 
 .pd-reset-btn:focus-visible,
@@ -146,9 +148,9 @@
 
 .pd-cancel-btn {
   font-size: 0.7rem;
-  color: #52525b;
+  color: var(--text-muted);
   background: none;
-  border: 1px solid #3f3f46;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 3px 8px;
   cursor: pointer;
@@ -156,7 +158,7 @@
 }
 
 .pd-cancel-btn:hover {
-  color: #a1a1aa;
+  color: var(--text-body);
 }
 
 .pd-stat-list {
@@ -173,13 +175,13 @@
 
 .pd-stat-label {
   font-size: 0.78rem;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .pd-stat-val {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .pd-heatmap {
@@ -210,7 +212,7 @@
 
 .pd-legend-text {
   font-size: 0.62rem;
-  color: #52525b;
+  color: var(--text-muted);
   margin-left: 3px;
 }
 
@@ -223,10 +225,10 @@
 .pd-goal-input {
   width: 68px;
   padding: 4px 6px;
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  color: #e4e4e7;
+  color: var(--text-header);
   font-size: 0.82rem;
   -moz-appearance: textfield;
 }
@@ -244,16 +246,16 @@
 
 .pd-goal-label {
   font-size: 0.72rem;
-  color: #71717a;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
 .pd-save-btn {
   padding: 4px 10px;
-  background: #27272a;
-  border: 1px solid #3f3f46;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
-  color: #a1a1aa;
+  color: var(--text-body);
   font-size: 0.72rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -261,8 +263,8 @@
 }
 
 .pd-save-btn:hover:not(:disabled) {
-  background: #3f3f46;
-  color: #e4e4e7;
+  background: var(--surface-3);
+  color: var(--text-header);
 }
 
 .pd-save-btn:disabled {
@@ -277,6 +279,6 @@
 
 .pd-goal-error {
   font-size: 0.72rem;
-  color: #f87171;
+  color: var(--state-danger);
   margin: 4px 0 0;
 }
