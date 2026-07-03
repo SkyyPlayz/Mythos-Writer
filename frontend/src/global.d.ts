@@ -1154,13 +1154,13 @@ interface Window {
     onVoiceTranscript: (cb: (event: { sessionId: string; text: string; isFinal: boolean }) => void) => () => void;
     onVoiceError: (cb: (event: { sessionId: string; error: string }) => void) => () => void;
     /** MYT-338: single-shot transcription; returns { text, confidence } or { error } */
-    voiceTranscribe: (audio: ArrayBuffer, mimeType?: string) => Promise<unknown>;
+    voiceTranscribe: (audio: ArrayBuffer, mimeType?: string, language?: string) => Promise<unknown>;
 
     // TTS (MYT-339)
     voiceSpeak: (text: string, voiceId?: string) => Promise<unknown>;
     voiceSpeakCancel: (speakId: string) => void;
     onVoiceSpeakChunk: (cb: (event: { speakId: string; chunk: Uint8Array }) => void) => () => void;
-    onVoiceSpeakDone: (cb: (event: { speakId: string }) => void) => () => void;
+    onVoiceSpeakDone: (cb: (event: { speakId: string; format?: 'pcm' | 'mp3'; sampleRate?: number }) => void) => () => void;
     onVoiceSpeakError: (cb: (event: { speakId: string; error: string }) => void) => () => void;
 
     // Brainstorm Agent routing (SKY-20) — layoutMode-aware destination resolution

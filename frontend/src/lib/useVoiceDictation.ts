@@ -24,6 +24,13 @@ export interface UseVoiceDictationOptions {
    * Set to 0 to disable.
    */
   maxDurationMs?: number;
+  /**
+   * Preferred microphone deviceId (settings.voice.micDeviceId). Falls back to
+   * the default mic when the device is unavailable (e.g. unplugged).
+   */
+  micDeviceId?: string;
+  /** BCP-47 STT language hint (settings.voice.inputLanguage), e.g. 'en-US'. Absent = auto-detect. */
+  inputLanguage?: string;
 }
 
 export interface UseVoiceDictationResult {
@@ -60,6 +67,8 @@ export function useVoiceDictation({
   onTranscript,
   onError,
   maxDurationMs = 30_000,
+  micDeviceId,
+  inputLanguage,
 }: UseVoiceDictationOptions): UseVoiceDictationResult {
   const [state, _setState] = useState<VoiceDictationState>('idle');
   const stateRef = useRef<VoiceDictationState>('idle');
@@ -98,7 +107,21 @@ export function useVoiceDictation({
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (micDeviceId) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: micDeviceId } },
+          });
+        } catch (err) {
+          // A stored deviceId may reference an unplugged/renamed mic — fall
+          // back to the default device instead of failing the dictation.
+          const name = (err as { name?: string } | null)?.name;
+          if (name !== 'OverconstrainedError' && name !== 'NotFoundError') throw err;
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Microphone access denied';
       setErrorMessage(msg);
@@ -141,7 +164,7 @@ export function useVoiceDictation({
       }
 
       try {
-        const result = await window.api.voiceTranscribe(arrayBuffer, mimeType || undefined) as
+        const result = await window.api.voiceTranscribe(arrayBuffer, mimeType || undefined, inputLanguage) as
           | { text: string; confidence?: number }
           | { error: string };
 
@@ -172,7 +195,7 @@ export function useVoiceDictation({
         }
       }, maxDurationMs);
     }
-  }, [cleanup, maxDurationMs, onError, onTranscript, setState]);
+  }, [cleanup, inputLanguage, maxDurationMs, micDeviceId, onError, onTranscript, setState]);
 
   const stop = useCallback(() => {
     if (stateRef.current !== 'listening') return;

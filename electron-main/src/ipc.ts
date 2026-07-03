@@ -3306,6 +3306,8 @@ export interface VoiceTranscribePayload {
   audio: Buffer | ArrayBuffer;
   /** MIME type hint, e.g. 'audio/wav'. Defaults to 'audio/webm' when absent. */
   mimeType?: string;
+  /** BCP-47 language hint, e.g. 'en-US' (settings.voice.inputLanguage). Absent = auto-detect. */
+  language?: string;
 }
 
 export interface VoiceTranscribeResponse {

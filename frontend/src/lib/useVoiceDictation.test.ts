@@ -124,4 +124,80 @@ describe('useVoiceDictation', () => {
     await act(async () => { await result.current.start(); });
     expect(result.current.state).toBe('listening');
   });
+
+  it('requests the configured micDeviceId as an exact constraint', async () => {
+    const getUserMedia = vi.fn().mockResolvedValue(new FakeMediaStream());
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia },
+      writable: true,
+      configurable: true,
+    });
+    const { result } = renderHook(() =>
+      useVoiceDictation({ onTranscript: vi.fn(), micDeviceId: 'mic-42' }),
+    );
+
+    await act(async () => { await result.current.start(); });
+
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-42' } } });
+    expect(result.current.state).toBe('listening');
+  });
+
+  it('falls back to the default mic when the stored device is unavailable', async () => {
+    const overconstrained = Object.assign(new Error('no such device'), {
+      name: 'OverconstrainedError',
+    });
+    const getUserMedia = vi.fn()
+      .mockRejectedValueOnce(overconstrained)
+      .mockResolvedValueOnce(new FakeMediaStream());
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia },
+      writable: true,
+      configurable: true,
+    });
+    const { result } = renderHook(() =>
+      useVoiceDictation({ onTranscript: vi.fn(), micDeviceId: 'unplugged-mic' }),
+    );
+
+    await act(async () => { await result.current.start(); });
+
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, { audio: { deviceId: { exact: 'unplugged-mic' } } });
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, { audio: true });
+    expect(result.current.state).toBe('listening');
+  });
+
+  it('does not retry the default mic on permission errors', async () => {
+    const denied = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+    const getUserMedia = vi.fn().mockRejectedValue(denied);
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia },
+      writable: true,
+      configurable: true,
+    });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceDictation({ onTranscript: vi.fn(), onError, micDeviceId: 'mic-42' }),
+    );
+
+    await act(async () => { await result.current.start(); });
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe('error');
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it('threads inputLanguage into the voiceTranscribe payload', async () => {
+    const transcribe = vi.fn().mockResolvedValue({ text: 'bonjour', confidence: 0.9 });
+    window.api = { ...window.api, voiceTranscribe: transcribe };
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceDictation({ onTranscript, inputLanguage: 'fr-FR' }),
+    );
+
+    await act(async () => { await result.current.start(); });
+    act(() => { result.current.stop(); });
+
+    await waitFor(() => expect(result.current.state).toBe('idle'));
+    expect(transcribe).toHaveBeenCalledWith(expect.any(ArrayBuffer), undefined, 'fr-FR');
+    expect(onTranscript).toHaveBeenCalledWith('bonjour');
+  });
 });
