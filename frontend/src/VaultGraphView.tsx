@@ -37,6 +37,28 @@ const GRAPH_CATEGORIES = [
 type GraphCategory = (typeof GRAPH_CATEGORIES)[number];
 type VaultGraphScope = 'notes' | 'story' | 'both';
 
+// GH #650: the Notes/Story/Both scope survives remounts via localStorage.
+const VAULT_SCOPE_STORAGE_KEY = 'mythos:vaultGraph:scope';
+
+function isVaultGraphScope(value: unknown): value is VaultGraphScope {
+  return value === 'notes' || value === 'story' || value === 'both';
+}
+
+function readStoredVaultScope(): VaultGraphScope | null {
+  try {
+    const stored = window.localStorage.getItem(VAULT_SCOPE_STORAGE_KEY);
+    return isVaultGraphScope(stored) ? stored : null;
+  } catch {
+    return null; // storage unavailable (private mode / disabled)
+  }
+}
+
+function persistVaultScope(scope: VaultGraphScope): void {
+  try {
+    window.localStorage.setItem(VAULT_SCOPE_STORAGE_KEY, scope);
+  } catch { /* storage unavailable — scope stays session-only */ }
+}
+
 const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   characters: 'Characters',
   locations: 'Locations',
@@ -456,8 +478,12 @@ function isNodeInViewport(
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultScope = 'notes', mostRecentNotePath }: Props) {
-  const [vaultScope, setVaultScope] = useState<VaultGraphScope>(initialVaultScope);
+export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultScope, mostRecentNotePath }: Props) {
+  // GH #650: an explicit initialVaultScope prop wins; otherwise restore the
+  // last-used scope from localStorage, falling back to notes.
+  const [vaultScope, setVaultScope] = useState<VaultGraphScope>(
+    () => initialVaultScope ?? readStoredVaultScope() ?? 'notes',
+  );
   const [graphData, setGraphData] = useState<VaultGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSpinner, setShowSpinner] = useState(false);
@@ -801,6 +827,13 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     setActiveCategories(new Set(ALL_CHIP_KEYS));
   }, []);
 
+  // GH #650: persist only user-driven scope changes so an explicit
+  // initialVaultScope override never clobbers the stored preference.
+  const handleScopeSelect = useCallback((scope: VaultGraphScope) => {
+    setVaultScope(scope);
+    persistVaultScope(scope);
+  }, []);
+
   const depthLabel = depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit);
   const visibleChips = chipsExpanded ? CHIP_DEFS : CHIP_DEFS.slice(0, MAX_VISIBLE_CHIPS);
   const hiddenCount = CHIP_DEFS.length > MAX_VISIBLE_CHIPS ? CHIP_DEFS.length - MAX_VISIBLE_CHIPS : 0;
@@ -813,7 +846,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           className={`vgv-scope-btn${vaultScope === scope ? ' vgv-scope-btn--active' : ''}`}
           aria-pressed={vaultScope === scope}
           data-testid={`vault-graph-scope-${scope}`}
-          onClick={() => setVaultScope(scope)}
+          onClick={() => handleScopeSelect(scope)}
         >
           {scope === 'notes' ? 'Notes' : scope === 'story' ? 'Story' : 'Both'}
         </button>
@@ -889,20 +922,23 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           <p className="vgv-empty-copy">
             Your notes haven&apos;t linked up yet. Add <span className="vgv-empty-wikilink">[[wiki-links]]</span> in your notes to see connections appear here.
           </p>
-          <button
-            type="button"
-            className="vgv-empty-cta"
-            data-testid="vault-graph-open-note-cta"
-            onClick={() => {
-              if (mostRecentNotePath) {
-                onOpenNote?.(mostRecentNotePath);
-              } else {
-                onOpenNote?.('');
-              }
-            }}
-          >
-            Open a note →
-          </button>
+          {/* GH #650: hide the CTA when no open handler exists (floating pop-out). */}
+          {onOpenNote && (
+            <button
+              type="button"
+              className="vgv-empty-cta"
+              data-testid="vault-graph-open-note-cta"
+              onClick={() => {
+                if (mostRecentNotePath) {
+                  onOpenNote(mostRecentNotePath);
+                } else {
+                  onOpenNote('');
+                }
+              }}
+            >
+              Open a note →
+            </button>
+          )}
         </div>
       </section>
     );

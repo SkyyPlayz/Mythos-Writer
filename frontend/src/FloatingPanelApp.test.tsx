@@ -20,7 +20,15 @@ vi.mock('./EntityBrowser', () => ({ default: () => <div data-testid="eb-panel" /
 vi.mock('./components/VaultBrowser', () => ({ default: () => <div data-testid="vb-panel" /> }));
 vi.mock('./SuggestionReview', () => ({ default: () => <div data-testid="sr-panel" /> }));
 vi.mock('./ProgressDashboard', () => ({ default: () => <div data-testid="pd-panel" /> }));
-vi.mock('./VaultGraphView', () => ({ default: () => <div data-testid="vg-panel" /> }));
+// GH #650: capture the props FloatingPanelApp passes to the pop-out graph so
+// tests can exercise the scene-open forwarding wired through it.
+const vaultGraphMock = vi.hoisted(() => ({ lastProps: null as Record<string, unknown> | null }));
+vi.mock('./VaultGraphView', () => ({
+  default: (props: Record<string, unknown>) => {
+    vaultGraphMock.lastProps = props;
+    return <div data-testid="vg-panel" />;
+  },
+}));
 vi.mock('./StoryTimeline', () => ({ default: () => <div data-testid="st-panel" /> }));
 
 const STORY_ID = 'story-abc';
@@ -84,6 +92,7 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).api = makeApi();
+  vaultGraphMock.lastProps = null;
 });
 
 afterEach(() => {
@@ -184,6 +193,45 @@ describe('FloatingPanelApp — handleNavCreateScene write order (GH #731 / SKY-5
     await new Promise((r) => setTimeout(r, 20));
     expect(writeVault).not.toHaveBeenCalled();
     expect(writeManifest).not.toHaveBeenCalled();
+  });
+});
+
+describe('FloatingPanelApp — vault-graph pop-out navigation (GH #650)', () => {
+  it('forwards scene opens to the main window via the navigator bridge', async () => {
+    const navigatorSelectScene = vi.fn().mockResolvedValue(undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeApi({ navigatorSelectScene });
+
+    render(<FloatingPanelApp panelId="vault-graph" />);
+    await waitFor(() => expect(screen.getByTestId('vg-panel')).toBeInTheDocument());
+
+    const onOpenScene = vaultGraphMock.lastProps?.onOpenScene as
+      (storyId: string, chapterId: string, sceneId: string) => void;
+    expect(typeof onOpenScene).toBe('function');
+
+    onOpenScene('story-1', 'chapter-1', 'scene-1');
+
+    expect(navigatorSelectScene).toHaveBeenCalledTimes(1);
+    expect(navigatorSelectScene).toHaveBeenCalledWith('scene-1');
+  });
+
+  it('does not crash when navigatorSelectScene is unavailable', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeApi({ navigatorSelectScene: undefined });
+
+    render(<FloatingPanelApp panelId="vault-graph" />);
+    await waitFor(() => expect(screen.getByTestId('vg-panel')).toBeInTheDocument());
+
+    const onOpenScene = vaultGraphMock.lastProps?.onOpenScene as
+      (storyId: string, chapterId: string, sceneId: string) => void;
+    expect(() => onOpenScene('story-1', 'chapter-1', 'scene-1')).not.toThrow();
+  });
+
+  it('leaves onOpenNote unwired — no notes bridge to the main window exists', async () => {
+    render(<FloatingPanelApp panelId="vault-graph" />);
+    await waitFor(() => expect(screen.getByTestId('vg-panel')).toBeInTheDocument());
+
+    expect(vaultGraphMock.lastProps?.onOpenNote).toBeUndefined();
   });
 });
 
