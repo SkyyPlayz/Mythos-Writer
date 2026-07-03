@@ -31,6 +31,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-scene-fields',
       'section-snapshots',
       'section-versions',
+      'section-backup',
     ],
   },
   {
