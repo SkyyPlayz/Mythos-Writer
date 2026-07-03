@@ -9,10 +9,19 @@
 //   – onMouseDown calls chain command without firing click (e.preventDefault)
 //   – Heading dropdown change routes to toggleHeading / setParagraph
 //   – Event subscription: selectionUpdate / transaction subscribed on mount, cleaned up
+//   – GH #642 alignment buttons: render, pressed state (left = unset default),
+//     setTextAlign / unsetTextAlign routing, and marker-free markdown for
+//     left/unset against a real shared-schema editor
 
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import TextAlign from '@tiptap/extension-text-align';
+import { Markdown } from 'tiptap-markdown';
 import FormatToolbar from './FormatToolbar';
+import { WikiLink } from './WikiLinkExtension';
+import { AlignedParagraph, AlignedHeading } from './lib/alignedBlocks';
 
 afterEach(() => {
   cleanup();
@@ -41,6 +50,8 @@ function makeChainMock() {
   cmd('toggleCodeBlock');
   cmd('toggleHeading');
   cmd('setParagraph');
+  cmd('setTextAlign');
+  cmd('unsetTextAlign');
   chain['run'] = vi.fn();
   return chain;
 }
@@ -50,14 +61,19 @@ function makeEditorMock(activeMap: ActiveMap = {}) {
   const chainMock = makeChainMock();
 
   const editor = {
-    isActive: vi.fn((type: string, attrs?: Record<string, unknown>) => {
-      if (attrs && type === 'heading') {
+    isActive: vi.fn((typeOrAttrs: string | Record<string, unknown>, attrs?: Record<string, unknown>) => {
+      // Attrs-only form used by the TextAlign checks: isActive({ textAlign: 'center' })
+      if (typeof typeOrAttrs === 'object') {
+        const val = activeMap[`align-${String(typeOrAttrs['textAlign'])}`];
+        return typeof val === 'function' ? val(typeOrAttrs) : Boolean(val);
+      }
+      if (attrs && typeOrAttrs === 'heading') {
         const level = attrs['level'];
         const key = `heading-${level}`;
         const val = activeMap[key];
         return typeof val === 'function' ? val(attrs) : Boolean(val);
       }
-      const val = activeMap[type];
+      const val = activeMap[typeOrAttrs];
       return typeof val === 'function' ? val() : Boolean(val);
     }),
     chain: vi.fn(() => chainMock),
@@ -107,6 +123,10 @@ describe('FormatToolbar', () => {
     expect(screen.getByRole('button', { name: 'Blockquote' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Inline code' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Code block' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Align left' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Align center' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Align right' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Justify' })).toBeTruthy();
   });
 
   it('renders heading select with Body option selected by default', () => {
@@ -244,5 +264,129 @@ describe('FormatToolbar', () => {
     unmount();
     expect(editor.off).toHaveBeenCalledWith('selectionUpdate', expect.any(Function));
     expect(editor.off).toHaveBeenCalledWith('transaction', expect.any(Function));
+  });
+});
+
+// ─── Alignment buttons (GH #642) — mocked editor ─────────────────────────────
+
+describe('FormatToolbar alignment buttons', () => {
+  const ALIGN_NAMES = ['Align left', 'Align center', 'Align right', 'Justify'];
+
+  it('Align left reads pressed when no alignment is set (unset default)', () => {
+    const editor = makeEditorMock();
+    render(<FormatToolbar editor={editor as never} />);
+    const pressed = ALIGN_NAMES.map(
+      (name) => screen.getByRole('button', { name }).getAttribute('aria-pressed'),
+    );
+    expect(pressed).toEqual(['true', 'false', 'false', 'false']);
+  });
+
+  it('only the active alignment reads pressed when center is set', () => {
+    const editor = makeEditorMock({ 'align-center': true });
+    render(<FormatToolbar editor={editor as never} />);
+    const pressed = ALIGN_NAMES.map(
+      (name) => screen.getByRole('button', { name }).getAttribute('aria-pressed'),
+    );
+    expect(pressed).toEqual(['false', 'true', 'false', 'false']);
+    expect(screen.getByRole('button', { name: 'Align center' }).classList.contains('is-active')).toBe(true);
+  });
+
+  it.each([['Align center', 'center'], ['Align right', 'right'], ['Justify', 'justify']])(
+    'mousedown on %s calls setTextAlign(%s) when inactive',
+    (name, align) => {
+      const editor = makeEditorMock();
+      render(<FormatToolbar editor={editor as never} />);
+      fireEvent.mouseDown(screen.getByRole('button', { name }));
+      expect(editor._chain['setTextAlign']).toHaveBeenCalledWith(align);
+      expect(editor._chain['unsetTextAlign']).not.toHaveBeenCalled();
+    },
+  );
+
+  it('mousedown on the already-active alignment calls unsetTextAlign (toggle off)', () => {
+    const editor = makeEditorMock({ 'align-right': true });
+    render(<FormatToolbar editor={editor as never} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align right' }));
+    expect(editor._chain['unsetTextAlign']).toHaveBeenCalled();
+    expect(editor._chain['setTextAlign']).not.toHaveBeenCalled();
+  });
+
+  it('mousedown on Align left always calls unsetTextAlign, never setTextAlign', () => {
+    const editor = makeEditorMock({ 'align-center': true });
+    render(<FormatToolbar editor={editor as never} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align left' }));
+    expect(editor._chain['unsetTextAlign']).toHaveBeenCalled();
+    expect(editor._chain['setTextAlign']).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Alignment buttons (GH #642) — real shared-schema editor ─────────────────
+// Uses the same extension set sharedRichTextSchema.test.ts pins (the exact set
+// useRichEditor wires up, minus the window.api-dependent resolution extension)
+// so these tests fail if the toolbar drifts from the persistence contract.
+
+function makeRealEditor(content: string): Editor {
+  return new Editor({
+    extensions: [
+      StarterKit.configure({ paragraph: false, heading: false }),
+      AlignedParagraph,
+      AlignedHeading,
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
+      WikiLink,
+      Markdown,
+    ],
+    content,
+  });
+}
+
+function markdownOf(editor: Editor): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (editor.storage as any).markdown.getMarkdown() as string;
+}
+
+describe('FormatToolbar alignment against the real shared schema', () => {
+  it('clicking Align center persists a {.center} marker and flips pressed state', () => {
+    const editor = makeRealEditor('Hello world.');
+    render(<FormatToolbar editor={editor} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align center' }));
+    expect(markdownOf(editor)).toContain('{.center}');
+    expect(screen.getByRole('button', { name: 'Align center' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Align left' }).getAttribute('aria-pressed')).toBe('false');
+    editor.destroy();
+  });
+
+  it('clicking Align left after center resets to the marker-free default', () => {
+    const editor = makeRealEditor('Hello world.');
+    render(<FormatToolbar editor={editor} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align center' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align left' }));
+    expect(markdownOf(editor).trim()).toBe('Hello world.');
+    expect(screen.getByRole('button', { name: 'Align left' }).getAttribute('aria-pressed')).toBe('true');
+    editor.destroy();
+  });
+
+  it('re-clicking the active alignment toggles back to the marker-free default', () => {
+    const editor = makeRealEditor('Hello world.');
+    render(<FormatToolbar editor={editor} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align right' }));
+    expect(markdownOf(editor)).toContain('{.right}');
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align right' }));
+    expect(markdownOf(editor).trim()).toBe('Hello world.');
+    editor.destroy();
+  });
+
+  it('clicking Align left on an untouched document keeps its markdown byte-stable', () => {
+    const editor = makeRealEditor('Hello world.');
+    render(<FormatToolbar editor={editor} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Align left' }));
+    expect(markdownOf(editor).trim()).toBe('Hello world.');
+    editor.destroy();
+  });
+
+  it('aligns headings too — marker rides alongside the heading level', () => {
+    const editor = makeRealEditor('## Scene Two');
+    render(<FormatToolbar editor={editor} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Justify' }));
+    expect(markdownOf(editor).trim()).toBe('## Scene Two {.justify}');
+    editor.destroy();
   });
 });

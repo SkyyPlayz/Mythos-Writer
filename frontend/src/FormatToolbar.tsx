@@ -13,6 +13,50 @@ function getActiveHeadingValue(editor: Editor): string {
   return 'body';
 }
 
+type TextAlignment = 'left' | 'center' | 'right' | 'justify';
+
+// Shortcuts match the TextAlign extension's built-in keymap (Mod-Shift-L/E/R/J).
+const ALIGNMENTS: Array<{ align: TextAlignment; label: string; shortcut: string }> = [
+  { align: 'left',    label: 'Align left',    shortcut: 'Ctrl+Shift+L' },
+  { align: 'center',  label: 'Align center',  shortcut: 'Ctrl+Shift+E' },
+  { align: 'right',   label: 'Align right',   shortcut: 'Ctrl+Shift+R' },
+  { align: 'justify', label: 'Justify',       shortcut: 'Ctrl+Shift+J' },
+];
+
+// Four-line "paragraph" glyph; per-line x-extents encode the alignment.
+const ALIGN_ICON_X: Record<TextAlignment, Array<[number, number]>> = {
+  left:    [[1.5, 12.5], [1.5, 8.5],  [1.5, 12.5], [1.5, 8.5]],
+  center:  [[1.5, 12.5], [3.5, 10.5], [1.5, 12.5], [3.5, 10.5]],
+  right:   [[1.5, 12.5], [5.5, 12.5], [1.5, 12.5], [5.5, 12.5]],
+  justify: [[1.5, 12.5], [1.5, 12.5], [1.5, 12.5], [1.5, 12.5]],
+};
+
+function AlignIcon({ align }: { align: TextAlignment }) {
+  return (
+    <svg
+      className="fmt-align-icon"
+      viewBox="0 0 14 14"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {ALIGN_ICON_X[align].map(([x1, x2], i) => (
+        <line
+          key={i}
+          x1={x1}
+          y1={2.5 + i * 3}
+          x2={x2}
+          y2={2.5 + i * 3}
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      ))}
+    </svg>
+  );
+}
+
 interface Props {
   editor: Editor | null;
 }
@@ -54,6 +98,18 @@ export default function FormatToolbar({ editor }: Props) {
   const isCode      = ed.isActive('code');
   const isCodeBlock = ed.isActive('codeBlock');
 
+  // TextAlign ships defaultAlignment: null, so an untouched block reports no
+  // textAlign attr at all — fold that unset default into "left" so exactly one
+  // alignment button reads pressed at any time (GH #642).
+  const isAlignCenter  = ed.isActive({ textAlign: 'center' });
+  const isAlignRight   = ed.isActive({ textAlign: 'right' });
+  const isAlignJustify = ed.isActive({ textAlign: 'justify' });
+  const isAlignLeft    = ed.isActive({ textAlign: 'left' })
+    || (!isAlignCenter && !isAlignRight && !isAlignJustify);
+  const alignActive: Record<TextAlignment, boolean> = {
+    left: isAlignLeft, center: isAlignCenter, right: isAlignRight, justify: isAlignJustify,
+  };
+
   function applyHeading(value: string) {
     if (!editor) return;
     if (value === 'body') {
@@ -61,6 +117,18 @@ export default function FormatToolbar({ editor }: Props) {
     } else {
       const level = parseInt(value[1], 10) as HeadingLevel;
       ed.chain().focus().toggleHeading({ level }).run();
+    }
+  }
+
+  function applyAlign(align: TextAlignment) {
+    if (!editor) return;
+    // `left` is the persisted default (alignedBlocks.ts never writes a marker
+    // for it), so clicking Left — or re-clicking the active alignment — resets
+    // the attribute entirely, keeping unaligned documents byte-stable on disk.
+    if (align === 'left' || ed.isActive({ textAlign: align })) {
+      ed.chain().focus().unsetTextAlign().run();
+    } else {
+      ed.chain().focus().setTextAlign(align).run();
     }
   }
 
@@ -169,6 +237,23 @@ export default function FormatToolbar({ editor }: Props) {
       >
         <span aria-hidden="true">❝</span>
       </button>
+
+      <div className="fmt-sep" role="separator" aria-orientation="vertical" />
+
+      {/* ── Text alignment (GH #642) ─────────────────────────────────── */}
+      {ALIGNMENTS.map(({ align, label, shortcut }) => (
+        <button
+          key={align}
+          type="button"
+          className={`fmt-btn${alignActive[align] ? ' is-active' : ''}`}
+          aria-label={label}
+          aria-pressed={alignActive[align]}
+          title={`${label} (${shortcut})`}
+          onMouseDown={(e) => { e.preventDefault(); applyAlign(align); }}
+        >
+          <AlignIcon align={align} />
+        </button>
+      ))}
 
       <div className="fmt-sep" role="separator" aria-orientation="vertical" />
 
