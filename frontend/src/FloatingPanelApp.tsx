@@ -208,6 +208,15 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
     }
   }, []);
 
+  // GH #650: the pop-out graph forwards scene opens to the main window through
+  // the navigator cross-window bridge (SKY-2966) — DesktopShell's
+  // onNavigatorSceneChanged handler locates the scene by id and opens it.
+  // There is no equivalent bridge for notes-vault paths yet, so onOpenNote is
+  // intentionally left unwired and note nodes stay select-only in the pop-out.
+  const handleGraphOpenScene = useCallback((_storyId: string, _chapterId: string, sceneId: string) => {
+    window.api.navigatorSelectScene?.(sceneId).catch(() => {});
+  }, []);
+
   const handleDockBack = useCallback(() => {
     window.api.panelFloatDockBack?.(panelId).catch(() => {});
   }, [panelId]);
@@ -293,7 +302,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
           />
         );
       case 'vault-graph':
-        return <VaultGraphView onOpenNote={() => {}} />;
+        return <VaultGraphView onOpenScene={handleGraphOpenScene} />;
       case 'review':
         return <SuggestionReview onOpenVaultPath={() => {}} />;
       case 'progress':

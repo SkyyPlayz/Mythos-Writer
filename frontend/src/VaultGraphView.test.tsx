@@ -41,6 +41,8 @@ const MIXED_VAULT_DATA: VaultGraphData = {
 };
 
 beforeEach(() => {
+  // GH #650: scope persists in localStorage — clear it so tests stay isolated.
+  window.localStorage.clear();
   (window as any).api = {
     vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MOCK_DATA.nodes }),
     vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MOCK_DATA.edges }),
@@ -427,6 +429,77 @@ describe('VaultGraphView', () => {
     await act(async () => { fireEvent.keyDown(window, { key: 'Escape' }); });
 
     expect((searchInput as HTMLInputElement).value).toBe('');
+  });
+
+  // ─── GH #650: vault scope persistence ────────────────────────────────────────
+
+  it('GH #650: restores the persisted scope and fetches with it', async () => {
+    window.localStorage.setItem('mythos:vaultGraph:scope', 'both');
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((window as any).api.vaultGraphNodes).toHaveBeenCalledWith('both');
+    expect((window as any).api.vaultGraphEdges).toHaveBeenCalledWith('both');
+    const scopeGroup = screen.getByRole('group', { name: /vault scope/i });
+    expect(within(scopeGroup).getByRole('button', { name: /^both$/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('GH #650: falls back to notes when the stored scope is invalid', async () => {
+    window.localStorage.setItem('mythos:vaultGraph:scope', 'bogus');
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((window as any).api.vaultGraphNodes).toHaveBeenCalledWith('notes');
+    const scopeGroup = screen.getByRole('group', { name: /vault scope/i });
+    expect(within(scopeGroup).getByRole('button', { name: /^notes$/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('GH #650: persists a user scope change to localStorage', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const scopeGroup = screen.getByRole('group', { name: /vault scope/i });
+    await act(async () => {
+      fireEvent.click(within(scopeGroup).getByRole('button', { name: /^story$/i }));
+    });
+
+    expect(window.localStorage.getItem('mythos:vaultGraph:scope')).toBe('story');
+  });
+
+  it('GH #650: explicit initialVaultScope prop overrides the stored scope without clobbering it', async () => {
+    window.localStorage.setItem('mythos:vaultGraph:scope', 'both');
+
+    render(<VaultGraphView initialVaultScope="story" />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((window as any).api.vaultGraphNodes).toHaveBeenCalledWith('story');
+    expect(window.localStorage.getItem('mythos:vaultGraph:scope')).toBe('both');
+  });
+
+  it('GH #650: falls back to notes when localStorage access throws', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage denied');
+    });
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((window as any).api.vaultGraphNodes).toHaveBeenCalledWith('notes');
+    getItem.mockRestore();
+  });
+
+  it('GH #650: hides the empty-state CTA when no onOpenNote handler is provided (pop-out)', async () => {
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: [] }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: [] }),
+    };
+
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-empty');
+    expect(screen.queryByTestId('vault-graph-open-note-cta')).not.toBeInTheDocument();
   });
 });
 
