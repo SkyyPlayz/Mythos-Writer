@@ -51,6 +51,15 @@ const BUNDLED_TEMPLATES = [
   { id: 'bundled:series-bible', name: 'Series Bible', description: 'Multi-book structure with shared canon notes.', story: [], notes: [], isUserTemplate: false },
 ];
 
+// SKY-2993: canonical dry-run preview returned by the mocked dryRunObsidianImport
+const OBS_PREVIEW = {
+  markdownCount: 12,
+  attachmentCount: 3,
+  totalFiles: 15,
+  topLevelFolders: ['Notes', 'Attachments'],
+  sampleFiles: ['Notes/idea.md', 'Notes/plot.md'],
+};
+
 function resolvedInEffect<T>(value: T): Promise<T> {
   return {
     then(onFulfilled?: (resolvedValue: T) => unknown) {
@@ -72,6 +81,9 @@ function makeApi(overrides: Partial<{
   vaultGetSystemPaths: ReturnType<typeof vi.fn>;
   settingsSet: ReturnType<typeof vi.fn>;
   importDocxToStoryVault: ReturnType<typeof vi.fn>;
+  dryRunObsidianImport: ReturnType<typeof vi.fn>;
+  importObsidianVault: ReturnType<typeof vi.fn>;
+  onObsidianImportProgress: ReturnType<typeof vi.fn>;
 }> = {}) {
   return {
     onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
@@ -91,6 +103,10 @@ function makeApi(overrides: Partial<{
     })),
     settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
     importDocxToStoryVault: overrides.importDocxToStoryVault ?? vi.fn().mockResolvedValue({ ok: true, importedStories: [], errors: [] }),
+    // SKY-2993: Obsidian vault importer (onboarding Path 3)
+    dryRunObsidianImport: overrides.dryRunObsidianImport ?? vi.fn().mockResolvedValue({ preview: OBS_PREVIEW }),
+    importObsidianVault: overrides.importObsidianVault ?? vi.fn().mockResolvedValue({ ok: true, targetPath: '/home/user/Vault' }),
+    onObsidianImportProgress: overrides.onObsidianImportProgress ?? vi.fn().mockReturnValue(() => {}),
   };
 }
 
@@ -1560,7 +1576,115 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await act(async () => {});
   });
 
-  it('AC-E-02: Obsidian import stub shows "coming soon" modal', async () => {
+  // ─── SKY-2993: Obsidian import flow (dry-run → report → confirm) ──────────
+
+  // Helper: fill the Obsidian slot(s) via Browse, submit, and wait for the
+  // dry-run report view to appear.
+  async function openObsReport(notesPath = '/obs/notes', storyPath?: string) {
+    mockApi.chooseVaultFolder = vi.fn((title: string) => Promise.resolve(
+      title === 'Select Obsidian notes folder'
+        ? { path: notesPath, cancelled: false }
+        : { path: storyPath ?? null, cancelled: !storyPath },
+    ));
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue(notesPath));
+    if (storyPath) {
+      fireEvent.click(screen.getByTestId('import-obs-story-browse'));
+      await waitFor(() => expect(screen.getByTestId('import-obs-story-path')).toHaveValue(storyPath));
+    }
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('obs-dryrun-report')).toBeInTheDocument());
+  }
+
+  it('AC-E-02: Obsidian submit runs dry-run and renders the report', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/notes', 'notes');
+    const report = screen.getByTestId('obs-report-notes');
+    expect(report).toHaveTextContent('/obs/notes');
+    expect(report).toHaveTextContent('12 markdown notes');
+    expect(report).toHaveTextContent('3 attachments');
+    expect(report).toHaveTextContent('15 files total');
+    expect(report).toHaveTextContent('Notes, Attachments');
+    expect(report).toHaveTextContent('Notes/idea.md');
+    await act(async () => {});
+  });
+
+  it('AC-E-02b: Confirm import calls importObsidianVault and fires onComplete', async () => {
+    const onComplete = vi.fn();
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  it('AC-E-02c: both notes and story targets are scanned and imported', async () => {
+    const onComplete = vi.fn();
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes', '/obs/story');
+    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/notes', 'notes');
+    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/story', 'story');
+    expect(screen.getByTestId('obs-report-notes')).toBeInTheDocument();
+    expect(screen.getByTestId('obs-report-story')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+    expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes');
+    expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/story', 'story');
+  });
+
+  it('AC-E-02d: report Back returns to the form without importing', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-back'));
+    await waitFor(() => expect(screen.getByTestId('import-section-obs')).toBeInTheDocument());
+    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
+    expect(mockApi.importObsidianVault).not.toHaveBeenCalled();
+    // the chosen path is preserved so the user can adjust and resubmit
+    expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes');
+    await act(async () => {});
+  });
+
+  it('AC-E-02e: progress events render while the import runs', async () => {
+    let progressCb: ((d: { current: number; total: number; lastAction: string }) => void) | undefined;
+    const unsubscribe = vi.fn();
+    mockApi.onObsidianImportProgress = vi.fn(
+      (cb: (d: { current: number; total: number; lastAction: string }) => void) => {
+        progressCb = cb;
+        return unsubscribe;
+      },
+    );
+    let resolveImport!: (v: { ok: boolean; targetPath?: string }) => void;
+    mockApi.importObsidianVault = vi.fn(() => new Promise((res) => { resolveImport = res; }));
+    const onComplete = vi.fn();
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(screen.getByTestId('obs-import-progress')).toBeInTheDocument());
+    expect(screen.getByTestId('obs-report-confirm')).toBeDisabled();
+    expect(screen.getByTestId('obs-report-back')).toBeDisabled();
+    await act(async () => { progressCb?.({ current: 3, total: 15, lastAction: 'Copied Notes/idea.md' }); });
+    expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Importing 3 of 15');
+    expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Copied Notes/idea.md');
+    await act(async () => { resolveImport({ ok: true }); });
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('AC-E-02f: dry-run failure shows inline error and retry succeeds', async () => {
+    mockApi.dryRunObsidianImport = vi.fn()
+      .mockResolvedValueOnce({ error: 'Path does not exist: /obs/notes' })
+      .mockResolvedValue({ preview: OBS_PREVIEW });
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
     );
@@ -1568,9 +1692,32 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
     await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
     fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
-    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('coming soon');
+    await waitFor(() => expect(screen.getByTestId('obs-dryrun-error')).toBeInTheDocument());
+    expect(screen.getByTestId('obs-dryrun-error')).toHaveTextContent('Path does not exist');
+    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
+    // retry: same inputs, second scan succeeds
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(screen.getByTestId('obs-dryrun-report')).toBeInTheDocument());
+    expect(screen.queryByTestId('obs-dryrun-error')).not.toBeInTheDocument();
     await act(async () => {});
+  });
+
+  it('AC-E-02g: import failure shows inline error in the report and Confirm retries', async () => {
+    const onComplete = vi.fn();
+    mockApi.importObsidianVault = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: 'Disk full' })
+      .mockResolvedValue({ ok: true, targetPath: '/home/user/Vault' });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(screen.getByTestId('obs-import-error')).toBeInTheDocument());
+    expect(screen.getByTestId('obs-import-error')).toHaveTextContent('Disk full');
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByTestId('obs-report-confirm')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
   it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
