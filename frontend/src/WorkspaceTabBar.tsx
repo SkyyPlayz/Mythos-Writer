@@ -18,7 +18,12 @@ export interface WorkspaceTabBarProps {
   onTabReorder: (fromIndex: number, toIndex: number) => void;
   /** Called when the + button is clicked; parent shows a content picker overlay. */
   onNewTab: () => void;
+  /** GH#643 split panes: Shift+click / Shift+Enter on a tab opens it in the split pane. */
+  onTabOpenInSplit?: (tabId: string) => void;
 }
+
+/** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
+export const WORKSPACE_TAB_DRAG_MIME = 'application/x-mythos-workspace-tab';
 
 export default function WorkspaceTabBar({
   tabs,
@@ -27,6 +32,7 @@ export default function WorkspaceTabBar({
   onTabClose,
   onTabReorder,
   onNewTab,
+  onTabOpenInSplit,
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -91,6 +97,10 @@ export default function WorkspaceTabBar({
       if (e.ctrlKey && e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         e.preventDefault();
         handleTabReorder(index, e.key === 'ArrowRight' ? 1 : -1);
+      } else if (e.shiftKey && e.key === 'Enter' && onTabOpenInSplit) {
+        // GH#643: keyboard path for open-in-split-pane.
+        e.preventDefault();
+        onTabOpenInSplit(tabs[index].id);
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         tabRefs.current[(index + 1) % tabs.length]?.focus();
@@ -105,7 +115,7 @@ export default function WorkspaceTabBar({
         tabRefs.current[tabs.length - 1]?.focus();
       }
     },
-    [tabs.length, handleTabReorder],
+    [tabs, handleTabReorder, onTabOpenInSplit],
   );
 
   // ── Global Ctrl+W / Ctrl+Tab keyboard shortcuts ───────────────────────────
@@ -141,13 +151,23 @@ export default function WorkspaceTabBar({
     setDraggingIndex(index);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
+      // GH#643: carry the tab identity so drop targets outside this bar
+      // (the shell's split-pane drop zone) can act on it. Feature-detected —
+      // jsdom fireEvent stubs often omit setData.
+      const tab = tabs[index];
+      if (tab && typeof e.dataTransfer.setData === 'function') {
+        e.dataTransfer.setData(
+          WORKSPACE_TAB_DRAG_MIME,
+          JSON.stringify({ id: tab.id, kind: tab.kind }),
+        );
+      }
       // Blank drag image (same pattern as DockedTabBar)
       const blank = new Image();
       blank.src =
         'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
       e.dataTransfer.setDragImage(blank, 0, 0);
     }
-  }, []);
+  }, [tabs]);
 
   const handleDragEnd = useCallback(() => {
     dragSrcIndex.current = null;
@@ -224,9 +244,13 @@ export default function WorkspaceTabBar({
                 onDragOver={(e) => handleDragOver(e, i)}
                 onDragLeave={() => setDropTargetIndex(null)}
                 onDrop={(e) => handleDrop(e, i)}
-                onClick={() => onTabSelect(tab.id)}
+                onClick={(e) => {
+                  // GH#643: Shift+click opens the tab in the split pane.
+                  if (e.shiftKey && onTabOpenInSplit) onTabOpenInSplit(tab.id);
+                  else onTabSelect(tab.id);
+                }}
                 onKeyDown={(e) => handleTabKeyDown(e, i)}
-                title={tab.title}
+                title={onTabOpenInSplit ? `${tab.title} (Shift+click: open in split pane)` : tab.title}
               >
                 {tab.icon && (
                   <span className="wtb-tab-icon" aria-hidden="true">

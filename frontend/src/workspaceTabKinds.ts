@@ -31,6 +31,19 @@ export function tabKindForSection(section: AppTab): WorkspaceTabKind {
   return 'story-editor';
 }
 
+/**
+ * GH#643 split panes v1: kinds whose surfaces are self-contained enough to
+ * render in the right-hand split pane. Story/Notes editors keep their existing
+ * dedicated split mechanisms (SplitEditorPane) for now.
+ */
+export const SPLITTABLE_TAB_KINDS: ReadonlySet<WorkspaceTabKind> = new Set([
+  'kanban',
+  'timeline',
+  'entities',
+  'vault-graph',
+  'brainstorm',
+]);
+
 export interface CreateOrFocusResult {
   tabs: WorkspaceTab[];
   activeId: string;

@@ -44,3 +44,6 @@ describe('WorkspaceTabPicker (GH #643)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
+
+// GH#643 split panes: WorkspaceTabBar carries the tab identity on drag and
+// exposes Shift+click / Shift+Enter to open a tab in the split pane.

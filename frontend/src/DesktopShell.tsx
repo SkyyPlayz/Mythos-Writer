@@ -11,7 +11,9 @@ import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
 import WorkspaceTabPicker from './WorkspaceTabPicker';
-import { createOrFocusTab, tabKindForSection } from './workspaceTabKinds';
+import WorkspaceSplitPane from './WorkspaceSplitPane';
+import { WORKSPACE_TAB_DRAG_MIME } from './WorkspaceTabBar';
+import { createOrFocusTab, tabKindForSection, SPLITTABLE_TAB_KINDS, TAB_KIND_META } from './workspaceTabKinds';
 import { NAV_RAIL_DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
@@ -815,6 +817,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
+  // GH #643: split-pane feedback (e.g. non-splittable tab kinds).
+  const { toast: splitToastState, showToast: showSplitToast } = useToast(3500);
   const { toast: upgradeToastState, showToast: showUpgradeToast } = useToast(5000);
   const { toast: wikiLinkToastState, showToast: showWikiLinkToast } = useToast(3000);
 
@@ -898,6 +902,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState<string | null>(null);
   // GH #643: "+" new-tab content picker.
   const [tabPickerOpen, setTabPickerOpen] = useState(false);
+  // GH #643 split panes v1: right-hand workspace pane + tab-drag drop zone.
+  const [workspaceSplitKind, setWorkspaceSplitKind] = useState<WorkspaceTabKind | null>(null);
+  const [tabDragActive, setTabDragActive] = useState(false);
+  const [splitDropHover, setSplitDropHover] = useState(false);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -1451,6 +1459,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           setWorkspaceTabs(s.activeLayout.workspaceTabs);
           setActiveWorkspaceTabId(s.activeLayout.activeWorkspaceTabId ?? null);
         }
+        // GH #643: restore the right-hand workspace split pane.
+        if (s.activeLayout?.workspaceSplitPane?.kind) {
+          setWorkspaceSplitKind(s.activeLayout.workspaceSplitPane.kind);
+        }
         // SKY-1699: restore split window ratio from persisted AppSettings.
         if (typeof s.activeLayout?.splitWindow?.splitRatio === 'number') {
           setSplitRatio(s.activeLayout.splitWindow.splitRatio);
@@ -1879,6 +1891,59 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     focusOrCreateTab(tabKindForSection(tab));
     handleTabChange(tab);
   }, [focusOrCreateTab, handleTabChange]);
+
+  // ── GH #643 split panes v1 ──
+  const persistWorkspaceSplit = useCallback((kind: WorkspaceTabKind | null) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const updated: AppSettings = {
+        ...prev,
+        activeLayout: {
+          ...prev.activeLayout,
+          leftSidebar: leftSidebarLayoutRef.current,
+          workspaceSplitPane: kind ? { kind } : null,
+        },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  const openInSplitPane = useCallback((kind: WorkspaceTabKind) => {
+    if (!SPLITTABLE_TAB_KINDS.has(kind)) {
+      showSplitToast(`${TAB_KIND_META[kind].title} can't open in a split pane yet — use the Split editor for manuscript panes.`, 'info');
+      return;
+    }
+    setWorkspaceSplitKind(kind);
+    persistWorkspaceSplit(kind);
+  }, [persistWorkspaceSplit, showSplitToast]);
+
+  const closeSplitPane = useCallback(() => {
+    setWorkspaceSplitKind(null);
+    persistWorkspaceSplit(null);
+  }, [persistWorkspaceSplit]);
+
+  const handleTabOpenInSplit = useCallback((tabId: string) => {
+    const tab = workspaceTabs.find((t) => t.id === tabId);
+    if (tab) openInSplitPane(tab.kind);
+  }, [workspaceTabs, openInSplitPane]);
+
+  // Track workspace-tab drags at the document level so the drop zone only
+  // intercepts pointer events while a tab drag is actually in flight.
+  useEffect(() => {
+    const onDragStart = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes(WORKSPACE_TAB_DRAG_MIME)) setTabDragActive(true);
+    };
+    const onDragEnd = () => { setTabDragActive(false); setSplitDropHover(false); };
+    document.addEventListener('dragstart', onDragStart);
+    document.addEventListener('dragend', onDragEnd);
+    document.addEventListener('drop', onDragEnd);
+    return () => {
+      document.removeEventListener('dragstart', onDragStart);
+      document.removeEventListener('dragend', onDragEnd);
+      document.removeEventListener('drop', onDragEnd);
+    };
+  }, []);
 
   const handleWorkspaceTabClose = useCallback((tabId: string) => {
     const next = workspaceTabs.filter((t) => t.id !== tabId);
@@ -3544,6 +3609,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabClose={handleWorkspaceTabClose}
             onTabReorder={handleWorkspaceTabReorder}
             onNewTab={() => setTabPickerOpen(true)}
+            onTabOpenInSplit={handleTabOpenInSplit}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -4378,6 +4444,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
+      <Toast message={splitToastState?.message ?? null} level={splitToastState?.level} className="app-toast--stacked" />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />
       <Toast message={wikiLinkToastState?.message ?? null} level={wikiLinkToastState?.level} className="app-toast--stacked" />
@@ -4430,6 +4497,68 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
         </div>{/* end desktop-shell__main-col */}
+        {/* GH #643 split panes v1: right-hand workspace pane */}
+        {workspaceSplitKind && (
+          <WorkspaceSplitPane kind={workspaceSplitKind} onClose={closeSplitPane}>
+            {workspaceSplitKind === 'kanban' ? (
+              selectedStory ? (
+                <SceneCrafterPage
+                  key={`split-${selectedStory.id}`}
+                  story={selectedStory}
+                  onOpenNote={handleOpenSceneByPath}
+                  onOpenScene={handleOpenSceneById}
+                />
+              ) : (
+                <div className="shell-editor-empty"><p>Select a story to see its Scene Board.</p></div>
+              )
+            ) : workspaceSplitKind === 'timeline' ? (
+              <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
+            ) : workspaceSplitKind === 'vault-graph' ? (
+              <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
+            ) : workspaceSplitKind === 'entities' ? (
+              <EntityBrowser
+                onSelectEntity={handleSelectEntity}
+                selectedEntityId={selectedEntity?.id ?? null}
+              />
+            ) : workspaceSplitKind === 'brainstorm' ? (
+              <BrainstormPage
+                onClose={closeSplitPane}
+                enabled={agentFlags.brainstorm}
+                voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+                archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+                activeScene={selectedScene}
+                activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+                ttsSettings={appSettings?.tts}
+                voicePrefs={appSettings?.voice}
+                compact
+              />
+            ) : null}
+          </WorkspaceSplitPane>
+        )}
+        {/* Drop zone: visible/interactive only while a workspace tab drag is in flight */}
+        {tabDragActive && (
+          <div
+            className={`workspace-split-dropzone${splitDropHover ? ' workspace-split-dropzone--active' : ''}`}
+            data-testid="workspace-split-dropzone"
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes(WORKSPACE_TAB_DRAG_MIME)) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setSplitDropHover(true);
+              }
+            }}
+            onDragLeave={() => setSplitDropHover(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setSplitDropHover(false);
+              setTabDragActive(false);
+              try {
+                const payload = JSON.parse(e.dataTransfer.getData(WORKSPACE_TAB_DRAG_MIME)) as { id: string; kind: WorkspaceTabKind };
+                if (payload?.kind) openInSplitPane(payload.kind);
+              } catch { /* malformed payload — ignore */ }
+            }}
+          />
+        )}
       </div>{/* end desktop-shell__body */}
     </div>
     </PanelDragProvider>
