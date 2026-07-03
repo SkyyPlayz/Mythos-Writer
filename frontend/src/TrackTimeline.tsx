@@ -1,8 +1,12 @@
 // SKY-3182 — Part F · F2: TrackTimeline SVG canvas shell.
 // SVG time axis + grid + time-unit headers; zoom/pan via TimelineHeader;
 // viewport persisted to localStorage; gap indicators in proportional mode.
+// SKY-3185 — F5: optional viewMode/groupBy props are forwarded into the internal
+// TimelineHeader so TimelineRoot's switcher stays reachable in track mode without
+// mounting a second header (zoom here is the track's own viewport zoom).
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import TimelineHeader from './TimelineHeader';
+import type { TimelineViewMode, TimelineGroupBy } from './timelineFilters';
 import type { Story } from './types';
 import './TrackTimeline.css';
 
@@ -27,6 +31,14 @@ export type SpacingMode = 'uniform' | 'proportional';
 export interface TrackTimelineProps {
   story: Story | null;
   spacingMode?: SpacingMode;
+  /** F5 — forwarded to the internal TimelineHeader's view switcher. */
+  viewMode?: TimelineViewMode;
+  /** F5 — forwarded to the internal TimelineHeader's view switcher. */
+  onViewModeChange?: (mode: TimelineViewMode) => void;
+  /** F5 — forwarded to the internal TimelineHeader's grouping control. */
+  groupBy?: TimelineGroupBy;
+  /** F5 — forwarded to the internal TimelineHeader's grouping control. */
+  onGroupByChange?: (groupBy: TimelineGroupBy) => void;
 }
 
 interface ViewportState {
@@ -265,7 +277,14 @@ function formatDisplayDate(dateStr: string): string {
   }
 }
 
-export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackTimelineProps) {
+export default function TrackTimeline({
+  story,
+  spacingMode = 'uniform',
+  viewMode,
+  onViewModeChange,
+  groupBy,
+  onGroupByChange,
+}: TrackTimelineProps) {
   const [scenes, setScenes] = useState<TtScene[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -463,6 +482,10 @@ export default function TrackTimeline({ story, spacingMode = 'uniform' }: TrackT
         maxZoom={MAX_ZOOM}
         onZoomChange={handleZoomChange}
         onZoomFit={handleZoomFit}
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        groupBy={groupBy}
+        onGroupByChange={onGroupByChange}
       />
       <div className="tt-canvas-wrap" ref={containerRef}>
         {loading && (

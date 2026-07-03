@@ -11,6 +11,7 @@ import TimelineDetailCard, {
 import {
   DEFAULT_FILTERS,
   type TimelineFilters,
+  type TimelineGroupBy,
   chronologicalSceneIds,
   isSceneHidden,
   sceneOpacity,
@@ -36,7 +37,8 @@ type CharMeta = CharOption;
 
 export type ColKey = 'date' | 'pov' | 'arc' | 'wordCount' | 'mood' | 'location';
 export type SortCol = 'date' | 'pov' | 'arc';
-export type GroupBy = 'none' | 'arc' | 'character';
+/** F5 — widened to the shared TimelineGroupBy (adds 'chapter' and 'location'). */
+export type GroupBy = TimelineGroupBy;
 
 /** Sentinel returned by {@link parseWordCount} when the raw input is not a valid
  *  non-negative integer and must be rejected (no-op) rather than persisted. */
@@ -90,12 +92,16 @@ export function sortScenes(
 
 export function groupScenes(
   scenes: SpreadsheetScene[],
-  by: 'arc' | 'character',
+  by: Exclude<TimelineGroupBy, 'none'>,
   arcs: ArcMeta[],
   chars: CharMeta[],
+  locations?: { id: string; name: string }[],
+  chapters?: { id: string; title: string }[],
 ): SceneGroup[] {
   const arcMap = new Map(arcs.map(a => [a.id, a]));
   const charMap = new Map(chars.map(c => [c.id, c]));
+  const locMap = new Map((locations ?? []).map(l => [l.id, l]));
+  const chapMap = new Map((chapters ?? []).map(ch => [ch.id, ch]));
   const groups = new Map<string, SceneGroup>();
 
   function ensure(key: string, label: string, color?: string) {
@@ -116,10 +122,21 @@ export function groupScenes(
         );
         groups.get(key)!.scenes.push(scene);
       }
-    } else {
+    } else if (by === 'character') {
       const key = scene.characterIds.length ? scene.characterIds[0] : '__unassigned__';
       const char = charMap.get(key);
       ensure(key, key === '__unassigned__' ? 'No Character' : (char?.name ?? key));
+      groups.get(key)!.scenes.push(scene);
+    } else if (by === 'location') {
+      const key = scene.locationId || '__unassigned__';
+      const loc = locMap.get(key);
+      ensure(key, key === '__unassigned__' ? 'No Location' : (loc?.name ?? key));
+      groups.get(key)!.scenes.push(scene);
+    } else {
+      // by === 'chapter'
+      const key = scene.chapterId || '__unassigned__';
+      const chap = chapMap.get(key);
+      ensure(key, key === '__unassigned__' ? 'No Chapter' : (chap?.title ?? key));
       groups.get(key)!.scenes.push(scene);
     }
   }
@@ -181,9 +198,24 @@ interface Props {
   story: Story | null;
   /** SKY-795 §4 — Enter key opens the editor for the keyboard-focused scene. */
   onOpenScene?: (sceneId: string) => void;
+  /** F5 — when provided, overrides the internal groupBy state (controlled mode). */
+  groupBy?: TimelineGroupBy;
+  /** F5 — called on groupBy change (controlled or uncontrolled). */
+  onGroupByChange?: (groupBy: TimelineGroupBy) => void;
+  /** F5 — when provided, overrides the internal selectedIds state (controlled mode). */
+  selectedIds?: Set<string>;
+  /** F5 — called on selection change (controlled or uncontrolled). */
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
-export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
+export default function TimelineSpreadsheet({
+  story,
+  onOpenScene,
+  groupBy: groupByProp,
+  onGroupByChange,
+  selectedIds: selectedIdsProp,
+  onSelectionChange,
+}: Props) {
   const [scenes, setScenes] = useState<SpreadsheetScene[]>([]);
   const [arcs, setArcs] = useState<ArcMeta[]>([]);
   const [chars, setChars] = useState<CharMeta[]>([]);
@@ -193,10 +225,36 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
 
   const [sortBy, setSortBy] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [internalGroupBy, setInternalGroupBy] = useState<TimelineGroupBy>('none');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // F5 — controlled/uncontrolled groupBy: the prop, when provided, wins.
+  const groupBy: TimelineGroupBy = groupByProp ?? internalGroupBy;
+  const setGroupBy = useCallback((g: TimelineGroupBy) => {
+    if (groupByProp === undefined) setInternalGroupBy(g);
+    onGroupByChange?.(g);
+  }, [groupByProp, onGroupByChange]);
+
+  // Collapsed-group keys belong to the previous grouping, so reset whenever the
+  // grouping changes — including controlled changes driven from TimelineRoot.
+  useEffect(() => { setCollapsedGroups(new Set()); }, [groupBy]);
+
+  // F5 — controlled/uncontrolled selectedIds. Refs keep the bridge callback
+  // stable so the many consumers don't need extra dependencies.
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
+  const internalSelectedIdsRef = useRef(internalSelectedIds);
+  internalSelectedIdsRef.current = internalSelectedIds;
+  const selectedIdsPropRef = useRef(selectedIdsProp);
+  selectedIdsPropRef.current = selectedIdsProp;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const setSelectedIds = useCallback((ids: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const prev = selectedIdsPropRef.current ?? internalSelectedIdsRef.current;
+    const resolved = typeof ids === 'function' ? ids(prev) : ids;
+    if (selectedIdsPropRef.current === undefined) setInternalSelectedIds(resolved);
+    onSelectionChangeRef.current?.(resolved);
+  }, []);
   const [editingCell, setEditingCell] = useState<{ sceneId: string; col: ColKey } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -282,7 +340,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
       })
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [story, api]);
+  }, [story, api, setSelectedIds]);
 
   // ─── SKY-796: proposal index + actions ───
 
@@ -356,10 +414,16 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
   /** Chronological scene-id order used by Tab/Shift+Tab navigation. */
   const chronoIds = useMemo(() => chronologicalSceneIds(visibleScenes), [visibleScenes]);
 
+  /** F5 — chapter metadata for groupBy='chapter' labels. */
+  const chapters = useMemo(
+    () => story?.chapters?.map(ch => ({ id: ch.id, title: ch.title })) ?? [],
+    [story],
+  );
+
   const groups = useMemo<SceneGroup[]>(() => {
     if (groupBy === 'none') return [{ key: '__flat__', label: '', scenes: sorted }];
-    return groupScenes(sorted, groupBy, arcs, chars);
-  }, [sorted, groupBy, arcs, chars]);
+    return groupScenes(sorted, groupBy, arcs, chars, locations, chapters);
+  }, [sorted, groupBy, arcs, chars, locations, chapters]);
 
   const toggleSort = useCallback((col: SortCol) => {
     setSortBy(prev => {
@@ -399,7 +463,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
       setSelectedIds(new Set([sceneId]));
       setFocusedSceneId(sceneId);
     }
-  }, [editingCell]);
+  }, [editingCell, setSelectedIds]);
 
   // scenesRef keeps the latest scenes array reachable from stable callbacks (keyboard
   // handlers, undo/redo) without re-binding them on every state change.
@@ -577,7 +641,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
     } finally {
       setSaving(new Set());
     }
-  }, [selectedIds, bulkField, bulkValue, scenes, api, pushUndo]);
+  }, [selectedIds, bulkField, bulkValue, scenes, api, pushUndo, setSelectedIds]);
 
   // ─── SKY-795 §4: keyboard nav, delete, duplicate, undo/redo ───
 
@@ -603,7 +667,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
     } finally {
       setSaving(new Set());
     }
-  }, [api, pushUndo]);
+  }, [api, pushUndo, setSelectedIds]);
 
   /** Clone selected scenes into the same chapter and copy their timeline metadata. */
   const duplicateSelected = useCallback(async (ids: string[]) => {
@@ -772,6 +836,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
     duplicateSelected,
     undo,
     redo,
+    setSelectedIds,
   ]);
 
   // Scroll the keyboard-focused row into view whenever it changes.
@@ -809,7 +874,7 @@ export default function TimelineSpreadsheet({ story, onOpenScene }: Props) {
           break;
       }
     },
-    [onOpenScene, removeFromTimeline, duplicateSelected, startEdit],
+    [onOpenScene, removeFromTimeline, duplicateSelected, startEdit, setSelectedIds],
   );
 
   // The "active" detail-card scene: prefer hover, fall back to keyboard-focused
