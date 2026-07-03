@@ -22,7 +22,7 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
-import TimelineSpreadsheet from './TimelineSpreadsheet';
+import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -82,8 +82,6 @@ import SceneNotesPanel from './SceneNotesPanel';
 import ScenePropertiesPanel from './ScenePropertiesPanel';
 import OutlinePlanningPanel from './OutlinePlanningPanel';
 import StoryTimeline from './StoryTimeline';
-import AeonLaneView from './AeonLaneView';
-import TrackTimeline from './TrackTimeline';
 import WindowChrome from './components/ui/WindowChrome';
 import './DesktopShell.css';
 
@@ -808,7 +806,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
-  const [timelineMode, setTimelineMode] = useState<'spreadsheet' | 'aeon' | 'track'>('spreadsheet');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -3680,37 +3677,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
-          <div className="shell-timeline-mode-bar" role="group" aria-label="Timeline view mode">
-            <button
-              className={`shell-timeline-mode-btn${timelineMode === 'spreadsheet' ? ' shell-timeline-mode-btn--active' : ''}`}
-              onClick={() => setTimelineMode('spreadsheet')}
-              aria-pressed={timelineMode === 'spreadsheet'}
-            >
-              Spreadsheet
-            </button>
-            <button
-              className={`shell-timeline-mode-btn${timelineMode === 'aeon' ? ' shell-timeline-mode-btn--active' : ''}`}
-              onClick={() => setTimelineMode('aeon')}
-              aria-pressed={timelineMode === 'aeon'}
-            >
-              AEON
-            </button>
-            <button
-              className={`shell-timeline-mode-btn${timelineMode === 'track' ? ' shell-timeline-mode-btn--active' : ''}`}
-              onClick={() => setTimelineMode('track')}
-              aria-pressed={timelineMode === 'track'}
-              title="AEON Track — zoomable SVG canvas with time axis and gap indicators"
-            >
-              AEON Track
-            </button>
-          </div>
-          {timelineMode === 'aeon' ? (
-            <AeonLaneView story={selectedStory} onOpenScene={handleOpenSceneById} />
-          ) : timelineMode === 'track' ? (
-            <TrackTimeline story={selectedStory} />
-          ) : (
-            <TimelineSpreadsheet story={selectedStory} onOpenScene={handleOpenSceneById} />
-          )}
+          {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
+              AEON | AEON Track), grouping, and cross-view selection state. */}
+          <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
         </div>
       )}
       {activeDockedTabId === null && view === 'structure' && (
