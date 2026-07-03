@@ -6,7 +6,7 @@ interface AutoLinkerSectionProps {
 
 export default function AutoLinkerSection({ settings, setSettings, setSavedOk }: AutoLinkerSectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-autolinker" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-autolinker" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-autolinker">Auto Linker</h3>
       <div className="settings-field">
         <label className="settings-label">Entity mention mode</label>

@@ -69,7 +69,7 @@ export default function SceneFieldsSection(_props: SceneFieldsSectionProps) {
   }, []);
 
   return (
-    <section className="settings-section" aria-labelledby="section-scene-fields" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-scene-fields" data-settings-cat="vaults">
       <h3 className="settings-section-title" id="section-scene-fields">Scene Fields</h3>
       <p className="settings-hint">
         Define custom frontmatter fields — mood, tension, weather, POV, etc. — that appear in the scene

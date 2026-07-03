@@ -8,7 +8,7 @@ interface TelemetrySectionProps {
 
 export default function TelemetrySection({ telemetryEnabled, setTelemetryEnabled, setSavedOk }: TelemetrySectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-telemetry" data-settings-cat="general">
+    <section className="settings-section" aria-labelledby="section-telemetry" data-settings-cat="appearance">
       <h3 className="settings-section-title" id="section-telemetry">Telemetry</h3>
       <div className="settings-field">
         <div className="settings-agent-header">

@@ -28,7 +28,6 @@ interface ProviderSectionProps {
   setUseCustomInput: (v: boolean) => void;
   onFetchModels: (kind: ProviderKind, baseUrl: string) => void;
   setSavedOk: (ok: boolean) => void;
-  onRemoteWarning: (agent: 'global', url: string, onConfirm: () => void) => void;
   activeProviderSupportsVoice: boolean;
   setTestConnectionStatus: (status: TestConnectionStatus) => void;
   setModelList: (list: string[]) => void;
