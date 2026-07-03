@@ -179,6 +179,9 @@ After owner sign-off is recorded via Ivy, GHM:
   ```
   GitHub UI: Actions → Release → Run workflow → enter tag (v0.3.0-beta.1) + beta flag
   ```
+  **Read the [Manual Trigger caveat](#manual-trigger-workflow_dispatch--tag-at-publish-caveat)
+  below before using this path** — dispatching on a branch whose tag does not
+  exist yet can publish a tag that points at the wrong commit.
 
 ### Artifacts Missing from Draft
 
@@ -189,6 +192,64 @@ After owner sign-off is recorded via Ivy, GHM:
 ### Smoke Test Fails
 
 Do **not** proceed to owner sign-off. Fix the root cause on the branch, bump the version to `-beta.2`, and re-tag.
+
+---
+
+## Manual Trigger (`workflow_dispatch`) — Tag-at-Publish Caveat
+
+The Release workflow can be started without pushing a tag: **Actions → Release →
+Run workflow**, supplying a `tag` input (e.g. `v0.3.0-beta.1`) and the `is-beta`
+flag. This is useful when a tag push failed to trigger Actions, but it has a
+sharp edge you must understand before using it.
+
+### What actually happens on a manual dispatch
+
+1. `actions/checkout` checks out **the ref you dispatched on** (normally the
+   `main` branch HEAD at dispatch time) — *not* the commit the `tag` input
+   names. If the tag doesn't exist yet, there is no tagged commit at all.
+2. The build jobs compile artifacts from that checked-out commit.
+3. The draft release is created with `tag_name` set to the `tag` input, but the
+   workflow does **not** pin a `target_commitish`. For a tag that doesn't exist
+   yet, GitHub only materializes the tag **when the draft is published** — and
+   it points the new tag at the repo's **default-branch HEAD at publish time**.
+
+### Why that's a problem
+
+Between dispatch and owner sign-off (Step 5), more commits can merge to `main`.
+When GHM publishes the draft, the tag lands on whatever `main` HEAD is *then* —
+a commit the uploaded artifacts were **not built from**. The release page,
+auto-update feed, and source archive would all claim a commit that doesn't
+match the shipped binaries.
+
+### How to stay safe
+
+- **Preferred: tag-first.** Always create and push the tag (Step 2) before any
+  build. If Actions missed the tag push, dispatch the workflow **on the tag
+  ref** (select the tag in the "Use workflow from" dropdown) so checkout, build,
+  and release all agree on one commit.
+- **If you must dispatch on a branch:** immediately after dispatching, push the
+  tag manually to the exact commit you dispatched from, so it already exists
+  (and is immutable) before publish:
+  ```bash
+  git tag -a v0.3.0-beta.1 <sha-you-dispatched-from> -m "Release v0.3.0-beta.1"
+  git push origin v0.3.0-beta.1
+  ```
+- **Verify before sign-off:** confirm the tag exists and points at the build
+  commit before requesting owner approval:
+  ```bash
+  git ls-remote origin refs/tags/v0.3.0-beta.1
+  ```
+
+### Recommended workflow change (owner-gated, not yet applied)
+
+`.github/workflows/release.yml` is owner-gated, so this runbook documents the
+fix rather than applying it: the `create-release` job's
+`softprops/action-gh-release@v2` step should pass
+`target_commitish: ${{ github.sha }}` alongside `tag_name`. That pins the
+publish-time tag to the exact commit the workflow built, closing the gap for
+not-yet-existing tags. (For tags that already exist, `target_commitish` is
+ignored — the existing tag always wins — so the change is safe for the normal
+tag-push path too.)
 
 ---
 
@@ -205,6 +266,16 @@ Do **not** proceed to owner sign-off. Fix the root cause on the branch, bump the
 The release artifacts include `.yml` metadata files (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`) used by Electron's auto-update feature. These are generated automatically by electron-builder and uploaded alongside the binaries. Users on earlier versions will see an "Update available" prompt and can download the new version in-app.
 
 **Beta releases** use a separate update channel (`publish.channel=beta`) to avoid offering beta builds to stable-release users.
+
+**Gating (since 0.3.0-beta.1):** auto-update is **on by default in packaged
+builds** — no build-time flag is required. `MYTHOS_AUTO_UPDATE=0` in the app's
+runtime environment is the kill switch; unpackaged runs (dev, unit tests, E2E)
+are always inert. The `MYTHOS_AUTO_UPDATE: '1'` env in `release.yml` is a
+now-redundant leftover of the old opt-in gate (it only ever reached the CI
+build shell, never the packaged binary — which is why earlier releases shipped
+with auto-update silently disabled). Updater failures are non-fatal by design:
+a failed update check logs nothing and never crashes the app, so smoke tests
+on unpublished/offline builds are unaffected.
 
 ---
 
