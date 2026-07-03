@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { isAutoUpdateEnabled } from './updater.js';
 
 // ─── Mocks (hoisted so module resolution picks them up before any imports) ────
 
@@ -265,6 +266,41 @@ describe('app:installUpdate handler', () => {
   it('returns scheduled=true after an update has been downloaded', () => {
     const result = handleInstallUpdate({ enabled: true, updateDownloaded: true });
     expect(result).toEqual({ scheduled: true });
+  });
+});
+
+// Truth table for the auto-update gate (Beta 2 Part I). The gate flipped from
+// opt-in (MYTHOS_AUTO_UPDATE=1) to on-by-default in packaged builds with
+// MYTHOS_AUTO_UPDATE=0 as the kill switch: the release workflow only set the
+// env in the CI build shell, so shipped binaries never saw it at runtime and
+// auto-update was silently disabled in every release.
+describe('isAutoUpdateEnabled gating truth table', () => {
+  it('is enabled in packaged builds when the env flag is unset (shipped default)', () => {
+    expect(isAutoUpdateEnabled(true, undefined)).toBe(true);
+  });
+
+  it('is disabled in packaged builds when MYTHOS_AUTO_UPDATE=0 (kill switch)', () => {
+    expect(isAutoUpdateEnabled(true, '0')).toBe(false);
+  });
+
+  it('stays enabled in packaged builds for the legacy opt-in value 1', () => {
+    expect(isAutoUpdateEnabled(true, '1')).toBe(true);
+  });
+
+  it('treats an empty-string flag like unset in packaged builds', () => {
+    expect(isAutoUpdateEnabled(true, '')).toBe(true);
+  });
+
+  it('is disabled in unpackaged runs when the env flag is unset (dev/unit/E2E)', () => {
+    expect(isAutoUpdateEnabled(false, undefined)).toBe(false);
+  });
+
+  it('is disabled in unpackaged runs even when the flag opts in', () => {
+    expect(isAutoUpdateEnabled(false, '1')).toBe(false);
+  });
+
+  it('is disabled in unpackaged runs with the kill switch set', () => {
+    expect(isAutoUpdateEnabled(false, '0')).toBe(false);
   });
 });
 

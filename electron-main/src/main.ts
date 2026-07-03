@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu }
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
 import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
+import { isAutoUpdateEnabled } from './updater.js';
 import { createRequire } from 'node:module';
 import path from 'path';
 import fs from 'fs';
@@ -6173,10 +6174,13 @@ function createWindow() {
 }
 
 // ─── Auto-updater (MYT-245) ───
-// Feature-flagged: only active when MYTHOS_AUTO_UPDATE=1 (set in production CI/release builds).
+// On by default in packaged builds; MYTHOS_AUTO_UPDATE=0 is the kill switch.
+// (The old MYTHOS_AUTO_UPDATE=1 opt-in was only set in the CI build shell, never at
+// runtime, so shipped binaries had auto-update silently disabled — see updater.ts.)
+// Unpackaged runs (dev, unit tests, E2E) always evaluate to false and stay inert.
 // Supports two channels: stable (GitHub releases) and beta (GitHub pre-releases).
 // IPC handlers are always registered so renderer calls are safe no-ops in dev.
-const AUTO_UPDATE_ENABLED = process.env.MYTHOS_AUTO_UPDATE === '1';
+const AUTO_UPDATE_ENABLED = isAutoUpdateEnabled(app.isPackaged, process.env.MYTHOS_AUTO_UPDATE);
 
 type UpdateState = 'checking' | 'available' | 'not-available' | 'downloading' | 'ready';
 
