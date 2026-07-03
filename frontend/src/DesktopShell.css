@@ -5,6 +5,8 @@
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  /* GH#643: anchor for the split-pane drop zone overlay */
+  position: relative;
 }
 
 /* SKY-3098 (v0.3): main column = vertical flex containing WorkspaceTabBar + content */

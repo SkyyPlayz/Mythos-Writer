@@ -525,6 +525,8 @@ interface AppSettings {
     workspaceTabs?: WorkspaceTab[];
     /** SKY-3098 (v0.3): active workspace tab id. */
     activeWorkspaceTabId?: string | null;
+    /** GH#643: right-hand workspace split pane (drag a tab to the screen edge). */
+    workspaceSplitPane?: { kind: WorkspaceTabKind } | null;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──
