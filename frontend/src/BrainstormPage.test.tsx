@@ -49,6 +49,13 @@ const mockBrainstormResolveRouting = vi.fn();
 const mockBrainstormListNotesFolders = vi.fn();
 // SKY-196: context selection mock — empty vault by default so tests stay fast.
 const mockBrainstormSelectContext = vi.fn();
+// Part G: TTS mocks — useTtsPlayer subscribes to the done/error events on mount.
+const mockVoiceSpeak = vi.fn();
+const mockVoiceSpeakCancel = vi.fn();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnVoiceSpeakDone = vi.fn<any>(() => vi.fn()); // returns unsub fn
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockOnVoiceSpeakError = vi.fn<any>(() => vi.fn());
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -84,6 +91,10 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     onSttResult: () => () => {},
     voiceTranscribe: vi.fn().mockResolvedValue({ text: 'test transcript', confidence: 0.95 }),
     onVaultNotesUpdated: () => () => {},
+    voiceSpeak: mockVoiceSpeak,
+    voiceSpeakCancel: mockVoiceSpeakCancel,
+    onVoiceSpeakDone: mockOnVoiceSpeakDone,
+    onVoiceSpeakError: mockOnVoiceSpeakError,
     ...overrides,
   };
 }
@@ -118,6 +129,7 @@ beforeEach(() => {
   errorCb = null;
   mockStreamStart.mockResolvedValue({ streamId: 'test-stream-1' });
   mockStreamCancel.mockResolvedValue({ cancelled: true });
+  mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
   // Default: no existing entities — new facts are saved directly.
   mockEntityList.mockResolvedValue({ entities: [] });
   // SKY-20 default-mode behavior — every fact lands at the seeded category
@@ -2070,5 +2082,152 @@ describe('Voice IO state machine (SKY-1503)', () => {
     // Click to stop (triggers transcription)
     fireEvent.click(btn);
     await waitFor(() => expect(btn.getAttribute('aria-label')).toBe('Processing speech…'));
+  });
+});
+
+// ─── Part G: TTS voice controls (mirrors WritingAssistantPanel's contract) ────
+describe('BrainstormPage — TTS voice controls', () => {
+  // Pass configured Piper settings so tests exercise the IPC path (voiceSpeak).
+  // The OS-speechSynthesis fallback path is covered by useTtsPlayer.test.ts.
+  const piperSettings = { enabled: true, provider: 'local' as const, localBinaryPath: '/piper' };
+
+  async function renderWithReply(text = 'Great idea for a story.') {
+    render(<BrainstormPage onClose={() => {}} ttsSettings={piperSettings} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Tell me about my hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream([text]);
+    await waitFor(() => screen.getByRole('button', { name: /hear suggestion aloud/i }));
+  }
+
+  it('AC-V-06: mute button is present in the header', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByRole('button', { name: /mute voice playback/i })).toBeInTheDocument();
+  });
+
+  it('AC-V-06: mute button toggles its label and aria-pressed', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    const btn = screen.getByRole('button', { name: /mute voice playback/i });
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(btn);
+
+    expect(screen.getByRole('button', { name: /unmute voice playback/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /unmute voice playback/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('AC-V-07: Hear button appears on a completed assistant reply', async () => {
+    await renderWithReply();
+    expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+  });
+
+  it('AC-V-07: no Hear button while the reply is still streaming', async () => {
+    render(<BrainstormPage onClose={() => {}} ttsSettings={piperSettings} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Tell me about my hero' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await waitFor(() => expect(tokenCb).not.toBeNull());
+    await act(async () => {
+      tokenCb?.({ streamId: 'test-stream-1', token: 'Streaming…' });
+    });
+
+    expect(screen.queryByRole('button', { name: /hear suggestion aloud/i })).not.toBeInTheDocument();
+
+    // Finish the stream — the button appears once streaming completes.
+    await act(async () => { endCb?.({ streamId: 'test-stream-1' }); });
+    expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+  });
+
+  it('AC-V-07: clicking Hear calls voiceSpeak with the reply text', async () => {
+    await renderWithReply('Great idea for a story.');
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    expect(mockVoiceSpeak).toHaveBeenCalledWith('Great idea for a story.');
+  });
+
+  it('AC-V-07: button switches to Stop while playing', async () => {
+    await renderWithReply();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    // voiceSpeak resolves next tick — button shows stop immediately (optimistic)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /stop voice playback/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /stop voice playback/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: /hear suggestion aloud/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-V-07: onVoiceSpeakDone event resets button back to Hear', async () => {
+    let fireDone!: (evt: { speakId: string }) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnVoiceSpeakDone as any).mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+      fireDone = cb;
+      return () => {};
+    });
+
+    await renderWithReply();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+
+    // speakId is 'speak-1' per default mock
+    await act(async () => { fireDone({ speakId: 'speak-1' }); });
+
+    expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /stop voice playback/i })).not.toBeInTheDocument();
+  });
+
+  it('AC-V-07: clicking Stop cancels playback via voiceSpeakCancel', async () => {
+    await renderWithReply();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+    fireEvent.click(screen.getByRole('button', { name: /stop voice playback/i }));
+    expect(mockVoiceSpeakCancel).toHaveBeenCalledWith('speak-1');
+  });
+
+  it('one reply plays at a time — Hear on a second reply supersedes the first', async () => {
+    await renderWithReply('Reply one.');
+
+    // Second exchange produces a second assistant reply.
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'And the villain?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await simulateStream(['Reply two.']);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /hear suggestion aloud/i })).toHaveLength(2),
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /hear suggestion aloud/i })[0]);
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+
+    // Start the second reply — the first resets to Hear; only one Stop at a time.
+    fireEvent.click(screen.getAllByRole('button', { name: /hear suggestion aloud/i })[0]);
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: /stop voice playback/i })).toHaveLength(1),
+    );
+    expect(mockVoiceSpeakCancel).toHaveBeenCalledWith('speak-1');
+    expect(mockVoiceSpeak).toHaveBeenCalledTimes(2);
+  });
+
+  it('AC-V-08: clicking Hear while session is muted does NOT call voiceSpeak', async () => {
+    await renderWithReply();
+    // Mute first
+    fireEvent.click(screen.getByRole('button', { name: /mute voice playback/i }));
+    // Then click Hear — should be a no-op
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    expect(mockVoiceSpeak).not.toHaveBeenCalled();
+  });
+
+  it('AC-V-08: muting while playing calls voiceSpeakCancel and resets button', async () => {
+    await renderWithReply();
+    fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /mute voice playback/i }));
+
+    expect(mockVoiceSpeakCancel).toHaveBeenCalledWith('speak-1');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument(),
+    );
   });
 });

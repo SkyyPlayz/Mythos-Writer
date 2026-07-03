@@ -321,7 +321,9 @@
 .bs-cont-kind-btn:focus-visible,
 .bs-cont-submit-btn:focus-visible,
 .bs-cont-label-btn:focus-visible,
-.bs-fact-retry-btn:focus-visible {
+.bs-fact-retry-btn:focus-visible,
+.brainstorm-mute-btn:focus-visible,
+.bs-hear-btn:focus-visible {
   outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: 2px;
 }
@@ -669,6 +671,87 @@
   border-color: var(--border-strong);
 }
 
+/* AC-V-06: session mute toggle — mirrors WA's .wa-mute-btn */
+.brainstorm-mute-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.brainstorm-mute-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* AC-V-11: border + text change signals muted state without relying on color alone */
+.brainstorm-mute-btn--muted {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.brainstorm-mute-btn--muted:hover {
+  background: var(--color-danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* AC-V-07: per-reply Hear button — mirrors WA's .wa-hear-btn */
+.bs-hear-btn {
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  margin-top: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.bs-hear-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-dim);
+}
+
+/* AC-V-11: border + icon change signals playing state without relying on color alone */
+.bs-hear-btn--playing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bs-hear-btn--playing:hover {
+  background: var(--accent-soft);
+}
+
+/* Animated dot indicates active playback — purely decorative, stripped on reduced-motion */
+.bs-hear-btn--playing::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: bs-hear-pulse 1s ease-in-out infinite;
+  margin-left: 2px;
+}
+
+@keyframes bs-hear-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.7); }
+}
+
 /* Draft size warning banner */
 .brainstorm-draft-warning {
   background: var(--color-warning-bg, #fffbeb);
@@ -798,6 +881,7 @@
   .bs-cursor { animation: none; }
   .brainstorm-toast { animation: none; }
   .bs-bulk-toolbar { animation: none; }
+  .bs-hear-btn--playing::after { animation: none; }
 }
 
 /* Cancel button */

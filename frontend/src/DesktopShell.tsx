@@ -3284,6 +3284,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             archiveContinuityEnabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
             activeScene={activeSceneForSidebar}
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
             compact
           />
         );
@@ -4220,6 +4222,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
           voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+          ttsSettings={appSettings?.tts}
+          voicePrefs={appSettings?.voice}
           archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
           activeScene={selectedScene}
           onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
@@ -4272,6 +4276,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             enabled={agentFlags.brainstorm}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
             activeScene={selectedScene}
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
             onFirstSubmit={() => checkGettingStartedItem('brainstorm')}

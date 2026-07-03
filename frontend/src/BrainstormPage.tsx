@@ -7,6 +7,7 @@ import { ProposalCard } from './components/BrainstormCard/ProposalCard';
 import type { NoteProposal, NoteProposalKind } from './components/BrainstormCard/ProposalCard';
 import { ScenePicker } from './components/BrainstormCard/ScenePicker';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
+import { useTtsPlayer, type TtsEngineSettings, type TtsVoicePrefs } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
 import RefinementChips from './components/RefinementChips';
@@ -230,6 +231,12 @@ interface Props {
   /** SKY-3201: pre-fill the prompt with this text on first mount (Notes/Story Assist context seeding).
    *  Overrides any saved draft. User still must press Send to submit. */
   seedPrompt?: string;
+  /** Part G: TTS engine config for "Hear" reply playback. When absent or
+   *  unconfigured, OS speechSynthesis is used as the zero-config default. */
+  ttsSettings?: TtsEngineSettings;
+  /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language).
+   *  Field names match VoiceSettings — pass appSettings.voice straight through. */
+  voicePrefs?: TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -243,7 +250,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -257,6 +264,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     useVoiceDictation({
       onTranscript: useCallback((text: string) => { voiceTranscriptHandlerRef.current(text); }, []),
       onError: useCallback((msg: string) => { voiceErrorHandlerRef.current(msg); }, []),
+      micDeviceId: voicePrefs?.micDeviceId,
+      inputLanguage: voicePrefs?.inputLanguage,
     });
   const { toast: toastState, showToast } = useToast(3000);
   const [pasteWarning, setPasteWarning] = useState(false);
@@ -318,6 +327,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // Tracks when each proposal first appeared so confirm/reject can report timeToDecideMs
   const proposalAppearAt = useRef<Map<string, number>>(new Map());
   const { announce, liveText } = useLiveAnnounce();
+
+  // Part G: optional TTS "Hear" playback for assistant replies — mirrors WA.
+  const tts = useTtsPlayer(ttsSettings, voicePrefs);
 
   // Wire stable refs now that announce + setPrompt are in scope.
   voiceTranscriptHandlerRef.current = (text: string) => {
@@ -1477,6 +1489,16 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               />
             </div>
             <div className="brainstorm-header-actions">
+              {/* AC-V-06: session mute toggle — same contract as the WA header */}
+              <button
+                className={`brainstorm-mute-btn${tts.sessionMuted ? ' brainstorm-mute-btn--muted' : ''}`}
+                onClick={() => tts.toggleMute(announce)}
+                aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+                aria-pressed={tts.sessionMuted}
+                type="button"
+              >
+                {tts.sessionMuted ? 'Unmute' : 'Mute'}
+              </button>
               {messages.length > 0 && (
                 <button
                   className="brainstorm-download-btn"
@@ -1542,6 +1564,28 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                       {msg.text}
                       {msg.streaming && <span className="bs-cursor" aria-hidden="true">▍</span>}
                     </div>
+                    {/* AC-V-07: per-reply TTS button; one reply plays at a time */}
+                    {!msg.streaming && msg.text.trim() !== '' && (() => {
+                      const mid = `bs-msg-${i}`;
+                      const isPlaying = tts.playingCardId === mid;
+                      return (
+                        <button
+                          className={`bs-hear-btn${isPlaying ? ' bs-hear-btn--playing' : ''}`}
+                          onClick={() => {
+                            if (isPlaying) {
+                              tts.cancelCurrent(announce);
+                            } else {
+                              tts.speakCard(msg.text, mid, announce);
+                            }
+                          }}
+                          aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
+                          aria-pressed={isPlaying}
+                          type="button"
+                        >
+                          {isPlaying ? '■ Stop' : '▶ Hear'}
+                        </button>
+                      );
+                    })()}
                     {!msg.streaming && i === messages.length - 1 && (
                       <RefinementChips
                         effectiveAxes={effectiveAxes}
