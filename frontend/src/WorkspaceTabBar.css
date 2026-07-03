@@ -21,9 +21,16 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
+}
+
+/* MYT-520 §5.3: smooth scrolling is motion — only enable it when the user has
+   not asked for reduced motion (the index.css reset doesn't cover this prop). */
+@media (prefers-reduced-motion: no-preference) {
+  .wtb-tabs-scroll {
+    scroll-behavior: smooth;
+  }
 }
 
 .wtb-tabs-scroll::-webkit-scrollbar {

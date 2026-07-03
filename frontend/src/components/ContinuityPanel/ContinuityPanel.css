@@ -7,16 +7,16 @@
 
 .continuity-search-row {
   padding: 8px;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--border-separator);
   flex-shrink: 0;
 }
 
 .continuity-search-input {
   width: 100%;
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-header);
   font-size: 0.82rem;
   padding: 6px 8px;
   outline: none;
@@ -25,7 +25,7 @@
 }
 
 .continuity-search-input::placeholder {
-  color: #52525b;
+  color: var(--text-placeholder);
 }
 
 .continuity-search-input:focus {
@@ -44,7 +44,7 @@
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: #52525b;
+  color: var(--text-muted);
   text-transform: uppercase;
   padding: 4px 0 6px;
 }
@@ -53,15 +53,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 0.82rem;
   padding: 12px 0;
 }
 
 /* Entity Card */
 .entity-card {
-  background: #1c1c1f;
-  border: 1px solid #2d2d31;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 8px;
@@ -72,7 +72,7 @@
 .entity-card:hover,
 .entity-card:focus-within {
   border-color: var(--accent, #06b6d4);
-  background: #222226;
+  background: var(--surface-3);
 }
 
 .entity-card-header {
@@ -85,7 +85,7 @@
 .entity-card-name {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-header);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -103,16 +103,16 @@
   flex-shrink: 0;
 }
 
-.entity-type-badge--character { background: #312e81; color: #a5b4fc; }
-.entity-type-badge--location  { background: #14532d; color: #86efac; }
-.entity-type-badge--item      { background: #451a03; color: #fcd34d; }
-.entity-type-badge--faction   { background: #164e63; color: #67e8f9; }
-.entity-type-badge--other     { background: #3b0764; color: #d8b4fe; }
-.entity-type-badge--default   { background: #27272a; color: #a1a1aa; }
+.entity-type-badge--character { background: var(--entity-char-bg); color: var(--entity-char-text); }
+.entity-type-badge--location  { background: var(--entity-loc-bg); color: var(--entity-loc-text); }
+.entity-type-badge--item      { background: var(--entity-item-bg); color: var(--entity-item-text); }
+.entity-type-badge--faction   { background: var(--entity-faction-bg); color: var(--entity-faction-text); }
+.entity-type-badge--other     { background: var(--entity-concept-bg); color: var(--entity-concept-text); }
+.entity-type-badge--default   { background: var(--bg-badge); color: var(--text-muted); }
 
 .entity-card-aliases {
   font-size: 0.75rem;
-  color: #71717a;
+  color: var(--text-muted);
   margin-bottom: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -121,7 +121,7 @@
 
 .entity-card-excerpt {
   font-size: 0.78rem;
-  color: #a1a1aa;
+  color: var(--text-body);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -137,7 +137,7 @@
   justify-content: center;
   text-align: center;
   padding: 32px 16px;
-  color: #52525b;
+  color: var(--text-muted);
   gap: 8px;
 }
 
@@ -150,13 +150,13 @@
 .continuity-empty-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-body);
 }
 
 .continuity-empty-body {
   font-size: 0.78rem;
   line-height: 1.5;
-  color: #52525b;
+  color: var(--text-muted);
   max-width: 220px;
 }
 
@@ -168,7 +168,7 @@
   text-align: center;
   padding: 24px 16px;
   gap: 8px;
-  color: #52525b;
+  color: var(--text-muted);
   font-size: 0.78rem;
 }
 
@@ -187,8 +187,8 @@
   transform: translate(-50%, -50%);
   width: 280px;
   max-height: 60vh;
-  background: #111113;
-  border: 1px solid #3f3f46;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   z-index: 500;
@@ -202,7 +202,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px 8px;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--border-separator);
   flex-shrink: 0;
 }
 
@@ -218,7 +218,7 @@
 .continuity-focus-overlay-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
@@ -229,7 +229,7 @@
 
 .continuity-focus-close:hover,
 .continuity-focus-overlay-close:hover {
-  color: #e4e4e7;
+  color: var(--text-header);
 }
 
 .entity-card-view-note {

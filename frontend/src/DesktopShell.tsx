@@ -36,6 +36,7 @@ import BetaReadMargin from './BetaReadMargin';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
+import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
@@ -475,7 +476,7 @@ function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChan
   useEffect(() => {
     if (!selectedSceneId || !containerRef.current) return;
     const el = containerRef.current.querySelector<HTMLElement>(`[data-scene-id="${selectedSceneId}"]`);
-    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    el?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
   }, [selectedSceneId]);
 
   return (
@@ -526,7 +527,7 @@ function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectSc
   const activeSceneRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    activeSceneRef.current?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
   }, [selectedSceneId]);
 
   return (
@@ -616,7 +617,7 @@ function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
       const el = scrollRef.current.querySelector<HTMLElement>(
         `[data-chapter-idx="${wrapped}"]`,
       );
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       el?.focus({ preventScroll: true });
     },
     [totalChapters],
@@ -751,7 +752,7 @@ function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
         <footer className="full-book-preview__footer">
           <button
             className="full-book-preview__back-top"
-            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() })}
             aria-label="Back to top of book"
           >
             ↑ Back to top
