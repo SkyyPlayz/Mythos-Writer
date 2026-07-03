@@ -1,4 +1,5 @@
 /* SKY-2450 — TimelineHeader: zoom toolbar above the story timeline canvas.
+ * SKY-3185 — F5: view-mode toggle + grouping dropdown added.
  * Liquid Neon tokens only; no hardcoded hex values.
  */
 
@@ -35,6 +36,92 @@
   background: var(--color-border, #3a3a5c);
   opacity: 0.6;
   flex-shrink: 0;
+}
+
+/* ─── F5: View toggle (Spreadsheet | AEON | AEON Track) ───────────────────── */
+
+.tlh-view-toggle {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.tlh-view-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid var(--color-border, #3a3a5c);
+  background: transparent;
+  color: var(--text-muted, #8a9bb0);
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.tlh-view-btn:hover:not(.tlh-view-btn--active) {
+  background: color-mix(in srgb, var(--color-accent, #00f0ff) 8%, transparent);
+  color: var(--color-text, #eee);
+}
+
+.tlh-view-btn--active {
+  background: color-mix(in srgb, var(--color-accent, #00f0ff) 15%, transparent);
+  border-color: var(--color-accent, #00f0ff);
+  color: var(--color-accent, #00f0ff);
+}
+
+.tlh-view-btn:focus-visible {
+  outline: 2px solid var(--color-accent, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* ─── F5: Group-by selector ───────────────────────────────────────────────── */
+
+.tlh-group-by {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.tlh-group-label {
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a9bb0);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tlh-group-select {
+  height: 26px;
+  padding: 0 0.5rem;
+  border-radius: 5px;
+  border: 1px solid var(--color-border, #3a3a5c);
+  background: var(--color-surface, #1e1e2e);
+  color: var(--color-text, #eee);
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.tlh-group-select:hover {
+  border-color: var(--color-accent, #00f0ff);
+}
+
+.tlh-group-select:focus-visible {
+  outline: 2px solid var(--color-accent, #00f0ff);
+  outline-offset: 2px;
+  border-color: var(--color-accent, #00f0ff);
 }
 
 /* ─── Zoom group ──────────────────────────────────────────────────────────── */
@@ -124,7 +211,9 @@
 /* ─── Reduced motion ──────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .tlh-zoom-btn {
+  .tlh-zoom-btn,
+  .tlh-view-btn,
+  .tlh-group-select {
     transition: none;
   }
 }

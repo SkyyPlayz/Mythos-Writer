@@ -562,14 +562,39 @@ function TimeAxisStrip({ axis, totalWidthPx }: { axis: TimeAxis; totalWidthPx: n
 interface Props {
   story: Story | null;
   onOpenScene?: (sceneId: string) => void;
+  /** F5 — when provided, overrides the internal selectedIds state (controlled mode). */
+  selectedIds?: Set<string>;
+  /** F5 — called on selection change (controlled or uncontrolled). */
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
-export default function AeonLaneView({ story, onOpenScene }: Props) {
+export default function AeonLaneView({
+  story,
+  onOpenScene,
+  selectedIds: selectedIdsProp,
+  onSelectionChange,
+}: Props) {
   const [scenes, setScenes] = useState<AeonScene[]>([]);
   const [arcs, setArcs] = useState<AeonArc[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // F5 — controlled/uncontrolled selectedIds. Refs keep the bridge callback
+  // stable so consumers don't need extra dependencies.
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIds: Set<string> = selectedIdsProp ?? internalSelectedIds;
+  const internalSelectedIdsRef = useRef(internalSelectedIds);
+  internalSelectedIdsRef.current = internalSelectedIds;
+  const selectedIdsPropRef = useRef(selectedIdsProp);
+  selectedIdsPropRef.current = selectedIdsProp;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const setSelectedIds = useCallback((ids: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    const prev = selectedIdsPropRef.current ?? internalSelectedIdsRef.current;
+    const resolved = typeof ids === 'function' ? ids(prev) : ids;
+    if (selectedIdsPropRef.current === undefined) setInternalSelectedIds(resolved);
+    onSelectionChangeRef.current?.(resolved);
+  }, []);
 
   // ─── Interaction state ───
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
@@ -617,7 +642,7 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
       })
       .catch(err => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [story, api]);
+  }, [story, api, setSelectedIds]);
 
   // rAF-throttled scroll handler for windowing
   const handleScroll = useCallback(() => {
@@ -704,7 +729,7 @@ export default function AeonLaneView({ story, onOpenScene }: Props) {
         setDetail({ scene: clickedScene, anchorRect: rect });
       }
     }
-  }, [selectedIds, scenes]);
+  }, [selectedIds, scenes, setSelectedIds]);
 
   const handleDoubleClickScene = useCallback((id: string) => {
     setDetail(null);

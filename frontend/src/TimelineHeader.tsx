@@ -1,13 +1,32 @@
 // SKY-2450 — Timeline header bar with zoom controls.
+// SKY-3185 — F5: optional Spreadsheet|AEON|AEON Track segmented toggle + grouping dropdown.
 //
-// Presentational: parent owns currentZoom; this component fires onZoomChange.
+// Presentational: parent owns currentZoom (and, when provided, viewMode/groupBy);
+// this component fires onZoomChange / onViewModeChange / onGroupByChange.
 // Global keyboard shortcuts (Ctrl/Cmd + = / − / 0) and Ctrl/Cmd+wheel are
 // registered on document so they work regardless of focus position.
 import { useCallback, useEffect, useRef } from 'react';
+import type { TimelineViewMode, TimelineGroupBy } from './timelineFilters';
 import './TimelineHeader.css';
 
 // Additive step per press / wheel tick (10% of the 1.0 default zoom level).
 const ZOOM_STEP = 0.1;
+
+// Button labels match the pre-F5 DesktopShell mode bar so accessible names
+// (and the e2e locators built on them) stay stable across the refactor.
+const VIEW_MODE_OPTIONS: { value: TimelineViewMode; label: string; title?: string }[] = [
+  { value: 'spreadsheet', label: 'Spreadsheet' },
+  { value: 'aeon', label: 'AEON' },
+  { value: 'track', label: 'AEON Track', title: 'AEON Track — zoomable SVG canvas with time axis and gap indicators' },
+];
+
+const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'arc', label: 'Arc' },
+  { value: 'chapter', label: 'Chapter' },
+  { value: 'character', label: 'Character' },
+  { value: 'location', label: 'Location' },
+];
 
 export interface TimelineHeaderProps {
   /** Displayed as "Story Timeline: {title}". */
@@ -20,6 +39,14 @@ export interface TimelineHeaderProps {
   maxZoom?: number;
   onZoomChange: (newZoom: number) => void;
   onZoomFit: () => void;
+  /** F5 — active view mode; omit (with onViewModeChange) to hide the view switcher. */
+  viewMode?: TimelineViewMode;
+  /** F5 — called when the user switches between Spreadsheet, AEON, and AEON Track. */
+  onViewModeChange?: (mode: TimelineViewMode) => void;
+  /** F5 — active grouping; omit (with onGroupByChange) to hide the grouping control. */
+  groupBy?: TimelineGroupBy;
+  /** F5 — called when the user changes the grouping. */
+  onGroupByChange?: (groupBy: TimelineGroupBy) => void;
 }
 
 export default function TimelineHeader({
@@ -29,6 +56,10 @@ export default function TimelineHeader({
   maxZoom = 3.0,
   onZoomChange,
   onZoomFit,
+  viewMode,
+  onViewModeChange,
+  groupBy,
+  onGroupByChange,
 }: TimelineHeaderProps) {
   // Clamp helper
   const clamp = useCallback(
@@ -91,6 +122,10 @@ export default function TimelineHeader({
   const canZoomIn = currentZoom < maxZoom;
   const canZoomOut = currentZoom > minZoom;
 
+  // F5 — both halves of each pair must be provided for the control to render.
+  const showViewSwitcher = viewMode !== undefined && onViewModeChange !== undefined;
+  const showGroupBy = groupBy !== undefined && onGroupByChange !== undefined;
+
   return (
     <div
       className="tlh-root"
@@ -101,6 +136,58 @@ export default function TimelineHeader({
       <span className="tlh-title" title={`Story Timeline: ${title}`}>
         Story Timeline: {title}
       </span>
+
+      {/* F5 — Spreadsheet | AEON | AEON Track segmented toggle */}
+      {showViewSwitcher && (
+        <>
+          <div className="tlh-divider" aria-hidden="true" />
+          <div
+            className="tlh-view-toggle"
+            role="group"
+            aria-label="Timeline view mode"
+            data-testid="view-mode-toggle"
+          >
+            {VIEW_MODE_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                className={`tlh-view-btn${viewMode === opt.value ? ' tlh-view-btn--active' : ''}`}
+                aria-pressed={viewMode === opt.value}
+                title={opt.title}
+                onClick={() => onViewModeChange?.(opt.value)}
+                data-testid={`view-mode-${opt.value}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* F5 — Grouping selector */}
+      {showGroupBy && (
+        <>
+          <div className="tlh-divider" aria-hidden="true" />
+          <div className="tlh-group-by" role="group" aria-label="Group scenes by">
+            <label className="tlh-group-label" htmlFor="tlh-group-select">
+              Group:
+            </label>
+            <select
+              id="tlh-group-select"
+              className="tlh-group-select"
+              value={groupBy}
+              onChange={e => onGroupByChange?.(e.target.value as TimelineGroupBy)}
+              data-testid="groupby-select"
+            >
+              {GROUP_BY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
 
       <div className="tlh-divider" aria-hidden="true" />
 

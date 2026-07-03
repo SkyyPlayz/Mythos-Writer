@@ -1,9 +1,20 @@
 // SKY-795: Pure helpers for timeline filtering, arc focus, and entity tabs.
 // Kept side-effect free so they're trivial to unit-test and reuse from any view.
+// SKY-3185: TimelineViewMode + TimelineGroupBy for the shared view switcher + grouping.
 
 import type { SpreadsheetScene } from './TimelineSpreadsheet';
 
 export type EntityTab = 'all' | 'character' | 'arc' | 'location';
+
+/** F5 — which surface is active in the timeline panel. */
+export type TimelineViewMode = 'spreadsheet' | 'aeon' | 'track';
+
+export const VALID_TIMELINE_VIEW_MODES: readonly TimelineViewMode[] = ['spreadsheet', 'aeon', 'track'];
+
+/** F5 — how scenes are grouped in views that support grouping (spreadsheet today). */
+export type TimelineGroupBy = 'none' | 'arc' | 'chapter' | 'character' | 'location';
+
+export const VALID_TIMELINE_GROUP_BYS: readonly TimelineGroupBy[] = ['none', 'arc', 'chapter', 'character', 'location'];
 
 export interface TimelineFilters {
   entityTab: EntityTab;
