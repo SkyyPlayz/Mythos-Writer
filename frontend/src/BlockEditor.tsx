@@ -13,6 +13,8 @@ import {
 import { countWords } from './wordStats';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import RichTextEditor from './RichTextEditor';
+import { HeadingFocusExtension } from './HeadingFocusExtension';
+import { levelsPresent, focusState, stepFocus, headingsAtLevel } from './lib/headingFocus';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -60,6 +62,8 @@ interface Props {
   onSelectionChange?: (text: string) => void;
   /** When false, suppress Tiptap's autofocus on mount (used in multi-editor views like ChapterContinuousView). */
   autoFocus?: boolean;
+  /** GH #631: show the heading-focus control (H1–H6 section view splitting). Single-scene view only. */
+  enableHeadingFocus?: boolean;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -69,7 +73,7 @@ const DRAFT_STATE_LABELS: Record<DraftState, string> = {
 };
 
 /** Story-only extensions layered onto the shared RichTextEditor core. */
-const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension];
+const STORY_EXTENSIONS = [WikiLinkHintExtension, AutoLinkerExtension, HeadingFocusExtension];
 
 // Block.type === 'heading' carries no dedicated level field — a heading's level
 // (H1–H6) lives in its own leading `#` run inside `content` (e.g. "## Chapter Two"),
@@ -101,7 +105,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
@@ -358,6 +362,42 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     onDraftStateChange(state);
   };
 
+  // GH #631: heading-focus state. Level/index live here; the extension's
+  // plugin renders the hide-decorations and re-clamps on document edits. The
+  // level list and step state are derived per render — the word-count
+  // debounce already re-renders during typing, keeping them fresh.
+  const [hf, setHf] = useState<{ level: number | null; index: number }>({ level: null, index: 0 });
+  const headingLevelOptions = enableHeadingFocus && editor ? levelsPresent(editor.state.doc) : [];
+  const hfStep = enableHeadingFocus && editor && hf.level !== null
+    ? focusState(editor.state.doc, hf.level, hf.index)
+    : null;
+
+  const jumpToFocusHeading = useCallback((ed: Editor, level: number, index: number) => {
+    const h = headingsAtLevel(ed.state.doc, level)[index];
+    if (h) ed.chain().setTextSelection(h.pos + 1).scrollIntoView().run();
+  }, []);
+
+  const handleFocusLevelChange = useCallback((value: string) => {
+    if (!editor) return;
+    if (value === 'all') {
+      setHf({ level: null, index: 0 });
+      editor.commands.clearHeadingFocus();
+      return;
+    }
+    const level = Number(value);
+    setHf({ level, index: 0 });
+    editor.commands.setHeadingFocus(level, 0);
+    jumpToFocusHeading(editor, level, 0);
+  }, [editor, jumpToFocusHeading]);
+
+  const handleFocusStep = useCallback((direction: 'prev' | 'next') => {
+    if (!editor || hf.level === null) return;
+    const next = stepFocus(editor.state.doc, hf.level, hf.index, direction);
+    setHf({ level: hf.level, index: next.index });
+    editor.commands.setHeadingFocus(hf.level, next.index);
+    jumpToFocusHeading(editor, hf.level, next.index);
+  }, [editor, hf, jumpToFocusHeading]);
+
   const handleBetaReadClick = useCallback(() => {
     if (!selectionText) return;
     onBetaReadRef.current?.(selectionText);
@@ -387,6 +427,48 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
             </button>
           ))}
         </div>
+        {/* GH #631: heading-focus — narrow the view to one Hn section; the
+            document (and scene version backups) always keep the full text. */}
+        {enableHeadingFocus && editor && headingLevelOptions.length > 0 && (
+          <div className="heading-focus-group" role="group" aria-label="Heading focus" data-testid="heading-focus-group">
+            <select
+              className="heading-focus-select"
+              aria-label="Heading focus level"
+              value={hf.level === null ? 'all' : String(hf.level)}
+              onChange={(e) => handleFocusLevelChange(e.target.value)}
+            >
+              <option value="all">All</option>
+              {headingLevelOptions.map((l) => (
+                <option key={l} value={String(l)}>H{l}</option>
+              ))}
+            </select>
+            {hf.level !== null && hfStep && hfStep.count > 0 && (
+              <>
+                <button
+                  className="heading-focus-step"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleFocusStep('prev')}
+                  disabled={!hfStep.canPrev}
+                  aria-label={`Previous H${hf.level} section`}
+                >
+                  ‹
+                </button>
+                <span className="heading-focus-pos" aria-live="polite">
+                  {hfStep.index + 1}/{hfStep.count}
+                </span>
+                <button
+                  className="heading-focus-step"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleFocusStep('next')}
+                  disabled={!hfStep.canNext}
+                  aria-label={`Next H${hf.level} section`}
+                >
+                  ›
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <RichTextEditor
         content={blocksToMarkdownBody(scene.blocks)}

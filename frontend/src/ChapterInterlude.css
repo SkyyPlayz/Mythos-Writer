@@ -1,0 +1,47 @@
+/* ChapterInterlude — chapter-owned prose band in Chapter view (GH #631) */
+
+.chapter-interlude {
+  margin: 0 0 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-panel);
+}
+
+.chapter-interlude--loading {
+  min-height: 48px;
+}
+
+.chapter-interlude__header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px 0;
+}
+
+.chapter-interlude__label {
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-heading, 600);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.chapter-interlude__hint {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted);
+  opacity: 0.8;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chapter-interlude__status {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted);
+}
+
+.chapter-interlude__editor {
+  padding: 4px 12px 10px;
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -625,5 +625,121 @@ describe('BlockEditor scene backup/restore heading round trip', () => {
     for (const level of HEADING_LEVELS) {
       expect(restored).toContain(`${'#'.repeat(level)} Heading ${level}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GH #631 — heading-focus view splitting (decoration-only)
+// ---------------------------------------------------------------------------
+
+describe('BlockEditor heading focus (GH #631)', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: {
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+      },
+      configurable: true,
+    });
+  });
+
+  const FOCUS_DOC = [
+    '## Chapter A',
+    '',
+    'Alpha text.',
+    '',
+    '## Chapter B',
+    '',
+    'Beta text.',
+  ].join('\n');
+
+  function makeFocusScene(): Scene {
+    return makeSceneWithBlocks([
+      { id: 'b1', type: 'prose', content: FOCUS_DOC, order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ]);
+  }
+
+  async function renderWithFocus() {
+    let editorApi: { getMarkdown: () => string } | undefined;
+    render(
+      <BlockEditor
+        scene={makeFocusScene()}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        enableHeadingFocus
+        autoFocus={false}
+        onEditorReady={(api) => { editorApi = api; }}
+      />
+    );
+    await waitFor(() => expect(editorApi).toBeDefined());
+    await waitFor(() => expect(screen.getByTestId('heading-focus-group')).toBeInTheDocument());
+    return () => editorApi!;
+  }
+
+  it('renders the control only when enabled and headings exist', async () => {
+    await renderWithFocus();
+    expect(screen.getByLabelText('Heading focus level')).toBeInTheDocument();
+  });
+
+  it('does not render the control when disabled', async () => {
+    render(
+      <BlockEditor
+        scene={makeFocusScene()}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        autoFocus={false}
+      />
+    );
+    await act(async () => {});
+    expect(screen.queryByTestId('heading-focus-group')).not.toBeInTheDocument();
+  });
+
+  it('focusing H2 hides the out-of-section blocks in the DOM', async () => {
+    await renderWithFocus();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '2' } });
+    });
+    await waitFor(() => {
+      expect(document.querySelectorAll('.heading-focus-hidden').length).toBeGreaterThan(0);
+    });
+    // Section 1 of 2 shown; stepping enabled forward only.
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous H2 section' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next H2 section' })).toBeEnabled();
+  });
+
+  it('steps between same-level sections', async () => {
+    await renderWithFocus();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '2' } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next H2 section' }));
+    });
+    expect(screen.getByText('2/2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next H2 section' })).toBeDisabled();
+  });
+
+  it('CONTRACT: getMarkdown returns the full document while focused (backups intact)', async () => {
+    const getApi = await renderWithFocus();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '2' } });
+    });
+    const md = getApi().getMarkdown();
+    expect(md).toContain('## Chapter A');
+    expect(md).toContain('Alpha text.');
+    expect(md).toContain('## Chapter B');
+    expect(md).toContain('Beta text.');
+  });
+
+  it('selecting All restores every block', async () => {
+    await renderWithFocus();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '2' } });
+    });
+    await waitFor(() => expect(document.querySelectorAll('.heading-focus-hidden').length).toBeGreaterThan(0));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: 'all' } });
+    });
+    await waitFor(() => expect(document.querySelectorAll('.heading-focus-hidden')).toHaveLength(0));
   });
 });
