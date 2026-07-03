@@ -158,6 +158,11 @@
   letter-spacing: -1px;
 }
 
+/* Alignment glyphs (GH #642) — stroke inherits the button's currentColor */
+.fmt-align-icon {
+  display: block;
+}
+
 /* ── Reduced motion ──────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
