@@ -7,6 +7,7 @@ import { SUGGESTION_CATEGORY_LABELS } from './types';
 import VaultSyncBadge from './components/VaultSyncBadge';
 import MoveVaultWizard from './MoveVaultWizard';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
+import BackupSection from './components/SettingsPanel/sections/BackupSection';
 import { NAV_RAIL_DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
 import './SettingsPanel.css';
 
@@ -2904,6 +2905,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           </section>
           </>
           )}
+
+          {/* ── App data backup / restore (MYT-346) ── */}
+          {settingsCategory === 'vaults' && <BackupSection />}
 
           {settingsCategory === 'agents' && (
           <>
