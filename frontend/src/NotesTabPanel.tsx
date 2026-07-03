@@ -11,6 +11,7 @@ import NoteViewer from './NoteViewer';
 import type { Story, Scene, Chapter, WritingMode } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
+import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import './NotesTabPanel.css';
 
 const MIN_SIDEBAR_W = 160;
@@ -36,6 +37,10 @@ export interface NotesTabPanelProps {
   onActiveNoteWordCountChange: (wordCount: number) => void;
   onCloseActiveNote: () => void;
   onWikiLinkClick: (target: string) => void;
+  // GH #650: [[ autocomplete candidates + resolved-link styling for the Notes
+  // tab editor (previously only wired on the story-side NoteViewer).
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  wikiLinkCandidates?: WikiLinkCandidate[];
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
@@ -85,6 +90,8 @@ export default function NotesTabPanel({
   onActiveNoteWordCountChange,
   onCloseActiveNote,
   onWikiLinkClick,
+  resolvedWikiLinkTitles,
+  wikiLinkCandidates,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
   stories,
@@ -305,6 +312,8 @@ export default function NotesTabPanel({
               onPreviewModeChange={onActiveNotePreviewChange}
               onWordCountChange={onActiveNoteWordCountChange}
               onWikiLinkClick={onWikiLinkClick}
+              resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+              wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
             />
           )}
