@@ -123,7 +123,26 @@ type Api = {
     importedStories: Array<{ filePath: string; storyId: string; storyTitle: string; sceneCount: number; firstScenePath?: string; firstSceneId?: string; warnings: string[] }>;
     errors: Array<{ filePath: string; error: string }>;
   }>;
+  /** SKY-2993: Obsidian vault importer — dry-run scan + commit (onboarding Path 3) */
+  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
+  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string }>;
+  onObsidianImportProgress?: (cb: (data: ObsidianImportProgress) => void) => () => void;
 };
+
+// SKY-2993: dry-run summary returned by dryRunObsidianImport
+type ObsidianImportPreview = {
+  markdownCount: number;
+  attachmentCount: number;
+  totalFiles: number;
+  topLevelFolders: string[];
+  sampleFiles: string[];
+};
+
+// SKY-2993: progress payload pushed by the main process during import
+type ObsidianImportProgress = { current: number; total: number; lastAction: string };
+
+// SKY-2993: one Obsidian folder scanned for import, keyed to its target vault
+type ObsidianImportTarget = { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview };
 
 function api(): Api {
   return (window as unknown as { api: Api }).api;
@@ -521,6 +540,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const docxFileInputRef = useRef<HTMLInputElement>(null);
   const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── SKY-2993: Obsidian import flow state ──────────────────────────────────
+  // Non-null obsDryRun switches the Import/Open screen from the path form to
+  // the dry-run report view (Confirm import / Back).
+  const [obsDryRun, setObsDryRun] = useState<ObsidianImportTarget[] | null>(null);
+  const [obsImporting, setObsImporting] = useState(false);
+  const [obsProgress, setObsProgress] = useState<ObsidianImportProgress | null>(null);
+  const [obsError, setObsError] = useState('');
+
   // SKY-2007: load system path suggestions when the save-location step opens
   // SKY-2988: also load for the Custom Setup location picker
   useEffect(() => {
@@ -896,6 +923,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setImportObsStoryPath('');
     setImportDocxFiles([]);
     setImportErrorModal(null);
+    setObsDryRun(null);
+    setObsImporting(false);
+    setObsProgress(null);
+    setObsError('');
     if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
   }
 
@@ -983,11 +1014,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         onComplete(updated);
         return;
       }
+      // SKY-2993: Obsidian path — dry-run scan first, then report → confirm.
       if (importObsNotesPath || importObsStoryPath) {
-        setImportErrorModal({
-          title: 'Obsidian import coming soon',
-          message: 'Full Obsidian vault import is on the way. Stay tuned for updates!',
-        });
+        await runObsidianDryRun();
         return;
       }
       if (importDocxFiles.length > 0) {
@@ -1011,6 +1040,63 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       });
     } finally {
       setImportRunning(false);
+    }
+  }
+
+  // ─── SKY-2993: Obsidian import flow (dry-run → report → confirm) ───────────
+
+  // Filled Obsidian slots in a stable order: notes first, then story.
+  function obsidianTargets(): Array<{ kind: 'notes' | 'story'; path: string }> {
+    const targets: Array<{ kind: 'notes' | 'story'; path: string }> = [];
+    if (importObsNotesPath) targets.push({ kind: 'notes', path: importObsNotesPath });
+    if (importObsStoryPath) targets.push({ kind: 'story', path: importObsStoryPath });
+    return targets;
+  }
+
+  // Scan each selected folder without writing anything. On success, switch the
+  // screen to the dry-run report; on failure, show an inline error under the
+  // Obsidian section (the submit button stays enabled so the user can retry).
+  async function runObsidianDryRun() {
+    setObsError('');
+    try {
+      const scanned: ObsidianImportTarget[] = [];
+      for (const target of obsidianTargets()) {
+        const res = await api().dryRunObsidianImport(target.path, target.kind);
+        if (res.error || !res.preview) {
+          setObsError(res.error ?? 'Could not scan this folder. Check the path and try again.');
+          return;
+        }
+        scanned.push({ ...target, preview: res.preview });
+      }
+      setObsDryRun(scanned);
+    } catch (e) {
+      setObsError(e instanceof Error ? e.message : 'Could not scan this folder. Check the path and try again.');
+    }
+  }
+
+  // Commit the import for every scanned target, streaming progress events into
+  // the report view. Errors stay inline in the report so Confirm can be retried.
+  async function handleObsidianConfirm() {
+    if (!obsDryRun || obsImporting) return;
+    setObsError('');
+    setObsImporting(true);
+    setObsProgress(null);
+    const unsubscribe = api().onObsidianImportProgress?.((data) => setObsProgress(data));
+    try {
+      for (const target of obsDryRun) {
+        const res = await api().importObsidianVault(target.path, target.kind);
+        if (!res.ok || res.error) {
+          setObsError(res.error ?? 'Import failed. Check the folder and try again.');
+          return;
+        }
+      }
+      onComplete({ ...initialSettings, onboardingComplete: true });
+    } catch (e) {
+      setObsError(e instanceof Error ? e.message : 'Import failed. Check the folder and try again.');
+    } finally {
+      unsubscribe?.();
+      setObsImporting(false);
+      setObsProgress(null);
     }
   }
 
@@ -2470,6 +2556,76 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
+          {obsDryRun ? (
+            /* ── SKY-2993: Obsidian dry-run report (Confirm / Back) ── */
+            <>
+              <h2 className="gs-modal__title">Ready to import from Obsidian</h2>
+              <p className="gs-modal__subtitle">Review what will be imported, then confirm.</p>
+              <div data-testid="obs-dryrun-report">
+                {obsDryRun.map((target) => (
+                  <section
+                    key={target.kind}
+                    className="import-section"
+                    aria-label={target.kind === 'notes' ? 'Notes vault import preview' : 'Story vault import preview'}
+                    data-testid={`obs-report-${target.kind}`}
+                  >
+                    <h3 className="import-section__title">
+                      {target.kind === 'notes' ? 'Notes vault' : 'Story vault'}
+                    </h3>
+                    <p className="obs-report__path">{target.path}</p>
+                    <ul className="obs-report__stats" aria-label="Import summary">
+                      <li>{target.preview.markdownCount} markdown {target.preview.markdownCount === 1 ? 'note' : 'notes'}</li>
+                      <li>{target.preview.attachmentCount} {target.preview.attachmentCount === 1 ? 'attachment' : 'attachments'}</li>
+                      <li>{target.preview.totalFiles} {target.preview.totalFiles === 1 ? 'file' : 'files'} total</li>
+                    </ul>
+                    {target.preview.topLevelFolders.length > 0 && (
+                      <p className="obs-report__meta">
+                        Top-level folders: {target.preview.topLevelFolders.join(', ')}
+                      </p>
+                    )}
+                    {target.preview.sampleFiles.length > 0 && (
+                      <p className="obs-report__meta">
+                        Sample files: {target.preview.sampleFiles.join(', ')}
+                      </p>
+                    )}
+                  </section>
+                ))}
+              </div>
+              {obsImporting && (
+                <p className="obs-report__progress" role="status" data-testid="obs-import-progress">
+                  {obsProgress
+                    ? `Importing ${obsProgress.current} of ${obsProgress.total}… ${obsProgress.lastAction}`
+                    : 'Importing…'}
+                </p>
+              )}
+              {obsError && (
+                <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-import-error">
+                  {obsError}
+                </p>
+              )}
+              <div className="import-actions import-actions--split">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => { setObsDryRun(null); setObsError(''); }}
+                  disabled={obsImporting}
+                  data-testid="obs-report-back"
+                >
+                  <span aria-hidden="true">&#x2190;</span> Back
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary import-actions__submit"
+                  onClick={() => { void handleObsidianConfirm(); }}
+                  disabled={obsImporting}
+                  data-testid="obs-report-confirm"
+                >
+                  {obsImporting ? 'Importing…' : 'Confirm import →'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
           <h2 className="gs-modal__title">Import / Open</h2>
           <p className="gs-modal__subtitle">Fill in at least one section, then click Import / Open.</p>
 
@@ -2553,6 +2709,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 </button>
               </div>
             </div>
+            {/* SKY-2993: inline, retryable dry-run error — the submit button stays enabled */}
+            {obsError && (
+              <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-dryrun-error">
+                {obsError}
+              </p>
+            )}
           </section>
 
           {/* Section 3: Word docs */}
@@ -2610,6 +2772,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               {importRunning ? 'Importing…' : 'Import / Open →'}
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
 
