@@ -57,6 +57,8 @@ export interface NotesTabPanelProps {
   // BrainstormPage passthrough
   brainstormEnabled?: boolean;
   voiceEnabled?: boolean;
+  ttsSettings?: import('./hooks/useTtsPlayer').TtsEngineSettings;
+  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
@@ -106,6 +108,8 @@ export default function NotesTabPanel({
   journalModeEnabled,
   brainstormEnabled,
   voiceEnabled = false,
+  ttsSettings,
+  voicePrefs,
   onFirstSubmit,
   onNavigateToEntity,
   onNavigateToScene,
@@ -376,6 +380,8 @@ export default function NotesTabPanel({
                   onClose={() => onBrainstormCollapsedChange(true)}
                   enabled={brainstormEnabled ?? true}
                   voiceEnabled={voiceEnabled}
+                  ttsSettings={ttsSettings}
+                  voicePrefs={voicePrefs}
                   onFirstSubmit={onFirstSubmit}
                   onNavigateToEntity={onNavigateToEntity}
                   onNavigateToScene={onNavigateToScene}
