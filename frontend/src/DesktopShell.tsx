@@ -13,11 +13,8 @@ import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
-<<<<<<< HEAD
 import ManuscriptView from './story/ManuscriptView';
 import { cycleStatus, sceneStatus, type ManuscriptCursor } from './story/manuscriptModel';
-=======
->>>>>>> origin/main
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
@@ -3449,7 +3446,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // all-disabled config falls back to the defaults so the rail never strands
   // the user.
   const savedNavConfig = appSettings?.navConfig;
-<<<<<<< HEAD
   // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
   // Cursor indices follow the model's order-field sorting.
   const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
@@ -3515,8 +3511,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [selectedStory, stories, updateManifest]);
 
-=======
->>>>>>> origin/main
   // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
   // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
   // SKY-1697 float flow; the rest explain themselves instead of mocking.
