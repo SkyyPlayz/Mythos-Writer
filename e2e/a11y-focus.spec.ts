@@ -63,7 +63,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -123,6 +123,13 @@ test('TC-A11Y-01: VaultBrowser scope bar buttons are keyboard-focusable via Tab'
 
   const storyScopeBtn = page.locator('[data-testid="vb-scope-story"]');
   await expect(storyScopeBtn).toBeVisible({ timeout: 6_000 });
+
+  // Let the panel's initial mount churn settle before anchoring focus: a
+  // re-render between focus() and Tab drops the focus to <body>, sending
+  // Tab to the title bar instead of the next scope button (first observed
+  // when the Liquid Neon ambience landed; TC-A11Y-02 tabbing the same
+  // buttons post-settle was green).
+  await expect(page.locator('.vb-tree-toggle').first()).toBeVisible({ timeout: 6_000 });
 
   // Focus the first scope button to anchor the traversal
   await storyScopeBtn.focus();

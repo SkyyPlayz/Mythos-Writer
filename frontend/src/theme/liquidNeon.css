@@ -106,7 +106,11 @@
   z-index: 0;
 }
 
-.desktop-shell > *:not(.ln-bg-stack) {
+/* :where() keeps this at zero specificity: it lifts plain shell children
+   above the background stack WITHOUT clobbering any child that declares
+   its own layer (title-bar popovers z-60, modal overlays z-1000, the
+   frame ring z-56, toasts). Those intents must win. */
+:where(.desktop-shell > *:not(.ln-bg-stack)) {
   z-index: 1;
 }
 
