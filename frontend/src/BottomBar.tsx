@@ -48,6 +48,14 @@ export default function BottomBar({
         .reduce((a, b) => a + b, 0)
     : 0;
 
+  // Beta 3 M8: live character count + read time (prototype statChars/statRead,
+  // 4130-4131 — real text replaces the prototype's mocked corpus; the ~260 wpm
+  // read-rate formula is the prototype's).
+  const charCount = selectedScene
+    ? selectedScene.blocks.map((b) => b.content.length).reduce((a, b) => a + b, 0)
+    : 0;
+  const readTime = `~${Math.max(1, Math.round(wordCount / 260))} min read`;
+
   // SKY-204: when a vault note is active instead of a scene, show note stats.
   const noteFileName = activeNotePath ? activeNotePath.split('/').pop()?.replace(/\.md$/, '') ?? '' : '';
   const isNoteActive = !!activeNotePath && !selectedScene;
@@ -127,9 +135,8 @@ export default function BottomBar({
               <span className="bottom-sep">›</span>
               <span className="bottom-scene-name">{selectedScene.title}</span>
             </span>
-            <span className="bottom-stats">
-              {wordCount.toLocaleString()} words
-              {selectedScene.blocks.length > 0 && ` · ${selectedScene.blocks.length} blocks`}
+            <span className="bottom-stats" data-testid="bottom-live-stats">
+              {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters · {readTime}
               {currentIndex >= 0 && (
                 <> · Scene {currentIndex + 1} / {allScenes.length}</>
               )}
