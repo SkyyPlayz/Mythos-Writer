@@ -6,12 +6,15 @@
 import { LIQUID_NEON_PRESETS, type LiquidNeonSetKey } from './presets';
 
 export interface LiquidNeonPageCfg {
-  mode: 'neon' | 'noglow' | 'scroll' | 'off';
+  /** Manuscript page mode. 'default' is the "No glow" option (prototype key, 4619). */
+  mode: 'neon' | 'default' | 'scroll' | 'off';
   bg: string;
   /** Page background opacity, 0–100. */
   op: number;
   /** Page backdrop blur, px. */
   blur: number;
+  /** Scroll mode: glowing archaic edge symbols (prototype pc.sym, 4622). */
+  sym?: boolean;
 }
 
 export interface LiquidNeonTextCfg {

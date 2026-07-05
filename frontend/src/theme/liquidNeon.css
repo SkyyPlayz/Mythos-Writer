@@ -124,3 +124,8 @@ html.ln-transparent #root,
 html.ln-transparent .desktop-shell {
   background: transparent !important;
 }
+
+/* M5: notification popover rows (prototype 100–108) */
+.ln-notif-row:hover {
+  background: rgba(255, 255, 255, .07);
+}
