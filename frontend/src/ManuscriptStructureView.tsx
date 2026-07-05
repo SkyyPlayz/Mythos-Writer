@@ -212,16 +212,19 @@ export default function ManuscriptStructureView({
 
   return (
     <div className="msv" data-view={viewMode}>
-      {/* ── Header ── */}
+      {/* ── Header (prototype 558–565: toggle · meta · spacer · hint) ── */}
       <div className="msv__header">
         <div className="msv__header-left">
+          <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
           <h1 className="msv__story-title">{story.title}</h1>
           <span className="msv__story-meta">
-            {story.chapters.length} chapter{story.chapters.length !== 1 ? 's' : ''} ·{' '}
-            {story.chapters.reduce((sum, ch) => sum + ch.scenes.length, 0)} scenes
+            {story.chapters.reduce((sum, ch) => sum + ch.scenes.length, 0)} scenes ·{' '}
+            {story.chapters.length} chapter{story.chapters.length !== 1 ? 's' : ''} · grouped by
+            chapter
           </span>
         </div>
         <div className="msv__header-right">
+          <span className="msv__hint">Click a scene to open it in the editor</span>
           <button
             className="msv__add-chapter-btn"
             onClick={() => onCreateChapter(story.id)}
@@ -230,7 +233,6 @@ export default function ManuscriptStructureView({
           >
             + Chapter
           </button>
-          <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
         </div>
       </div>
 

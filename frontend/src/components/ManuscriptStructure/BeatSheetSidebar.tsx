@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactElement } from 'react';
 import type { Scene } from '../../types';
-import { BEAT_ACTS } from './BEAT_STRUCTURE';
+import { BEAT_ACTS, ALL_BEATS } from './BEAT_STRUCTURE';
 import type { BeatActId } from './BEAT_STRUCTURE';
 import './BeatSheetSidebar.css';
 
@@ -64,11 +64,31 @@ export function BeatSheetSidebar({
     });
   };
 
+  // Prototype 2361–2363: "n / m mapped" + gradient progress bar
+  const mappedBeats = ALL_BEATS.filter((b) => scenesForBeat(b.id).length > 0).length;
+  const totalBeats = ALL_BEATS.length;
+
   return (
     <aside className="beat-sidebar" aria-label="Beat sheet — Save the Cat (3-Act)">
       <div className="beat-sidebar__header">
         {/* Framework picker deferred to v2 pending usage signal */}
         <span className="beat-sidebar__title">Save the Cat (3-Act)</span>
+        <span className="beat-sidebar__mapped">
+          {mappedBeats} / {totalBeats} mapped
+        </span>
+      </div>
+      <div
+        className="beat-sidebar__progress"
+        role="progressbar"
+        aria-label="Beats mapped"
+        aria-valuemin={0}
+        aria-valuemax={totalBeats}
+        aria-valuenow={mappedBeats}
+      >
+        <div
+          className="beat-sidebar__progress-fill"
+          style={{ width: `${Math.round((mappedBeats / totalBeats) * 100)}%` }}
+        />
       </div>
 
       {BEAT_ACTS.map((act) => {
@@ -114,12 +134,15 @@ export function BeatSheetSidebar({
                         {beat.name}
                       </button>
                       {assignedScenes.length > 0 && (
-                        <span
-                          className="beat-item__count"
-                          aria-hidden="true"
-                        >
-                          {assignedScenes.length}
-                        </span>
+                        <>
+                          <span
+                            className="beat-item__count"
+                            aria-hidden="true"
+                          >
+                            {assignedScenes.length}
+                          </span>
+                          <span className="beat-item__dot" aria-hidden="true" />
+                        </>
                       )}
                     </li>
                   );

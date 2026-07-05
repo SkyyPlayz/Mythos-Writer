@@ -252,7 +252,7 @@ export function SceneGrid({
       {story.chapters
         .slice()
         .sort((a, b) => a.order - b.order)
-        .map((chapter) => {
+        .map((chapter, chapterIdx) => {
           const isCollapsed = collapsedChapters.has(chapter.id);
           const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
           const totalWords = computeChapterWords(chapter);
@@ -279,12 +279,15 @@ export function SceneGrid({
                 >
                   <span aria-hidden="true">{isCollapsed ? '▶' : '▼'}</span>
                 </button>
+                <span className="chapter-section__eyebrow" aria-hidden="true">
+                  CHAPTER {chapterIdx + 1}
+                </span>
                 <h2 className="chapter-section__title">{chapter.title}</h2>
                 <span
                   className="chapter-section__meta"
                   aria-label={`${sortedScenes.length} scenes, ${totalWords.toLocaleString()} words`}
                 >
-                  {sortedScenes.length} scene{sortedScenes.length !== 1 ? 's' : ''} |{' '}
+                  {sortedScenes.length} scene{sortedScenes.length !== 1 ? 's' : ''} ·{' '}
                   {totalWords >= 1000 ? `${(totalWords / 1000).toFixed(1)}K` : totalWords} wds
                 </span>
                 <button

@@ -33,3 +33,25 @@ export function StatusBadge({ status, size = 12 }: StatusBadgeProps): ReactEleme
     />
   );
 }
+
+// ─── Status chip (Beta 3 M14) — prototype scene-card pill (renderVals 4394/4402) ───
+// statusMeta: done → "Complete" #4ade80 · draft → "Drafting" slot cyan · planned grey.
+
+const CHIP_LABEL: Record<SceneStatus, string> = {
+  draft: 'Drafting',
+  review: 'In review',
+  final: 'Complete',
+  cut: 'Cut',
+};
+
+interface StatusChipProps {
+  status: SceneStatus;
+}
+
+export function StatusChip({ status }: StatusChipProps): ReactElement {
+  return (
+    <span className={`status-chip status-chip--${status}`} title={`Status: ${CHIP_LABEL[status]}`}>
+      {CHIP_LABEL[status]}
+    </span>
+  );
+}

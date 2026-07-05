@@ -104,3 +104,64 @@ describe('ExportDialog EPUB format', () => {
     expect(screen.getByText(/epub requires story scope/i)).toBeInTheDocument();
   });
 });
+
+// ─── Beta 3 M14 — prototype export modal (2722–2777) ───
+
+describe('ExportDialog Liquid Neon modal (M14)', () => {
+  it('marks Markdown as the default selected format card', () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    const mdRadio = screen.getByRole('radio', { name: /markdown \(\.md\)/i });
+    expect(mdRadio).toBeChecked();
+    expect(mdRadio.closest('label')).toHaveClass('export-fmt-card--selected');
+    expect(screen.getByRole('button', { name: /export markdown/i })).toBeEnabled();
+  });
+
+  it('renders the PDF card disabled with the print-pipeline title', () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    const pdfRadio = screen.getByRole('radio', { name: /pdf \(\.pdf\)/i });
+    expect(pdfRadio).toBeDisabled();
+    const card = pdfRadio.closest('label');
+    expect(card).toHaveClass('export-fmt-card--disabled');
+    expect(card).toHaveAttribute('title', 'Coming with the print pipeline');
+  });
+
+  it('renders the synopsis/separator toggles disabled until compile options land', () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    const synopsis = screen.getByRole('switch', { name: /include synopsis page/i });
+    const separators = screen.getByRole('switch', { name: /scene separators/i });
+    expect(synopsis).toBeDisabled();
+    expect(synopsis).toHaveAttribute('aria-checked', 'false');
+    expect(separators).toBeDisabled();
+    expect(separators).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('still dispatches exportDocx with the scope when DOCX is selected', async () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('radio', { name: /word document \(\.docx\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    await waitFor(() =>
+      expect(mockExportDocx).toHaveBeenCalledWith(undefined, { kind: 'story', storyId: 'story-1' }),
+    );
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the compiling step while an export is in flight', async () => {
+    let resolveExport!: (value: { path: string | null; cancelled: boolean }) => void;
+    mockExportMarkdown.mockReturnValue(
+      new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export markdown/i }));
+
+    expect(await screen.findByText(/compiling 1 scene · applying styles/i)).toBeInTheDocument();
+
+    resolveExport({ path: '/tmp/story.md', cancelled: false });
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
+  });
+});
