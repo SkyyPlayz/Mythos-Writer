@@ -1,0 +1,80 @@
+name: VR Baselines
+
+# Regenerates the visual-regression baselines (e2e/visual-baselines/) in the
+# GitHub-hosted runner environment and commits them back to the branch the
+# workflow ran on (also uploads them as the `vr-baselines` artifact). Needed
+# whenever the UI changes intentionally (e.g. the Liquid Neon redesign) or the
+# CI rendering environment changes (fonts and viewport metrics differ between
+# runner images, so baselines captured on one environment fail pixelmatch on
+# another). Note: the GITHUB_TOKEN push does not re-trigger PR workflows —
+# push any follow-up commit (even empty) to re-run checks.
+
+on:
+  workflow_dispatch:
+  # Temporary bootstrap: a workflow_dispatch-only workflow can't be dispatched
+  # via the API until it exists on the default branch. This path-scoped push
+  # trigger registers and runs it directly from the migration branch; it only
+  # fires when this file itself changes, and dies with the branch after merge.
+  push:
+    branches: [claude/ci-github-runners]
+    paths: ['.github/workflows/vr-baselines.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          rm -rf out/
+          npm run build:electron
+
+      - name: Install Xvfb (virtual display for Electron)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
+      - name: Regenerate visual-regression baselines
+        env:
+          VR_UPDATE_BASELINES: '1'
+        run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
+
+      - name: Upload baselines artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vr-baselines
+          path: e2e/visual-baselines/
+          retention-days: 3
+
+      - name: Commit regenerated baselines to this branch
+        run: |
+          git config user.name "vr-baselines-bot"
+          git config user.email "noreply@github.com"
+          git add e2e/visual-baselines/
+          if git diff --cached --quiet; then
+            echo "Baselines unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "test(vr): regenerate visual baselines on hosted runner"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
