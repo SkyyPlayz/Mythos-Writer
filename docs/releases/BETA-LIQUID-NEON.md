@@ -38,7 +38,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M7 | Nav rail v2 (modules, customize, slim, vault tiles, Stories popover) | B Shell | CP1 | ✅ | #856 |
 | M8 | Panels restyle + live status bar | B Shell | CP1 | ✅ | #854 |
 | — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
-| M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | 🔀 | #857 |
+| M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
 | M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | ⏳ | |
 | M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ⏳ | |
 | M12 | Drafts & diff UI | C Story | M9 | 🔀 | #859 |
@@ -68,19 +68,25 @@ exact state the next agent (Opus / Paperclip team) picks up from.
 
 ### 1) Merge queue (all validated green locally; CI re-running on final heads)
 
-Merge in this order — #857 and #858→#864 have content-order dependencies, the
-rest are independent:
+Merge in this order — #866 unblocks everything, #858→#864 stack, the rest are
+independent (#857 M9 already merged):
 
 | Order | PR | Milestone | Notes |
 |---|---|---|---|
-| 1 | #857 | M9 manuscript | Auto-merge was disabled by Skyy — merge manually on green |
+| 1 | #866 | main e2e fix | **Merge first** — greens main's own e2e (create-vault restore, Stories-popover trap, neon-frozen perf gates); every other PR re-runs on the fixed base |
 | 2 | #858 | M17 canvas engine | Auto-merge armed |
 | 3 | #864 | M18 Scene Crafter | **Stacked on #858 — merge #858 first**; diff then shrinks to the SceneCrafter module |
 | any | #859 | M12 drafts & diff | Auto-merge armed |
 | any | #860 | M15 notes tree | Auto-merge armed; branch carries its own regenerated VR baselines |
 | any | #861 | M14 structure/book/export | Auto-merge armed |
-| any | #862 | M20 timeline v2 | Merge manually on green |
-| any | #863 | M21 vault graph v2 | Merge manually on green |
+| any | #862 | M20 timeline v2 | Auto-merge armed; carries the popover-guard port for its rewritten timeline spec |
+| any | #863 | M21 vault graph v2 | Auto-merge armed |
+| any | #865 | this handoff doc | Docs-only |
+
+Known follow-up product bugs (referenced by #866, not CI-gating): the nav-rail
+Stories popover's outside-click dismissal is broken (the rail's
+`backdrop-filter` creates a containing block that clips the fixed backdrop);
+consider whether the popover should open at all for zero-story vaults.
 
 **After the last merge:** run the **VR Baselines** workflow on `main`
 (Actions → "VR Baselines" → Run workflow, ref `main`) — the merged UI changes
