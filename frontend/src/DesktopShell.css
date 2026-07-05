@@ -50,28 +50,12 @@
 }
 
 /* App menu bar */
-.app-menu-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 12px;
-  background: var(--glass-fill-fallback);
-  border-bottom: 1px solid var(--glass-border);
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-  user-select: none;
-  font-size: 0.78rem;
-  position: relative;
-  z-index: 50;
-}
+/* Beta 3 M5: the legacy .app-menu-bar row is gone; its class now lives on
+   .wc-bar purely as an E2E selector-compat anchor. Styling belongs to
+   WindowChrome.css — no rules here. */
 
 @supports (backdrop-filter: blur(1px)) {
-  .app-menu-bar {
-    background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
-  }
+  .wc-bar-legacy-noop { display: contents; }
 }
 
 .app-menu-brand {
@@ -322,6 +306,9 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Beta 3 M8: prototype body-row gutters (HTML 167) so the glass panels
+     float over the wallpaper stack. */
+  padding: 0 10px 4px;
 }
 
 /* GettingStartedPanel standalone aside — shown when GlobalRightSidebar is not rendered */
@@ -464,6 +451,13 @@
   overflow: hidden;
   min-width: 160px;
   max-width: 500px;
+  /* Beta 3 M8: slot-A glass card (prototype 242) */
+  border-radius: 18px;
+  background: var(--glass, rgba(13, 16, 28, .72));
+  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 0 var(--gr, 26px) -7px var(--g1, rgba(0, 240, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
 }
 
 .shell-right {
@@ -482,6 +476,13 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  /* Beta 3 M8: slot-B glass card (prototype 467) */
+  border-radius: 18px;
+  background: var(--glass, rgba(13, 16, 28, .72));
+  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .5));
+  box-shadow: 0 0 var(--gr, 26px) -7px var(--g2, rgba(155, 95, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
   /* SKY-3618: Lowered from 300px; JS in DesktopShell enforces CENTER_MIN_WIDTH (280px) by
      clamping sidebar display widths. The CSS floor prevents total collapse in edge cases. */
   min-width: 200px;

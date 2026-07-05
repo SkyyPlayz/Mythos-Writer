@@ -1,14 +1,15 @@
 .bottom-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  height: 32px;
-  background: var(--glass-fill-fallback);
-  border-top: 1px solid var(--glass-border);
+  /* Beta 3 M8: prototype status bar (HTML 2653) */
+  gap: 14px;
+  padding: 0 18px;
+  height: 30px;
+  background: rgba(8, 10, 18, .4);
+  border-top: 1px solid rgba(255, 255, 255, .05);
   flex-shrink: 0;
-  font-size: 0.78rem;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: rgb(129, 149, 178); /* prototype #8195b2 — ratchet-safe */
   user-select: none;
   position: relative;
   z-index: 10;
@@ -16,9 +17,8 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .bottom-bar {
-    background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
+    backdrop-filter: blur(var(--blur, 18px));
+    -webkit-backdrop-filter: blur(var(--blur, 18px));
   }
 }
 
