@@ -114,7 +114,16 @@ async function applyLiquidNeonV2Theme(settings?: Partial<LiquidNeonV2Settings> |
     }
   }
   const transparentActive = windowTransparentCache && settings?.wp === 'none';
-  applyLiquidNeonV2Tokens(settings, cosmicBgUrl, undefined, { transparentWindow: transparentActive });
+  // M4: a custom wallpaper is stored as a file path (pickBgImage) — resolve it
+  // to a data URL for the CSS url() the same way the v1 background does.
+  let resolved = settings;
+  if (settings?.wp === 'custom' && settings.customWp && !/^(data|blob):/.test(settings.customWp)) {
+    try {
+      const res = await window.api?.loadBgImage?.(settings.customWp);
+      if (res?.dataUrl) resolved = { ...settings, customWp: res.dataUrl };
+    } catch { /* fall back to the raw path */ }
+  }
+  applyLiquidNeonV2Tokens(resolved, cosmicBgUrl, undefined, { transparentWindow: transparentActive });
   document.documentElement.classList.toggle('ln-transparent', transparentActive);
 }
 
