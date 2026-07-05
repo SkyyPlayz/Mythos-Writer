@@ -250,9 +250,9 @@ async function openExportDialog(page: Page): Promise<void> {
   await expect(storyTitle).toBeVisible({ timeout: 10_000 });
   await storyTitle.click();
 
-  await page.locator('.app-menu-item-trigger', { hasText: 'File' }).click();
-  await page.locator('#file-menu').waitFor({ state: 'visible', timeout: 4_000 });
-  await page.locator('#file-menu button[role="menuitem"]', { hasText: 'Export Markdown…' }).click();
+  // Beta 3 M5: File menu lives in the Liquid Neon title bar.
+  await page.locator('.wc-menu', { hasText: 'File' }).click();
+  await page.locator('.wc-menu-item', { hasText: 'Export…' }).click();
   await page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]').waitFor({ state: 'visible', timeout: 6_000 });
 }
 
