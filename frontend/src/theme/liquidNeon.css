@@ -57,15 +57,47 @@
    motion rules while matching the intent for everything this stack animates. */
 @media (prefers-reduced-motion: reduce) {
   .ln-bg-wallpaper,
-  .ln-bg-ambience {
+  .ln-bg-ambience,
+  .ln-frame-mask > div,
+  .ln-border-overlay {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
   }
 }
 
+/* ═══ Window frame ring (M3, prototype HTML 2667–2677) ═══
+   Two conic layers masked to the window edges: a crisp ring padded by --bw
+   and a 7px halo blurred 9px at half opacity. The xor/exclude mask keeps only
+   the padding band, so the spinning 170vmax conic square reads as a border. */
+.ln-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  pointer-events: none;
+  z-index: 56;
+  opacity: var(--ringA, 0.7);
+}
+
+.ln-frame-mask {
+  position: absolute;
+  inset: 0;
+  padding: var(--bw, 1px);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  overflow: hidden;
+}
+
+.ln-frame-mask--halo {
+  padding: 7px;
+  filter: blur(9px);
+  opacity: 0.5;
+}
+
 /* Layering: the shell is a flex container, so plain z-index works on its
    children (flex items) without forcing position. The stack sits at 0;
-   every other shell child paints above it. */
+   every other shell child paints above it; the frame ring rides on top
+   (prototype z-index 56). */
 .desktop-shell {
   isolation: isolate;
 }
@@ -76,4 +108,19 @@
 
 .desktop-shell > *:not(.ln-bg-stack) {
   z-index: 1;
+}
+
+.desktop-shell > .ln-frame {
+  z-index: 56;
+}
+
+/* ═══ Transparent window mode (M3) ═══
+   Applied to <html> when wallpaper is `No background` AND the Electron window
+   was created transparent (restart-gated). Clears every opaque app-level
+   background so the desktop shows through; panels keep their own glass. */
+html.ln-transparent,
+html.ln-transparent body,
+html.ln-transparent #root,
+html.ln-transparent .desktop-shell {
+  background: transparent !important;
 }

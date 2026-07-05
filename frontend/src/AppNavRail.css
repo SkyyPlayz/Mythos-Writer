@@ -1,6 +1,8 @@
 /* AppNavRail — persistent left icon nav strip (SKY-3096) */
 
 .nav-rail {
+  /* Beta 3 M3: anchors the Liquid Neon inset border overlay */
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 180px;

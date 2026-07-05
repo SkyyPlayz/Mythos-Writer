@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import './AppNavRail.css';
 
 export interface AppNavRailProps {
@@ -13,6 +13,8 @@ export interface AppNavRailProps {
   /** SKY-3218: honor the user's nav-bar customization (Settings → Nav-bar). */
   showLabels?: boolean;
   showIcons?: boolean;
+  /** Beta 3 M3 (Liquid Neon): slot-F breathing border overlay (prototype brRail). */
+  neonOverlay?: ReactNode;
 }
 
 export default function AppNavRail({
@@ -25,6 +27,7 @@ export default function AppNavRail({
   onToggleCollapsed,
   showLabels = true,
   showIcons = true,
+  neonOverlay,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
 
@@ -54,6 +57,7 @@ export default function AppNavRail({
       className={`nav-rail${collapsed ? ' nav-rail--collapsed' : ''}`}
       aria-label="Main navigation"
     >
+      {neonOverlay}
       {/* Mythos brand glyph — opens AccountModal */}
       <div className="nav-rail__top">
         <button

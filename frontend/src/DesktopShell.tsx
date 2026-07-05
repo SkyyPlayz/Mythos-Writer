@@ -6,8 +6,10 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens } from './theme/liquidNeonEngine';
+import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
 import BackgroundStack from './theme/BackgroundStack';
+import FrameRing from './theme/FrameRing';
+import BorderOverlay from './theme/BorderOverlay';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
@@ -97,6 +99,24 @@ const DEFAULT_LAYOUT: LayoutPrefs = {
   rightTab: 'notes',
   leftTab: 'stories',
 };
+
+// Beta 3 M3 (Liquid Neon): window transparency is fixed at BrowserWindow
+// creation, so the one-time query is cached and folded into every v2 token
+// apply — wp:'none' renders truly clear only when the window can show it;
+// otherwise the prototype's checkerboard stand-in appears (restart pending).
+let windowTransparentCache: boolean | null = null;
+async function applyLiquidNeonV2Theme(settings?: Partial<LiquidNeonV2Settings> | null): Promise<void> {
+  if (windowTransparentCache === null) {
+    try {
+      windowTransparentCache = (await window.api?.windowIsTransparent?.()) === true;
+    } catch {
+      windowTransparentCache = false;
+    }
+  }
+  const transparentActive = windowTransparentCache && settings?.wp === 'none';
+  applyLiquidNeonV2Tokens(settings, cosmicBgUrl, undefined, { transparentWindow: transparentActive });
+  document.documentElement.classList.toggle('ln-transparent', transparentActive);
+}
 
 // SKY-3618: Responsive layout constants
 /** Minimum pixels reserved for the center editor column at all times. */
@@ -1544,7 +1564,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         }
         // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
         // v1 axis tokens so v2 values win where both define a property.
-        applyLiquidNeonV2Tokens(s.liquidNeonV2, cosmicBgUrl);
+        void applyLiquidNeonV2Theme(s.liquidNeonV2);
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
@@ -3575,6 +3595,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
           behind every glass panel (prototype HTML 45–54). */}
       <BackgroundStack settings={appSettings?.liquidNeonV2} />
+      {/* Beta 3 Liquid Neon (M3): animated neon window frame, above all
+          chrome (prototype 2667–2677, z-index 56). */}
+      <FrameRing settings={appSettings?.liquidNeonV2} />
       <UpdateBanner />
       {showTitleBar && <WindowChrome />}
       {showTitleBar && (
@@ -3607,6 +3630,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}
             showLabels={navRailConfig?.showLabels ?? true}
             showIcons={navRailConfig?.showIcons ?? true}
+            neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -3660,7 +3684,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               applyLiquidNeonTokens(lg);
             }
             // Beta 3 Liquid Neon (M1): re-apply v2 slot-engine tokens on save.
-            applyLiquidNeonV2Tokens(s.liquidNeonV2, cosmicBgUrl);
+            void applyLiquidNeonV2Theme(s.liquidNeonV2);
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}
@@ -3786,6 +3810,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Left rail */}
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: clampedLeftWidth }}>
+          {/* Beta 3 M3: slot-A breathing border (prototype brL, delay 0) */}
+          <BorderOverlay settings={appSettings?.liquidNeonV2} slot={1} delay={0} />
           <LeftRail
             leftSidebarLayout={leftSidebarLayout}
             onLeftSidebarLayoutChange={persistLeftSidebarLayout}
@@ -3821,6 +3847,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
       {/* Center + bottom */}
       <div className="shell-center-column">
+        {/* Beta 3 M3: slot-B breathing border (prototype brC, delay .8) */}
+        <BorderOverlay settings={appSettings?.liquidNeonV2} slot={2} delay={0.8} />
         <div className="shell-editor">
           {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
           <div className="shell-editor-toolbar">
@@ -4375,6 +4403,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         leftPanelCount={leftSidebarLayout.panels.length}
         onFloatPanel={(id) => handleFloatPanel(id, 'right')}
         onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
+        neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={3} delay={1.6} />}
         headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
           <GettingStartedPanel
             progress={gettingStartedProgress!}
