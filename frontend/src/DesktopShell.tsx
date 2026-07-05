@@ -6,6 +6,8 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
+import { applyLiquidNeonV2Tokens } from './theme/liquidNeonEngine';
+import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
@@ -1539,6 +1541,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           applyLiquidNeonTokens(lg);
         }
+        // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
+        // v1 axis tokens so v2 values win where both define a property.
+        applyLiquidNeonV2Tokens(s.liquidNeonV2, cosmicBgUrl);
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
@@ -3650,6 +3655,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             } else {
               applyLiquidNeonTokens(lg);
             }
+            // Beta 3 Liquid Neon (M1): re-apply v2 slot-engine tokens on save.
+            applyLiquidNeonV2Tokens(s.liquidNeonV2, cosmicBgUrl);
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}

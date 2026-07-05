@@ -429,6 +429,8 @@ interface AppSettings {
   updateChannel?: 'stable' | 'beta';
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
+  /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
+  liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
