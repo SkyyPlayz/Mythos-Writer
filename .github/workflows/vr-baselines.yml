@@ -1,12 +1,13 @@
 name: VR Baselines
 
 # Regenerates the visual-regression baselines (e2e/visual-baselines/) in the
-# GitHub-hosted runner environment and uploads them as the `vr-baselines`
-# artifact. Dispatch it on a branch, download the artifact, and commit the
-# PNGs to that branch. Needed whenever the UI changes intentionally (e.g. the
-# Liquid Neon redesign) or the CI rendering environment changes (fonts and
-# viewport metrics differ between runner images, so baselines captured on one
-# environment fail pixelmatch on another).
+# GitHub-hosted runner environment and commits them back to the branch the
+# workflow ran on (also uploads them as the `vr-baselines` artifact). Needed
+# whenever the UI changes intentionally (e.g. the Liquid Neon redesign) or the
+# CI rendering environment changes (fonts and viewport metrics differ between
+# runner images, so baselines captured on one environment fail pixelmatch on
+# another). Note: the GITHUB_TOKEN push does not re-trigger PR workflows —
+# push any follow-up commit (even empty) to re-run checks.
 
 on:
   workflow_dispatch:
@@ -19,7 +20,7 @@ on:
     paths: ['.github/workflows/vr-baselines.yml']
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   regenerate:
@@ -65,3 +66,15 @@ jobs:
           name: vr-baselines
           path: e2e/visual-baselines/
           retention-days: 3
+
+      - name: Commit regenerated baselines to this branch
+        run: |
+          git config user.name "vr-baselines-bot"
+          git config user.email "noreply@github.com"
+          git add e2e/visual-baselines/
+          if git diff --cached --quiet; then
+            echo "Baselines unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "test(vr): regenerate visual baselines on hosted runner"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
