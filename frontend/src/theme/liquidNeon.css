@@ -43,7 +43,7 @@
   position: absolute;
   inset: 0;
   background: #04050b;
-  opacity: var(--scrim, 0.1);
+  opacity: var(--ln-scrim, 0.1);
 }
 
 .ln-bg-vignette {

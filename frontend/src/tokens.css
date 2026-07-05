@@ -619,7 +619,7 @@
   --ringA: 1;
   --grad: linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff);
   --glass: rgba(13,16,28,0.20); --glass2: rgba(21,26,45,0.50);
-  --bw: 1px; --gr: 60px; --blur: 1px; --scrim: 0.1;
+  --bw: 1px; --gr: 60px; --blur: 1px; --ln-scrim: 0.1;
   --txH: #f0f3fc; --txB: #c8d3e7; --txNH: #f0f3fc; --txNB: #c8d3e7;
   --wpsize: cover;
 }
