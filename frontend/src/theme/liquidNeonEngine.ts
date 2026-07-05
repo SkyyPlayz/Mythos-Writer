@@ -145,8 +145,9 @@ export interface LiquidNeonApplyOpts {
 
 /**
  * Compute every Liquid Neon CSS custom property from settings — exact port of
- * the prototype's `themeStyle` (HTML 3948–3966) plus `--scrim` (3967, exposed
- * as a var so the shell's scrim layer can consume it).
+ * the prototype's `themeStyle` (HTML 3948–3966) plus `--ln-scrim` (3967's
+ * scrim opacity, namespaced: the app already owns `--scrim` as a modal
+ * backdrop color in tokens.css).
  */
 export function computeLiquidNeonV2Tokens(
   settings: Partial<LiquidNeonV2Settings> | null | undefined,
@@ -181,7 +182,7 @@ export function computeLiquidNeonV2Tokens(
     '--blur': S.blur + 'px',
     '--wp': wallpaperCss(S, cosmicUrl),
     '--wpsize': S.wp === 'none' ? '26px 26px' : 'cover',
-    '--scrim': String(S.scrim / 100),
+    '--ln-scrim': String(S.scrim / 100),
   };
   if (opts?.transparentWindow && S.wp === 'none') {
     // Real transparency instead of the prototype's checkerboard stand-in.
