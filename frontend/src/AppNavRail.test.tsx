@@ -14,6 +14,12 @@ const NAV_ITEMS: NavRailItem[] = [
   { id: 'notes', label: 'Notes', icon: '📝' },
 ];
 
+// Beta 3 M7: Stories popover fixtures.
+const STORIES = [
+  { id: 's1', title: 'The Last City of Veynn', active: true },
+  { id: 's2', title: 'The Aether Cycle', active: false },
+];
+
 function makeProps(overrides: Partial<Parameters<typeof AppNavRail>[0]> = {}) {
   return {
     activeSection: 'story' as AppTab,
@@ -199,6 +205,128 @@ describe('AppNavRail', () => {
       fireEvent.keyDown(notesBtn, { key: 'ArrowDown' });
     }).not.toThrow();
     expect(document.activeElement).toBe(notesBtn);
+  });
+
+  // ─── Beta 3 M7: prototype restyle hooks ──────────────────────────────────────
+
+  it('tags nav items with their neon slot class (story/notes → slot 1)', () => {
+    render(<AppNavRail {...makeProps()} />);
+    expect(screen.getByRole('button', { name: 'Story' })).toHaveClass('nav-rail__item--slot-1');
+    expect(screen.getByRole('button', { name: 'Notes' })).toHaveClass('nav-rail__item--slot-1');
+  });
+
+  it('tags the brainstorm item with slot 2', () => {
+    render(
+      <AppNavRail
+        {...makeProps({
+          navItems: [...NAV_ITEMS, { id: 'brainstorm', label: 'Brainstorm', icon: '💡' }],
+        })}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Brainstorm' })).toHaveClass('nav-rail__item--slot-2');
+  });
+
+  it('exposes tooltip titles on nav items (slim-mode affordance)', () => {
+    render(<AppNavRail {...makeProps({ collapsed: true })} />);
+    expect(screen.getByRole('button', { name: 'Story' })).toHaveAttribute('title', 'Story');
+    expect(screen.getByRole('button', { name: 'Notes' })).toHaveAttribute('title', 'Notes');
+  });
+
+  it('shows the prototype slim-rail glyphs (« expanded, » slim)', () => {
+    const { rerender } = render(<AppNavRail {...makeProps({ collapsed: false })} />);
+    expect(screen.getByRole('button', { name: 'Collapse navigation' })).toHaveTextContent('«');
+    rerender(<AppNavRail {...makeProps({ collapsed: true })} />);
+    expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveTextContent('»');
+  });
+
+  // ─── Beta 3 M7: Stories popover ──────────────────────────────────────────────
+
+  it('keeps legacy click behavior and renders no popover when stories are absent', () => {
+    const onSectionChange = vi.fn();
+    render(<AppNavRail {...makeProps({ onSectionChange })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(onSectionChange).toHaveBeenCalledWith('story');
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('opens the Stories popover when the active Story item is re-clicked', () => {
+    const onSectionChange = vi.fn();
+    render(<AppNavRail {...makeProps({ onSectionChange, stories: STORIES })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(screen.getByTestId('nav-rail-stories')).toBeInTheDocument();
+    expect(screen.getByText('STORIES — THIS VAULT')).toBeInTheDocument();
+    expect(onSectionChange).not.toHaveBeenCalled();
+  });
+
+  it('re-clicking the active Story item toggles the popover closed', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES })} />);
+    const storyBtn = screen.getByRole('button', { name: 'Story' });
+    fireEvent.click(storyBtn);
+    expect(screen.getByTestId('nav-rail-stories')).toBeInTheDocument();
+    fireEvent.click(storyBtn);
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('navigates without opening the popover when Story is not active', () => {
+    const onSectionChange = vi.fn();
+    render(
+      <AppNavRail {...makeProps({ activeSection: 'notes', onSectionChange, stories: STORIES })} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(onSectionChange).toHaveBeenCalledWith('story');
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('exposes aria-haspopup/aria-expanded on the Story item when stories are provided', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES })} />);
+    const storyBtn = screen.getByRole('button', { name: 'Story' });
+    expect(storyBtn).toHaveAttribute('aria-haspopup', 'true');
+    expect(storyBtn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(storyBtn);
+    expect(storyBtn).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('lists stories and calls onStorySelect with the picked id', () => {
+    const onStorySelect = vi.fn();
+    render(<AppNavRail {...makeProps({ stories: STORIES, onStorySelect })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'The Aether Cycle' }));
+    expect(onStorySelect).toHaveBeenCalledWith('s2');
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('marks only the active story with the neon dot', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(
+      screen.getByTestId('nav-rail-story-s1').querySelector('.nav-rail__story-dot'),
+    ).not.toBeNull();
+    expect(
+      screen.getByTestId('nav-rail-story-s2').querySelector('.nav-rail__story-dot'),
+    ).toBeNull();
+  });
+
+  it('calls onNewStory from the "+ New Story" row and closes the popover', () => {
+    const onNewStory = vi.fn();
+    render(<AppNavRail {...makeProps({ stories: STORIES, onNewStory })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New Story' }));
+    expect(onNewStory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('closes the popover when the backdrop is clicked', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.click(screen.getByTestId('nav-rail-stories-backdrop'));
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
+  });
+
+  it('closes the popover when Escape is pressed inside it', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    fireEvent.keyDown(screen.getByTestId('nav-rail-stories'), { key: 'Escape' });
+    expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
   });
 });
 
