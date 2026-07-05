@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -119,7 +120,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
 
       // Switch to Story tab
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+      await clickStoryNav(page);
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
 
       // Switch back to Notes tab — Graph must still be selected
