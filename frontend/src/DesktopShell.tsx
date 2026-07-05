@@ -13,6 +13,8 @@ import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
+import ManuscriptView from './story/ManuscriptView';
+import { cycleStatus, sceneStatus, type ManuscriptCursor } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
@@ -502,7 +504,7 @@ interface ChapterContinuousViewProps {
   onSceneFocus: (scene: Scene) => void;
 }
 
-function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
+export function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
   const sortedScenes = useMemo(
     () => [...chapter.scenes].sort((a, b) => a.order - b.order),
     [chapter.scenes],
@@ -555,7 +557,7 @@ interface BookOutlineViewProps {
   onSelectScene: (scene: Scene, chapter: Chapter) => void;
 }
 
-function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectScene }: BookOutlineViewProps) {
+export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectScene }: BookOutlineViewProps) {
   const sortedChapters = useMemo(
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
@@ -2795,47 +2797,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
-  // Writes only the affected scene's file; never touches siblings (AC-C-3).
-  const handleChapterSceneBlocksChange = useCallback((sceneId: string, blocks: Block[]) => {
-    if (!selectedChapter || !selectedStory) return;
-    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
-    if (!scene) return;
-    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-    persistSceneMarkdown(updatedScene);
-    window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
-  }, [selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
-  // SKY-3211 C2: Chapter continuous view — per-scene draft state change handler.
-  const handleChapterSceneDraftStateChange = useCallback((sceneId: string, state: DraftState) => {
-    if (!selectedChapter || !selectedStory) return;
-    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
-    if (!scene) return;
-    const updatedScene: Scene = { ...scene, draftState: state, updatedAt: now() };
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-  }, [selectedChapter, selectedStory, stories, updateManifest]);
 
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
@@ -2923,12 +2885,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return () => unsub?.();
   }, [handleSelectScene, setViewDepth]);
 
-  // SKY-3211 C2: Focusing a scene band in chapter view selects it (for sidebar context).
-  const handleChapterSceneFocus = useCallback((scene: Scene) => {
-    if (selectedChapter && selectedStory && scene.id !== selectedScene?.id) {
-      handleSelectScene(scene, selectedChapter, selectedStory);
-    }
-  }, [selectedChapter, selectedStory, selectedScene, handleSelectScene]);
 
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
@@ -3490,6 +3446,71 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // all-disabled config falls back to the defaults so the rail never strands
   // the user.
   const savedNavConfig = appSettings?.navConfig;
+  // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
+  // Cursor indices follow the model's order-field sorting.
+  const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
+    const zoom = viewDepth === 'book' ? 'book' : viewDepth === 'chapter' ? 'chapter' : 'scene';
+    if (!selectedStory) return { zoom, part: 0, chapter: 0, scene: 0 };
+    const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+    const ci = Math.max(0, selectedChapter ? chapters.findIndex((c) => c.id === selectedChapter.id) : 0);
+    const scenes = chapters[ci] ? [...chapters[ci].scenes].sort((a, b) => a.order - b.order) : [];
+    const si = Math.max(0, selectedScene ? scenes.findIndex((sc) => sc.id === selectedScene.id) : 0);
+    return { zoom, part: 0, chapter: ci, scene: si };
+  }, [viewDepth, selectedStory, selectedChapter, selectedScene]);
+
+  const handleManuscriptCursorChange = useCallback((cursor: ManuscriptCursor) => {
+    if (!selectedStory) return;
+    const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+    const ch = chapters[Math.min(cursor.chapter, Math.max(0, chapters.length - 1))];
+    if (ch) {
+      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order);
+      const sc = scenes[Math.min(cursor.scene, Math.max(0, scenes.length - 1))];
+      if (sc) handleSelectScene(sc, ch, selectedStory);
+    }
+    setViewDepth(cursor.zoom === 'part' ? 'book' : cursor.zoom);
+  }, [selectedStory, handleSelectScene]);
+
+  // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
+  // SKY-3211 handlers assume selectedChapter, so these find the owner).
+  const handleManuscriptEditParagraph = useCallback((sceneId: string, blockId: string, newText: string) => {
+    if (!selectedStory) return;
+    const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = owner?.scenes.find((sc) => sc.id === sceneId);
+    if (!owner || !scene) return;
+    const blocks = scene.blocks.map((b) => (b.id === blockId ? { ...b, content: newText } : b));
+    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+    window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
+  }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
+  const handleManuscriptCycleStatus = useCallback((sceneId: string) => {
+    if (!selectedStory) return;
+    const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = owner?.scenes.find((sc) => sc.id === sceneId);
+    if (!owner || !scene) return;
+    const next = cycleStatus(sceneStatus(scene));
+    const draftState = next === 'draft' ? 'in-progress' as const : next === 'done' ? 'final' as const : undefined;
+    const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [selectedStory, stories, updateManifest]);
+
   // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
   // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
   // SKY-1697 float flow; the rest explain themselves instead of mocking.
@@ -4165,15 +4186,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 </div>
               </div>
             ) : viewDepth === 'book' && selectedStory ? (
-              <div className="shell-depth-view-wrap">
-                <BookOutlineView
+              /* Beta 3 M9: the heading-zoom manuscript renders book zoom.
+                 book-outline-view stays as an E2E selector-compat anchor. */
+              <div className="shell-depth-view-wrap book-outline-view">
+                <ManuscriptView
                   story={selectedStory}
-                  selectedChapterId={selectedChapter?.id ?? null}
-                  selectedSceneId={selectedScene?.id ?? null}
-                  onSelectScene={(sc, ch) => {
-                    handleSelectScene(sc, ch, selectedStory);
-                    setViewDepth('scene');
-                  }}
+                  cursor={manuscriptCursor}
+                  onCursorChange={handleManuscriptCursorChange}
+                  onEditParagraph={handleManuscriptEditParagraph}
+                  onCycleStatus={handleManuscriptCycleStatus}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4184,14 +4205,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 />
               </div>
             ) : viewDepth === 'chapter' && selectedChapter ? (
-              <div className="shell-depth-view-wrap">
-                <ChapterContinuousView
-                  chapter={selectedChapter}
-                  storyId={selectedStory?.id}
-                  selectedSceneId={selectedScene?.id ?? null}
-                  onBlocksChange={handleChapterSceneBlocksChange}
-                  onDraftStateChange={handleChapterSceneDraftStateChange}
-                  onSceneFocus={handleChapterSceneFocus}
+              /* Beta 3 M9: chapter zoom of the same continuous manuscript.
+                 chapter-continuous-view stays as an E2E compat anchor. */
+              <div className="shell-depth-view-wrap chapter-continuous-view">
+                <ManuscriptView
+                  story={selectedStory!}
+                  cursor={manuscriptCursor}
+                  onCursorChange={handleManuscriptCursorChange}
+                  onEditParagraph={handleManuscriptEditParagraph}
+                  onCycleStatus={handleManuscriptCycleStatus}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
