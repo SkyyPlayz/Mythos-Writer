@@ -1,52 +1,56 @@
-/* AppNavRail — persistent left icon nav strip (SKY-3096) */
+/* =========================================================================
+ * AppNavRail — Liquid Neon nav rail v2 (Beta 3 M7, prototype HTML 170–239).
+ * Glass column (railSt, 4047), per-slot neon active items (railBase /
+ * railActive, 3971–3972), slim icon-only mode, Stories popover (179–203).
+ * Originally SKY-3096.
+ * ========================================================================= */
 
+/* railSt (prototype 4047) — expanded 76px / slim 54px glass column */
 .nav-rail {
-  /* Beta 3 M3: anchors the Liquid Neon inset border overlay */
   position: relative;
+  width: 76px;
+  flex: none;
   display: flex;
   flex-direction: column;
-  width: 180px;
-  flex-shrink: 0;
-  background: var(--glass-fill-fallback);
-  border-right: 1px solid var(--glass-border);
-  overflow: hidden;
-  transition: width 0.18s var(--ease-out, ease-out);
+  align-items: center;
+  gap: 7px;
+  padding: 12px 0;
+  margin-right: 10px;
+  border-radius: 18px;
+  z-index: 40;
+  background: var(--glass, rgba(13, 16, 28, .72));
+  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
+  border: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .4));
+  box-shadow: 0 0 var(--gr, 26px) -8px var(--g6, rgba(61, 155, 255, .35)), inset 0 1px 0 rgba(255, 255, 255, .06);
+  transition: width .22s ease;
   user-select: none;
 }
 
 .nav-rail--collapsed {
-  width: 48px;
+  width: 54px;
+  gap: 5px;
 }
 
-/* ─── Top: brand glyph ─────────────────────────────────────────────────────── */
+/* ── Top: brand glyph (legacy AccountModal trigger; tile styled after the
+      prototype's current-vault tile, 3997) ──────────────────────────────── */
 
 .nav-rail__top {
-  padding: 12px 4px 8px;
+  flex: none;
   display: flex;
   justify-content: center;
 }
 
 .nav-rail__brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px;
+  gap: 4px;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-md, 6px);
   background: transparent;
   cursor: pointer;
-  color: var(--accent);
   font-family: inherit;
-  text-align: left;
-  transition:
-    background var(--dur-hover-in, 120ms) ease,
-    box-shadow var(--dur-hover-in, 120ms) ease;
-}
-
-.nav-rail__brand:hover {
-  background: var(--accent-soft);
-  box-shadow: var(--neon-glow);
 }
 
 .nav-rail__brand:focus-visible {
@@ -55,67 +59,85 @@
 }
 
 .nav-rail__brand-glyph {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 700;
-  flex-shrink: 0;
-  box-shadow: var(--neon-glow);
-  transition: box-shadow var(--dur-hover-in, 120ms) ease;
+  flex: none;
+  color: #0b0d17;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
+  transition: all .16s ease;
 }
 
-.nav-rail__brand:hover .nav-rail__brand-glyph {
-  box-shadow: var(--neon-glow-strong);
+.nav-rail--collapsed .nav-rail__brand-glyph {
+  width: 26px;
+  height: 26px;
 }
 
 .nav-rail__brand-label {
-  font-size: var(--text-sm, 13px);
-  font-weight: var(--weight-heading, 600);
-  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: #8e9db8;
   white-space: nowrap;
   overflow: hidden;
 }
 
-/* ─── Nav items ────────────────────────────────────────────────────────────── */
+.nav-rail__brand:hover .nav-rail__brand-label {
+  color: #e8eefc;
+}
+
+/* ── Nav items (prototype 173–178; railBase 3971) ─────────────────────── */
 
 .nav-rail__nav {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 4px;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.nav-rail--collapsed .nav-rail__nav {
+  gap: 5px;
 }
 
 .nav-rail__item {
-  position: relative;
+  width: 60px;
+  height: 58px;
+  border-radius: 14px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 8px;
-  border: none;
-  border-radius: var(--radius-md, 6px);
-  background: transparent;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
   cursor: pointer;
-  color: var(--text-muted, rgba(255,255,255,0.6));
+  color: #8e9db8;
+  border: 1px solid transparent;
+  background: transparent;
+  flex: none;
   font-family: inherit;
-  font-size: var(--text-sm, 13px);
-  text-align: left;
-  transition:
-    background var(--dur-hover-in, 120ms) ease,
-    color var(--dur-hover-in, 120ms) ease;
-  overflow: hidden;
+  transition: box-shadow .18s ease, color .18s ease;
 }
 
+.nav-rail--collapsed .nav-rail__item {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  gap: 0;
+}
+
+/* railHover (prototype 3973) */
 .nav-rail__item:hover {
-  background: var(--bg-elevated, rgba(255,255,255,0.05));
-  color: var(--text-header, #e8e8f0);
+  background: rgba(255, 255, 255, .06);
+  color: #e8eefc;
 }
 
 .nav-rail__item:focus-visible {
@@ -123,75 +145,201 @@
   outline-offset: 2px;
 }
 
-/* Active state: --accent left-edge bar + icon highlight */
-.nav-rail__item--active {
-  color: var(--accent);
-  background: var(--accent-soft);
+/* railActive(slot) (prototype 3972) — per-module neon slot tint */
+.nav-rail__item--active.nav-rail__item--slot-1 {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, .12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 0 18px -4px var(--g1, rgba(0, 240, 255, .4)), inset 0 0 12px var(--gs1, rgba(0, 240, 255, .12));
 }
 
-.nav-rail__item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 60%;
-  background: var(--accent);
-  border-radius: 0 2px 2px 0;
-  box-shadow: var(--neon-glow);
+.nav-rail__item--active.nav-rail__item--slot-2 {
+  color: var(--n2, #9b5fff);
+  background: var(--gs2, rgba(155, 95, 255, .14));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4));
+  box-shadow: 0 0 18px -4px var(--g2, rgba(155, 95, 255, .4)), inset 0 0 12px var(--gs2, rgba(155, 95, 255, .14));
 }
 
-.nav-rail__item--active .nav-rail__item-icon {
-  filter: drop-shadow(0 0 4px var(--accent));
+.nav-rail__item--active.nav-rail__item--slot-3 {
+  color: var(--n3, #ff4dff);
+  background: var(--gs3, rgba(255, 77, 255, .14));
+  border: var(--bw, 1px) solid var(--b3, rgba(255, 77, 255, .4));
+  box-shadow: 0 0 18px -4px var(--g3, rgba(255, 77, 255, .4)), inset 0 0 12px var(--gs3, rgba(255, 77, 255, .14));
 }
 
 .nav-rail__item-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
   font-size: 16px;
+  line-height: 1;
 }
 
+/* prototype 176 */
 .nav-rail__item-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-align: center;
+  line-height: 1.15;
+}
+
+/* ── Stories popover (prototype 179–203) ──────────────────────────────── */
+
+.nav-rail__stories-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+
+.nav-rail__stories {
+  position: absolute;
+  left: 64px;
+  top: 10px;
+  width: 272px;
+  z-index: 46;
+  padding: 10px;
+  border-radius: 15px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 var(--gr, 26px) -6px var(--g1, rgba(0, 240, 255, .4));
+  animation: lnFadeUp .16s ease;
+  text-align: left;
+}
+
+.nav-rail__stories-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: #7686a2;
+  padding: 2px 8px 8px;
+}
+
+.nav-rail__story {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+
+.nav-rail__story:hover {
+  background: rgba(255, 255, 255, .07);
+}
+
+.nav-rail__story:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.nav-rail__story-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gs2, rgba(155, 95, 255, .14));
+  border: 1px solid var(--b2, rgba(155, 95, 255, .4));
+}
+
+.nav-rail__story-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e6ecf9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ─── Bottom: settings ─────────────────────────────────────────────────────── */
-
-.nav-rail__bottom {
-  padding: 4px 4px 12px;
-  border-top: 1px solid var(--glass-border);
+.nav-rail__story-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 7px var(--g1, rgba(0, 240, 255, .4));
+  flex: none;
 }
 
-.nav-rail__settings {
+.nav-rail__stories-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, .08);
+  margin: 8px 4px;
+}
+
+/* "+ New Story" row — task-spec condensation of the prototype's NEW STORY
+   form (190–202); chip tinted slot-1 like the prototype's new-vault "+". */
+.nav-rail__story--new .nav-rail__story-icon {
+  background: var(--gs1, rgba(0, 240, 255, .12));
+  border: 1px solid var(--b1, rgba(0, 240, 255, .4));
+  color: var(--n1, #00f0ff);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ── Bottom: divider + settings + slim toggle (prototype 211–238) ─────── */
+
+.nav-rail__bottom {
+  flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 8px;
-  border: none;
-  border-radius: var(--radius-md, 6px);
-  background: transparent;
+  gap: 7px;
+}
+
+.nav-rail--collapsed .nav-rail__bottom {
+  gap: 5px;
+}
+
+/* prototype 211 */
+.nav-rail__divider {
+  width: 34px;
+  height: 1px;
+  background: rgba(255, 255, 255, .09);
+}
+
+/* Settings item (prototype 212–215; railBase-styled) */
+.nav-rail__settings {
+  width: 60px;
+  height: 58px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
   cursor: pointer;
-  color: var(--text-muted, rgba(255,255,255,0.6));
+  color: #8e9db8;
+  border: 1px solid transparent;
+  background: transparent;
+  flex: none;
   font-family: inherit;
-  font-size: var(--text-sm, 13px);
-  text-align: left;
-  transition:
-    background var(--dur-hover-in, 120ms) ease,
-    color var(--dur-hover-in, 120ms) ease;
-  overflow: hidden;
+  transition: box-shadow .18s ease, color .18s ease;
+}
+
+.nav-rail--collapsed .nav-rail__settings {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  gap: 0;
 }
 
 .nav-rail__settings:hover {
-  background: var(--bg-elevated, rgba(255,255,255,0.05));
-  color: var(--text-header, #e8e8f0);
+  background: rgba(255, 255, 255, .06);
+  color: #e8eefc;
 }
 
 .nav-rail__settings:focus-visible {
@@ -203,38 +351,35 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* prototype 214 */
+.nav-rail__settings-label {
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+/* Slim toggle (prototype 236) */
+.nav-rail__toggle {
   width: 20px;
   height: 20px;
-  flex-shrink: 0;
-  font-size: 16px;
-}
-
-.nav-rail__settings-label {
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.nav-rail__toggle {
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--radius-md, 6px);
-  background: transparent;
+  color: #7686a2;
   cursor: pointer;
-  color: var(--text-muted, rgba(255,255,255,0.4));
-  font-size: 14px;
+  font-size: 11px;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-family: inherit;
-  transition:
-    background var(--dur-hover-in, 120ms) ease,
-    color var(--dur-hover-in, 120ms) ease;
+  flex: none;
 }
 
 .nav-rail__toggle:hover {
-  background: var(--bg-elevated, rgba(255,255,255,0.05));
-  color: var(--text-header, #e8e8f0);
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
 }
 
 .nav-rail__toggle:focus-visible {
@@ -242,17 +387,20 @@
   outline-offset: 2px;
 }
 
-/* ─── Reduced motion ────────────────────────────────────────────────────────── */
+/* ── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   .nav-rail {
     transition: none;
   }
 
-  .nav-rail__brand,
+  .nav-rail__brand-glyph,
   .nav-rail__item,
-  .nav-rail__settings,
-  .nav-rail__toggle {
+  .nav-rail__settings {
     transition: none;
+  }
+
+  .nav-rail__stories {
+    animation: none;
   }
 }
