@@ -10,6 +10,13 @@ name: VR Baselines
 
 on:
   workflow_dispatch:
+  # Temporary bootstrap: a workflow_dispatch-only workflow can't be dispatched
+  # via the API until it exists on the default branch. This path-scoped push
+  # trigger registers and runs it directly from the migration branch; it only
+  # fires when this file itself changes, and dies with the branch after merge.
+  push:
+    branches: [claude/ci-github-runners]
+    paths: ['.github/workflows/vr-baselines.yml']
 
 permissions:
   contents: read
