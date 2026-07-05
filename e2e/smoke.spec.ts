@@ -134,8 +134,8 @@ test('TC-01: app boots past onboarding into DesktopShell', async () => {
   // AppMenuBar is visible — confirms DesktopShell rendered
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 8_000 });
 
-  // Brand name is rendered
-  await expect(page.locator('.app-menu-brand')).toHaveText('Mythos');
+  // Brand name is rendered (Beta 3 M5: Liquid Neon title bar)
+  await expect(page.locator('.wc-title')).toHaveText('Mythos Writer');
 });
 
 // ─── TC-02: Write a scene ─────────────────────────────────────────────────────
