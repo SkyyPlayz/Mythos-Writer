@@ -2,8 +2,14 @@ import { render, screen, waitFor, fireEvent, within, act } from '@testing-librar
 import { vi, beforeEach, describe, it, expect } from 'vitest';
 import VaultGraphView, {
   buildNeighbourMap,
+  categoryColor,
   computeNodeRadius,
   computeDepthVisible,
+  hexToRgba,
+  relayoutSim,
+  stepSim,
+  SIM_DEFAULTS,
+  type SimNodeState,
   type VaultGraphData,
 } from './VaultGraphView';
 import { readContrastFloors } from './themeAxis';
@@ -549,6 +555,285 @@ describe('computeDepthVisible', () => {
   it('with no selection, orphans are always visible', () => {
     const visible = computeDepthVisible(null, allIds, neighbours, 1);
     expect(visible!.has('d')).toBe(true);
+  });
+});
+
+// ─── M21: force sim step (deterministic port of prototype stepSim) ───────────
+
+function simNode(x: number, y: number, extra: Partial<SimNodeState> = {}): SimNodeState {
+  return { x, y, vx: 0, vy: 0, fx: null, fy: null, ...extra };
+}
+
+describe('stepSim (M21 prototype physics port)', () => {
+  it('applies center pull, repulsion, spring links, damping, and returns energy', () => {
+    const sim = new Map<string, SimNodeState>([
+      ['a', simNode(480, 325)],
+      ['b', simNode(520, 325)],
+    ]);
+
+    const energy = stepSim(sim, ['a', 'b'], [['a', 'b']], SIM_DEFAULTS, () => 0.5);
+
+    // Hand-computed with prototype constants (kC=0.00252, kR=6020 capped at
+    // 3.4, kL=0.0088, linkDist=120, damping ×0.85):
+    //   a.vx = (0.0504 - 3.4 - 0.704) * 0.85 = -3.44556
+    const a = sim.get('a')!;
+    const b = sim.get('b')!;
+    expect(a.vx).toBeCloseTo(-3.44556, 5);
+    expect(b.vx).toBeCloseTo(3.44556, 5);
+    expect(a.vy).toBeCloseTo(0, 8);
+    expect(a.x).toBeCloseTo(476.55444, 5);
+    expect(b.x).toBeCloseTo(523.44556, 5);
+    expect(a.y).toBeCloseTo(325, 8);
+    expect(energy).toBeCloseTo(6.89112, 5);
+  });
+
+  it('clamps velocity to ±4.5 and positions to the 1000×640 sim bounds', () => {
+    const fast = new Map<string, SimNodeState>([['a', simNode(500, 325, { vx: 100 })]]);
+    stepSim(fast, ['a'], [], SIM_DEFAULTS, () => 0.5);
+    expect(fast.get('a')!.vx).toBe(4.5);
+    expect(fast.get('a')!.x).toBe(504.5);
+
+    const corner = new Map<string, SimNodeState>([['a', simNode(0, 0)]]);
+    stepSim(corner, ['a'], [], SIM_DEFAULTS, () => 0.5);
+    expect(corner.get('a')!.x).toBe(36); // clamped to min X
+    expect(corner.get('a')!.y).toBe(42); // clamped to min Y
+  });
+
+  it('holds pinned nodes at fx/fy with zero velocity and 1 energy each', () => {
+    const sim = new Map<string, SimNodeState>([
+      ['a', simNode(400, 300, { fx: 100, fy: 100, vx: 2, vy: 2 })],
+    ]);
+
+    const energy = stepSim(sim, ['a'], [], SIM_DEFAULTS, () => 0.5);
+
+    const a = sim.get('a')!;
+    expect(a.x).toBe(100);
+    expect(a.y).toBe(100);
+    expect(a.vx).toBe(0);
+    expect(a.vy).toBe(0);
+    expect(energy).toBe(1);
+  });
+
+  it('ignores hidden nodes and edges touching hidden nodes', () => {
+    const sim = new Map<string, SimNodeState>([
+      ['a', simNode(480, 325)],
+      ['hidden', simNode(481, 325)],
+    ]);
+
+    stepSim(sim, ['a'], [['a', 'hidden']], SIM_DEFAULTS, () => 0.5);
+
+    const hidden = sim.get('hidden')!;
+    expect(hidden.x).toBe(481); // untouched
+    expect(hidden.vx).toBe(0);
+  });
+});
+
+describe('relayoutSim (M21)', () => {
+  it('clears pins and randomizes velocities in the ±30 range', () => {
+    const sim = new Map<string, SimNodeState>([
+      ['a', simNode(200, 200, { fx: 200, fy: 200 })],
+      ['b', simNode(400, 400, { vx: 1, vy: -1 })],
+    ]);
+
+    relayoutSim(sim, () => 0.75);
+
+    for (const p of sim.values()) {
+      expect(p.fx).toBeNull();
+      expect(p.fy).toBeNull();
+      expect(p.vx).toBeCloseTo(15, 8); // (0.75 - 0.5) * 60
+      expect(p.vy).toBeCloseTo(15, 8);
+    }
+  });
+});
+
+// ─── M21: category color mapping ─────────────────────────────────────────────
+
+describe('categoryColor (M21 prototype gCats mapping)', () => {
+  it('maps categories to the prototype default palette', () => {
+    expect(categoryColor('characters')).toBe('#00f0ff');
+    expect(categoryColor('locations')).toBe('#9b5fff');
+    expect(categoryColor('factions')).toBe('#ff4dff');
+    expect(categoryColor('items')).toBe('#ff9a3d');
+    expect(categoryColor('systems')).toBe('#2fe6c8');
+    expect(categoryColor('scenes')).toBe('#ffd319'); // Story gold cluster
+    expect(categoryColor('history')).toBe('#e0b3ff'); // History / Lore
+  });
+
+  it('honors per-category recolor overrides', () => {
+    expect(categoryColor('characters', { characters: '#123456' })).toBe('#123456');
+    expect(categoryColor('locations', { characters: '#123456' })).toBe('#9b5fff');
+  });
+
+  it('hexToRgba converts hex + alpha like the prototype hexA helper', () => {
+    expect(hexToRgba('#00f0ff', 0.55)).toBe('rgba(0,240,255,0.550)');
+    expect(hexToRgba('#ffd319', 2)).toBe('rgba(255,211,25,1.000)');
+  });
+});
+
+// ─── M21: star nodes, pinning, inspector, toggles ────────────────────────────
+
+describe('VaultGraphView M21 vault graph v2', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MOCK_DATA.nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MOCK_DATA.edges }),
+    };
+  });
+
+  it('renders a star-glow disc per node from the category gradient', async () => {
+    render(<VaultGraphView />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const star = within(avaNode).getByTestId('vault-graph-star');
+
+    expect(star).toHaveClass('vgv-star-disc');
+    expect(star.getAttribute('fill')).toMatch(/^url\(#vgv-star-.*-characters\)$/);
+    // Star disc is 2× the token-circle radius (degree 2 → r 7 → disc 14)
+    expect(star).toHaveAttribute('r', String(computeNodeRadius(2) * 2));
+    // lnPulse timing ported from the prototype: 3 + (id.length % 4)s
+    const id = 'characters/ava.md';
+    expect(star.getAttribute('style')).toContain(`animation-duration: ${3 + (id.length % 4)}s`);
+  });
+
+  it('recoloring a category updates its star gradient stops', async () => {
+    const { container } = render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /open note Ava/i });
+    fireEvent.click(screen.getByTestId('vault-graph-filters-toggle'));
+
+    const input = screen.getByLabelText('Recolor Characters');
+    await act(async () => { fireEvent.change(input, { target: { value: '#112233' } }); });
+
+    const stop = container.querySelector('radialGradient[id$="-characters"] stop[offset="42%"]');
+    expect(stop).not.toBeNull();
+    expect(stop!.getAttribute('stop-color')).toBe('#112233');
+  });
+
+  it('exposes separate note↔note and story↔note line color inputs with prototype defaults', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    fireEvent.click(screen.getByTestId('vault-graph-filters-toggle'));
+
+    expect((screen.getByLabelText('Note ↔ note links color') as HTMLInputElement).value).toBe('#9fc0e8');
+    expect((screen.getByLabelText('Story ↔ note links color') as HTMLInputElement).value).toBe('#ffd319');
+  });
+
+  it('dragging a node pins it at the drop position; Re-layout clears the pin', async () => {
+    render(<VaultGraphView />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaGroup = screen.getByTestId('vault-node-characters/ava.md');
+
+    await act(async () => {
+      fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+    });
+
+    expect(avaGroup).toHaveClass('vgv-graph-node--pinned');
+    // jsdom rect is 0×0 → the drag maps through the 1000×640 fallback viewport
+    expect(avaGroup.getAttribute('transform')).toBe('translate(700 400)');
+
+    await act(async () => { fireEvent.mouseUp(window); });
+    // Pin survives releasing the mouse (M21: drag-to-pin)
+    expect(avaGroup).toHaveClass('vgv-graph-node--pinned');
+    expect(avaGroup.getAttribute('transform')).toBe('translate(700 400)');
+
+    await act(async () => { fireEvent.click(screen.getByTestId('vault-graph-relayout')); });
+    expect(avaGroup).not.toHaveClass('vgv-graph-node--pinned');
+  });
+
+  it('a drag does not open the note, a plain click still does', async () => {
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+
+    await act(async () => {
+      fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+      fireEvent.mouseUp(window);
+      fireEvent.click(avaNode); // browser fires a click right after mouseup
+    });
+    expect(onOpenNote).not.toHaveBeenCalled();
+
+    // After the trailing-click window closes, a plain click opens the note
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => { fireEvent.click(avaNode); });
+    expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
+  });
+
+  it('selecting a node opens the inspector with title, category, and clickable connections', async () => {
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    fireEvent.click(avaNode);
+
+    const inspector = screen.getByTestId('vault-graph-inspector');
+    expect(within(inspector).getByTestId('vault-graph-inspector-title')).toHaveTextContent('Ava');
+    expect(within(inspector).getByText('Character')).toBeInTheDocument();
+    expect(onOpenNote).toHaveBeenCalledTimes(1);
+
+    const connections = within(inspector).getAllByTestId(/^vault-graph-inspector-conn-/);
+    expect(connections).toHaveLength(2);
+
+    // Connection rows re-select without opening (prototype gSel.conns pick)
+    fireEvent.click(within(inspector).getByTestId('vault-graph-inspector-conn-locations/citadel.md'));
+    expect(screen.getByTestId('vault-graph-inspector-title')).toHaveTextContent('Citadel');
+    expect(onOpenNote).toHaveBeenCalledTimes(1);
+
+    // The explicit open button opens the selected node
+    fireEvent.click(screen.getByTestId('vault-graph-inspector-open'));
+    expect(onOpenNote).toHaveBeenLastCalledWith('Locations/Citadel.md');
+  });
+
+  it('closes the inspector when the canvas is clicked', async () => {
+    render(<VaultGraphView />);
+
+    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    fireEvent.click(avaNode);
+    expect(screen.getByTestId('vault-graph-inspector')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('vault-graph-canvas'));
+    expect(screen.queryByTestId('vault-graph-inspector')).not.toBeInTheDocument();
+  });
+
+  it('Story cluster toggle hides and restores story (scenes) nodes', async () => {
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MIXED_VAULT_DATA.nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MIXED_VAULT_DATA.edges }),
+    };
+
+    render(<VaultGraphView initialVaultScope="both" />);
+
+    await screen.findByRole('button', { name: /open scene Scene One/i });
+    const toggle = screen.getByRole('switch', { name: /show story cluster/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    await act(async () => { fireEvent.click(toggle); });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('button', { name: /open scene Scene One/i })).not.toBeInTheDocument();
+    // The switch mirrors the Scenes chip (single visibility source)
+    expect(screen.getByRole('button', { name: /scenes filter/i })).toHaveAttribute('aria-pressed', 'false');
+
+    await act(async () => { fireEvent.click(toggle); });
+    expect(await screen.findByRole('button', { name: /open scene Scene One/i })).toBeInTheDocument();
+  });
+
+  it('zoom buttons use multiplicative prototype steps and Fit resets to 100%', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const pct = screen.getByTestId('vault-graph-zoom-pct');
+    expect(pct).toHaveTextContent('100%');
+
+    fireEvent.click(screen.getByRole('button', { name: /zoom in/i }));
+    expect(pct).toHaveTextContent('118%');
+
+    fireEvent.click(screen.getByRole('button', { name: /reset graph view/i }));
+    expect(pct).toHaveTextContent('100%');
   });
 });
 

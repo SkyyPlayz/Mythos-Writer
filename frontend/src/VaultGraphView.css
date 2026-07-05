@@ -15,7 +15,8 @@
 .vgv-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   min-height: 32px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-default);
@@ -118,71 +119,96 @@
   height: 100%;
 }
 
+/* M21 edges: colors/width/opacity are driven per edge through custom props
+ * (prototype gEdgesR, 4287–4293) so the line-color pickers apply live.
+ * High-contrast overrides below still win — they set stroke directly. */
 .vgv-graph-edge {
-  stroke: var(--ln-graph-edge-default);
-  stroke-width: 1.5;
+  stroke: var(--vgv-edge-stroke, var(--ln-graph-edge-default));
+  stroke-width: var(--vgv-edge-width, 1.2);
   stroke-linecap: round;
-  opacity: 0.85;
+  opacity: var(--vgv-edge-opacity, 1);
+  filter: var(--vgv-edge-glow, none);
   pointer-events: none;
-  transition: opacity 120ms ease, stroke 120ms ease;
+  transition: opacity 150ms ease, stroke 150ms ease;
 }
 
+/* Class kept for tests/tooling; story edges are colored via --vgv-edge-stroke */
 .vgv-graph-edge--cross-vault {
-  stroke: var(--ln-graph-edge-cross-vault, var(--ln-graph-border-highlight));
-  stroke-dasharray: 6 5;
+  stroke: var(--vgv-edge-stroke, var(--ln-graph-edge-cross-vault, var(--ln-graph-border-highlight)));
 }
 
 .vgv-graph-edge--dimmed {
-  stroke: var(--ln-graph-edge-dimmed);
-  opacity: 0.55;
+  opacity: var(--vgv-edge-opacity, 0.3);
 }
 
 .vgv-graph-node {
-  cursor: pointer;
+  cursor: grab;
   opacity: 1;
-  transition: opacity 120ms ease, transform 120ms ease;
+  /* Prototype node dim transition: opacity .18s ease (renderVals ~4300) */
+  transition: opacity 180ms ease, transform 120ms ease;
 }
 
+.vgv-graph-node:active {
+  cursor: grabbing;
+}
+
+/* Prototype hover-dim opacity: .28 (4300) */
 .vgv-graph-node--dimmed {
-  opacity: 0.35;
+  opacity: 0.28;
 }
 
+/* M21 star disc: radial-gradient star (white core → category color →
+ * transparent) with the lnPulse twinkle; duration/delay set inline per node. */
+.vgv-star-disc {
+  pointer-events: none;
+  filter: var(--vgv-star-glow, none);
+  animation: vgv-lnpulse 3s ease-in-out infinite;
+  transition: transform 140ms ease;
+}
+
+/* Prototype lnPulse keyframes (line 34) */
+@keyframes vgv-lnpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Prototype hover scale 1.1 (4300) */
+.vgv-graph-node:hover .vgv-star-disc {
+  transform: scale(1.1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* M21: the token circle stays in the DOM (hit target, tests, high-contrast
+ * fallback) but the star disc is the visible node. */
 .vgv-node-circle {
   fill: var(--vgv-node-fill);
   stroke: var(--vgv-node-stroke);
   stroke-width: 2;
-  filter: var(--ln-graph-glow-default);
-  transition: fill 120ms ease, stroke 120ms ease, stroke-width 120ms ease, filter 120ms ease;
+  fill-opacity: 0;
+  stroke-opacity: 0;
+  transition: stroke 120ms ease, stroke-width 120ms ease, stroke-opacity 120ms ease;
 }
 
-.vgv-node-circle--characters { filter: var(--ln-graph-glow-characters); }
-.vgv-node-circle--locations { filter: var(--ln-graph-glow-locations); }
-.vgv-node-circle--factions { filter: var(--ln-graph-glow-factions); }
-.vgv-node-circle--history { filter: var(--ln-graph-glow-history); }
-.vgv-node-circle--systems { filter: var(--ln-graph-glow-systems); }
-.vgv-node-circle--items { filter: var(--ln-graph-glow-items); }
-.vgv-node-circle--scenes { filter: var(--ln-graph-glow-scenes, var(--ln-graph-glow-highlight)); }
-.vgv-node-circle--misc { filter: var(--ln-graph-glow-misc); }
-.vgv-node-circle--default { filter: var(--ln-graph-glow-default); }
-
-.vgv-graph-node:hover .vgv-node-circle,
-.vgv-graph-node--selected .vgv-node-circle,
 .vgv-graph-node--keyboard-focused .vgv-node-circle {
-  fill: var(--ln-graph-node-highlight);
+  stroke-opacity: 1;
   stroke: var(--ln-graph-border-highlight);
   stroke-width: 3;
-  filter: var(--ln-graph-glow-highlight);
-}
-
-.vgv-graph-node--keyboard-focused .vgv-node-circle {
   outline: 3px solid var(--focus-ring, #fff);
   outline-offset: 4px;
+}
+
+/* Pinned nodes (drag-to-pin) show a dashed anchor ring until Re-layout */
+.vgv-graph-node--pinned .vgv-node-circle {
+  stroke-opacity: 1;
+  stroke-dasharray: 3 3;
 }
 
 .vgv-graph-node:hover .vgv-node-label,
 .vgv-graph-node--selected .vgv-node-label,
 .vgv-graph-node--keyboard-focused .vgv-node-label {
-  fill: var(--text-body);
+  fill: var(--text-header);
+  font-weight: 600;
   font-size: 11px;
 }
 
@@ -485,6 +511,7 @@
 /* ─── Search highlight / dimmed states (AC-GV-08) ────────────────────────── */
 
 .vgv-graph-node--search-match .vgv-node-circle {
+  stroke-opacity: 1;
   stroke: var(--ln-graph-border-highlight);
   stroke-width: 3;
   filter: var(--ln-graph-glow-highlight);
@@ -610,13 +637,426 @@
   border-radius: 2px;
 }
 
+/* ─── M21: story-cluster toggle + Re-layout (prototype header 1600–1611) ──── */
+
+.vgv-story-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--ln-graph-node-scenes, #ffd319) 35%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ln-graph-node-scenes, #ffd319) 5%, transparent);
+}
+
+.vgv-story-cluster-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-body);
+  white-space: nowrap;
+}
+
+.vgv-toggle {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 99px;
+  background: var(--bg-inset);
+  cursor: pointer;
+  padding: 0;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.vgv-toggle--on {
+  border-color: var(--ln-graph-border-highlight);
+  background: color-mix(in srgb, var(--ln-graph-border-highlight) 35%, transparent);
+}
+
+.vgv-toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: left 140ms ease, background 140ms ease;
+}
+
+.vgv-toggle--on .vgv-toggle-knob {
+  left: 15px;
+  background: var(--text-header);
+}
+
+.vgv-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--ln-graph-border-highlight));
+  outline-offset: 2px;
+}
+
+.vgv-relayout {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.vgv-relayout:hover,
+.vgv-relayout:focus-visible {
+  border-color: var(--ln-graph-border-highlight);
+  color: var(--text-header);
+  box-shadow: 0 0 12px -3px var(--ln-graph-border-highlight);
+  outline: none;
+}
+
+/* ─── M21: zoom dock percent (prototype 1627–1632) ──────────────────────────── */
+
+.vgv-zoom-pct {
+  align-self: center;
+  min-width: 38px;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  color: var(--text-body);
+}
+
+/* ─── M21: colors/filters popover (prototype left panel 413–443) ────────────── */
+
+.vgv-filters-wrap {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
+}
+
+.vgv-filters-wrap > button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vgv-filters-wrap > button:hover,
+.vgv-filters-wrap > button:focus-visible {
+  border-color: var(--ln-graph-border-highlight);
+  outline: none;
+}
+
+.vgv-filters-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 232px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  box-shadow: var(--shadow-panel, 0 8px 24px rgb(0 0 0 / 35%));
+  font-family: var(--font-sans);
+  z-index: 3;
+}
+
+.vgv-filters-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 2px 0;
+}
+
+.vgv-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 6px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, currentcolor 4%, transparent);
+}
+
+.vgv-filter-row--off {
+  opacity: 0.38;
+}
+
+.vgv-filter-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-body);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vgv-filter-name:focus-visible {
+  outline: 2px solid var(--ln-graph-border-highlight);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.vgv-filter-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* Prototype color wheel affordance (417) */
+.vgv-filter-wheel {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  border: 1.5px solid rgb(255 255 255 / 30%);
+  background: conic-gradient(#ff004d, #ffd319, #39ff8c, #00e5ff, #7a5cff, #ff2d95, #ff004d);
+  overflow: hidden;
+  flex: none;
+  cursor: pointer;
+}
+
+.vgv-filter-wheel input[type='color'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.vgv-filter-count {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  min-width: 16px;
+  text-align: right;
+}
+
+.vgv-line-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, currentcolor 4%, transparent);
+  border: 1px solid var(--border-default);
+}
+
+.vgv-line-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-body);
+}
+
+.vgv-line-swatch {
+  width: 22px;
+  height: 4px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* ─── M21: node inspector (prototype right panel 2586–2613) ─────────────────── */
+
+.vgv-inspector {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
+  font-family: var(--font-sans);
+  z-index: 2;
+}
+
+/* Leave room for the control dock above the inspector */
+.vgv-graph-controls {
+  z-index: 4;
+}
+
+.vgv-inspector-card {
+  border-radius: 14px;
+  background: color-mix(in srgb, currentcolor 4%, transparent);
+  border: 1px solid var(--border-default);
+  padding: 13px;
+  flex: none;
+}
+
+.vgv-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 8px;
+}
+
+.vgv-inspector-orb {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  flex: none;
+}
+
+.vgv-inspector-id {
+  min-width: 0;
+}
+
+.vgv-inspector-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-header);
+  overflow-wrap: anywhere;
+}
+
+.vgv-inspector-chip {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+}
+
+.vgv-inspector-path {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.vgv-inspector-section {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.vgv-inspector-empty {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.vgv-inspector-conn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.vgv-inspector-conn:hover,
+.vgv-inspector-conn:focus-visible {
+  background: color-mix(in srgb, currentcolor 8%, transparent);
+  color: var(--text-header);
+  outline: none;
+}
+
+.vgv-inspector-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.vgv-inspector-conn-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vgv-inspector-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, currentcolor 4%, transparent);
+  color: var(--text-header);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+  transition: border-color 140ms ease;
+}
+
+.vgv-inspector-open:hover,
+.vgv-inspector-open:focus-visible {
+  border-color: var(--ln-graph-border-highlight);
+  outline: none;
+}
+
+/* ─── M21: canvas hint (prototype 1633) ─────────────────────────────────────── */
+
+.vgv-canvas-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 4px 9px;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .vgv-search,
   .vgv-graph-edge,
   .vgv-graph-node,
   .vgv-node-circle,
+  .vgv-star-disc,
   .vgv-legend-popover,
   .vgv-chip,
+  .vgv-toggle,
+  .vgv-toggle-knob,
   .vgv-empty-dot,
   .vgv-skeleton-node,
   .vgv-skeleton-edge,
@@ -635,6 +1075,18 @@
   .vgv-graph-edge--dimmed {
     stroke: ButtonText;
     opacity: 1;
+    filter: none;
+  }
+
+  /* M21: fall back from star discs to solid token circles */
+  .vgv-star-disc {
+    display: none;
+    animation: none;
+  }
+
+  .vgv-node-circle {
+    fill-opacity: 1;
+    stroke-opacity: 1;
   }
 
   .vgv-node-circle,
@@ -682,6 +1134,13 @@
 .vgv-root[data-contrast="high"] .vgv-graph-edge--dimmed {
   stroke: ButtonText;
   opacity: 1;
+  filter: none;
+}
+
+[data-contrast="high"] .vgv-star-disc,
+.vgv-root[data-contrast="high"] .vgv-star-disc {
+  display: none;
+  animation: none;
 }
 
 [data-contrast="high"] .vgv-node-circle,
@@ -689,6 +1148,8 @@
   fill: Canvas;
   stroke: ButtonText;
   stroke-width: 2;
+  fill-opacity: 1;
+  stroke-opacity: 1;
   filter: none;
 }
 
