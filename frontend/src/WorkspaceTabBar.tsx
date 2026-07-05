@@ -1,11 +1,13 @@
 /**
  * SKY-3097 (v0.3): WorkspaceTabBar — Obsidian-style draggable/closeable tab row.
  * SKY-5704 (GH#643 Tabs-1): keyboard reorder, scroll-overflow, drag affordance.
+ * Beta 3 M6: Liquid Neon restyle (prototype HTML 136–165 + renderVals tab logic
+ * ~4013–4044): glass strip, neon active tab, right-click context menu
+ * (Open to the side / Pop out into new window / Close tab), agents status chip.
  *
  * Standalone component; wired into DesktopShell by PE-C (SKY-3098).
  * AC-LN-06: X closes immediately, no popover. Active-tab close selects left neighbor.
  * AC-LN-09: role="tablist" + role="tab" + aria-selected + arrow-key focus management.
- * AC-LN-10: active tab gets --accent bottom border + --bg-surface background.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import './WorkspaceTabBar.css';
@@ -20,6 +22,10 @@ export interface WorkspaceTabBarProps {
   onNewTab: () => void;
   /** GH#643 split panes: Shift+click / Shift+Enter on a tab opens it in the split pane. */
   onTabOpenInSplit?: (tabId: string) => void;
+  /** Beta3 M6: context-menu "Pop out into new window" — shell wires to a floating window. */
+  onTabPopOut?: (tabId: string) => void;
+  /** Beta3 M6: agents status chip; false shows the prototype "All agents idle" state. */
+  agentsActive?: boolean;
 }
 
 /** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
@@ -33,11 +39,21 @@ export default function WorkspaceTabBar({
   onTabReorder,
   onNewTab,
   onTabOpenInSplit,
+  onTabPopOut,
+  agentsActive = false,
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const dragSrcIndex = useRef<number | null>(null);
+
+  // ── Beta3 M6: right-click context menu (prototype 138–156) ──────────────
+  // Anchored strip-relative so it escapes the scroll strip's overflow clip.
+  const [ctxMenu, setCtxMenu] = useState<{ tabId: string; left: number; top: number } | null>(
+    null,
+  );
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // ── Roving-tabIndex refs for arrow-key focus management ───────────────────
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -74,6 +90,34 @@ export default function WorkspaceTabBar({
     },
     [tabs, activeTabId, onTabClose, onTabSelect],
   );
+
+  // ── Beta3 M6: right-click toggles the tab context menu (prototype tabCtx,
+  // HTML 3732) — same tab toggles off, another tab moves the menu there. ────
+  const handleTabContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>, tabId: string) => {
+      e.preventDefault();
+      // Prototype 141 anchors the popover at left:0/top:34px of the tab;
+      // measure before setState — currentTarget is only valid during dispatch.
+      const rootRect = rootRef.current?.getBoundingClientRect();
+      const tabRect = e.currentTarget.getBoundingClientRect();
+      const left = rootRect ? tabRect.left - rootRect.left : 0;
+      const top = (rootRect ? tabRect.top - rootRect.top : 0) + 34;
+      setCtxMenu((cur) => (cur?.tabId === tabId ? null : { tabId, left, top }));
+    },
+    [],
+  );
+
+  // ── Beta3 M6: menu dismissal — mousedown outside (like WindowChrome
+  // popovers); right-button presses fall through to each tab's toggle. ─────
+  useEffect(() => {
+    if (ctxMenu === null) return;
+    const onDown = (e: MouseEvent) => {
+      if (e.button === 2) return;
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setCtxMenu(null);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [ctxMenu]);
 
   // ── SKY-5704: keyboard reorder — Ctrl+Shift+ArrowLeft/Right moves the
   // focused tab one slot and keeps focus on it (mirrors the drag gesture). ──
@@ -121,6 +165,11 @@ export default function WorkspaceTabBar({
   // ── Global Ctrl+W / Ctrl+Tab keyboard shortcuts ───────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Beta3 M6: Escape dismisses the tab context menu (prototype 3918).
+        setCtxMenu(null);
+        return;
+      }
       if (!e.ctrlKey) return;
       if (e.key === 'w') {
         if (activeTabId !== null) {
@@ -198,14 +247,18 @@ export default function WorkspaceTabBar({
     [onTabReorder, tabs],
   );
 
+  const menuTab = ctxMenu === null ? undefined : tabs.find((t) => t.id === ctxMenu.tabId);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="wtb-root" role="tablist" aria-label="Workspace tabs">
+    <div className="wtb-root" role="tablist" aria-label="Workspace tabs" ref={rootRef}>
       {/* SKY-5704: scrollable strip so overflow tabs stay reachable without
           pushing the pinned + button off-screen. */}
-      <div className={['wtb-tabs-scroll', tabs.length === 0 ? 'wtb-tabs-scroll--empty' : '']
-        .filter(Boolean)
-        .join(' ')}
+      <div
+        className={['wtb-tabs-scroll', tabs.length === 0 ? 'wtb-tabs-scroll--empty' : '']
+          .filter(Boolean)
+          .join(' ')}
+        onScroll={() => setCtxMenu(null)}
       >
         {tabs.map((tab, i) => {
           const isActive = tab.id === activeTabId;
@@ -249,14 +302,12 @@ export default function WorkspaceTabBar({
                   if (e.shiftKey && onTabOpenInSplit) onTabOpenInSplit(tab.id);
                   else onTabSelect(tab.id);
                 }}
+                onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
                 onKeyDown={(e) => handleTabKeyDown(e, i)}
                 title={onTabOpenInSplit ? `${tab.title} (Shift+click: open in split pane)` : tab.title}
               >
-                {tab.icon && (
-                  <span className="wtb-tab-icon" aria-hidden="true">
-                    {tab.icon}
-                  </span>
-                )}
+                {/* Prototype 147: neon status dot — cyan on the active tab. */}
+                <span className="wtb-tab-dot" aria-hidden="true" />
                 <span className="wtb-tab-label">{tab.title}</span>
               </button>
 
@@ -266,7 +317,18 @@ export default function WorkspaceTabBar({
                 tabIndex={-1}
                 onClick={() => handleClose(tab.id)}
               >
-                x
+                {/* Prototype 151: 9px rounded X */}
+                <svg
+                  width="9"
+                  height="9"
+                  viewBox="0 0 12 12"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                </svg>
               </button>
             </div>
           );
@@ -280,8 +342,82 @@ export default function WorkspaceTabBar({
         onClick={onNewTab}
         data-testid="wtb-new-tab-btn"
       >
-        +
+        {/* Prototype 158: 13px plus */}
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </button>
+
+      <div className="wtb-spacer" />
+
+      {/* Beta3 M6: agents status chip (prototype 161–164). */}
+      <div className="wtb-agents-chip" data-testid="wtb-agents-chip">
+        <span
+          className={['wtb-agents-dot', agentsActive ? 'wtb-agents-dot--active' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-hidden="true"
+        />
+        <span>{agentsActive ? 'Agents working' : 'All agents idle'}</span>
+      </div>
+
+      {/* Beta3 M6: tab context menu (prototype 141–145). */}
+      {ctxMenu !== null && menuTab && (
+        <div
+          ref={menuRef}
+          className="wtb-ctx-menu"
+          style={{ left: ctxMenu.left, top: ctxMenu.top }}
+          role="menu"
+          aria-label={`${menuTab.title} tab actions`}
+          data-testid="wtb-tab-context-menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="wtb-ctx-item"
+            data-testid="wtb-ctx-open-side"
+            onClick={() => {
+              setCtxMenu(null);
+              onTabOpenInSplit?.(menuTab.id);
+            }}
+          >
+            Open to the side
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="wtb-ctx-item"
+            data-testid="wtb-ctx-pop-out"
+            onClick={() => {
+              setCtxMenu(null);
+              onTabPopOut?.(menuTab.id);
+            }}
+          >
+            Pop out into new window
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="wtb-ctx-item wtb-ctx-item--close"
+            data-testid="wtb-ctx-close"
+            onClick={() => {
+              setCtxMenu(null);
+              handleClose(menuTab.id);
+            }}
+          >
+            Close tab
+          </button>
+          <div className="wtb-ctx-hint">Drag tabs to reorder · right-click for this menu</div>
+        </div>
+      )}
 
       {/* SKY-5704: announce reorders (drag or keyboard) to assistive tech. */}
       <div className="sr-only" role="status" aria-live="polite">

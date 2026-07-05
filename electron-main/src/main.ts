@@ -1,7 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
-import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
+import { loadWindowState, saveWindowState, isBoundsOnScreen, readTransparentWindowPreference } from './windowState.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { isAutoUpdateEnabled } from './updater.js';
 import { createRequire } from 'node:module';
@@ -492,6 +492,9 @@ process.env.MYTHOS_IS_PACKAGED = app.isPackaged ? '1' : '0';
 
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
+// Beta 3 M3 (Liquid Neon): whether the main window was created transparent
+// (wp:'none' at launch). Queried by the renderer via WINDOW_IS_TRANSPARENT.
+let mainWindowTransparent = false;
 
 // Maps requestId → AbortController for in-flight streaming agent calls.
 // Populated on invoke, cleaned up in finally block or on cancel.
@@ -5815,6 +5818,10 @@ const handlers: IpcHandlers = {
   },
   [IPC_CHANNELS.WINDOW_CLOSE]: () => { mainWindow?.close(); },
 
+  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
+  [IPC_CHANNELS.WINDOW_IS_TRANSPARENT]: () => mainWindowTransparent,
+  [IPC_CHANNELS.APP_RELAUNCH]: () => { app.relaunch(); app.quit(); },
+
 };
 
 // ─── Panel popout windows (SKY-1686) ───
@@ -6057,11 +6064,17 @@ function createWindow() {
     ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
     : { width: 1200, height: 800 };
 
+  // Beta 3 M3 (Liquid Neon): `No background` wallpaper -> transparent window.
+  // Transparency can only be set at BrowserWindow creation, so the preference
+  // is read from app-settings.json here; changing it later relaunches the app.
+  mainWindowTransparent = readTransparentWindowPreference(app.getPath('userData'));
+
   mainWindow = new BrowserWindow({
     ...restoreBounds,
     title: 'Mythos Writer',
     // SKY-3033: Custom Liquid Neon window chrome — renderer provides title bar + controls.
     frame: false,
+    ...(mainWindowTransparent ? { transparent: true, backgroundColor: '#00000000' } : {}),
     webPreferences: secureWebPreferences({ preloadPath }),
   });
 

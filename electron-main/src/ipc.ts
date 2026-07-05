@@ -534,6 +534,12 @@ export const IPC_CHANNELS = {
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
+
+  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
+  // Transparency is fixed at BrowserWindow creation; the renderer queries the
+  // actual state and offers an app relaunch when the setting disagrees.
+  WINDOW_IS_TRANSPARENT: 'window:is-transparent',
+  APP_RELAUNCH: 'app:relaunch',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -923,6 +929,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WINDOW_MINIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_MAXIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_CLOSE]: (payload: never) => void;
+
+  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
+  [IPC_CHANNELS.WINDOW_IS_TRANSPARENT]: (payload: never) => boolean;
+  [IPC_CHANNELS.APP_RELAUNCH]: (payload: never) => void;
 }
 
 // ─── Payload / Response types ───
@@ -1949,6 +1959,8 @@ export interface AppSettings {
   };
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
+  /** Beta 3 Liquid Neon v2 slot engine — renderer-owned shape; main persists it opaquely. */
+  liquidNeonV2?: Record<string, unknown>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-130: last-opened scene for cross-restart restore. */

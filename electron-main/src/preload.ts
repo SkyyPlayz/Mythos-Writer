@@ -942,6 +942,10 @@ contextBridge.exposeInMainWorld('api', {
   windowMaximize: () => ipcRenderer.invoke('window:maximize', undefined),
   windowClose: () => ipcRenderer.invoke('window:close', undefined),
 
+  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
+  windowIsTransparent: () => ipcRenderer.invoke('window:is-transparent', undefined),
+  appRelaunch: () => ipcRenderer.invoke('app:relaunch', undefined),
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',

@@ -1,6 +1,7 @@
 /**
  * SKY-3097 (v0.3): WorkspaceTabBar unit tests.
  * Covers: tab selection, tab close, reorder, keyboard navigation, empty state.
+ * Beta 3 M6: right-click context menu + agents status chip.
  */
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -382,5 +383,128 @@ describe('WorkspaceTabBar + button', () => {
     render(<WorkspaceTabBar {...defaultProps({ onNewTab })} />);
     fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
     expect(onNewTab).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Tab context menu (Beta 3 M6) ──────────────────────────────────────────────
+
+describe('WorkspaceTabBar context menu (M6)', () => {
+  it('right-click opens the menu with the three prototype items and the hint', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    const menu = screen.getByTestId('wtb-tab-context-menu');
+    expect(menu).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open to the side' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Pop out into new window' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Close tab' })).toBeTruthy();
+    expect(menu).toHaveTextContent('Drag tabs to reorder · right-click for this menu');
+  });
+
+  it('right-click does not select the tab', () => {
+    const onTabSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabSelect })} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    expect(onTabSelect).not.toHaveBeenCalled();
+  });
+
+  it('right-clicking the same tab again toggles the menu closed', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const tab = screen.getByRole('tab', { name: 'Chapter Two' });
+    fireEvent.contextMenu(tab);
+    fireEvent.contextMenu(tab);
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+
+  it('right-clicking another tab moves the menu to that tab', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter One' }));
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    expect(screen.getByRole('menu', { name: 'Chapter Two tab actions' })).toBeTruthy();
+  });
+
+  it('"Open to the side" routes to onTabOpenInSplit and closes the menu', () => {
+    const onTabOpenInSplit = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabOpenInSplit })} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open to the side' }));
+    expect(onTabOpenInSplit).toHaveBeenCalledWith('tab-b');
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+
+  it('"Pop out into new window" routes to onTabPopOut and closes the menu', () => {
+    const onTabPopOut = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabPopOut })} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pop out into new window' }));
+    expect(onTabPopOut).toHaveBeenCalledWith('tab-b');
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+
+  it('"Pop out into new window" without onTabPopOut still closes the menu', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pop out into new window' }));
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+
+  it('"Close tab" on the active tab selects the left neighbor before closing (AC-LN-06)', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-b', onTabClose, onTabSelect })}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close tab' }));
+    expect(onTabSelect).toHaveBeenCalledWith('tab-a');
+    expect(onTabClose).toHaveBeenCalledWith('tab-b');
+  });
+
+  it('"Close tab" on a non-active tab closes without changing selection', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabClose, onTabSelect })} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter Two' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close tab' }));
+    expect(onTabClose).toHaveBeenCalledWith('tab-b');
+    expect(onTabSelect).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes the menu', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter One' }));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+
+  it('mousedown outside the menu closes it', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter One' }));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+});
+
+// ── Agents status chip (Beta 3 M6) ────────────────────────────────────────────
+
+describe('WorkspaceTabBar agents status chip (M6)', () => {
+  it('shows the prototype idle state by default', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const chip = screen.getByTestId('wtb-agents-chip');
+    expect(chip).toHaveTextContent('All agents idle');
+    expect(chip.querySelector('.wtb-agents-dot')).not.toHaveClass('wtb-agents-dot--active');
+  });
+
+  it('shows the working state when agentsActive is true', () => {
+    render(<WorkspaceTabBar {...defaultProps({ agentsActive: true })} />);
+    const chip = screen.getByTestId('wtb-agents-chip');
+    expect(chip).toHaveTextContent('Agents working');
+    expect(chip.querySelector('.wtb-agents-dot')).toHaveClass('wtb-agents-dot--active');
+  });
+
+  it('renders the chip even when there are no tabs', () => {
+    render(<WorkspaceTabBar {...defaultProps({ tabs: [], activeTabId: null })} />);
+    expect(screen.getByTestId('wtb-agents-chip')).toHaveTextContent('All agents idle');
   });
 });

@@ -248,6 +248,9 @@ export interface GlobalRightSidebarProps {
 
   /** Optional content rendered above the panel list (e.g. GettingStartedPanel). */
   headerContent?: ReactNode;
+
+  /** Beta 3 M3 (Liquid Neon): slot-C breathing border overlay (prototype brR). */
+  neonOverlay?: ReactNode;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -267,6 +270,7 @@ export default function GlobalRightSidebar({
   onFloatPanel,
   onDockAsTab,
   headerContent,
+  neonOverlay,
 }: GlobalRightSidebarProps) {
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -488,6 +492,7 @@ export default function GlobalRightSidebar({
       aria-label="Right sidebar"
       data-testid="global-right-sidebar"
     >
+      {neonOverlay}
       <div className="grs-header">
         <div className="grs-header-left" ref={addPanelRef}>
           <button
