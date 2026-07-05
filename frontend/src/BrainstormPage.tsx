@@ -19,6 +19,12 @@ import {
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
 import EntriesQuickAdd from './EntriesQuickAdd';
+import {
+  IDEA_GROUP_DEFS,
+  buildIdeaGroups,
+  buildMapLayout,
+  type BrainstormIdea,
+} from './brainstormCenter';
 import { PROMPT_MAX_CHARS } from './promptConstants';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
@@ -79,6 +85,30 @@ interface DetectedFact {
 
 type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status' | 'custom';
 type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
+
+// M19: Brainstorm center view modes. Chat is the load-bearing default; the
+// Board / Map / Clusters modes visualize the same session ideas (facts).
+type BrainstormMode = 'chat' | 'board' | 'map' | 'clusters';
+
+const MODE_LABELS: Record<BrainstormMode, string> = {
+  chat: 'Chat',
+  board: 'Board',
+  map: 'Map',
+  clusters: 'Clusters',
+};
+
+const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board', 'map', 'clusters'];
+
+/** Avatar initials for character cards (prototype `av: 'MV'`, line 3001). */
+function ideaInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
 
 const SORT_LABELS: Record<SortOrder, string> = {
   newest: 'Newest first',
@@ -293,6 +323,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [filterType, setFilterType] = useState<FilterType>('all');
+  // M19: Brainstorm center mode — chat (default), board, map, or clusters.
+  const [mode, setMode] = useState<BrainstormMode>('chat');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // Custom sort order: persisted list of fact IDs (empty = not yet initialized)
   const [customOrder, setCustomOrder] = useState<string[]>([]);
@@ -362,6 +394,19 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const visibleTypes = useMemo(
     () => (filterType === 'all' ? FACT_TYPE_ORDER : ([filterType] as DetectedFact['type'][])),
     [filterType],
+  );
+
+  // M19: session ideas feeding the Board / Map / Clusters modes — same data
+  // source as the Detected Facts panel, so the chat's vault filing is reused.
+  const ideas: BrainstormIdea[] = useMemo(
+    () => facts.map((f) => ({ id: f.id, title: f.name, body: f.content, type: f.type })),
+    [facts],
+  );
+  const ideaGroups = useMemo(() => buildIdeaGroups(ideas), [ideas]);
+  const mapLayout = useMemo(() => buildMapLayout(ideaGroups), [ideaGroups]);
+  const clusterCount = useMemo(
+    () => ideaGroups.filter((group) => group.ideas.length > 0).length,
+    [ideaGroups],
   );
 
   const toggleGroup = useCallback((type: string) => {
@@ -1178,6 +1223,28 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     announce('New idea — edit details in the drawer.');
   }, [announce]);
 
+  // M19: Board mode add-idea row — prototype bsCols `add` (line 4244): a new
+  // "New idea" card captured to the column, announced with a toast. The card
+  // joins `facts`, so it flows into the draft, the facts panel, and the modes.
+  const addBoardIdea = useCallback((type: DetectedFact['type'], columnTitle: string) => {
+    const nowMs = Date.now();
+    const newFact: DetectedFact = {
+      id: `idea-${nowMs}-${Math.random().toString(36).slice(2)}`,
+      type,
+      name: 'New idea',
+      content: `Captured to ${columnTitle.toLowerCase()} — expand me later.`,
+      savedStatus: 'unsaved',
+      createdAt: nowMs,
+    };
+    setFacts((prev) => [...prev, newFact]);
+    setExpandedFactIds((prev) => {
+      const next = new Set(prev);
+      next.add(newFact.id);
+      return next;
+    });
+    showToast('Idea captured');
+  }, [showToast]);
+
   const handleDeleteFocused = useCallback(() => {
     const focused = document.activeElement;
     if (!focused) return;
@@ -1476,10 +1543,33 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             ← Back
           </button>
         }
-        title="Brainstorm Agent"
-        subtitle="Talk through your story — facts auto-extract to your vault"
+        title={mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'}
+        subtitle={
+          mode === 'chat'
+            ? 'Talk through your story — facts auto-extract to your vault'
+            : 'Capture. Connect. Develop.'
+        }
         actions={
           <>
+            {/* M19: mode segment — chat plus the Board/Map/Clusters visual modes
+                (prototype segMk styling, line 4221). Hidden in compact sidebar
+                contexts where only the chat fits. */}
+            {!compact && (
+              <div className="bsc-seg" role="group" aria-label="Brainstorm view mode">
+                {BRAINSTORM_MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`bsc-seg-btn${mode === m ? ' bsc-seg-btn--active' : ''}`}
+                    aria-pressed={mode === m}
+                    onClick={() => setMode(m)}
+                    data-testid={`bsc-mode-${m}`}
+                  >
+                    {MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="brainstorm-header-preset">
               <PresetSelector
                 activePresetId={presetId}
@@ -1540,6 +1630,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
       )}
 
+      {mode === 'chat' && (
       <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
         <div className="brainstorm-chat-col">
           <div className="brainstorm-messages">
@@ -2173,6 +2264,143 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           )}
         </div>
       </div>
+      )}
+
+      {/* M19: Board / Map / Clusters modes — visualize the session's vault
+          ideas (prototype template lines 1371–1439 + renderVals 4230–4255). */}
+      {mode !== 'chat' && (
+        <div className="bsc-body">
+          {mode === 'board' && (
+            <div className="bsc-board" data-testid="bsc-board">
+              <div className="bsc-board-cols">
+                {IDEA_GROUP_DEFS.map((def) => {
+                  const columnIdeas = ideas.filter((idea) => idea.type === def.key);
+                  return (
+                    <div key={def.key} className="bsc-col" data-testid={`bsc-col-${def.key}`}>
+                      <div className={`bsc-col-head bsc-s${def.color + 1}`}>{def.title}</div>
+                      {columnIdeas.map((idea) => (
+                        <button
+                          key={idea.id}
+                          type="button"
+                          className={`bsc-card bsc-s${def.color + 1}`}
+                          onClick={() => openIdeaDetail(idea.id)}
+                          data-testid={`bsc-card-${idea.id}`}
+                        >
+                          <span className="bsc-card-row">
+                            {def.key === 'character' && (
+                              <span className="bsc-av" aria-hidden="true">
+                                {ideaInitials(idea.title)}
+                              </span>
+                            )}
+                            <span className="bsc-card-main">
+                              <span className="bsc-card-title">{idea.title}</span>
+                              {idea.body && <span className="bsc-card-desc">{idea.body}</span>}
+                            </span>
+                          </span>
+                          <span className="bsc-card-chips">
+                            <span className="bsc-chip">{FACT_TYPE_LABELS[idea.type]}</span>
+                          </span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className={`bsc-add bsc-s${def.color + 1}`}
+                        onClick={() => addBoardIdea(def.key, def.title)}
+                        data-testid={`bsc-add-${def.key}`}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add idea
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {mode === 'map' && (
+            <div className="bsc-map" data-testid="bsc-map" aria-label="Brainstorm mind map">
+              <svg className="bsc-map-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {mapLayout.lines.map((line, i) => (
+                  <line
+                    key={i}
+                    x1={line.x1}
+                    y1={line.y1}
+                    x2={line.x2}
+                    y2={line.y2}
+                    className={`bsc-map-line bsc-s${line.color + 1}`}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+              {mapLayout.hubs.map((hub) => (
+                <div
+                  key={hub.key}
+                  className={`bsc-map-hub bsc-s${hub.color + 1}`}
+                  style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
+                  data-testid={`bsc-hub-${hub.key}`}
+                >
+                  {hub.title}
+                </div>
+              ))}
+              {mapLayout.nodes.map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={`bsc-map-node bsc-s${node.color + 1}`}
+                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                  onClick={() => openIdeaDetail(node.id)}
+                  data-testid={`bsc-map-node-${node.id}`}
+                >
+                  {node.title}
+                </button>
+              ))}
+              <div className="bsc-map-legend">Mind-map of every idea, clustered by collection</div>
+            </div>
+          )}
+
+          {mode === 'clusters' && (
+            <div className="bsc-clusters" data-testid="bsc-clusters">
+              <div className="bsc-cluster-row">
+                {ideaGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className={`bsc-cluster bsc-s${group.color + 1}`}
+                    data-testid={`bsc-cluster-${group.key}`}
+                  >
+                    <div className="bsc-cluster-head">{group.title}</div>
+                    <div className="bsc-cluster-count">{group.ideas.length} ideas</div>
+                    <div className="bsc-cluster-chips">
+                      {group.ideas.map((idea) => (
+                        <button
+                          key={idea.id}
+                          type="button"
+                          className="bsc-cluster-chip"
+                          onClick={() => openIdeaDetail(idea.id)}
+                          data-testid={`bsc-cluster-chip-${idea.id}`}
+                        >
+                          {idea.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bsc-clusters-hint">
+                Clusters group ideas by gravity — the Brainstorm Agent re-clusters as your vault grows.
+              </div>
+            </div>
+          )}
+
+          <div className="bsc-statusbar">
+            <span>{ideas.length} ideas</span>
+            <span className="bsc-statusbar-dot" aria-hidden="true">·</span>
+            <span>{clusterCount} clusters</span>
+          </div>
+        </div>
+      )}
 
       {showPresetEditor && (
         <PresetEditor

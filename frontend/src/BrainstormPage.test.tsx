@@ -1,5 +1,11 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
+import {
+  buildIdeaGroups,
+  buildMapLayout,
+  mapHubPosition,
+  mapNodePosition,
+} from './brainstormCenter';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -2229,5 +2235,192 @@ describe('BrainstormPage — TTS voice controls', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument(),
     );
+  });
+});
+
+// ─── M19: Brainstorm center — mode segment + Board / Map / Clusters ──────────
+
+describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
+  type SeedFact = {
+    id: string;
+    type: 'character' | 'location' | 'item' | 'note';
+    name: string;
+    content: string;
+  };
+
+  /** Seed session ideas through the draft-restore path the page already owns. */
+  function seedFacts(facts: SeedFact[]) {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: facts.map((f, i) => ({ ...f, savedStatus: 'saved', createdAt: 1000 + i })),
+    }));
+  }
+
+  const THREE_IDEAS: SeedFact[] = [
+    { id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress' },
+    { id: 'fact-b', type: 'character', name: 'Kael Thorne', content: 'A guarded smuggler' },
+    { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern' },
+  ];
+
+  it('mode segment switches between chat, board, map, and clusters views', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+
+    // Chat is the default mode — composer and facts panel are live.
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('aria-pressed', 'true');
+
+    // Board: slot-tinted columns of vault ideas, one card per fact.
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/brainstorm prompt/i)).not.toBeInTheDocument();
+    expect(screen.getByText('CHARACTERS')).toBeInTheDocument();
+    expect(screen.getByText('LOOSE IDEAS')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-card-fact-a')).toHaveTextContent('Aria Voss');
+    expect(screen.getByTestId('bsc-card-fact-c')).toHaveTextContent('Dark Cave');
+
+    // Map: one hub per non-empty group, one node per idea, one line per node.
+    fireEvent.click(screen.getByTestId('bsc-mode-map'));
+    const map = screen.getByTestId('bsc-map');
+    expect(screen.getByTestId('bsc-hub-character')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-hub-location')).toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-hub-item')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bsc-map-node-fact-b')).toHaveTextContent('Kael Thorne');
+    expect(map.querySelectorAll('line')).toHaveLength(3);
+
+    // Clusters: gravity bubbles per group.
+    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
+    expect(screen.getByTestId('bsc-clusters')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-cluster-character')).toBeInTheDocument();
+
+    // Back to chat — the composer returns.
+    fireEvent.click(screen.getByTestId('bsc-mode-chat'));
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
+  });
+
+  it('map nodes are positioned by the exact prototype ring math', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-map'));
+
+    // First node: i=0 of 3 → ang 0, rad 26 → (76%, 48%).
+    const first = screen.getByTestId('bsc-map-node-fact-a');
+    expect(first.style.left).toBe('76%');
+    expect(first.style.top).toBe('48%');
+  });
+
+  it('ring math: hub positions for i=0..2 of 4 (13% × 10% ellipse around 50,48)', () => {
+    const h0 = mapHubPosition(0, 4); // ang 0
+    expect(h0.x).toBeCloseTo(63, 10);
+    expect(h0.y).toBeCloseTo(48, 10);
+    const h1 = mapHubPosition(1, 4); // ang π/2
+    expect(h1.x).toBeCloseTo(50, 10);
+    expect(h1.y).toBeCloseTo(58, 10);
+    const h2 = mapHubPosition(2, 4); // ang π
+    expect(h2.x).toBeCloseTo(37, 10);
+    expect(h2.y).toBeCloseTo(48, 10);
+  });
+
+  it('ring math: node positions for i=0..2 of 8 (rad 26 + (i%3)·11, y squashed ×0.72)', () => {
+    const n0 = mapNodePosition(0, 8); // ang 0, rad 26
+    expect(n0.x).toBeCloseTo(76, 10);
+    expect(n0.y).toBeCloseTo(48, 10);
+    const n1 = mapNodePosition(1, 8); // ang π/4, rad 37
+    expect(n1.x).toBeCloseTo(76.16295090390226, 5);
+    expect(n1.y).toBeCloseTo(66.83732465080963, 5);
+    const n2 = mapNodePosition(2, 8); // ang π/2, rad 48
+    expect(n2.x).toBeCloseTo(50, 10);
+    expect(n2.y).toBeCloseTo(82.56, 5);
+  });
+
+  it('buildMapLayout links every node back to its hub coordinates', () => {
+    const groups = buildIdeaGroups([
+      { id: 'i1', title: 'One', body: '', type: 'character' },
+      { id: 'i2', title: 'Two', body: '', type: 'note' },
+    ]);
+    const { hubs, nodes, lines } = buildMapLayout(groups);
+    expect(hubs).toHaveLength(2);
+    expect(nodes).toHaveLength(2);
+    expect(lines).toHaveLength(2);
+    for (const [i, line] of lines.entries()) {
+      expect(line.x1).toBe(nodes[i].x);
+      expect(line.y1).toBe(nodes[i].y);
+      expect(line.x2).toBe(hubs[nodes[i].hub].x);
+      expect(line.y2).toBe(hubs[nodes[i].hub].y);
+    }
+  });
+
+  it('clusters mode renders gravity bubbles with one chip per idea', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
+
+    const charCluster = within(screen.getByTestId('bsc-cluster-character'));
+    expect(charCluster.getByText('CHARACTERS')).toBeInTheDocument();
+    expect(charCluster.getByText('2 ideas')).toBeInTheDocument();
+    expect(charCluster.getByRole('button', { name: 'Aria Voss' })).toBeInTheDocument();
+    expect(charCluster.getByRole('button', { name: 'Kael Thorne' })).toBeInTheDocument();
+
+    const locCluster = within(screen.getByTestId('bsc-cluster-location'));
+    expect(locCluster.getByText('1 ideas')).toBeInTheDocument();
+    expect(locCluster.getByRole('button', { name: 'Dark Cave' })).toBeInTheDocument();
+
+    // Empty groups are dropped from the cluster view.
+    expect(screen.queryByTestId('bsc-cluster-item')).not.toBeInTheDocument();
+
+    // Status bar reflects real counts.
+    expect(screen.getByText('3 ideas')).toBeInTheDocument();
+    expect(screen.getByText('2 clusters')).toBeInTheDocument();
+  });
+
+  it('degrades gracefully to a single group when the session has no ideas', () => {
+    expect(buildIdeaGroups([])).toEqual([
+      { key: 'note', title: 'LOOSE IDEAS', color: 3, ideas: [] },
+    ]);
+
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
+    const fallbackCluster = screen.getByTestId('bsc-cluster-note');
+    expect(within(fallbackCluster).getByText('LOOSE IDEAS')).toBeInTheDocument();
+    expect(within(fallbackCluster).getByText('0 ideas')).toBeInTheDocument();
+  });
+
+  it('board add-idea row captures a new idea into the column with a toast', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.click(screen.getByTestId('bsc-add-note'));
+
+    const noteCol = within(screen.getByTestId('bsc-col-note'));
+    expect(noteCol.getByText('New idea')).toBeInTheDocument();
+    expect(noteCol.getByText('Captured to loose ideas — expand me later.')).toBeInTheDocument();
+    expect(screen.getByText('Idea captured')).toBeInTheDocument();
+  });
+
+  it('chat still renders and sends after a board round-trip', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    fireEvent.click(screen.getByTestId('bsc-mode-chat'));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Still chatting after mode switch' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await simulateStream(['Back in the chat.']);
+
+    await waitFor(() =>
+      expect(screen.getByText('Back in the chat.')).toBeInTheDocument(),
+    );
+    expect(mockStreamStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('mode segment is hidden in compact sidebar contexts', () => {
+    render(<BrainstormPage onClose={() => {}} compact />);
+    expect(screen.queryByTestId('bsc-mode-board')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
   });
 });
