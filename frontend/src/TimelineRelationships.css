@@ -1,0 +1,116 @@
+/* Beta 3 M20 — Relationships view (prototype template 1507–1526). */
+
+.trl-root {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.trl-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.trl-name-col {
+  width: 110px;
+  flex: none;
+}
+
+.trl-name {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trl-track {
+  flex: 1;
+  display: flex;
+  position: relative;
+  height: 26px;
+  align-items: center;
+}
+
+.trl-track--head {
+  height: auto;
+}
+
+.trl-event-head {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  color: #8e9db8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 3px;
+}
+
+.trl-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+}
+
+.trl-cell {
+  flex: 1;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+
+.trl-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.trl-caption {
+  font-size: 10px;
+  color: #7686a2;
+}
+
+.trl-no-lines {
+  font-size: 11px;
+  color: #8e9db8;
+  text-align: center;
+  padding: 32px 12px;
+  margin: 0;
+}
+
+/* ── Empty state ── */
+
+.trl-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+}
+
+.trl-empty h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text, #e6ecf9);
+  margin: 0;
+}
+
+.trl-empty p {
+  font-size: 0.8rem;
+  color: #8e9db8;
+  margin: 0;
+}
