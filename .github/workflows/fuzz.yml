@@ -9,9 +9,9 @@ on:
 
 jobs:
   property-tests-and-fuzz:
-    # GitHub-hosted runners currently fail before job steps materialize on this account.
-    # Keep the required Fuzz check executable on the same self-hosted runner as CI.
-    runs-on: self-hosted
+    # Hosted runner (repo is public — hosted minutes are free and much faster
+    # than the local runner).
+    runs-on: ubuntu-latest
     # Hard cap: property tests + 2×60s fuzz + setup should finish in well under 15 min.
     # Without this, a hung Jazzer process keeps the runner busy=true after disconnect,
     # producing ghost-job runners that block all CI (SKY-2288).
