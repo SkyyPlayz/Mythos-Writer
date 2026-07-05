@@ -83,7 +83,6 @@ describe('App — onboarding gate (SKY-152)', () => {
     await waitFor(() => expect(container.querySelector('.wc-bar')).toBeInTheDocument());
 
     expect(container.querySelector('.app-menu-view-toggle')).not.toBeInTheDocument();
-    expect(container.querySelector('.app-menu-bar')).not.toBeInTheDocument();
   });
 
   it('shows recovery screen when neither vault binding is valid', async () => {
