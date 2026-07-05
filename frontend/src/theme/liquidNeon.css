@@ -43,7 +43,7 @@
   position: absolute;
   inset: 0;
   background: #04050b;
-  opacity: var(--scrim, 0.1);
+  opacity: var(--ln-scrim, 0.1);
 }
 
 .ln-bg-vignette {
@@ -123,4 +123,9 @@ html.ln-transparent body,
 html.ln-transparent #root,
 html.ln-transparent .desktop-shell {
   background: transparent !important;
+}
+
+/* M5: notification popover rows (prototype 100–108) */
+.ln-notif-row:hover {
+  background: rgba(255, 255, 255, .07);
 }

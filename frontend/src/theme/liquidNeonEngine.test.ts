@@ -66,7 +66,7 @@ describe('token computation at prototype defaults (Neon Classic, intensity 50 â†
     expect(t['--bw']).toBe('1px');
     expect(t['--gr']).toBe('60px');
     expect(t['--blur']).toBe('1px');
-    expect(t['--scrim']).toBe('0.1');
+    expect(t['--ln-scrim']).toBe('0.1');
   });
 
   it('classic + match wallpaper uses the cosmic asset, cover-sized', () => {

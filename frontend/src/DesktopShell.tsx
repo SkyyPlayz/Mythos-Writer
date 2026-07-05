@@ -10,6 +10,10 @@ import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liqu
 import BackgroundStack from './theme/BackgroundStack';
 import FrameRing from './theme/FrameRing';
 import BorderOverlay from './theme/BorderOverlay';
+import { showLnToast } from './theme/lnToast';
+import NotificationCenter from './NotificationCenter';
+import { pushNotification } from './notificationStore';
+import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
@@ -3486,6 +3490,83 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // all-disabled config falls back to the defaults so the rail never strands
   // the user.
   const savedNavConfig = appSettings?.navConfig;
+  // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
+  // Ctrl-K panel lists these above the vault search hits.
+  const paletteCommands = useMemo(() => [
+    { t: 'Toggle focus mode', sub: 'Hide chrome · just the page', run: () => toggleDistractionFree() },
+    { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
+    { t: 'Export…', sub: 'DOCX · EPUB · Markdown', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
+    { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
+    { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
+    { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [selectedStory, toggleDistractionFree]);
+
+  // Beta 3 M5: feed the title-bar bell from real agent activity.
+  const prevProposedRef = useRef(0);
+  useEffect(() => {
+    if (proposedCount > prevProposedRef.current) {
+      pushNotification({
+        kind: 'sugg',
+        title: `New suggestion ready${proposedCount > 1 ? ` (${proposedCount} pending)` : ''}`,
+        detail: 'Writing Assistant — open Suggestion Review',
+        onOpen: () => handleGrsVisibilityChange(true),
+      });
+    }
+    prevProposedRef.current = proposedCount;
+  }, [proposedCount, handleGrsVisibilityChange]);
+
+  const prevContinuityRef = useRef(0);
+  useEffect(() => {
+    if (continuityCount > prevContinuityRef.current) {
+      pushNotification({
+        kind: 'archive',
+        title: `Archive Agent flagged ${continuityCount} continuity issue${continuityCount === 1 ? '' : 's'}`,
+        detail: 'Click to review in the Continuity panel',
+        onOpen: () => handleGrsVisibilityChange(true),
+      });
+    }
+    prevContinuityRef.current = continuityCount;
+  }, [continuityCount, handleGrsVisibilityChange]);
+
+  // Beta 3 M5: prototype title-bar menus (menuDefs 4673-4678) mapped to the
+  // app's real handlers; prototype-only mocks keep their toast copy.
+  const titleBarMenus: WindowChromeMenu[] = useMemo(() => [
+    { label: 'File', items: [
+      { label: 'New story', run: () => { void window.api?.newStory?.(); } },
+      { label: 'New note…', run: () => handleNavSectionChange('notes') },
+      { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
+      { label: 'Export…', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
+      { label: 'Prompt history…', run: () => setHistoryOpen(true) },
+    ] },
+    { label: 'Edit', items: [
+      { label: 'Undo', run: () => { document.execCommand('undo'); } },
+      { label: 'Redo', run: () => { document.execCommand('redo'); } },
+      { label: 'Find everywhere…', run: () => setGlobalSearchOpen(true) },
+    ] },
+    { label: 'View', items: [
+      { label: 'Toggle right panel', run: () => handleGrsVisibilityChange(!(grsVisible ?? true)) },
+      { label: 'Focus mode', run: () => toggleDistractionFree() },
+      { label: 'Slim rail', run: () => persistNavRailCollapsed(!navRailCollapsed) },
+      { label: topBarHidden ? 'Show top bar' : 'Hide top bar', run: () => toggleTopBar() },
+      { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
+    ] },
+    { label: 'Insert', items: [
+      { label: 'Comment', run: () => showLnToast('Select text in the manuscript, then hit Comment') },
+      { label: 'Wiki link [[…]]', run: () => showLnToast('Type [[ in any note to link — Obsidian style') },
+    ] },
+    { label: 'Tools', items: [
+      { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
+      { label: 'Rebuild search index', run: () => showLnToast('Search index rebuilds automatically as you write') },
+    ] },
+    { label: 'Help', items: [
+      { label: 'Welcome tour', run: () => setTourOpen(true) },
+      { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
+      { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
+    ] },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar]);
+
   const navItems = useMemo<NavRailItem[]>(() => {
     const savedItems = savedNavConfig?.items ?? [];
     const merged = [
@@ -3574,6 +3655,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     : 0;
   const focusReadingMinutes = Math.max(1, Math.round(focusWordCount / 238));
 
+
   const shellClasses = [
     'desktop-shell',
     `writing-mode-${writingMode}`,
@@ -3608,22 +3690,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           chrome (prototype 2667–2677, z-index 56). */}
       <FrameRing settings={appSettings?.liquidNeonV2} />
       <UpdateBanner />
-      {showTitleBar && <WindowChrome />}
+      {/* Beta 3 M5: the prototype's single 44px title bar replaces the old
+          WindowChrome + AppMenuBar rows (menus, Ctrl-K pill, bell, account). */}
       {showTitleBar && (
-        <AppMenuBar
+        <WindowChrome
+          menus={titleBarMenus}
+          onOpenPalette={() => setGlobalSearchOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenHistory={() => setHistoryOpen(true)}
-          onSearchNavigate={handleSearchNavigate}
-          selectedStoryId={selectedStory?.id ?? null}
+          onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
           onProjectSwitched={handleProjectSwitched}
-          onOpenKeyboardShortcuts={() => setShortcutsOpen(true)}
-          onToggleDistractionFree={toggleDistractionFree}
-          onToggleTopBar={toggleTopBar}
-          topBarHidden={topBarHidden}
-          onOpenTour={() => setTourOpen(true)}
-          onOpenExport={(scope: ExportScope) => setExportScope(scope)}
-          requestText={requestText}
+          onNewStory={() => { void window.api?.newStory?.(); }}
+          onOpenVault={() => { void window.api?.openVault?.(); }}
+          onReplayOnboarding={() => {
+            window.api?.onboardingReset?.().then(() => window.location.reload()).catch(() => {});
+          }}
+          notificationCenter={<NotificationCenter />}
         />
       )}
       {/* SKY-3098: AppNavRail + main content column */}
@@ -4504,6 +4586,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       <GlobalSearchPanel
         open={globalSearchOpen}
+        commands={paletteCommands}
         defaultScope={tabShell.activeTab === 'story' ? 'story' : 'notes'}
         onNavigate={(result) => {
           handleSearchNavigate(result);
