@@ -9,7 +9,7 @@
   border-top: 1px solid rgba(255, 255, 255, .05);
   flex-shrink: 0;
   font-size: 11px;
-  color: #8195b2;
+  color: rgb(129, 149, 178); /* prototype #8195b2 — ratchet-safe */
   user-select: none;
   position: relative;
   z-index: 10;
