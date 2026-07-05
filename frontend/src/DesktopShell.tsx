@@ -7,6 +7,7 @@ import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import { applyLiquidNeonV2Tokens } from './theme/liquidNeonEngine';
+import BackgroundStack from './theme/BackgroundStack';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
@@ -3571,6 +3572,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
     <div className={shellClasses}>
+      {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
+          behind every glass panel (prototype HTML 45–54). */}
+      <BackgroundStack settings={appSettings?.liquidNeonV2} />
       <UpdateBanner />
       {showTitleBar && <WindowChrome />}
       {showTitleBar && (
