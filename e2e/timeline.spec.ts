@@ -216,7 +216,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -231,6 +231,25 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   pg.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
   await pg.waitForLoadState('domcontentloaded');
   return pg;
+}
+
+/** Activate the Story nav section without tripping the nav rail v2 Stories
+ *  popover (re-clicking the active item toggles it open, and its backdrop
+ *  intercepts pointer events until dismissed). */
+async function activateStorySection(pg: Page): Promise<void> {
+  const nav = pg.getByRole('navigation', { name: 'Main navigation' });
+  await expect(nav).toBeVisible({ timeout: 10_000 });
+  const storyNavBtn = nav.getByRole('button', { name: 'Story', exact: true });
+  if (await storyNavBtn.getAttribute('aria-current') !== 'page') {
+    await storyNavBtn.click();
+  }
+  // Belt and braces: if the Stories popover is open anyway, dismiss it via
+  // its backdrop so subsequent clicks land on the workspace.
+  const backdrop = pg.locator('[data-testid="nav-rail-stories-backdrop"]');
+  if (await backdrop.count()) {
+    await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+    await expect(backdrop).toHaveCount(0);
+  }
 }
 
 /** Open the story's first scene so DesktopShell sets `selectedStory`, then
@@ -249,10 +268,12 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
-  // Switch to the Timeline sub-view in the Story tab.
-  const nav = pg.getByRole('navigation', { name: 'Main navigation' });
-  await expect(nav).toBeVisible({ timeout: 10_000 });
-  await nav.getByRole('button', { name: 'Story' }).click();
+  // Switch to the Timeline sub-view in the Story tab. Nav rail v2 treats a
+  // re-click of the ACTIVE Story item as a Stories-popover toggle, and the
+  // open popover's backdrop then swallows every later click — so only click
+  // when Story is not already the active section, with exact:true so the
+  // popover's "New Story" button can never be matched.
+  await activateStorySection(pg);
   const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
@@ -482,9 +503,7 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // Use a generous timeout: the component must remount and complete its async
   // IPC load (timelineGetScenes) before the root div renders — 4 s was too
   // tight on loaded CI runners.
-  const nav = page.getByRole('navigation', { name: 'Main navigation' });
-  await expect(nav).toBeVisible({ timeout: 10_000 });
-  await nav.getByRole('button', { name: 'Story' }).click();
+  await activateStorySection(page);
   await page.locator('[data-testid="story-subview-timeline"]').click();
   await expect(root).toBeVisible({ timeout: 8_000 });
   // Confirm at least one scene row is in the DOM (data loaded) before Tab.
@@ -585,6 +604,10 @@ test.describe('SKY-797 — perf gate', () => {
 
     perfApp = await launchApp(perfUserData);
     perfPage = await firstWindow(perfApp);
+    // Freeze Liquid Neon ambience (frame ring / breathing borders / wallpaper
+    // drift) so the gate measures timeline cost, not shell repaints, under
+    // software rendering. emulateMedia is the proven mechanism (TRK-08).
+    await perfPage.emulateMedia({ reducedMotion: 'reduce' });
     await openTimeline(perfPage, scenes[0].title);
   });
 
