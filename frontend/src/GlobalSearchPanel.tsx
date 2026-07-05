@@ -14,6 +14,13 @@ interface SearchResultItem {
   rank: number;
 }
 
+/** Beta 3 M5: command palette entries (prototype cmdIndex 3900–3913). */
+export interface PaletteCommand {
+  t: string;
+  sub: string;
+  run: () => void;
+}
+
 interface Props {
   open: boolean;
   onNavigate: (result: SearchResultItem) => void;
@@ -21,6 +28,8 @@ interface Props {
   initialTagFilter?: string;
   /** Context-aware initial scope. Defaults to 'both'. */
   defaultScope?: SearchScope;
+  /** Beta 3 M5: commands shown as the palette's first group, filtered by query, cap 5. */
+  commands?: PaletteCommand[];
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -46,7 +55,7 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both' }: Props) {
+export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both', commands }: Props) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -63,6 +72,15 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     const entities = results.filter((r) => r.resultType === 'entity');
     return { sceneResults: scenes, entityResults: entities, flatResults: [...scenes, ...entities] };
   }, [results]);
+
+  // Beta 3 M5: commands filter like the prototype (4450–4452) — substring on
+  // title or sub, capped at 5, shown even before typing.
+  const cmdHits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (commands ?? [])
+      .filter((c) => !q || c.t.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [commands, query]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -142,17 +160,23 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setActiveIdx((i) => Math.min(i + 1, flatResults.length - 1));
+        setActiveIdx((i) => Math.min(i + 1, cmdHits.length + flatResults.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setActiveIdx((i) => Math.max(i - 1, -1));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const target = activeIdx >= 0 ? flatResults[activeIdx] : flatResults[0];
-        if (target) handleSelect(target);
+        const idx = activeIdx >= 0 ? activeIdx : 0;
+        if (idx < cmdHits.length) {
+          const cmd = cmdHits[idx];
+          if (cmd) { onClose(); cmd.run(); }
+        } else {
+          const target = flatResults[idx - cmdHits.length];
+          if (target) handleSelect(target);
+        }
       }
     },
-    [flatResults, activeIdx, handleSelect],
+    [flatResults, cmdHits, activeIdx, handleSelect, onClose],
   );
 
   useEffect(() => {
@@ -168,6 +192,25 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
   if (!open) return null;
 
   const hasBoth = sceneResults.length > 0 && entityResults.length > 0;
+
+  const renderCommandItem = (cmd: PaletteCommand, flatIdx: number) => (
+    <button
+      key={cmd.t}
+      data-idx={flatIdx}
+      className={`gsp-result-item${flatIdx === activeIdx ? ' active' : ''}`}
+      role="option"
+      aria-selected={flatIdx === activeIdx}
+      onMouseDown={(e) => { e.preventDefault(); onClose(); cmd.run(); }}
+      onMouseEnter={() => setActiveIdx(flatIdx)}
+      data-testid={`gsp-command-${flatIdx}`}
+    >
+      <span className="gsp-result-icon" aria-hidden="true">⌘</span>
+      <div className="gsp-result-body">
+        <span className="gsp-result-title">{cmd.t}</span>
+      </div>
+      <span className="gsp-result-type-chip">{cmd.sub}</span>
+    </button>
+  );
 
   const renderResultItem = (result: SearchResultItem, flatIdx: number) => (
     <button
@@ -282,27 +325,34 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
             </div>
           )}
 
+          {cmdHits.length > 0 && (
+            <>
+              <div className="gsp-section-header" aria-hidden="true">Commands</div>
+              {cmdHits.map((cmd, i) => renderCommandItem(cmd, i))}
+            </>
+          )}
+
           {!loading && sceneResults.length > 0 && (
             <>
-              {hasBoth && (
+              {(hasBoth || cmdHits.length > 0) && (
                 <div className="gsp-section-header" aria-hidden="true">Scenes</div>
               )}
-              {sceneResults.map((result, i) => renderResultItem(result, i))}
+              {sceneResults.map((result, i) => renderResultItem(result, cmdHits.length + i))}
             </>
           )}
 
           {!loading && entityResults.length > 0 && (
             <>
-              {hasBoth && (
+              {(hasBoth || cmdHits.length > 0) && (
                 <div className="gsp-section-header" aria-hidden="true">Entities</div>
               )}
               {entityResults.map((result, i) =>
-                renderResultItem(result, sceneResults.length + i)
+                renderResultItem(result, cmdHits.length + sceneResults.length + i)
               )}
             </>
           )}
 
-          {!loading && !query && !activeTagFilters.length && (
+          {!loading && !query && !activeTagFilters.length && cmdHits.length === 0 && (
             <div className="gsp-state-msg gsp-hint">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ opacity: 0.5 }}>
                 <circle cx="11" cy="11" r="8"/>

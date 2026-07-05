@@ -1,14 +1,34 @@
-/* SKY-3097 (v0.3): WorkspaceTabBar - Obsidian-style draggable/closeable tabs */
-/* SKY-5704 (GH#643 Tabs-1): scroll-overflow strip + drag affordance polish */
+/* =========================================================================
+ * WorkspaceTabBar — Liquid Neon workspace tab strip (Beta 3 M6)
+ * Prototype HTML 136–165 (strip, tabs, context menu, + button, agents chip)
+ * + renderVals() tab style strings ~4013–4044. Values ported exactly.
+ * SKY-3097/SKY-5704 behavior preserved: drag/reorder, keyboard, overflow.
+ * ========================================================================= */
 
+/* Strip (prototype 137) */
 .wtb-root {
   display: flex;
-  align-items: stretch;
-  gap: 0;
-  -webkit-app-region: no-drag;
+  align-items: flex-end;
+  gap: 5px;
+  height: 40px;
+  padding: 0 12px;
+  flex: none;
   position: relative;
-  height: 100%;
-  overflow: hidden;
+  z-index: 55;
+  background: rgba(8, 10, 18, .35);
+  backdrop-filter: blur(var(--blur, 18px));
+  -webkit-backdrop-filter: blur(var(--blur, 18px));
+  -webkit-app-region: no-drag;
+  /* No overflow clip — the context menu (top: ~43px) hangs below the strip
+     exactly like the prototype (strip z-55, menu z-48 inside it). */
+}
+
+/* DesktopShell.css pins `.desktop-shell__main-col > .wtb-root` to the old
+   36px row. Tripled class out-specifies that rule (0,3,0 > 0,2,0) so the
+   prototype's 40px wins without editing DesktopShell.css. */
+.wtb-root.wtb-root.wtb-root {
+  height: 40px;
+  flex-shrink: 0;
 }
 
 /* SKY-5704: the tab strip scrolls independently so the pinned + button
@@ -16,9 +36,11 @@
    more tabs than fit in the available width. */
 .wtb-tabs-scroll {
   display: flex;
-  align-items: stretch;
+  align-items: flex-end;
+  gap: 5px;
   flex: 0 1 auto;
   min-width: 0;
+  height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -49,7 +71,7 @@
 .wtb-tab-slot {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-shrink: 0;
 }
 
@@ -63,37 +85,42 @@
   box-shadow: inset 2px 0 6px color-mix(in srgb, var(--neon-cyan) 20%, transparent);
 }
 
+/* Tab (prototype tabBase 4013 + inactive style string 4042; the tab button
+   keeps the prototype's 0 8px right inset plus 24px reserved for the sibling
+   close button — 16px box + 8px gap — because close can't nest in a button). */
 .wtb-tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 26px 0 10px;
-  height: 100%;
-  min-width: 80px;
-  max-width: 180px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 500;
+  gap: 8px;
+  height: 29px;
+  padding: 0 32px 0 12px;
+  border-radius: 10px 10px 0 0;
+  font-size: 12px;
   cursor: pointer;
+  max-width: 210px;
+  background: rgba(255, 255, 255, .03);
+  color: rgb(148, 163, 189); /* #94a3bd */
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-bottom: none;
   white-space: nowrap;
-  transition: background 100ms, color 100ms, border-color 100ms;
   -webkit-app-region: no-drag;
 }
 
+/* Inactive hover (prototype stH 4043) */
 .wtb-tab:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, .07);
+  color: rgb(219, 228, 245); /* #dbe4f5 */
 }
 
-/* AC-LN-10: active tab - --accent bottom border + --bg-surface background */
-.wtb-tab--active {
-  background: var(--bg-surface);
-  border-bottom-color: var(--accent);
-  color: var(--text-primary);
+/* Active tab (prototype 4040–4041): glass fill + --b1 neon border + up-glow */
+.wtb-tab--active,
+.wtb-tab--active:hover {
+  height: 31px;
+  background: var(--glass2, rgba(21, 26, 45, .88));
+  color: rgb(238, 242, 251); /* #eef2fb */
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  border-bottom: none;
+  box-shadow: 0 -8px 22px -10px var(--g1, rgba(0, 240, 255, .4));
 }
 
 .wtb-tab:focus-visible {
@@ -102,81 +129,176 @@
   z-index: 1;
 }
 
-.wtb-tab-icon {
-  font-size: 0.85rem;
-  line-height: 1;
-  flex-shrink: 0;
+/* Status dot (prototype 147; dot colors 4039) */
+.wtb-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(142, 157, 184, .5);
+  flex: none;
+  box-shadow: 0 0 6px rgba(142, 157, 184, .5);
 }
 
+.wtb-tab--active .wtb-tab-dot {
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 6px var(--n1, #00f0ff);
+}
+
+/* Label (prototype 148) */
 .wtb-tab-label {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 150px;
 }
 
+/* Close (prototype 150–152) — absolutely positioned sibling inside the slot */
 .wtb-tab-close {
   position: absolute;
-  right: 4px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  color: rgb(118, 134, 162); /* #7686a2 */
+  flex: none;
   background: none;
   border: none;
-  border-radius: 3px;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  line-height: 1;
-  padding: 1px 3px;
+  padding: 0;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms, color 120ms, background 120ms;
-  flex-shrink: 0;
-}
-
-.wtb-tab-slot:hover .wtb-tab-close,
-.wtb-tab-slot--active .wtb-tab-close {
-  opacity: 1;
 }
 
 .wtb-tab-close:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, .14);
+  color: rgb(255, 255, 255); /* #fff */
 }
 
 .wtb-tab-close:focus-visible {
   outline: 2px solid var(--neon-cyan);
   outline-offset: 1px;
-  opacity: 1;
 }
 
-/* SKY-5704: with no tabs open, let the (now-empty) scroll strip grow so the
-   + button keeps its prior right-aligned resting position. */
-.wtb-tabs-scroll--empty {
-  flex: 1;
-}
-
+/* + button (prototype 157–159); flex-end root + margin-bottom seat it 5px up */
 .wtb-new-tab-btn {
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1;
-  padding: 1px 6px;
-  margin: auto 4px;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 5px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(142, 157, 184); /* #8e9db8 */
   cursor: pointer;
-  flex-shrink: 0;
-  align-self: center;
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
   -webkit-app-region: no-drag;
 }
 
 .wtb-new-tab-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, .08);
+  color: rgb(255, 255, 255); /* #fff */
 }
 
 .wtb-new-tab-btn:focus-visible {
   outline: 2px solid var(--neon-cyan);
   outline-offset: 2px;
+}
+
+/* Prototype 160: spacer pushes the agents chip to the strip's right end.
+   (The old --empty grow rule is gone — per prototype the + button sits right
+   after the tabs even when none are open.) */
+.wtb-spacer {
+  flex: 1;
+}
+
+/* Agents status chip (prototype 161–164) */
+.wtb-agents-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: rgb(118, 134, 162); /* #7686a2 */
+  flex: none;
+  white-space: nowrap;
+}
+
+.wtb-agents-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state-success, #4ade80); /* token value == prototype hex */
+  box-shadow: 0 0 7px rgba(74, 222, 128, .7);
+  animation: lnPulse 3s ease-in-out infinite;
+}
+
+/* Working state — the prototype's agent-busy idiom (n1 dot, 1s pulse, 538) */
+.wtb-agents-dot--active {
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 7px var(--g1, rgba(0, 240, 255, .4));
+  animation: lnPulse 1s ease-in-out infinite;
+}
+
+/* Context menu (prototype 141): exact popover surface */
+.wtb-ctx-menu {
+  position: absolute;
+  width: 196px;
+  z-index: 48;
+  padding: 7px;
+  border-radius: 12px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .14s ease;
+  cursor: default;
+  text-align: left;
+}
+
+/* Menu items (prototype 142–144) */
+.wtb-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: rgb(205, 216, 234); /* #cdd8ea */
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: inherit;
+}
+
+.wtb-ctx-item:hover {
+  background: rgba(255, 255, 255, .07);
+  color: rgb(255, 255, 255); /* #fff */
+}
+
+.wtb-ctx-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
+.wtb-ctx-item--close,
+.wtb-ctx-item--close:hover {
+  color: rgb(255, 157, 180); /* #ff9db4 */
+}
+
+.wtb-ctx-item--close:hover {
+  background: rgba(255, 95, 143, .1);
+}
+
+/* Footer hint (prototype 145) */
+.wtb-ctx-hint {
+  font-size: 8.5px;
+  color: rgb(88, 106, 136); /* #586a88 */
+  padding: 5px 10px 2px;
 }

@@ -1,112 +1,352 @@
 /* =========================================================================
- * WindowChrome — Liquid Neon custom title bar (SKY-3033)
- * Foundation phase: no glass/blur — var(--bg-panel) fill only.
+ * WindowChrome — Liquid Neon title bar (Beta 3 M5, prototype HTML 59–134)
+ * One 44px glass bar: project menu · File…Help menus · Ctrl-K pill · bell ·
+ * settings · avatar · min/max/close, with a 1px --grad hairline below.
  * ========================================================================= */
 
 .wc-bar {
   position: relative;
   flex-shrink: 0;
-  background: var(--bg-panel);
   user-select: none;
-  z-index: 100;
-}
-
-/* 1px neon gradient accent along the top edge */
-.wc-bar::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: var(--grad-neon-soft);
-  pointer-events: none;
+  z-index: 60;
+  background: linear-gradient(rgba(10, 12, 22, .6), rgba(10, 12, 22, .38));
+  backdrop-filter: blur(var(--blur, 18px)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(160%);
 }
 
 .wc-drag-region {
   display: flex;
   align-items: center;
-  height: 36px;
-  padding: 0 var(--space-2);
-  /* Full-width draggable area; buttons inside use no-drag */
+  gap: 2px;
+  height: 44px;
+  padding-left: 14px;
+  /* Full-width draggable area; interactive children use no-drag */
   -webkit-app-region: drag;
 }
 
-.wc-title {
-  flex: 1;
-  text-align: center;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-heading);
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  pointer-events: none;
-  /* Must not participate in drag so text stays selectable in non-electron contexts */
+/* 1px neon gradient hairline along the bottom edge (prototype 134) */
+.wc-hairline {
+  height: 1px;
+  flex: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  opacity: .38;
+}
+
+/* ── Project menu trigger ──────────────────────────────────────────── */
+
+.wc-project {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: 14px;
+  margin-left: -8px;
+  position: relative;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 9px;
   -webkit-app-region: no-drag;
 }
 
-/* ── Control button groups ─────────────────────────────────────────── */
+.wc-project:hover {
+  background: rgba(255, 255, 255, .06);
+}
+
+.wc-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: block;
+  box-shadow: 0 0 14px -2px var(--g2, rgba(155, 95, 255, .4));
+  border: var(--bw, 1px) solid rgba(255, 255, 255, .18);
+}
+
+.wc-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #eef2fb;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+/* ── Menus ─────────────────────────────────────────────────────────── */
+
+.wc-menus {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.wc-menu {
+  position: relative;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #94a3bd;
+}
+
+.wc-menu:hover {
+  background: rgba(255, 255, 255, .07);
+  color: #e8eefc;
+}
+
+.wc-menu--open {
+  background: rgba(255, 255, 255, .1);
+  color: #e8eefc;
+}
+
+/* ── Popovers (prototype 63, 81, 100, 117) ─────────────────────────── */
+
+.wc-popover {
+  position: absolute;
+  z-index: 62;
+  padding: 7px;
+  border-radius: 12px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .16s ease;
+  cursor: default;
+  text-align: left;
+}
+
+.wc-popover-project {
+  left: 0;
+  top: 36px;
+  width: 262px;
+  padding: 8px;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.wc-popover-menu {
+  left: 0;
+  top: 30px;
+  width: 216px;
+}
+
+.wc-popover-account {
+  right: 0;
+  top: 34px;
+  width: 230px;
+  padding: 8px;
+  border-radius: 14px;
+  border-color: var(--b2, rgba(155, 95, 255, .5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g2, rgba(155, 95, 255, .4));
+  color: #c6d1e5;
+  font-weight: 400;
+}
+
+.wc-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.wc-pop-row:hover {
+  background: rgba(255, 255, 255, .07);
+}
+
+.wc-pop-row-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6ecf9;
+}
+
+.wc-pop-row-sub {
+  font-size: 10px;
+  color: #8e9db8;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-active-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 7px var(--g1, rgba(0, 240, 255, .4));
+  flex: none;
+}
+
+.wc-menu-item {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: #cdd8ea;
+  cursor: pointer;
+  text-align: left;
+}
+
+.wc-menu-item:hover {
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+}
+
+/* ── Ctrl-K search pill (prototype 89–93) ──────────────────────────── */
+
+.wc-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 270px;
+  height: 29px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid rgba(255, 255, 255, .09);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.wc-search:hover {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 0 14px -3px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.wc-search-ph {
+  flex: 1;
+  color: #7686a2;
+  font-size: 12px;
+  min-width: 0;
+  text-align: left;
+}
+
+.wc-kbd {
+  font-size: 10px;
+  color: #7686a2;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .35));
+  border-radius: 5px;
+  padding: 1px 5px;
+  letter-spacing: .04em;
+}
+
+/* ── Icon cluster: bell · settings · avatar ────────────────────────── */
+
+.wc-icons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 10px 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.wc-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3bd;
+  cursor: pointer;
+}
+
+.wc-icon-btn:hover,
+.ln-notif-bell:hover {
+  background: rgba(255, 255, 255, .07);
+  color: #e8eefc;
+}
+
+.wc-avatar {
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0b0d17;
+  margin-left: 5px;
+  cursor: pointer;
+  box-shadow: 0 0 12px -2px var(--g2, rgba(155, 95, 255, .4));
+  position: relative;
+}
+
+.wc-avatar--lg {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+  margin-left: 0;
+  cursor: default;
+  flex: none;
+}
+
+.wc-acct-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  margin-bottom: 5px;
+}
+
+.wc-acct-plan {
+  font-size: 9.5px;
+  color: var(--n2, #9b5fff);
+}
+
+/* ── Window control buttons (prototype 128–132) ────────────────────── */
 
 .wc-controls {
   display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  /* Buttons are never draggable */
+  align-self: stretch;
+  align-items: stretch;
   -webkit-app-region: no-drag;
 }
 
 .wc-controls-left {
-  margin-right: var(--space-2);
+  margin-right: 8px;
 }
-
-.wc-controls-right {
-  margin-left: var(--space-2);
-}
-
-/* ── Individual control buttons ────────────────────────────────────── */
 
 .wc-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 44px;
   padding: 0;
   border: none;
-  border-radius: var(--radius-full);
+  border-radius: 0;
   background: transparent;
-  color: var(--text-muted);
+  color: #a9b6cd;
   cursor: pointer;
-  transition:
-    background var(--dur-hover-in) var(--ease-standard),
-    color var(--dur-hover-in) var(--ease-standard);
+  transition: background .12s ease, color .12s ease;
 }
 
 .wc-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-body);
+  background: rgba(255, 255, 255, .09);
 }
 
 .wc-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .wc-btn:active {
-  background: var(--bg-active);
+  background: rgba(255, 255, 255, .14);
 }
 
 .wc-btn-close:hover {
-  background: rgba(248, 113, 113, 0.18);
-  color: var(--state-danger);
+  background: #e81123;
+  color: #fff;
 }
 
-.wc-btn-minimize:hover {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.wc-btn-maximize:hover {
-  background: rgba(74, 222, 128, 0.14);
-  color: var(--state-success);
+/* Compact round controls on macOS (traffic-light position, left side) */
+.wc-controls-left .wc-btn {
+  width: 24px;
+  height: 24px;
+  align-self: center;
+  border-radius: 999px;
 }
 
 /* ── High-contrast overrides ───────────────────────────────────────── */
@@ -119,7 +359,7 @@
     forced-color-adjust: none;
   }
 
-  .wc-bar::before {
+  .wc-hairline {
     background: Highlight;
   }
 
@@ -142,7 +382,7 @@
   border-bottom: 1px solid var(--border-strong);
 }
 
-[data-contrast="high"] .wc-bar::before {
+[data-contrast="high"] .wc-hairline {
   background: var(--border-neon-outline);
 }
 
