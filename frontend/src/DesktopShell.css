@@ -50,28 +50,12 @@
 }
 
 /* App menu bar */
-.app-menu-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 12px;
-  background: var(--glass-fill-fallback);
-  border-bottom: 1px solid var(--glass-border);
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-  user-select: none;
-  font-size: 0.78rem;
-  position: relative;
-  z-index: 50;
-}
+/* Beta 3 M5: the legacy .app-menu-bar row is gone; its class now lives on
+   .wc-bar purely as an E2E selector-compat anchor. Styling belongs to
+   WindowChrome.css — no rules here. */
 
 @supports (backdrop-filter: blur(1px)) {
-  .app-menu-bar {
-    background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
-  }
+  .wc-bar-legacy-noop { display: contents; }
 }
 
 .app-menu-brand {
@@ -444,6 +428,8 @@
 
 
 .shell-left {
+  /* Beta 3 M3: anchors the Liquid Neon inset border overlay */
+  position: relative;
   flex-shrink: 0;
   height: 100%;
   overflow: hidden;
@@ -460,6 +446,8 @@
 }
 
 .shell-center-column {
+  /* Beta 3 M3: anchors the Liquid Neon inset border overlay */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;

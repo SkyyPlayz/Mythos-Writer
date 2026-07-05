@@ -79,9 +79,11 @@ describe('App — onboarding gate (SKY-152)', () => {
 
   it('does not render the legacy top-level view switcher chrome', async () => {
     const { container } = render(<App />);
-    await waitFor(() => expect(container.querySelector('.app-menu-bar')).toBeInTheDocument());
+    // Beta 3 M5: the shell chrome anchor is the Liquid Neon title bar.
+    await waitFor(() => expect(container.querySelector('.wc-bar')).toBeInTheDocument());
 
     expect(container.querySelector('.app-menu-view-toggle')).not.toBeInTheDocument();
+    expect(container.querySelector('.app-menu-bar')).not.toBeInTheDocument();
   });
 
   it('shows recovery screen when neither vault binding is valid', async () => {

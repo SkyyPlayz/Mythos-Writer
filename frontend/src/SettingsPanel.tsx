@@ -26,6 +26,7 @@ import BackupSection from './components/SettingsPanel/sections/BackupSection';
 import ArchiveAgentSection from './components/SettingsPanel/sections/ArchiveAgentSection';
 import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
+import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -745,6 +746,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           {settingsCategory === 'appearance' && (
             <>
               <UpdatesSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+
+              {/* Beta 3 M4: Liquid Neon v2 appearance — the prototype's Appearance page. */}
+              <LiquidNeonAppearanceSection
+                liquidNeonV2={settings.liquidNeonV2}
+                onChange={(next) => setSettings((p) => ({ ...p, liquidNeonV2: next }))}
+                setSavedOk={setSavedOk}
+              />
 
               <AppearanceSection
                 settings={settings}

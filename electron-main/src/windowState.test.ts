@@ -6,6 +6,7 @@ import {
   loadWindowState,
   saveWindowState,
   isBoundsOnScreen,
+  readTransparentWindowPreference,
   type WindowBounds,
   type DisplayRect,
 } from './windowState.js';
@@ -106,5 +107,38 @@ describe('loadWindowState / saveWindowState', () => {
     saveWindowState(tmpDir, first);
     saveWindowState(tmpDir, second);
     expect(loadWindowState(tmpDir)).toEqual(second);
+  });
+});
+
+describe('readTransparentWindowPreference (Beta 3 M3)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-transparent-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('returns true when liquidNeonV2.wp is "none"', () => {
+    fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ liquidNeonV2: { wp: 'none' } }));
+    expect(readTransparentWindowPreference(dir)).toBe(true);
+  });
+
+  it('returns false for any other wallpaper mode', () => {
+    fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ liquidNeonV2: { wp: 'match' } }));
+    expect(readTransparentWindowPreference(dir)).toBe(false);
+  });
+
+  it('returns false when liquidNeonV2 is absent', () => {
+    fs.writeFileSync(path.join(dir, 'app-settings.json'), JSON.stringify({ theme: 'dark' }));
+    expect(readTransparentWindowPreference(dir)).toBe(false);
+  });
+
+  it('returns false when app-settings.json is missing or corrupt', () => {
+    expect(readTransparentWindowPreference(dir)).toBe(false);
+    fs.writeFileSync(path.join(dir, 'app-settings.json'), '{not json');
+    expect(readTransparentWindowPreference(dir)).toBe(false);
   });
 });
