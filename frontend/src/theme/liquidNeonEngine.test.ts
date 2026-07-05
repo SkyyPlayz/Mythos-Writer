@@ -152,3 +152,22 @@ describe('apply/reset', () => {
     expect(el.style.getPropertyValue('--n1')).toBe('');
   });
 });
+
+describe('transparent window override (M3)', () => {
+  it('wp none + transparent window clears the wallpaper instead of checkerboard', () => {
+    const t = computeLiquidNeonV2Tokens({ wp: 'none' }, 'test.webp', { transparentWindow: true });
+    expect(t['--wp']).toBe('none');
+    expect(t['--wpsize']).toBe('cover');
+  });
+
+  it('wp none without a transparent window keeps the checkerboard stand-in', () => {
+    const t = computeLiquidNeonV2Tokens({ wp: 'none' }, 'test.webp');
+    expect(t['--wp']).toBe('repeating-conic-gradient(#151a23 0% 25%,#0b0e14 0% 50%)');
+    expect(t['--wpsize']).toBe('26px 26px');
+  });
+
+  it('transparent window with any other wallpaper changes nothing', () => {
+    const t = computeLiquidNeonV2Tokens({ wp: 'deep' }, 'test.webp', { transparentWindow: true });
+    expect(t['--wp']).toBe('linear-gradient(#07080d,#07080d)');
+  });
+});

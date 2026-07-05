@@ -1,0 +1,113 @@
+/* Beta 3 "Liquid Neon" M4 — Appearance page chrome (prototype 1646–1809).
+   Cards + hover states that can't live inline (pseudo-classes). */
+
+.lnas-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lnas-card {
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  padding: 15px 17px;
+}
+
+.lnas-hover-lift:hover {
+  border-color: rgba(255, 255, 255, .25);
+  transform: translateY(-1px);
+}
+
+.lnas-hover-scale:hover {
+  transform: scale(1.18);
+}
+
+.lnas-hover-border:hover {
+  border-color: rgba(255, 255, 255, .25);
+}
+
+.lnas-seg-idle:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, .06);
+}
+
+/* Prototype range thumb (HTML 32–33) */
+.lnas-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 99px;
+  outline: none;
+}
+
+.lnas-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 10px var(--g1, rgba(0, 240, 255, .4));
+  cursor: pointer;
+  border: none;
+}
+
+.lnas-upload {
+  flex: 1;
+  min-width: 120px;
+  padding: 7px;
+  border-radius: 13px;
+  cursor: pointer;
+  display: block;
+  background: rgba(255, 255, 255, .02);
+  border: 1px dashed rgba(255, 255, 255, .22);
+}
+
+.lnas-upload:hover {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  background: rgba(255, 255, 255, .045);
+}
+
+.lnas-restart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: rgba(255, 217, 122, .07);
+  border: 1px solid rgba(255, 217, 122, .3);
+}
+
+.lnas-restart-btn {
+  padding: 5px 13px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #ffd97a;
+  background: transparent;
+  border: var(--bw, 1px) solid rgba(255, 217, 122, .5);
+}
+
+.lnas-restart-btn:hover {
+  background: rgba(255, 217, 122, .12);
+}
+
+/* Reset row (prototype 2643) */
+.lnas-reset {
+  text-align: center;
+  padding: 8px;
+  border-radius: 10px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .35));
+  color: #c3cee2;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.lnas-reset:hover {
+  border-color: var(--b3, rgba(255, 77, 255, .5));
+  color: #fff;
+  box-shadow: 0 0 14px -4px var(--g3, rgba(255, 77, 255, .4));
+}

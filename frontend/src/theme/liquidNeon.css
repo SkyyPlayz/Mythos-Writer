@@ -1,0 +1,131 @@
+/* Beta 3 "Liquid Neon" — shared keyframes + background stack (M2).
+   Verbatim port of the prototype's global style block (HTML 17–38) and
+   background layers (HTML 45–54). The prototype is the spec. */
+
+@keyframes lnSpin { to { transform: rotate(360deg); } }
+@keyframes lnHue { 0% { filter: hue-rotate(0deg); opacity: .7; } 50% { opacity: 1; } 100% { filter: hue-rotate(360deg); opacity: .7; } }
+@keyframes lnHueSoft { 0%, 100% { filter: hue-rotate(-14deg); } 50% { filter: hue-rotate(14deg); } }
+@keyframes lnFlicker { 0%, 100% { opacity: 1; } 7% { opacity: .55; } 9% { opacity: 1; } 54% { opacity: .92; } 56% { opacity: .5; } 58% { opacity: 1; } }
+@keyframes lnShimmer { 0%, 100% { filter: brightness(.85); } 50% { filter: brightness(1.35); } }
+@keyframes lnSnow { from { background-position: 0 -120vh, 40px -90vh, -60px -60vh; } to { background-position: 0 20vh, 40px 50vh, -60px 80vh; } }
+@keyframes lnRise { from { background-position: 0 30vh, 40px 60vh, -60px 90vh; } to { background-position: 0 -110vh, 40px -80vh, -60px -50vh; } }
+@keyframes lnBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .32; } }
+@keyframes lnPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes lnFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes lnDrift { from { transform: scale(1.04) translate(0, 0); } to { transform: scale(1.1) translate(-16px, -10px); } }
+@keyframes lnToast { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 82% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 10px); } }
+
+/* ═══ Background stack (prototype HTML 45–54) ═══ */
+.ln-bg-stack {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ln-bg-wallpaper {
+  position: absolute;
+  inset: 0;
+  background-image: var(--wp);
+  background-size: var(--wpsize, cover);
+  background-position: center;
+  animation: lnDrift 70s linear infinite alternate;
+}
+
+.ln-bg-ambience {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ln-bg-scrim {
+  position: absolute;
+  inset: 0;
+  background: #04050b;
+  opacity: var(--ln-scrim, 0.1);
+}
+
+.ln-bg-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 0%, transparent 40%, rgba(4, 5, 10, .55) 100%);
+}
+
+/* Prototype's reduced-motion rule is global (`* { animation-duration: .01ms }`,
+   HTML 38); scoping it to Liquid Neon layers avoids nuking the app's existing
+   motion rules while matching the intent for everything this stack animates. */
+@media (prefers-reduced-motion: reduce) {
+  .ln-bg-wallpaper,
+  .ln-bg-ambience,
+  .ln-frame-mask > div,
+  .ln-border-overlay {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ═══ Window frame ring (M3, prototype HTML 2667–2677) ═══
+   Two conic layers masked to the window edges: a crisp ring padded by --bw
+   and a 7px halo blurred 9px at half opacity. The xor/exclude mask keeps only
+   the padding band, so the spinning 170vmax conic square reads as a border. */
+.ln-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  pointer-events: none;
+  z-index: 56;
+  opacity: var(--ringA, 0.7);
+}
+
+.ln-frame-mask {
+  position: absolute;
+  inset: 0;
+  padding: var(--bw, 1px);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  overflow: hidden;
+}
+
+.ln-frame-mask--halo {
+  padding: 7px;
+  filter: blur(9px);
+  opacity: 0.5;
+}
+
+/* Layering: the shell is a flex container, so plain z-index works on its
+   children (flex items) without forcing position. The stack sits at 0;
+   every other shell child paints above it; the frame ring rides on top
+   (prototype z-index 56). */
+.desktop-shell {
+  isolation: isolate;
+}
+
+.desktop-shell > .ln-bg-stack {
+  z-index: 0;
+}
+
+.desktop-shell > *:not(.ln-bg-stack) {
+  z-index: 1;
+}
+
+.desktop-shell > .ln-frame {
+  z-index: 56;
+}
+
+/* ═══ Transparent window mode (M3) ═══
+   Applied to <html> when wallpaper is `No background` AND the Electron window
+   was created transparent (restart-gated). Clears every opaque app-level
+   background so the desktop shows through; panels keep their own glass. */
+html.ln-transparent,
+html.ln-transparent body,
+html.ln-transparent #root,
+html.ln-transparent .desktop-shell {
+  background: transparent !important;
+}
+
+/* M5: notification popover rows (prototype 100–108) */
+.ln-notif-row:hover {
+  background: rgba(255, 255, 255, .07);
+}

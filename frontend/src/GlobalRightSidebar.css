@@ -1,6 +1,8 @@
 /* GlobalRightSidebar — global panel strip visible on all tabs */
 
 .grs-root {
+  /* Beta 3 M3: anchors the Liquid Neon inset border overlay */
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;

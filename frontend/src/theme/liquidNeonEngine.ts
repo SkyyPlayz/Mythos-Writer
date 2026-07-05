@@ -6,12 +6,15 @@
 import { LIQUID_NEON_PRESETS, type LiquidNeonSetKey } from './presets';
 
 export interface LiquidNeonPageCfg {
-  mode: 'neon' | 'noglow' | 'scroll' | 'off';
+  /** Manuscript page mode. 'default' is the "No glow" option (prototype key, 4619). */
+  mode: 'neon' | 'default' | 'scroll' | 'off';
   bg: string;
   /** Page background opacity, 0–100. */
   op: number;
   /** Page backdrop blur, px. */
   blur: number;
+  /** Scroll mode: glowing archaic edge symbols (prototype pc.sym, 4622). */
+  sym?: boolean;
 }
 
 export interface LiquidNeonTextCfg {
@@ -134,6 +137,15 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
   }
 }
 
+export interface LiquidNeonApplyOpts {
+  /**
+   * M3: the Electron window was actually created transparent (wp was 'none'
+   * at launch). Replaces the checkerboard stand-in with a truly clear
+   * wallpaper layer so the desktop shows through.
+   */
+  transparentWindow?: boolean;
+}
+
 /**
  * Compute every Liquid Neon CSS custom property from settings — exact port of
  * the prototype's `themeStyle` (HTML 3948–3966) plus `--ln-scrim` (3967's
@@ -143,6 +155,7 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
 export function computeLiquidNeonV2Tokens(
   settings: Partial<LiquidNeonV2Settings> | null | undefined,
   cosmicUrl: string,
+  opts?: LiquidNeonApplyOpts,
 ): Record<string, string> {
   const S = normalizeLiquidNeonV2(settings);
   const I = S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
@@ -174,6 +187,11 @@ export function computeLiquidNeonV2Tokens(
     '--wpsize': S.wp === 'none' ? '26px 26px' : 'cover',
     '--ln-scrim': String(S.scrim / 100),
   };
+  if (opts?.transparentWindow && S.wp === 'none') {
+    // Real transparency instead of the prototype's checkerboard stand-in.
+    tokens['--wp'] = 'none';
+    tokens['--wpsize'] = 'cover';
+  }
   return tokens;
 }
 
@@ -184,8 +202,9 @@ export function applyLiquidNeonV2Tokens(
   settings: Partial<LiquidNeonV2Settings> | null | undefined,
   cosmicUrl: string,
   el: HTMLElement = document.documentElement,
+  opts?: LiquidNeonApplyOpts,
 ): Record<string, string> {
-  const tokens = computeLiquidNeonV2Tokens(settings, cosmicUrl);
+  const tokens = computeLiquidNeonV2Tokens(settings, cosmicUrl, opts);
   for (const [k, v] of Object.entries(tokens)) {
     el.style.setProperty(k, v);
     if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
