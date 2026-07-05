@@ -52,6 +52,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     label: 'Appearance',
     sectionIds: [
       'section-updates',
+      'section-liquid-neon',
       'section-theme',
       'section-page-appearance',
       'section-nav-config',

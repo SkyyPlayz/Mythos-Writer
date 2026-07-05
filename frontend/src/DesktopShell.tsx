@@ -3490,6 +3490,47 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // all-disabled config falls back to the defaults so the rail never strands
   // the user.
   const savedNavConfig = appSettings?.navConfig;
+  // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
+  // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
+  // SKY-1697 float flow; the rest explain themselves instead of mocking.
+  const handleTabPopOut = useCallback((tabId: string) => {
+    const tab = workspaceTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const floatable: Partial<Record<WorkspaceTabKind, SidebarPanelId>> = {
+      timeline: 'timeline',
+      entities: 'entities',
+      'vault-graph': 'vault-graph',
+    };
+    const panelId = floatable[tab.kind];
+    if (!panelId) {
+      showLnToast('Only Timeline, Entities and Vault Graph tabs can pop out right now');
+      return;
+    }
+    window.api.panelFloat?.(panelId, { sourceSidebar: 'right' }).catch(() => {});
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const existing = prev.activeLayout?.floatingPanels ?? [];
+      if (existing.some((e) => e.panelId === panelId)) return prev;
+      const entry: FloatingPanelEntry = { panelId, x: 0, y: 0, width: 360, height: 600, alwaysOnTop: false, lastDockSidebar: 'right' };
+      const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: [...existing, entry] } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+    handleWorkspaceTabClose(tabId);
+  }, [workspaceTabs, handleWorkspaceTabClose]);
+
+  // Beta 3 M7: Stories popover data for the nav rail (prototype 179-203).
+  const navRailStories = useMemo(
+    () => stories.map((st) => ({ id: st.id, title: st.title, active: st.id === selectedStory?.id })),
+    [stories, selectedStory],
+  );
+  const handleRailStorySelect = useCallback((id: string) => {
+    const st = stories.find((x) => x.id === id);
+    if (!st) return;
+    setSelectedStory(st);
+    handleNavSectionChange('story');
+  }, [stories, handleNavSectionChange]);
+
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
   const paletteCommands = useMemo(() => [
@@ -3722,6 +3763,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             showLabels={navRailConfig?.showLabels ?? true}
             showIcons={navRailConfig?.showIcons ?? true}
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
+            stories={navRailStories}
+            onStorySelect={handleRailStorySelect}
+            onNewStory={() => { void window.api?.newStory?.(); }}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -3734,6 +3778,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabReorder={handleWorkspaceTabReorder}
             onNewTab={() => setTabPickerOpen(true)}
             onTabOpenInSplit={handleTabOpenInSplit}
+            onTabPopOut={handleTabPopOut}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
