@@ -18,13 +18,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  # SKY-4970: Single serialized setup job prevents concurrent npm cache restore I/O
-  # bottleneck. On the single WSL2 self-hosted runner, 5+ parallel setup-node steps each
-  # restoring ~1.4GB npm cache saturate disk I/O and cause hangs. This job runs first,
-  # restores the Actions npm cache and runs npm ci once (populating ~/.npm), then all
-  # downstream jobs skip the cache restore and use the warm local npm cache instead.
+  # Runs first and populates the Actions npm cache (keyed on package-lock.json) so
+  # the parallel downstream jobs get cache hits instead of each doing a cold
+  # registry install on their fresh hosted VMs. (Replaces the SKY-4970 self-hosted
+  # WSL2 serialization; hosted runners are ephemeral, so downstream jobs restore
+  # the shared cache instead of relying on a warm local ~/.npm.)
   setup:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -41,7 +41,7 @@ jobs:
 
   lint:
     needs: [setup]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -65,8 +65,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm; restoring
-          # 1.4GB cache concurrently across parallel jobs saturated WSL2 disk I/O.
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -76,7 +75,7 @@ jobs:
 
   typecheck:
     needs: [setup]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
@@ -89,7 +88,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -102,7 +101,7 @@ jobs:
 
   unit:
     needs: [setup]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
@@ -115,7 +114,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -142,7 +141,7 @@ jobs:
     # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
     # via fuzz.yml (runs on every PR as a separate non-blocking check).
     needs: [lint, typecheck, unit]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -172,7 +171,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -209,7 +208,7 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y
     needs: [build-electron]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -222,7 +221,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -298,7 +297,7 @@ jobs:
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity
     needs: [build-electron]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -311,7 +310,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -364,7 +363,7 @@ jobs:
   e2e-shard-3:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete
     needs: [build-electron]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -377,7 +376,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -442,7 +441,7 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     needs: [build-electron]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
@@ -455,7 +454,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -526,7 +525,7 @@ jobs:
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
 
@@ -604,7 +603,7 @@ jobs:
     # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
     # with `success` and push/workflow_dispatch does the full packaging.
     needs: [setup]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     concurrency:
       group: build-linux-${{ github.ref }}
@@ -650,7 +649,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         if: github.event_name != 'pull_request'
@@ -704,9 +703,19 @@ jobs:
           echo "Verifying .deb: $DEB"
           dpkg-deb --info "$DEB"
 
+      - name: Install Xvfb (virtual display for AppImage smoke test)
+        if: github.event_name != 'pull_request'
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
       - name: Smoke-test AppImage (start / stop)
         # APPIMAGE_EXTRACT_AND_RUN=1 extracts to a temp dir instead of mounting via
-        # FUSE, so libfuse2 does not need to be installed on the self-hosted runner.
+        # FUSE, so libfuse2 does not need to be installed on the runner.
         if: github.event_name != 'pull_request'
         run: |
           APPIMAGE=$(ls dist-electron/*.AppImage | head -1)
@@ -753,12 +762,15 @@ jobs:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
     # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
     # steps are gated at step level instead.
-    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
-    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    # Native windows-latest build (repo is public — hosted minutes are free); replaces
+    # the self-hosted wine cross-compile used while hosted Actions budget was unavailable.
     needs: [setup]
-    runs-on: self-hosted
+    runs-on: windows-latest
     timeout-minutes: 40
     continue-on-error: true
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Skip — packaging only runs on push/workflow_dispatch
@@ -778,7 +790,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # SKY-4970: no cache: 'npm' — setup job pre-warmed ~/.npm
+          cache: 'npm'
 
       - name: Install dependencies
         if: github.event_name != 'pull_request'
@@ -805,7 +817,9 @@ jobs:
     # Event-driven board ping. Runs after all required jobs complete on a PR.
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
-    # Self-hosted only (no public/fork PR exposure per SKY-849).
+    # Stays self-hosted deliberately: the `paperclipai` CLI it drives only exists
+    # on the local runner (and no public/fork PR exposure per SKY-849). It is not
+    # a required check, so a slow/offline runner never blocks merges.
     # build-linux and build-windows always run (fast no-op on PRs) so this job
     # is never blocked by upstream skipped status (SKY-2421).
     # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
