@@ -178,7 +178,9 @@ export default function WindowChrome({
   ];
 
   return (
-    <div className="wc-bar" role="banner" aria-label="Window chrome" ref={barRef}>
+    // The extra `app-menu-bar` class is a selector-compat anchor: ~97 E2E
+    // waits across the fleet key on it (the old menu row this bar replaces).
+    <div className="wc-bar app-menu-bar" role="banner" aria-label="Window chrome" ref={barRef}>
       <div className="wc-drag-region">
         {isMac && (
           <WindowControls onClose={handleClose} onMinimize={handleMinimize} onMaximize={handleMaximize} isMac />
@@ -251,7 +253,7 @@ export default function WindowChrome({
         <div className="wc-icons">
           {notificationCenter}
           {onOpenSettings && (
-            <div className="wc-icon-btn" onClick={onOpenSettings} role="button" aria-label="Settings" data-testid="wc-settings">
+            <div className="wc-icon-btn app-menu-gear-btn" onClick={onOpenSettings} role="button" aria-label="Settings" data-testid="wc-settings">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4.5 7.5h15M4.5 16.5h15" /><circle cx="9.5" cy="7.5" r="2.4" /><circle cx="14.5" cy="16.5" r="2.4" /></svg>
             </div>
           )}
