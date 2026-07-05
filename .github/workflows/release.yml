@@ -19,7 +19,7 @@ env:
 
 jobs:
   determine-release:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       is-beta: ${{ steps.check.outputs.is-beta }}
       version: ${{ steps.check.outputs.version }}
@@ -44,7 +44,7 @@ jobs:
   # Uses softprops/action-gh-release which handles create-or-update idempotently.
   create-release:
     needs: determine-release
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -59,12 +59,16 @@ jobs:
           prerelease: ${{ needs.determine-release.outputs.is-beta == 'true' }}
           body: "Release build in progress…"
 
-  # Windows build — cross-compiled from Linux via electron-builder + NSIS + Wine.
+  # Windows build — native on hosted windows-latest (electron-builder bundles its
+  # own NSIS on Windows; no wine cross-compile needed since the repo went public).
   build-windows:
     needs: [determine-release, create-release]
-    runs-on: self-hosted
+    runs-on: windows-latest
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - uses: actions/checkout@v4
@@ -76,26 +80,6 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-
-      - name: Verify Windows cross-build toolchain (NSIS + Wine)
-        run: |
-          # NSIS + Wine are pre-installed on the self-hosted runner host.
-          # Runner-host setup: sudo apt-get install -y nsis wine wine64
-          # (wine metapackage pulls 32-bit deps; wine32:i386 is NOT a valid package on Ubuntu 24.04+.)
-          MISSING=0
-          if ! command -v makensis >/dev/null 2>&1; then
-            echo "::error::makensis not found on runner. Install with: sudo apt-get install -y nsis"
-            MISSING=1
-          else
-            echo "makensis: $(command -v makensis) ($(makensis -VERSION 2>/dev/null || true))"
-          fi
-          if ! command -v wine >/dev/null 2>&1; then
-            echo "::error::wine not found on runner. Install with: sudo apt-get install -y wine wine64"
-            MISSING=1
-          else
-            echo "wine: $(command -v wine) ($(wine --version 2>/dev/null || true))"
-          fi
-          [ "$MISSING" = "0" ] || exit 1
 
       - name: Install dependencies
         run: npm ci
@@ -219,7 +203,7 @@ jobs:
 
   build-linux:
     needs: [determine-release, create-release]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
@@ -264,7 +248,7 @@ jobs:
 
   publish-release:
     needs: [determine-release, build-linux, build-windows]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
