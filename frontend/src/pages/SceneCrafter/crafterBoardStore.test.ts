@@ -52,7 +52,8 @@ describe('board file naming', () => {
   });
 
   it('sanitizes filesystem-hostile characters out of the file name', () => {
-    expect(boardFileName('a/b\\c:d*e?"f<g>h|i#j^k[l]')).toBe(`a-b-c-d-e- -f-g-h-i-j-k-l-${''}`.replace(/-$/, '-') + BOARD_FILE_SUFFIX.slice(0));
+    // Each reserved char maps to `-`; the adjacent ?" pair yields `--`.
+    expect(boardFileName('a/b\\c:d*e?"f<g>h|i#j^k[l]')).toBe(`a-b-c-d-e--f-g-h-i-j-k-l-${BOARD_FILE_SUFFIX}`);
   });
 
   it('never produces an empty or dot-leading file name', () => {
