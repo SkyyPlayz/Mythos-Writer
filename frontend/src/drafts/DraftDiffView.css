@@ -1,0 +1,161 @@
+/* =========================================================================
+ * DraftDiffView — Liquid Neon drafts diff (Beta 3 M12, prototype HTML
+ * 779–804 + dSeg 4512). Full mode: header row over two Lora serif columns,
+ * old bordered red / new bordered green. Highlight mode: a single Lora
+ * column of the old draft's segments for the split pane.
+ * ========================================================================= */
+
+.ln-diff-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 20px 18px;
+}
+
+/* ── Header (prototype 781–789) ────────────────────────────────────── */
+
+.ln-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 11px;
+  font-family: 'Inter', sans-serif;
+}
+
+.ln-diff-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef2fb;
+}
+
+.ln-diff-old-select {
+  height: 25px;
+  background: rgba(255, 80, 110, .1);
+  border: 1px solid rgba(255, 80, 110, .4);
+  border-radius: 99px;
+  color: #ff9db4;
+  font-size: 10.5px;
+  padding: 0 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ln-diff-old-pill {
+  font-size: 10.5px;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  background: rgba(255, 80, 110, .1);
+  color: #ff9db4;
+  border: 1px solid rgba(255, 80, 110, .4);
+}
+
+.ln-diff-arrow {
+  flex: none;
+}
+
+.ln-diff-new-pill {
+  font-size: 10.5px;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  background: rgba(74, 222, 128, .12);
+  color: #b7f5cd;
+  border: 1px solid rgba(74, 222, 128, .4);
+}
+
+.ln-diff-spacer {
+  flex: 1;
+}
+
+.ln-diff-legend {
+  font-size: 10px;
+  color: #8e9db8;
+}
+
+.ln-diff-legend-added {
+  color: #b7f5cd;
+}
+
+.ln-diff-legend-removed {
+  color: #ff9db4;
+}
+
+.ln-diff-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  border: var(--bw, 1px) solid rgba(0, 240, 255, .35);
+  background: transparent;
+  padding: 0;
+}
+
+.ln-diff-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
+}
+
+/* ── Columns (prototype 790–803) ───────────────────────────────────── */
+
+.ln-diff-columns {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  gap: 14px;
+}
+
+.ln-diff-col {
+  flex: 1;
+  border-radius: 12px;
+  background: rgba(9, 11, 20, .66);
+  padding: 26px 30px;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 14px;
+  line-height: 1.85;
+  color: #c8d3e7;
+}
+
+.ln-diff-col-old {
+  border: 1px solid rgba(255, 80, 110, .3);
+}
+
+.ln-diff-col-new {
+  border: 1px solid rgba(74, 222, 128, .3);
+}
+
+.ln-diff-para {
+  margin: 0 0 1em;
+}
+
+/* ── Segment kinds (prototype dSeg 4512) ───────────────────────────── */
+
+.ln-diff-seg-d {
+  background: rgba(255, 80, 110, .16);
+  color: #ff9db4;
+  text-decoration: line-through;
+  border-radius: 3px;
+}
+
+.ln-diff-seg-a {
+  background: rgba(74, 222, 128, .15);
+  color: #b7f5cd;
+  border-radius: 3px;
+}
+
+/* ── Single-pane "Highlight changes" body (prototype 4713–4714) ────── */
+
+.ln-diff-highlight {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 14.5px;
+  text-align: justify;
+}
+
+.ln-diff-highlight .ln-diff-para {
+  line-height: 1.8;
+  color: var(--txB, #c8d3e7);
+}
