@@ -5,7 +5,8 @@ import type { ListImperativeAPI } from 'react-window';
 import type { FlatRow } from './treeUtils';
 import { NodeIcon } from '../../NodeIcon';
 
-const ITEM_HEIGHT = 26;
+// M15: 28px matches the Liquid Neon prototype tree row (12px type + 5.5px×2 padding).
+const ITEM_HEIGHT = 28;
 
 interface RowData {
   rows: FlatRow[];
@@ -73,7 +74,8 @@ function Row({
   if (!row) return null;
   const { node, depth, isExpanded, isSelected } = row;
   const isMd = !node.isDirectory && node.name.endsWith('.md');
-  const indent = 8 + depth * 14;
+  // M15 prototype indents: folders 8+depth*16, files 26+depth*16 (no chevron slot).
+  const indent = (node.isDirectory ? 8 : 26) + depth * 16;
   const isEditing = editingPath === node.path;
   const isBeingDragged = draggedPath === node.path;
   const isDropTarget = dropTargetPath === node.path;
@@ -129,13 +131,13 @@ function Row({
         display: 'flex',
         alignItems: 'center',
         boxSizing: 'border-box',
-        gap: 4,
+        gap: 7,
         paddingRight: 8,
         opacity: isBeingDragged ? 0.4 : 1,
-        outline: isDropTarget ? '2px solid var(--accent, #00f0ff)' : undefined,
-        outlineOffset: isDropTarget ? '-2px' : undefined,
+        outline: isDropTarget ? '1.5px dashed var(--b1, rgba(0, 240, 255, 0.6))' : undefined,
+        outlineOffset: isDropTarget ? '-1px' : undefined,
       }}
-      className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${isMd ? ' vb-md' : ''}`}
+      className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${node.isDirectory && depth === 0 ? ' vb-root-dir' : ''}${isMd ? ' vb-md' : ''}`}
       data-testid={`vb-row-${node.path}`}
       role="treeitem"
       aria-level={depth + 1}
@@ -173,7 +175,13 @@ function Row({
         onDragEnd();
       }}
     >
-      <span className="vb-chevron" aria-hidden="true">{node.isDirectory ? (isExpanded ? '▾' : '▸') : ''}</span>
+      {node.isDirectory && (
+        <span className={`vb-chevron${isExpanded ? ' vb-chevron--open' : ''}`} aria-hidden="true">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </span>
+      )}
       <span className="vb-icon" aria-hidden="true">
         <NodeIcon icon={!node.isDirectory ? iconMap?.[node.path] : undefined} fallback={node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'} />
       </span>
@@ -181,6 +189,9 @@ function Row({
         <RenameInput value={editingValue ?? ''} error={editError} onChange={onRenameChange} onCommit={onRenameCommit} onCancel={onRenameCancel} />
       ) : (
         <span className="vb-name">{isMd ? node.name.slice(0, -3) : node.name}</span>
+      )}
+      {node.isDirectory && node.children.length > 0 && (
+        <span className="vb-count" aria-hidden="true">{node.children.length}</span>
       )}
     </div>
   );

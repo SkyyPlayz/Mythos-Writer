@@ -54,6 +54,12 @@ export interface NotesTabPanelProps {
   onOpenScene?: (storyId: string, chapterId: string, sceneId: string) => void;
   onExport?: (scope: ExportScope) => void;
   journalModeEnabled?: boolean;
+  /** M15: notes-tree context menu "Open in new tab"; falls back to onOpenFile. */
+  onOpenInNewTab?: (path: string) => void;
+  /** M15: notes-tree context menu "Beta read" (disabled until wired). */
+  onBetaRead?: (path: string) => void;
+  /** M15: notes-tree context menu "Continuity check" (disabled until wired). */
+  onContinuityCheck?: (path: string) => void;
   // BrainstormPage passthrough
   brainstormEnabled?: boolean;
   voiceEnabled?: boolean;
@@ -106,6 +112,9 @@ export default function NotesTabPanel({
   onOpenScene,
   onExport,
   journalModeEnabled,
+  onOpenInNewTab,
+  onBetaRead,
+  onContinuityCheck,
   brainstormEnabled,
   voiceEnabled = false,
   ttsSettings,
@@ -285,6 +294,9 @@ export default function NotesTabPanel({
                 journalModeEnabled={journalModeEnabled}
                 initialScope="notes"
                 lockScope
+                onOpenInNewTab={onOpenInNewTab}
+                onBetaRead={onBetaRead}
+                onContinuityCheck={onContinuityCheck}
               />
             </div>
           </div>
