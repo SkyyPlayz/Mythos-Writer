@@ -46,6 +46,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -307,7 +308,7 @@ test('TC-W3.3-DR-01: reorder card via keyboard; verify order persisted after rel
 
   // Verify persistence by navigating away and back (page.reload() is unreliable in
   // headless Electron; navigate-and-back exercises the same localStorage restore path).
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }).click();
+  await clickStoryNav(page);
   await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
@@ -366,7 +367,7 @@ test('TC-W3.3-DR-02: Alt+Down moves card down in custom sort; order + persistenc
     expect(stored.customOrder.length).toBe(count);
   }
   // Navigate away and back to verify persistence (page.reload() is unreliable in headless Electron).
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }).click();
+  await clickStoryNav(page);
   await page.waitForTimeout(400);
   await ensureBrainstorm(page);
   await selectSort(page, 'custom');
