@@ -7,6 +7,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -50,7 +51,7 @@ async function fillPrompt(page: Page, response: string): Promise<void> {
 /** Create story → chapter → scene through the navigator and open the scene editor. */
 async function openScene(page: Page): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await clickStoryNav(page);
   await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 5_000 });
 
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });

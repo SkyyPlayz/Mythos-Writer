@@ -63,7 +63,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -124,9 +124,19 @@ test('TC-A11Y-01: VaultBrowser scope bar buttons are keyboard-focusable via Tab'
   const storyScopeBtn = page.locator('[data-testid="vb-scope-story"]');
   await expect(storyScopeBtn).toBeVisible({ timeout: 6_000 });
 
-  // Focus the first scope button to anchor the traversal
-  await storyScopeBtn.focus();
-  await expect(storyScopeBtn).toBeFocused();
+  // Anchor the traversal only once focus RESTS on the scope button: startup
+  // steals focus once, deterministically but late (the editor auto-focuses
+  // when its data finishes loading — slower since the Liquid Neon shell), so
+  // re-focus until it survives a settle window before pressing Tab.
+  await expect(async () => {
+    await storyScopeBtn.focus();
+    await page.waitForTimeout(200);
+    const active = await page.evaluate(
+      () => (document.activeElement as HTMLElement | null)?.dataset?.testid
+        ?? document.activeElement?.tagName ?? 'none',
+    );
+    expect(active, `focus stolen by: ${active}`).toBe('vb-scope-story');
+  }).toPass({ timeout: 15_000 });
 
   // Tab → Notes scope button
   await page.keyboard.press('Tab');

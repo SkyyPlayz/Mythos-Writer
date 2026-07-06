@@ -20,6 +20,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -171,7 +172,7 @@ test('AC-SV-05: Scene Crafter sub-view persists after Notes tab round-trip', asy
 
   // Switch back to Story tab.
   const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
-  await storyTab.click();
+  await clickStoryNav(page);
   await expect(storyTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
   // Scene Crafter sub-view should still be selected.
