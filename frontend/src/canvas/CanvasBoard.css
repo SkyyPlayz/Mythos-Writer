@@ -1,0 +1,296 @@
+/* Beta 3 / M17 — Canvas board engine.
+ * Every literal value is ported from the Liquid Neon prototype
+ * (design-handoff/prototype, template lines 1003–1048 + style strings
+ * 4785–4791). Slot colors read the theme tokens --n/--b/--g/--gs 1..6 with
+ * the prototype's default-theme values as fallbacks. */
+
+/* Board container — dotted grid over a soft radial wash (line 1017). */
+.cvb-root {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(rgba(158, 178, 214, 0.14) 1px, transparent 1.3px) 0 0 / 22px 22px,
+    radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, 0.4), rgba(6, 8, 15, 0.6));
+}
+
+/* Empty-space pan surface (line 1018). */
+.cvb-pan-layer {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+.cvb-pan-layer:active {
+  cursor: grabbing;
+}
+
+/* Pannable/zoomable stage, transform-origin 0 0 (line 4770). */
+.cvb-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2200px;
+  height: 1500px;
+  transform-origin: 0 0;
+}
+
+/* Link layer + bezier strokes (lines 1020–1023). */
+.cvb-links {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2200px;
+  height: 1500px;
+  pointer-events: none;
+  overflow: visible;
+}
+.cvb-link {
+  fill: none;
+  stroke: rgba(158, 190, 230, 0.45);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px rgba(120, 170, 255, 0.35));
+}
+
+/* Per-slot neon: theme tokens with prototype default-theme fallbacks. */
+.cvb-card--s1 { --cvb-neon: var(--n1, #00f0ff); --cvb-border: var(--b1, rgba(0, 240, 255, 0.55)); --cvb-glow: var(--g1, rgba(0, 240, 255, 0.9)); --cvb-glow-soft: var(--gs1, rgba(0, 240, 255, 0.45)); }
+.cvb-card--s2 { --cvb-neon: var(--n2, #9b5fff); --cvb-border: var(--b2, rgba(155, 95, 255, 0.55)); --cvb-glow: var(--g2, rgba(155, 95, 255, 0.9)); --cvb-glow-soft: var(--gs2, rgba(155, 95, 255, 0.45)); }
+.cvb-card--s3 { --cvb-neon: var(--n3, #ff4dff); --cvb-border: var(--b3, rgba(255, 77, 255, 0.55)); --cvb-glow: var(--g3, rgba(255, 77, 255, 0.9)); --cvb-glow-soft: var(--gs3, rgba(255, 77, 255, 0.45)); }
+.cvb-card--s4 { --cvb-neon: var(--n4, #ff9a3d); --cvb-border: var(--b4, rgba(255, 154, 61, 0.55)); --cvb-glow: var(--g4, rgba(255, 154, 61, 0.9)); --cvb-glow-soft: var(--gs4, rgba(255, 154, 61, 0.45)); }
+.cvb-card--s5 { --cvb-neon: var(--n5, #2fe6c8); --cvb-border: var(--b5, rgba(47, 230, 200, 0.55)); --cvb-glow: var(--g5, rgba(47, 230, 200, 0.9)); --cvb-glow-soft: var(--gs5, rgba(47, 230, 200, 0.45)); }
+.cvb-card--s6 { --cvb-neon: var(--n6, #3d9bff); --cvb-border: var(--b6, rgba(61, 155, 255, 0.55)); --cvb-glow: var(--g6, rgba(61, 155, 255, 0.9)); --cvb-glow-soft: var(--gs6, rgba(61, 155, 255, 0.45)); }
+
+/* Card shell (style string line 4785). */
+.cvb-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: rgba(13, 17, 30, 0.92);
+  border: var(--bw, 1px) solid var(--cvb-border);
+  box-shadow:
+    0 0 var(--gr, 26px) -8px var(--cvb-glow-soft),
+    0 10px 30px rgba(3, 5, 12, 0.5);
+}
+/* Connect-mode source card: full-strength neon (linking branch, line 4785). */
+.cvb-card--linking {
+  border-color: var(--cvb-neon);
+  box-shadow:
+    0 0 var(--gr, 26px) -8px var(--cvb-glow),
+    0 10px 30px rgba(3, 5, 12, 0.5);
+}
+
+/* Drag handle header (style string line 4786). */
+.cvb-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  cursor: grab;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Note avatar chip (style string line 4787, hover line 1028). */
+.cvb-card-av {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 800;
+  color: #0b0d17;
+  cursor: pointer;
+  background: var(--cvb-neon);
+  border: none;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.cvb-card-av:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+.cvb-card-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: #eef2fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ⚯ connect button (style string line 4791). */
+.cvb-card-connect {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  color: #8e9db8;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.cvb-card-connect:hover {
+  color: #fff;
+}
+.cvb-card--linking .cvb-card-connect {
+  color: #0b0d17;
+  background: var(--cvb-neon);
+}
+
+/* Delete × — revealed on card hover (line 1031). */
+.cvb-card-del {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7686a2;
+  cursor: pointer;
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.cvb-card:hover .cvb-card-del,
+.cvb-card-del:focus-visible {
+  opacity: 1;
+}
+.cvb-card-del:hover {
+  color: #fff;
+  background: rgba(255, 80, 110, 0.35);
+}
+
+/* Body text (line 1033). */
+.cvb-card-body {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: #9cabc4;
+  line-height: 1.55;
+  overflow: hidden;
+}
+
+/* Corner resize handle (line 1034). */
+.cvb-card-resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 13px;
+  height: 13px;
+  cursor: nwse-resize;
+  border-right: 2px solid rgba(158, 178, 214, 0.4);
+  border-bottom: 2px solid rgba(158, 178, 214, 0.4);
+  border-radius: 0 0 6px 0;
+}
+.cvb-card-resize:hover {
+  border-color: var(--n1, #00f0ff);
+}
+
+/* Connect-mode hint (header hint, line 1013). */
+.cvb-linking-hint {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-size: 10px;
+  color: var(--n1, #00f0ff);
+  pointer-events: none;
+  animation: cvb-pulse 1.4s ease-in-out infinite;
+}
+@keyframes cvb-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cvb-linking-hint {
+    animation: none;
+  }
+}
+
+/* Bottom-center zoom dock (lines 1038–1045). */
+.cvb-dock {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: 12px;
+  background: rgba(15, 19, 33, 0.94);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 10px 30px rgba(3, 5, 12, 0.55);
+}
+.cvb-dock-add {
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aebad0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.cvb-dock-divider {
+  width: 1px;
+  height: 15px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
+}
+.cvb-dock-zoom {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aebad0;
+  cursor: pointer;
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.cvb-dock-pct {
+  font-size: 10.5px;
+  color: #dbe4f5;
+  width: 38px;
+  text-align: center;
+}
+.cvb-dock-fit {
+  padding: 3px 9px;
+  border-radius: 7px;
+  color: #aebad0;
+  cursor: pointer;
+  font-size: 10px;
+  background: none;
+  border: none;
+}
+.cvb-dock-add:hover,
+.cvb-dock-zoom:hover,
+.cvb-dock-fit:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
