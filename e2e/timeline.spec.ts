@@ -797,7 +797,9 @@ test.describe('Beta 3 M20 — Timeline v2 five modes (TC-TL-M20-*)', () => {
     const cell = m20Page.locator('[data-testid="tla-chapter-cell"]').first();
     await expect(cell).toBeVisible({ timeout: 6_000 });
     // No seeded scene has a word count → everything is "planned from notes".
-    await expect(cell).toHaveAttribute('style', /grayscale\(\.92\) brightness\(\.82\)/);
+    // React/Chromium serialize the inline filter with leading zeros
+    // (grayscale(0.92)), so accept both forms of the prototype values.
+    await expect(cell).toHaveAttribute('style', /grayscale\(0?\.92\) brightness\(0?\.82\)/);
 
     await modeBar.getByRole('button', { name: 'Structure' }).click();
     await expect(cell).not.toHaveAttribute('style', /grayscale/);
