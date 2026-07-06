@@ -104,16 +104,30 @@ async function navigateToGraph(page: Page): Promise<void> {
 
   const mainNav = page.locator('nav[aria-label="Main navigation"]');
   await expect(mainNav).toBeVisible({ timeout: 12_000 });
-  const storyTab = mainNav.getByRole('button', { name: 'Story' });
-  const notesTab = mainNav.getByRole('button', { name: 'Notes' });
+  const storyTab = mainNav.getByRole('button', { name: 'Story', exact: true });
+  const notesTab = mainNav.getByRole('button', { name: 'Notes', exact: true });
 
   // Navigate away to reset state — use the Story Timeline sub-view (exists in every fixture).
+  // Nav rail v2 treats a re-click of the ACTIVE Story item as a Stories-popover
+  // toggle, and the open popover's backdrop intercepts every later click — so
+  // only click when Story is not already active (first visit boots on Story;
+  // tests 2..n leave activeTab on Notes, so the reset click still fires there).
   await expect(storyTab).toBeVisible({ timeout: 5_000 });
-  await storyTab.click();
+  if (await storyTab.getAttribute('aria-current') !== 'page') {
+    await storyTab.click();
+  }
   const timelineBtn = page.locator('[data-testid="story-subview-timeline"]');
   if (await timelineBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await timelineBtn.click();
     await page.waitForTimeout(200);
+  }
+
+  // Belt and braces: if the Stories popover is open anyway, dismiss it via its
+  // backdrop so the Notes click can land.
+  const storiesBackdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
+  if (await storiesBackdrop.count()) {
+    await storiesBackdrop.click({ position: { x: 5, y: 5 }, force: true });
+    await expect(storiesBackdrop).toHaveCount(0);
   }
 
   // Graph now lives under the Notes tab's Graph sub-view.

@@ -235,8 +235,15 @@ test('TC-SKY-814-05: Slider controls have aria-label and announce value', async 
   const initialValue = await slider.inputValue();
   expect(initialValue).toBeTruthy();
 
-  // Change the slider value
-  await slider.fill('0.5');
+  // Change the slider value. Derive a valid on-step target from the input's
+  // own range — the first Appearance slider is an integer 0-100 range since
+  // Beta 3 M4, so the old hard-coded fill('0.5') is a malformed value.
+  const min = Number((await slider.getAttribute('min')) ?? 0);
+  const max = Number((await slider.getAttribute('max')) ?? 100);
+  const step = Number((await slider.getAttribute('step')) || 1);
+  let target = min + Math.round((max - min) / 2 / step) * step;
+  if (String(target) === initialValue) target = Math.min(max, target + step);
+  await slider.fill(String(target));
 
   // Verify value changed
   const finalValue = await slider.inputValue();
