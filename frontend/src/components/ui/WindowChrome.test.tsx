@@ -146,3 +146,33 @@ describe('WindowChrome — Liquid Neon a11y CSS', () => {
     expect(screen.getByRole('banner', { name: /window chrome/i })).toBeInTheDocument();
   });
 });
+
+// SKY-906 — the project menu carries the legacy switcher's E2E anchors and
+// the "+ Create new Mythos Vault" row (restored after the M5 restyle dropped it).
+describe('WindowChrome — project menu create-vault parity', () => {
+  it('trigger carries the legacy project-switcher-btn compat class', async () => {
+    stubApi('linux');
+    await act(async () => { render(<WindowChrome />); });
+    expect(screen.getByTestId('wc-project-trigger')).toHaveClass('project-switcher-btn');
+  });
+
+  it('shows the create-vault row with the legacy testid and invokes the callback', async () => {
+    stubApi('linux');
+    const onCreateVault = vi.fn();
+    await act(async () => { render(<WindowChrome onCreateVault={onCreateVault} />); });
+    fireEvent.click(screen.getByTestId('wc-project-trigger'));
+    const row = screen.getByTestId('project-switcher-create-new');
+    expect(row).toHaveClass('project-switcher-item');
+    expect(row).toHaveTextContent('+ Create new Mythos Vault');
+    fireEvent.click(row);
+    expect(onCreateVault).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
+  });
+
+  it('omits the create-vault row when no handler is wired', async () => {
+    stubApi('linux');
+    await act(async () => { render(<WindowChrome />); });
+    fireEvent.click(screen.getByTestId('wc-project-trigger'));
+    expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
+  });
+});

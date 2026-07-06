@@ -1,3 +1,6 @@
+/* Scoped under .project-switcher (the legacy component root): the bare
+   class names double as E2E compat anchors on the Liquid Neon title bar
+   (WindowChrome), which must not inherit this styling. */
 .project-switcher {
   position: relative;
   display: flex;
@@ -6,7 +9,7 @@
   margin-right: 4px;
 }
 
-.project-switcher-btn {
+.project-switcher .project-switcher-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -23,13 +26,13 @@
   overflow: hidden;
 }
 
-.project-switcher-btn:hover,
-.project-switcher-btn:focus-visible {
+.project-switcher .project-switcher-btn:hover,
+.project-switcher .project-switcher-btn:focus-visible {
   background: var(--bg-surface);
   color: var(--text-primary);
 }
 
-.project-switcher-btn:focus-visible {
+.project-switcher .project-switcher-btn:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: 2px;
 }
@@ -71,7 +74,7 @@
   user-select: none;
 }
 
-.project-switcher-item {
+.project-switcher .project-switcher-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -88,29 +91,29 @@
   text-overflow: ellipsis;
 }
 
-.project-switcher-item:hover,
-.project-switcher-item:focus-visible {
+.project-switcher .project-switcher-item:hover,
+.project-switcher .project-switcher-item:focus-visible {
   background: var(--bg-hover, var(--bg-base));
   outline: none;
 }
 
-.project-switcher-item:focus-visible {
+.project-switcher .project-switcher-item:focus-visible {
   outline: 2px solid #7c3aed;
   outline-offset: -2px;
 }
 
-.project-switcher-item.active {
+.project-switcher .project-switcher-item.active {
   color: var(--accent);
   font-weight: 600;
 }
 
-.project-switcher-item-name {
+.project-switcher .project-switcher-item-name {
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
 }
 
-.project-switcher-item-path {
+.project-switcher .project-switcher-item-path {
   font-size: 0.68rem;
   color: var(--text-secondary);
   overflow: hidden;
@@ -123,19 +126,19 @@
   margin: 4px 0;
 }
 
-.project-switcher-item.open-other {
+.project-switcher .project-switcher-item.open-other {
   color: var(--text-secondary);
   font-style: italic;
 }
 
 /* SKY-320: Obsidian-style "Create new Mythos Vault" lives between recents
    and "Open Other Folder…", styled as a calm primary action. */
-.project-switcher-item.create-new {
+.project-switcher .project-switcher-item.create-new {
   color: var(--color-accent, var(--text-primary));
   font-weight: 500;
 }
 
-.project-switcher-item.create-new:disabled {
+.project-switcher .project-switcher-item.create-new:disabled {
   opacity: 0.6;
   cursor: progress;
 }
