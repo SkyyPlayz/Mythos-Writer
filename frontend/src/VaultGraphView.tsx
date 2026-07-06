@@ -1,26 +1,55 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent,
   type WheelEvent,
 } from 'react';
 import './VaultGraphView.css';
 
-const GRAPH_WIDTH = 1200;
-const GRAPH_HEIGHT = 800;
-const LINK_DISTANCE = 80;
-const CHARGE_REPULSION = -120;
-const COLLISION_PADDING = 12;
-const CENTER_GRAVITY = 0.05;
+// M21: canvas matches the prototype sim space (Liquid Neon prototype 1615, 3835).
+const GRAPH_WIDTH = 1000;
+const GRAPH_HEIGHT = 640;
 const MAX_INTERACTIVE_NODES = 500;
 const DEPTH_UNLIMITED = 7;
 const LONG_PRESS_MS = 500;
 const MAX_VISIBLE_CHIPS = 8;
+
+// ─── M21 force sim (exact port of prototype `stepSim`, lines 3805–3840) ──────
+const SIM_CENTER_X = 500;
+const SIM_CENTER_Y = 325;
+const SIM_DAMPING = 0.85;
+const SIM_MAX_VELOCITY = 4.5;
+const SIM_MIN_X = 36;
+const SIM_MAX_X = 964;
+const SIM_MIN_Y = 42;
+const SIM_MAX_Y = 602;
+/** Below this total energy the rAF loop stops repainting (prototype 3844). */
+export const SIM_ENERGY_CUTOFF = 0.06;
+/** Synchronous settle budgets for the initial (non-animated) layout. */
+const SETTLE_STEPS = 300;
+const SETTLE_STEPS_LARGE = 120;
+const SETTLE_LARGE_THRESHOLD = 200;
+const DRAG_THRESHOLD_PX = 3;
+
+// M21 zoom — prototype gWheel 3749, gZoomIn/Out/Reset 4873–4876.
+const ZOOM_MIN = 0.45;
+const ZOOM_MAX = 2.6;
+const ZOOM_WHEEL_IN = 1.12;
+const ZOOM_WHEEL_OUT = 0.9;
+const ZOOM_BTN_IN = 1.18;
+const ZOOM_BTN_OUT = 0.85;
+
+// Star discs: prototype node circle is drawn at n.r * 1.5 px wide; our discs
+// extend to 2× the token-circle radius so the gradient fade stays visible.
+const STAR_DISC_SCALE = 2;
+const STAR_GLOW_MAX_NODES = 200;
 
 const GRAPH_CATEGORIES = [
   'characters',
@@ -70,6 +99,45 @@ const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   misc: 'Misc',
   default: 'Default',
 };
+// M21: category colors ported from the prototype `gCats` (3044–3052) with the
+// Neon Classic slot defaults (`catCol`, 4156). `scenes` is the prototype's gold
+// "Story" cluster; `history` is "History / Lore". `misc` (no prototype
+// counterpart) uses classic slot c6; `default` uses the note-edge blue.
+export const GRAPH_CATEGORY_COLORS: Record<GraphCategory, string> = {
+  characters: '#00f0ff',
+  locations: '#9b5fff',
+  factions: '#ff4dff',
+  history: '#e0b3ff',
+  systems: '#2fe6c8',
+  items: '#ff9a3d',
+  scenes: '#ffd319',
+  misc: '#3d9bff',
+  default: '#9fc0e8',
+};
+
+/** Resolve a category's display color, honoring per-category recolors. */
+export function categoryColor(
+  category: GraphCategory,
+  overrides?: Partial<Record<GraphCategory, string>>,
+): string {
+  return overrides?.[category] ?? GRAPH_CATEGORY_COLORS[category];
+}
+
+// M21: per-edge-type colors — prototype `gLines` defaults (4872).
+export const EDGE_COLOR_DEFAULTS = {
+  note: '#9fc0e8',
+  story: '#ffd319',
+} as const;
+
+/** Port of the prototype `hexA` helper (3305–3309): #rrggbb → rgba(). */
+export function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
+
 // Ordered chip list per spec (bottom toolbar)
 const CHIP_DEFS: { key: GraphCategory; label: string }[] = [
   { key: 'characters', label: 'Characters' },
@@ -121,10 +189,10 @@ const LOADING_SPINNER_DELAY_MS = 2000;
 const VIEWPORT_BUFFER = 0.2;
 
 const SKELETON_NODES: Array<{ x: number; y: number; r: number }> = [
-  { x: 600, y: 200, r: 14 }, { x: 400, y: 350, r: 10 }, { x: 780, y: 320, r: 8 },
-  { x: 300, y: 500, r: 9 }, { x: 500, y: 550, r: 7 }, { x: 700, y: 480, r: 11 },
-  { x: 850, y: 550, r: 7 }, { x: 200, y: 300, r: 6 }, { x: 900, y: 200, r: 8 },
-  { x: 650, y: 650, r: 6 },
+  { x: 500, y: 160, r: 14 }, { x: 333, y: 280, r: 10 }, { x: 650, y: 256, r: 8 },
+  { x: 250, y: 400, r: 9 }, { x: 417, y: 440, r: 7 }, { x: 583, y: 384, r: 11 },
+  { x: 708, y: 440, r: 7 }, { x: 167, y: 240, r: 6 }, { x: 750, y: 160, r: 8 },
+  { x: 542, y: 520, r: 6 },
 ];
 
 const SKELETON_EDGES: Array<[number, number]> = [
@@ -198,83 +266,192 @@ function edgeTestId(edge: GraphEdge): string {
   return `vault-edge-${edge.source}__${edge.target}`;
 }
 
-function initialPositions(nodes: GraphNode[], neighbours: Map<string, Set<string>>): PositionedNode[] {
-  const radius = Math.min(GRAPH_WIDTH, GRAPH_HEIGHT) * 0.32;
-  return nodes.map((node, index) => {
-    const angle = (2 * Math.PI * index) / Math.max(nodes.length, 1);
-    const degree = nodeDegree(node, neighbours);
-    return {
-      ...node,
-      categoryKey: nodeCategory(node),
-      radius: computeNodeRadius(degree),
-      x: GRAPH_WIDTH / 2 + radius * Math.cos(angle),
-      y: GRAPH_HEIGHT / 2 + radius * Math.sin(angle),
-    };
-  });
+// ─── M21 force sim ────────────────────────────────────────────────────────────
+// Exact port of the prototype physics (`stepSim`, 3805–3840): center pull +
+// pairwise repulsion + spring links, damping ×0.85, velocity clamp ±4.5,
+// bounds 1000×640, pinned nodes held at fx/fy.
+
+export interface SimNodeState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** Pin coordinates — non-null while a node is pinned (drag-to-pin). */
+  fx: number | null;
+  fy: number | null;
 }
 
-function applyForceLayout(nodes: GraphNode[], edges: GraphEdge[]): PositionedNode[] {
-  const neighbours = buildNeighbourMap(edges);
-  const positioned = initialPositions(nodes, neighbours);
-  const byId = new Map(positioned.map((node) => [node.id, node]));
+export interface SimParams {
+  centerForce: number;
+  repelForce: number;
+  linkForce: number;
+  linkDistance: number;
+}
 
-  for (let step = 0; step < 80; step += 1) {
-    const movement = new Map(positioned.map((node) => [node.id, { x: 0, y: 0 }]));
+// Prototype defaults: fCenter 6, fRepel 14, fLink 8, linkDist 120 (3260).
+export const SIM_DEFAULTS: SimParams = {
+  centerForce: 6,
+  repelForce: 14,
+  linkForce: 8,
+  linkDistance: 120,
+};
 
-    for (let i = 0; i < positioned.length; i += 1) {
-      for (let j = i + 1; j < positioned.length; j += 1) {
-        const a = positioned[i];
-        const b = positioned[j];
-        const dx = a.x - b.x || 0.01;
-        const dy = a.y - b.y || 0.01;
-        const distance = Math.max(Math.hypot(dx, dy), 0.01);
-        const minDistance = a.radius + b.radius + COLLISION_PADDING;
-        const collisionBoost = distance < minDistance ? (minDistance - distance) * 0.25 : 0;
-        const force = (Math.abs(CHARGE_REPULSION) / distance) + collisionBoost;
-        const ax = (dx / distance) * force;
-        const ay = (dy / distance) * force;
-        const ma = movement.get(a.id);
-        const mb = movement.get(b.id);
-        if (ma && mb) {
-          ma.x += ax;
-          ma.y += ay;
-          mb.x -= ax;
-          mb.y -= ay;
-        }
+function clampValue(min: number, max: number, value: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Advance the simulation one tick, mutating `sim` in place. Returns the total
+ * energy (Σ|vx|+|vy|; pinned nodes contribute 1 each, per the prototype).
+ * `rand` is injectable so tests can run the step deterministically.
+ */
+export function stepSim(
+  sim: Map<string, SimNodeState>,
+  visibleIds: readonly string[],
+  links: ReadonlyArray<readonly [string, string]>,
+  params: SimParams = SIM_DEFAULTS,
+  rand: () => number = Math.random,
+): number {
+  // Prototype 3809: kC = fCenter*0.00042, kR = fRepel*430, kL = fLink*0.0011.
+  const kC = params.centerForce * 0.00042;
+  const kR = params.repelForce * 430;
+  const kL = params.linkForce * 0.0011;
+  const linkDistance = params.linkDistance;
+
+  const bodies: SimNodeState[] = [];
+  for (const id of visibleIds) {
+    const p = sim.get(id);
+    if (p) bodies.push(p);
+  }
+
+  for (let i = 0; i < bodies.length; i += 1) {
+    const a = bodies[i];
+    a.vx += (SIM_CENTER_X - a.x) * kC;
+    a.vy += (SIM_CENTER_Y - a.y) * kC;
+    for (let j = i + 1; j < bodies.length; j += 1) {
+      const b = bodies[j];
+      let dx = a.x - b.x;
+      let dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 64) {
+        dx = rand() - 0.5;
+        dy = rand() - 0.5;
+        d2 = 64;
       }
-    }
-
-    for (const edge of edges) {
-      const source = byId.get(edge.source);
-      const target = byId.get(edge.target);
-      if (!source || !target) continue;
-      const dx = target.x - source.x || 0.01;
-      const dy = target.y - source.y || 0.01;
-      const distance = Math.max(Math.hypot(dx, dy), 0.01);
-      const force = (distance - LINK_DISTANCE) * 0.06;
-      const fx = (dx / distance) * force;
-      const fy = (dy / distance) * force;
-      const ms = movement.get(source.id);
-      const mt = movement.get(target.id);
-      if (ms && mt) {
-        ms.x += fx;
-        ms.y += fy;
-        mt.x -= fx;
-        mt.y -= fy;
-      }
-    }
-
-    for (const node of positioned) {
-      const move = movement.get(node.id);
-      if (!move) continue;
-      move.x += (GRAPH_WIDTH / 2 - node.x) * CENTER_GRAVITY;
-      move.y += (GRAPH_HEIGHT / 2 - node.y) * CENTER_GRAVITY;
-      node.x = Math.max(32, Math.min(GRAPH_WIDTH - 32, node.x + move.x));
-      node.y = Math.max(32, Math.min(GRAPH_HEIGHT - 32, node.y + move.y));
+      const d = Math.sqrt(d2);
+      const f = Math.min(kR / d2, 3.4);
+      const ux = dx / d;
+      const uy = dy / d;
+      a.vx += ux * f;
+      a.vy += uy * f;
+      b.vx -= ux * f;
+      b.vy -= uy * f;
     }
   }
 
-  return positioned;
+  const visible = new Set(visibleIds);
+  for (const [sourceId, targetId] of links) {
+    if (!visible.has(sourceId) || !visible.has(targetId)) continue;
+    const a = sim.get(sourceId);
+    const b = sim.get(targetId);
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = (d - linkDistance) * kL;
+    const ux = dx / d;
+    const uy = dy / d;
+    a.vx += ux * f;
+    a.vy += uy * f;
+    b.vx -= ux * f;
+    b.vy -= uy * f;
+  }
+
+  let energy = 0;
+  for (const p of bodies) {
+    if (p.fx != null && p.fy != null) {
+      p.x = p.fx;
+      p.y = p.fy;
+      p.vx = 0;
+      p.vy = 0;
+      energy += 1;
+      continue;
+    }
+    p.vx *= SIM_DAMPING;
+    p.vy *= SIM_DAMPING;
+    p.vx = clampValue(-SIM_MAX_VELOCITY, SIM_MAX_VELOCITY, p.vx);
+    p.vy = clampValue(-SIM_MAX_VELOCITY, SIM_MAX_VELOCITY, p.vy);
+    p.x += p.vx;
+    p.y += p.vy;
+    p.x = clampValue(SIM_MIN_X, SIM_MAX_X, p.x);
+    p.y = clampValue(SIM_MIN_Y, SIM_MAX_Y, p.y);
+    energy += Math.abs(p.vx) + Math.abs(p.vy);
+  }
+  return energy;
+}
+
+/**
+ * Port of the prototype `relayoutReal` (4698): clear every pin and give each
+ * node a random velocity kick so the layout re-settles.
+ */
+export function relayoutSim(sim: Map<string, SimNodeState>, rand: () => number = Math.random): void {
+  for (const p of sim.values()) {
+    p.fx = null;
+    p.fy = null;
+    p.vx = (rand() - 0.5) * 60;
+    p.vy = (rand() - 0.5) * 60;
+  }
+}
+
+function countPinned(sim: Map<string, SimNodeState>, visibleIds: readonly string[]): number {
+  let pinned = 0;
+  for (const id of visibleIds) {
+    if (sim.get(id)?.fx != null) pinned += 1;
+  }
+  return pinned;
+}
+
+/** Run the sim synchronously until it settles (or the step budget runs out). */
+function settleSim(
+  sim: Map<string, SimNodeState>,
+  visibleIds: readonly string[],
+  links: ReadonlyArray<readonly [string, string]>,
+  params: SimParams = SIM_DEFAULTS,
+  maxSteps = SETTLE_STEPS,
+): void {
+  for (let step = 0; step < maxSteps; step += 1) {
+    const energy = stepSim(sim, visibleIds, links, params);
+    if (energy - countPinned(sim, visibleIds) <= SIM_ENERGY_CUTOFF) return;
+  }
+}
+
+function settleBudget(nodeCount: number): number {
+  return nodeCount > SETTLE_LARGE_THRESHOLD ? SETTLE_STEPS_LARGE : SETTLE_STEPS;
+}
+
+/** Seed sim entries for new nodes on a circle around the sim center. */
+function seedSim(sim: Map<string, SimNodeState>, nodes: GraphNode[]): void {
+  const radius = Math.min(GRAPH_WIDTH, GRAPH_HEIGHT) * 0.32;
+  nodes.forEach((node, index) => {
+    if (sim.has(node.id)) return;
+    const angle = (2 * Math.PI * index) / Math.max(nodes.length, 1);
+    sim.set(node.id, {
+      x: SIM_CENTER_X + radius * Math.cos(angle),
+      y: SIM_CENTER_Y + radius * Math.sin(angle),
+      vx: 0,
+      vy: 0,
+      fx: null,
+      fy: null,
+    });
+  });
+}
+
+/** rAF animation is skipped for reduced motion and non-browser (test) envs. */
+function canAnimateSim(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.requestAnimationFrame === 'function'
+    && typeof window.matchMedia === 'function'
+    && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function visibleIdsForHover(hoveredNodeId: string | null, neighbours: Map<string, Set<string>>): Set<string> | null {
@@ -508,6 +685,61 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   const hasLoadedGraphRef = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
+  // ─── M21: live force sim, per-category colors, filters + inspector ─────────
+  // Bumped after every sim tick so render snapshots the latest positions.
+  const [, setSimVersion] = useState(0);
+  const [catColors, setCatColors] = useState<Record<GraphCategory, string>>(
+    () => ({ ...GRAPH_CATEGORY_COLORS }),
+  );
+  const [lineColors, setLineColors] = useState<{ note: string; story: string }>(
+    () => ({ ...EDGE_COLOR_DEFAULTS }),
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const simRef = useRef<Map<string, SimNodeState>>(new Map());
+  const simInputsRef = useRef<{ ids: string[]; links: Array<[string, string]> }>({ ids: [], links: [] });
+  const seededDataRef = useRef<VaultGraphData | null>(null);
+  const firstLayoutRef = useRef(true);
+  const pendingWakeRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+  const frameRef = useRef(0);
+  // Set while the click that trails a drag should be swallowed (drag ≠ open).
+  const dragMovedRef = useRef(false);
+  const reactId = useId();
+  const starPrefix = useMemo(() => `vgv-star-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [reactId]);
+
+  /** Restart the sim: animate on rAF, or settle synchronously (reduced motion / tests). */
+  const wakeSim = useCallback(() => {
+    if (!canAnimateSim()) {
+      const { ids, links } = simInputsRef.current;
+      settleSim(simRef.current, ids, links, SIM_DEFAULTS, settleBudget(ids.length));
+      setSimVersion((v) => v + 1);
+      return;
+    }
+    if (rafRef.current != null) return;
+    frameRef.current = 0;
+    const tick = () => {
+      const { ids, links } = simInputsRef.current;
+      const energy = stepSim(simRef.current, ids, links);
+      frameRef.current += 1;
+      // Prototype 3841–3848: keep stepping while hot, repaint every 2nd frame.
+      // Persistent pins each contribute 1 energy, so subtract them from the
+      // stop condition or a pinned graph would animate forever.
+      if (energy - countPinned(simRef.current, ids) <= SIM_ENERGY_CUTOFF) {
+        rafRef.current = null;
+        setSimVersion((v) => v + 1);
+        return;
+      }
+      if (frameRef.current % 2 === 0) setSimVersion((v) => v + 1);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => () => {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const isInitialLoad = !hasLoadedGraphRef.current;
@@ -605,10 +837,43 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     return { nodes, edges };
   }, [categoryFilteredData, neighbours, selectedNodeId, depthLimit]);
 
-  const positionedNodes = useMemo(
-    () => applyForceLayout(filteredData?.nodes ?? [], filteredData?.edges ?? []),
-    [filteredData],
-  );
+  // M21: reconcile the live sim with the visible data. New nodes are seeded on
+  // a circle; the first layout settles synchronously so the initial paint is
+  // already arranged, later data changes animate on rAF (via pendingWakeRef).
+  if (filteredData && seededDataRef.current !== filteredData) {
+    seededDataRef.current = filteredData;
+    seedSim(simRef.current, filteredData.nodes);
+    simInputsRef.current = {
+      ids: filteredData.nodes.map((node) => node.id),
+      links: filteredData.edges.map((edge) => [edge.source, edge.target]),
+    };
+    if (firstLayoutRef.current || !canAnimateSim()) {
+      firstLayoutRef.current = false;
+      const { ids, links } = simInputsRef.current;
+      settleSim(simRef.current, ids, links, SIM_DEFAULTS, settleBudget(ids.length));
+    } else {
+      pendingWakeRef.current = true;
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingWakeRef.current) return;
+    pendingWakeRef.current = false;
+    wakeSim();
+  });
+
+  // Snapshot of the live sim positions; recomputed on every render (each sim
+  // tick bumps simVersion, so animation frames flow through here).
+  const positionedNodes: PositionedNode[] = (filteredData?.nodes ?? []).map((node) => {
+    const p = simRef.current.get(node.id);
+    return {
+      ...node,
+      categoryKey: nodeCategory(node),
+      radius: computeNodeRadius(nodeDegree(node, neighbours)),
+      x: p?.x ?? SIM_CENTER_X,
+      y: p?.y ?? SIM_CENTER_Y,
+    };
+  });
 
   const nodeById = useMemo(
     () => new Map(positionedNodes.map((node) => [node.id, node])),
@@ -644,10 +909,15 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
   const shouldShowLegend = visibleCategories.length >= 2;
 
+  // Keyed on the summary text (positions re-snapshot every render, so object
+  // identity would re-fire this and clobber focus/hover announcements).
+  const summaryMessage = filteredData
+    ? graphSummary(positionedNodes, filteredData.edges, searchQuery, neighbours)
+    : '';
   useEffect(() => {
-    if (!filteredData || prefersReducedMotion()) return;
-    setLiveMessage(graphSummary(positionedNodes, filteredData.edges, searchQuery, neighbours));
-  }, [filteredData, neighbours, positionedNodes, searchQuery]);
+    if (!summaryMessage || prefersReducedMotion()) return;
+    setLiveMessage(summaryMessage);
+  }, [summaryMessage]);
 
   useEffect(() => {
     if (!keyboardFocusedNodeId || nodeById.has(keyboardFocusedNodeId)) return;
@@ -704,10 +974,19 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [resetView, searchQuery]);
 
+  // M21: multiplicative zoom, prototype gWheel (3749).
   const handleWheel = useCallback((event: WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
-    const direction = event.deltaY > 0 ? -0.1 : 0.1;
-    setZoom((value) => Math.max(0.1, Math.min(4, Number((value + direction).toFixed(2)))));
+    const factor = event.deltaY < 0 ? ZOOM_WHEEL_IN : ZOOM_WHEEL_OUT;
+    setZoom((value) => clampValue(ZOOM_MIN, ZOOM_MAX, value * factor));
+  }, []);
+
+  const zoomIn = useCallback(() => {
+    setZoom((value) => clampValue(ZOOM_MIN, ZOOM_MAX, value * ZOOM_BTN_IN));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((value) => clampValue(ZOOM_MIN, ZOOM_MAX, value * ZOOM_BTN_OUT));
   }, []);
 
   const focusNode = useCallback((node: PositionedNode | null) => {
@@ -742,13 +1021,13 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
     if (event.key === '+' || event.key === '=') {
       event.preventDefault();
-      setZoom((value) => Math.min(4, Number((value + 0.1).toFixed(2))));
+      zoomIn();
       return;
     }
 
     if (event.key === '-') {
       event.preventDefault();
-      setZoom((value) => Math.max(0.1, Number((value - 0.1).toFixed(2))));
+      zoomOut();
       return;
     }
 
@@ -785,9 +1064,10 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
     if (!panStart) return;
+    // Prototype gPanDown (3750–3755): pan follows the pointer 1:1.
     setPan({
-      x: panStart.x + (event.clientX - panStart.clientX) / zoom,
-      y: panStart.y + (event.clientY - panStart.clientY) / zoom,
+      x: panStart.x + (event.clientX - panStart.clientX),
+      y: panStart.y + (event.clientY - panStart.clientY),
     });
   }
 
@@ -795,14 +1075,69 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     setPanStart(null);
   }
 
-  const selectNode = useCallback((node: PositionedNode) => {
-    setSelectedNodeId(node.id);
+  const openNode = useCallback((node: PositionedNode) => {
     if (node.vault === 'story' && node.storyId && node.chapterId && node.sceneId) {
       onOpenScene?.(node.storyId, node.chapterId, node.sceneId);
       return;
     }
     onOpenNote?.(node.path);
   }, [onOpenNote, onOpenScene]);
+
+  const selectNode = useCallback((node: PositionedNode) => {
+    setSelectedNodeId(node.id);
+    openNode(node);
+  }, [openNode]);
+
+  // M21 drag-to-pin (prototype nodeDown, 3849–3866). Dragging pins the node at
+  // fx/fy; unlike the prototype the pin survives mouse-up — Re-layout clears it.
+  function beginNodeDrag(nodeId: string, event: ReactMouseEvent<SVGGElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedNodeId(nodeId);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const svg = svgRef.current;
+    let moved = false;
+    const move = (ev: MouseEvent) => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
+      moved = true;
+      const p = simRef.current.get(nodeId);
+      if (!p) return;
+      const rect = svg?.getBoundingClientRect();
+      const width = rect && rect.width > 0 ? rect.width : GRAPH_WIDTH;
+      const height = rect && rect.height > 0 ? rect.height : GRAPH_HEIGHT;
+      const left = rect?.left ?? 0;
+      const top = rect?.top ?? 0;
+      // Prototype 3856–3859: client coords → sim coords, clamped to sim bounds.
+      p.fx = clampValue(SIM_MIN_X, SIM_MAX_X, ((ev.clientX - left - width / 2 - pan.x) / (width * zoom) + 0.5) * GRAPH_WIDTH);
+      p.fy = clampValue(SIM_MIN_Y, SIM_MAX_Y, ((ev.clientY - top - height / 2 - pan.y) / (height * zoom) + 0.5) * GRAPH_HEIGHT);
+      p.x = p.fx;
+      p.y = p.fy;
+      p.vx = 0;
+      p.vy = 0;
+      setSimVersion((v) => v + 1);
+      wakeSim();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      if (moved) {
+        // Swallow the click that follows a drag so it doesn't open the note.
+        dragMovedRef.current = true;
+        window.setTimeout(() => { dragMovedRef.current = false; }, 0);
+        wakeSim();
+      }
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }
+
+  const handleRelayout = useCallback(() => {
+    relayoutSim(simRef.current);
+    setSimVersion((v) => v + 1);
+    wakeSim();
+  }, [wakeSim]);
 
   const handleSearchKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter' && searchMatchIds && searchMatchIds.size > 0) {
@@ -833,6 +1168,33 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     setVaultScope(scope);
     persistVaultScope(scope);
   }, []);
+
+  // M21: the Story-cluster switch drives the same visibility set as the Scenes
+  // chip (prototype offCats[5] / storyToggle, 4388–4389). Unlike the prototype
+  // (hidden by default, 3259) the app keeps story nodes visible by default —
+  // existing scope behavior and tests depend on it.
+  const storyClusterOn = activeCategories.has('scenes');
+  const handleStoryClusterToggle = useCallback(() => {
+    handleToggleCategory('scenes');
+  }, [handleToggleCategory]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<GraphCategory, number>();
+    for (const node of truncatedData?.nodes ?? []) {
+      const cat = nodeCategory(node);
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return counts;
+  }, [truncatedData]);
+
+  // M21 inspector: selected node + its visible connections (prototype gSel, 4307–4313).
+  const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
+  const inspectorConnections: PositionedNode[] = selectedNode && filteredData
+    ? filteredData.edges
+      .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
+      .map((edge) => nodeById.get(edge.source === selectedNode.id ? edge.target : edge.source))
+      .filter((node): node is PositionedNode => Boolean(node))
+    : [];
 
   const depthLabel = depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit);
   const visibleChips = chipsExpanded ? CHIP_DEFS : CHIP_DEFS.slice(0, MAX_VISIBLE_CHIPS);
@@ -957,6 +1319,35 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         </div>
           {vaultScopeSelector}
+        {/* M21: Story-cluster toggle + Re-layout, prototype header 1600–1611.
+            The prototype's left-panel filter strip (413–443) lives in
+            DesktopShell's left panel, which this module doesn't own — those
+            controls sit in the Colors popover on the canvas instead. */}
+        <div className="vgv-story-cluster" data-testid="vault-graph-story-cluster">
+          <span className="vgv-story-cluster-label">Story cluster</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={storyClusterOn}
+            aria-label="Show story cluster"
+            data-testid="vault-graph-story-toggle"
+            className={`vgv-toggle${storyClusterOn ? ' vgv-toggle--on' : ''}`}
+            onClick={handleStoryClusterToggle}
+          >
+            <span className="vgv-toggle-knob" aria-hidden="true" />
+          </button>
+        </div>
+        <button
+          type="button"
+          className="vgv-relayout"
+          data-testid="vault-graph-relayout"
+          onClick={handleRelayout}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" />
+          </svg>
+          Re-layout
+        </button>
         <input
           ref={searchRef}
           type="search"
@@ -1019,18 +1410,49 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
+          {/* M21 star gradients: white core → category color → transparent
+              (prototype node discs, renderVals ~4300). */}
+          <defs>
+            {GRAPH_CATEGORIES.map((category) => {
+              const color = categoryColor(category, catColors);
+              return (
+                <radialGradient key={category} id={`${starPrefix}-${category}`} cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#ffffff" />
+                  <stop offset="18%" stopColor="#ffffff" />
+                  <stop offset="42%" stopColor={color} />
+                  <stop offset="68%" stopColor={color} stopOpacity={0.25} />
+                  <stop offset="78%" stopColor={color} stopOpacity={0} />
+                </radialGradient>
+              );
+            })}
+          </defs>
           <g transform={`translate(${GRAPH_WIDTH * (1 - zoom) / 2 + pan.x} ${GRAPH_HEIGHT * (1 - zoom) / 2 + pan.y}) scale(${zoom})`}>
             {filteredData?.edges.map((edge) => {
               const source = nodeById.get(edge.source);
               const target = nodeById.get(edge.target);
               if (!source || !target) return null;
-              const dimmed = hoverVisibleIds ? (!hoverVisibleIds.has(edge.source) || !hoverVisibleIds.has(edge.target)) : false;
+              // Prototype gEdgesR (4287–4293): edges touching the hovered node
+              // (or the selection, when nothing is hovered) run hot; every
+              // other edge dims while a node is hovered.
               const crossVault = edge.crossVault || source.vault !== target.vault;
+              const isStoryEdge = crossVault || source.vault === 'story' || target.vault === 'story';
+              const hot = hoveredNodeId
+                ? (edge.source === hoveredNodeId || edge.target === hoveredNodeId)
+                : (selectedNodeId != null && (edge.source === selectedNodeId || edge.target === selectedNodeId));
+              const dimmed = Boolean(hoveredNodeId) && !hot;
+              const lineColor = isStoryEdge ? lineColors.story : lineColors.note;
+              const edgeStyle = {
+                '--vgv-edge-stroke': hot ? lineColor : hexToRgba(lineColor, isStoryEdge ? 0.3 : 0.18),
+                '--vgv-edge-width': hot ? '2' : '1.2',
+                '--vgv-edge-opacity': dimmed ? '0.3' : '1',
+                '--vgv-edge-glow': hot ? `drop-shadow(0 0 5px ${hexToRgba(lineColor, 0.8)})` : 'none',
+              } as CSSProperties;
               return (
                 <line
                   key={`${edge.source}-${edge.target}`}
                   data-testid={edgeTestId(edge)}
-                  className={`vgv-graph-edge${crossVault ? ' vgv-graph-edge--cross-vault' : ''}${dimmed ? ' vgv-graph-edge--dimmed' : ''}`}
+                  className={`vgv-graph-edge${crossVault ? ' vgv-graph-edge--cross-vault' : ''}${dimmed ? ' vgv-graph-edge--dimmed' : ''}${hot ? ' vgv-graph-edge--hot' : ''}`}
+                  style={edgeStyle}
                   x1={source.x}
                   y1={source.y}
                   x2={target.x}
@@ -1044,15 +1466,27 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
               const searchHighlighted = searchMatchIds ? searchMatchIds.has(node.id) : false;
               const searchDimmed = searchMatchIds ? !searchMatchIds.has(node.id) : false;
               const selected = selectedNodeId === node.id;
+              const hovered = hoveredNodeId === node.id;
               const keyboardFocused = keyboardFocusedNodeId === node.id;
+              const pinned = simRef.current.get(node.id)?.fx != null;
               const label = displayLabel(node.label);
               const fillToken = graphNodeFillToken(node.categoryKey);
               const strokeToken = graphNodeStrokeToken(node.categoryKey);
+              const color = categoryColor(node.categoryKey, catColors);
+              // Prototype star glow (renderVals ~4300): 0 0 16px @.55 + 0 0 34px
+              // @.25 box-shadow; selected 0 0 30px @.9 + 0 0 60px @.5. The
+              // resting glow is skipped on very large graphs to keep rAF cheap.
+              const starGlow = selected || hovered
+                ? `drop-shadow(0 0 15px ${hexToRgba(color, 0.9)}) drop-shadow(0 0 30px ${hexToRgba(color, 0.5)})`
+                : culledNodes.length <= STAR_GLOW_MAX_NODES
+                  ? `drop-shadow(0 0 8px ${hexToRgba(color, 0.55)}) drop-shadow(0 0 17px ${hexToRgba(color, 0.25)})`
+                  : 'none';
 
               let nodeClass = 'vgv-graph-node';
               if (hoverDimmed) nodeClass += ' vgv-graph-node--dimmed';
               if (selected) nodeClass += ' vgv-graph-node--selected';
               if (keyboardFocused) nodeClass += ' vgv-graph-node--keyboard-focused';
+              if (pinned) nodeClass += ' vgv-graph-node--pinned';
               if (searchHighlighted) nodeClass += ' vgv-graph-node--search-match';
               else if (searchDimmed) nodeClass += ' vgv-graph-node--search-dimmed';
 
@@ -1068,8 +1502,10 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
                   onPointerDown={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => beginNodeDrag(node.id, event)}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (dragMovedRef.current) return;
                     selectNode(node);
                   }}
                   onKeyDown={(event) => {
@@ -1079,6 +1515,18 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                     }
                   }}
                 >
+                  {/* lnPulse twinkle timing per node — prototype renderVals ~4300 */}
+                  <circle
+                    data-testid="vault-graph-star"
+                    className="vgv-star-disc"
+                    r={node.radius * STAR_DISC_SCALE}
+                    fill={`url(#${starPrefix}-${node.categoryKey})`}
+                    style={{
+                      '--vgv-star-glow': starGlow,
+                      animationDuration: `${3 + (node.id.length % 4)}s`,
+                      animationDelay: `${node.id.length % 3}s`,
+                    } as CSSProperties}
+                  />
                   <circle
                     data-testid="vault-graph-node-circle"
                     className={`vgv-node-circle vgv-node-circle--${node.categoryKey}`}
@@ -1090,7 +1538,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                       '--vgv-node-stroke': strokeToken,
                     } as CSSProperties}
                   />
-                  <text className="vgv-node-label" y={node.radius + 14}>{label}</text>
+                  <text className="vgv-node-label" y={node.radius * STAR_DISC_SCALE + 6}>{label}</text>
                   <title>{node.path}</title>
                 </g>
               );
@@ -1102,7 +1550,159 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           <div className="vgv-state vgv-state--overlay">No matching graph nodes.</div>
         )}
 
+        {/* M21 inspector — prototype right-panel gSel template (2586–2613). */}
+        {selectedNode && (
+          <aside
+            className="vgv-inspector"
+            data-testid="vault-graph-inspector"
+            aria-label="Node inspector"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="vgv-inspector-card">
+              <div className="vgv-inspector-head">
+                <span
+                  className="vgv-inspector-orb"
+                  aria-hidden="true"
+                  style={{
+                    background: hexToRgba(categoryColor(selectedNode.categoryKey, catColors), 0.16),
+                    borderColor: hexToRgba(categoryColor(selectedNode.categoryKey, catColors), 0.8),
+                    boxShadow: `0 0 18px ${hexToRgba(categoryColor(selectedNode.categoryKey, catColors), 0.5)}`,
+                  }}
+                />
+                <div className="vgv-inspector-id">
+                  <div className="vgv-inspector-title" data-testid="vault-graph-inspector-title">
+                    {displayLabel(selectedNode.label)}
+                  </div>
+                  <span
+                    className="vgv-inspector-chip"
+                    style={{
+                      color: categoryColor(selectedNode.categoryKey, catColors),
+                      borderColor: hexToRgba(categoryColor(selectedNode.categoryKey, catColors), 0.5),
+                      background: hexToRgba(categoryColor(selectedNode.categoryKey, catColors), 0.1),
+                    }}
+                  >
+                    {GRAPH_CATEGORY_LABELS[selectedNode.categoryKey].replace(/s$/, '')}
+                  </span>
+                </div>
+              </div>
+              <div className="vgv-inspector-path">{selectedNode.path}</div>
+            </div>
+            <div className="vgv-inspector-card">
+              <div className="vgv-inspector-section">Connections</div>
+              {inspectorConnections.length === 0 && (
+                <div className="vgv-inspector-empty">No connections yet.</div>
+              )}
+              {inspectorConnections.map((other) => (
+                <button
+                  key={other.id}
+                  type="button"
+                  className="vgv-inspector-conn"
+                  data-testid={`vault-graph-inspector-conn-${other.id}`}
+                  onClick={() => setSelectedNodeId(other.id)}
+                >
+                  <span
+                    className="vgv-inspector-dot"
+                    aria-hidden="true"
+                    style={{
+                      background: categoryColor(other.categoryKey, catColors),
+                      boxShadow: `0 0 7px ${hexToRgba(categoryColor(other.categoryKey, catColors), 0.5)}`,
+                    }}
+                  />
+                  <span className="vgv-inspector-conn-label">{displayLabel(other.label)}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="vgv-inspector-open"
+              data-testid="vault-graph-inspector-open"
+              onClick={() => openNode(selectedNode)}
+            >
+              {selectedNode.vault === 'story' ? 'Open in Story Writer' : 'Open note'}
+            </button>
+          </aside>
+        )}
+
         <div className="vgv-graph-controls" aria-label="Graph controls">
+          {/* M21: category recolor + line colors — prototype left panel 413–443 */}
+          <div className="vgv-filters-wrap">
+            <button
+              type="button"
+              aria-label="Graph colors and filters"
+              aria-expanded={filtersOpen}
+              aria-controls="vault-graph-filters"
+              data-testid="vault-graph-filters-toggle"
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              Colors
+            </button>
+            {filtersOpen && (
+              <div
+                id="vault-graph-filters"
+                className="vgv-filters-popover"
+                role="dialog"
+                aria-label="Graph colors and filters"
+                data-testid="vault-graph-filters"
+              >
+                <div className="vgv-filters-heading">Graph filters</div>
+                {CHIP_DEFS.map(({ key, label }) => {
+                  const color = categoryColor(key, catColors);
+                  const active = activeCategories.has(key);
+                  return (
+                    <div key={key} className={`vgv-filter-row${active ? '' : ' vgv-filter-row--off'}`}>
+                      <button
+                        type="button"
+                        className="vgv-filter-name"
+                        aria-pressed={active}
+                        onClick={() => handleToggleCategory(key)}
+                      >
+                        <span
+                          className="vgv-filter-dot"
+                          aria-hidden="true"
+                          style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+                        />
+                        {label}
+                      </button>
+                      <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
+                        <input
+                          type="color"
+                          value={color}
+                          aria-label={`Recolor ${label}`}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setCatColors((prev) => ({ ...prev, [key]: value }));
+                          }}
+                        />
+                      </label>
+                      <span className="vgv-filter-count">{categoryCounts.get(key) ?? 0}</span>
+                    </div>
+                  );
+                })}
+                <div className="vgv-filters-heading">Connection lines</div>
+                {([['note', 'Note ↔ note links'], ['story', 'Story ↔ note links']] as const).map(([key, label]) => (
+                  <div key={key} className="vgv-line-row">
+                    <span className="vgv-line-label">{label}</span>
+                    <span
+                      className="vgv-line-swatch"
+                      aria-hidden="true"
+                      style={{ background: lineColors[key], boxShadow: `0 0 8px ${lineColors[key]}` }}
+                    />
+                    <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
+                      <input
+                        type="color"
+                        value={lineColors[key]}
+                        aria-label={`${label} color`}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setLineColors((prev) => ({ ...prev, [key]: value }));
+                        }}
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           {shouldShowLegend && (
             <div className="vgv-legend-wrap">
               <button
@@ -1131,11 +1731,18 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
               )}
             </div>
           )}
+          {/* M21 zoom dock — prototype 1627–1632 (− / % / + / Fit) */}
           <div className="vgv-zoom-controls" aria-label="Graph zoom controls">
-            <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(0.1, value - 0.1))}>−</button>
-            <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(4, value + 0.1))}>+</button>
-            <button type="button" aria-label="Reset graph view" onClick={resetView}>↺</button>
+            <button type="button" aria-label="Zoom out" onClick={zoomOut}>−</button>
+            <span className="vgv-zoom-pct" data-testid="vault-graph-zoom-pct">{Math.round(zoom * 100)}%</span>
+            <button type="button" aria-label="Zoom in" onClick={zoomIn}>+</button>
+            <button type="button" aria-label="Reset graph view" onClick={resetView}>Fit</button>
           </div>
+        </div>
+
+        {/* Prototype 1633: interaction hint, bottom-left of the canvas */}
+        <div className="vgv-canvas-hint" aria-hidden="true">
+          Scroll to zoom · drag empty space to pan · drag nodes to pin
         </div>
       </div>
 
