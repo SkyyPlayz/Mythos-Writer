@@ -69,6 +69,7 @@ function NeonSlider({ label, value, min, max, unit, onChange, testId }: {
       </div>
       <input
         type="range" min={min} max={max} value={value} data-testid={testId}
+        aria-label={label}
         onChange={(e) => onChange(+e.target.value)} className="lnas-range"
         style={{ width: '100%', background: `linear-gradient(to right,var(--n1,#00f0ff) ${pct}%,rgba(255,255,255,.12) ${pct}%)` }}
       />
@@ -358,6 +359,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             </div>
             <input
               type="range" min={1} max={120} value={fsQ} data-testid="lnas-framespeed"
+              aria-label="Animation speed"
               onChange={(e) => patch({ frameSpeed: +e.target.value / 4 })} className="lnas-range"
               style={{ width: '100%', background: `linear-gradient(to right,var(--n1,#00f0ff) ${fsPct}%,rgba(255,255,255,.12) ${fsPct}%)` }}
             />

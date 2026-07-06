@@ -2810,6 +2810,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest([...stories, story]);
   }, [stories, updateManifest, requestText]);
 
+  // SKY-320/SKY-906 parity for the Liquid Neon title bar: the legacy
+  // ProjectSwitcher's "+ Create new Mythos Vault" flow, driven through the
+  // same useTextPrompt modal and vaultCreateDefaultMythos IPC. Main persists
+  // settings + recents; we just switch the renderer to the new vault.
+  const createMythosVault = useCallback(async () => {
+    const name = await requestText('Name for the new Mythos Vault:');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
+      alert('Vault name cannot contain slashes or path traversal.');
+      return;
+    }
+    try {
+      const result = await window.api?.vaultCreateDefaultMythos?.({
+        vaultName: trimmed || undefined,
+        seedMode: 'default',
+      });
+      if (!result || result.error) {
+        alert(`Could not create vault: ${result?.error ?? 'unknown error'}`);
+        return;
+      }
+      handleProjectSwitched(result.vaultRoot);
+    } catch (err) {
+      alert(`Create failed: ${(err as Error).message}`);
+    }
+  }, [requestText, handleProjectSwitched]);
+
+  // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
+  const openVaultViaPicker = useCallback(async () => {
+    try {
+      const result = await window.api?.openVaultFolder?.();
+      if (!result?.cancelled && result?.vaultRoot) handleProjectSwitched(result.vaultRoot);
+    } catch { /* non-fatal */ }
+  }, [handleProjectSwitched]);
+
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;
     setAppSettings(updated);
@@ -3595,7 +3630,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // app's real handlers; prototype-only mocks keep their toast copy.
   const titleBarMenus: WindowChromeMenu[] = useMemo(() => [
     { label: 'File', items: [
-      { label: 'New story', run: () => { void window.api?.newStory?.(); } },
+      { label: 'New story', run: () => { void createStory(); } },
       { label: 'New note…', run: () => handleNavSectionChange('notes') },
       { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
       { label: 'Export…', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
@@ -3627,7 +3662,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar]);
+  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory]);
 
   const navItems = useMemo<NavRailItem[]>(() => {
     const savedItems = savedNavConfig?.items ?? [];
@@ -3762,8 +3797,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
           onProjectSwitched={handleProjectSwitched}
-          onNewStory={() => { void window.api?.newStory?.(); }}
-          onOpenVault={() => { void window.api?.openVault?.(); }}
+          onNewStory={() => { void createStory(); }}
+          onOpenVault={() => { void openVaultViaPicker(); }}
+          onCreateVault={() => { void createMythosVault(); }}
           onReplayOnboarding={() => {
             window.api?.onboardingReset?.().then(() => window.location.reload()).catch(() => {});
           }}
@@ -3786,7 +3822,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
             stories={navRailStories}
             onStorySelect={handleRailStorySelect}
-            onNewStory={() => { void window.api?.newStory?.(); }}
+            onNewStory={() => { void createStory(); }}
           />
         )}
         <div className="desktop-shell__main-col">

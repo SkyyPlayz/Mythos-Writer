@@ -27,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -400,7 +401,7 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
 async function navigateToEditorView(page: Page): Promise<void> {
   // SKY-3097/3098: AppNavRail replaced the old TabBar; use aria-label navigation.
   // Mirrors the pattern in writing-assistant-tips.spec.ts.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await clickStoryNav(page);
   await page.locator('[data-testid="story-subview-editor"]').click();
 }
 
