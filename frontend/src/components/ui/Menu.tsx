@@ -20,6 +20,8 @@ export interface MenuProps {
   anchorEl?: HTMLElement | null;
   /** Absolute screen position for context menus (right-click at cursor). */
   position?: { x: number; y: number };
+  /** Extra class(es) appended to `.ln-menu` for scoped visual variants. */
+  className?: string;
   'aria-label'?: string;
   'data-testid'?: string;
 }
@@ -39,6 +41,7 @@ export function Menu({
   items,
   anchorEl,
   position,
+  className,
   'aria-label': ariaLabel,
   'data-testid': testId,
 }: MenuProps) {
@@ -144,7 +147,7 @@ export function Menu({
   return createPortal(
     <div
       ref={menuRef}
-      className="ln-menu"
+      className={['ln-menu', className].filter(Boolean).join(' ')}
       role="menu"
       aria-label={ariaLabel}
       data-testid={testId}

@@ -34,6 +34,8 @@ export interface WindowChromeProps {
   onProjectSwitched?: (vaultRoot: string) => void;
   onNewStory?: () => void;
   onOpenVault?: () => void;
+  /** "+ Create new Mythos Vault" — legacy ProjectSwitcher parity (SKY-320/SKY-906). */
+  onCreateVault?: () => void;
   onReplayOnboarding?: () => void;
   /** Bell slot — pass <NotificationCenter /> (M5). */
   notificationCenter?: ReactNode;
@@ -117,6 +119,7 @@ export default function WindowChrome({
   onProjectSwitched,
   onNewStory,
   onOpenVault,
+  onCreateVault,
   onReplayOnboarding,
   notificationCenter,
 }: WindowChromeProps) {
@@ -159,7 +162,7 @@ export default function WindowChrome({
   const handleMinimize = () => { void window.api?.windowMinimize?.(); };
   const handleMaximize = () => { void window.api?.windowMaximize?.(); };
 
-  const projItems: { t: string; sub: string; on?: boolean; pick: () => void }[] = [
+  const projItems: { t: string; sub: string; on?: boolean; testId?: string; pick: () => void }[] = [
     ...projects.map((p) => ({
       t: p.name || p.vaultRoot.split(/[/\\]/).filter(Boolean).pop() || p.vaultRoot,
       sub: p.vaultRoot,
@@ -174,26 +177,31 @@ export default function WindowChrome({
     })),
     ...(onNewStory ? [{ t: 'New story…', sub: 'Fresh vault, ready to write', pick: () => { setProjOpen(false); onNewStory(); } }] : []),
     ...(onOpenVault ? [{ t: 'Open vault…', sub: 'Bring in an existing folder', pick: () => { setProjOpen(false); onOpenVault(); } }] : []),
+    ...(onCreateVault ? [{ t: '+ Create new Mythos Vault', sub: 'Fresh Story + Notes pair', testId: 'project-switcher-create-new', pick: () => { setProjOpen(false); onCreateVault(); } }] : []),
     ...(onReplayOnboarding ? [{ t: 'Replay onboarding', sub: 'The welcome wizard, once more', pick: () => { setProjOpen(false); onReplayOnboarding(); } }] : []),
   ];
 
   return (
-    <div className="wc-bar" role="banner" aria-label="Window chrome" ref={barRef}>
+    // The extra `app-menu-bar` class is a selector-compat anchor: ~97 E2E
+    // waits across the fleet key on it (the old menu row this bar replaces).
+    <div className="wc-bar app-menu-bar" role="banner" aria-label="Window chrome" ref={barRef}>
       <div className="wc-drag-region">
         {isMac && (
           <WindowControls onClose={handleClose} onMinimize={handleMinimize} onMaximize={handleMaximize} isMac />
         )}
 
         {/* Project menu — logo · name · chevron (prototype 61–75) */}
+        {/* `project-switcher-btn` / `project-switcher-item` are E2E-compat anchors:
+            sky-906 drives vault create/switch through these legacy selectors. */}
         <div
-          className="wc-project"
+          className="wc-project project-switcher-btn"
           onClick={() => { setProjOpen((o) => { if (!o) loadProjects(); return !o; }); setOpenMenu(null); setAcctOpen(false); }}
           data-testid="wc-project-trigger"
         >
           {projOpen && (
             <div className="wc-popover wc-popover-project" onClick={(e) => e.stopPropagation()} data-testid="wc-project-menu">
               {projItems.map((p) => (
-                <div key={p.t + p.sub} className="wc-pop-row" onClick={p.pick}>
+                <div key={p.t + p.sub} className="wc-pop-row project-switcher-item" data-testid={p.testId} onClick={p.pick}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="wc-pop-row-title">{p.t}</div>
                     <div className="wc-pop-row-sub">{p.sub}</div>
@@ -251,7 +259,7 @@ export default function WindowChrome({
         <div className="wc-icons">
           {notificationCenter}
           {onOpenSettings && (
-            <div className="wc-icon-btn" onClick={onOpenSettings} role="button" aria-label="Settings" data-testid="wc-settings">
+            <div className="wc-icon-btn app-menu-gear-btn" onClick={onOpenSettings} role="button" aria-label="Settings" data-testid="wc-settings">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4.5 7.5h15M4.5 16.5h15" /><circle cx="9.5" cy="7.5" r="2.4" /><circle cx="14.5" cy="16.5" r="2.4" /></svg>
             </div>
           )}

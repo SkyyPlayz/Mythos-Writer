@@ -1,7 +1,7 @@
 import { useState, useCallback, type ReactElement } from 'react';
 import { FileText } from 'lucide-react';
 import type { Story, Scene, Chapter } from '../../types';
-import { StatusBadge, draftStateToStatus } from './StatusBadge';
+import { StatusChip, draftStateToStatus } from './StatusBadge';
 import type { BeatAssignments } from './BeatSheetSidebar';
 import { computeWordCount } from './SceneCard';
 import './ListView.css';
@@ -176,7 +176,7 @@ export function ListView({
                           onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter)}
                         >
                           <span className="list-scene__drag-handle" aria-hidden="true">⠿</span>
-                          <StatusBadge status={status} size={10} />
+                          <StatusChip status={status} />
                           <span className="list-scene__title">{scene.title}</span>
                           <span className="list-scene__wordcount">
                             {wordCount > 0 ? `${wordCount.toLocaleString()} words` : '—'}

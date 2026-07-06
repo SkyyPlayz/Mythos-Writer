@@ -13,6 +13,8 @@ import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
+import ManuscriptView from './story/ManuscriptView';
+import { cycleStatus, sceneStatus, type ManuscriptCursor } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
@@ -502,7 +504,7 @@ interface ChapterContinuousViewProps {
   onSceneFocus: (scene: Scene) => void;
 }
 
-function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
+export function ChapterContinuousView({ chapter, storyId, selectedSceneId, onBlocksChange, onDraftStateChange, onSceneFocus }: ChapterContinuousViewProps) {
   const sortedScenes = useMemo(
     () => [...chapter.scenes].sort((a, b) => a.order - b.order),
     [chapter.scenes],
@@ -555,7 +557,7 @@ interface BookOutlineViewProps {
   onSelectScene: (scene: Scene, chapter: Chapter) => void;
 }
 
-function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectScene }: BookOutlineViewProps) {
+export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onSelectScene }: BookOutlineViewProps) {
   const sortedChapters = useMemo(
     () => [...story.chapters].sort((a, b) => a.order - b.order),
     [story.chapters],
@@ -2795,47 +2797,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
-  // Writes only the affected scene's file; never touches siblings (AC-C-3).
-  const handleChapterSceneBlocksChange = useCallback((sceneId: string, blocks: Block[]) => {
-    if (!selectedChapter || !selectedStory) return;
-    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
-    if (!scene) return;
-    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-    persistSceneMarkdown(updatedScene);
-    window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
-  }, [selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
-  // SKY-3211 C2: Chapter continuous view — per-scene draft state change handler.
-  const handleChapterSceneDraftStateChange = useCallback((sceneId: string, state: DraftState) => {
-    if (!selectedChapter || !selectedStory) return;
-    const scene = selectedChapter.scenes.find((s) => s.id === sceneId);
-    if (!scene) return;
-    const updatedScene: Scene = { ...scene, draftState: state, updatedAt: now() };
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== sceneId ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-  }, [selectedChapter, selectedStory, stories, updateManifest]);
 
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
@@ -2847,6 +2809,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     updateManifest([...stories, story]);
   }, [stories, updateManifest, requestText]);
+
+  // SKY-320/SKY-906 parity for the Liquid Neon title bar: the legacy
+  // ProjectSwitcher's "+ Create new Mythos Vault" flow, driven through the
+  // same useTextPrompt modal and vaultCreateDefaultMythos IPC. Main persists
+  // settings + recents; we just switch the renderer to the new vault.
+  const createMythosVault = useCallback(async () => {
+    const name = await requestText('Name for the new Mythos Vault:');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
+      alert('Vault name cannot contain slashes or path traversal.');
+      return;
+    }
+    try {
+      const result = await window.api?.vaultCreateDefaultMythos?.({
+        vaultName: trimmed || undefined,
+        seedMode: 'default',
+      });
+      if (!result || result.error) {
+        alert(`Could not create vault: ${result?.error ?? 'unknown error'}`);
+        return;
+      }
+      handleProjectSwitched(result.vaultRoot);
+    } catch (err) {
+      alert(`Create failed: ${(err as Error).message}`);
+    }
+  }, [requestText, handleProjectSwitched]);
+
+  // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
+  const openVaultViaPicker = useCallback(async () => {
+    try {
+      const result = await window.api?.openVaultFolder?.();
+      if (!result?.cancelled && result?.vaultRoot) handleProjectSwitched(result.vaultRoot);
+    } catch { /* non-fatal */ }
+  }, [handleProjectSwitched]);
 
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;
@@ -2923,12 +2920,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return () => unsub?.();
   }, [handleSelectScene, setViewDepth]);
 
-  // SKY-3211 C2: Focusing a scene band in chapter view selects it (for sidebar context).
-  const handleChapterSceneFocus = useCallback((scene: Scene) => {
-    if (selectedChapter && selectedStory && scene.id !== selectedScene?.id) {
-      handleSelectScene(scene, selectedChapter, selectedStory);
-    }
-  }, [selectedChapter, selectedStory, selectedScene, handleSelectScene]);
 
   const createScene = useCallback(async (storyId: string, chapterId: string) => {
     const title = await requestText('Scene title:');
@@ -3490,6 +3481,112 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // all-disabled config falls back to the defaults so the rail never strands
   // the user.
   const savedNavConfig = appSettings?.navConfig;
+  // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
+  // Cursor indices follow the model's order-field sorting.
+  const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
+    const zoom = viewDepth === 'book' ? 'book' : viewDepth === 'chapter' ? 'chapter' : 'scene';
+    if (!selectedStory) return { zoom, part: 0, chapter: 0, scene: 0 };
+    const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+    const ci = Math.max(0, selectedChapter ? chapters.findIndex((c) => c.id === selectedChapter.id) : 0);
+    const scenes = chapters[ci] ? [...chapters[ci].scenes].sort((a, b) => a.order - b.order) : [];
+    const si = Math.max(0, selectedScene ? scenes.findIndex((sc) => sc.id === selectedScene.id) : 0);
+    return { zoom, part: 0, chapter: ci, scene: si };
+  }, [viewDepth, selectedStory, selectedChapter, selectedScene]);
+
+  const handleManuscriptCursorChange = useCallback((cursor: ManuscriptCursor) => {
+    if (!selectedStory) return;
+    const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
+    const ch = chapters[Math.min(cursor.chapter, Math.max(0, chapters.length - 1))];
+    if (ch) {
+      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order);
+      const sc = scenes[Math.min(cursor.scene, Math.max(0, scenes.length - 1))];
+      if (sc) handleSelectScene(sc, ch, selectedStory);
+    }
+    setViewDepth(cursor.zoom === 'part' ? 'book' : cursor.zoom);
+  }, [selectedStory, handleSelectScene]);
+
+  // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
+  // SKY-3211 handlers assume selectedChapter, so these find the owner).
+  const handleManuscriptEditParagraph = useCallback((sceneId: string, blockId: string, newText: string) => {
+    if (!selectedStory) return;
+    const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = owner?.scenes.find((sc) => sc.id === sceneId);
+    if (!owner || !scene) return;
+    const blocks = scene.blocks.map((b) => (b.id === blockId ? { ...b, content: newText } : b));
+    const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+    window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
+  }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
+  const handleManuscriptCycleStatus = useCallback((sceneId: string) => {
+    if (!selectedStory) return;
+    const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = owner?.scenes.find((sc) => sc.id === sceneId);
+    if (!owner || !scene) return;
+    const next = cycleStatus(sceneStatus(scene));
+    const draftState = next === 'draft' ? 'in-progress' as const : next === 'done' ? 'final' as const : undefined;
+    const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [selectedStory, stories, updateManifest]);
+
+  // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
+  // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
+  // SKY-1697 float flow; the rest explain themselves instead of mocking.
+  const handleTabPopOut = useCallback((tabId: string) => {
+    const tab = workspaceTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const floatable: Partial<Record<WorkspaceTabKind, SidebarPanelId>> = {
+      timeline: 'timeline',
+      entities: 'entities',
+      'vault-graph': 'vault-graph',
+    };
+    const panelId = floatable[tab.kind];
+    if (!panelId) {
+      showLnToast('Only Timeline, Entities and Vault Graph tabs can pop out right now');
+      return;
+    }
+    window.api.panelFloat?.(panelId, { sourceSidebar: 'right' }).catch(() => {});
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const existing = prev.activeLayout?.floatingPanels ?? [];
+      if (existing.some((e) => e.panelId === panelId)) return prev;
+      const entry: FloatingPanelEntry = { panelId, x: 0, y: 0, width: 360, height: 600, alwaysOnTop: false, lastDockSidebar: 'right' };
+      const updated: AppSettings = { ...prev, activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current, floatingPanels: [...existing, entry] } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+    handleWorkspaceTabClose(tabId);
+  }, [workspaceTabs, handleWorkspaceTabClose]);
+
+  // Beta 3 M7: Stories popover data for the nav rail (prototype 179-203).
+  const navRailStories = useMemo(
+    () => stories.map((st) => ({ id: st.id, title: st.title, active: st.id === selectedStory?.id })),
+    [stories, selectedStory],
+  );
+  const handleRailStorySelect = useCallback((id: string) => {
+    const st = stories.find((x) => x.id === id);
+    if (!st) return;
+    setSelectedStory(st);
+    handleNavSectionChange('story');
+  }, [stories, handleNavSectionChange]);
+
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
   const paletteCommands = useMemo(() => [
@@ -3533,7 +3630,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // app's real handlers; prototype-only mocks keep their toast copy.
   const titleBarMenus: WindowChromeMenu[] = useMemo(() => [
     { label: 'File', items: [
-      { label: 'New story', run: () => { void window.api?.newStory?.(); } },
+      { label: 'New story', run: () => { void createStory(); } },
       { label: 'New note…', run: () => handleNavSectionChange('notes') },
       { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
       { label: 'Export…', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
@@ -3565,7 +3662,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar]);
+  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory]);
 
   const navItems = useMemo<NavRailItem[]>(() => {
     const savedItems = savedNavConfig?.items ?? [];
@@ -3700,8 +3797,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
           onProjectSwitched={handleProjectSwitched}
-          onNewStory={() => { void window.api?.newStory?.(); }}
-          onOpenVault={() => { void window.api?.openVault?.(); }}
+          onNewStory={() => { void createStory(); }}
+          onOpenVault={() => { void openVaultViaPicker(); }}
+          onCreateVault={() => { void createMythosVault(); }}
           onReplayOnboarding={() => {
             window.api?.onboardingReset?.().then(() => window.location.reload()).catch(() => {});
           }}
@@ -3722,6 +3820,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             showLabels={navRailConfig?.showLabels ?? true}
             showIcons={navRailConfig?.showIcons ?? true}
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
+            stories={navRailStories}
+            onStorySelect={handleRailStorySelect}
+            onNewStory={() => { void createStory(); }}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -3734,6 +3835,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabReorder={handleWorkspaceTabReorder}
             onNewTab={() => setTabPickerOpen(true)}
             onTabOpenInSplit={handleTabOpenInSplit}
+            onTabPopOut={handleTabPopOut}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -4120,15 +4222,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 </div>
               </div>
             ) : viewDepth === 'book' && selectedStory ? (
-              <div className="shell-depth-view-wrap">
-                <BookOutlineView
+              /* Beta 3 M9: the heading-zoom manuscript renders book zoom.
+                 book-outline-view stays as an E2E selector-compat anchor. */
+              <div className="shell-depth-view-wrap book-outline-view">
+                <ManuscriptView
                   story={selectedStory}
-                  selectedChapterId={selectedChapter?.id ?? null}
-                  selectedSceneId={selectedScene?.id ?? null}
-                  onSelectScene={(sc, ch) => {
-                    handleSelectScene(sc, ch, selectedStory);
-                    setViewDepth('scene');
-                  }}
+                  cursor={manuscriptCursor}
+                  onCursorChange={handleManuscriptCursorChange}
+                  onEditParagraph={handleManuscriptEditParagraph}
+                  onCycleStatus={handleManuscriptCycleStatus}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4139,14 +4241,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 />
               </div>
             ) : viewDepth === 'chapter' && selectedChapter ? (
-              <div className="shell-depth-view-wrap">
-                <ChapterContinuousView
-                  chapter={selectedChapter}
-                  storyId={selectedStory?.id}
-                  selectedSceneId={selectedScene?.id ?? null}
-                  onBlocksChange={handleChapterSceneBlocksChange}
-                  onDraftStateChange={handleChapterSceneDraftStateChange}
-                  onSceneFocus={handleChapterSceneFocus}
+              /* Beta 3 M9: chapter zoom of the same continuous manuscript.
+                 chapter-continuous-view stays as an E2E compat anchor. */
+              <div className="shell-depth-view-wrap chapter-continuous-view">
+                <ManuscriptView
+                  story={selectedStory!}
+                  cursor={manuscriptCursor}
+                  onCursorChange={handleManuscriptCursorChange}
+                  onEditParagraph={handleManuscriptEditParagraph}
+                  onCycleStatus={handleManuscriptCycleStatus}
                 />
                 <DepthEdgeArrows
                   depth="chapter"

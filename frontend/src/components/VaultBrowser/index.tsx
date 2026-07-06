@@ -495,9 +495,15 @@ interface NotesVaultProps {
   onTagFilter: (tag: string | null) => void;
   iconMap?: Record<string, string>;
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
+  /** M15: dedicated open-in-new-tab handler; falls back to onOpenFile. */
+  onOpenInNewTab?: (path: string) => void;
+  /** M15: queue the Beta Reader agent on a note (context menu). */
+  onBetaRead?: (path: string) => void;
+  /** M15: run an Archive continuity check on a note (context menu). */
+  onContinuityCheck?: (path: string) => void;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck }: NotesVaultProps) {
   const allNotesItems = items.filter(isNotesItem);
   const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
 
@@ -567,6 +573,45 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       onContextChange?.('folder');
     },
     [toggle, onContextChange],
+  );
+
+  // M15: "Open in new tab" — prefer the dedicated handler, otherwise reuse the
+  // regular open flow (which already opens the note in the workspace tab).
+  const handleOpenInNewTab = useCallback(
+    (row: FlatRow) => {
+      const path = row.node.path;
+      select(path);
+      (onOpenInNewTab ?? onOpenFile)?.(path);
+      onContextChange?.('file');
+    },
+    [select, onOpenInNewTab, onOpenFile, onContextChange],
+  );
+
+  // M15: context-menu Delete — confirm, then remove via the notes-vault IPC.
+  const handleDelete = useCallback(
+    async (row: FlatRow) => {
+      const path = row.node.path;
+      const name = row.node.name.endsWith('.md') ? row.node.name.slice(0, -3) : row.node.name;
+      if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+      try {
+        const res = await window.api.deleteNotesVault(path);
+        if (res && 'error' in res) throw new Error(res.error);
+        onReload();
+      } catch (e) {
+        console.error('Delete failed:', e);
+      }
+    },
+    [onReload],
+  );
+
+  const handleBetaRead = useCallback(
+    (row: FlatRow) => onBetaRead?.(row.node.path),
+    [onBetaRead],
+  );
+
+  const handleContinuityCheck = useCallback(
+    (row: FlatRow) => onContinuityCheck?.(row.node.path),
+    [onContinuityCheck],
   );
 
   const handleStartRename = useCallback((row: FlatRow) => {
@@ -690,6 +735,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onNewNote={handleNewNote}
         onNewFolder={handleNewFolder}
         onRename={handleStartRename}
+        onOpenInNewTab={handleOpenInNewTab}
+        onDelete={handleDelete}
+        onBetaRead={onBetaRead ? handleBetaRead : undefined}
+        onContinuityCheck={onContinuityCheck ? handleContinuityCheck : undefined}
       />
       <NoteTemplateDialog
         open={dialogOpen}
@@ -724,6 +773,12 @@ export interface VaultBrowserProps {
   initialScope?: 'story' | 'notes' | 'both';
   /** SKY-2976: when true, hides the scope selector and locks to initialScope. */
   lockScope?: boolean;
+  /** M15: notes-tree context menu "Open in new tab"; falls back to onOpenFile. */
+  onOpenInNewTab?: (path: string) => void;
+  /** M15: notes-tree context menu "Beta read" (disabled until wired). */
+  onBetaRead?: (path: string) => void;
+  /** M15: notes-tree context menu "Continuity check" (disabled until wired). */
+  onContinuityCheck?: (path: string) => void;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -796,6 +851,9 @@ export default function VaultBrowser({
   journalModeEnabled,
   initialScope = 'both',
   lockScope = false,
+  onOpenInNewTab,
+  onBetaRead,
+  onContinuityCheck,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -900,6 +958,9 @@ export default function VaultBrowser({
                 onTagFilter={setActiveTag}
                 iconMap={notesIconMap}
                 onMove={handleMove}
+                onOpenInNewTab={onOpenInNewTab}
+                onBetaRead={onBetaRead}
+                onContinuityCheck={onContinuityCheck}
               />
             )}
           </div>

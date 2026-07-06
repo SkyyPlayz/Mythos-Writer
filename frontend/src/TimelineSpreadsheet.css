@@ -193,16 +193,21 @@
   z-index: 2;
 }
 
+/* Beta 3 M20 — restyled to the prototype's Aeon spreadsheet grid header
+   (template 1471): 9px / 700 / .1em tracking / #7686a2 on a faint white wash.
+   The wash layers over the surface color so the sticky header stays opaque. */
 .tls-th {
-  padding: 0.45rem 0.6rem;
+  padding: 0.5rem 0.875rem;
   text-align: left;
-  font-size: 0.68rem;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted, #888);
-  background: var(--color-surface, #1e1e2e);
-  border-bottom: 2px solid var(--color-border, #3a3a5c);
+  letter-spacing: 0.1em;
+  color: #7686a2;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04)),
+    var(--color-surface, #1e1e2e);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
   user-select: none;
 }

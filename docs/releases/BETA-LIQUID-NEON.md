@@ -28,30 +28,30 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 
 | # | Milestone | Phase | Depends on | Status | PR |
 |---|-----------|-------|-----------|--------|----|
-| M1 | Theme token engine (6 slots, computed vars) | A Theme | — | ⏳ | |
-| M2 | Presets ×10 + wallpapers + ambience layers | A Theme | M1 | ⏳ | |
-| M3 | Neon animation (Off/Cycle/Sparkle) + frame ring + transparent window | A Theme | M1 | ⏳ | |
-| M4 | Appearance settings page (full §1 surface) | A Theme | M1–M3 | ⏳ | |
-| — | ⛔ **Merge checkpoint 1** (M1–M4) | | | | |
-| M5 | Title bar: menus, command palette, notifications, account | B Shell | CP1 | ⏳ | |
-| M6 | Workspace tabs v2 (context menu, pop out, agents-idle) | B Shell | CP1 | ⏳ | |
-| M7 | Nav rail v2 (modules, customize, slim, vault tiles, Stories popover) | B Shell | CP1 | ⏳ | |
-| M8 | Panels restyle + live status bar | B Shell | CP1 | ⏳ | |
-| — | ⛔ **Merge checkpoint 2** (M5–M8) | | | | |
-| M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ⏳ | |
+| M1 | Theme token engine (6 slots, computed vars) | A Theme | — | ✅ | #848 |
+| M2 | Presets ×10 + wallpapers + ambience layers | A Theme | M1 | ✅ | #849 |
+| M3 | Neon animation (Off/Cycle/Sparkle) + frame ring + transparent window | A Theme | M1 | ✅ | #851 |
+| M4 | Appearance settings page (full §1 surface) | A Theme | M1–M3 | ✅ | #852 |
+| — | ⛔ **Merge checkpoint 1** (M1–M4) | | | ✅ | |
+| M5 | Title bar: menus, command palette, notifications, account | B Shell | CP1 | ✅ | #853 |
+| M6 | Workspace tabs v2 (context menu, pop out, agents-idle) | B Shell | CP1 | ✅ | #855 |
+| M7 | Nav rail v2 (modules, customize, slim, vault tiles, Stories popover) | B Shell | CP1 | ✅ | #856 |
+| M8 | Panels restyle + live status bar | B Shell | CP1 | ✅ | #854 |
+| — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
+| M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
 | M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | ⏳ | |
 | M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ⏳ | |
-| M12 | Drafts & diff UI | C Story | M9 | ⏳ | |
+| M12 | Drafts & diff UI | C Story | M9 | 🔀 | #859 |
 | M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ⏳ | |
-| M14 | Structure view + Book preview + export modal | C Story | M9 | ⏳ | |
-| M15 | Notes tree v2 + templates + multi-vault | D Notes | CP2 | ⏳ | |
+| M14 | Structure view + Book preview + export modal | C Story | M9 | 🔀 | #861 |
+| M15 | Notes tree v2 + templates + multi-vault | D Notes | CP2 | 🔀 | #860 |
 | M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | ⏳ | |
-| M17 | Canvas board engine (shared) | E Crafter | CP2 | ⏳ | |
+| M17 | Canvas board engine (shared) | E Crafter | CP2 | 🔀 | #858 |
 | — | ⛔ **Merge checkpoint 3** (M17 — canvas engine) | | | | |
-| M18 | Scene Crafter (setup, cards, plan→board, mini canvas) | E Crafter | CP3 | ⏳ | |
-| M19 | Brainstorm center (chat + board/map/clusters) | F Modules | CP3 | ⏳ | |
-| M20 | Timeline v2 (5 views, eras, arcs, minimap, filters) | F Modules | CP2 | ⏳ | |
-| M21 | Vault graph v2 (stars, pinning, category wheels, inspector) | F Modules | CP2 | ⏳ | |
+| M18 | Scene Crafter (setup, cards, plan→board, mini canvas) | E Crafter | CP3 | 🔀 | #864 |
+| M19 | Brainstorm center (chat + board/map/clusters) | F Modules | CP3 | 🔨 | WIP branch `claude/beta3-m19-brainstorm` |
+| M20 | Timeline v2 (5 views, eras, arcs, minimap, filters) | F Modules | CP2 | 🔀 | #862 |
+| M21 | Vault graph v2 (stars, pinning, category wheels, inspector) | F Modules | CP2 | 🔀 | #863 |
 | M22 | Agents: Beta Reader + identity files + autonomy | G Agents | CP2 | ⏳ | |
 | M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | ⏳ | |
 | M24 | Settings remainder + vault/story import | H Final | CP2 | ⏳ | |
@@ -59,6 +59,77 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M26 | Release prep (v0.3.0-beta.3 or v0.4.0-beta.1, changelog, installer) | H Final | all | ⏳ | |
 
 Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merged
+
+## Current state & pickup map (updated 2026-07-05, end of Claude Code session)
+
+Phases A + B (M1–M8) are **merged to main** — the stacked M1–M7 PRs were
+collapsed into #848 at merge time; M8 landed via #854. Everything below is the
+exact state the next agent (Opus / Paperclip team) picks up from.
+
+### 1) Merge queue (all validated green locally; CI re-running on final heads)
+
+Merge in this order — #866 unblocks everything, #858→#864 stack, the rest are
+independent (#857 M9 already merged):
+
+| Order | PR | Milestone | Notes |
+|---|---|---|---|
+| 1 | #866 | main e2e fix | **Merge first** — greens main's own e2e (create-vault restore, Stories-popover trap, neon-frozen perf gates); every other PR re-runs on the fixed base |
+| 2 | #858 | M17 canvas engine | Auto-merge armed |
+| 3 | #864 | M18 Scene Crafter | **Stacked on #858 — merge #858 first**; diff then shrinks to the SceneCrafter module |
+| any | #859 | M12 drafts & diff | Auto-merge armed |
+| any | #860 | M15 notes tree | Auto-merge armed; branch carries its own regenerated VR baselines |
+| any | #861 | M14 structure/book/export | Auto-merge armed |
+| any | #862 | M20 timeline v2 | Auto-merge armed; carries the popover-guard port for its rewritten timeline spec |
+| any | #863 | M21 vault graph v2 | Auto-merge armed |
+| any | #865 | this handoff doc | Docs-only |
+
+Known follow-up product bugs (referenced by #866, not CI-gating): the nav-rail
+Stories popover's outside-click dismissal is broken (the rail's
+`backdrop-filter` creates a containing block that clips the fixed backdrop);
+consider whether the popover should open at all for zero-story vaults.
+
+**After the last merge:** run the **VR Baselines** workflow on `main`
+(Actions → "VR Baselines" → Run workflow, ref `main`) — the merged UI changes
+shift the screenshots, and the workflow commits regenerated
+`e2e/visual-baselines/` straight back to the ref it runs on. Note:
+`GITHUB_TOKEN` pushes don't trigger CI; open PR branches needing fresh checks
+after a baseline commit require an empty-commit push ("re-kick").
+
+### 2) In-flight WIP (not a PR yet)
+
+- **M19 Brainstorm center** — branch `claude/beta3-m19-brainstorm` holds ~1k
+  lines of salvaged agent WIP (chat restyle + modes partially built), committed
+  as `wip(beta3)` at a spend-limit cutoff. It has **not** been validated;
+  finish per plan section "M19 · Brainstorm center", merge latest main, fix,
+  test, then PR.
+
+### 3) Remaining milestones (not started)
+
+M10 (toolbar v2/page modes), M11 (comments), M13 (TTS reader), M16 (wiki
+links/metadata), M22–M23 (agents — also wire the tab-strip `agentsActive`
+chip and the notes-tree `onBetaRead`/`onContinuityCheck` props left disabled
+in M6/M15), M24 (settings remainder/import), M25 (wizard), M26 (release).
+Specs for each are below in this doc; the prototype +
+`docs/releases/LIQUID-NEON-PROTOTYPE-MAP.md` are the visual source of truth.
+
+### 4) Hard-won operational notes (read before building)
+
+- **`.app-menu-bar` is now a compat class** carried by the new title bar
+  (`.wc-bar`) for ~97 E2E readiness waits. The old App.test assertion that it
+  is absent is invalid — it has been deleted on every branch; do not
+  reintroduce it when resolving merges (a `merge -X theirs origin/main` can
+  resurrect main-side test files — re-check after such merges).
+- **tokensAudit ratchet:** no new bare hex in CSS — use `rgb()` literals with
+  a `/* prototype #hex */` comment, or `var()`.
+- **`--scrim` is the app's modal backdrop token**; the Liquid Neon engine's
+  scrim variable is `--ln-scrim`. Don't collide them.
+- **Spurious conflicts** in `DesktopShell.tsx` / `AppNavRail.tsx` /
+  `WindowChrome.tsx` from the criss-cross merge history: if your branch does
+  not touch those files, resolve with `git merge -X theirs origin/main` —
+  then re-run the module tests.
+- Electron binaries and Actions artifact downloads are proxy-blocked in the
+  cloud session environment — E2E is CI-only there; the vr-baselines workflow
+  therefore **commits** baselines instead of uploading artifacts.
 
 ---
 

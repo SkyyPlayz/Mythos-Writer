@@ -13,6 +13,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const RIGHT_SIDEBAR_SEL = '[data-testid="global-right-sidebar"], .grs-collapsed-edge';
@@ -113,7 +114,7 @@ test.describe('Shell relayout — single GlobalRightSidebar across modes', () =>
     await expect(page.locator(RIGHT_SIDEBAR_SEL)).toHaveCount(1, { timeout: 10_000 });
 
     // Restore Story mode for any later test ordering assumptions.
-    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }).click();
+    await clickStoryNav(page);
     await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' }))
       .toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
   });

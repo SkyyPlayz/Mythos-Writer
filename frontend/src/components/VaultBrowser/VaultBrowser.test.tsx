@@ -1026,6 +1026,135 @@ describe('VaultBrowser lockScope', () => {
   });
 });
 
+// ─── M15: notes-tree context menu (Liquid Neon prototype treeCtxItems) ────────
+
+describe('NotesVault context menu (M15)', () => {
+  const mockDeleteNotesVault = vi.fn();
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockDeleteNotesVault.mockReset().mockResolvedValue({ path: 'note.md', deleted: true });
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: 'folder', name: 'folder', isDirectory: true, modifiedAt: '' },
+        { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      deleteNotesVault: mockDeleteNotesVault,
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+  });
+
+  async function openFileContextMenu(extraProps: Record<string, unknown> = {}) {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" {...extraProps} />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('vb-row-note.md'));
+    await screen.findByTestId('vb-context-menu');
+  }
+
+  it('shows the five prototype items on a file row', async () => {
+    await openFileContextMenu();
+    expect(screen.getByTestId('menu-item-open-tab')).toHaveTextContent('Open in new tab');
+    expect(screen.getByTestId('menu-item-beta-read')).toHaveTextContent('Beta read');
+    expect(screen.getByTestId('menu-item-continuity-check')).toHaveTextContent('Continuity check');
+    expect(screen.getByTestId('menu-item-rename')).toHaveTextContent('Rename…');
+    expect(screen.getByTestId('menu-item-delete')).toHaveTextContent('Delete');
+  });
+
+  it('preserves New Note / New Folder below a separator on file rows', async () => {
+    await openFileContextMenu();
+    expect(screen.getByTestId('menu-item-new-note')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-item-new-folder')).toBeInTheDocument();
+    expect(screen.getByTestId('ln-menu-separator')).toBeInTheDocument();
+  });
+
+  it('directory rows keep the creation-only menu (no prototype file actions)', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-folder')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('vb-row-folder'));
+    await screen.findByTestId('vb-context-menu');
+    expect(screen.getByTestId('menu-item-new-note')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-item-new-folder')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-item-open-tab')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('menu-item-delete')).not.toBeInTheDocument();
+  });
+
+  it('"Open in new tab" falls back to onOpenFile with the note path', async () => {
+    const onOpenFile = vi.fn();
+    await openFileContextMenu({ onOpenFile });
+    // act-wrapped: selecting the note mounts BacklinksPane (async fetch)
+    await act(async () => { fireEvent.click(screen.getByTestId('menu-item-open-tab')); });
+    expect(onOpenFile).toHaveBeenCalledWith('note.md');
+  });
+
+  it('"Open in new tab" prefers the onOpenInNewTab prop when provided', async () => {
+    const onOpenFile = vi.fn();
+    const onOpenInNewTab = vi.fn();
+    await openFileContextMenu({ onOpenFile, onOpenInNewTab });
+    await act(async () => { fireEvent.click(screen.getByTestId('menu-item-open-tab')); });
+    expect(onOpenInNewTab).toHaveBeenCalledWith('note.md');
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
+  it('"Beta read" / "Continuity check" call their optional props with the path', async () => {
+    const onBetaRead = vi.fn();
+    const onContinuityCheck = vi.fn();
+    await openFileContextMenu({ onBetaRead, onContinuityCheck });
+    fireEvent.click(screen.getByTestId('menu-item-beta-read'));
+    expect(onBetaRead).toHaveBeenCalledWith('note.md');
+
+    fireEvent.contextMenu(screen.getByTestId('vb-row-note.md'));
+    fireEvent.click(await screen.findByTestId('menu-item-continuity-check'));
+    expect(onContinuityCheck).toHaveBeenCalledWith('note.md');
+  });
+
+  it('"Beta read" / "Continuity check" are disabled when unwired', async () => {
+    await openFileContextMenu();
+    expect(screen.getByTestId('menu-item-beta-read')).toBeDisabled();
+    expect(screen.getByTestId('menu-item-continuity-check')).toBeDisabled();
+  });
+
+  it('"Rename…" opens the inline rename input', async () => {
+    await openFileContextMenu();
+    fireEvent.click(screen.getByTestId('menu-item-rename'));
+    const input = await screen.findByLabelText('Rename');
+    expect((input as HTMLInputElement).value).toBe('note');
+  });
+
+  it('"Delete" is destructive-styled and deletes after confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    try {
+      await openFileContextMenu();
+      const deleteItem = screen.getByTestId('menu-item-delete');
+      expect(deleteItem.className).toContain('ln-menu-item--destructive');
+      fireEvent.click(deleteItem);
+      await waitFor(() => expect(mockDeleteNotesVault).toHaveBeenCalledWith('note.md'));
+      expect(confirmSpy).toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('"Delete" does nothing when the confirm is declined', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      await openFileContextMenu();
+      fireEvent.click(screen.getByTestId('menu-item-delete'));
+      await act(async () => {});
+      expect(mockDeleteNotesVault).not.toHaveBeenCalled();
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('context menu carries the prototype popover class', async () => {
+    await openFileContextMenu();
+    expect(screen.getByTestId('vb-context-menu').className).toContain('vb-ctx-menu');
+  });
+});
+
 // ─── SKY-2976: moveNotesVault used for rename (not moveVault) ─────────────────
 
 describe('NotesVault rename uses moveNotesVault', () => {

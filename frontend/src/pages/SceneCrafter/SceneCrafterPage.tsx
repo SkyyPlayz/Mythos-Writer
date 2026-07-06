@@ -1,5 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Story } from '../../types';
+import CanvasBoard from '../../canvas/CanvasBoard';
+import type { CanvasBoardData } from '../../canvas/canvasTypes';
+import {
+  CRAFTER_LENGTHS,
+  CRAFTER_TONES,
+  DRAFT_BOARD_DELAY_MS,
+  addBeat,
+  composeDraftBoard,
+  defaultCrafterSetup,
+  filterSuggested,
+  groupSuggested,
+  planNotesFromVault,
+  removeBeat,
+  suggestedFromVault,
+  toggleTone,
+  type ChosenCard,
+  type CrafterSetup,
+  type SuggestedCard,
+  type VaultListItem,
+} from './crafterState';
+import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
 import './SceneCrafterPage.css';
 
 export interface SceneCrafterCard {
@@ -27,7 +48,12 @@ interface Props {
   story: Story;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
+  /** Draft-board busy delay override (prototype: 1200ms). Tests pass 0. */
+  draftDelayMs?: number;
 }
+
+/** Debounce for persisting canvas edits (drag/resize emit change storms). */
+const BOARD_SAVE_DEBOUNCE_MS = 600;
 
 const NOTE_DRAG_MIME = 'application/x-mythos-note-path';
 
@@ -54,7 +80,12 @@ function manuscriptSceneId(tags: string[]): string | null {
   return tag ? tag.slice('manuscript/'.length) : null;
 }
 
-export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Props) {
+export default function SceneCrafterPage({
+  story,
+  onOpenNote,
+  onOpenScene,
+  draftDelayMs = DRAFT_BOARD_DELAY_MS,
+}: Props) {
   const storySlug = useMemo(() => storySlugFromStory(story), [story]);
   const [board, setBoard] = useState<SceneCrafterBoard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,16 +100,47 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
   const [moveMenuCard, setMoveMenuCard] = useState<{ laneIndex: number; cardIndex: number } | null>(null);
   const [moveAnnouncement, setMoveAnnouncement] = useState('');
 
+  // ── M18 crafter state: scene setup, suggested cards, canvas boards ────────
+  const [setup, setSetup] = useState<CrafterSetup>(defaultCrafterSetup);
+  const [beatInput, setBeatInput] = useState('');
+  const [sugQ, setSugQ] = useState('');
+  const [vaultItems, setVaultItems] = useState<VaultListItem[]>([]);
+  const [boards, setBoards] = useState<CanvasBoardData[]>([]);
+  const [openBoardId, setOpenBoardId] = useState<string | null>(null);
+  const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
+  const [summary, setSummary] = useState('');
+  const [boardsNote, setBoardsNote] = useState<string | null>(null);
+
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const moveMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const draftTimerRef = useRef<number | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const pendingSaveRef = useRef<CanvasBoardData | null>(null);
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const existing = await window.api.sceneCrafterGetBoard(story.id, storySlug);
+      // Suggested cards + saved canvas boards ride the same load gate so the
+      // page is fully hydrated when the loading state clears. Both are
+      // best-effort: a notes-vault hiccup must not block the kanban board.
+      const fetchVaultItems = async (): Promise<VaultListItem[]> => {
+        try {
+          const listing = await window.api.listNotesVault();
+          return 'error' in listing ? [] : listing.items;
+        } catch {
+          return [];
+        }
+      };
+      const [existing, items] = await Promise.all([
+        window.api.sceneCrafterGetBoard(story.id, storySlug),
+        fetchVaultItems(),
+      ]);
       const nextBoard = existing ?? await window.api.sceneCrafterCreateBoard(story.id, storySlug);
+      const savedBoards = await loadCrafterBoards(storySlug, items).catch(() => [] as CanvasBoardData[]);
       setBoard(nextBoard);
+      setVaultItems(items);
+      setBoards(savedBoards);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load Scene Crafter board.');
     } finally {
@@ -99,6 +161,17 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
 
   useEffect(() => {
     return () => { window.api.sceneCrafterClose?.(storySlug); };
+  }, [storySlug]);
+
+  // Cancel the draft-board timer and flush any pending canvas save on unmount.
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current !== null) window.clearTimeout(draftTimerRef.current);
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      const toSave = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      if (toSave) void saveCrafterBoard(storySlug, toSave).catch(() => undefined);
+    };
   }, [storySlug]);
 
   async function runMutation(action: () => Promise<void>) {
@@ -303,6 +376,83 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
     }
   }
 
+  // ── M18: suggested cards, plan cards, draft boards ─────────────────────────
+  const suggestedGroups = groupSuggested(filterSuggested(suggestedFromVault(vaultItems), sugQ));
+  const planNotes = planNotesFromVault(vaultItems);
+  const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
+
+  function patchSetup(patch: Partial<CrafterSetup>) {
+    setSetup((prev) => ({ ...prev, ...patch }));
+  }
+
+  function commitBeat() {
+    setSetup((prev) => addBeat(prev, beatInput));
+    setBeatInput('');
+  }
+
+  /** Suggested-card click: the note lands on the kanban board's first lane. */
+  function addSuggestedCard(card: SuggestedCard) {
+    void runMutation(() => window.api.sceneCrafterAddCard({
+      storySlug,
+      laneIndex: 0,
+      card: { wikilink: card.nid, title: card.t, done: false, tags: [] },
+    }).then(() => undefined));
+  }
+
+  async function persistBoard(next: CanvasBoardData) {
+    try {
+      await saveCrafterBoard(storySlug, next);
+      setBoardsNote(null);
+    } catch (err) {
+      setBoardsNote(err instanceof Error ? err.message : 'Could not save the canvas board.');
+    }
+  }
+
+  /** Everything the draft board pulls in: selected plan cards + kanban cards. */
+  function chosenCards(): ChosenCard[] {
+    const chosen: ChosenCard[] = planNotes
+      .filter((plan) => planSel[plan.id])
+      .map((plan) => ({ title: plan.t, desc: plan.d, nid: plan.id }));
+    for (const lane of board?.lanes ?? []) {
+      for (const card of lane.cards) {
+        chosen.push({
+          title: card.title,
+          desc: visibleTags(card.tags).map((tag) => `#${tag}`).join(' '),
+          nid: card.wikilink,
+        });
+      }
+    }
+    return chosen;
+  }
+
+  /** Prototype draftBoard() (lines 3403–3423): busy → compose → land under BOARDS. */
+  function draftBoard() {
+    if (setup.status === 'busy') return;
+    const chosen = chosenCards();
+    const boardNumber = boards.length + 1;
+    patchSetup({ status: 'busy' });
+    draftTimerRef.current = window.setTimeout(() => {
+      draftTimerRef.current = null;
+      const next = composeDraftBoard(setup, chosen, boardNumber);
+      setBoards((prev) => [...prev, next]);
+      setSetup((prev) => ({ ...prev, status: 'done' }));
+      void persistBoard(next);
+    }, draftDelayMs);
+  }
+
+  /** Canvas mutations update state immediately and persist on a debounce. */
+  function handleCanvasChange(next: CanvasBoardData) {
+    setBoards((prev) => prev.map((b) => (b.id === next.id ? next : b)));
+    pendingSaveRef.current = next;
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      const toSave = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      if (toSave) void persistBoard(toSave);
+    }, BOARD_SAVE_DEBOUNCE_MS);
+  }
+
   if (loading) {
     return <div className="scene-crafter-page" role="status">Loading Scene Crafter…</div>;
   }
@@ -327,6 +477,28 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
     );
   }
 
+  // ── M18 canvas board view (prototype lines 1005–1048) ─────────────────────
+  if (openBoard) {
+    return (
+      <section className="scene-crafter-page sc-canvas-view" aria-label={`Canvas board ${openBoard.name}`}>
+        <header className="sc-canvas-head">
+          <button type="button" className="sc-canvas-back" onClick={() => setOpenBoardId(null)}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
+            Boards
+          </button>
+          <span className="sc-canvas-name">{openBoard.name}</span>
+          <span className="sc-canvas-chip">CANVAS</span>
+          <span className="sc-canvas-hint">Drag cards · corner to resize · ⚯ to connect · drag space to pan · scroll to zoom</span>
+        </header>
+        <div className="sc-canvas-body">
+          <CanvasBoard board={openBoard} onChange={handleCanvasChange} onOpenNote={onOpenNote} />
+        </div>
+      </section>
+    );
+  }
+
   const cardCount = board.lanes.reduce((sum, lane) => sum + lane.cards.length, 0);
 
   return (
@@ -335,6 +507,9 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
         <div>
           <p className="scene-crafter-eyebrow">Scene Crafter</p>
           <h2>{story.title} — Board</h2>
+          <p className="scene-crafter-tagline">
+            A visual board of the scene you’re writing — every vault note is a card.
+          </p>
         </div>
         <div className="scene-crafter-actions">
           <span>{board.lanes.length} lanes · {cardCount} cards</span>
@@ -396,7 +571,240 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
       {/* aria-live region announces keyboard moves to screen readers */}
       <div aria-live="polite" aria-atomic="true" className="sr-only">{moveAnnouncement}</div>
 
-      <div className="scene-crafter-lanes">
+      <div className="scene-crafter-body">
+        {/* ── Suggested cards panel (prototype lines 355–371) ── */}
+        <aside className="sc-suggest" aria-label="Suggested cards">
+          <div className="sc-suggest-title">SUGGESTED CARDS</div>
+          <div className="sc-suggest-search">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="M20.5 20.5L16 16" />
+            </svg>
+            <input
+              placeholder="Search your vault…"
+              aria-label="Search your vault"
+              value={sugQ}
+              onChange={(event) => setSugQ(event.target.value)}
+            />
+          </div>
+          {suggestedGroups.map((group) => (
+            <Fragment key={group.title}>
+              <div className="sc-suggest-group">{group.title}</div>
+              {group.cards.map((card) => (
+                <button
+                  type="button"
+                  key={card.nid}
+                  className="sc-sugg-card"
+                  title="Click or drag onto the board"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(NOTE_DRAG_MIME, card.nid);
+                    event.dataTransfer.setData('text/plain', card.nid);
+                  }}
+                  onClick={() => addSuggestedCard(card)}
+                  disabled={conflicted}
+                >
+                  <span className="sc-sugg-av">{card.av}</span>
+                  <span className="sc-sugg-text">
+                    <span className="sc-sugg-t">{card.t}</span>
+                    <span className="sc-sugg-d">{card.d}</span>
+                  </span>
+                </button>
+              ))}
+            </Fragment>
+          ))}
+          <div className="sc-suggest-hint">
+            Click or drag a card onto the board — the Brainstorm Agent keeps this list stocked from your vault.
+          </div>
+        </aside>
+
+        <div className="sc-columns">
+          {/* ── Scene Setup column (prototype lines 1059–1094 + 487–520) ── */}
+          <section className="sc-col sc-col-setup" aria-label="Scene setup">
+            <div className="sc-col-head">SCENE SETUP</div>
+            <div className="sc-panel">
+              <label className="sc-field">
+                <span className="sc-field-label">SCENE TITLE</span>
+                <input
+                  value={setup.title}
+                  placeholder="The next scene…"
+                  onChange={(event) => patchSetup({ title: event.target.value })}
+                />
+              </label>
+              <label className="sc-field">
+                <span className="sc-field-label">POV</span>
+                <input
+                  value={setup.pov}
+                  placeholder="Who carries the camera?"
+                  onChange={(event) => patchSetup({ pov: event.target.value })}
+                />
+              </label>
+              <label className="sc-field">
+                <span className="sc-field-label">GOAL</span>
+                <textarea
+                  value={setup.goal}
+                  placeholder="What must this scene reach?"
+                  onChange={(event) => patchSetup({ goal: event.target.value })}
+                />
+              </label>
+              <label className="sc-field">
+                <span className="sc-field-label">CONFLICT</span>
+                <textarea
+                  value={setup.conflict}
+                  placeholder="What stands in the way?"
+                  onChange={(event) => patchSetup({ conflict: event.target.value })}
+                />
+              </label>
+
+              <div className="sc-field-label sc-section-label">BEATS</div>
+              <ul className="sc-beats">
+                {setup.beats.map((beat, index) => (
+                  <li key={`${beat}-${index}`} className="sc-beat">
+                    <span>{beat}</span>
+                    <button
+                      type="button"
+                      className="sc-beat-remove"
+                      aria-label={`Remove beat ${beat}`}
+                      onClick={() => setSetup((prev) => removeBeat(prev, index))}
+                    >
+                      <svg width="8" height="8" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="sc-beat-add">
+                <input
+                  placeholder="Add a beat…"
+                  aria-label="Add a beat"
+                  value={beatInput}
+                  onChange={(event) => setBeatInput(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitBeat(); }}
+                />
+                <button type="button" className="sc-beat-add-btn" onClick={commitBeat}>Add</button>
+              </div>
+
+              <div className="sc-field-label sc-section-label">TONE</div>
+              <div className="sc-tones">
+                {CRAFTER_TONES.map((tone) => (
+                  <button
+                    type="button"
+                    key={tone}
+                    className={`sc-tone${setup.tones[tone] ? ' sc-tone--on' : ''}`}
+                    aria-pressed={!!setup.tones[tone]}
+                    onClick={() => setSetup((prev) => toggleTone(prev, tone))}
+                  >
+                    {tone}
+                  </button>
+                ))}
+              </div>
+
+              <div className="sc-field-label sc-section-label">LENGTH</div>
+              <div className="sc-len-seg">
+                {CRAFTER_LENGTHS.map((len) => (
+                  <button
+                    type="button"
+                    key={len}
+                    className={`sc-len${setup.len === len ? ' sc-len--on' : ''}`}
+                    aria-pressed={setup.len === len}
+                    onClick={() => patchSetup({ len })}
+                  >
+                    {len}
+                  </button>
+                ))}
+              </div>
+
+              <div className="sc-field-label sc-section-label">BOARDS</div>
+              {boards.length > 0 && (
+                <div className="sc-board-list" data-testid="crafter-board-list">
+                  {boards.map((row) => (
+                    <button
+                      type="button"
+                      key={row.id}
+                      className="sc-board-row"
+                      onClick={() => setOpenBoardId(row.id)}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+                        <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+                        <rect x="13.5" y="6.5" width="7" height="7" rx="1.5" />
+                        <rect x="7.5" y="14.5" width="7" height="7" rx="1.5" />
+                        <path d="M10.5 7.5h3M12 13.5v1" />
+                      </svg>
+                      <span className="sc-board-row-text">
+                        <span className="sc-board-row-name">{row.name}</span>
+                        <span className="sc-board-row-meta">{row.cards.length} cards · {row.links.length} links</span>
+                      </span>
+                      <span className="sc-board-chip">CANVAS</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="sc-help">
+                Draft board builds a canvas here — click it to open, drag cards, draw connectors.
+              </div>
+            </div>
+          </section>
+
+          {/* ── Scene Draft column (prototype lines 1095–1145) ── */}
+          <section className="sc-col sc-col-draft" aria-label="Scene draft">
+            <div className="sc-col-head sc-col-head--draft">SCENE DRAFT</div>
+            <div className="sc-panel">
+              <div className="sc-field-label">QUICK SUMMARY</div>
+              <textarea
+                className="sc-summary"
+                placeholder="Sketch the scene in a sentence or two — or pick a plan card below…"
+                aria-label="Quick summary"
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+              />
+              <div className="sc-field-label sc-section-label">PLAN CARDS — FROM YOUR VAULT</div>
+              <div className="sc-plan-list">
+                {planNotes.length === 0 && (
+                  <div className="sc-help">No Story Plan notes yet — notes named “Plan …” (or in a Plans folder) appear here.</div>
+                )}
+                {planNotes.map((plan) => (
+                  <button
+                    type="button"
+                    key={plan.id}
+                    className={`sc-plan-card${planSel[plan.id] ? ' sc-plan-card--on' : ''}`}
+                    aria-pressed={!!planSel[plan.id]}
+                    onClick={() => setPlanSel((prev) => ({ ...prev, [plan.id]: !prev[plan.id] }))}
+                  >
+                    <span className="sc-plan-t">{plan.t}</span>
+                    <span className="sc-plan-d">{plan.d}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="sc-draft-btn"
+                onClick={draftBoard}
+                disabled={setup.status === 'busy'}
+              >
+                Draft board ✦
+              </button>
+              <div className="sc-help">
+                Reads your summary + selected plan cards and builds a canvas board — it lands under BOARDS in Scene Setup.
+              </div>
+            </div>
+            {setup.status === 'idle' && (
+              <div className="sc-draft-idle">Set beats and tone, then<br />Draft — the card lands here.</div>
+            )}
+            {setup.status === 'busy' && (
+              <div className="sc-draft-busy">
+                <div className="sc-skel" />
+                <div className="sc-skel sc-skel--short" />
+                <div className="sc-draft-busy-label">Drafting to your beats…</div>
+              </div>
+            )}
+            {setup.status === 'done' && (
+              <div className="sc-draft-done">✦ Canvas board drafted — open it under BOARDS.</div>
+            )}
+            {boardsNote && <div className="sc-boards-note">{boardsNote}</div>}
+          </section>
+
+          <div className="scene-crafter-lanes">
         {board.lanes.map((lane, laneIndex) => (
           <section
             key={`${lane.name}-${laneIndex}`}
@@ -511,6 +919,8 @@ export default function SceneCrafterPage({ story, onOpenNote, onOpenScene }: Pro
             </div>
           </section>
         ))}
+          </div>
+        </div>
       </div>
     </section>
   );

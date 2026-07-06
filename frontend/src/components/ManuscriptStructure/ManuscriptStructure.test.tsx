@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { computeWordCount } from './SceneCard';
-import { StatusBadge, draftStateToStatus } from './StatusBadge';
+import { computeWordCount, computeSynopsis } from './SceneCard';
+import { StatusBadge, StatusChip, draftStateToStatus } from './StatusBadge';
 import { ViewToggle } from './ViewToggle';
 import { BeatSheetSidebar } from './BeatSheetSidebar';
 import ManuscriptStructureView from '../../ManuscriptStructureView';
@@ -122,19 +122,25 @@ describe('StatusBadge', () => {
   });
 });
 
-// ─── ViewToggle ───
+// ─── ViewToggle (M14: Grid/List segmented control per prototype 559–561) ───
 
 describe('ViewToggle', () => {
-  it('renders both mode buttons', () => {
+  it('renders both mode buttons labelled Grid and List', () => {
     render(<ViewToggle mode="card" onChange={vi.fn()} />);
     expect(screen.getByRole('button', { name: /list/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /card/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /grid/i })).toBeTruthy();
   });
 
   it('marks the active mode button as pressed', () => {
     render(<ViewToggle mode="card" onChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /card/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /grid/i })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /list/i })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('applies the neon active class to the pressed segment', () => {
+    render(<ViewToggle mode="card" onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /grid/i })).toHaveClass('msv-view-toggle__btn--active');
+    expect(screen.getByRole('button', { name: /list/i })).not.toHaveClass('msv-view-toggle__btn--active');
   });
 
   it('calls onChange with the new mode when clicked', () => {
@@ -144,9 +150,68 @@ describe('ViewToggle', () => {
     expect(onChange).toHaveBeenCalledWith('list');
   });
 
+  it('calls onChange with card when Grid is clicked', () => {
+    const onChange = vi.fn();
+    render(<ViewToggle mode="list" onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
+    expect(onChange).toHaveBeenCalledWith('card');
+  });
+
   it('has accessible group label', () => {
     render(<ViewToggle mode="list" onChange={vi.fn()} />);
     expect(screen.getByRole('group', { name: /view mode/i })).toBeTruthy();
+  });
+});
+
+// ─── StatusChip (M14: prototype scene-card status pill) ───
+
+describe('StatusChip', () => {
+  it('renders the prototype label for each status', () => {
+    const { rerender } = render(<StatusChip status="draft" />);
+    expect(screen.getByText('Drafting')).toBeTruthy();
+
+    rerender(<StatusChip status="final" />);
+    expect(screen.getByText('Complete')).toBeTruthy();
+
+    rerender(<StatusChip status="review" />);
+    expect(screen.getByText('In review')).toBeTruthy();
+
+    rerender(<StatusChip status="cut" />);
+    expect(screen.getByText('Cut')).toBeTruthy();
+  });
+
+  it('applies the status modifier class', () => {
+    const { container } = render(<StatusChip status="draft" />);
+    expect(container.firstChild).toHaveClass('status-chip', 'status-chip--draft');
+  });
+});
+
+// ─── computeSynopsis (M14: card synopsis line) ───
+
+describe('computeSynopsis', () => {
+  it('returns an empty string for a scene with no written blocks', () => {
+    expect(computeSynopsis(makeScene())).toBe('');
+    expect(computeSynopsis(makeScene({ blocks: [makeBlock('   ')] }))).toBe('');
+  });
+
+  it('returns the full first block when it is 14 words or fewer', () => {
+    const scene = makeScene({ blocks: [makeBlock('A short opening line.')] });
+    expect(computeSynopsis(scene)).toBe('A short opening line.');
+  });
+
+  it('truncates to 14 words with an ellipsis', () => {
+    const words = Array.from({ length: 20 }, (_, i) => `w${i}`).join(' ');
+    const scene = makeScene({ blocks: [makeBlock(words)] });
+    expect(computeSynopsis(scene)).toBe(
+      Array.from({ length: 14 }, (_, i) => `w${i}`).join(' ') + '…',
+    );
+  });
+
+  it('uses the first block by order', () => {
+    const scene = makeScene({
+      blocks: [makeBlock('second block', 1), makeBlock('first block', 0)],
+    });
+    expect(computeSynopsis(scene)).toBe('first block');
   });
 });
 
@@ -199,6 +264,88 @@ describe('BeatSheetSidebar', () => {
     );
     const aside = container.querySelector('aside');
     expect(aside?.getAttribute('aria-label')).toBe('Beat sheet — Save the Cat (3-Act)');
+  });
+
+  // M14: mapped-progress header per prototype 2361–2363
+  it('shows "0 / 15 mapped" and an empty progress bar with no assignments', () => {
+    render(
+      <BeatSheetSidebar
+        scenes={[]}
+        vaultKey="test"
+        focusedBeatId={null}
+        onBeatFocus={() => {}}
+        onAssignmentsChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('0 / 15 mapped')).toBeTruthy();
+    const bar = screen.getByRole('progressbar', { name: /beats mapped/i });
+    expect(bar).toHaveAttribute('aria-valuenow', '0');
+    expect(bar).toHaveAttribute('aria-valuemax', '15');
+  });
+
+  it('counts a beat as mapped once a scene is assigned to it', () => {
+    localStorage.setItem(
+      'mythos-beats-v1:test-mapped',
+      JSON.stringify({ s1: 'catalyst', s2: 'catalyst' }),
+    );
+    render(
+      <BeatSheetSidebar
+        scenes={[makeScene({ id: 's1' }), makeScene({ id: 's2', title: 'Second' })]}
+        vaultKey="test-mapped"
+        focusedBeatId={null}
+        onBeatFocus={() => {}}
+        onAssignmentsChange={() => {}}
+      />,
+    );
+    // Two scenes on one beat → 1 / 15 mapped, with a mapped dot on the row
+    expect(screen.getByText('1 / 15 mapped')).toBeTruthy();
+    expect(
+      screen.getByRole('progressbar', { name: /beats mapped/i }),
+    ).toHaveAttribute('aria-valuenow', '1');
+    expect(document.querySelector('.beat-item__dot')).toBeTruthy();
+    localStorage.removeItem('mythos-beats-v1:test-mapped');
+  });
+});
+
+// ─── ManuscriptStructureView header (M14: prototype 558–565) ───
+
+describe('ManuscriptStructureView header', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('shows the prototype meta line and editor hint', () => {
+    const story = makeStory([makeChapter([makeScene()])]);
+    render(
+      <ManuscriptStructureView
+        story={story}
+        onSelectScene={() => {}}
+        onReorderScenes={() => {}}
+        onMoveScene={() => {}}
+        onCreateScene={() => {}}
+        onCreateChapter={() => {}}
+        vaultRoot="test-vault"
+      />,
+    );
+    expect(screen.getByText(/1 scenes · 1 chapter · grouped by chapter/)).toBeTruthy();
+    expect(screen.getByText('Click a scene to open it in the editor')).toBeTruthy();
+  });
+
+  it('renders the chapter eyebrow in grid view', () => {
+    localStorage.setItem('mythos-msv-view-mode-v1', 'card');
+    const story = makeStory([makeChapter([makeScene()])]);
+    render(
+      <ManuscriptStructureView
+        story={story}
+        onSelectScene={() => {}}
+        onReorderScenes={() => {}}
+        onMoveScene={() => {}}
+        onCreateScene={() => {}}
+        onCreateChapter={() => {}}
+        vaultRoot="test-vault"
+      />,
+    );
+    expect(screen.getByText('CHAPTER 1')).toBeTruthy();
   });
 });
 

@@ -1,16 +1,21 @@
 // SKY-3185 — F5: TimelineRoot view-switcher + grouping tests (vitest + @testing-library/react).
+// Beta 3 M20 — grown to the prototype's five Aeon modes: Plan vs Progress /
+// Structure / Spreadsheet / Relationships / Subway.
 //
 // Coverage:
-//   - View switch: Spreadsheet | AEON | AEON Track render exactly one surface
+//   - View switch: the five modes render exactly one surface each
 //   - localStorage persistence + restore for timeline:viewMode / timeline:groupBy
+//   - Legacy Beta-2 stored modes migrate ('aeon' → progress, 'track' → subway)
 //   - Invalid stored values fall back to defaults (spreadsheet / none)
+//   - Plan-vs-Progress legend renders only in progress mode
+//   - Zoom segment (Year…Scene) drives the lanes zoom prop
+//   - "Today" jump: lanes modes flip to progress; sheet/relations/subway keep mode
 //   - groupBy passthrough to the spreadsheet view
 //   - Selection cleared on view switch (no stale cross-view state)
-//   - Track mode forwards the switcher into TrackTimeline (no double header)
 //   - Null story renders without crashing
 //   - groupScenes chapter/location grouping (F5 extension, real implementation)
 
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import TimelineRoot from './TimelineRoot';
 import { groupScenes } from './TimelineSpreadsheet';
@@ -18,8 +23,8 @@ import type { SpreadsheetScene } from './TimelineSpreadsheet';
 import type { Story } from './types';
 
 // ─── Child-view mocks ───
-// The three surfaces are mocked so tests exercise TimelineRoot's state ownership
-// (viewMode / groupBy / selectedIds) through the real TimelineHeader controls.
+// The surfaces are mocked so tests exercise TimelineRoot's state ownership
+// (viewMode / groupBy / selectedIds / zoom) through the real header controls.
 // importOriginal keeps TimelineSpreadsheet's named exports (groupScenes) real.
 
 vi.mock('./TimelineSpreadsheet', async (importOriginal) => {
@@ -48,27 +53,25 @@ vi.mock('./TimelineSpreadsheet', async (importOriginal) => {
   };
 });
 
-vi.mock('./AeonLaneView', () => ({
-  default: ({ selectedIds }: { selectedIds?: Set<string> }) => (
-    <div data-testid="mock-aeon" data-selected-count={selectedIds?.size ?? 0}>AEON lanes</div>
+vi.mock('./TimelineLanes', () => ({
+  default: ({ mode, zoom, todaySignal }: { mode?: string; zoom?: string; todaySignal?: number }) => (
+    <div
+      data-testid="mock-lanes"
+      data-mode={mode ?? 'unset'}
+      data-zoom={zoom ?? 'unset'}
+      data-today-signal={todaySignal ?? 0}
+    >
+      Aeon lanes
+    </div>
   ),
 }));
 
-vi.mock('./TrackTimeline', () => ({
-  default: ({ viewMode, onViewModeChange }: {
-    viewMode?: string;
-    onViewModeChange?: (mode: 'spreadsheet' | 'aeon' | 'track') => void;
-  }) => (
-    <div data-testid="mock-track" data-viewmode={viewMode ?? 'unset'}>
-      <button
-        type="button"
-        data-testid="mock-track-to-spreadsheet"
-        onClick={() => onViewModeChange?.('spreadsheet')}
-      >
-        back to spreadsheet
-      </button>
-    </div>
-  ),
+vi.mock('./TimelineRelationships', () => ({
+  default: () => <div data-testid="mock-relationships">Relationships</div>,
+}));
+
+vi.mock('./TimelineSubway', () => ({
+  default: () => <div data-testid="mock-subway">Subway</div>,
 }));
 
 // ─── Fixtures ───
@@ -98,109 +101,210 @@ function makeScene(overrides: Partial<SpreadsheetScene> = {}): SpreadsheetScene 
   };
 }
 
-beforeEach(() => localStorage.clear());
+/** TimelineRoot loads the shared Aeon dataset itself — stub the IPC surface. */
+function setupApi() {
+  Object.defineProperty(window, 'api', {
+    value: {
+      timelineGetScenes: vi.fn().mockResolvedValue({ scenes: [] }),
+      timelineListArcs: vi.fn().mockResolvedValue({ arcs: [] }),
+      entityList: vi.fn().mockResolvedValue({ entities: [] }),
+    },
+    writable: true, configurable: true,
+  });
+}
+
+/** Render TimelineRoot and flush its async Aeon data load so no state update
+ *  lands outside act() (setupTests fails the test on act warnings). */
+async function renderRoot(story: Story | null = STORY) {
+  const utils = render(<TimelineRoot story={story} />);
+  await act(async () => {});
+  return utils;
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  setupApi();
+});
 afterEach(() => cleanup());
 
 // ─── View switcher ───
 
 describe('TimelineRoot — view switcher', () => {
-  it('renders the spreadsheet view by default', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('renders the spreadsheet view by default', async () => {
+    await renderRoot();
     expect(screen.getByTestId('mock-spreadsheet')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-aeon')).toBeNull();
-    expect(screen.queryByTestId('mock-track')).toBeNull();
+    expect(screen.queryByTestId('mock-lanes')).toBeNull();
+    expect(screen.queryByTestId('mock-relationships')).toBeNull();
+    expect(screen.queryByTestId('mock-subway')).toBeNull();
   });
 
-  it('renders the header with the view-mode toggle', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('renders the header with the view-mode toggle', async () => {
+    await renderRoot();
     expect(screen.getByTestId('view-mode-toggle')).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Timeline view mode' })).toBeInTheDocument();
   });
 
-  it('switches to the AEON lane view on AEON click', () => {
-    render(<TimelineRoot story={STORY} />);
-    fireEvent.click(screen.getByTestId('view-mode-aeon'));
-    expect(screen.getByTestId('mock-aeon')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
-  });
-
-  it('switches to the track view on AEON Track click and hands the header to TrackTimeline', () => {
-    render(<TimelineRoot story={STORY} />);
-    fireEvent.click(screen.getByTestId('view-mode-track'));
-    expect(screen.getByTestId('mock-track')).toBeInTheDocument();
-    expect(screen.getByTestId('mock-track')).toHaveAttribute('data-viewmode', 'track');
-    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
-    // TimelineRoot must NOT mount its own header in track mode — TrackTimeline
-    // renders one internally (its zoom is the track viewport zoom).
-    expect(screen.queryByTestId('timeline-header')).toBeNull();
-  });
-
-  it('switcher forwarded into track mode can switch back to spreadsheet', () => {
-    render(<TimelineRoot story={STORY} />);
-    fireEvent.click(screen.getByTestId('view-mode-track'));
-    fireEvent.click(screen.getByTestId('mock-track-to-spreadsheet'));
-    expect(screen.getByTestId('mock-spreadsheet')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-track')).toBeNull();
-  });
-
-  it('sets aria-pressed on the active mode button only', () => {
-    render(<TimelineRoot story={STORY} />);
-    expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('view-mode-aeon')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('view-mode-track')).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(screen.getByTestId('view-mode-aeon'));
-    expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('view-mode-aeon')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('keeps the pre-F5 accessible button names (Spreadsheet / AEON / AEON Track)', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('offers the five prototype modes with their exact labels', async () => {
+    await renderRoot();
     const toggle = screen.getByTestId('view-mode-toggle');
-    expect(toggle).toHaveTextContent('Spreadsheet');
-    expect(screen.getByRole('button', { name: 'AEON' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /AEON Track/ })).toBeInTheDocument();
+    const labels = Array.from(toggle.querySelectorAll('button')).map(b => b.textContent);
+    expect(labels).toEqual(['Plan vs Progress', 'Structure', 'Spreadsheet', 'Relationships', 'Subway']);
+  });
+
+  it('switches to the lanes view in progress mode', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    const lanes = await screen.findByTestId('mock-lanes');
+    expect(lanes).toHaveAttribute('data-mode', 'progress');
+    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
+  });
+
+  it('switches to the same lanes surface, ungreyed, in structure mode', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-structure'));
+    const lanes = await screen.findByTestId('mock-lanes');
+    expect(lanes).toHaveAttribute('data-mode', 'structure');
+  });
+
+  it('switches to the relationships view', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-relations'));
+    expect(await screen.findByTestId('mock-relationships')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
+  });
+
+  it('switches to the subway view', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-subway'));
+    expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
+  });
+
+  it('sets aria-pressed on the active mode button only', async () => {
+    await renderRoot();
+    expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+// ─── Plan-vs-Progress legend ───
+
+describe('TimelineRoot — legend', () => {
+  it('shows the written/planned legend only in progress mode', async () => {
+    await renderRoot();
+    expect(screen.queryByTestId('tl-legend')).toBeNull();
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    expect(screen.getByTestId('tl-legend')).toHaveTextContent('written');
+    expect(screen.getByTestId('tl-legend')).toHaveTextContent('planned from your notes');
+    fireEvent.click(screen.getByTestId('view-mode-structure'));
+    await waitFor(() => expect(screen.queryByTestId('tl-legend')).toBeNull());
+  });
+});
+
+// ─── Zoom segment ───
+
+describe('TimelineRoot — zoom segment', () => {
+  it('offers the five prototype zoom levels', async () => {
+    await renderRoot();
+    const seg = screen.getByTestId('tl-zoom-seg');
+    const labels = Array.from(seg.querySelectorAll('button')).map(b => b.textContent);
+    expect(labels).toEqual(['Year', 'Quarter', 'Month', 'Week', 'Scene']);
+  });
+
+  it('passes the selected zoom level to the lanes view', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    expect(await screen.findByTestId('mock-lanes')).toHaveAttribute('data-zoom', 'month');
+    fireEvent.click(screen.getByTestId('tl-zoom-week'));
+    expect(screen.getByTestId('tl-zoom-week')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('mock-lanes')).toHaveAttribute('data-zoom', 'week');
+  });
+});
+
+// ─── Today jump ───
+
+describe('TimelineRoot — Today jump', () => {
+  it('flips structure mode to progress (prototype tlToday)', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-structure'));
+    fireEvent.click(screen.getByTestId('tl-today-btn'));
+    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByTestId('mock-lanes')).toHaveAttribute('data-mode', 'progress');
+  });
+
+  it('keeps the sheet / relations / subway modes unchanged', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('tl-today-btn'));
+    expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('view-mode-subway'));
+    fireEvent.click(screen.getByTestId('tl-today-btn'));
+    expect(screen.getByTestId('view-mode-subway')).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
+  });
+
+  it('bumps the lanes todaySignal so the here-chapter scrolls into view', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    expect(await screen.findByTestId('mock-lanes')).toHaveAttribute('data-today-signal', '0');
+    fireEvent.click(screen.getByTestId('tl-today-btn'));
+    expect(screen.getByTestId('mock-lanes')).toHaveAttribute('data-today-signal', '1');
   });
 });
 
 // ─── localStorage persistence ───
 
 describe('TimelineRoot — persistence', () => {
-  it('persists viewMode to localStorage on switch', () => {
-    render(<TimelineRoot story={STORY} />);
-    fireEvent.click(screen.getByTestId('view-mode-track'));
-    expect(localStorage.getItem('timeline:viewMode')).toBe('track');
-    fireEvent.click(screen.getByTestId('mock-track-to-spreadsheet'));
+  it('persists viewMode to localStorage on switch', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-subway'));
+    expect(localStorage.getItem('timeline:viewMode')).toBe('subway');
+    fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(localStorage.getItem('timeline:viewMode')).toBe('spreadsheet');
   });
 
-  it('restores viewMode from localStorage on mount', () => {
-    localStorage.setItem('timeline:viewMode', 'aeon');
-    render(<TimelineRoot story={STORY} />);
-    expect(screen.getByTestId('mock-aeon')).toBeInTheDocument();
+  it('restores viewMode from localStorage on mount', async () => {
+    localStorage.setItem('timeline:viewMode', 'relations');
+    await renderRoot();
+    expect(await screen.findByTestId('mock-relationships')).toBeInTheDocument();
   });
 
-  it('falls back to spreadsheet for an invalid stored viewMode', () => {
+  it('migrates the legacy Beta-2 "aeon" mode to the progress lanes', async () => {
+    localStorage.setItem('timeline:viewMode', 'aeon');
+    await renderRoot();
+    expect(await screen.findByTestId('mock-lanes')).toHaveAttribute('data-mode', 'progress');
+  });
+
+  it('migrates the legacy Beta-2 "track" mode to the subway view', async () => {
+    localStorage.setItem('timeline:viewMode', 'track');
+    await renderRoot();
+    expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
+  });
+
+  it('falls back to spreadsheet for an invalid stored viewMode', async () => {
     localStorage.setItem('timeline:viewMode', 'kanban-nonsense');
-    render(<TimelineRoot story={STORY} />);
+    await renderRoot();
     expect(screen.getByTestId('mock-spreadsheet')).toBeInTheDocument();
   });
 
-  it('persists groupBy to localStorage on change', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('persists groupBy to localStorage on change', async () => {
+    await renderRoot();
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'chapter' } });
     expect(localStorage.getItem('timeline:groupBy')).toBe('chapter');
   });
 
-  it('restores groupBy from localStorage on mount', () => {
+  it('restores groupBy from localStorage on mount', async () => {
     localStorage.setItem('timeline:groupBy', 'character');
-    render(<TimelineRoot story={STORY} />);
+    await renderRoot();
     expect(screen.getByTestId('groupby-select')).toHaveValue('character');
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'character');
   });
 
-  it('falls back to none for an invalid stored groupBy', () => {
+  it('falls back to none for an invalid stored groupBy', async () => {
     localStorage.setItem('timeline:groupBy', 'mood');
-    render(<TimelineRoot story={STORY} />);
+    await renderRoot();
     expect(screen.getByTestId('groupby-select')).toHaveValue('none');
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'none');
   });
@@ -209,25 +313,26 @@ describe('TimelineRoot — persistence', () => {
 // ─── Grouping passthrough ───
 
 describe('TimelineRoot — grouping', () => {
-  it('passes the selected groupBy down to the spreadsheet view', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('passes the selected groupBy down to the spreadsheet view', async () => {
+    await renderRoot();
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'none');
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'arc' } });
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'arc');
   });
 
-  it('offers all five grouping options', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('offers all five grouping options', async () => {
+    await renderRoot();
     const options = Array.from(
       screen.getByTestId('groupby-select').querySelectorAll('option'),
     ).map(o => o.getAttribute('value'));
     expect(options).toEqual(['none', 'arc', 'chapter', 'character', 'location']);
   });
 
-  it('keeps groupBy when switching views', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('keeps groupBy when switching views', async () => {
+    await renderRoot();
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'location' } });
-    fireEvent.click(screen.getByTestId('view-mode-aeon'));
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    await screen.findByTestId('mock-lanes');
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'location');
   });
@@ -236,18 +341,18 @@ describe('TimelineRoot — grouping', () => {
 // ─── Selection sync ───
 
 describe('TimelineRoot — selection', () => {
-  it('lifts the child selection into TimelineRoot', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('lifts the child selection into TimelineRoot', async () => {
+    await renderRoot();
     fireEvent.click(screen.getByTestId('mock-select-scene'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-selected-count', '1');
   });
 
-  it('clears the selection when the view mode switches', () => {
-    render(<TimelineRoot story={STORY} />);
+  it('clears the selection when the view mode switches', async () => {
+    await renderRoot();
     fireEvent.click(screen.getByTestId('mock-select-scene'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-selected-count', '1');
-    fireEvent.click(screen.getByTestId('view-mode-aeon'));
-    expect(screen.getByTestId('mock-aeon')).toHaveAttribute('data-selected-count', '0');
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    await screen.findByTestId('mock-lanes');
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-selected-count', '0');
   });
@@ -256,22 +361,29 @@ describe('TimelineRoot — selection', () => {
 // ─── Null story ───
 
 describe('TimelineRoot — null story', () => {
-  it('renders without crashing when story is null', () => {
+  it('renders without crashing when story is null', async () => {
     expect(() => render(<TimelineRoot story={null} />)).not.toThrow();
     expect(screen.getByTestId('timeline-root')).toBeInTheDocument();
   });
 
-  it('renders the header with an empty title when no story is selected', () => {
-    render(<TimelineRoot story={null} />);
+  it('renders the header with the toggle when no story is selected', async () => {
+    await renderRoot(null);
     expect(screen.getByTestId('timeline-header')).toBeInTheDocument();
     expect(screen.getByTestId('view-mode-toggle')).toBeInTheDocument();
+  });
+
+  it('shows the no-story state for the Aeon views', async () => {
+    await renderRoot(null);
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    expect(screen.getByTestId('tlr-no-story')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-lanes')).toBeNull();
   });
 });
 
 // ─── groupScenes F5 extension (real implementation via importOriginal) ───
 
 describe('groupScenes — F5 chapter/location grouping', () => {
-  it('groups by chapter and uses chapter titles', () => {
+  it('groups by chapter and uses chapter titles', async () => {
     const s1 = makeScene({ chapterId: 'ch-1' });
     const s2 = makeScene({ chapterId: 'ch-2' });
     const groups = groupScenes([s1, s2], 'chapter', [], [], [], [
@@ -282,13 +394,13 @@ describe('groupScenes — F5 chapter/location grouping', () => {
     expect(groups.find(g => g.key === 'ch-1')!.scenes[0]).toBe(s1);
   });
 
-  it('creates "No Chapter" group for scenes without a chapterId', () => {
+  it('creates "No Chapter" group for scenes without a chapterId', async () => {
     const groups = groupScenes([makeScene({ chapterId: '' })], 'chapter', [], [], [], []);
     expect(groups[0].key).toBe('__unassigned__');
     expect(groups[0].label).toBe('No Chapter');
   });
 
-  it('groups by location and uses location names', () => {
+  it('groups by location and uses location names', async () => {
     const s1 = makeScene({ locationId: 'loc-1' });
     const s2 = makeScene({ locationId: '' });
     const groups = groupScenes([s1, s2], 'location', [], [], [{ id: 'loc-1', name: 'The Keep' }]);
