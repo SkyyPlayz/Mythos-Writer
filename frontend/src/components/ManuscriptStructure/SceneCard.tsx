@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactElement } from 'react';
 import type { Scene } from '../../types';
-import { StatusBadge, draftStateToStatus } from './StatusBadge';
+import { StatusChip, draftStateToStatus } from './StatusBadge';
 import './SceneCard.css';
 
 export function computeWordCount(scene: Scene): number {
@@ -9,6 +9,16 @@ export function computeWordCount(scene: Scene): number {
     if (!text) return sum;
     return sum + text.split(/\s+/).length;
   }, 0);
+}
+
+/** First ~14 words of the first written block — prototype card synopsis (renderVals 4400). */
+export function computeSynopsis(scene: Scene): string {
+  const first = [...scene.blocks]
+    .sort((a, b) => a.order - b.order)
+    .find((b) => b.content.trim());
+  if (!first) return '';
+  const words = first.content.trim().split(/\s+/);
+  return words.slice(0, 14).join(' ') + (words.length > 14 ? '…' : '');
 }
 
 export interface SceneCardProps {
@@ -51,6 +61,7 @@ export function SceneCard({
 
   const wordCount = computeWordCount(scene);
   const status = draftStateToStatus(scene.draftState);
+  const synopsis = computeSynopsis(scene);
 
   const handleDragHandleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -121,9 +132,10 @@ export function SceneCard({
         >
           ⠿
         </span>
-        <StatusBadge status={status} size={10} />
+        <StatusChip status={status} />
       </div>
       <p className="scene-card__title">{scene.title}</p>
+      {synopsis && <p className="scene-card__synopsis">{synopsis}</p>}
       <span className="scene-card__wordcount">
         {wordCount > 0 ? `${wordCount.toLocaleString()} words` : 'No words yet'}
       </span>

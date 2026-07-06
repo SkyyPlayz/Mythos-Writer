@@ -10,47 +10,41 @@
   background: var(--bg-base);
 }
 
-/* ─── Header ─── */
+/* ─── Header (Beta 3 M14, prototype 558–565) ─── */
 
 .msv__header {
   align-items: center;
-  background: var(--bg-panel, rgba(14, 14, 18, 0.85));
-  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
   display: flex;
   flex-shrink: 0;
-  gap: 16px;
+  gap: 10px;
   justify-content: space-between;
-  padding: 10px 24px;
+  padding: 11px 20px 4px;
   z-index: 10;
 }
 
-@supports (backdrop-filter: blur(1px)) {
-  .msv__header {
-    backdrop-filter: blur(16px) saturate(180%);
-  }
-}
-
 .msv__header-left {
-  align-items: baseline;
+  align-items: center;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   overflow: hidden;
 }
 
 .msv__story-title {
-  color: var(--text-header);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-heading);
+  color: #e6ecf9;
+  font-size: 12.5px;
+  font-weight: 600;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Prototype 562: 11px #8e9db8 */
 .msv__story-meta {
-  color: var(--text-muted);
+  color: #8e9db8;
   flex-shrink: 0;
-  font-size: var(--text-xs);
+  font-size: 11px;
 }
 
 .msv__header-right {
@@ -58,6 +52,18 @@
   display: flex;
   flex-shrink: 0;
   gap: 10px;
+}
+
+/* Prototype 564: 10.5px #7686a2 */
+.msv__hint {
+  color: #7686a2;
+  font-size: 10.5px;
+}
+
+@media (max-width: 1023px) {
+  .msv__hint {
+    display: none;
+  }
 }
 
 .msv__add-chapter-btn {
