@@ -106,12 +106,26 @@
   z-index: 0;
 }
 
-.desktop-shell > *:not(.ln-bg-stack) {
+/* :where() keeps this at zero specificity: it lifts plain shell children
+   above the background stack WITHOUT clobbering any child that declares
+   its own layer (title-bar popovers z-60, modal overlays z-1000, the
+   frame ring z-56, toasts). Those intents must win. */
+:where(.desktop-shell > *:not(.ln-bg-stack)) {
   z-index: 1;
 }
 
 .desktop-shell > .ln-frame {
   z-index: 56;
+}
+
+/* The title bar hosts dropdown popovers (File…Help menus, project menu,
+   account) that hang down OVER the workspace row. The *:not(.ln-bg-stack)
+   rule above pins every shell child to z-index 1 — with equal z the body
+   (a later sibling) paints over the bar's popovers, swallowing their
+   clicks. Restore the bar's intended layer (WindowChrome.css sets 60, but
+   that selector loses the specificity race against *:not()). */
+.desktop-shell > .wc-bar {
+  z-index: 60;
 }
 
 /* ═══ Transparent window mode (M3) ═══
