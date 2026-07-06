@@ -1,0 +1,130 @@
+/* Beta 3 M20 — Subway view (prototype template 1480–1506). */
+
+.tsw-root {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.tsw-board {
+  position: relative;
+  border-radius: 14px;
+  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, 0.35), rgba(6, 8, 15, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 14px 10px 6px;
+  overflow: hidden;
+}
+
+/* ── Event stations header (1482–1490) ── */
+
+.tsw-events {
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.tsw-event {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
+
+.tsw-event:hover {
+  filter: brightness(1.3);
+}
+
+.tsw-event-icon {
+  font-size: 12px;
+  color: var(--n1, #00f0ff);
+}
+
+.tsw-event-title {
+  font-size: 8.5px;
+  color: #aebad0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 3px;
+}
+
+.tsw-event-ch {
+  font-size: 8px;
+  color: #7686a2;
+}
+
+/* ── Lines SVG (1491–1499) ── */
+
+.tsw-svg {
+  display: block;
+  width: 100%;
+  height: 230px;
+}
+
+/* ── Legend (1500–1504) ── */
+
+.tsw-legend {
+  display: flex;
+  gap: 14px;
+  padding: 6px 10px 8px;
+  flex-wrap: wrap;
+}
+
+.tsw-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #aebad0;
+}
+
+.tsw-legend-swatch {
+  width: 16px;
+  height: 4px;
+  border-radius: 3px;
+}
+
+.tsw-caption {
+  font-size: 10px;
+  color: #7686a2;
+}
+
+.tsw-no-lines {
+  font-size: 11px;
+  color: #8e9db8;
+  text-align: center;
+  padding: 32px 12px;
+  margin: 0;
+}
+
+/* ── Empty state ── */
+
+.tsw-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+}
+
+.tsw-empty h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text, #e6ecf9);
+  margin: 0;
+}
+
+.tsw-empty p {
+  font-size: 0.8rem;
+  color: #8e9db8;
+  margin: 0;
+}
