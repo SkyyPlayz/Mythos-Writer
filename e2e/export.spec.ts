@@ -433,9 +433,19 @@ test('AC-EXQ-5: EPUB radio is disabled when scope is scene or chapter', async ()
   if (vaultCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first()).toBeVisible({ timeout: 6_000 });
 
-  // Expand story → chapter → scenes in VaultBrowser.
+  // Expand story → chapter → scenes in VaultBrowser. The sole story is
+  // auto-expanded by a StoryVault mount effect right after the panel expand
+  // above mounts VaultBrowser. Reading aria-expanded and then clicking races
+  // that effect: the read can see the pre-effect "false" while the click lands
+  // after the effect, collapsing the story again (seen on CI, where the Beta 3
+  // Liquid Neon ambience delays React's passive-effect flush under xvfb).
+  // Instead, wait for the auto-expand to settle and only click if the story
+  // genuinely stayed collapsed.
   const storyToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first();
-  if ((await storyToggle.getAttribute('aria-expanded')) !== 'true') await storyToggle.click();
+  await expect(storyToggle)
+    .toHaveAttribute('aria-expanded', 'true', { timeout: 3_000 })
+    .catch(async () => { await storyToggle.click(); });
+  await expect(storyToggle).toHaveAttribute('aria-expanded', 'true', { timeout: 3_000 });
   const chapterToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="2"]').first();
   await expect(chapterToggle).toBeVisible({ timeout: 3_000 });
   if ((await chapterToggle.getAttribute('aria-expanded')) !== 'true') await chapterToggle.click();

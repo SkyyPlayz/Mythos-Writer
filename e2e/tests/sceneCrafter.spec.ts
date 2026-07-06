@@ -30,6 +30,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from '../helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ async function selectStory(pg: Page, title: string): Promise<void> {
 
 /** Navigate to the Scene Crafter (Board) view via the toolbar. */
 async function openBoardView(pg: Page): Promise<void> {
-  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await clickStoryNav(pg);
   await pg.locator('[data-testid="story-subview-kanban"]').click();
   // Wait for the lanes container, which is only rendered once the board has fully loaded.
   // (The loading state renders .scene-crafter-page but not .scene-crafter-lanes.)
@@ -137,7 +138,7 @@ async function openBoardView(pg: Page): Promise<void> {
  * Use this instead of page.reload() — reload clears React story-selection state.
  */
 async function reloadBoardView(pg: Page): Promise<void> {
-  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await clickStoryNav(pg);
   await pg.locator('[data-testid="story-subview-editor"]').click();
   await openBoardView(pg);
 }
@@ -631,7 +632,7 @@ test.skip('AC-SC-13: I/O error during board save surfaces the write-error banner
 
 test('AC-SC-14: each story has an independent board that does not share cards', async () => {
   // Navigate to Editor first so the sidebar nav-add-btn is accessible.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]').click();
+  await clickStoryNav(page);
   await page.locator('[data-testid="story-subview-editor"]').click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 6_000 });
 

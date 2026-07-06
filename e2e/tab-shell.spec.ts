@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -276,7 +277,7 @@ test.describe('TabBar — tab switching and persistence', () => {
       await notesNav.click();
       await expect(notesNav).toHaveAttribute('aria-current', 'page');
       await expect(badge).toHaveAttribute('aria-label', /Notes vault:/);
-      await storyNav.click();
+      await clickStoryNav(page);
       await expect(storyNav).toHaveAttribute('aria-current', 'page');
       await expect(badge).toHaveAttribute('aria-label', /Story vault:/);
     } finally {
