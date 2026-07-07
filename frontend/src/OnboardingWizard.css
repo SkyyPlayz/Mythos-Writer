@@ -59,28 +59,70 @@ a.gs-footer-link:focus-visible {
 .gs-overlay {
   position: fixed;
   inset: 0;
-  background: var(--scrim-heavy);
+  /* Beta 3 M25 — prototype welcome scrim (HTML 2781): rgba(5,7,13,.72) + blur(14px) */
+  background: rgb(5 7 13 / 0.72); /* prototype #05070d @ .72 */
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
-  align-items: flex-start;  /* SKY-2967: was center; flex-start enables overflow-y scrolling */
-  justify-content: center;
+  flex-direction: column;  /* M25: brand header stacks above the step modal */
+  align-items: center;
   z-index: 1000;
-  padding: 1rem;
+  padding: 1.5rem 1rem;
   overflow-y: auto;  /* SKY-2967: modal scrollable at small viewports — no maximize needed */
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .gs-overlay {
     background: var(--color-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
+}
+
+/* ─── Beta 3 M25: prototype brand header (HTML 2783–2785) ── */
+
+.gs-brand {
+  margin-top: auto; /* pairs with .gs-modal margin-bottom:auto to center the group */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 0.5rem;
+  user-select: none;
+}
+
+.gs-brand__logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 17px;
+  display: block;
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.2); /* prototype rgba(255,255,255,.2) */
+  box-shadow: 0 0 34px -4px var(--g2); /* prototype slot-2 glow */
+}
+
+.gs-brand__name {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--txH, var(--text-header)); /* prototype #f0f3fc */
+  margin-top: 16px;
+}
+
+.gs-brand__tagline {
+  font-size: 13px;
+  color: rgb(159 176 200); /* prototype #9fb0c8 */
+  margin-top: 5px;
 }
 
 /* ─── Modal shell ── */
 
 .gs-modal {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--elev-3);
+  /* Beta 3 M25 — prototype glass step panel (HTML 2802): glass fill, neon
+     border, 18px radius, slot-1 glow. */
+  background: var(--glass, var(--color-surface));
+  border: var(--bw, 1px) solid var(--b1, var(--color-border));
+  border-radius: 18px; /* prototype 2802 */
+  box-shadow: 0 0 30px -8px var(--g1); /* prototype 2802 */
   padding: 2rem 2.5rem 2.5rem;
   width: 100%;
   max-width: 640px;
@@ -88,7 +130,7 @@ a.gs-footer-link:focus-visible {
   flex-direction: column;
   gap: 1.5rem;
   animation: gs-modal-in 180ms ease-out;
-  margin-block: auto;  /* SKY-2967: re-centers vertically when overlay has spare height */
+  margin-block: 18px auto;  /* SKY-2967 + M25: fixed gap under the brand header, auto re-centers */
 }
 
 .gs-modal--wide {
@@ -196,38 +238,36 @@ a.gs-footer-link:focus-visible {
   }
 }
 
+/* Beta 3 M25 — prototype path card (HTML 2789): glass fill, 16px radius,
+   hover = neon border + glow + 3px lift. Tokens only (design-token ratchet). */
 .gs-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 0.6rem;
-  padding: 1.25rem;
-  background: var(--bg-elevated);
+  padding: 17px 16px; /* prototype 2789 */
+  background: var(--glass, var(--bg-elevated));
   border: var(--frame-width-rest) solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: 16px; /* prototype 2789 */
   cursor: pointer;
   text-align: left;
   color: var(--text-body);
   font-family: inherit;
-  transition: border-color var(--dur-hover-in) var(--ease-out),
-              border-width var(--dur-hover-in) var(--ease-out),
-              box-shadow var(--dur-hover-in) var(--ease-out),
-              background var(--dur-hover-in) var(--ease-out);
+  transition: all 0.18s ease; /* prototype 2789 */
 }
 
 .gs-card:hover {
-  border-color: var(--accent);
-  border-width: var(--frame-width-hover);
-  background: color-mix(in srgb, var(--accent) 4%, var(--bg-elevated));
-  box-shadow: var(--glow-md) var(--accent);
+  border-color: var(--b1, var(--accent));
+  background: var(--glass, var(--bg-elevated));
+  box-shadow: var(--glow-md) var(--accent), 0 0 26px -6px var(--g1); /* prototype hover glow */
+  transform: translateY(-3px); /* prototype hover lift */
 }
 
 .gs-card:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-color: var(--accent);
-  border-width: var(--frame-width-hover);
+  border-color: var(--b1, var(--accent));
 }
 
 .gs-card:active {
@@ -237,6 +277,9 @@ a.gs-footer-link:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .gs-card {
     transition: none;
+  }
+  .gs-card:hover {
+    transform: none;
   }
   .gs-card:active {
     transform: none;
@@ -1551,4 +1594,197 @@ a.gs-footer-link:focus-visible {
   }
   .import-validation--valid { color: Highlight; }
   .import-validation--invalid { color: Mark; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Beta 3 M25 — Welcome wizard v2 (prototype welcome/onboarding, HTML 2779–2855)
+   New surfaces: recommended chip, guided-setup progress dots, genre preset
+   grid, neon theme cards, gradient CTA. Colors are Liquid Neon v2 tokens
+   (tokens.css / liquidNeonEngine.ts) or rgb() literals ported verbatim from
+   the prototype with their #hex noted.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Recommended chip on the Quick Start card (prototype 2790) ── */
+
+.gs-card__chip {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgb(11 13 23); /* prototype #0b0d17 */
+  background: var(--n1);
+  border-radius: 99px;
+  padding: 2.5px 8px;
+  box-shadow: 0 0 12px var(--g1);
+  pointer-events: none;
+  user-select: none;
+  line-height: 1.4;
+}
+
+/* ── step1b grows to four cards (2×2) ── */
+
+.gs-cards--four {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 600px) {
+  .gs-cards--four { grid-template-columns: 1fr; }
+}
+
+/* ── Gradient primary CTA (prototype Continue / "Open my vault ✦", 2835) ── */
+
+.gs-overlay .btn-primary {
+  background: var(--grad);
+  color: rgb(11 13 23); /* prototype #0b0d17 */
+  border: none;
+  border-radius: 10px; /* prototype 2835 */
+  font-weight: 700;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.gs-overlay .btn-primary:hover:not(:disabled) {
+  transform: scale(1.04); /* prototype style-hover */
+}
+
+.gs-overlay .btn-primary:disabled {
+  opacity: 0.45;
+}
+
+.gs-overlay .btn-primary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-overlay .btn-primary:hover:not(:disabled) { transform: none; }
+}
+
+/* ── Guided-setup progress dots (prototype wizDots, 4446) ── */
+
+.wiz-dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.wiz-dot {
+  width: 22px;
+  height: 5px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.12); /* prototype rgba(255,255,255,.12) */
+}
+
+.wiz-dot--on {
+  background: var(--n1);
+  box-shadow: 0 0 8px var(--g1);
+}
+
+/* ── Genre preset grid (prototype 2812–2816, chip styles 4441) ── */
+
+.wiz-genre-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px; /* prototype 2814 */
+}
+
+@media (max-width: 600px) {
+  .wiz-genre-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.wiz-genre-chip {
+  font-size: 12px;
+  padding: 8px 14px;
+  border-radius: 11px;
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  background: none;
+  color: rgb(174 186 208); /* prototype #aebad0 */
+  border: var(--bw, 1px) solid var(--b1);
+  transition: color 0.18s ease, border-color 0.18s ease;
+}
+
+.wiz-genre-chip:hover:not(.wiz-genre-chip--selected) {
+  color: rgb(255 255 255); /* prototype #fff */
+  border-color: rgb(255 255 255 / 0.3); /* prototype rgba(255,255,255,.3) */
+}
+
+.wiz-genre-chip--selected {
+  color: var(--n1);
+  background: var(--gs1);
+  border: var(--bw, 1px) solid var(--b1);
+  box-shadow: 0 0 12px -4px var(--g1);
+  font-weight: 600;
+}
+
+.wiz-genre-chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Neon theme cards (prototype 2820–2828, card styles 4442–4445) ──
+   Selected border/glow + the gradient bar are inline styles computed from the
+   preset's slot colors (theme/presets.ts) — the source of truth palette. */
+
+.wiz-theme-row {
+  display: flex;
+  gap: 9px; /* prototype 2823 */
+}
+
+@media (max-width: 600px) {
+  .wiz-theme-row { flex-direction: column; }
+}
+
+.wiz-theme-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 11px;
+  border-radius: 13px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  background: rgb(255 255 255 / 0.03); /* prototype rgba(255,255,255,.03) */
+  border: 1px solid rgb(255 255 255 / 0.09); /* prototype rgba(255,255,255,.09) */
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.wiz-theme-card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.wiz-theme-card__bar {
+  display: block;
+  height: 7px;
+  border-radius: 6px;
+  margin-bottom: 8px; /* prototype 4443 */
+}
+
+.wiz-theme-card__name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(230 236 249); /* prototype #e6ecf9 */
+}
+
+/* ── Split actions row on the template step (skip vs continue) ── */
+
+.gs-actions--wiz {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.gs-wiz-skip {
+  font-size: 11.5px;
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+}
+
+.gs-wiz-skip:hover {
+  color: var(--n1); /* prototype skip-link hover */
 }

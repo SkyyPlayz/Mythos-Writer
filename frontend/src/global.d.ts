@@ -415,6 +415,8 @@ interface AppSettings {
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
   onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
+  onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
