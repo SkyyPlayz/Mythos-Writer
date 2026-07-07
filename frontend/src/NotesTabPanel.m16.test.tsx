@@ -15,6 +15,9 @@ vi.mock('./EntityBrowser', () => ({
 vi.mock('./BrainstormPage', () => ({
   default: () => <div data-testid="brainstorm-page-mock" />,
 }));
+vi.mock('./ContinuityPanel', () => ({
+  default: () => <div data-testid="continuity-panel-mock" />,
+}));
 vi.mock('./NoteViewer', () => ({
   default: ({ path }: { path: string }) => <div data-testid="note-viewer-mock" data-path={path} />,
 }));
@@ -132,6 +135,15 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     render(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
     fireEvent.click(screen.getByTestId('notes-right-tab-props'));
     expect(screen.getByTestId('notes-right-props-empty')).toBeInTheDocument();
+  });
+
+  it('docks the continuity flags above the chat when archive continuity is enabled', () => {
+    const { rerender } = render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
+    expect(screen.getByTestId('notes-continuity-flags')).toBeInTheDocument();
+    expect(screen.getByTestId('continuity-panel-mock')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
+    rerender(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled={false} />);
+    expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();
   });
 
   it('collapse/expand still works with the tabs present', () => {

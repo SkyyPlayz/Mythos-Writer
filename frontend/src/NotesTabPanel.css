@@ -437,3 +437,31 @@
   line-height: 1.5;
   color: rgb(118 134 162); /* prototype #7686a2 */
 }
+
+/* M16: Agent tab column — continuity flags docked above the Brainstorm chat. */
+
+.notes-agent-col {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-agent-continuity {
+  flex: none;
+  max-height: 42%;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.notes-agent-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-agent-chat > * {
+  flex: 1;
+  min-height: 0;
+}

@@ -320,6 +320,25 @@ export default function NoteViewer({
     };
   }, [flushSave, saveContent]);
 
+  // M16: the properties/tags panel writes frontmatter to this same file. Sync
+  // its result into the open editor so a later autosave doesn't clobber it.
+  // If local edits are pending (debounce timer armed), the editor wins.
+  const [externalRev, setExternalRev] = useState(0);
+  useEffect(() => {
+    const onExternalUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ path: string; content: string }>).detail;
+      if (!detail || detail.path !== path) return;
+      if (saveTimerRef.current) return; // unsaved local edits — do not overwrite
+      if (detail.content === contentRef.current) return;
+      contentRef.current = detail.content;
+      setContent(detail.content);
+      setExternalRev((rev) => rev + 1); // remount rich editor with fresh content
+      onWordCountChange?.(countWords(detail.content));
+    };
+    window.addEventListener('mythos:note-frontmatter-updated', onExternalUpdate);
+    return () => window.removeEventListener('mythos:note-frontmatter-updated', onExternalUpdate);
+  }, [path, onWordCountChange]);
+
   const applyMode = useCallback((next: NoteViewerMode) => {
     setMode(next);
     onModeChange?.(next);
@@ -431,7 +450,7 @@ export default function NoteViewer({
 
       {mode === 'rich' && (
         <NoteRichEditor
-          key={path}
+          key={`${path}:${externalRev}`}
           content={content}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}

@@ -73,7 +73,24 @@ export default function NoteProperties({ path }: Props) {
     setFields(fm.fields);
     setTags(fm.tags);
     setError(null);
+    // M16: tell any open editor on this note to adopt the new content so a
+    // later editor autosave doesn't clobber the frontmatter change.
+    window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+      detail: { path, content: nextContent },
+    }));
     return true;
+  }, [path]);
+
+  // Read-modify-write: always mutate the LATEST on-disk content, not the
+  // panel's last snapshot — the editor beside us autosaves the same file.
+  const freshContent = useCallback(async (): Promise<string | null> => {
+    const r = await window.api.readNotesVault(path);
+    if ('error' in r) {
+      setError('Could not save note metadata.');
+      return null;
+    }
+    contentRef.current = r.content;
+    return r.content;
   }, [path]);
 
   const commitField = useCallback(async (key: string, value: string) => {
@@ -83,21 +100,24 @@ export default function NoteProperties({ path }: Props) {
       setRowEdits((prev) => { const next = { ...prev }; delete next[key]; return next; });
       return;
     }
-    await write(setFrontmatterField(contentRef.current, key, value));
+    const base = await freshContent();
+    if (base !== null) await write(setFrontmatterField(base, key, value));
     setRowEdits((prev) => { const next = { ...prev }; delete next[key]; return next; });
-  }, [fields, write]);
+  }, [fields, freshContent, write]);
 
   const commitNewProperty = useCallback(async () => {
     const key = newKey.trim().replace(/[^A-Za-z0-9_-]/g, '');
     if (!key) return;
     editingRef.current = false;
-    const ok = await write(setFrontmatterField(contentRef.current, key, newValue.trim()));
+    const base = await freshContent();
+    if (base === null) return;
+    const ok = await write(setFrontmatterField(base, key, newValue.trim()));
     if (ok) {
       setNewKey('');
       setNewValue('');
       setAddOpen(false);
     }
-  }, [newKey, newValue, write]);
+  }, [newKey, newValue, freshContent, write]);
 
   const commitAddTag = useCallback(async () => {
     const tag = tagInput.trim().replace(/^#/, '');
@@ -107,13 +127,16 @@ export default function NoteProperties({ path }: Props) {
       setTagInput('');
       return;
     }
-    const ok = await write(setFrontmatterTags(contentRef.current, [...tags, tag]));
+    const base = await freshContent();
+    if (base === null) return;
+    const ok = await write(setFrontmatterTags(base, [...tags, tag]));
     if (ok) setTagInput('');
-  }, [tagInput, tags, write]);
+  }, [tagInput, tags, freshContent, write]);
 
   const removeTag = useCallback(async (tag: string) => {
-    await write(setFrontmatterTags(contentRef.current, tags.filter((t) => t !== tag)));
-  }, [tags, write]);
+    const base = await freshContent();
+    if (base !== null) await write(setFrontmatterTags(base, tags.filter((t) => t !== tag)));
+  }, [tags, freshContent, write]);
 
   if (!loaded) {
     return <div className="np-panel" data-testid="note-properties-panel" aria-live="polite"><div className="np-status">Loading…</div></div>;

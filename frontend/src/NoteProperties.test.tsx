@@ -95,3 +95,31 @@ describe('NoteProperties (M16)', () => {
     await waitFor(() => expect(screen.getByTestId('note-properties-empty')).toBeInTheDocument());
   });
 });
+
+describe('NoteProperties (M16) editor sync', () => {
+  it('re-reads the file before mutating and broadcasts the frontmatter update', async () => {
+    render(<NoteProperties path="gate.md" />);
+    await waitFor(() => expect(screen.getByTestId('note-tag-input')).toBeInTheDocument());
+
+    // Simulate the editor autosaving a newer body AFTER the panel loaded.
+    vaultContent = vaultContent.replace('# The Sunken Gate', '# The Sunken Gate\n\nFreshly typed paragraph.');
+
+    const events: Array<{ path: string; content: string }> = [];
+    const onUpdate = (e: Event) => events.push((e as CustomEvent<{ path: string; content: string }>).detail);
+    window.addEventListener('mythos:note-frontmatter-updated', onUpdate);
+
+    const input = screen.getByTestId('note-tag-input');
+    fireEvent.change(input, { target: { value: 'coastal' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(writeNotesVault).toHaveBeenCalled());
+    window.removeEventListener('mythos:note-frontmatter-updated', onUpdate);
+
+    // The write is based on the FRESH content (typed paragraph preserved)...
+    expect(vaultContent).toContain('Freshly typed paragraph.');
+    expect(vaultContent).toContain('tags: [location, ruins, coastal]');
+    // ...and the open editor is told to adopt it.
+    expect(events).toHaveLength(1);
+    expect(events[0].path).toBe('gate.md');
+    expect(events[0].content).toContain('coastal');
+  });
+});

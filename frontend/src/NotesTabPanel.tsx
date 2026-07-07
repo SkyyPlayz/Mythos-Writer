@@ -9,6 +9,7 @@ import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser'
 import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
+import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
 import NoteSplitPane from './NoteSplitPane';
 import NoteProperties from './NoteProperties';
@@ -522,20 +523,33 @@ export default function NotesTabPanel({
               </div>
               <div className="notes-right-sidebar-content">
                 {rightTab === 'agent' ? (
-                  <BrainstormPage
-                    onClose={() => onBrainstormCollapsedChange(true)}
-                    enabled={brainstormEnabled ?? true}
-                    voiceEnabled={voiceEnabled}
-                    ttsSettings={ttsSettings}
-                    voicePrefs={voicePrefs}
-                    onFirstSubmit={onFirstSubmit}
-                    onNavigateToEntity={onNavigateToEntity}
-                    onNavigateToScene={onNavigateToScene}
-                    activeStorySlug={activeStorySlug}
-                    archiveContinuityEnabled={archiveContinuityEnabled}
-                    activeScene={activeScene}
-                    compact
-                  />
+                  <div className="notes-agent-col">
+                    {/* M16: continuity flags (3 actions) above the chat —
+                        prototype "CONTINUITY FLAGS" then "CHAT" (HTML 2400+).
+                        Compact BrainstormPage hides its own facts column, so
+                        the flags dock here instead. */}
+                    {archiveContinuityEnabled && (
+                      <div className="notes-agent-continuity" data-testid="notes-continuity-flags">
+                        <ContinuityPanel scene={activeScene ?? null} enabled />
+                      </div>
+                    )}
+                    <div className="notes-agent-chat">
+                      <BrainstormPage
+                        onClose={() => onBrainstormCollapsedChange(true)}
+                        enabled={brainstormEnabled ?? true}
+                        voiceEnabled={voiceEnabled}
+                        ttsSettings={ttsSettings}
+                        voicePrefs={voicePrefs}
+                        onFirstSubmit={onFirstSubmit}
+                        onNavigateToEntity={onNavigateToEntity}
+                        onNavigateToScene={onNavigateToScene}
+                        activeStorySlug={activeStorySlug}
+                        archiveContinuityEnabled={archiveContinuityEnabled}
+                        activeScene={activeScene}
+                        compact
+                      />
+                    </div>
+                  </div>
                 ) : activeNotePath ? (
                   <div className="notes-right-props-scroll" data-testid="notes-right-props">
                     <NoteProperties key={activeNotePath} path={activeNotePath} />
