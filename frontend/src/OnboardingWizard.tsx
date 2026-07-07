@@ -741,7 +741,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     };
     const merged: AppSettings = { ...updated, liquidNeonV2, onboardingGenre: guided.genre };
     applyLiquidNeonV2Tokens(liquidNeonV2, cosmicBgUrl);
-    api().settingsSet?.(merged).catch(() => { /* non-fatal */ });
+    // Persist as a patch over the FRESH on-disk settings — onboarding:complete
+    // just wrote main-side fields (firstLaunchAt, gettingStartedProgress, …)
+    // that a stale full-object write would clobber.
+    void (async () => {
+      try {
+        const fresh = await window.api.settingsGet();
+        await window.api.settingsSet({ ...fresh, liquidNeonV2, onboardingGenre: guided.genre });
+      } catch { /* non-fatal — shell re-saves settings on any later change */ }
+    })();
     showLnToast('Vault ready — welcome to Mythos Writer');
     return merged;
   }
