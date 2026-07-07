@@ -111,6 +111,41 @@ describe('PageChromeToolbar', () => {
         onPrefsChange={() => {}}
       />
     );
-    expect(screen.getByText('850px')).toBeDefined();
+    // The M10 width slider adds a second 850px readout — scope to the label span.
+    const label = document.querySelector('.pct-custom-width');
+    expect(label?.textContent).toBe('850px');
+  });
+});
+
+// ─── GH #842 / Beta 3 M10 — free page-width slider ───────────────────────────
+
+describe('PageChromeToolbar width slider (GH #842)', () => {
+  it('renders the width slider showing the effective preset width', () => {
+    render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={() => {}} />);
+    const slider = screen.getByRole('slider', { name: 'Width' }) as HTMLInputElement;
+    expect(slider.min).toBe('320');
+    expect(slider.max).toBe('1400');
+    expect(slider.value).toBe('680'); // letter preset
+  });
+
+  it('writes a custom width through onPrefsChange', () => {
+    const onChange = vi.fn();
+    render(<PageChromeToolbar prefs={defaultPrefs} onPrefsChange={onChange} />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Width' }), { target: { value: '900' } });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const updated: StoryPagePrefs = onChange.mock.calls[0][0];
+    expect(updated.sizePreset).toBe('custom');
+    expect(updated.customWidthPx).toBe(900);
+  });
+
+  it('follows a custom width in prefs', () => {
+    render(
+      <PageChromeToolbar
+        prefs={{ ...defaultPrefs, sizePreset: 'custom', customWidthPx: 1000 }}
+        onPrefsChange={() => {}}
+      />
+    );
+    const slider = screen.getByRole('slider', { name: 'Width' }) as HTMLInputElement;
+    expect(slider.value).toBe('1000');
   });
 });

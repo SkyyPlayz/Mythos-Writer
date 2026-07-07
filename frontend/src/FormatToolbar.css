@@ -171,3 +171,71 @@
     transition: none;
   }
 }
+
+/* ── Read / Dictate / Assist (Beta 3 M10, prototype 766–777) ─────────────── */
+
+.fmt-spacer {
+  flex: 1;
+}
+
+.fmt-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+  font-family: inherit;
+}
+
+.fmt-action--read:hover {
+  color: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.fmt-action--dictate {
+  border-color: var(--b1, rgba(0, 240, 255, 0.35));
+}
+
+.fmt-dict-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: rgb(142, 157, 184); /* prototype #8e9db8 */
+}
+
+.fmt-action--dictate-on {
+  border: var(--bw, 1px) solid rgb(255, 95, 143); /* prototype #ff5f8f */
+  color: rgb(255, 157, 180); /* prototype #ff9db4 */
+  background: rgba(255, 95, 143, 0.1);
+  box-shadow: 0 0 12px -3px rgba(255, 95, 143, 0.5);
+}
+
+.fmt-action--dictate-on .fmt-dict-dot {
+  background: rgb(255, 95, 143); /* prototype #ff5f8f */
+  box-shadow: 0 0 7px rgba(255, 95, 143, 0.7);
+  animation: lnPulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fmt-action--dictate-on .fmt-dict-dot {
+    animation: none;
+  }
+}
+
+.fmt-action--assist {
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  color: var(--n2, #9b5fff);
+}
+
+.fmt-action--assist:hover {
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  box-shadow: 0 0 12px -3px var(--g2, rgba(155, 95, 255, 0.4));
+}
