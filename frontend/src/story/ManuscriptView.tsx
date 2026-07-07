@@ -39,7 +39,10 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+import ReaderBar from './ReaderBar';
+import { useManuscriptReader } from './useManuscriptReader';
 import { showLnToast } from '../theme/lnToast';
+import type { TtsEngineSettings, TtsVoicePrefs } from '../hooks/useTtsPlayer';
 import type { Story } from '../types';
 import './ManuscriptView.css';
 
@@ -58,6 +61,13 @@ export interface ManuscriptViewProps {
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
+  /**
+   * M13: TTS engine config (AppSettings.tts) for the reader — Piper/cloud
+   * when configured, OS speechSynthesis otherwise (same stack as Beta 2).
+   */
+  ttsSettings?: TtsEngineSettings & { voiceId?: string };
+  /** M13: stored voice prefs (AppSettings.voice) seed the reader's speed/voice. */
+  voicePrefs?: TtsVoicePrefs;
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -141,6 +151,23 @@ const PLUS_ICON = (
 
 const NO_COMMENTS: readonly StoryComment[] = [];
 
+const SPEAKER_ICON = (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 10v4h4l5 4V6l-5 4z" />
+    <path d="M16.5 9a4 4 0 0 1 0 6" />
+  </svg>
+);
+
 export default function ManuscriptView({
   story,
   cursor,
@@ -149,6 +176,8 @@ export default function ManuscriptView({
   onCycleStatus,
   pageWidth = 1000,
   focusMode = false,
+  ttsSettings,
+  voicePrefs,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -173,6 +202,9 @@ export default function ManuscriptView({
   const [commentInput, setCommentInput] = useState('');
   /** Expanded gutter card (prototype cOpen). */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
+
+  // ── M13 TTS reader (existing Beta-2 stack via useTtsPlayer) ──
+  const reader = useManuscriptReader(story, cursor, ttsSettings, voicePrefs);
 
   // Prototype commentsVisible (3600): hidden in Focus unless overridden.
   const commentsVisible = showComments && (!focusMode || commentsInFocus);
@@ -236,6 +268,42 @@ export default function ManuscriptView({
     },
     [winStart]
   );
+
+  // M13: keep the paragraph being read in view (prototype "highlight follows").
+  // If the block fell outside the lazy render window, jump the window first
+  // and approximate the scroll offset from the block-height estimate.
+  const readerKey = reader.curKey;
+  useEffect(() => {
+    if (!readerKey) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-testid="msv-para-${readerKey}"]`);
+    if (el) {
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      return;
+    }
+    const bi = blocks.findIndex((blk) => blk.kind === 'para' && blk.blockId === readerKey);
+    if (bi < 0) return;
+    setWinStart(Math.max(0, bi - Math.floor(WINDOW / 3)));
+    container.scrollTop = bi * EST_BLOCK_H;
+  }, [readerKey, blocks]);
+
+  // M13: selection-bar Read — speak just the highlighted passage.
+  const handleReadSelection = useCallback(() => {
+    if (!selAnchor) return;
+    if (reader.readSelection(selAnchor)) {
+      setSelAnchor(null);
+      setCommentInput('');
+      return;
+    }
+    showLnToast(
+      reader.muted
+        ? 'Voice is muted — unmute it to listen'
+        : 'Voice unavailable — configure a TTS engine in Settings'
+    );
+  }, [selAnchor, reader]);
 
   const commitParagraph = useCallback(
     (sceneId: string, blockId: string, original: string, el: HTMLElement) => {
@@ -389,13 +457,15 @@ export default function ManuscriptView({
         const segs = commentsVisible
           ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
           : null;
+        // M13: moving per-paragraph highlight (prototype pStX 3376–3377).
+        const reading = readerKey === b.blockId;
         return (
           <div key={b.id} className="msv-para">
             <span className="msv-grip" title="Drag block to move it" aria-hidden="true">
               {GRIP_ICON}
             </span>
             <div
-              className="msv-para-text"
+              className={`msv-para-text${reading ? ' msv-para-text--reading' : ''}`}
               data-testid={`msv-para-${b.blockId}`}
               contentEditable
               suppressContentEditableWarning
@@ -507,6 +577,19 @@ export default function ManuscriptView({
           ))}
         </nav>
         <div className="msv-flex-spacer" />
+        {/* M13: reader chip — opens/closes the audiobook bar (prototype Read
+            toolbar button 748 / gutter Reader dock 913) */}
+        <button
+          type="button"
+          className={`msv-reader-chip${reader.open ? ' msv-reader-chip--on' : ''}`}
+          data-testid="msv-reader-chip"
+          title={reader.open ? 'Close the reader' : 'Read aloud — open the reader'}
+          aria-pressed={reader.open}
+          onClick={() => (reader.open ? reader.close() : reader.openReader())}
+        >
+          {SPEAKER_ICON}
+          Read
+        </button>
         {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
         <button
           type="button"
@@ -595,6 +678,7 @@ export default function ManuscriptView({
               onChange={setCommentInput}
               onSave={handleSaveComment}
               onCancel={clearSelectionBar}
+              onRead={handleReadSelection}
             />
           )}
           <div className="msv-sheet-wrap" style={{ width: `${pageW}px` }}>
@@ -622,6 +706,8 @@ export default function ManuscriptView({
           />
         )}
       </div>
+      {/* M13: audiobook bar (prototype Book-preview bar 641–658) */}
+      {reader.open && <ReaderBar reader={reader} ttsSettings={ttsSettings} />}
     </div>
   );
 }

@@ -677,3 +677,140 @@ describe('useTtsPlayer — OS speechSynthesis path (no engine configured)', () =
     expect(result.current.playingCardId).toBeNull();
   });
 });
+
+// ── onPlaybackEnd chaining (Beta 3 M13 — manuscript reader) ─────────────────
+
+describe('useTtsPlayer — onPlaybackEnd option', () => {
+  it('OS path: fires ("ended") when the utterance finishes naturally', async () => {
+    let capturedUtterance!: SpeechSynthesisUtterance;
+    mockSpeechSynthesisSpeak.mockImplementation((u: SpeechSynthesisUtterance) => {
+      capturedUtterance = u;
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() => useTtsPlayer(undefined, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+
+    await act(async () => { capturedUtterance.onend?.(new Event('end') as SpeechSynthesisErrorEvent); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledTimes(1);
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'ended');
+  });
+
+  it('OS path: fires ("error") when the utterance errors', async () => {
+    let capturedUtterance!: SpeechSynthesisUtterance;
+    mockSpeechSynthesisSpeak.mockImplementation((u: SpeechSynthesisUtterance) => {
+      capturedUtterance = u;
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() => useTtsPlayer(undefined, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+
+    await act(async () => { capturedUtterance.onerror?.(new Event('error') as SpeechSynthesisErrorEvent); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'error');
+  });
+
+  it('OS path: never fires for explicit cancelCurrent (stale onend ignored)', async () => {
+    let capturedUtterance!: SpeechSynthesisUtterance;
+    mockSpeechSynthesisSpeak.mockImplementation((u: SpeechSynthesisUtterance) => {
+      capturedUtterance = u;
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() => useTtsPlayer(undefined, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+    act(() => { result.current.cancelCurrent(); });
+
+    // A cancel-triggered onend (some engines fire it) must be treated as stale.
+    await act(async () => { capturedUtterance.onend?.(new Event('end') as SpeechSynthesisErrorEvent); });
+
+    expect(onPlaybackEnd).not.toHaveBeenCalled();
+  });
+
+  it('OS path: fires ("error") when speechSynthesis is missing entirely', () => {
+    delete (window as { speechSynthesis?: unknown }).speechSynthesis;
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() => useTtsPlayer(undefined, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'error');
+  });
+
+  it('IPC path: fires ("ended") when the speak finishes with no audio', async () => {
+    let fireDone!: (evt: { speakId: string }) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnVoiceSpeakDone as any).mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+      fireDone = cb;
+      return () => {};
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTtsPlayer(PIPER_SETTINGS, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+    await act(async () => {}); // resolve → activeSpeakIdRef = 'speak-1'
+
+    await act(async () => { fireDone({ speakId: 'speak-1' }); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'ended');
+  });
+
+  it('IPC path: fires ("error") on a voice:speak:error event', async () => {
+    let fireError!: (evt: { speakId: string }) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnVoiceSpeakError as any).mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+      fireError = cb;
+      return () => {};
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTtsPlayer(PIPER_SETTINGS, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+    await act(async () => {});
+
+    await act(async () => { fireError({ speakId: 'speak-1' }); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'error');
+  });
+
+  it('IPC path: fires ("error") when voiceSpeak resolves with an error', async () => {
+    mockVoiceSpeak.mockResolvedValue({ error: 'engine exploded' });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTtsPlayer(PIPER_SETTINGS, undefined, { onPlaybackEnd }));
+    await act(async () => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+
+    expect(onPlaybackEnd).toHaveBeenCalledWith('card-1', 'error');
+  });
+
+  it('IPC path: never fires for a done event after cancelCurrent', async () => {
+    let fireDone!: (evt: { speakId: string }) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockOnVoiceSpeakDone as any).mockImplementationOnce((cb: (evt: { speakId: string }) => void) => {
+      fireDone = cb;
+      return () => {};
+    });
+    const onPlaybackEnd = vi.fn();
+
+    const { result } = renderHook(() =>
+      useTtsPlayer(PIPER_SETTINGS, undefined, { onPlaybackEnd }));
+    act(() => { result.current.speakCard('Hello', 'card-1', vi.fn()); });
+    await act(async () => {});
+    act(() => { result.current.cancelCurrent(); });
+
+    await act(async () => { fireDone({ speakId: 'speak-1' }); });
+
+    expect(onPlaybackEnd).not.toHaveBeenCalled();
+  });
+
+  it('mount survives a missing window.api bridge (browser-only harnesses)', () => {
+    delete (window as { api?: unknown }).api;
+    const { result } = renderHook(() => useTtsPlayer());
+    expect(result.current.playingCardId).toBeNull();
+  });
+});
