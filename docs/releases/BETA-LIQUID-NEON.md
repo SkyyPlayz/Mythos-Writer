@@ -40,7 +40,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
 | M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
 | M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | ⏳ | |
-| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ⏳ | |
+| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | 🔨 | branch `claude/beta3-m11-comments` |
 | M12 | Drafts & diff UI | C Story | M9 | 🔀 | #859 |
 | M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ⏳ | |
 | M14 | Structure view + Book preview + export modal | C Story | M9 | 🔀 | #861 |
