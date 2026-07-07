@@ -55,7 +55,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M22 | Agents: Beta Reader + identity files + autonomy | G Agents | CP2 | ⏳ | |
 | M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | ⏳ | |
 | M24 | Settings remainder + vault/story import | H Final | CP2 | ⏳ | |
-| M25 | Welcome wizard v2 | H Final | M2, M24 | ⏳ | |
+| M25 | Welcome wizard v2 | H Final | M2, M24 | 🔨 | built on branch `claude/beta3-m25-wizard` (needs PR) |
 | M26 | Release prep (v0.3.0-beta.3 or v0.4.0-beta.1, changelog, installer) | H Final | all | ⏳ | |
 
 Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merged
