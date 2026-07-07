@@ -55,6 +55,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('onboarding:importObsidianVault', { srcPath, targetVaultKind }),
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
     ipcRenderer.invoke('onboarding:dryRunObsidianImport', { srcPath, targetVaultKind }),
+  // Beta 3 M24: Settings → Vault & Files import flows.
+  vaultImportScan: (kind: 'obsidian' | 'notion' | 'scriv' | 'markdown', srcPath: string) =>
+    ipcRenderer.invoke('vault:import-scan', { kind, srcPath }),
+  vaultImportRun: (payload: { kind: 'obsidian' | 'notion' | 'scriv' | 'markdown'; srcPath: string; into: 'second' | 'new'; targetPath?: string }) =>
+    ipcRenderer.invoke('vault:import-run', payload),
+  storyImportPickFile: (format: 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub') =>
+    ipcRenderer.invoke('story:import-pick', { format }),
+  storyImportRun: (format: 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub', filePath: string) =>
+    ipcRenderer.invoke('story:import-run', { format, filePath }),
   // SKY-2991: onboarding v2 path validation + vault discovery
   onboardingValidatePath: (p: string) =>
     ipcRenderer.invoke('onboarding:validatePath', { path: p }),
