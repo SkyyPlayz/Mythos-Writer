@@ -1,0 +1,153 @@
+/* Beta 3 "Liquid Neon" M24 — settings remainder pages (prototype 1871–2067):
+   Account & profile, Editor, Vault & Files import, Sync & Backup, Shortcuts,
+   About. Card chrome + pseudo-class states that can't live inline.
+   Ratchet: rgb() literals carry their prototype hex in a comment; anything
+   slot-driven uses the Liquid Neon v2 vars with prototype fallbacks. */
+
+.m24-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.m24-card {
+  border-radius: 15px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid rgba(255, 255, 255, .08);
+  padding: 15px 17px;
+}
+
+/* Danger-zone card (prototype 1957–1963): rgba(255,77,120,…) */
+.m24-card--danger {
+  background: rgba(255, 77, 120, .04);
+  border-color: rgba(255, 77, 120, .3);
+}
+
+.m24-seg-idle:hover {
+  color: rgb(232, 238, 252); /* prototype #e8eefc */
+  background: rgba(255, 255, 255, .06);
+}
+
+/* Outline action button (prototype "Change… / Reveal / Run" chips) */
+.m24-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 29px;
+  padding: 0 13px;
+  border-radius: 9px;
+  background: transparent;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4));
+  color: rgb(195, 206, 226); /* prototype #c3cee2 */
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.m24-btn:hover:not(:disabled) {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.m24-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* Primary neon-accented action (prototype "Move vault… / Import story…") */
+.m24-btn--primary {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  color: var(--n1, rgb(0, 240, 255)); /* prototype #00f0ff */
+  font-weight: 600;
+}
+
+.m24-btn--primary:hover:not(:disabled) {
+  background: var(--gs1, rgba(0, 240, 255, .12));
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, .4));
+  color: var(--n1, rgb(0, 240, 255)); /* prototype #00f0ff */
+}
+
+/* Secondary accent (prototype "Dry-run import…") */
+.m24-btn--accent {
+  border-color: var(--b2, rgba(155, 95, 255, .5));
+  color: var(--n2, rgb(155, 95, 255)); /* prototype #9b5fff */
+  font-weight: 600;
+}
+
+.m24-btn--accent:hover:not(:disabled) {
+  background: var(--gs2, rgba(155, 95, 255, .12));
+  box-shadow: 0 0 12px -3px var(--g2, rgba(155, 95, 255, .4));
+  color: var(--n2, rgb(155, 95, 255)); /* prototype #9b5fff */
+}
+
+/* Danger action (prototype "Disconnect vault / Sign out") */
+.m24-btn--danger {
+  border: 1px solid rgba(255, 77, 120, .5);
+  color: rgb(255, 157, 180); /* prototype #ff9db4 */
+}
+
+.m24-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 77, 120, .1);
+  border-color: rgba(255, 77, 120, .5);
+  color: rgb(255, 157, 180); /* prototype #ff9db4 */
+}
+
+/* Prototype range thumb (HTML 32–33), same recipe as .lnas-range */
+.m24-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 99px;
+  outline: none;
+  width: 100%;
+}
+
+.m24-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--n1, rgb(0, 240, 255)); /* prototype #00f0ff */
+  box-shadow: 0 0 10px var(--g1, rgba(0, 240, 255, .4));
+  cursor: pointer;
+  border: none;
+}
+
+/* Keyboard chip (prototype shortcuts page 2010–2013) */
+.m24-kbd {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  background: rgba(255, 255, 255, .06);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+/* Monospace path pill (prototype vault location row) */
+.m24-path {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 9px;
+  padding: 7px 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Beta 3 M24: eight category tabs — let the nav wrap instead of crushing. */
+.settings-cat-nav {
+  flex-wrap: wrap;
+}
+
+.settings-cat-nav__tab {
+  white-space: nowrap;
+}
