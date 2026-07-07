@@ -2,12 +2,18 @@
 // Spec: vault tree (left) + markdown editor (center) + Brainstorm chat (right), with Graph and Entities
 // as in-tab sub-view toggles.
 // SKY-3626: N/F/E writing mode controls added to editor sub-view toolbar.
-import { useCallback, useRef } from 'react';
+// M16 (Beta 3): note splits, [[wiki link]] hover previews, and the right-panel
+// Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
+import { useCallback, useMemo, useRef, useState } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
 import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import NoteViewer from './NoteViewer';
+import NoteSplitPane from './NoteSplitPane';
+import NoteProperties from './NoteProperties';
+import Backlinks from './Backlinks';
+import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
 import type { Story, Scene, Chapter, WritingMode } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
@@ -41,6 +47,12 @@ export interface NotesTabPanelProps {
   // tab editor (previously only wired on the story-side NoteViewer).
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
+  /** M16: stems resolving to story scenes, for gold [[scene link]] styling. */
+  sceneWikiLinkTitles?: ReadonlySet<string>;
+  /** M16: hover-preview resolver for [[wiki links]] in the notes editor. */
+  resolveWikiLinkPreview?: WikiLinkPreviewResolver;
+  /** M16: all notes-vault file paths, for the split-pane note selector. */
+  notePaths?: string[];
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
@@ -100,6 +112,9 @@ export default function NotesTabPanel({
   onWikiLinkClick,
   resolvedWikiLinkTitles,
   wikiLinkCandidates,
+  sceneWikiLinkTitles,
+  resolveWikiLinkPreview,
+  notePaths,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
   stories,
@@ -135,6 +150,45 @@ export default function NotesTabPanel({
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
+
+  // ── M16: note split + right-panel tab + hover-preview state ──
+  const notesBodyRef = useRef<HTMLDivElement>(null);
+  const splitRowRef = useRef<HTMLDivElement>(null);
+  const [noteSplitPath, setNoteSplitPath] = useState<string | null>(null);
+  const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
+  const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
+
+  const mdNotePaths = useMemo(
+    () => (notePaths ?? []).filter((p) => p.toLowerCase().endsWith('.md')),
+    [notePaths],
+  );
+
+  const handleToggleNoteSplit = useCallback(() => {
+    setNoteSplitPath((prev) => {
+      if (prev) return null;
+      // Prototype toggleNSplit: default to another note when one exists.
+      const other = mdNotePaths.find((p) => p !== activeNotePath);
+      return other ?? activeNotePath;
+    });
+  }, [mdNotePaths, activeNotePath]);
+
+  const handleSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const row = splitRowRef.current;
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const handleMove = (ev: MouseEvent) => {
+      if (rect.width <= 0) return;
+      const ratio = (ev.clientX - rect.left) / rect.width;
+      setNoteSplitRatio(Math.max(0.25, Math.min(0.75, ratio)));
+    };
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  }, []);
 
   const handleLeftDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -235,6 +289,20 @@ export default function NotesTabPanel({
             >E</button>
           </div>
         )}
+        {/* M16: note split toggle — prototype "Split notes" header button. */}
+        {notesSubView === 'editor' && activeNotePath && (
+          <button
+            className={`notes-split-toggle-btn${noteSplitPath ? ' notes-split-toggle-btn--active' : ''}`}
+            aria-label="Split notes"
+            aria-pressed={!!noteSplitPath}
+            title="Split notes"
+            data-testid="notes-split-toggle"
+            onClick={handleToggleNoteSplit}
+            type="button"
+          >
+            ⫿ Split
+          </button>
+        )}
         {onOpenBrainstorm && activeNotePath && (
           <button
             className="notes-open-brainstorm-btn"
@@ -252,7 +320,7 @@ export default function NotesTabPanel({
       </div>
 
       {/* Main layout row: left sidebar + center + right sidebar */}
-      <div className="notes-tab-body">
+      <div className="notes-tab-body" ref={notesBodyRef}>
         {/* Left sidebar — Notes vault tree */}
         {notesSidebarCollapsed ? (
           <button
@@ -320,7 +388,7 @@ export default function NotesTabPanel({
 
         {/* Center — sub-view body */}
         <div className="notes-tab-center" data-testid="notes-tab-center">
-          {notesSubView === 'editor' && activeNotePath && (
+          {notesSubView === 'editor' && activeNotePath && !noteSplitPath && (
             <NoteViewer
               key={activeNotePath}
               path={activeNotePath}
@@ -329,9 +397,50 @@ export default function NotesTabPanel({
               onWordCountChange={onActiveNoteWordCountChange}
               onWikiLinkClick={onWikiLinkClick}
               resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+              sceneWikiLinkTitles={sceneWikiLinkTitles}
               wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
             />
+          )}
+          {/* M16: note split — active note + a second note side by side. */}
+          {notesSubView === 'editor' && activeNotePath && noteSplitPath && (
+            <div className="notes-split-row" ref={splitRowRef} data-testid="notes-split-row">
+              <div className="notes-split-main" style={{ flex: noteSplitRatio }}>
+                <NoteViewer
+                  key={activeNotePath}
+                  path={activeNotePath}
+                  previewMode={activeNotePreview}
+                  onPreviewModeChange={onActiveNotePreviewChange}
+                  onWordCountChange={onActiveNoteWordCountChange}
+                  onWikiLinkClick={onWikiLinkClick}
+                  resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+                  sceneWikiLinkTitles={sceneWikiLinkTitles}
+                  wikiLinkCandidates={wikiLinkCandidates}
+                  onClose={onCloseActiveNote}
+                />
+              </div>
+              <div
+                className="notes-split-divider"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize note split"
+                data-testid="notes-split-divider"
+                onMouseDown={handleSplitDividerMouseDown}
+              >
+                <div className="notes-split-divider-grip" aria-hidden="true" />
+              </div>
+              <NoteSplitPane
+                style={{ flex: 1 - noteSplitRatio }}
+                path={noteSplitPath}
+                notePaths={mdNotePaths}
+                onChangePath={setNoteSplitPath}
+                onClose={() => setNoteSplitPath(null)}
+                onWikiLinkClick={onWikiLinkClick}
+                resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+                sceneWikiLinkTitles={sceneWikiLinkTitles}
+                wikiLinkCandidates={wikiLinkCandidates}
+              />
+            </div>
           )}
           {notesSubView === 'editor' && !activeNotePath && (
             <div
@@ -377,7 +486,31 @@ export default function NotesTabPanel({
               data-testid="notes-brainstorm-panel"
             >
               <div className="notes-right-sidebar-header">
-                <span className="notes-right-sidebar-title">Brainstorm</span>
+                {/* M16: Agent (default, Brainstorm chat + continuity flags) /
+                    Properties (frontmatter props + backlinks + tags) tabs —
+                    prototype nrTabs. */}
+                <div className="notes-right-tabs" role="tablist" aria-label="Notes side panel">
+                  <button
+                    role="tab"
+                    aria-selected={rightTab === 'agent'}
+                    className={`notes-right-tab${rightTab === 'agent' ? ' notes-right-tab--active' : ''}`}
+                    data-testid="notes-right-tab-agent"
+                    onClick={() => setRightTab('agent')}
+                    type="button"
+                  >
+                    Agent
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={rightTab === 'props'}
+                    className={`notes-right-tab${rightTab === 'props' ? ' notes-right-tab--active' : ''}`}
+                    data-testid="notes-right-tab-props"
+                    onClick={() => setRightTab('props')}
+                    type="button"
+                  >
+                    Properties
+                  </button>
+                </div>
                 <button
                   className="notes-sidebar-collapse-btn"
                   aria-label="Collapse Brainstorm panel"
@@ -388,23 +521,48 @@ export default function NotesTabPanel({
                 </button>
               </div>
               <div className="notes-right-sidebar-content">
-                <BrainstormPage
-                  onClose={() => onBrainstormCollapsedChange(true)}
-                  enabled={brainstormEnabled ?? true}
-                  voiceEnabled={voiceEnabled}
-                  ttsSettings={ttsSettings}
-                  voicePrefs={voicePrefs}
-                  onFirstSubmit={onFirstSubmit}
-                  onNavigateToEntity={onNavigateToEntity}
-                  onNavigateToScene={onNavigateToScene}
-                  activeStorySlug={activeStorySlug}
-                  archiveContinuityEnabled={archiveContinuityEnabled}
-                  activeScene={activeScene}
-                  compact
-                />
+                {rightTab === 'agent' ? (
+                  <BrainstormPage
+                    onClose={() => onBrainstormCollapsedChange(true)}
+                    enabled={brainstormEnabled ?? true}
+                    voiceEnabled={voiceEnabled}
+                    ttsSettings={ttsSettings}
+                    voicePrefs={voicePrefs}
+                    onFirstSubmit={onFirstSubmit}
+                    onNavigateToEntity={onNavigateToEntity}
+                    onNavigateToScene={onNavigateToScene}
+                    activeStorySlug={activeStorySlug}
+                    archiveContinuityEnabled={archiveContinuityEnabled}
+                    activeScene={activeScene}
+                    compact
+                  />
+                ) : activeNotePath ? (
+                  <div className="notes-right-props-scroll" data-testid="notes-right-props">
+                    <NoteProperties key={activeNotePath} path={activeNotePath} />
+                    <Backlinks
+                      notePath={activeNotePath}
+                      stories={stories}
+                      onOpenNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+                      onOpenScene={onSelectScene}
+                    />
+                  </div>
+                ) : (
+                  <div className="notes-right-props-empty" data-testid="notes-right-props-empty">
+                    Open a note to see its properties, backlinks, and tags.
+                  </div>
+                )}
               </div>
             </div>
           </>
+        )}
+
+        {/* M16: hover-preview card for [[wiki links]] anywhere in the notes
+            body (rich + preview modes, both split panes). */}
+        {resolveWikiLinkPreview && (
+          <WikiLinkHoverPreview
+            containerRef={notesBodyRef}
+            resolvePreview={resolveWikiLinkPreview}
+          />
         )}
       </div>
     </div>

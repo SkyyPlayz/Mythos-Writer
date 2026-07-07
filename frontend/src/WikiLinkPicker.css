@@ -28,6 +28,22 @@
   background: var(--color-warning-bg, rgba(251, 191, 36, 0.22));
 }
 
+/* M16 (Beta 3): [[links]] that resolve to STORY scenes render gold — Liquid
+   Neon prototype `mkLink` parity (note links purple, scene links gold). */
+.wiki-link-scene [data-wiki-link],
+[data-wiki-link].wiki-link-scene {
+  color: rgb(255 211 25); /* prototype #ffd319 */
+  background: rgb(255 211 25 / 0.08); /* prototype rgba(255,211,25,.08) */
+  border-bottom: 1px solid rgb(255 211 25 / 0.45); /* prototype rgba(255,211,25,.45) */
+}
+
+.wiki-link-scene [data-wiki-link]:hover,
+[data-wiki-link].wiki-link-scene:hover {
+  color: rgb(255 230 128); /* prototype #ffe680 */
+  background: rgb(255 211 25 / 0.16);
+  box-shadow: 0 0 12px -3px rgb(255 211 25 / 0.5); /* prototype hover glow */
+}
+
 /* ── [[ ]] autocomplete picker dropdown ──────────────────────────────── */
 
 .wiki-link-picker {
