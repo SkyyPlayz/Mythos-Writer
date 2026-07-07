@@ -435,11 +435,12 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
         `updatedAt: ${now}`,
         '---',
         '',
+        // Prose only — the app's scene persistence writes no BLOCKS_JSON
+        // trailer; the manuscript view renders the file body verbatim, so a
+        // trailer here would leak into the paragraph text (block metadata
+        // rides in the manifest instead).
         'The bells rang over the harbor.',
         '',
-        '<!-- BLOCKS_JSON',
-        JSON.stringify(blocks),
-        'END_BLOCKS_JSON -->',
       ].join('\n'),
     );
     const manifest = {
