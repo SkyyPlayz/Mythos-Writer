@@ -152,6 +152,199 @@
   flex: none;
 }
 
+/* ── toolbar v2 (prototype 742–777, tbBase 4111, dictBtnSt 4815) ── */
+
+.msv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 18px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(10, 12, 22, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  flex-wrap: nowrap;
+  overflow: hidden;
+  flex: none;
+}
+
+.msv-tb-select {
+  height: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 7px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  font-size: 11.5px;
+  padding: 0 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msv-tb-select option {
+  background: rgb(15, 19, 33); /* prototype #0f1321 */
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+}
+
+.msv-tb-font {
+  width: 92px;
+}
+
+.msv-tb-size {
+  display: flex;
+  align-items: center;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 7px;
+  height: 26px;
+  overflow: hidden;
+  flex: none;
+}
+
+.msv-tb-size-btn {
+  width: 20px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  cursor: pointer;
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.msv-tb-size-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.msv-tb-size-val {
+  width: 26px;
+  text-align: center;
+  font-size: 11.5px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+}
+
+.msv-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 3px;
+  flex: none;
+}
+
+.msv-tb-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12.5px;
+  flex: none;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  border: 1px solid transparent;
+  background: none;
+  padding: 0;
+}
+
+.msv-tb-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.msv-tb-btn--active,
+.msv-tb-btn--active:hover {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.msv-tb-glyph {
+  font-family: 'Lora', serif;
+  font-weight: 600;
+}
+
+.msv-tb-glyph--b {
+  font-weight: 700;
+}
+
+.msv-tb-glyph--i {
+  font-style: italic;
+}
+
+.msv-tb-glyph--u {
+  text-decoration: underline;
+}
+
+.msv-tb-glyph--s {
+  text-decoration: line-through;
+}
+
+.msv-tb-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+  background: none;
+  font-family: inherit;
+}
+
+.msv-tb-read:hover {
+  color: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.msv-tb-dictate {
+  border-color: var(--b1, rgba(0, 240, 255, 0.35));
+}
+
+.msv-dict-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: rgb(142, 157, 184); /* prototype #8e9db8 */
+}
+
+.msv-tb-dictate--on {
+  border: var(--bw, 1px) solid rgb(255, 95, 143); /* prototype #ff5f8f */
+  color: rgb(255, 157, 180); /* prototype #ff9db4 */
+  background: rgba(255, 95, 143, 0.1);
+  box-shadow: 0 0 12px -3px rgba(255, 95, 143, 0.5);
+}
+
+.msv-tb-dictate--on .msv-dict-dot {
+  background: rgb(255, 95, 143); /* prototype #ff5f8f */
+  box-shadow: 0 0 7px rgba(255, 95, 143, 0.7);
+  animation: lnPulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msv-tb-dictate--on .msv-dict-dot {
+    animation: none;
+  }
+}
+
+.msv-tb-assist {
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  color: var(--n2, #9b5fff);
+}
+
+.msv-tb-assist:hover {
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  box-shadow: 0 0 12px -3px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
 /* ── page scroll area + floating arrows (prototype 808–810 / spPageSt 4646) ── */
 
 .msv-page {
@@ -214,6 +407,83 @@
     0 0 var(--gr, 26px) -7px var(--g2, rgba(155, 95, 255, 0.4)),
     0 18px 60px rgba(2, 4, 10, 0.55);
   padding: 64px 84px 90px;
+}
+
+/* ── page-edge drag handles + width badge (prototype 861–868) ── */
+
+.msv-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  z-index: 5;
+}
+
+.msv-edge--l {
+  left: -3px;
+  border-radius: 12px 0 0 12px;
+}
+
+.msv-edge--r {
+  right: -3px;
+  border-radius: 0 12px 12px 0;
+}
+
+.msv-edge:hover,
+.msv-edge:focus-visible {
+  opacity: 1;
+}
+
+.msv-edge:focus-visible {
+  outline: 2px solid var(--b1, rgba(0, 240, 255, 0.5));
+  outline-offset: -2px;
+}
+
+.msv-edge-bar {
+  width: 4px;
+  height: 52px;
+  border-radius: 3px;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.msv-width-badge {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-size: 10.5px;
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  border-radius: 7px;
+  padding: 3px 8px;
+  background: rgba(8, 10, 18, 0.85);
+  box-shadow: 0 0 12px -2px var(--g1, rgba(0, 240, 255, 0.4));
+  z-index: 6;
+}
+
+/* ── paragraph drag (prototype 891–895 drop line + grip) ── */
+
+.msv-dropline {
+  height: 2px;
+  border-radius: 2px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  margin: 0 0 10px;
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.msv-root--dragging-para,
+.msv-root--dragging-para .msv-para,
+.msv-root--dragging-para .msv-grip {
+  cursor: grabbing;
+}
+
+.msv-root--dragging-para .msv-para-text {
+  user-select: none;
 }
 
 /* ── fold chevron (prototype chevSt 3344) ── */

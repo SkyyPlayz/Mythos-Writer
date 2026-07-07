@@ -316,3 +316,189 @@ describe('lazy windowing (GH#843)', () => {
     expect(screen.getByTestId('msv-spacer-bottom').style.height).toBe('0px');
   });
 });
+
+// ─── Beta 3 M10 — toolbar v2, page modes, edge drag, paragraph drag ──────────
+
+describe('toolbar v2 (M10, prototype 742–777)', () => {
+  it('renders style/font/size controls and applies font + size to the sheet', () => {
+    renderView();
+    expect(screen.getByTestId('msv-style-select')).toHaveValue('Body Text');
+    const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
+    // Prototype defaults: Lora at fsize 12 → 12 × 1.42 = 17.0px (jsdom drops the .0).
+    expect(wrap.style.fontFamily).toContain('Lora');
+    expect(wrap.style.fontSize).toBe('17px');
+
+    fireEvent.change(screen.getByTestId('msv-font-select'), { target: { value: 'Inter' } });
+    expect(wrap.style.fontFamily).toContain('Inter');
+
+    fireEvent.click(screen.getByTestId('msv-size-up'));
+    expect(screen.getByTestId('msv-size-val')).toHaveTextContent('13');
+    expect(wrap.style.fontSize).toBe('18.5px'); // 13 × 1.42 = 18.46 → 18.5
+  });
+
+  it('clamps font size to the prototype 9–18 range', () => {
+    renderView();
+    const down = screen.getByTestId('msv-size-down');
+    const up = screen.getByTestId('msv-size-up');
+    for (let i = 0; i < 10; i++) fireEvent.click(down);
+    expect(screen.getByTestId('msv-size-val')).toHaveTextContent('9');
+    for (let i = 0; i < 20; i++) fireEvent.click(up);
+    expect(screen.getByTestId('msv-size-val')).toHaveTextContent('18');
+  });
+
+  it('B/I/U/S toggles and alignment apply to paragraph text (prototype pSt)', () => {
+    renderView({ cursor: cur('scene', 0, 0) });
+    const para = screen.getByTestId('msv-para-s1-b0');
+    expect(para.style.fontWeight).toBe('400');
+    expect(para.style.textAlign).toBe('left');
+
+    fireEvent.click(screen.getByTestId('msv-fmt-b'));
+    expect(screen.getByTestId('msv-fmt-b')).toHaveAttribute('aria-pressed', 'true');
+    expect(para.style.fontWeight).toBe('600');
+
+    fireEvent.click(screen.getByTestId('msv-fmt-i'));
+    expect(para.style.fontStyle).toBe('italic');
+
+    fireEvent.click(screen.getByTestId('msv-fmt-u'));
+    fireEvent.click(screen.getByTestId('msv-fmt-s'));
+    expect(para.style.textDecoration).toBe('underline line-through');
+
+    fireEvent.click(screen.getByTestId('msv-align-justify'));
+    expect(screen.getByTestId('msv-align-justify')).toHaveAttribute('aria-pressed', 'true');
+    expect(para.style.textAlign).toBe('justify');
+  });
+
+  it('hides Read/Dictate/Assist without handlers and wires them when provided', () => {
+    const onRead = vi.fn();
+    const onDictate = vi.fn();
+    const onAssist = vi.fn();
+    const { unmount } = renderView();
+    expect(screen.queryByTestId('msv-tb-read')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-tb-dictate')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-tb-assist')).not.toBeInTheDocument();
+    unmount();
+
+    renderView({ onRead, onDictate, onAssist, dictating: true });
+    fireEvent.click(screen.getByTestId('msv-tb-read'));
+    fireEvent.click(screen.getByTestId('msv-tb-dictate'));
+    fireEvent.click(screen.getByTestId('msv-tb-assist'));
+    expect(onRead).toHaveBeenCalledTimes(1);
+    expect(onDictate).toHaveBeenCalledTimes(1);
+    expect(onAssist).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('msv-tb-dictate')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('page modes (M10, prototype sheetBoxSt 4607–4617)', () => {
+  it('defaults to the neon sheet with no runes', () => {
+    renderView();
+    const sheet = screen.getByTestId('msv-sheet');
+    expect(sheet).toHaveAttribute('data-page-mode', 'neon');
+    expect(screen.queryByTestId('lnpm-runes')).not.toBeInTheDocument();
+  });
+
+  it('renders the scroll parchment with rune overlays from liquidNeon settings', () => {
+    renderView({
+      liquidNeon: { pageCfg: { mode: 'scroll', bg: '#0a0d18', op: 66, blur: 0, sym: true } },
+    });
+    const sheet = screen.getByTestId('msv-sheet');
+    expect(sheet).toHaveAttribute('data-page-mode', 'scroll');
+    expect(sheet.style.borderRadius).toBe('10px');
+    expect(screen.getByTestId('lnpm-runes')).toBeInTheDocument();
+  });
+
+  it("strips all chrome in 'off' mode", () => {
+    renderView({ liquidNeon: { pageCfg: { mode: 'off', bg: '#0a0d18', op: 66, blur: 0 } } });
+    const sheet = screen.getByTestId('msv-sheet');
+    expect(sheet).toHaveAttribute('data-page-mode', 'off');
+    expect(sheet.style.background).toBe('transparent');
+    expect(sheet.style.boxShadow).toBe('none');
+    expect(sheet.style.borderRadius).toBe('0');
+  });
+});
+
+describe('page-edge drag (M10, prototype startDrag 3392–3400)', () => {
+  it('drags the right edge to grow the width by 2× the delta and commits on release', () => {
+    const onPageWidthChange = vi.fn();
+    renderView({ onPageWidthChange });
+    const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
+    fireEvent.mouseDown(screen.getByTestId('msv-edge-r'), { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 550 });
+    expect(wrap.style.width).toBe('1100px'); // 1000 + 50×2
+    expect(screen.getByTestId('msv-width-badge')).toHaveTextContent('1100 px');
+    fireEvent.mouseUp(window, { clientX: 550 });
+    expect(onPageWidthChange).toHaveBeenCalledWith(1100);
+    expect(screen.queryByTestId('msv-width-badge')).not.toBeInTheDocument();
+  });
+
+  it('left edge drags outward symmetrically and clamps at 520–3000', () => {
+    const onPageWidthChange = vi.fn();
+    renderView({ onPageWidthChange });
+    const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
+    fireEvent.mouseDown(screen.getByTestId('msv-edge-l'), { clientX: 300 });
+    fireEvent.mouseMove(window, { clientX: 900 }); // +600 × −1 side × 2 = −1200 → clamp 520
+    expect(wrap.style.width).toBe('520px');
+    fireEvent.mouseUp(window, { clientX: 900 });
+    expect(onPageWidthChange).toHaveBeenCalledWith(520);
+  });
+
+  it('nudges the width with arrow keys on a focused edge handle', () => {
+    const onPageWidthChange = vi.fn();
+    renderView({ onPageWidthChange });
+    fireEvent.keyDown(screen.getByTestId('msv-edge-r'), { key: 'ArrowRight' });
+    expect(onPageWidthChange).toHaveBeenCalledWith(1020);
+    fireEvent.keyDown(screen.getByTestId('msv-edge-r'), { key: 'ArrowLeft' });
+    expect(onPageWidthChange).toHaveBeenLastCalledWith(1000);
+  });
+
+  it('slider changes commit through onPageWidthChange too', () => {
+    const onPageWidthChange = vi.fn();
+    renderView({ onPageWidthChange });
+    fireEvent.change(screen.getByTestId('msv-width-slider'), { target: { value: '2000' } });
+    expect(onPageWidthChange).toHaveBeenCalledWith(2000);
+  });
+});
+
+describe('paragraph grip drag (M10, prototype paraDown/Over/Drop 3705–3719)', () => {
+  it('shows a drop indicator over the hovered paragraph and fires onMoveParagraph on drop', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    // Start dragging s1-b0 by its grip.
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+
+    // Hover another paragraph row → gradient drop line appears.
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    expect(screen.getByTestId('msv-dropline')).toBeInTheDocument();
+
+    fireEvent.mouseUp(targetRow);
+    expect(onMoveParagraph).toHaveBeenCalledWith(
+      { sceneId: 's1', blockId: 's1-b0' },
+      { sceneId: 's3', blockId: 's3-b0' }
+    );
+    expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+  });
+
+  it('dropping a block onto itself is a no-op', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('scene', 0, 0) });
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    const selfRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseUp(selfRow);
+    expect(onMoveParagraph).not.toHaveBeenCalled();
+  });
+
+  it('releasing outside any paragraph abandons the drag', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    fireEvent.mouseUp(window);
+    // A later hover shows no drop line — the drag is gone.
+    const row = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(row);
+    expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+    fireEvent.mouseUp(row);
+    expect(onMoveParagraph).not.toHaveBeenCalled();
+  });
+});
