@@ -389,7 +389,11 @@ interface AppSettings {
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderConfig; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderConfig; voiceEnabled?: boolean; micDeviceId?: string } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
+    /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings stay valid; main back-fills defaults on load. */
+    betaReader?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
   };
+  /** Beta 3 M22: user renames for the four named agents. Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
   theme: 'dark' | 'high-contrast';
@@ -1319,6 +1323,8 @@ interface Window {
     // Agent persona files (typed here to avoid renderer-side any-casts)
     agentPersonaRead: (agentName: string, key: string) => Promise<{ content: string; isCustom: boolean }>;
     agentPersonaReset: (agentName: string, key: string) => Promise<unknown>;
+    /** Beta 3 M22: persist an identity-file override for an agent. */
+    agentPersonaWrite: (agentName: string, key: string, content: string) => Promise<unknown>;
 
     // SKY-1684 / SKY-1685: Archive Agent v1 — continuity scan
     archiveScanContinuity: (sceneId: string, text: string, scope?: string) => Promise<void>;
