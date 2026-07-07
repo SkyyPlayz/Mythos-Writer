@@ -1297,7 +1297,11 @@ const handlers: IpcHandlers = {
     // Auto-apply policy: evaluate immediately after insert.
     const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
     if (settingsKey) {
-      const agentSettings = loadAppSettings().agents[settingsKey];
+      const allSettings = loadAppSettings();
+      // Beta 3 M22: betaReader is optional in AppSettings — resolve with defaults.
+      const agentSettings = settingsKey === 'betaReader'
+        ? getBetaReaderSettings(allSettings)
+        : allSettings.agents[settingsKey as Exclude<keyof AppSettings['agents'], 'betaReader'>];
       let payloadKind: string | null = null;
       if (payload.suggestion.payload_json) {
         try {

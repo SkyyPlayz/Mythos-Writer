@@ -68,7 +68,7 @@ export const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-opus-4-7', label: 'claude-opus' },
 ];
 
-export type AgentName = 'writingAssistant' | 'brainstorm' | 'archive';
+export type AgentName = 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader';
 
 export interface AgentOverrideState {
   enabled: boolean;
@@ -142,12 +142,20 @@ export function isCategoryAutoApplyEnabled(
   return value !== false;
 }
 
+/** Beta 3 M22: default Beta Reader agent settings (also the back-fill for pre-M22 settings files). */
+export const BETA_READER_DEFAULTS: NonNullable<AppSettings['agents']['betaReader']> = {
+  enabled: true,
+  model: 'claude-sonnet-4-6',
+  ...BUDGET_DEFAULTS,
+};
+
 export const DEFAULTS: AppSettings = {
   apiKey: '',
   agents: {
     writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },
     archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
+    betaReader: { ...BETA_READER_DEFAULTS },
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },

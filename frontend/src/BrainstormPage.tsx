@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useAgentActivity } from './agents/agentActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
@@ -257,6 +258,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertText, setAlertText] = useState('');
+  // Beta 3 M22: brainstorm streaming lights the workspace tab strip's agents chip.
+  useAgentActivity(loading);
   // Stable refs so the hook callbacks can reference values declared later in the component.
   const voiceTranscriptHandlerRef = useRef<(text: string) => void>(() => { /* filled below */ });
   const voiceErrorHandlerRef = useRef<(msg: string) => void>(() => { /* filled below */ });

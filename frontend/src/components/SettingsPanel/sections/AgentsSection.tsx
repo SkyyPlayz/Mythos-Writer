@@ -4,12 +4,48 @@ import AutoApplyCategoryToggles from '../AutoApplyCategoryToggles';
 import PersonaViewer from '../PersonaViewer';
 import {
   MODEL_OPTIONS,
+  BETA_READER_DEFAULTS,
   type AgentName,
   type AgentOverrideState,
   type ProviderKind,
   type TestConnectionStatus,
   type MicDevice,
 } from '../settingsPanelTypes';
+import {
+  DEFAULT_AGENT_DISPLAY_NAMES,
+  resolveAgentDisplayName,
+  type NamedAgentId,
+} from '../../../agents/agentIdentity';
+
+// Beta 3 M22: rename input (prototype Identity & files name field, HTML 1852).
+// The card header shows the resolved name so renames propagate immediately.
+function AgentRenameField({
+  agent,
+  idPrefix,
+  agentNames,
+  setAgentDisplayName,
+}: {
+  agent: NamedAgentId;
+  idPrefix: string;
+  agentNames: AppSettings['agentNames'];
+  setAgentDisplayName: (agent: AgentName, name: string) => void;
+}) {
+  return (
+    <div className="settings-field settings-field-inline">
+      <label className="settings-label" htmlFor={`${idPrefix}-display-name`}>Agent name</label>
+      <input
+        id={`${idPrefix}-display-name`}
+        className="settings-input settings-input-sm"
+        type="text"
+        value={agentNames?.[agent] ?? ''}
+        placeholder={DEFAULT_AGENT_DISPLAY_NAMES[agent]}
+        aria-label={`Rename ${DEFAULT_AGENT_DISPLAY_NAMES[agent]}`}
+        maxLength={64}
+        onChange={(e) => setAgentDisplayName(agent, e.target.value)}
+      />
+    </div>
+  );
+}
 
 type RoutingCategory = 'character' | 'location' | 'item' | 'note';
 const ROUTING_CATEGORIES: RoutingCategory[] = ['character', 'location', 'item', 'note'];
@@ -88,12 +124,14 @@ interface AgentsSectionProps {
   agentOverrides: Record<AgentName, AgentOverrideState>;
   agentTestStatus: Record<AgentName, TestConnectionStatus>;
   agentTestMsg: Record<AgentName, string>;
-  setAgentField: <A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(agent: A, field: K, value: AppSettings['agents'][A][K]) => void;
+  setAgentField: <A extends keyof AppSettings['agents'], K extends keyof NonNullable<AppSettings['agents'][A]>>(agent: A, field: K, value: NonNullable<AppSettings['agents'][A]>[K]) => void;
   setCategoryAutoApply: (agent: keyof AppSettings['agents'], category: SuggestionCategory, enabled: boolean) => void;
   setAgentOverride: <K extends keyof AgentOverrideState>(agentName: AgentName, field: K, value: AgentOverrideState[K]) => void;
   onAgentTest: (agentName: AgentName) => void;
   micDevices: MicDevice[];
   refreshMicDevices: () => void;
+  /** Beta 3 M22: agent renames — writes settings.agentNames. */
+  setAgentDisplayName: (agent: AgentName, name: string) => void;
 }
 
 export default function AgentsSection({
@@ -108,14 +146,19 @@ export default function AgentsSection({
   onAgentTest,
   micDevices,
   refreshMicDevices,
+  setAgentDisplayName,
 }: AgentsSectionProps) {
+  // Beta 3 M22: betaReader is optional in AppSettings (pre-M22 files) — the
+  // panel normalizes it at load; this fallback keeps rendering total.
+  const betaReader = settings.agents.betaReader ?? BETA_READER_DEFAULTS;
+
   return (
     <section className="settings-section" aria-labelledby="section-agents" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-agents">Agents</h3>
 
       <div className="settings-agent-card">
         <div className="settings-agent-header">
-          <span className="settings-agent-name">Writing Assistant</span>
+          <span className="settings-agent-name">{resolveAgentDisplayName('writingAssistant', settings.agentNames)}</span>
           <label className="settings-toggle">
             <input
               type="checkbox"
@@ -127,6 +170,7 @@ export default function AgentsSection({
           </label>
         </div>
         <div className="settings-agent-fields">
+          <AgentRenameField agent="writingAssistant" idPrefix="wa" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           {/* Model selector for global provider override */}
           {!agentOverrides.writingAssistant.enabled && (
             <div className="settings-field settings-field-inline">
@@ -337,7 +381,7 @@ export default function AgentsSection({
 
       <div className="settings-agent-card">
         <div className="settings-agent-header">
-          <span className="settings-agent-name">Brainstorm Agent</span>
+          <span className="settings-agent-name">{resolveAgentDisplayName('brainstorm', settings.agentNames)}</span>
           <label className="settings-toggle">
             <input
               type="checkbox"
@@ -349,6 +393,7 @@ export default function AgentsSection({
           </label>
         </div>
         <div className="settings-agent-fields">
+          <AgentRenameField agent="brainstorm" idPrefix="brainstorm" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           {!agentOverrides.brainstorm.enabled && (
             <div className="settings-field settings-field-inline">
               <label className="settings-label" htmlFor="brainstorm-model">Model</label>
@@ -530,7 +575,7 @@ export default function AgentsSection({
 
       <div className="settings-agent-card">
         <div className="settings-agent-header">
-          <span className="settings-agent-name">Archive Agent</span>
+          <span className="settings-agent-name">{resolveAgentDisplayName('archive', settings.agentNames)}</span>
           <label className="settings-toggle">
             <input
               type="checkbox"
@@ -542,6 +587,7 @@ export default function AgentsSection({
           </label>
         </div>
         <div className="settings-agent-fields">
+          <AgentRenameField agent="archive" idPrefix="archive" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           {!agentOverrides.archive.enabled && (
             <div className="settings-field settings-field-inline">
               <label className="settings-label" htmlFor="archive-model">Model</label>
@@ -681,6 +727,154 @@ export default function AgentsSection({
             />
           </div>
         </div>
+        <PersonaViewer agentName="archive" />
+      </div>
+
+      {/* Beta 3 M22: fourth named agent — Beta Reader (prototype agentDefs, HTML 4350).
+          Reader-eye chapter reads; reactions land as margin comments. */}
+      <div className="settings-agent-card" data-testid="beta-reader-agent-card">
+        <div className="settings-agent-header">
+          <span className="settings-agent-name">{resolveAgentDisplayName('betaReader', settings.agentNames)}</span>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              aria-label="Enable Beta Reader"
+              checked={betaReader.enabled}
+              onChange={(e) => setAgentField('betaReader', 'enabled', e.target.checked)}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+        <div className="settings-agent-fields">
+          <AgentRenameField agent="betaReader" idPrefix="beta-reader" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
+          {!agentOverrides.betaReader.enabled && (
+            <div className="settings-field settings-field-inline">
+              <label className="settings-label" htmlFor="beta-reader-model">Model</label>
+              {providerKind === 'anthropic' ? (
+                <select
+                  id="beta-reader-model"
+                  className="settings-input settings-select settings-input-sm"
+                  value={betaReader.model}
+                  aria-label="Beta Reader model"
+                  onChange={(e) => setAgentField('betaReader', 'model', e.target.value)}
+                >
+                  {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input
+                  id="beta-reader-model"
+                  className="settings-input settings-input-sm"
+                  type="text"
+                  value={betaReader.model}
+                  placeholder="model name (e.g. llama3-70b)"
+                  aria-label="Beta Reader model"
+                  maxLength={128}
+                  onChange={(e) => setAgentField('betaReader', 'model', e.target.value)}
+                />
+              )}
+            </div>
+          )}
+          <AgentProviderSection
+            agentName="betaReader"
+            idPrefix="beta-reader"
+            globalProviderKind={providerKind}
+            override={agentOverrides.betaReader}
+            savedApiKey={betaReader.provider?.apiKey}
+            testStatus={agentTestStatus.betaReader}
+            testMsg={agentTestMsg.betaReader}
+            onChange={(field, value) => setAgentOverride('betaReader', field, value)}
+            onTest={() => onAgentTest('betaReader')}
+          />
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="beta-reader-heartbeat">Heartbeat interval (min)</label>
+            <input
+              id="beta-reader-heartbeat"
+              className="settings-input settings-input-sm settings-input-number"
+              type="number"
+              min={1}
+              max={120}
+              value={betaReader.heartbeatIntervalMinutes}
+              onChange={(e) => setAgentField('betaReader', 'heartbeatIntervalMinutes', Number(e.target.value))}
+            />
+          </div>
+          <div className="settings-field settings-field-inline">
+            <label className="settings-toggle" htmlFor="beta-reader-auto-apply">
+              <input
+                id="beta-reader-auto-apply"
+                type="checkbox"
+                aria-label="Auto-apply Beta Reader suggestions"
+                checked={betaReader.autoApply}
+                onChange={(e) => setAgentField('betaReader', 'autoApply', e.target.checked)}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+            <span className="settings-label">Auto-apply suggestions</span>
+          </div>
+          <AutoApplyCategoryToggles
+            idPrefix="beta-reader"
+            agentLabel="Beta Reader"
+            agent={betaReader}
+            agentKey="betaReader"
+            onChange={setCategoryAutoApply}
+          />
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="beta-reader-confidence">Auto-apply threshold</label>
+            <div className="settings-slider-row">
+              <input
+                id="beta-reader-confidence"
+                className="settings-slider"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                disabled={!betaReader.autoApply}
+                value={betaReader.confidenceThreshold}
+                aria-label="Beta Reader auto-apply threshold"
+                onChange={(e) => setAgentField('betaReader', 'confidenceThreshold', Number(e.target.value))}
+              />
+              <span className="settings-slider-value">{betaReader.confidenceThreshold.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="beta-reader-max-tokens-day">Max tokens/day</label>
+            <input
+              id="beta-reader-max-tokens-day"
+              className="settings-input settings-input-sm settings-input-number"
+              type="number"
+              min={1000}
+              max={10_000_000}
+              step={1000}
+              value={betaReader.maxTokensPerDay}
+              onChange={(e) => setAgentField('betaReader', 'maxTokensPerDay', Number(e.target.value))}
+            />
+          </div>
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="beta-reader-max-suggestions">Max suggestions/hr</label>
+            <input
+              id="beta-reader-max-suggestions"
+              className="settings-input settings-input-sm settings-input-number"
+              type="number"
+              min={1}
+              max={1000}
+              value={betaReader.maxSuggestionsPerHour}
+              onChange={(e) => setAgentField('betaReader', 'maxSuggestionsPerHour', Number(e.target.value))}
+            />
+          </div>
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="beta-reader-max-tokens">Max tokens/hr</label>
+            <input
+              id="beta-reader-max-tokens"
+              className="settings-input settings-input-sm settings-input-number"
+              type="number"
+              min={1000}
+              max={1_000_000}
+              step={1000}
+              value={betaReader.maxTokensPerHour}
+              onChange={(e) => setAgentField('betaReader', 'maxTokensPerHour', Number(e.target.value))}
+            />
+          </div>
+        </div>
+        <PersonaViewer agentName="betaReader" />
       </div>
     </section>
   );
