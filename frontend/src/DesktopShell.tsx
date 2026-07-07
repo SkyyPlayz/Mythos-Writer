@@ -4231,6 +4231,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  focusMode={writingMode === 'focus'}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4250,6 +4251,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  focusMode={writingMode === 'focus'}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
