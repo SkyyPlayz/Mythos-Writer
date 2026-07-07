@@ -9,6 +9,37 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0-beta.1] — 2026-07-07
+
+**The "Liquid Neon" release.** Beta 3 rebuilds Mythos Writer around the approved Liquid Neon prototype — neon-bordered glass panels floating over animated, user-changeable backgrounds — and fills out the app's full product shape across 26 milestones (build plan: [`docs/releases/BETA-LIQUID-NEON.md`](docs/releases/BETA-LIQUID-NEON.md)).
+
+### Added
+
+- **Liquid Neon theme engine + 10 animated presets** — A six-slot color engine now drives every panel border, glow, and gradient in the app. Ten presets (Neon Classic, Aurora, Cyberpunk, Sunset Coast, Emberfall, Ice Mono, Verdant Reach, Royal Arcana, Noir Rose, Winterlight) each pair slot colors with their own background and animated ambience layer (stardust, rain, embers, snow, spores…); neon animation modes (Off / Cycle / Sparkle) animate panel borders and a window frame ring; wallpaper is theme-matched, custom-uploaded, or fully transparent ("No background"); the rebuilt Appearance page exposes per-slot color wheels plus intensity/glass/blur/scrim/border/glow sliders, all respecting `prefers-reduced-motion`. ([PR #848](https://github.com/SkyyPlayz/Mythos-Writer/pull/848), [#849](https://github.com/SkyyPlayz/Mythos-Writer/pull/849), [#851](https://github.com/SkyyPlayz/Mythos-Writer/pull/851), [#852](https://github.com/SkyyPlayz/Mythos-Writer/pull/852))
+- **New app shell** — A real title bar with working File/Edit/View/Insert/Tools/Help menus, a Ctrl+K command palette (commands, notes, scenes), a notification center whose agent events deep-link to their source, and an account entry; workspace tabs v2 with a right-click menu (open to the side as a split pane, pop out, close) and an agents-activity chip; nav rail v2 with six modules (Story Writer, Notes, Scene Crafter, Brainstorm, Timeline, Vault Graph), a slim icon-only mode, per-universe vault tiles, and a Stories popover that creates a story plus its Story Plan note; glass panels throughout and a live word/character/read-time status bar. ([PR #853](https://github.com/SkyyPlayz/Mythos-Writer/pull/853), [#855](https://github.com/SkyyPlayz/Mythos-Writer/pull/855), [#856](https://github.com/SkyyPlayz/Mythos-Writer/pull/856), [#854](https://github.com/SkyyPlayz/Mythos-Writer/pull/854))
+- **Heading-zoom manuscript** — The manuscript is one continuous document: zoom Full Book → Part → Chapter → Scene, hop same-level siblings with arrows or keys, collapse headings, click-cycle scene status dots, and drag scenes to restructure — while scene files remain the storage unit with the same per-scene backup contract as Beta 2. ([PR #857](https://github.com/SkyyPlayz/Mythos-Writer/pull/857))
+- **Toolbar v2, page modes, draggable blocks & page ruler** — A Word-like toolbar (paragraph style / font / size dropdowns, Read / Dictate / Assist), page modes (Neon / No glow / Scroll parchment / Off), paragraph drag handles with a drop-line indicator, and page-width control via edge drag or the new Word-style ruler (520–3000 px) — closing the long-standing page-width ([#842](https://github.com/SkyyPlayz/Mythos-Writer/issues/842)) and editable-full-book ([#843](https://github.com/SkyyPlayz/Mythos-Writer/issues/843)) requests. ([PR #873](https://github.com/SkyyPlayz/Mythos-Writer/pull/873))
+- **Margin comments** — Select text to comment; comments dock in a kind-colored gutter aligned to their anchors, agent comments carry three actions (edit notes to match / suggest story change / ignore), and Focus mode hides the gutter with an override. ([PR #872](https://github.com/SkyyPlayz/Mythos-Writer/pull/872))
+- **Drafts & visual diff** — A drafts popover in the editor header (per-document list, snapshot frequency and keep-count settings), side-by-side previous-draft view with inline highlight-changes, and a full-diff view with a draft selector. ([PR #859](https://github.com/SkyyPlayz/Mythos-Writer/pull/859))
+- **TTS Reader** — A Speechify-style audiobook bar on the manuscript: moving paragraph highlight synced to speech, scene and utterance skips, 50–200% speed, a voice picker over your configured engines, and read-from-cursor / from-start / selection. ([PR #874](https://github.com/SkyyPlayz/Mythos-Writer/pull/874))
+- **Structure view, Book preview & export dialog** — Grid/list scene cards with drag restructure and a Save-the-Cat beat-sheet panel; a compiled read-only Book preview; and an export dialog that adds PDF alongside DOCX/EPUB with scope, synopsis, and separator options. ([PR #861](https://github.com/SkyyPlayz/Mythos-Writer/pull/861))
+- **Notes tree v2 + templates** — The vault tree gains drag move/reorder and a context menu (open in new tab, beta read, continuity check, rename, delete), a template picker (Character, Location, Faction, Item/System, Event/History, Blank) creating correctly-frontmattered notes, and a per-universe vault switcher. ([PR #860](https://github.com/SkyyPlayz/Mythos-Writer/pull/860))
+- **Wiki-link parity, metadata panels & note splits** — Obsidian-style hover preview cards on `[[links]]`, clicking an unresolved notes link creates the note, frontmatter-backed Properties and tag editing, a live Backlinks panel, and drag-resizable note splits with both panes editable. ([PR #876](https://github.com/SkyyPlayz/Mythos-Writer/pull/876))
+- **Canvas board engine** — Obsidian-canvas-style boards: draggable corner-resizable cards with per-slot neon borders, bezier connectors, pan and scroll-zoom with Fit, and `.canvas`-style JSON persisted in the Notes Vault. ([PR #858](https://github.com/SkyyPlayz/Mythos-Writer/pull/858))
+- **Scene Crafter v2** — Scene Setup (title/POV/goal/conflict, beats, tone chips, length), a searchable suggested-cards panel, plan cards from vault Story Plans with a Draft-board button onto the canvas engine, and a live mini canvas in the editor's right panel. ([PR #864](https://github.com/SkyyPlayz/Mythos-Writer/pull/864))
+- **Brainstorm center** — The Brainstorm page becomes a four-mode center: restyled agent chat plus Board, Map, and Clusters visualizations of the session's vault ideas, a live agent-activity feed, suggestion chips, and idea search. ([PR #871](https://github.com/SkyyPlayz/Mythos-Writer/pull/871))
+- **Timeline v2 (Aeon-class)** — Five views over the same event data — Plan-vs-Progress, Structure, Spreadsheet, Relationships, and per-character Subway lines — with eras, arcs, chapter strips, filters, and a minimap scrubber. ([PR #862](https://github.com/SkyyPlayz/Mythos-Writer/pull/862))
+- **Vault graph v2** — Star-glow nodes colored by category, drag-to-pin, force-sim re-layout, per-category color wheels, distinct note↔note vs story↔note link colors, a Story cluster toggle, and a node inspector. ([PR #863](https://github.com/SkyyPlayz/Mythos-Writer/pull/863))
+- **Four named agents + identity files** — The new Beta Reader agent reads chapters and files reactions as margin comments; all four agents (Writing Assistant, Brainstorm, Archive, Beta Reader) are renameable, carry editable identity files (`agent.md` / `instructions.md` / `learning.md` / `soul.md`) that genuinely shape behavior, and get per-agent provider/model and autonomy toggles. ([PR #878](https://github.com/SkyyPlayz/Mythos-Writer/pull/878))
+- **Archive plumbing** — Continuity flags surface as actionable margin comments with the three agent actions, auto-`[[link]]`ing is verified against the new editor, and the timeline auto-builds from vault plans plus written scenes with planned-vs-written classification. (M23)
+- **Settings remainder + vault & story import** — Account & profile, Editor, Sync & Backup, Shortcuts, and About pages; Import vault (Obsidian / Notion / Scrivener / Markdown) with a dry-run→confirm wizard; Import story (docx / Google Docs export / Markdown / Scrivener / ePub) mapping headings to parts/chapters/scenes plus a Story Plan note. ([PR #877](https://github.com/SkyyPlayz/Mythos-Writer/pull/877))
+- **Welcome wizard v2** — Liquid Neon restyle of the first-run wizard plus a new Guided Setup path (location → template → genre → neon theme) driven by the real preset engine. ([PR #875](https://github.com/SkyyPlayz/Mythos-Writer/pull/875))
+
+### Fixed
+
+- **Beta 3 stabilization** — E2E-verified fixes on the new shell: the create-vault control restored to the title bar, menu layering, the Stories-popover focus trap, accessibility labels, and neon-frozen performance gates. ([PR #866](https://github.com/SkyyPlayz/Mythos-Writer/pull/866))
+- **Preflight gate is no longer Linux-only** — `npm run preflight` picks its E2E runner per platform: `xvfb-run` only on headless Linux (unchanged CI behavior), direct execution on macOS/Windows or when a display exists. ([#846](https://github.com/SkyyPlayz/Mythos-Writer/issues/846))
+
 ## [0.3.0-beta.2] — 2026-07-03
 
 ### Added
@@ -170,7 +201,9 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Initial internal release.
 
-[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.1...HEAD
+[Unreleased]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.4.0-beta.1...HEAD
+[0.4.0-beta.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.2...v0.4.0-beta.1
+[0.3.0-beta.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.3.0-beta.1...v0.3.0-beta.2
 [0.3.0-beta.1]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0-beta.2...v0.3.0-beta.1
 [0.2.0-beta.2]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.2.0...v0.2.0-beta.2
 [0.2.0]: https://github.com/SkyyPlayz/Mythos-Writer/compare/v0.1.0...v0.2.0
