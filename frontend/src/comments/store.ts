@@ -49,6 +49,23 @@ interface StoryEntry {
 
 type Listener = () => void;
 
+/**
+ * Session-scoped visibility flags (prototype state 3242:
+ * `showComments:true / commentsInFocus:false`). Deliberately NOT persisted —
+ * the prototype resets them per session and they are pure view preferences.
+ */
+export interface CommentsUiState {
+  /** Master toggle — the doc-header/zoombar comments chip. */
+  showComments: boolean;
+  /** Focus-mode override: keep comments visible while panels are hidden. */
+  commentsInFocus: boolean;
+}
+
+const DEFAULT_UI: CommentsUiState = Object.freeze({
+  showComments: true,
+  commentsInFocus: false,
+});
+
 const EMPTY: readonly StoryComment[] = Object.freeze([]);
 
 function newEntry(): StoryEntry {
@@ -64,6 +81,7 @@ function generateCommentId(): string {
 class CommentsStore {
   private entries = new Map<string, StoryEntry>();
   private listeners = new Set<Listener>();
+  private ui: CommentsUiState = DEFAULT_UI;
 
   /** Stable-identity subscribe for useSyncExternalStore. */
   subscribe = (listener: Listener): (() => void) => {
@@ -92,6 +110,21 @@ class CommentsStore {
     return this.entries.get(storyId)?.comments ?? EMPTY;
   }
 
+  /** Visibility flags snapshot (stable reference — useSyncExternalStore-safe). */
+  uiState = (): CommentsUiState => this.ui;
+
+  setShowComments(value: boolean): void {
+    if (this.ui.showComments === value) return;
+    this.ui = { ...this.ui, showComments: value };
+    this.notify();
+  }
+
+  setCommentsInFocus(value: boolean): void {
+    if (this.ui.commentsInFocus === value) return;
+    this.ui = { ...this.ui, commentsInFocus: value };
+    this.notify();
+  }
+
   /**
    * Bind a story to its vault path and load `<storyPath>/comments.json`.
    * Idempotent; safe to call on every story selection. Comments created
@@ -102,6 +135,12 @@ class CommentsStore {
     const e = this.entry(storyId);
     e.storyPath = storyPath;
     if (e.loaded) return;
+    // No vault bridge (unit tests, storybook): nothing on disk to merge —
+    // mark loaded synchronously so React tests never see async notifies.
+    if (typeof window === 'undefined' || typeof window.api?.readVault !== 'function') {
+      e.loaded = true;
+      return;
+    }
     if (!e.loading) {
       e.loading = (async () => {
         const fromDisk = await loadCommentsFile(storyPath);
@@ -182,6 +221,7 @@ class CommentsStore {
   /** Drop all state (unit tests / vault switches that recycle story ids). */
   reset(): void {
     this.entries.clear();
+    this.ui = DEFAULT_UI;
     this.notify();
   }
 }
