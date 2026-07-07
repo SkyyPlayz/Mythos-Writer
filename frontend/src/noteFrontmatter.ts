@@ -40,7 +40,7 @@ function parseInlineList(raw: string): string[] {
 
 /** Quote a scalar for YAML output when it contains characters YAML would misread. */
 export function quoteFrontmatterValue(value: string): string {
-  if (value === '' || /[:#\[\]{}"'\n]|^\s|\s$/.test(value)) {
+  if (value === '' || /[:#[\]{}"'\n]|^\s|\s$/.test(value)) {
     return `"${value.replace(/"/g, "'")}"`;
   }
   return value;
