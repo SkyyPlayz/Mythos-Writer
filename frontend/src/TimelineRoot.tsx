@@ -26,6 +26,13 @@ import {
   resolveTimelineMode,
   deriveAeonTimeline,
 } from './timelineAeon';
+import {
+  mergePlannedIntoTimeline,
+  parsePlanUnits,
+  type PlanUnit,
+  type SkippedPlanFlag,
+} from './timelinePlanBuild';
+import { planNotesFromVault } from './pages/SceneCrafter/crafterState';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineLanes from './TimelineLanes';
 import TimelineRelationships from './TimelineRelationships';
@@ -43,6 +50,33 @@ const MODE_OPTIONS: { value: TimelineMode; label: string }[] = [
   { value: 'relations', label: 'Relationships' },
   { value: 'subway', label: 'Subway' },
 ];
+
+/** M23: cap plan-note reads per load — vaults can hold many plan files. */
+const MAX_PLAN_NOTES = 12;
+
+/** M23: collect planned chapter/scene units from the vault's Story Plan
+ *  notes (Plans/ folder or Plan… names). Degrades to [] on any failure —
+ *  the timeline then renders from written scenes alone. */
+async function loadPlanUnits(api: Window['api']): Promise<PlanUnit[]> {
+  try {
+    if (typeof api.listNotesVault !== 'function' || typeof api.readNotesVault !== 'function') {
+      return [];
+    }
+    const listing = await api.listNotesVault();
+    if ('error' in listing) return [];
+    const plans = planNotesFromVault(listing.items).slice(0, MAX_PLAN_NOTES);
+    const units: PlanUnit[] = [];
+    for (const plan of plans) {
+      try {
+        const res = await api.readNotesVault(`${plan.id}.md`);
+        if (!('error' in res)) units.push(...parsePlanUnits(res.content ?? '', plan.id));
+      } catch { /* unreadable plan note — skip it */ }
+    }
+    return units;
+  } catch {
+    return [];
+  }
+}
 
 const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
   { value: 'none', label: 'None' },
@@ -94,6 +128,8 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   const [aeonData, setAeonData] = useState<AeonTimelineData>(EMPTY_AEON_DATA);
   const [aeonLoading, setAeonLoading] = useState(false);
   const [aeonError, setAeonError] = useState<string | null>(null);
+  // M23: planned scenes skipped behind the last written plan position.
+  const [skippedFlags, setSkippedFlags] = useState<SkippedPlanFlag[]>([]);
 
   const api = window.api;
 
@@ -101,6 +137,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     if (!story) {
       setAeonData(EMPTY_AEON_DATA);
       setAeonError(null);
+      setSkippedFlags([]);
       return;
     }
     let cancelled = false;
@@ -114,28 +151,36 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       entityList('character').catch(() => ({ entities: [] })),
       entityList('event').catch(() => ({ entities: [] })),
       entityList('concept').catch(() => ({ entities: [] })),
+      // M23: vault Story Plans auto-build the timeline (planned-vs-written).
+      loadPlanUnits(api),
     ])
-      .then(([scenesResp, arcsResp, charsResp, eventsResp, conceptsResp]) => {
+      .then(([scenesResp, arcsResp, charsResp, eventsResp, conceptsResp, planUnits]) => {
         if (cancelled) return;
         const toEntity = (e: { id: string; name: string; tags?: string[] }) => ({
           id: e.id,
           name: e.name,
           detail: e.tags?.length ? e.tags.join(', ') : undefined,
         });
+        const realScenes = (scenesResp.scenes ?? []).map(s => ({
+          id: s.id,
+          title: s.title,
+          chapterId: s.chapterId ?? '',
+          date: s.chronologicalTime?.date ?? '',
+          wordCount: s.timelineMetadata?.wordCount ?? null,
+          pov: s.timelineMetadata?.pov ?? '',
+          mood: s.timelineMetadata?.mood ?? '',
+          arcIds: s.entityLinks?.arcs ?? [],
+          characterIds: s.entityLinks?.characterIds ?? [],
+        }));
+        const realChapters = (story.chapters ?? []).map(ch => ({ id: ch.id, title: ch.title }));
+        // M23: merge planned units — unmatched ones become greyscale
+        // "planned from your notes" scenes/chapters; skip-backward flags out.
+        const merged = mergePlannedIntoTimeline(realScenes, realChapters, planUnits);
+        setSkippedFlags(merged.skipped);
         setAeonData(deriveAeonTimeline({
           storyTitle: story.title,
-          scenes: (scenesResp.scenes ?? []).map(s => ({
-            id: s.id,
-            title: s.title,
-            chapterId: s.chapterId ?? '',
-            date: s.chronologicalTime?.date ?? '',
-            wordCount: s.timelineMetadata?.wordCount ?? null,
-            pov: s.timelineMetadata?.pov ?? '',
-            mood: s.timelineMetadata?.mood ?? '',
-            arcIds: s.entityLinks?.arcs ?? [],
-            characterIds: s.entityLinks?.characterIds ?? [],
-          })),
-          chapters: (story.chapters ?? []).map(ch => ({ id: ch.id, title: ch.title })),
+          scenes: merged.scenes,
+          chapters: merged.chapters,
           arcs: (arcsResp.arcs ?? []).map(a => ({ id: a.id, title: a.title, color: a.color })),
           characters: (charsResp.entities ?? []).map(toEntity),
           worldEvents: (eventsResp.entities ?? []).map(toEntity),
@@ -193,9 +238,18 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             you are here · {aeonData.hereLabel}
           </span>
         )}
+        {skippedFlags.length > 0 && (
+          <span
+            className="tlr-legend-item tlr-legend-item--skipped"
+            data-testid="tl-skip-flags"
+            title={skippedFlags.map(f => f.title).join(' · ')}
+          >
+            ⚑ {skippedFlags.length} planned scene{skippedFlags.length === 1 ? '' : 's'} skipped
+          </span>
+        )}
       </span>
     );
-  }, [viewMode, aeonData.hereLabel]);
+  }, [viewMode, aeonData.hereLabel, skippedFlags]);
 
   return (
     <div className="tlr-root" data-testid="timeline-root">
