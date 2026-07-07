@@ -4253,6 +4253,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   focusMode={writingMode === 'focus'}
+                  autoLinkEntities={allEntities}
+                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4273,6 +4275,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   focusMode={writingMode === 'focus'}
+                  autoLinkEntities={allEntities}
+                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
