@@ -401,3 +401,134 @@ test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
     await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
   });
 });
+
+// ─── GH #843 / Beta 3 M9+M10 — editable continuous Full Book view ────────────
+//
+// Typing in the heading-zoom manuscript at Full Book depth must land in the
+// owning scene's file (per-scene storage contract). Self-contained suite: the
+// shared fixture above seeds empty scenes, so this one seeds a real paragraph.
+
+test.describe('GH #843: type in Full Book view persists to the scene file', () => {
+  const BOOK_SCENE_ID = 'gh843-sc-01';
+  const BOOK_BLOCK_ID = 'gh843-b1';
+  let userData: string;
+  let vaultDir: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  function seedBookVault(dir: string): void {
+    const now = new Date(Date.now() - 5_000).toISOString();
+    const chapterDir = path.join(dir, 'Manuscript', STORY_ID, CHAPTER_ID);
+    fs.mkdirSync(chapterDir, { recursive: true });
+    const blocks = [
+      { id: BOOK_BLOCK_ID, type: 'prose', content: 'The bells rang over the harbor.', order: 0, updatedAt: now },
+    ];
+    fs.writeFileSync(
+      path.join(chapterDir, `${BOOK_SCENE_ID}.md`),
+      [
+        '---',
+        `id: ${BOOK_SCENE_ID}`,
+        'title: "Harbor Bells"',
+        'order: 0',
+        'draftState: in-progress',
+        `createdAt: ${now}`,
+        `updatedAt: ${now}`,
+        '---',
+        '',
+        'The bells rang over the harbor.',
+        '',
+        '<!-- BLOCKS_JSON',
+        JSON.stringify(blocks),
+        'END_BLOCKS_JSON -->',
+      ].join('\n'),
+    );
+    const manifest = {
+      schemaVersion: 1,
+      version: '2.0.0',
+      vaultRoot: dir,
+      stories: [
+        {
+          id: STORY_ID,
+          title: 'GH843 Book Story',
+          createdAt: now,
+          updatedAt: now,
+          chapters: [
+            {
+              id: CHAPTER_ID,
+              title: 'Chapter One',
+              order: 0,
+              path: `Manuscript/${STORY_ID}/${CHAPTER_ID}`,
+              createdAt: now,
+              updatedAt: now,
+              scenes: [
+                {
+                  id: BOOK_SCENE_ID,
+                  title: 'Harbor Bells',
+                  path: `Manuscript/${STORY_ID}/${CHAPTER_ID}/${BOOK_SCENE_ID}.md`,
+                  order: 0,
+                  draftState: 'in-progress',
+                  blocks,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      scenes: [],
+      entities: [],
+      suggestions: [],
+      chapters: [],
+      provenance: {},
+      boardReferences: [],
+    };
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  }
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gh843-'));
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gh843-vault-'));
+    seedBookVault(vaultDir);
+    seedUserData(userData, vaultDir);
+    app = await launchApp(userData);
+    page = await app.firstWindow();
+    page.on('dialog', (d) => d.dismiss().catch(() => {}));
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
+    const sceneRow = page.locator('.nav-scene-row').first();
+    await expect(sceneRow).toBeVisible({ timeout: 10_000 });
+    await sceneRow.click();
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test('GH843-01: editing a paragraph at Full Book depth writes the owning scene file', async () => {
+    // Enter Full Book depth → the continuous heading-zoom manuscript renders.
+    await page.getByTestId('depth-slider').getByRole('button', { name: /full book/i }).click();
+    await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
+    await expect(page.getByTestId('msv-root')).toBeVisible({ timeout: 4_000 });
+
+    const para = page.getByTestId(`msv-para-${BOOK_BLOCK_ID}`);
+    await expect(para).toBeVisible({ timeout: 4_000 });
+    await expect(para).toHaveText('The bells rang over the harbor.');
+
+    // Rewrite the paragraph inline; Enter commits (prototype behavior).
+    await para.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Nine bells, counted twice.');
+    await page.keyboard.press('Enter');
+
+    // The edit lands in the scene's own markdown file — per-scene storage
+    // contract from #631/#843 (no whole-book writes).
+    const scenePath = path.join(vaultDir, 'Manuscript', STORY_ID, CHAPTER_ID, `${BOOK_SCENE_ID}.md`);
+    await expect
+      .poll(() => fs.readFileSync(scenePath, 'utf8'), { timeout: 10_000 })
+      .toContain('Nine bells, counted twice.');
+  });
+});

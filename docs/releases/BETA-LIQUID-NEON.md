@@ -39,7 +39,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M8 | Panels restyle + live status bar | B Shell | CP1 | ✅ | #854 |
 | — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
 | M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
-| M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | ⏳ | |
+| M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | 🔨 | branch `claude/beta3-m10-toolbar` (built + validated; PR pending) |
 | M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ⏳ | |
 | M12 | Drafts & diff UI | C Story | M9 | 🔀 | #859 |
 | M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ⏳ | |
@@ -105,7 +105,7 @@ after a baseline commit require an empty-commit push ("re-kick").
 
 ### 3) Remaining milestones (not started)
 
-M10 (toolbar v2/page modes), M11 (comments), M13 (TTS reader), M16 (wiki
+M11 (comments), M13 (TTS reader), M16 (wiki
 links/metadata), M22–M23 (agents — also wire the tab-strip `agentsActive`
 chip and the notes-tree `onBetaRead`/`onContinuityCheck` props left disabled
 in M6/M15), M24 (settings remainder/import), M25 (wizard), M26 (release).
