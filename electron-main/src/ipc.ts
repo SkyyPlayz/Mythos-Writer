@@ -495,6 +495,9 @@ export const IPC_CHANNELS = {
   ARCHIVE_CONT_SCAN_START: 'archive:cont-scan-start',
   ARCHIVE_CONT_SCAN_RESULT: 'archive:cont-scan-result',
   ARCHIVE_CONT_SCAN_ERROR: 'archive:cont-scan-error',
+  // Beta 3 M23: a continuity item was resolved/ignored (from the Continuity
+  // panel or a manuscript comment's agent actions) — keeps both surfaces live.
+  ARCHIVE_CONT_ITEM_RESOLVED: 'archive:cont-item-resolved',
 
   // SKY-1758: Scene Crafter board IPC
   SCENE_CRAFTER_GET_BOARD: 'scene-crafter:get-board',
@@ -3297,6 +3300,17 @@ export interface ArchiveContScanResultEvent {
 export interface ArchiveContScanErrorEvent {
   sceneId: string;
   error: string;
+}
+
+/** Beta 3 M23: broadcast after archive:resolve-continuity — or after an
+ *  archive:confirm that resolved a continuity item via a manuscript comment's
+ *  agent actions — so every surface (Continuity panel, comments gutter) can
+ *  drop the flag without polling. */
+export interface ArchiveContItemResolvedEvent {
+  itemId: string;
+  sceneId: string;
+  status: 'resolved' | 'ignored';
+  action: ResolutionAction;
 }
 
 // ─── Liquid Neon background image (MYT-613) ────
