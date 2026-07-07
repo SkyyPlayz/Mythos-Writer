@@ -68,13 +68,28 @@ if $FAST; then
   exit 0
 fi
 
-if ! command -v xvfb-run >/dev/null 2>&1; then
-  abort "xvfb-run not found — install with: sudo apt-get install xvfb"
+# ── E2E runner selection (GH#846: platform-aware, no hard xvfb-run gate) ─────
+# - Linux without a display (headless — exactly what CI's ubuntu runners are):
+#   wrap every suite in `xvfb-run --auto-servernum`, unchanged from before.
+# - Linux with a live display, macOS, and Windows (MINGW/MSYS/Cygwin):
+#   run Playwright/Electron directly against the real display; Xvfb does not
+#   exist on macOS/Windows and is unnecessary when a display is present.
+E2E_PREFIX=""
+if [ "$(uname -s)" = "Linux" ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  if command -v xvfb-run >/dev/null 2>&1; then
+    E2E_PREFIX="xvfb-run --auto-servernum"
+  else
+    abort "headless Linux needs xvfb-run for E2E — install with: sudo apt-get install xvfb (or run inside a desktop session)"
+  fi
 fi
 
 e2e() {
   local label="$1"; shift
-  xvfb-run --auto-servernum npm run "$@" || abort "e2e $label"
+  if [ -n "$E2E_PREFIX" ]; then
+    $E2E_PREFIX npm run "$@" || abort "e2e $label"
+  else
+    npm run "$@" || abort "e2e $label"
+  fi
   pass "E2E $label"
 }
 
