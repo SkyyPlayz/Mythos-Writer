@@ -2424,3 +2424,185 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
   });
 });
+
+// ─── M19: chat restyle extras + activity feed + board tools/zoom/search ──────
+
+describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
+  it('suggestion chips send their text through the streaming path without touching the composer', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'my half-typed thought' },
+    });
+
+    const chips = screen.getAllByTestId('bs-suggest-chip');
+    expect(chips).toHaveLength(3);
+    // act(async) so submitText's context-fetch microtasks drain inside act.
+    await act(async () => {
+      fireEvent.click(chips[0]);
+    });
+
+    // The chip text lands as the user bubble; the composer keeps its draft
+    // (prototype sendBs keeps bsInput when a preset chip fires, line 3761).
+    const userBubble = document.querySelector('.bs-user-bubble');
+    expect(userBubble).toHaveTextContent('Introduce a new location in my world');
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('my half-typed thought');
+
+    await simulateStream(['A hidden harbor city.']);
+
+    await waitFor(() =>
+      expect(screen.getByText('A hidden harbor city.')).toBeInTheDocument(),
+    );
+    const apiMessages = mockStreamStart.mock.calls[0][0].messages;
+    expect(apiMessages[apiMessages.length - 1]).toEqual({
+      role: 'user',
+      content: 'Introduce a new location in my world',
+    });
+  });
+
+  it('shows the extraction badge while streaming and hides it after', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByTestId('bs-extract-badge')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Tell me about my world' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+
+    expect(screen.getByTestId('bs-extract-badge')).toHaveTextContent('Extracting facts to vault');
+    // Chips are disabled while a reply streams.
+    for (const chip of screen.getAllByTestId('bs-suggest-chip')) {
+      expect(chip).toBeDisabled();
+    }
+
+    await simulateStream(['All quiet.']);
+    await waitFor(() =>
+      expect(screen.queryByTestId('bs-extract-badge')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('logs real fact-extraction and note-filing events to the activity feed with live stats', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const feed = screen.getByTestId('bs-activity-feed');
+    expect(feed).toHaveTextContent('Agent actions land here');
+    expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('0');
+    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('0');
+    expect(screen.getByTestId('bs-stat-queued')).toHaveTextContent('0');
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+
+    await simulateStream(['Great idea! [FACT:character|Zara|A cunning rogue]']);
+
+    await waitFor(() => {
+      expect(feed).toHaveTextContent('Detected 1 fact — filing to your vault');
+      expect(feed).toHaveTextContent('Created note — “Zara” (Character)');
+    });
+    expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('1');
+    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('1');
+
+    // New Session clears the feed and the derived counters.
+    fireEvent.click(screen.getByRole('button', { name: /new session/i }));
+    expect(screen.getByTestId('bs-activity-feed')).toHaveTextContent('Agent actions land here');
+    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('0');
+  });
+});
+
+describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
+  function seedThreeIdeas() {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [
+        { id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 },
+        { id: 'fact-b', type: 'character', name: 'Kael Thorne', content: 'A guarded smuggler', savedStatus: 'saved', createdAt: 1001 },
+        { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern', savedStatus: 'saved', createdAt: 1002 },
+      ],
+    }));
+  }
+
+  it('renders the prototype tool palette with select active; other tools toast as staged', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    expect(screen.getByRole('toolbar', { name: 'Board tools' })).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'true');
+    for (const key of ['connect', 'frame', 'text']) {
+      expect(screen.getByTestId(`bsc-tool-${key}`)).toHaveAttribute('aria-pressed', 'false');
+    }
+
+    fireEvent.click(screen.getByTestId('bsc-tool-connect'));
+    expect(screen.getByTestId('bsc-tool-connect')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Connect ideas tool — coming soon')).toBeInTheDocument();
+  });
+
+  it('zoom steps ±25 between 50% and 200% and scales the board columns', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    const pct = screen.getByTestId('bsc-zoom-pct');
+    expect(pct).toHaveTextContent('100%');
+
+    fireEvent.click(screen.getByTestId('bsc-zoom-in'));
+    expect(pct).toHaveTextContent('125%');
+    const cols = screen.getByTestId('bsc-board').querySelector('.bsc-board-cols') as HTMLElement;
+    expect(cols.style.transform).toBe('scale(1.25)');
+
+    // Clamp at 200%…
+    for (let i = 0; i < 5; i++) fireEvent.click(screen.getByTestId('bsc-zoom-in'));
+    expect(pct).toHaveTextContent('200%');
+    // …and at 50%.
+    for (let i = 0; i < 10; i++) fireEvent.click(screen.getByTestId('bsc-zoom-out'));
+    expect(pct).toHaveTextContent('50%');
+  });
+
+  it('idea search filters Board, Map, and Clusters and updates the status bar', () => {
+    seedThreeIdeas();
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    // Search is hidden in chat mode, visible in the visual modes.
+    const search = screen.getByTestId('bsc-search-input');
+    fireEvent.change(search, { target: { value: 'aria' } });
+
+    expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-card-fact-b')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-card-fact-c')).not.toBeInTheDocument();
+    expect(screen.getByText('1 of 3 ideas')).toBeInTheDocument();
+
+    // The query carries into Map (hubs collapse to matching groups)…
+    fireEvent.click(screen.getByTestId('bsc-mode-map'));
+    expect(screen.getByTestId('bsc-hub-character')).toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-hub-location')).not.toBeInTheDocument();
+
+    // …and Clusters.
+    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
+    expect(screen.getByTestId('bsc-cluster-character')).toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-cluster-location')).not.toBeInTheDocument();
+
+    // Clearing the query restores everything.
+    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: '' } });
+    expect(screen.getByTestId('bsc-cluster-location')).toBeInTheDocument();
+    expect(screen.getByText('3 ideas')).toBeInTheDocument();
+  });
+
+  it('search matches idea bodies as well as titles', () => {
+    seedThreeIdeas();
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: 'underground' } });
+    expect(screen.getByTestId('bsc-card-fact-c')).toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-card-fact-a')).not.toBeInTheDocument();
+  });
+});
