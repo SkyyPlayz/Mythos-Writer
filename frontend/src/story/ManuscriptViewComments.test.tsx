@@ -166,14 +166,23 @@ describe('selection comment bar', () => {
     );
   });
 
+<<<<<<< HEAD
   it('renders the Read action enabled — wired to the M13 reader', () => {
     // (Reader behavior itself is covered in ManuscriptViewReader.test.tsx.)
+=======
+  it('renders the Read affordance disabled until the M13 reader lands', () => {
+>>>>>>> origin/main
     renderView();
     mockSelection('counted the bells');
     fireEvent.mouseUp(screen.getByTestId('msv-page'));
     const read = screen.getByTestId('msv-selbar-read');
+<<<<<<< HEAD
     expect(read).toBeEnabled();
     expect(read).toHaveAttribute('title', 'Read this selection aloud');
+=======
+    expect(read).toBeDisabled();
+    expect(read).toHaveAttribute('title', expect.stringContaining('M13'));
+>>>>>>> origin/main
   });
 });
 

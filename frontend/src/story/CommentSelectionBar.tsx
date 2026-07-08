@@ -2,8 +2,13 @@
 //
 // Sticky pill that appears over the manuscript page when the writer selects
 // 4–219 chars of prose: shows the clipped selection, a comment input, the
+<<<<<<< HEAD
 // yellow Comment button, a Read action (M13 — speaks the selection through
 // the manuscript TTS reader), and cancel.
+=======
+// yellow Comment button, a Read affordance (disabled until the M13 reader
+// wires a handler), and cancel.
+>>>>>>> origin/main
 
 import type { KeyboardEvent } from 'react';
 import './CommentsGutter.css';
@@ -16,8 +21,13 @@ export interface CommentSelectionBarProps {
   onSave: () => void;
   onCancel: () => void;
   /**
+<<<<<<< HEAD
    * Read-the-selection-aloud (M13 TTS reader). Kept optional so harnesses
    * without a reader render a clearly-marked disabled affordance.
+=======
+   * Read-the-selection-aloud. Optional — until the M13 TTS reader lands the
+   * button renders as a clearly-marked disabled affordance (M15 pattern).
+>>>>>>> origin/main
    */
   onRead?: () => void;
 }

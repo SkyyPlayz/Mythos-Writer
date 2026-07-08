@@ -67,3 +67,57 @@ describe('WikiLinkResolutionExtension decorations', () => {
     expect(span?.classList.contains('wiki-link-unresolved')).toBe(false);
   });
 });
+
+// ─── M16 (Beta 3): scene-kind decoration + rich meta payload ───
+
+function makeEditorWithMeta(content: string, meta: unknown) {
+  const editor = new Editor({
+    extensions: [StarterKit, WikiLink, WikiLinkResolutionExtension, Markdown],
+    content,
+  });
+  editor.view.dispatch(editor.state.tr.setMeta(WIKI_LINK_RESOLUTION_META, meta));
+  return editor;
+}
+
+describe('WikiLinkResolutionExtension scene-kind decorations (M16)', () => {
+  it('marks a link resolving to a scene with .wiki-link-scene', () => {
+    const editor = makeEditorWithMeta('[[Opening Scene]]', {
+      resolvedTitles: new Set(['opening scene']),
+      sceneTitles: new Set(['opening scene']),
+    });
+    const span = editor.view.dom.querySelector('span[data-wiki-link]');
+    editor.destroy();
+    expect(span?.classList.contains('wiki-link-scene')).toBe(true);
+    expect(span?.classList.contains('wiki-link-unresolved')).toBe(false);
+  });
+
+  it('leaves a note link without the scene class', () => {
+    const editor = makeEditorWithMeta('[[Elara Voss]]', {
+      resolvedTitles: new Set(['elara voss', 'opening scene']),
+      sceneTitles: new Set(['opening scene']),
+    });
+    const span = editor.view.dom.querySelector('span[data-wiki-link]');
+    editor.destroy();
+    expect(span?.classList.contains('wiki-link-scene')).toBe(false);
+    expect(span?.classList.contains('wiki-link-unresolved')).toBe(false);
+  });
+
+  it('unresolved wins over scene when the stem is not in resolvedTitles', () => {
+    const editor = makeEditorWithMeta('[[Ghost Scene]]', {
+      resolvedTitles: new Set(),
+      sceneTitles: new Set(['ghost scene']),
+    });
+    const span = editor.view.dom.querySelector('span[data-wiki-link]');
+    editor.destroy();
+    expect(span?.classList.contains('wiki-link-unresolved')).toBe(true);
+    expect(span?.classList.contains('wiki-link-scene')).toBe(false);
+  });
+
+  it('still accepts the legacy bare-Set meta shape (back-compat)', () => {
+    const editor = makeEditorWithMeta('[[Elara Voss]]', new Set(['elara voss']));
+    const span = editor.view.dom.querySelector('span[data-wiki-link]');
+    editor.destroy();
+    expect(span?.classList.contains('wiki-link-unresolved')).toBe(false);
+    expect(span?.classList.contains('wiki-link-scene')).toBe(false);
+  });
+});

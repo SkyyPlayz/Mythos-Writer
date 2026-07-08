@@ -176,6 +176,7 @@
   box-shadow: 0 0 12px -4px rgba(255, 211, 25, 0.5);
 }
 
+<<<<<<< HEAD
 /* ── M13: reader chip in the zoombar (prototype Read toolbar button 748) ── */
 
 .msv-reader-chip {
@@ -200,6 +201,8 @@
   box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.5));
 }
 
+=======
+>>>>>>> origin/main
 /* ── M11: page + gutter row (prototype 806) ── */
 
 .msv-body {

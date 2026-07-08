@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveCrossTabLink, buildWikiLinkTitleIndex, isWikiLinkTargetResolved } from './crossTabLinkResolver';
+import { resolveCrossTabLink, buildWikiLinkTitleIndex, isWikiLinkTargetResolved, buildSceneWikiLinkTitleIndex, wikiLinkTargetStem, notePathForUnresolvedLink, buildUnresolvedLinkNote } from './crossTabLinkResolver';
 import type { EntityEntry, Story } from './types';
 
 const now = '2026-06-17T00:00:00.000Z';
@@ -324,5 +324,62 @@ describe('buildWikiLinkTitleIndex / isWikiLinkTargetResolved (SKY-5702)', () => 
   it('treats an empty target as resolved (nothing to flag as broken)', () => {
     const index = buildWikiLinkTitleIndex({ stories: [], entities: [] });
     expect(isWikiLinkTargetResolved('', index)).toBe(true);
+  });
+});
+
+// ─── M16 (Beta 3): scene-title index + unresolved-click note creation ───
+
+describe('buildSceneWikiLinkTitleIndex', () => {
+  it('indexes scene titles and path stems, normalized', () => {
+    const index = buildSceneWikiLinkTitleIndex([story()]);
+    expect(index.has('opening scene')).toBe(true);
+    expect(index.size).toBeGreaterThan(0);
+  });
+
+  it('does not index chapter or story titles', () => {
+    const index = buildSceneWikiLinkTitleIndex([story()]);
+    expect(index.has('chapter one')).toBe(false);
+    expect(index.has('test story')).toBe(false);
+  });
+});
+
+describe('wikiLinkTargetStem', () => {
+  it('strips anchors and aliases and trims', () => {
+    expect(wikiLinkTargetStem('The Sunken Gate#Architecture')).toBe('The Sunken Gate');
+    expect(wikiLinkTargetStem('The Sunken Gate|the gate')).toBe('The Sunken Gate');
+    expect(wikiLinkTargetStem('  Drownlight  ')).toBe('Drownlight');
+  });
+});
+
+describe('notePathForUnresolvedLink', () => {
+  it('builds a vault-root .md path from the stem', () => {
+    expect(notePathForUnresolvedLink('Drownlight')).toBe('Drownlight.md');
+    expect(notePathForUnresolvedLink('Drownlight|glow')).toBe('Drownlight.md');
+    expect(notePathForUnresolvedLink('Drownlight#legend')).toBe('Drownlight.md');
+  });
+
+  it('sanitizes filesystem-hostile characters cross-platform', () => {
+    // `|j` is an alias suffix and is stripped before sanitizing.
+    expect(notePathForUnresolvedLink('a/b\\c:d*e?f"g<h>i|j')).toBe('a-b-c-d-e-f-g-h-i.md');
+  });
+
+  it('returns null for empty or dot-only stems', () => {
+    expect(notePathForUnresolvedLink('')).toBeNull();
+    expect(notePathForUnresolvedLink('   ')).toBeNull();
+    expect(notePathForUnresolvedLink('..')).toBeNull();
+  });
+});
+
+describe('buildUnresolvedLinkNote', () => {
+  it('writes the M15 template frontmatter contract (quoted title + createdAt)', () => {
+    const md = buildUnresolvedLinkNote('Drownlight', '2026-07-07T00:00:00.000Z');
+    expect(md.startsWith('---\ntitle: "Drownlight"\ncreatedAt: 2026-07-07T00:00:00.000Z\n---\n')).toBe(true);
+    expect(md).toContain('# Drownlight');
+  });
+
+  it('uses the stem (alias/anchor stripped) and defuses double quotes', () => {
+    const md = buildUnresolvedLinkNote('The "Deep"|deep#x', '2026-07-07T00:00:00.000Z');
+    expect(md).toContain(`title: "The 'Deep'"`);
+    expect(md).toContain(`# The "Deep"`);
   });
 });
