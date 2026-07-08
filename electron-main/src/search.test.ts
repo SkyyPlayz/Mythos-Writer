@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
-import { buildFullIndex, indexDocument, deleteDocumentFromIndex, searchVault } from './search.js';
+import { buildFullIndex, indexDocument, deleteDocumentFromIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import type { Manifest } from './ipc.js';
 
 // ─── In-memory DB with migration 7 schema ───
@@ -305,5 +305,104 @@ describe('search subsystem', () => {
 
     expect(elapsed).toBeLessThan(200);
     expect(results.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── Incremental update planning (perf-audit: watcher reindex rework) ───
+
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+function manifestWithScenes(): Manifest {
+  const m = emptyManifest();
+  m.stories = [
+    {
+      id: 'st-1', title: 'Story', path: 'stories/st-1', createdAt: '', updatedAt: '',
+      chapters: [
+        {
+          id: 'ch-1', title: 'Ch', path: 'stories/st-1/chapters/ch-1', order: 0, createdAt: '', updatedAt: '',
+          scenes: [
+            { id: 'sc-1', title: 'Gate', path: 'stories/st-1/chapters/ch-1/scenes/sc-1.md', order: 0, chapterId: 'ch-1', storyId: 'st-1', blocks: [], draftState: 'in-progress', createdAt: '', updatedAt: '' },
+            { id: 'sc-2', title: 'Tower', path: 'stories/st-1/chapters/ch-1/scenes/sc-2.md', order: 1, chapterId: 'ch-1', storyId: 'st-1', blocks: [], draftState: 'in-progress', createdAt: '', updatedAt: '' },
+          ],
+        },
+      ],
+    },
+  ] as Manifest['stories'];
+  return m;
+}
+
+describe('planFtsUpdate', () => {
+  it('returns an empty incremental plan for no changes', () => {
+    const plan = planFtsUpdate(manifestWithScenes(), []);
+    expect(plan).toEqual({ kind: 'incremental', docs: [] });
+  });
+
+  it('maps changed scene paths to per-document plans', () => {
+    const plan = planFtsUpdate(manifestWithScenes(), ['stories/st-1/chapters/ch-1/scenes/sc-2.md']);
+    expect(plan.kind).toBe('incremental');
+    if (plan.kind === 'incremental') {
+      expect(plan.docs).toEqual([
+        { docId: 'sc-2', relPath: 'stories/st-1/chapters/ch-1/scenes/sc-2.md', title: 'Tower' },
+      ]);
+    }
+  });
+
+  it('normalizes Windows separators in changed paths', () => {
+    const plan = planFtsUpdate(manifestWithScenes(), ['stories\\st-1\\chapters\\ch-1\\scenes\\sc-1.md']);
+    expect(plan.kind).toBe('incremental');
+  });
+
+  it('falls back to full rebuild for unknown paths (deletes/renames)', () => {
+    const plan = planFtsUpdate(manifestWithScenes(), ['stories/st-1/chapters/ch-1/scenes/deleted.md']);
+    expect(plan).toEqual({ kind: 'full' });
+  });
+
+  it('falls back to full rebuild past the incremental cap', () => {
+    const changed = Array.from({ length: 51 }, (_, i) => `stories/x/${i}.md`);
+    expect(planFtsUpdate(manifestWithScenes(), changed, 50)).toEqual({ kind: 'full' });
+  });
+});
+
+describe('indexSceneFromDisk / refreshEntityIndex', () => {
+  let vaultRoot: string;
+  let db: DatabaseSync;
+
+  beforeEach(() => {
+    vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-search-inc-'));
+    db = makeDb();
+  });
+
+  it('indexes a scene from its markdown file and finds new prose', () => {
+    const rel = 'stories/st-1/chapters/ch-1/scenes/sc-1.md';
+    fs.mkdirSync(path.dirname(path.join(vaultRoot, rel)), { recursive: true });
+    fs.writeFileSync(path.join(vaultRoot, rel), '---\nid: sc-1\n---\n\nThe drowned tower bell rang.');
+    indexSceneFromDisk(db, vaultRoot, { docId: 'sc-1', relPath: rel, title: 'Gate' });
+    const results = searchVault(db, 'drowned', 'both');
+    expect(results).toHaveLength(1);
+    expect(results[0].docId).toBe('sc-1');
+
+    // Re-index with updated prose replaces (not duplicates) the doc.
+    fs.writeFileSync(path.join(vaultRoot, rel), '---\nid: sc-1\n---\n\nThe lantern guttered.');
+    indexSceneFromDisk(db, vaultRoot, { docId: 'sc-1', relPath: rel, title: 'Gate' });
+    expect(searchVault(db, 'drowned', 'both')).toHaveLength(0);
+    expect(searchVault(db, 'lantern', 'both')).toHaveLength(1);
+  });
+
+  it('indexes title-only when the scene file is unreadable', () => {
+    indexSceneFromDisk(db, vaultRoot, { docId: 'sc-x', relPath: 'stories/missing.md', title: 'Ghost Chapter' });
+    expect(searchVault(db, 'ghost', 'both')).toHaveLength(1);
+  });
+
+  it('refreshes entity docs bounded by entity count', () => {
+    const m = emptyManifest();
+    m.entities = [
+      { id: 'en-1', name: 'Mira', type: 'character', path: 'Characters/Mira.md', aliases: ['The Causeway Girl'], tags: [], createdAt: '', updatedAt: '' },
+    ] as Manifest['entities'];
+    refreshEntityIndex(db, vaultRoot, m);
+    const results = searchVault(db, 'causeway', 'both');
+    expect(results).toHaveLength(1);
+    expect(results[0].docId).toBe('en-1');
   });
 });

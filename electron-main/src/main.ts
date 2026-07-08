@@ -426,7 +426,7 @@ import {
   migrateSecretsFromSettingsFile,
   persistSecretsAndStripSettings,
 } from './secrets/migration.js';
-import { indexDocument, buildFullIndex, searchVault } from './search.js';
+import { indexDocument, buildFullIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import {
@@ -840,8 +840,9 @@ function notifyVaultChanged(filePath: string) {
       return;
     }
     mainWindow.webContents.send('vault:file-changed', { path: relativePath });
-    // Debounced reindex — auto-sync markdown prose back to manifest
-    scheduleReindex();
+    // Debounced reindex — auto-sync markdown prose back to manifest.
+    // Passing the path lets the FTS refresh stay incremental.
+    scheduleReindex(relativePath);
   }
 }
 
@@ -860,23 +861,66 @@ function notifyNotesVaultChanged(filePath: string) {
   }
 }
 
+// Debounced watcher-driven reindex. Perf-audit rework: this used to run an
+// uncached full-vault reindex, rewrite the all-prose manifest, and rebuild
+// the whole FTS index (DELETE-all + full-vault re-read) on EVERY change
+// event — all synchronous on the main event loop, with cost growing with
+// vault size. It now (a) reuses the persisted mtime+size warm-start cache so
+// unchanged files are stat-only, (b) skips the manifest rewrite when nothing
+// changed, and (c) refreshes FTS per-document, falling back to a full
+// rebuild only for deletes/renames/large bursts.
 let reindexTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleReindex() {
+const pendingReindexPaths = new Set<string>();
+let pendingEntityRefresh = false;
+const REINDEX_INCREMENTAL_MAX = 50;
+
+function scheduleReindex(changedRelPath?: string) {
+  if (changedRelPath === undefined) {
+    // Notes-vault change — entity docs may need a refresh.
+    pendingEntityRefresh = true;
+  } else {
+    pendingReindexPaths.add(changedRelPath);
+  }
   if (reindexTimer) clearTimeout(reindexTimer);
   reindexTimer = setTimeout(() => {
-    try {
-      const vaultRoot = getVaultRoot();
-      const manifestPath = getManifestPath();
-      const manifest = readManifest(manifestPath);
-      const { manifest: updated } = reindexVault(vaultRoot, manifest);
-      writeManifest(manifestPath, updated);
-      // Rebuild FTS index after manifest reindex (incremental on file change)
-      try { buildFullIndex(getDb(), vaultRoot, updated); } catch { /* non-fatal */ }
-    } catch {
-      // non-fatal — next open will reindex
-    }
     reindexTimer = null;
+    runScheduledReindex();
   }, 1000);
+}
+
+function runScheduledReindex(): void {
+  const changed = [...pendingReindexPaths];
+  pendingReindexPaths.clear();
+  const entityRefresh = pendingEntityRefresh;
+  pendingEntityRefresh = false;
+  try {
+    const vaultRoot = getVaultRoot();
+    const manifestPath = getManifestPath();
+    const manifest = readManifest(manifestPath);
+    const cacheDir = getVaultIndexCacheDir();
+    const cache = loadVaultIndexCache(cacheDir, vaultRoot, app.getVersion(), SCHEMA_VERSION);
+    const { manifest: updated, updated: updatedCount, cacheEntries } = reindexVault(vaultRoot, manifest, cache);
+    saveVaultIndexCache(cacheDir, vaultRoot, {
+      appVersion: app.getVersion(),
+      schemaVersion: SCHEMA_VERSION,
+      entries: cacheEntries,
+    });
+    // The manifest embeds every scene's prose — only rewrite it when the
+    // reindex actually pulled changed prose in from disk.
+    if (updatedCount > 0) writeManifest(manifestPath, updated);
+    try {
+      const db = getDb();
+      const plan = planFtsUpdate(updated, changed, REINDEX_INCREMENTAL_MAX);
+      if (plan.kind === 'full') {
+        buildFullIndex(db, vaultRoot, updated);
+      } else {
+        for (const doc of plan.docs) indexSceneFromDisk(db, vaultRoot, doc);
+        if (entityRefresh) refreshEntityIndex(db, vaultRoot, updated);
+      }
+    } catch { /* non-fatal */ }
+  } catch {
+    // non-fatal — next open will reindex
+  }
 }
 
 // Registration token gate lives in ./registrationToken.ts (MYT-360 / MYT-367)
@@ -3368,6 +3412,12 @@ const handlers: IpcHandlers = {
     });
 
     writeManifest(getManifestPath(), manifest);
+
+    // Keep FTS fresh for this scene directly: the vault watcher now ignores
+    // the app's own writes, so saves no longer trigger the reindex path.
+    try {
+      indexDocument(getDb(), { docId: found.id, vault: 'story', kind: 'scene', title: found.title, body: payload.prose });
+    } catch { /* non-fatal — search lags one save until next full index */ }
 
     // SKY-1611: Create a SQLite draft snapshot on manual save (not autosave)
     if ((payload.intent ?? 'save') !== 'auto') {
