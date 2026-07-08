@@ -7479,6 +7479,14 @@ Then write a short summary paragraph. If no issues are found, say so and output 
 // ─── Writing Assistant scan core (MYT-711) ───
 // Shared logic for both the WRITING_SCAN IPC handler and the scheduled heartbeat.
 // Returns tips and upserts each as a suggestion row.
+
+// Perf audit P2: scheduler-initiated provider streams previously had no
+// AbortSignal — a hung provider held the tick's async chain (and, with the
+// in-flight guards below, would suppress every subsequent tick) forever.
+// Each scan now gets its own controller aborted by a wall-clock timeout,
+// cleared in `finally` so a completed scan never leaves a live timer.
+const SCAN_STREAM_TIMEOUT_MS = 120_000;
+
 async function runWritingScan(
   prose: string,
   scenePath: string,
@@ -7488,6 +7496,8 @@ async function runWritingScan(
   const startedAt = Date.now();
   let genError: string | null = null;
   const scannedAt = new Date().toISOString();
+  const scanAbort = new AbortController();
+  const scanTimeout = setTimeout(() => scanAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
 
   try {
     let text = '';
@@ -7504,6 +7514,7 @@ async function runWritingScan(
         ].join('\n'),
       }],
       maxTokens: 512,
+      signal: scanAbort.signal,
     })) {
       text += token;
     }
@@ -7524,6 +7535,7 @@ async function runWritingScan(
     genError = (err as Error).message ?? 'unknown error';
     throw err;
   } finally {
+    clearTimeout(scanTimeout);
     const digest = crypto.createHash('sha256').update(prose.slice(0, 100)).digest('hex');
     try {
       insertGenerationLog({
@@ -7576,6 +7588,10 @@ function registerWritingScanHandler(): void {
 // agents.writingAssistant.scanIntervalSeconds; restarts when settings change.
 
 let writingScanTimer: ReturnType<typeof setInterval> | null = null;
+// Perf audit P2: re-entrancy guard — when a tick's scan outlives the interval
+// (slow provider), overlapping ticks previously piled up unbounded concurrent
+// scans. A skipped tick does nothing at all (no budget check, no manifest read).
+let writingScanInFlight = false;
 
 function stopWritingScanScheduler(): void {
   if (writingScanTimer !== null) {
@@ -7592,6 +7608,8 @@ function startWritingScanScheduler(): void {
   const intervalMs = (settings.agents.writingAssistant.scanIntervalSeconds ?? 30) * 1000;
 
   writingScanTimer = setInterval(async () => {
+    if (writingScanInFlight) return; // previous tick still running — skip entirely
+    writingScanInFlight = true;
     try {
       const currentSettings = loadAppSettings();
       if (!currentSettings.agents.writingAssistant.enabled) return;
@@ -7656,6 +7674,9 @@ function startWritingScanScheduler(): void {
         }
       });
     } catch { /* non-fatal — scheduler must not crash the main process */ }
+    finally {
+      writingScanInFlight = false;
+    }
   }, intervalMs);
 }
 
@@ -7691,6 +7712,8 @@ function registerBetaReadScanHandler(): void {
     const scannedAt = new Date().toISOString();
     const startedAt = Date.now();
     let genError: string | null = null;
+    const scanAbort = new AbortController();
+    const scanTimeout = setTimeout(() => scanAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
 
     try {
       let betaText = '';
@@ -7707,6 +7730,7 @@ function registerBetaReadScanHandler(): void {
           ].join('\n'),
         }],
         maxTokens: 1024,
+        signal: scanAbort.signal,
       })) {
         betaText += token;
       }
@@ -7730,6 +7754,7 @@ function registerBetaReadScanHandler(): void {
       genError = (err as Error).message ?? 'unknown error';
       throw err;
     } finally {
+      clearTimeout(scanTimeout);
       const digest = crypto.createHash('sha256').update(payload.prose.slice(0, 100)).digest('hex');
       try {
         insertGenerationLog({
@@ -7858,12 +7883,15 @@ async function runArchiveContScan(
   const startedAt = Date.now();
   let text = '';
   let llmError: string | null = null;
+  const scanAbort = new AbortController();
+  const scanTimeout = setTimeout(() => scanAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
 
   try {
     for await (const token of streamFromProvider(providerConfig, {
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
       maxTokens: 1024,
+      signal: scanAbort.signal,
     })) {
       text += token;
     }
@@ -7880,6 +7908,7 @@ async function runArchiveContScan(
     });
     return [];
   } finally {
+    clearTimeout(scanTimeout);
     try {
       insertGenerationLog({
         id: crypto.randomUUID(),
@@ -7980,6 +8009,9 @@ function reSurfaceIgnoredItems(sceneId: string, currentProse: string): void {
 // Fires at archiveScanInterval seconds; backs off after 3 consecutive zero-issue scans.
 
 let archiveContScanTimer: ReturnType<typeof setInterval> | null = null;
+// Perf audit P2: re-entrancy guard — see writingScanInFlight. A skipped tick
+// does nothing at all (no settings load, no manifest read, no re-surface pass).
+let archiveContScanInFlight = false;
 let _archiveZeroIssueStreak = 0;
 const ARCHIVE_HEARTBEAT_MIN_SEC = 60;
 const ARCHIVE_HEARTBEAT_MAX_SEC = 7200;
@@ -8004,6 +8036,8 @@ function startArchiveContScheduler(): void {
   _archiveZeroIssueStreak = 0;
 
   const tick = async () => {
+    if (archiveContScanInFlight) return; // previous tick still running — skip entirely
+    archiveContScanInFlight = true;
     try {
       const currentSettings = loadAppSettings();
       if (!currentSettings.archiveContinuityEnabled) return;
@@ -8064,6 +8098,9 @@ function startArchiveContScheduler(): void {
         _archiveZeroIssueStreak = 0;
       }
     } catch { /* non-fatal — scheduler must not crash main process */ }
+    finally {
+      archiveContScanInFlight = false;
+    }
   };
 
   archiveContScanTimer = setInterval(tick, currentIntervalMs);

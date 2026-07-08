@@ -152,6 +152,21 @@ describe('Anthropic routing (§1)', () => {
       collectTokens(streamFromProvider(makeAnthropicConfig({ apiKey: undefined }), makeReq())),
     ).rejects.toThrow(/api key/i);
   });
+
+  it('forwards the request signal to the SDK stream options (scheduler timeout path)', async () => {
+    let capturedOptions: unknown;
+    const mockMessages = {
+      stream: vi.fn().mockImplementation(function(_params: unknown, options: unknown) {
+        capturedOptions = options;
+        return (async function* () {})();
+      }),
+    };
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(this: unknown) { return { messages: mockMessages }; });
+
+    const controller = new AbortController();
+    await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq({ signal: controller.signal })));
+    expect((capturedOptions as { signal: AbortSignal }).signal).toBe(controller.signal);
+  });
 });
 
 // ─── OpenAI-compatible routing (§2) ──────────────────────────────────────────
@@ -234,6 +249,44 @@ describe('OpenAI-compatible routing (§2)', () => {
     await expect(
       collectTokens(streamFromProvider({ kind: 'custom', model: 'x' }, makeReq())),
     ).rejects.toThrow(/baseUrl/i);
+  });
+
+  it('forwards the request signal to fetch options', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeOkFetchResponse(['Hi']));
+    const controller = new AbortController();
+    await collectTokens(streamFromProvider(makeOpenAIConfig(), makeReq({ signal: controller.signal })));
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    expect(opts.signal).toBe(controller.signal);
+  });
+
+  it('aborts mid-stream when the request signal fires (scheduler wall-clock timeout path)', async () => {
+    const controller = new AbortController();
+    // Fetch mock honours the abort signal the way undici does: the body
+    // stream errors with an AbortError once the signal fires mid-read.
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation((_url: string, opts: RequestInit) => {
+      const signal = opts.signal as AbortSignal;
+      const encoder = new TextEncoder();
+      const body = new ReadableStream({
+        start(streamController) {
+          streamController.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { content: 'first' }, index: 0, finish_reason: null }] })}\n\n`,
+          ));
+          signal.addEventListener('abort', () => {
+            streamController.error(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+          });
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+    });
+
+    const received: string[] = [];
+    await expect((async () => {
+      for await (const token of streamFromProvider(makeOpenAIConfig(), makeReq({ signal: controller.signal }))) {
+        received.push(token);
+        controller.abort(); // simulates the scan timeout firing mid-stream
+      }
+    })()).rejects.toMatchObject({ name: 'AbortError' });
+    expect(received).toEqual(['first']);
   });
 });
 
