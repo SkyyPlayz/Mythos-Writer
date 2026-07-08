@@ -459,6 +459,8 @@ interface AppSettings {
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
   storyPagePrefsMap?: Record<string, StoryPagePrefs>;
+  /** Beta 3 M10: manuscript sheet width (prototype pageW, 520–3000, default 1000). */
+  manuscriptPageWidth?: number;
   /** Voice IO settings (MYT-205 / SKY-1505). */
   voice?: VoiceSettings;
   /** STT adapter config (MYT-338). Absent or enabled=false → transcription disabled. */
