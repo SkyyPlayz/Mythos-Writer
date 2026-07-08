@@ -32,6 +32,14 @@ import NavConfigSection from './components/SettingsPanel/sections/NavConfigSecti
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
 import VoiceSection from './components/SettingsPanel/sections/VoiceSection';
 import TelemetrySection from './components/SettingsPanel/sections/TelemetrySection';
+// Beta 3 M24: settings remainder pages (prototype §10) + vault/story import
+import AccountProfileSection from './components/SettingsPanel/sections/AccountProfileSection';
+import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
+import ImportVaultSection from './components/SettingsPanel/sections/ImportVaultSection';
+import ImportStorySection from './components/SettingsPanel/sections/ImportStorySection';
+import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
+import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
+import AboutSection from './components/SettingsPanel/sections/AboutSection';
 import { SETTINGS_CATEGORIES, type SettingsCategoryId } from './settingsCategories';
 import {
   DEFAULTS,
@@ -732,6 +740,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onSaveVaults={handleSaveVaults}
               />
 
+              {/* Beta 3 M24: vault + story import (prototype Vault & Files page) */}
+              <ImportVaultSection notesVaultPath={vaults.notesVaultPath} />
+
+              <ImportStorySection />
+
               <VaultHealthSection />
 
               <SceneFieldsSection />
@@ -742,6 +755,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <BackupSection />
             </>
           )}
+
+          {/* ── Beta 3 M24: settings remainder pages (prototype §10) ── */}
+          {settingsCategory === 'account' && (
+            <AccountProfileSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+          )}
+
+          {settingsCategory === 'editor' && (
+            <EditorSettingsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+          )}
+
+          {settingsCategory === 'sync' && (
+            <SyncBackupSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
+          )}
+
+          {settingsCategory === 'shortcuts' && <ShortcutsSection />}
+
+          {settingsCategory === 'about' && <AboutSection />}
 
           {settingsCategory === 'appearance' && (
             <>
