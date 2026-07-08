@@ -871,6 +871,12 @@ function notifyNotesVaultChanged(filePath: string) {
 // rebuild only for deletes/renames/large bursts.
 let reindexTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingReindexPaths = new Set<string>();
+// scene:save fast path — see the SCENE_SAVE handler.
+let sceneSaveManifestCache: {
+  path: string;
+  mtimeMs: number;
+  manifest: import('./ipc.js').Manifest;
+} | null = null;
 let pendingEntityRefresh = false;
 const REINDEX_INCREMENTAL_MAX = 50;
 
@@ -3347,7 +3353,28 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.SCENE_SAVE]: (payload: SceneSavePayload) => {
     ensureVaultDir();
-    const manifest = readManifest(getManifestPath());
+    // Perf (freeze audit): this handler runs about once per second while the
+    // user types, and parsing the all-prose manifest costs O(vault). Reuse
+    // the manifest object from the previous save while the file's mtime
+    // still matches what this handler last wrote; any other writer (or an
+    // error mid-save) invalidates the cache and forces a fresh parse.
+    const manifestPathForSave = getManifestPath();
+    let manifest: import('./ipc.js').Manifest;
+    try {
+      const st = fs.statSync(manifestPathForSave);
+      if (
+        sceneSaveManifestCache &&
+        sceneSaveManifestCache.path === manifestPathForSave &&
+        sceneSaveManifestCache.mtimeMs === st.mtimeMs
+      ) {
+        manifest = sceneSaveManifestCache.manifest;
+      } else {
+        manifest = readManifest(manifestPathForSave);
+      }
+    } catch {
+      manifest = readManifest(manifestPathForSave);
+    }
+    sceneSaveManifestCache = null;
     // Find scene in nested structure or legacy flat list
     let found = null as import('./ipc.js').SceneEntry | null;
     outer: for (const story of manifest.stories) {
@@ -3411,7 +3438,14 @@ const handlers: IpcHandlers = {
       customFields: mergedCustomFields,
     });
 
-    writeManifest(getManifestPath(), manifest);
+    writeManifest(manifestPathForSave, manifest);
+    try {
+      sceneSaveManifestCache = {
+        path: manifestPathForSave,
+        mtimeMs: fs.statSync(manifestPathForSave).mtimeMs,
+        manifest,
+      };
+    } catch { /* cache stays invalidated — next save re-parses */ }
 
     // Keep FTS fresh for this scene directly: the vault watcher now ignores
     // the app's own writes, so saves no longer trigger the reindex path.
