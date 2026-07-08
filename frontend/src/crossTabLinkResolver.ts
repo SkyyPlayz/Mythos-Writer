@@ -345,6 +345,63 @@ export function isWikiLinkTargetResolved(rawTarget: string, titleIndex: Readonly
   return titleIndex.has(needle);
 }
 
+// ─── M16 (Beta 3): wiki-link kind styling + unresolved-click note creation ───
+
+/**
+ * Normalized stems that resolve to STORY scenes. Fed to the editors alongside
+ * the resolved-title index so [[scene links]] render gold (prototype #ffd319)
+ * while note links keep the slot-B purple — Liquid Neon `mkLink` parity.
+ */
+export function buildSceneWikiLinkTitleIndex(stories: Story[]): Set<string> {
+  const titles = new Set<string>();
+  for (const story of stories) {
+    for (const chapter of story.chapters) {
+      for (const scene of chapter.scenes) {
+        titles.add(normalize(scene.title));
+        titles.add(basenameNoExt(scene.path));
+      }
+    }
+  }
+  return titles;
+}
+
+/** The display stem of a wiki-link target: strips `#heading` anchors and `|alias` suffixes. */
+export function wikiLinkTargetStem(rawTarget: string): string {
+  return rawTarget.split('#')[0].split('|')[0].trim();
+}
+
+/**
+ * Notes-Vault-relative path for a note created from an unresolved [[link]]
+ * (Obsidian parity: clicking a dashed link creates the note). Filesystem-hostile
+ * characters are replaced so the write cannot escape or fail on any OS.
+ */
+export function notePathForUnresolvedLink(rawTarget: string): string | null {
+  const stem = wikiLinkTargetStem(rawTarget);
+  if (!stem) return null;
+  const fileName = stem.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
+  if (!fileName || /^\.+$/.test(fileName)) return null;
+  return `${fileName}.md`;
+}
+
+/**
+ * Markdown for a just-created wiki-link note — same frontmatter contract as
+ * the M15 template notes (quoted `title:` + `createdAt:`), no `type:` since
+ * an unresolved link carries no entity kind.
+ */
+export function buildUnresolvedLinkNote(rawTarget: string, now: string = new Date().toISOString()): string {
+  const stem = wikiLinkTargetStem(rawTarget);
+  return [
+    '---',
+    `title: "${stem.replace(/"/g, "'")}"`,
+    `createdAt: ${now}`,
+    '---',
+    '',
+    `# ${stem}`,
+    '',
+    '',
+  ].join('\n');
+}
+
 export function resolveCrossTabLink(rawTarget: string, context: CrossTabLinkContext): CrossTabLinkResolution {
   const typed = parseTypedTarget(rawTarget);
   if (!typed) {

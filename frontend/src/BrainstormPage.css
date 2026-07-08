@@ -49,11 +49,25 @@
 }
 
 /* Header */
-/* Layout from PanelChrome (.pc-header); override spacing and background only */
+/* Layout from PanelChrome (.pc-header); spacing/typography ported from the
+ * Liquid Neon prototype header (design-handoff/prototype, lines 1312–1316). */
 .brainstorm-header {
-  padding: 12px 20px;
-  gap: 16px;
+  padding: 14px 20px 12px;
+  gap: 12px;
   background: var(--bg-bar);
+}
+
+.brainstorm-header .pc-header-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: rgb(240, 243, 252); /* prototype #f0f3fc */
+}
+
+.brainstorm-header .pc-header-subtitle {
+  font-size: 11px;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  margin-top: 1px;
 }
 
 .brainstorm-back-btn {
@@ -106,13 +120,14 @@
   overflow: hidden;
 }
 
+/* Feed spacing + 720px centered column (prototype lines 1338–1339). */
 .brainstorm-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 14px 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .brainstorm-empty {
@@ -147,9 +162,13 @@
   max-width: 360px;
 }
 
-/* Messages */
+/* Messages — bubble style strings ported 1:1 from the prototype bot chat
+ * (bubbleUser / bubbleBot, lines 4327–4328). */
 .bs-message {
   display: flex;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .bs-message-user {
@@ -161,29 +180,31 @@
 }
 
 .bs-user-bubble {
-  background: var(--accent-border);
-  color: var(--text-header);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 14px -6px var(--g1, rgba(0, 240, 255, 0.4));
+  color: rgb(233, 247, 255); /* prototype #e9f7ff */
   border-radius: 14px 14px 4px 14px;
-  padding: 10px 14px;
-  max-width: 72%;
-  font-size: 0.88rem;
-  line-height: 1.55;
+  padding: 10px 13px;
+  max-width: 78%;
+  font-size: 12.5px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .bs-assistant-bubble {
-  max-width: 80%;
+  max-width: 84%;
 }
 
 .bs-assistant-text {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 4px 14px 14px 14px;
-  padding: 10px 14px;
-  font-size: 0.88rem;
-  line-height: 1.65;
-  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px 14px 14px 4px;
+  padding: 10px 13px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: rgb(205, 216, 234); /* prototype #cdd8ea */
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -213,34 +234,35 @@
   font-size: 0.84rem;
 }
 
-/* Input area */
+/* Input area — composer ported from the prototype bot chat (lines 1355–1361). */
 .brainstorm-input-area {
   display: flex;
   gap: 8px;
-  padding: 14px 16px;
-  background: var(--bg-bar);
-  border-top: 1px solid var(--border-subtle);
+  padding: 10px 24px 14px;
+  background: transparent;
+  border-top: none;
   flex-shrink: 0;
   align-items: flex-end;
 }
 
 .brainstorm-input {
   flex: 1;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 0.88rem;
-  padding: 8px 12px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
+  border-radius: 13px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  font-size: 12.5px;
+  padding: 10px 12px;
   resize: none;
   font-family: inherit;
-  line-height: 1.5;
+  line-height: 1.55;
   outline: none;
 }
 
 .brainstorm-input:focus {
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 20%, transparent);
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 16px -4px var(--g2, rgba(155, 95, 255, 0.4));
 }
 
 .brainstorm-input:disabled {
@@ -285,22 +307,26 @@
   padding: 4px 8px;
 }
 
+/* Send — gradient action button (prototype send square, line 1358). Keeps the
+ * text label the e2e suite clicks; gradient/glow/scale values are 1:1. */
 .brainstorm-send-btn {
-  background: var(--accent);
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   border: none;
-  border-radius: 8px;
-  color: #fff;
+  border-radius: 12px;
+  color: rgb(11, 13, 23); /* prototype #0b0d17 */
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   padding: 8px 18px;
   cursor: pointer;
   white-space: nowrap;
   align-self: flex-end;
-  height: 38px;
+  height: 40px;
+  box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, 0.4));
+  transition: transform 0.16s ease;
 }
 
 .brainstorm-send-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  transform: scale(1.06);
 }
 
 .brainstorm-send-btn:disabled {
@@ -1470,4 +1496,704 @@
   border-radius: 1px;
   pointer-events: none;
   flex-shrink: 0;
+}
+
+/* ══ M19 · Brainstorm center — mode segment + Board / Map / Clusters ══════════
+ * Every literal value is ported from the Liquid Neon prototype
+ * (design-handoff/prototype):
+ *   header segment (segMk)  . . . . . . . lines 1317–1324 + 4221
+ *   board columns (bsCols)  . . . . . . . lines 1397–1418 + 4230–4244
+ *   map ring layout (bsMapNodes/Hubs)  . . lines 1371–1380 + 4246–4251
+ *   cluster gravity bubbles  . . . . . . . lines 1381–1396 + 4252–4255
+ *   ideas/clusters status bar  . . . . . . lines 1436–1439
+ * Slot tints read the theme tokens --n1..--n4 (colHex = [c1..c4], line 4228)
+ * with the classic-preset hexes as fallbacks; the prototype's hexA(color, a)
+ * alpha steps are reproduced with color-mix percentages. */
+
+.bsc-s1 { --bsc-c: var(--n1, #00f0ff); --bsc-cn: var(--n2, #9b5fff); }
+.bsc-s2 { --bsc-c: var(--n2, #9b5fff); --bsc-cn: var(--n3, #ff4dff); }
+.bsc-s3 { --bsc-c: var(--n3, #ff4dff); --bsc-cn: var(--n4, #ff9a3d); }
+.bsc-s4 { --bsc-c: var(--n4, #ff9a3d); --bsc-cn: var(--n1, #00f0ff); }
+
+/* Mode segment (container line 1317, option style strings segMk line 4221). */
+.bsc-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bsc-seg-btn {
+  padding: 4px 13px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: none;
+  color: rgb(148, 163, 189); /* prototype #94a3bd */
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bsc-seg-btn:hover:not(.bsc-seg-btn--active) {
+  color: rgb(232, 238, 252); /* prototype #e8eefc */
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bsc-seg-btn--active {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  font-weight: 600;
+  box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.bsc-seg-btn:focus-visible,
+.bsc-card:focus-visible,
+.bsc-add:focus-visible,
+.bsc-map-node:focus-visible,
+.bsc-cluster-chip:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Mode body wrapper — relative so the floating tools palette can anchor. */
+.bsc-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Board mode (template lines 1397–1418, bsBoardSt line 4855) ──
+ * 74px bottom padding clears the floating tools palette (template line 1398). */
+.bsc-board {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 20px 74px;
+}
+
+/* Zoom scale is applied inline from bsc-zoom state (prototype line 4855). */
+.bsc-board-cols {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  min-width: 1180px;
+  transform-origin: top left;
+}
+
+.bsc-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 212px;
+}
+
+/* Column header (bsCols headSt, line 4241). */
+.bsc-col-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  color: var(--bsc-c);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--bsc-c) 45%, transparent);
+  margin-bottom: 2px;
+}
+
+/* Slot-tinted idea card (bsCols card st/stH, lines 4238–4239). */
+.bsc-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  padding: 12px 13px;
+  border-radius: 13px;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 38%, transparent);
+  box-shadow: 0 0 14px -8px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.bsc-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--bsc-c) 75%, transparent);
+  box-shadow: 0 0 22px -6px color-mix(in srgb, var(--bsc-c) 60%, transparent);
+}
+
+.bsc-card-row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+
+/* Avatar chip (bsCols avSt, line 4235): slot→next-slot gradient circle. */
+.bsc-av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--bsc-c) 80%, transparent),
+    color-mix(in srgb, var(--bsc-cn) 80%, transparent)
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: rgb(11, 13, 23); /* prototype #0b0d17 */
+}
+
+.bsc-card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.bsc-card-title {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgb(238, 242, 251); /* prototype #eef2fb */
+}
+
+.bsc-card-desc {
+  display: block;
+  font-size: 11px;
+  color: rgb(156, 171, 196); /* prototype #9cabc4 */
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.bsc-card-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+/* Card chip (bsCols chips st, line 4237). */
+.bsc-chip {
+  font-size: 9.5px;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--bsc-c) 10%, transparent);
+  color: var(--bsc-c);
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 32%, transparent);
+}
+
+/* Add-idea row (bsCols addSt/addStH, line 4243). */
+.bsc-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 11px;
+  border: 1px dashed color-mix(in srgb, var(--bsc-c) 40%, transparent);
+  background: none;
+  color: var(--bsc-c);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.bsc-add:hover {
+  background: color-mix(in srgb, var(--bsc-c) 8%, transparent);
+  border-style: solid;
+}
+
+/* ── Map mode (template lines 1371–1380) ── */
+.bsc-map {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  margin: 4px 20px 14px;
+  border-radius: 14px;
+  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, 0.35), rgba(6, 8, 15, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.bsc-map-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Hub→node connector (bsMapLines st, line 4251). */
+.bsc-map-line {
+  stroke: color-mix(in srgb, var(--bsc-c) 30%, transparent);
+  stroke-width: 1;
+}
+
+/* Collection hub on the 13%-radius ring (bsMapHubs st, line 4250). */
+.bsc-map-hub {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 9px 15px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bsc-c) 12%, transparent);
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--bsc-c) 60%, transparent);
+  box-shadow: 0 0 20px -6px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--bsc-c);
+  white-space: nowrap;
+}
+
+/* Idea node on the 26+11(i%3)%-radius rings (bsMapNodes st, line 4248). */
+.bsc-map-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 7px 12px;
+  border-radius: 99px;
+  background: rgba(15, 19, 33, 0.9);
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--bsc-c) 55%, transparent);
+  box-shadow: 0 0 14px -5px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  font-family: inherit;
+  font-size: 10.5px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bsc-map-node:hover {
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.bsc-map-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-size: 9.5px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  background: rgba(8, 10, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 9px;
+  pointer-events: none;
+}
+
+/* ── Clusters mode (template lines 1381–1396) ── */
+.bsc-clusters {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 20px;
+}
+
+.bsc-cluster-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+/* Gravity bubble (bsClusterGroups st, line 4253): blob radius + radial tint. */
+.bsc-cluster {
+  flex: 1;
+  min-width: 200px;
+  padding: 16px;
+  border-radius: 50% 46% 52% 48% / 48% 52% 46% 52%;
+  background: radial-gradient(
+    circle at 40% 35%,
+    color-mix(in srgb, var(--bsc-c) 16%, transparent),
+    color-mix(in srgb, var(--bsc-c) 5%, transparent)
+  );
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--bsc-c) 45%, transparent);
+  box-shadow: 0 0 var(--gr, 26px) -8px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.bsc-cluster-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--bsc-c);
+}
+
+.bsc-cluster-count {
+  font-size: 9px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+}
+
+.bsc-cluster-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+/* Idea chip inside a bubble (bsClusterGroups chips st, line 4255). */
+.bsc-cluster-chip {
+  font-size: 9.5px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(15, 19, 33, 0.75);
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 40%, transparent);
+  color: rgb(205, 216, 234); /* prototype #cdd8ea */
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.bsc-cluster-chip:hover {
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.bsc-clusters-hint {
+  font-size: 10px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  margin-top: 12px;
+}
+
+/* Ideas/clusters status bar (template lines 1436–1439). */
+.bsc-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: rgb(129, 149, 178); /* prototype #8195b2 */
+}
+
+.bsc-statusbar-dot {
+  opacity: 0.4;
+}
+
+/* ── Composer suggestion chips (template lines 1349–1354) ── */
+.bs-chips-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 24px 9px;
+  flex-shrink: 0;
+}
+
+.bs-suggest-chip {
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  background: none;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.bs-suggest-chip:hover:not(:disabled) {
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  color: rgb(255, 255, 255); /* prototype #fff */
+  box-shadow: 0 0 12px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.bs-suggest-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.bs-suggest-chip:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* ── Composer footnote (template line 1362) ── */
+.bs-composer-note {
+  font-size: 9.5px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  padding: 0 24px 10px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Live extraction badge (template lines 1330–1335) ── */
+.bs-extract-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: rgb(159, 176, 200); /* prototype #9fb0c8 */
+  padding: 4px 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.bs-extract-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
+  animation: lnPulse 2.4s ease-in-out infinite;
+}
+
+/* ── Idea search (template lines 1325–1328) ── */
+.bsc-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 190px;
+  height: 29px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgb(142, 157, 184); /* prototype #8e9db8 (search icon) */
+}
+
+.bsc-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  font-family: inherit;
+  font-size: 11.5px;
+  min-width: 0;
+}
+
+.bsc-search:focus-within {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+/* ── Floating canvas tools + zoom (template lines 1420–1433) ── */
+.bsc-tools {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 13px;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow:
+    0 10px 34px rgba(3, 5, 12, 0.55),
+    0 0 20px -6px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+/* Tool button (bsTools st/stH, lines 4857–4859). */
+.bsc-tool {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+}
+
+.bsc-tool:hover:not(.bsc-tool--active) {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.bsc-tool--active {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.bsc-tool:focus-visible,
+.bsc-zoom-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.bsc-tools-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 3px;
+}
+
+.bsc-zoom-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.bsc-zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgb(255, 255, 255); /* prototype #fff */
+}
+
+.bsc-zoom-pct {
+  font-size: 11px;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  padding: 0 3px;
+  width: 36px;
+  text-align: center;
+}
+
+/* ── Agent activity feed (prototype right panel, lines 2468–2496) ── */
+.bs-activity-section {
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 4px;
+}
+
+.bs-activity-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 10px;
+}
+
+.bs-activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 9px var(--g1, rgba(0, 240, 255, 0.4));
+  animation: lnPulse 2.2s ease-in-out infinite;
+}
+
+.bs-activity-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgb(238, 242, 251); /* prototype #eef2fb */
+  flex: 1;
+}
+
+.bs-activity-live {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.bs-activity-stats {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.bs-activity-stat {
+  flex: 1;
+  text-align: center;
+  padding: 7px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bs-activity-stat-v {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--n1, #00f0ff);
+  text-shadow: 0 0 10px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.bs-activity-stat-k {
+  display: block;
+  font-size: 9px;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  margin-top: 1px;
+}
+
+.bs-activity-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  padding: 2px 14px 7px;
+}
+
+/* Scroll cap keeps the feed from crowding out the Detected Facts panel. */
+.bs-activity-feed {
+  max-height: 180px;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.bs-activity-empty {
+  font-size: 10px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  line-height: 1.5;
+  padding: 2px;
+}
+
+.bs-activity-item {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 8px 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  animation: lnFadeUp 0.3s ease;
+}
+
+/* Icon tile (prototype icSt, line 4339) — per-kind slot color; scan is the
+ * prototype's gold #ffd319. */
+.bs-activity-icon {
+  --bs-act-c: var(--n1, #00f0ff);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bs-act-c);
+  background: color-mix(in srgb, var(--bs-act-c) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bs-act-c) 45%, transparent);
+  box-shadow: 0 0 10px -3px color-mix(in srgb, var(--bs-act-c) 40%, transparent);
+}
+
+.bs-activity-icon--note { --bs-act-c: var(--n1, #00f0ff); }
+.bs-activity-icon--link { --bs-act-c: var(--n2, #9b5fff); }
+.bs-activity-icon--prop { --bs-act-c: var(--n3, #ff4dff); }
+.bs-activity-icon--scan { --bs-act-c: rgb(255, 211, 25); /* prototype #ffd319 */ }
+
+.bs-activity-text {
+  flex: 1;
+  font-size: 11px;
+  color: rgb(195, 206, 226); /* prototype #c3cee2 */
+  line-height: 1.5;
+  padding-top: 2px;
 }

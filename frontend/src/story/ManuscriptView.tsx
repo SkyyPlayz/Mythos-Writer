@@ -40,6 +40,7 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+<<<<<<< HEAD
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
   applyAllAutoLinkHints,
@@ -49,6 +50,8 @@ import {
   wikiLinkFor,
   type EntityMatch,
 } from './autoLinkText';
+=======
+>>>>>>> origin/main
 import { showLnToast } from '../theme/lnToast';
 import type { Story } from '../types';
 import './ManuscriptView.css';
@@ -68,6 +71,7 @@ export interface ManuscriptViewProps {
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
+<<<<<<< HEAD
   /**
    * M23: archive auto-[[link]]ing in the continuous manuscript (same entity
    * matching as the scene editor's AutoLinkerExtension). 'suggest' underlines
@@ -75,6 +79,8 @@ export interface ManuscriptViewProps {
    */
   autoLinkEntities?: EntityEntry[];
   autoLinkMode?: AutoLinkerMode;
+=======
+>>>>>>> origin/main
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -166,8 +172,11 @@ export default function ManuscriptView({
   onCycleStatus,
   pageWidth = 1000,
   focusMode = false,
+<<<<<<< HEAD
   autoLinkEntities,
   autoLinkMode = 'off',
+=======
+>>>>>>> origin/main
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -196,6 +205,7 @@ export default function ManuscriptView({
   // Prototype commentsVisible (3600): hidden in Focus unless overridden.
   const commentsVisible = showComments && (!focusMode || commentsInFocus);
 
+<<<<<<< HEAD
   // ── M23 auto-[[link]]ing (same terms as the scene editor's TipTap plugin) ──
   const autoLinkTerms = useMemo(
     () =>
@@ -205,6 +215,8 @@ export default function ManuscriptView({
     [autoLinkEntities, autoLinkMode]
   );
 
+=======
+>>>>>>> origin/main
   const commentsByScene = useMemo(() => {
     const map = new Map<string, StoryComment[]>();
     for (const c of comments) {
@@ -350,6 +362,64 @@ export default function ManuscriptView({
     [onEditParagraph]
   );
 
+  // ── M11 comment handlers ──
+
+  // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
+  const handlePageMouseUp = useCallback(() => {
+    const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    const text = sel ? String(sel).trim() : '';
+    if (isValidAnchor(text)) {
+      setSelAnchor(text);
+      setOpenCommentId(null);
+    }
+  }, []);
+
+  const clearSelectionBar = useCallback(() => {
+    setSelAnchor(null);
+    setCommentInput('');
+  }, []);
+
+  // Prototype addCommentFromSel (3621–3629).
+  const handleSaveComment = useCallback(() => {
+    const body = commentInput.trim();
+    if (!selAnchor || !body) return;
+    const sceneId = findAnchorSceneId(story, selAnchor);
+    if (!sceneId) {
+      showLnToast('Select text inside a paragraph to comment on it');
+      clearSelectionBar();
+      return;
+    }
+    createStoryComment({ sceneId, anchor: selAnchor, text: body });
+    setShowComments(true);
+    clearSelectionBar();
+    showLnToast('Comment added — visible in the editor');
+  }, [commentInput, selAnchor, story, createStoryComment, setShowComments, clearSelectionBar]);
+
+  const handleResolveComment = useCallback(
+    (comment: StoryComment) => {
+      resolveStoryComment(comment.id);
+      setOpenCommentId((open) => (open === comment.id ? null : open));
+      showLnToast('Comment resolved');
+    },
+    [resolveStoryComment]
+  );
+
+  const handleAgentAction = useCallback((comment: StoryComment, action: AgentAction) => {
+    void runAgentAction(comment, action).then((result) => {
+      if (!result.ok) {
+        showLnToast(result.error ?? 'Archive action failed');
+        return;
+      }
+      setOpenCommentId((open) => (open === comment.id ? null : open));
+      const message = AGENT_ACTION_SUCCESS_TOAST[action];
+      if (message) showLnToast(message);
+    });
+  }, []);
+
+  const handleToggleOpenComment = useCallback((id: string) => {
+    setOpenCommentId((open) => (open === id ? null : id));
+  }, []);
+
   // Clamp the window so it always covers real blocks (folding shrinks the list).
   const start = Math.max(0, Math.min(winStart, Math.max(0, blocks.length - WINDOW)));
   const end = Math.min(blocks.length, start + WINDOW);
@@ -433,6 +503,7 @@ export default function ManuscriptView({
         const segs = commentsVisible
           ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
           : null;
+<<<<<<< HEAD
         // M23: entity mentions not already [[linked]] render as clickable
         // hints inside the plain runs (comment anchors win on overlap).
         const hints =
@@ -487,6 +558,8 @@ export default function ManuscriptView({
           renderedChildren = renderPlainRun(b.content, 0, 'p');
         }
 
+=======
+>>>>>>> origin/main
         return (
           <div key={b.id} className="msv-para">
             <span className="msv-grip" title="Drag block to move it" aria-hidden="true">
@@ -508,7 +581,29 @@ export default function ManuscriptView({
                 }
               }}
             >
+<<<<<<< HEAD
               {renderedChildren}
+=======
+              {segs
+                ? segs.map((s, i) =>
+                    s.comment ? (
+                      <span
+                        // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
+                        key={`${s.comment.id}-${i}`}
+                        className={`msv-anchor msv-anchor--${s.comment.kind}`}
+                        data-testid={`msv-anchor-${s.comment.id}`}
+                        title="Open comment"
+                        onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
+                      >
+                        {s.text}
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+                      <span key={`t-${i}`}>{s.text}</span>
+                    )
+                  )
+                : b.content}
+>>>>>>> origin/main
             </div>
           </div>
         );

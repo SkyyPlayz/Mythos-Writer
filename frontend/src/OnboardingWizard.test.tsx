@@ -1777,7 +1777,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     expect(screen.getByTestId('custom-vault-browse')).toBeInTheDocument();
     expect(screen.getByTestId('custom-vault-name-input')).toBeInTheDocument();
     expect(screen.getByTestId('custom-location-next')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 1 of 2')).toBeInTheDocument();
+    // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
+    expect(screen.getByText('Custom Setup · 1 of 4')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -2010,7 +2011,8 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
     expect(screen.getByTestId('custom-template-recommended')).toBeInTheDocument();
     expect(screen.getByTestId('custom-template-blank')).toBeInTheDocument();
     expect(screen.getByTestId('custom-template-finish')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 2 of 2')).toBeInTheDocument();
+    // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
+    expect(screen.getByText('Custom Setup · 2 of 4')).toBeInTheDocument();
     await act(async () => {});
   });
 
