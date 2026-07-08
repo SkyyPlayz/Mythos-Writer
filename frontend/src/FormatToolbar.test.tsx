@@ -390,3 +390,43 @@ describe('FormatToolbar alignment against the real shared schema', () => {
     editor.destroy();
   });
 });
+
+// ─── Beta 3 M10 — Read / Dictate / Assist action cluster (prototype 766–777) ──
+
+describe('FormatToolbar actions (Beta 3 M10)', () => {
+  it('renders no action buttons when actions are not provided', () => {
+    const editor = makeEditorMock();
+    const { container } = render(<FormatToolbar editor={editor as never} />);
+    expect(screen.queryByRole('button', { name: 'Read aloud' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dictate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open the Writing Assistant' })).toBeNull();
+    expect(container.querySelector('.fmt-spacer')).toBeNull();
+  });
+
+  it('renders and fires each provided action without stealing editor focus', () => {
+    const editor = makeEditorMock();
+    const onRead = vi.fn();
+    const onDictate = vi.fn();
+    const onAssist = vi.fn();
+    render(
+      <FormatToolbar editor={editor as never} actions={{ onRead, onDictate, onAssist }} />
+    );
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Read aloud' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Dictate' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open the Writing Assistant' }));
+    expect(onRead).toHaveBeenCalledTimes(1);
+    expect(onDictate).toHaveBeenCalledTimes(1);
+    expect(onAssist).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders only the buttons whose handlers exist and reflects dictation state', () => {
+    const editor = makeEditorMock();
+    render(
+      <FormatToolbar editor={editor as never} actions={{ onDictate: vi.fn(), dictating: true }} />
+    );
+    expect(screen.queryByRole('button', { name: 'Read aloud' })).toBeNull();
+    const dictate = screen.getByRole('button', { name: 'Dictate' });
+    expect(dictate.getAttribute('aria-pressed')).toBe('true');
+    expect(dictate.className).toContain('fmt-action--dictate-on');
+  });
+});

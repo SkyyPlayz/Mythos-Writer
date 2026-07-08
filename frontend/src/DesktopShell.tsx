@@ -14,10 +14,11 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, sceneStatus, type ManuscriptCursor } from './story/manuscriptModel';
+import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
+import PageRuler from './PageRuler';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
@@ -3646,6 +3647,76 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [selectedStory, stories, updateManifest]);
 
+  // Beta 3 M10: paragraph grip drag — pure move via the model, then persist
+  // every changed scene through the same per-scene markdown + snapshot path
+  // paragraph edits use (scene files stay the storage unit).
+  const handleManuscriptMoveParagraph = useCallback((from: ParagraphRef, to: ParagraphRef) => {
+    if (!selectedStory) return;
+    const res = moveParagraph(selectedStory, from, to);
+    if (!res) return;
+    const stamp = now();
+    const changed = new Set(res.changedSceneIds);
+    const stampedStory: Story = {
+      ...res.story,
+      chapters: res.story.chapters.map((ch) =>
+        ch.scenes.some((sc) => changed.has(sc.id))
+          ? { ...ch, scenes: ch.scenes.map((sc) => (changed.has(sc.id) ? { ...sc, updatedAt: stamp } : sc)) }
+          : ch
+      ),
+    };
+    updateManifest(stories.map((st) => (st.id === selectedStory.id ? stampedStory : st)));
+    for (const ch of stampedStory.chapters) {
+      for (const sc of ch.scenes) {
+        if (!changed.has(sc.id)) continue;
+        persistSceneMarkdown(sc);
+        const content = [...sc.blocks].sort((a, b) => a.order - b.order).map((b) => b.content).join('\n\n');
+        window.api.snapshotSave?.(sc.id, content).catch(() => {});
+      }
+    }
+    showLnToast('Block moved');
+  }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
+  // Beta 3 M10: manuscript sheet width (prototype pageW) persisted app-wide.
+  const handleManuscriptPageWidthChange = useCallback((px: number) => {
+    setAppSettings((prev) => {
+      if (!prev || prev.manuscriptPageWidth === px) return prev;
+      const updated: AppSettings = { ...prev, manuscriptPageWidth: px };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // Beta 3 M10 toolbar actions (prototype 766-777). Read is scripted until the
+  // M13 TTS Reader lands; Dictate reuses the existing voice pipeline; Assist
+  // surfaces the Writing Assistant panel in the left sidebar (GH #633 home).
+  const handleToolbarRead = useCallback(() => {
+    showLnToast('Read aloud arrives with the TTS Reader milestone (M13)');
+  }, []);
+
+  const handleToolbarDictate = useCallback(() => {
+    if (!appSettings?.voice?.enabled) {
+      showLnToast('Enable Voice in Settings to dictate');
+      return;
+    }
+    if (voiceActive) stopVoice().catch(() => {});
+    else startVoice().catch(() => {});
+  }, [appSettings?.voice?.enabled, voiceActive, startVoice, stopVoice]);
+
+  const handleToolbarAssist = useCallback(() => {
+    const cur = leftSidebarLayoutRef.current;
+    const panels = cur.panels.some((pnl) => pnl.id === 'writing-assistant')
+      ? cur.panels.map((pnl) => (pnl.id === 'writing-assistant' ? { ...pnl, collapsed: false } : pnl))
+      : [{ id: 'writing-assistant' as SidebarPanelId, collapsed: false }, ...cur.panels];
+    persistLeftSidebarLayout({ ...cur, panels, sidebarCollapsed: false });
+  }, [persistLeftSidebarLayout]);
+
+  const manuscriptToolbarActions = useMemo(() => ({
+    onRead: handleToolbarRead,
+    onDictate: handleToolbarDictate,
+    dictating: voiceActive,
+    onAssist: handleToolbarAssist,
+  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist]);
+
   // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
   // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
   // SKY-1697 float flow; the rest explain themselves instead of mocking.
@@ -4332,6 +4403,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  onMoveParagraph={handleManuscriptMoveParagraph}
+                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+                  onPageWidthChange={handleManuscriptPageWidthChange}
+                  liquidNeon={appSettings?.liquidNeonV2}
+                  onRead={manuscriptToolbarActions.onRead}
+                  onDictate={manuscriptToolbarActions.onDictate}
+                  dictating={manuscriptToolbarActions.dictating}
+                  onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
@@ -4354,6 +4433,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  onMoveParagraph={handleManuscriptMoveParagraph}
+                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+                  onPageWidthChange={handleManuscriptPageWidthChange}
+                  liquidNeon={appSettings?.liquidNeonV2}
+                  onRead={manuscriptToolbarActions.onRead}
+                  onDictate={manuscriptToolbarActions.onDictate}
+                  dictating={manuscriptToolbarActions.dictating}
+                  onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
@@ -4397,6 +4484,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   prefs={pagePrefs}
                   onPrefsChange={handlePagePrefsChange}
                 />
+                {/* GH #842 (Beta 3 M10): Word-style draggable ruler — hidden in
+                    Focus mode and when the top bar is hidden. */}
+                {!inFocusOrDF && !topBarHidden && (
+                  <PageRuler prefs={pagePrefs} onPrefsChange={handlePagePrefsChange} />
+                )}
                 <div
                   ref={pageWrapRef}
                   className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
@@ -4422,6 +4514,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     resolvedWikiLinkTitles={wikiLinkTitleIndex}
                     wikiLinkCandidates={wikiLinkCandidates}
                     onSelectionChange={setEditorSelectionText}
+                    toolbarActions={manuscriptToolbarActions}
                     emptySceneHint={
                       isGettingStartedVisible(gettingStartedProgress) &&
                       !seenEmptySceneHints.has(selectedScene.id)

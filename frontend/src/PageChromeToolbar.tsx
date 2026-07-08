@@ -1,5 +1,6 @@
 import { useCallback, useId } from 'react';
 import { STORY_PAGE_PRESET_WIDTHS, STORY_PAGE_DEFAULTS, type StoryPagePrefs } from './theme';
+import { RULER_WIDTH_MAX, RULER_WIDTH_MIN, clampWidth } from './pageRulerMath';
 import './PageChromeToolbar.css';
 
 interface Props {
@@ -30,11 +31,18 @@ const LINE_HEIGHT_STEP = 0.1;
 
 export default function PageChromeToolbar({ prefs, onPrefsChange }: Props) {
   const marginSliderId = useId();
+  const widthSliderId = useId();
   const fontSizeId = useId();
   const lineHeightId = useId();
 
   const setPreset = useCallback((key: StoryPagePrefs['sizePreset']) => {
     onPrefsChange({ ...prefs, sizePreset: key, customWidthPx: STORY_PAGE_PRESET_WIDTHS[key] });
+  }, [prefs, onPrefsChange]);
+
+  // GH #842 / Beta 3 M10: free page-width slider — writes the same pref the
+  // ruler's edge handles drag, so the two controls always agree.
+  const setWidth = useCallback((value: number) => {
+    onPrefsChange({ ...prefs, sizePreset: 'custom', customWidthPx: clampWidth(value) });
   }, [prefs, onPrefsChange]);
 
   const setMargins = useCallback((value: number) => {
@@ -87,6 +95,30 @@ export default function PageChromeToolbar({ prefs, onPrefsChange }: Props) {
             </span>
           )}
         </div>
+      </div>
+
+      <div className="pct-divider" aria-hidden="true" />
+
+      {/* Page width slider (GH #842 / M10) */}
+      <div className="pct-group" role="group" aria-label="Page width">
+        <label className="pct-label" htmlFor={widthSliderId}>
+          Width
+        </label>
+        <input
+          id={widthSliderId}
+          type="range"
+          className="pct-slider"
+          min={RULER_WIDTH_MIN}
+          max={RULER_WIDTH_MAX}
+          step={10}
+          value={effectiveWidthPx}
+          onChange={e => setWidth(Number(e.target.value))}
+          aria-valuemin={RULER_WIDTH_MIN}
+          aria-valuemax={RULER_WIDTH_MAX}
+          aria-valuenow={effectiveWidthPx}
+          aria-valuetext={`${effectiveWidthPx}px`}
+        />
+        <span className="pct-slider-val" aria-hidden="true">{effectiveWidthPx}px</span>
       </div>
 
       <div className="pct-divider" aria-hidden="true" />

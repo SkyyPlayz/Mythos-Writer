@@ -14,7 +14,7 @@ import WikiLinkPicker, { buildWikiLinkPickerItems, type WikiLinkCandidate, type 
 import { WIKI_LINK_RESOLUTION_META } from './WikiLinkResolutionExtension';
 import type { EntityEntry } from './types';
 import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
-import FormatToolbar from './FormatToolbar';
+import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
 import './EntityMention.css';
 import './WikiLinkPicker.css';
 
@@ -95,6 +95,8 @@ export interface RichTextEditorProps {
   wikiLinkCandidates?: WikiLinkCandidate[];
   /** Render the shared formatting toolbar. Defaults to true. */
   showToolbar?: boolean;
+  /** Beta 3 M10: optional Read/Dictate/Assist buttons for the toolbar. */
+  toolbarActions?: FormatToolbarActions;
   /** Class for the positioned wrapper div around the editable surface. */
   wrapClassName?: string;
   /** Class for the EditorContent element. */
@@ -129,6 +131,7 @@ export default function RichTextEditor({
   sceneWikiLinkTitles,
   wikiLinkCandidates = EMPTY_WIKI_LINK_CANDIDATES,
   showToolbar = true,
+  toolbarActions,
   wrapClassName,
   contentClassName,
   wrapAriaLabel,
@@ -430,7 +433,7 @@ export default function RichTextEditor({
 
   return (
     <>
-      {showToolbar && <FormatToolbar editor={editor} />}
+      {showToolbar && <FormatToolbar editor={editor} actions={toolbarActions} />}
       <div
         className={wrapClassName}
         ref={setWrapEl}
