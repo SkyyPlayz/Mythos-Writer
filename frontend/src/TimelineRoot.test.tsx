@@ -54,12 +54,14 @@ vi.mock('./TimelineSpreadsheet', async (importOriginal) => {
 });
 
 vi.mock('./TimelineLanes', () => ({
-  default: ({ mode, zoom, todaySignal }: { mode?: string; zoom?: string; todaySignal?: number }) => (
+  default: ({ mode, zoom, todaySignal, data }: { mode?: string; zoom?: string; todaySignal?: number; data?: { chapters?: unknown[]; events?: unknown[] } }) => (
     <div
       data-testid="mock-lanes"
       data-mode={mode ?? 'unset'}
       data-zoom={zoom ?? 'unset'}
       data-today-signal={todaySignal ?? 0}
+      data-chapter-count={data?.chapters?.length ?? 0}
+      data-event-count={data?.events?.length ?? 0}
     >
       Aeon lanes
     </div>
@@ -377,6 +379,89 @@ describe('TimelineRoot — null story', () => {
     fireEvent.click(screen.getByTestId('view-mode-progress'));
     expect(screen.getByTestId('tlr-no-story')).toBeInTheDocument();
     expect(screen.queryByTestId('mock-lanes')).toBeNull();
+  });
+});
+
+// ─── M23: timeline auto-build from vault Story Plans ───
+
+describe('TimelineRoot — M23 plan auto-build', () => {
+  const STORY_WITH_CHAPTERS: Story = {
+    ...STORY,
+    chapters: [
+      {
+        id: 'ch-1',
+        title: 'The Quiet Before',
+        path: 'chapters/ch-1',
+        order: 0,
+        scenes: [],
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+      },
+    ],
+  };
+
+  function setupPlanApi(planContent: string) {
+    Object.defineProperty(window, 'api', {
+      value: {
+        timelineGetScenes: vi.fn().mockResolvedValue({
+          scenes: [
+            {
+              id: 'sc-1',
+              title: "The Watcher's Call",
+              chapterId: 'ch-1',
+              timelineMetadata: { wordCount: 900 },
+            },
+          ],
+        }),
+        timelineListArcs: vi.fn().mockResolvedValue({ arcs: [] }),
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+        listNotesVault: vi.fn().mockResolvedValue({
+          items: [
+            { path: 'Plans/gate.md', name: 'gate.md', isDirectory: false, modifiedAt: '2026-07-01T00:00:00.000Z' },
+          ],
+        }),
+        readNotesVault: vi.fn().mockResolvedValue({ content: planContent, path: 'Plans/gate.md' }),
+      },
+      writable: true, configurable: true,
+    });
+  }
+
+  it('merges planned beats from Plans/ notes into the lanes dataset', async () => {
+    setupPlanApi("- Signal fires\n- The Watcher's Call\n- Finale");
+    await renderRoot(STORY_WITH_CHAPTERS);
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    const lanes = await screen.findByTestId('mock-lanes');
+    // ch-1 + the synthetic "Planned from notes" chapter for the two
+    // unwritten beats (Signal fires, Finale).
+    expect(lanes).toHaveAttribute('data-chapter-count', '2');
+    expect((window.api.readNotesVault as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('Plans/gate.md');
+  });
+
+  it('shows the skip-backward flag chip for planned scenes left behind', async () => {
+    setupPlanApi("- Signal fires\n- The Watcher's Call\n- Finale");
+    await renderRoot(STORY_WITH_CHAPTERS);
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    const chip = await screen.findByTestId('tl-skip-flags');
+    expect(chip).toHaveTextContent('1 planned scene skipped');
+    expect(chip).toHaveAttribute('title', 'Signal fires');
+  });
+
+  it('shows no skip chip when writing follows plan order', async () => {
+    setupPlanApi("- The Watcher's Call\n- Finale");
+    await renderRoot(STORY_WITH_CHAPTERS);
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    await screen.findByTestId('tl-legend');
+    expect(screen.queryByTestId('tl-skip-flags')).toBeNull();
+  });
+
+  it('renders from written scenes alone when the vault has no plan notes', async () => {
+    setupPlanApi('');
+    (window.api.listNotesVault as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [] });
+    await renderRoot(STORY_WITH_CHAPTERS);
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    const lanes = await screen.findByTestId('mock-lanes');
+    expect(lanes).toHaveAttribute('data-chapter-count', '1');
+    expect(screen.queryByTestId('tl-skip-flags')).toBeNull();
   });
 });
 

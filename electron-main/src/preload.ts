@@ -884,6 +884,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('archive:cont-scan-error', handler);
   },
 
+  // Beta 3 M23: a continuity item was resolved/ignored anywhere (panel or
+  // manuscript comment) — lets the other surface drop the flag live.
+  onArchiveContItemResolved: (cb: (data: { itemId: string; sceneId: string; status: string; action: string }) => void) => {
+    const handler = (_: unknown, data: { itemId: string; sceneId: string; status: string; action: string }) => cb(data);
+    ipcRenderer.on('archive:cont-item-resolved', handler);
+    return () => ipcRenderer.removeListener('archive:cont-item-resolved', handler);
+  },
+
   // SKY-1758: Scene Crafter board IPC
   sceneCrafterGetBoard: (storyId: string, storySlug: string) =>
     ipcRenderer.invoke('scene-crafter:get-board', { storyId, storySlug }),

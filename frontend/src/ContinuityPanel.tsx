@@ -153,10 +153,23 @@ export default function ContinuityPanel({
       setStatusMsg(data.error);
     });
 
+    // Beta 3 M23: a flag resolved from its manuscript comment's agent actions
+    // (archive:confirm continuity fallback) updates the panel live too.
+    const unsubItemResolved = window.api.onArchiveContItemResolved?.((data) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === data.itemId
+            ? { ...item, status: data.status, resolvedAction: data.action, resolvedAt: new Date().toISOString() }
+            : item,
+        ),
+      );
+    });
+
     return () => {
       unsubStart();
       unsubResult();
       unsubError();
+      unsubItemResolved?.();
     };
   }, [enabled]);
 

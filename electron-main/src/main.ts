@@ -414,6 +414,7 @@ import {
   itemToDbRow,
   DEFAULT_SCAN_BUDGET_TOKENS,
 } from './archiveContinuityEngine.js';
+import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
@@ -3581,7 +3582,22 @@ const handlers: IpcHandlers = {
     const auditId = crypto.randomUUID();
 
     const suggestion = getSuggestion(payload.suggestionId);
-    if (!suggestion) throw new Error(`Suggestion not found: ${payload.suggestionId}`);
+
+    // Beta 3 M23: manuscript comments created by the flags→comments bridge
+    // carry a continuity-item id (SKY-1684) as their suggestionId. When the
+    // id is not a MYT-376 suggestion, fall through to the continuity store so
+    // the comment's three agent actions resolve the flag directly.
+    if (!suggestion) {
+      const continuityRow = getContinuityIssue(payload.suggestionId);
+      if (continuityRow) {
+        resolveContinuityItemById(
+          payload.suggestionId,
+          confirmActionToResolution(payload.action),
+        );
+        return { ok: true, auditId };
+      }
+      throw new Error(`Suggestion not found: ${payload.suggestionId}`);
+    }
 
     if (suggestion.source_agent !== 'archive') {
       throw new Error('archive:confirm only handles archive suggestions');
@@ -7884,7 +7900,15 @@ async function runArchiveContScan(
   const createdAt = new Date().toISOString();
   // Use the vault root as a placeholder notePath; real line resolution is renderer-side.
   const vaultNotePath = getVaultRoot();
-  const items = parseScanResponse(text, sceneId, vaultNotePath, createdAt);
+  const parsed = parseScanResponse(text, sceneId, vaultNotePath, createdAt);
+
+  // Beta 3 M23: dedupe against existing open/ignored rows so re-scans of an
+  // unchanged scene don't stack duplicate flags (and therefore duplicate
+  // margin comments). Resolved rows do not block a genuine re-flag.
+  let items = parsed;
+  try {
+    items = dedupeScanItems(parsed, listContinuityIssuesByScene(sceneId));
+  } catch { /* db closed — fall back to raw parse */ }
 
   // Persist items to SQLite.
   for (const item of items) {
@@ -7904,11 +7928,19 @@ async function runArchiveContScan(
 
   const tokenUsed = Math.ceil((systemPrompt.length + userContent.length + text.length) / 4);
 
+  // Beta 3 M23: the scan-result event carries the scene's full current OPEN
+  // set (persisted + newly found), not just this pass's fresh findings —
+  // the Continuity panel and the comments bridge both treat it as truth.
+  let eventItems = items;
+  try {
+    eventItems = listContinuityIssuesByScene(sceneId, 'open').map(dbRowToItem);
+  } catch { /* db closed — fall back to fresh findings */ }
+
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
       win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_RESULT, {
         sceneId,
-        items,
+        items: eventItems,
         tokenUsed,
         partial,
       } satisfies import('./ipc.js').ArchiveContScanResultEvent);
@@ -8039,6 +8071,56 @@ function startArchiveContScheduler(): void {
 
 // ─── Archive continuity IPC handlers (SKY-1684) ─────────────────────────────
 
+/**
+ * Beta 3 M23: resolve/ignore a continuity item — shared by the
+ * archive:resolve-continuity handler (Continuity panel) and the
+ * archive:confirm continuity fallback (manuscript comment agent actions).
+ * Updates the row, writes the audit log, and broadcasts
+ * archive:cont-item-resolved so every surface drops the flag live.
+ * Throws when the item does not exist.
+ */
+function resolveContinuityItemById(
+  itemId: string,
+  action: import('./ipc.js').ResolutionAction,
+  note?: string,
+): void {
+  const row = getContinuityIssue(itemId);
+  if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
+
+  const now = new Date().toISOString();
+  const newStatus = action === 'ignore' ? 'ignored' : 'resolved';
+  updateContinuityIssueStatus(itemId, newStatus, now, action);
+
+  // Audit log entry.
+  try {
+    insertArchiveAuditLog({
+      id: crypto.randomUUID(),
+      action,
+      source: 'archive_agent',
+      item_id: itemId,
+      target_path: action === 'match_archive_to_story' ? row.vault_note_path
+        : action === 'suggest_story_change' ? row.manuscript_scene_id
+        : null,
+      changed_from: null,
+      changed_to: null,
+      scene_id: row.manuscript_scene_id,
+      reason: note ?? null,
+      created_at: now,
+    });
+  } catch { /* non-fatal */ }
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_ITEM_RESOLVED, {
+        itemId,
+        sceneId: row.manuscript_scene_id,
+        status: newStatus,
+        action,
+      } satisfies import('./ipc.js').ArchiveContItemResolvedEvent);
+    }
+  });
+}
+
 function registerArchiveContinuityHandlers(): void {
   // archive:scan-continuity — on-demand scan from renderer
   ipcMain.handle(
@@ -8062,34 +8144,10 @@ function registerArchiveContinuityHandlers(): void {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       const { itemId, action, note } = payload;
 
-      const row = getContinuityIssue(itemId);
-      if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
-
-      const now = new Date().toISOString();
-      const newStatus = action === 'ignore' ? 'ignored' : 'resolved';
-      updateContinuityIssueStatus(itemId, newStatus, now, action);
-
-      // Audit log entry.
-      try {
-        insertArchiveAuditLog({
-          id: crypto.randomUUID(),
-          action,
-          source: 'archive_agent',
-          item_id: itemId,
-          target_path: action === 'match_archive_to_story' ? row.vault_note_path
-            : action === 'suggest_story_change' ? row.manuscript_scene_id
-            : null,
-          changed_from: null,
-          changed_to: null,
-          scene_id: row.manuscript_scene_id,
-          reason: note ?? null,
-          created_at: now,
-        });
-      } catch { /* non-fatal */ }
-
       // For match_archive_to_story and suggest_story_change:
       // Actual file patching is deferred to the renderer (diff preview + consent modal).
-      // This handler only updates the item status + writes the audit log (AC-CC-05/06 partial).
+      // This only updates the item status + writes the audit log (AC-CC-05/06 partial).
+      resolveContinuityItemById(itemId, action, note);
 
       return { ok: true };
     }),
