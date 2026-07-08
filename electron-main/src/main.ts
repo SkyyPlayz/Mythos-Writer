@@ -8299,17 +8299,6 @@ app.whenReady().then(async () => {
   seedTrustedBinariesFromSettings(loadAppSettings());
   performance.mark('app:secrets-end');
   setupIpcMain(handlers);
-  // Synchronous IPC for beforeunload flush — ensures content is persisted before window closes.
-  ipcMain.on(IPC_CHANNELS.SNAPSHOT_SAVE_SYNC, (event, payload: SnapshotSavePayload) => {
-    if (isFromTopFrame(event)) {
-      try {
-        ensureVaultDir();
-        const { snapshots: retention } = loadAppSettings();
-        saveSnapshot(getVaultRoot(), payload.sceneId, payload.content, retention);
-      } catch { /* non-fatal — don't block close */ }
-    }
-    event.returnValue = null;
-  });
   registerAgentCancelHandlers();
   registerBrainstormExtractionHandlers();
   registerBrainstormHandler();
