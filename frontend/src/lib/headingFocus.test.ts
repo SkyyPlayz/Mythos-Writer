@@ -15,6 +15,7 @@ import {
   clampIndex,
   stepFocus,
   focusState,
+  reconcileFocusLevel,
 } from './headingFocus';
 import { HeadingFocusExtension, headingFocusKey } from '../HeadingFocusExtension';
 
@@ -176,5 +177,30 @@ describe('HeadingFocusExtension (decoration-only contract)', () => {
     const state = headingFocusKey.getState(editor.state);
     expect(state).toEqual({ level: 2, index: 0 });
     editor.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SKY-5902 — reconcileFocusLevel: the BlockEditor <select> must never point
+// at a level `levelsPresent` no longer reports (an orphaned <option>).
+// ---------------------------------------------------------------------------
+
+describe('reconcileFocusLevel (SKY-5902)', () => {
+  it('resets to All when the focused level is no longer present', () => {
+    expect(reconcileFocusLevel({ level: 3, index: 2 }, [2])).toEqual({ level: null, index: 0 });
+  });
+
+  it('leaves the selection untouched when the focused level is still present', () => {
+    const selection = { level: 2, index: 1 };
+    expect(reconcileFocusLevel(selection, [2, 3])).toBe(selection);
+  });
+
+  it('is a no-op when nothing is focused (level: null)', () => {
+    const selection = { level: null, index: 0 };
+    expect(reconcileFocusLevel(selection, [])).toBe(selection);
+  });
+
+  it('resets when every heading has been removed from the document', () => {
+    expect(reconcileFocusLevel({ level: 2, index: 0 }, [])).toEqual({ level: null, index: 0 });
   });
 });

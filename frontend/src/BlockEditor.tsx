@@ -14,7 +14,7 @@ import { countWords } from './wordStats';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import RichTextEditor from './RichTextEditor';
 import { HeadingFocusExtension } from './HeadingFocusExtension';
-import { levelsPresent, focusState, stepFocus, headingsAtLevel } from './lib/headingFocus';
+import { levelsPresent, focusState, stepFocus, headingsAtLevel, reconcileFocusLevel } from './lib/headingFocus';
 import './BlockEditor.css';
 
 export interface BlockEditorApi {
@@ -371,6 +371,19 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const hfStep = enableHeadingFocus && editor && hf.level !== null
     ? focusState(editor.state.doc, hf.level, hf.index)
     : null;
+
+  // SKY-5902: if edits remove the last Hn heading the user is focused on,
+  // headingLevelOptions drops that level but `hf.level` doesn't — the
+  // <select> would then hold a value with no matching <option>. Snap back
+  // to "All" so the control and the document stay in sync.
+  useEffect(() => {
+    const next = reconcileFocusLevel(hf, headingLevelOptions);
+    if (next !== hf) {
+      setHf(next);
+      editor?.commands.clearHeadingFocus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, hf, headingLevelOptions.join(',')]);
 
   const jumpToFocusHeading = useCallback((ed: Editor, level: number, index: number) => {
     const h = headingsAtLevel(ed.state.doc, level)[index];

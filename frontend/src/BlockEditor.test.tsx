@@ -742,4 +742,67 @@ describe('BlockEditor heading focus (GH #631)', () => {
     });
     await waitFor(() => expect(document.querySelectorAll('.heading-focus-hidden')).toHaveLength(0));
   });
+
+  // SKY-5902: post-merge audit found that editing away every heading of the
+  // focused level leaves `hf.level` pointing at a value with no matching
+  // <option>. The reset itself is covered by the `reconcileFocusLevel` unit
+  // tests in lib/headingFocus.test.ts (jsdom auto-selects the first <option>
+  // when the selected one is removed, so a DOM-level assertion here can't
+  // distinguish fixed from broken — see that suite for the real contract).
+  it('SKY-5902: drops the stale level option once its last heading is edited away', async () => {
+    const doc = [
+      '## Chapter A',
+      '',
+      'Alpha text.',
+      '',
+      '### Section A1',
+      '',
+      'Sub text.',
+      '',
+      '## Chapter B',
+      '',
+      'Beta text.',
+    ].join('\n');
+    let editorApi: { jumpToText: (text: string) => void; getMarkdown: () => string } | undefined;
+    render(
+      <BlockEditor
+        scene={makeSceneWithBlocks([
+          { id: 'b1', type: 'prose', content: doc, order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+        ])}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        enableHeadingFocus
+        autoFocus={false}
+        onEditorReady={(api) => { editorApi = api; }}
+      />
+    );
+    await waitFor(() => expect(editorApi).toBeDefined());
+    await waitFor(() => expect(screen.getByTestId('heading-focus-group')).toBeInTheDocument());
+
+    // Focus H3 — the only level-3 heading in the doc.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Heading focus level'), { target: { value: '3' } });
+    });
+    expect(screen.getByLabelText('Heading focus level')).toHaveValue('3');
+
+    // Delete the H3 heading node: select its text, then backspace twice —
+    // once to clear the text, once more to join the now-empty heading back
+    // into the preceding paragraph, removing the heading node entirely.
+    await act(async () => {
+      editorApi!.jumpToText('Section A1');
+    });
+    const pmDom = document.querySelector('.ProseMirror') as HTMLElement;
+    await act(async () => {
+      fireEvent.keyDown(pmDom, { key: 'Backspace' });
+    });
+    await act(async () => {
+      fireEvent.keyDown(pmDom, { key: 'Backspace' });
+    });
+    await waitFor(() => expect(editorApi!.getMarkdown()).not.toContain('### Section A1'));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('option', { name: 'H3' })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /H3 section/ })).not.toBeInTheDocument();
+  });
 });
