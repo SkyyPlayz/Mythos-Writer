@@ -4453,13 +4453,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               </div>
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
-                <DepthEdgeArrows
-                  depth="scene"
-                  canPrev={depthCanPrev}
-                  canNext={depthCanNext}
-                  onPrev={handleDepthPrev}
-                  onNext={handleDepthNext}
-                />
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"
@@ -4492,6 +4485,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
                   style={{ position: 'relative' }}
                 >
+                  {/* SKY-5904: anchored to the page-mode wrapper (max-width 720px,
+                      centered) rather than the full-width canvas, so the arrows
+                      hug the actual page edges instead of the outer pane edges. */}
+                  <DepthEdgeArrows
+                    depth="scene"
+                    canPrev={depthCanPrev}
+                    canNext={depthCanNext}
+                    onPrev={handleDepthPrev}
+                    onNext={handleDepthNext}
+                  />
                   <BlockEditor
                     key={`${selectedScene.id}-${restoreKey}`}
                     scene={selectedScene}
