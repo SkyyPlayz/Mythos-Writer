@@ -21,7 +21,6 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
   type UIEvent,
 } from 'react';
 import {
@@ -41,19 +40,17 @@ import {
   findAnchorSceneId,
   isValidAnchor,
   runAgentAction,
-  segmentsFor,
   useStoryComments,
   type AgentAction,
   type StoryComment,
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+import ParagraphRow from './ParagraphRow';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
   applyAllAutoLinkHints,
   applyAutoLinkHint,
-  findAutoLinkHints,
-  splitRunByHints,
   wikiLinkFor,
   type EntityMatch,
 } from './autoLinkText';
@@ -202,17 +199,6 @@ const CHEVRON_LEFT = (size: number) => (
   </svg>
 );
 
-const GRIP_ICON = (
-  <svg width="9" height="14" viewBox="0 0 12 20" fill="currentColor" aria-hidden="true">
-    <circle cx="4" cy="4" r="1.5" />
-    <circle cx="8" cy="4" r="1.5" />
-    <circle cx="4" cy="10" r="1.5" />
-    <circle cx="8" cy="10" r="1.5" />
-    <circle cx="4" cy="16" r="1.5" />
-    <circle cx="8" cy="16" r="1.5" />
-  </svg>
-);
-
 const PLUS_ICON = (
   <svg
     width="11"
@@ -302,6 +288,13 @@ export default function ManuscriptView({
   const [edgeDragging, setEdgeDragging] = useState(false);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
+  // Mirror of dragPara so the row-facing drag handlers can stay
+  // reference-stable — their identities feed ParagraphRow's memo gate.
+  const dragParaRef = useRef<ParagraphRef | null>(null);
+  const updateDragPara = useCallback((ref: ParagraphRef | null) => {
+    dragParaRef.current = ref;
+    setDragPara(ref);
+  }, []);
 
   // ── M11 comments (store binding + selection/open UI state) ──
   const {
@@ -398,12 +391,12 @@ export default function ManuscriptView({
   useEffect(() => {
     if (!dragPara) return;
     const clear = () => {
-      setDragPara(null);
+      updateDragPara(null);
       setDropKey(null);
     };
     window.addEventListener('mouseup', clear);
     return () => window.removeEventListener('mouseup', clear);
-  }, [dragPara]);
+  }, [dragPara, updateDragPara]);
 
   const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
@@ -511,28 +504,31 @@ export default function ManuscriptView({
   );
 
   // Paragraph grip drag (prototype paraDown/paraOver/paraDrop 3705–3719).
-  const handleGripDown = useCallback((ref: ParagraphRef) => (e: ReactMouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragPara(ref);
-  }, []);
-
-  const handleParaOver = useCallback(
-    (blockId: string) => {
-      if (dragPara && dropKey !== blockId) setDropKey(blockId);
+  // Row-facing callbacks read the drag state through dragParaRef instead of
+  // closing over it, so their identities survive drag-state renders and the
+  // ParagraphRow memo keeps untouched rows from re-rendering.
+  const handleGripDown = useCallback(
+    (sceneId: string, blockId: string, e: ReactMouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      updateDragPara({ sceneId, blockId });
     },
-    [dragPara, dropKey]
+    [updateDragPara]
   );
 
+  const handleParaOver = useCallback((blockId: string) => {
+    if (dragParaRef.current) setDropKey((prev) => (prev === blockId ? prev : blockId));
+  }, []);
+
   const handleParaDrop = useCallback(
-    (ref: ParagraphRef) => {
-      const d = dragPara;
-      setDragPara(null);
+    (sceneId: string, blockId: string) => {
+      const d = dragParaRef.current;
+      updateDragPara(null);
       setDropKey(null);
-      if (!d || (d.sceneId === ref.sceneId && d.blockId === ref.blockId)) return;
-      onMoveParagraph?.(d, ref);
+      if (!d || (d.sceneId === sceneId && d.blockId === blockId)) return;
+      onMoveParagraph?.(d, { sceneId, blockId });
     },
-    [dragPara, onMoveParagraph]
+    [onMoveParagraph, updateDragPara]
   );
 
   // ── M11 comment handlers ──
@@ -593,6 +589,11 @@ export default function ManuscriptView({
     setOpenCommentId((open) => (open === id ? null : id));
   }, []);
 
+  // Anchored underlines open (not toggle) their card — stable for ParagraphRow.
+  const handleOpenComment = useCallback((id: string | null) => {
+    setOpenCommentId(id);
+  }, []);
+
   // M23: click an auto-link hint → replace the mention with its [[wiki link]].
   const handleApplyAutoLink = useCallback(
     (sceneId: string, blockId: string, content: string, hint: EntityMatch) => {
@@ -617,12 +618,18 @@ export default function ManuscriptView({
     fontFamily: fontStack(font),
     fontSize: `${(fsize * 1.42).toFixed(1)}px`,
   };
-  const paraStyle: CSSProperties = {
-    textAlign: align,
-    fontWeight: fmt.b ? 600 : 400,
-    fontStyle: fmt.i ? 'italic' : 'normal',
-    textDecoration: [fmt.u ? 'underline' : '', fmt.s ? 'line-through' : ''].join(' ').trim() || 'none',
-  };
+  // Memoized so its identity only changes with the toolbar state — it is
+  // shallow-compared by every ParagraphRow's memo gate.
+  const paraStyle = useMemo<CSSProperties>(
+    () => ({
+      textAlign: align,
+      fontWeight: fmt.b ? 600 : 400,
+      fontStyle: fmt.i ? 'italic' : 'normal',
+      textDecoration:
+        [fmt.u ? 'underline' : '', fmt.s ? 'line-through' : ''].join(' ').trim() || 'none',
+    }),
+    [align, fmt]
+  );
 
   const renderFoldPill = (ownerId: string, text: string) => (
     <button
@@ -693,111 +700,33 @@ export default function ManuscriptView({
             {b.folded && renderFoldPill(b.sceneId, 'Scene collapsed — click to expand')}
           </div>
         );
-      case 'para': {
-        const ref: ParagraphRef = { sceneId: b.sceneId, blockId: b.blockId };
-        const showDropLine = !!dragPara && dropKey === b.blockId;
-        // M11: underline comment anchors (prototype segsFor 3601–3615). The
-        // joined segment text always equals b.content, so contentEditable
-        // commits (textContent reads) are unaffected.
-        const segs = commentsVisible
-          ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
-          : null;
-        // M13: moving per-paragraph highlight (prototype pStX 3376–3377).
-        const reading = readerKey === b.blockId;
-        // M23: entity mentions not already [[linked]] render as clickable
-        // hints inside the plain runs (comment anchors win on overlap).
-        const hints =
-          autoLinkTerms.length > 0 ? findAutoLinkHints(b.content, autoLinkTerms) : [];
-
-        const renderPlainRun = (text: string, start: number, keyBase: string) => {
-          const runs = hints.length > 0 ? splitRunByHints(text, start, hints) : null;
-          if (!runs) return <span key={keyBase}>{text}</span>;
-          return runs.map((r, j) =>
-            r.hint ? (
-              <span
-                // eslint-disable-next-line react/no-array-index-key -- runs are recomputed wholesale; offsets are positional
-                key={`${keyBase}-h${j}`}
-                className="msv-wl-hint"
-                data-testid={`msv-wl-hint-${b.blockId}-${r.hint.from}`}
-                title={`Link to [[${r.hint.canonicalName}]]`}
-                onClick={() => {
-                  if (r.hint) handleApplyAutoLink(b.sceneId, b.blockId, b.content, r.hint);
-                }}
-              >
-                {r.text}
-              </span>
-            ) : (
-              // eslint-disable-next-line react/no-array-index-key -- positional plain runs
-              <span key={`${keyBase}-t${j}`}>{r.text}</span>
-            )
-          );
-        };
-
-        let renderedChildren: ReactNode = b.content;
-        if (segs) {
-          let offset = 0;
-          renderedChildren = segs.map((s, i) => {
-            const start = offset;
-            offset += s.text.length;
-            return s.comment ? (
-              <span
-                // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
-                key={`${s.comment.id}-${i}`}
-                className={`msv-anchor msv-anchor--${s.comment.kind}`}
-                data-testid={`msv-anchor-${s.comment.id}`}
-                title="Open comment"
-                onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
-              >
-                {s.text}
-              </span>
-            ) : (
-              renderPlainRun(s.text, start, `t-${i}`)
-            );
-          });
-        } else if (hints.length > 0) {
-          renderedChildren = renderPlainRun(b.content, 0, 'p');
-        }
-
+      case 'para':
+        // Perf audit P3: paragraphs render through a memoized row so that
+        // view-level re-renders (comments arriving, reader ticks, width
+        // drags) leave untouched rows — and their contentEditables — alone.
+        // Everything passed here is reference-stable while unchanged; see
+        // ParagraphRow.tsx for the memo gate and the mid-edit caret guard.
         return (
-          <div key={b.id}>
-            {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
-            <div
-              className="msv-para"
-              onMouseEnter={() => handleParaOver(b.blockId)}
-              onMouseUp={() => handleParaDrop(ref)}
-            >
-              <span
-                className="msv-grip"
-                data-testid={`msv-grip-${b.blockId}`}
-                title="Drag block to move it"
-                aria-hidden="true"
-                onMouseDown={handleGripDown(ref)}
-              >
-                {GRIP_ICON}
-              </span>
-              <div
-                className={`msv-para-text${reading ? ' msv-para-text--reading' : ''}`}
-                style={paraStyle}
-                data-testid={`msv-para-${b.blockId}`}
-                contentEditable
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="false"
-                onBlur={(e) => commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget)}
-                onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget);
-                    e.currentTarget.blur();
-                  }
-                }}
-              >
-                {renderedChildren}
-              </div>
-            </div>
-          </div>
+          <ParagraphRow
+            key={b.id}
+            sceneId={b.sceneId}
+            blockId={b.blockId}
+            content={b.content}
+            comments={
+              commentsVisible ? commentsByScene.get(b.sceneId) ?? NO_COMMENTS : NO_COMMENTS
+            }
+            autoLinkTerms={autoLinkTerms}
+            reading={readerKey === b.blockId}
+            showDropLine={!!dragPara && dropKey === b.blockId}
+            paraStyle={paraStyle}
+            onCommit={commitParagraph}
+            onGripDown={handleGripDown}
+            onParaOver={handleParaOver}
+            onParaDrop={handleParaDrop}
+            onOpenComment={handleOpenComment}
+            onApplyAutoLink={handleApplyAutoLink}
+          />
         );
-      }
     }
   };
 
