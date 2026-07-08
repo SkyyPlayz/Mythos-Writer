@@ -119,4 +119,55 @@ describe('LiquidNeonAppearanceSection', () => {
     expect(next.wp).toBe('match');
     expect(next.slots).toEqual([...LIQUID_NEON_PRESETS.classic.c]);
   });
+
+  describe('keyboard accessibility (SKY-6012)', () => {
+    it('preset cards, swatches, wallpaper cards, and reset are focusable buttons', async () => {
+      await setup();
+      for (const testId of ['lnas-preset-classic', 'lnas-slot0-swatch-ff2d95', 'lnas-wp-aurora', 'lnas-reset', 'lnas-wp-upload']) {
+        const el = screen.getByTestId(testId);
+        expect(el).toHaveAttribute('role', 'button');
+        expect(el).toHaveAttribute('tabIndex', '0');
+      }
+    });
+
+    it('Enter activates a preset card the same as a click', async () => {
+      const { onChange } = await setup({ setKey: 'classic', wp: 'deep' });
+      fireEvent.keyDown(screen.getByTestId('lnas-preset-winter'), { key: 'Enter' });
+      const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+      expect(next.setKey).toBe('winter');
+      expect(next.wp).toBe('match');
+    });
+
+    it('Space activates a color swatch the same as a click', async () => {
+      const { onChange } = await setup();
+      fireEvent.keyDown(screen.getByTestId('lnas-slot0-swatch-ff2d95'), { key: ' ' });
+      const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+      expect(next.slots[0]).toBe('#ff2d95');
+      expect(next.setKey).toBe('custom');
+    });
+
+    it('Enter activates the reset control', async () => {
+      const { onChange } = await setup({ setKey: 'ember', intensity: 90 });
+      fireEvent.keyDown(screen.getByTestId('lnas-reset'), { key: 'Enter' });
+      expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).setKey).toBe('classic');
+    });
+
+    it('NeonToggle switches (split, reduce glow) are focusable and activate on Space', async () => {
+      const { onChange } = await setup({ txtCfg: { head: '#111111', body: '#222222', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7' } });
+      const toggle = screen.getByTestId('lnas-txsplit');
+      expect(toggle).toHaveAttribute('role', 'switch');
+      expect(toggle).toHaveAttribute('tabIndex', '0');
+      fireEvent.keyDown(toggle, { key: ' ' });
+      expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).txtCfg.split).toBe(true);
+    });
+
+    it('NeonSeg segment options are focusable buttons activated by Enter', async () => {
+      const { onChange } = await setup({ frameAnim: 'off' });
+      const cycleOption = screen.getByTestId('lnas-frame-cycle');
+      expect(cycleOption).toHaveAttribute('role', 'button');
+      expect(cycleOption).toHaveAttribute('tabIndex', '0');
+      fireEvent.keyDown(cycleOption, { key: 'Enter' });
+      expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).frameAnim).toBe('cycle');
+    });
+  });
 });

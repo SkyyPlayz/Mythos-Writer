@@ -32,6 +32,12 @@
   background: rgba(255, 255, 255, .06);
 }
 
+.lnas-root [role='button']:focus-visible,
+.lnas-root [role='switch']:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 2px;
+}
+
 /* Prototype range thumb (HTML 32–33) */
 .lnas-range {
   -webkit-appearance: none;

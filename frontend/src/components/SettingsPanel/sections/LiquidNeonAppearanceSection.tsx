@@ -30,6 +30,16 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
 }
 
+/** Keyboard activation for div/label elements standing in for a button (Enter/Space). */
+function onActivateKey(handler: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handler();
+    }
+  };
+}
+
 // ── Small verbatim building blocks ────────────────────────────────────────────
 
 /** mkToggle (prototype 4180) as a component. */
@@ -49,7 +59,15 @@ function NeonToggle({ on, onClick, testId }: { on: boolean; onClick: () => void;
       : { background: '#8e9db8' }),
   };
   return (
-    <div onClick={onClick} style={pillSt} role="switch" aria-checked={on} data-testid={testId}>
+    <div
+      onClick={onClick}
+      style={pillSt}
+      role="switch"
+      aria-checked={on}
+      tabIndex={0}
+      onKeyDown={onActivateKey(onClick)}
+      data-testid={testId}
+    >
       <span style={knobSt} />
     </div>
   );
@@ -87,6 +105,10 @@ function NeonSeg<K extends string>({ options, current, onPick, testIdPrefix }: {
         <div
           key={k}
           onClick={() => onPick(k)}
+          role="button"
+          tabIndex={0}
+          aria-pressed={current === k}
+          onKeyDown={onActivateKey(() => onPick(k))}
           data-testid={testIdPrefix ? `${testIdPrefix}-${k}` : undefined}
           className={current === k ? undefined : 'lnas-seg-idle'}
           style={{
@@ -147,6 +169,11 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         key={k}
         data-testid={`lnas-preset-${k}`}
         onClick={() => patch({ setKey: k, slots: [...v.c] as LiquidNeonV2Settings['slots'], wp: 'match' })}
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
+        aria-label={`Theme: ${v.name}`}
+        onKeyDown={onActivateKey(() => patch({ setKey: k, slots: [...v.c] as LiquidNeonV2Settings['slots'], wp: 'match' }))}
         className={active ? undefined : 'lnas-hover-lift'}
         style={{
           flex: 1, minWidth: 118, padding: 11, borderRadius: 13, cursor: 'pointer',
@@ -189,6 +216,15 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
                 slots[i] = c;
                 patch({ slots, setKey: 'custom' });
               }}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selected}
+              aria-label={`Slot ${'ABCDEF'[i]} color ${c}`}
+              onKeyDown={onActivateKey(() => {
+                const slots = [...S.slots] as LiquidNeonV2Settings['slots'];
+                slots[i] = c;
+                patch({ slots, setKey: 'custom' });
+              })}
               className="lnas-hover-scale"
               style={{
                 width: 23, height: 23, borderRadius: 8, cursor: 'pointer', background: c,
@@ -225,6 +261,11 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         key={k}
         data-testid={`lnas-wp-${k}`}
         onClick={() => patch({ wp: k })}
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
+        aria-label={`Wallpaper: ${label}`}
+        onKeyDown={onActivateKey(() => patch({ wp: k }))}
         className={active ? undefined : 'lnas-hover-border'}
         style={{
           flex: 1, minWidth: 120, padding: 7, borderRadius: 13, cursor: 'pointer',
@@ -277,6 +318,20 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
 
   const transparencyMismatch = windowTransparent !== null && (S.wp === 'none') !== windowTransparent;
 
+  const resetToDefaults = () => patch({
+    setKey: 'classic',
+    slots: [...LIQUID_NEON_PRESETS.classic.c] as LiquidNeonV2Settings['slots'],
+    intensity: LIQUID_NEON_V2_DEFAULTS.intensity,
+    glassA: LIQUID_NEON_V2_DEFAULTS.glassA,
+    blur: LIQUID_NEON_V2_DEFAULTS.blur,
+    wp: LIQUID_NEON_V2_DEFAULTS.wp,
+    scrim: LIQUID_NEON_V2_DEFAULTS.scrim,
+    glowW: LIQUID_NEON_V2_DEFAULTS.glowW,
+    glowR: LIQUID_NEON_V2_DEFAULTS.glowR,
+    reduceGlow: false,
+    animGlow: true,
+  });
+
   return (
     <section className="settings-section lnas-root" aria-labelledby="section-liquid-neon" data-settings-cat="appearance">
       <h3 className="settings-section-title" id="section-liquid-neon">Liquid Neon</h3>
@@ -317,7 +372,15 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
       <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — or go fully transparent and let your desktop show through.">
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {wpCards}
-          <label className="lnas-upload" onClick={(e) => { e.preventDefault(); void pickCustomWallpaper(); }} data-testid="lnas-wp-upload">
+          <label
+            className="lnas-upload"
+            onClick={(e) => { e.preventDefault(); void pickCustomWallpaper(); }}
+            role="button"
+            tabIndex={0}
+            aria-label="Add your own wallpaper image"
+            onKeyDown={onActivateKey(() => void pickCustomWallpaper())}
+            data-testid="lnas-wp-upload"
+          >
             <div style={{ height: 58, borderRadius: 9, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#8e9db8', border: '1px solid rgba(255,255,255,.06)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2.5" /><circle cx="9" cy="10" r="1.8" /><path d="M3.5 16.5l4.5-4 3.5 3 3-2.5 5.5 4.5" /></svg>
               <span style={{ fontSize: 9.5 }}>Your image</span>
@@ -429,21 +492,10 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
       <div
         className="lnas-reset"
         data-testid="lnas-reset"
-        onClick={() =>
-          patch({
-            setKey: 'classic',
-            slots: [...LIQUID_NEON_PRESETS.classic.c] as LiquidNeonV2Settings['slots'],
-            intensity: LIQUID_NEON_V2_DEFAULTS.intensity,
-            glassA: LIQUID_NEON_V2_DEFAULTS.glassA,
-            blur: LIQUID_NEON_V2_DEFAULTS.blur,
-            wp: LIQUID_NEON_V2_DEFAULTS.wp,
-            scrim: LIQUID_NEON_V2_DEFAULTS.scrim,
-            glowW: LIQUID_NEON_V2_DEFAULTS.glowW,
-            glowR: LIQUID_NEON_V2_DEFAULTS.glowR,
-            reduceGlow: false,
-            animGlow: true,
-          })
-        }
+        onClick={resetToDefaults}
+        role="button"
+        tabIndex={0}
+        onKeyDown={onActivateKey(resetToDefaults)}
       >
         Reset appearance to defaults
       </div>
