@@ -52,6 +52,7 @@ import {
   providerSupportsVoice,
   LG_DEFAULTS,
   NAV_RAIL_DEFAULTS,
+  mergeNavConfigItems,
   type ProviderKind,
   type AgentName,
   type AgentOverrideState,
@@ -241,7 +242,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       if (s.pageBackground) setPageBg({ ...PAGE_BACKGROUND_DEFAULTS, ...s.pageBackground });
-      setNavConfig(s.navConfig ?? NAV_RAIL_DEFAULTS);
+      // SKY-5903: merge in any default nav items introduced since this config was
+      // saved, so upgrading users can see and configure them (not just have them
+      // silently appended in the rail with no way to disable/reorder).
+      setNavConfig(
+        s.navConfig
+          ? { ...s.navConfig, items: mergeNavConfigItems(s.navConfig.items, NAV_RAIL_DEFAULTS.items) }
+          : NAV_RAIL_DEFAULTS,
+      );
       setLoading(false);
     }).catch(() => {
       setLoading(false);
