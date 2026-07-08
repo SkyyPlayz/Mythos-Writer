@@ -39,14 +39,10 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
-<<<<<<< HEAD
 import ReaderBar from './ReaderBar';
 import { useManuscriptReader } from './useManuscriptReader';
 import { showLnToast } from '../theme/lnToast';
 import type { TtsEngineSettings, TtsVoicePrefs } from '../hooks/useTtsPlayer';
-=======
-import { showLnToast } from '../theme/lnToast';
->>>>>>> origin/main
 import type { Story } from '../types';
 import './ManuscriptView.css';
 
@@ -65,7 +61,6 @@ export interface ManuscriptViewProps {
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
-<<<<<<< HEAD
   /**
    * M13: TTS engine config (AppSettings.tts) for the reader — Piper/cloud
    * when configured, OS speechSynthesis otherwise (same stack as Beta 2).
@@ -73,8 +68,6 @@ export interface ManuscriptViewProps {
   ttsSettings?: TtsEngineSettings & { voiceId?: string };
   /** M13: stored voice prefs (AppSettings.voice) seed the reader's speed/voice. */
   voicePrefs?: TtsVoicePrefs;
-=======
->>>>>>> origin/main
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -158,7 +151,6 @@ const PLUS_ICON = (
 
 const NO_COMMENTS: readonly StoryComment[] = [];
 
-<<<<<<< HEAD
 const SPEAKER_ICON = (
   <svg
     width="12"
@@ -176,8 +168,6 @@ const SPEAKER_ICON = (
   </svg>
 );
 
-=======
->>>>>>> origin/main
 export default function ManuscriptView({
   story,
   cursor,
@@ -186,11 +176,8 @@ export default function ManuscriptView({
   onCycleStatus,
   pageWidth = 1000,
   focusMode = false,
-<<<<<<< HEAD
   ttsSettings,
   voicePrefs,
-=======
->>>>>>> origin/main
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -216,12 +203,9 @@ export default function ManuscriptView({
   /** Expanded gutter card (prototype cOpen). */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
 
-<<<<<<< HEAD
   // ── M13 TTS reader (existing Beta-2 stack via useTtsPlayer) ──
   const reader = useManuscriptReader(story, cursor, ttsSettings, voicePrefs);
 
-=======
->>>>>>> origin/main
   // Prototype commentsVisible (3600): hidden in Focus unless overridden.
   const commentsVisible = showComments && (!focusMode || commentsInFocus);
 
@@ -473,11 +457,8 @@ export default function ManuscriptView({
         const segs = commentsVisible
           ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
           : null;
-<<<<<<< HEAD
         // M13: moving per-paragraph highlight (prototype pStX 3376–3377).
         const reading = readerKey === b.blockId;
-=======
->>>>>>> origin/main
         return (
           <div key={b.id} className="msv-para">
             <span className="msv-grip" title="Drag block to move it" aria-hidden="true">
@@ -596,7 +577,6 @@ export default function ManuscriptView({
           ))}
         </nav>
         <div className="msv-flex-spacer" />
-<<<<<<< HEAD
         {/* M13: reader chip — opens/closes the audiobook bar (prototype Read
             toolbar button 748 / gutter Reader dock 913) */}
         <button
@@ -610,8 +590,6 @@ export default function ManuscriptView({
           {SPEAKER_ICON}
           Read
         </button>
-=======
->>>>>>> origin/main
         {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
         <button
           type="button"
@@ -700,10 +678,7 @@ export default function ManuscriptView({
               onChange={setCommentInput}
               onSave={handleSaveComment}
               onCancel={clearSelectionBar}
-<<<<<<< HEAD
               onRead={handleReadSelection}
-=======
->>>>>>> origin/main
             />
           )}
           <div className="msv-sheet-wrap" style={{ width: `${pageW}px` }}>
