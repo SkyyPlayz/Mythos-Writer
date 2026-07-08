@@ -71,10 +71,33 @@ describe('ChapterInterlude (GH #631)', () => {
   });
 
   it('starts empty when chapter.md does not exist', async () => {
-    stubApi({ readVault: vi.fn().mockRejectedValue(new Error('not found')) });
+    // vault:read is a non-enveloped IPC channel: the main process never lets
+    // it reject, it resolves with `{ error: 'File not found.' }` on a missing
+    // file (see ipcErrors.ts). Mock the real shape, not a rejected promise.
+    stubApi({ readVault: vi.fn().mockResolvedValue({ error: 'File not found.' }) });
     render(<ChapterInterlude chapter={chapter} />);
     await waitFor(() => expect(screen.getByTestId('chapter-interlude')).toBeInTheDocument());
     expect(editorProps.content).toBe('');
+  });
+
+  it('does not start an editable empty session on a non-missing read failure (SKY-5901)', async () => {
+    // A permission/I/O/oversized-file error also resolves with `{ error }`,
+    // but is NOT "file missing" — starting empty here would let the next
+    // save silently overwrite real chapter.md content.
+    stubApi({ readVault: vi.fn().mockResolvedValue({ error: 'Permission denied.' }) });
+    render(<ChapterInterlude chapter={chapter} />);
+    await waitFor(() => expect(screen.getByTestId('chapter-interlude')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent(/Permission denied/i);
+    expect(screen.queryByTestId('rte-stub')).not.toBeInTheDocument();
+    expect(window.api.writeVault).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a genuine IPC rejection as a load error rather than starting empty', async () => {
+    stubApi({ readVault: vi.fn().mockRejectedValue(new Error('renderer crashed')) });
+    render(<ChapterInterlude chapter={chapter} />);
+    await waitFor(() => expect(screen.getByTestId('chapter-interlude')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent(/renderer crashed/i);
+    expect(screen.queryByTestId('rte-stub')).not.toBeInTheDocument();
   });
 
   it('saves edits with the original frontmatter preserved byte-for-byte', async () => {
@@ -88,7 +111,7 @@ describe('ChapterInterlude (GH #631)', () => {
   });
 
   it('creates default frontmatter on first save when chapter.md was missing', async () => {
-    stubApi({ readVault: vi.fn().mockRejectedValue(new Error('not found')) });
+    stubApi({ readVault: vi.fn().mockResolvedValue({ error: 'File not found.' }) });
     render(<ChapterInterlude chapter={chapter} storyId="story-1" />);
     await waitFor(() => expect(screen.getByTestId('chapter-interlude')).toBeInTheDocument());
     await act(async () => { editorProps.onChangeMarkdown?.('First words.\n'); });
