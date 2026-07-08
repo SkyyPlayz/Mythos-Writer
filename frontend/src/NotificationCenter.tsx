@@ -21,6 +21,8 @@ const NOTIF_META: Record<NotificationKind, [string, string]> = {
   sugg: ['var(--n2)', '<path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8z"></path>'],
   bs: ['var(--n1)', '<circle cx="12" cy="10" r="5"></circle><path d="M10 17.5h4M10.5 20.5h3"></path>'],
   crafter: ['var(--n3)', '<path d="M5 21V8l3-3v16M9 21V5l3-2v18M12 21V3l4 3v15M19 21V9l-3-3"></path><path d="M3 21h18"></path>'],
+  // Beta 3 M22: Beta Reader events — prototype's open-book agent icon (agentDefs, HTML 4350).
+  beta: ['#8ad9ff', '<path d="M12 6c-1.8-1.6-4.2-2-7-2v14c2.8 0 5.2.4 7 2 1.8-1.6 4.2-2 7-2V4c-2.8 0-5.2.4-7 2z"></path><path d="M12 6v14"></path>'],
 };
 
 /** Resolve a meta color that may be a CSS var reference to a concrete hex. */

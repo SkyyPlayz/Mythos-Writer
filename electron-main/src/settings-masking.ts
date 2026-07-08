@@ -47,11 +47,14 @@ export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   if (settings.tts && settings.tts.cloudApiKey) {
     masked.tts = { ...settings.tts, cloudApiKey: maskApiKey(settings.tts.cloudApiKey) };
   }
-  // Mask per-agent provider.apiKey overrides (SKY-738).
+  // Mask per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader).
   masked.agents = {
     writingAssistant: maskAgentProvider(settings.agents.writingAssistant),
     brainstorm: maskAgentProvider(settings.agents.brainstorm),
     archive: maskAgentProvider(settings.agents.archive),
+    ...(settings.agents.betaReader
+      ? { betaReader: maskAgentProvider(settings.agents.betaReader) }
+      : {}),
   };
   return masked;
 }
@@ -109,11 +112,18 @@ export function reconcileSettingsFromRenderer(
   if (stored.tts?.cloudApiKey && incoming.tts && incoming.tts.cloudApiKey === maskApiKey(stored.tts.cloudApiKey)) {
     reconciled.tts = { ...incoming.tts, cloudApiKey: stored.tts.cloudApiKey };
   }
-  // Reconcile per-agent provider.apiKey overrides (SKY-738).
+  // Reconcile per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader).
   reconciled.agents = {
     writingAssistant: reconcileAgentProvider(incoming.agents.writingAssistant, stored.agents.writingAssistant),
     brainstorm: reconcileAgentProvider(incoming.agents.brainstorm, stored.agents.brainstorm),
     archive: reconcileAgentProvider(incoming.agents.archive, stored.agents.archive),
+    ...(incoming.agents.betaReader
+      ? {
+          betaReader: stored.agents.betaReader
+            ? reconcileAgentProvider(incoming.agents.betaReader, stored.agents.betaReader)
+            : incoming.agents.betaReader,
+        }
+      : {}),
   };
   return reconciled;
 }

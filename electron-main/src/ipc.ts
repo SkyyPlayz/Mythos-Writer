@@ -84,9 +84,10 @@ export const IPC_CHANNELS = {
   AGENT_VAULT_CHECK: 'agent:vault-check',
   AGENT_ARCHIVE: 'agent:archive',
 
-  // Agent persona files (MYT-816)
+  // Agent persona files (MYT-816; Beta 3 M22 adds write)
   AGENT_PERSONA_READ: 'agent:persona:read',
   AGENT_PERSONA_RESET: 'agent:persona:reset',
+  AGENT_PERSONA_WRITE: 'agent:persona:write',
 
   // System
   SYSTEM_INFO: 'system:info',
@@ -1923,7 +1924,11 @@ export interface AppSettings {
     writingAssistant: { enabled: boolean; model: string; scanIntervalSeconds: number; provider?: ProviderSettings; cadenceTrigger?: 'on_save' | 'idle_heartbeat'; idleHeartbeatConstantInterval?: boolean; idleDebounceSeconds?: number; } & AgentBudgetSettings;
     brainstorm: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
+    /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings files remain valid; loadAppSettings back-fills defaults. */
+    betaReader?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
   };
+  /** Beta 3 M22: user renames for the four named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
   theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;
@@ -3258,10 +3263,10 @@ export interface SetAgentConfigResponse {
   saved: boolean;
 }
 
-// ─── Agent persona IPC types (MYT-816) ───
+// ─── Agent persona IPC types (MYT-816; Beta 3 M22 adds archive/betaReader + LEARNING + write) ───
 
-export type AgentPersonaName = 'writingAssistant' | 'brainstorm';
-export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
+export type AgentPersonaName = 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader';
+export type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS' | 'LEARNING';
 
 export interface AgentPersonaReadPayload {
   agentName: AgentPersonaName;
@@ -3279,6 +3284,16 @@ export interface AgentPersonaResetPayload {
 }
 
 export interface AgentPersonaResetResponse {
+  success: boolean;
+}
+
+export interface AgentPersonaWritePayload {
+  agentName: AgentPersonaName;
+  key: PersonaKey;
+  content: string;
+}
+
+export interface AgentPersonaWriteResponse {
   success: boolean;
 }
 

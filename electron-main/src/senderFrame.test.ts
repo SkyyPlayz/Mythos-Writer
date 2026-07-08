@@ -33,6 +33,9 @@ vi.mock('@anthropic-ai/sdk', () => ({ default: vi.fn() }));
 vi.mock('./agentPersona.js', () => ({
   loadPersonaFile: vi.fn().mockReturnValue({ content: 'hi', isCustom: false }),
   resetPersonaFile: vi.fn(),
+  // Beta 3 M22: identity-file editing surface.
+  writePersonaFile: vi.fn(),
+  validatePersonaArgs: vi.fn(),
 }));
 
 import {
@@ -331,6 +334,37 @@ describe('agent persona handlers reject nested-frame invocations', () => {
 
     expect(result.content).toBe('soul text');
     expect(result.isCustom).toBe(false);
+  });
+
+  it('agent:persona:write rejects nested-frame invocation (Beta 3 M22)', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_WRITE)!;
+
+    const result = await fn(nestedEvent(), { agentName: 'betaReader', key: 'SOUL', content: 'x' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:write rejects null-frame invocation (Beta 3 M22)', async () => {
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_WRITE)!;
+
+    const result = await fn(nullFrameEvent(), { agentName: 'betaReader', key: 'SOUL', content: 'x' });
+
+    expect(result).toBe(UNTRUSTED_FRAME_REJECTION);
+  });
+
+  it('agent:persona:write validates args then forwards to writePersonaFile (Beta 3 M22)', async () => {
+    const { writePersonaFile, validatePersonaArgs } = await import('./agentPersona.js');
+
+    registerAgentPersonaHandlers(() => '/tmp/ud');
+    const fn = handleMap.get(IPC_CHANNELS.AGENT_PERSONA_WRITE)!;
+
+    const result = await fn(topEvent(), { agentName: 'betaReader', key: 'SOUL', content: 'new soul' }) as { success: boolean };
+
+    expect(validatePersonaArgs).toHaveBeenCalledWith('betaReader', 'SOUL');
+    expect(writePersonaFile).toHaveBeenCalledWith('/tmp/ud', 'betaReader', 'SOUL', 'new soul');
+    expect(result.success).toBe(true);
   });
 
   it('agent:persona:read sanitizes thrown errors (no raw stack leak)', async () => {

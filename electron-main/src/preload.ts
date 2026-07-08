@@ -597,11 +597,13 @@ contextBridge.exposeInMainWorld('api', {
   restoreAppData: (confirmed?: boolean) =>
     ipcRenderer.invoke('app:restoreAppData', { confirmed }),
 
-  // Agent persona files (MYT-816) — view/reset per-agent AGENTS/HEARTBEAT/SOUL/TOOLS files
+  // Agent persona files (MYT-816; Beta 3 M22 adds write) — per-agent identity files
   agentPersonaRead: (agentName: string, key: string) =>
     ipcRenderer.invoke('agent:persona:read', { agentName, key }),
   agentPersonaReset: (agentName: string, key: string) =>
     ipcRenderer.invoke('agent:persona:reset', { agentName, key }),
+  agentPersonaWrite: (agentName: string, key: string, content: string) =>
+    ipcRenderer.invoke('agent:persona:write', { agentName, key, content }),
 
   // SKY-20: Brainstorm Agent routing
   brainstormGetSettings: () =>

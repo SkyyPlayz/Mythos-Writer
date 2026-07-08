@@ -442,6 +442,74 @@ describe('reconcileSettingsFromRenderer — per-agent provider keys (SKY-738)', 
   });
 });
 
+// ── Beta Reader per-agent provider.apiKey (Beta 3 M22) ─────────────────────
+
+const FAKE_BETA_READER_KEY = 'sk-ant-test-BetaReaderKeyForTestingOnly000000000000000';
+
+function betaReaderKeyFixture(): AppSettings {
+  const base = agentKeysFixture();
+  return {
+    ...base,
+    agents: {
+      ...base.agents,
+      betaReader: {
+        enabled: true,
+        model: 'claude',
+        autoApply: false,
+        confidenceThreshold: 0.8,
+        maxTokensPerHour: 0,
+        maxSuggestionsPerHour: 0,
+        heartbeatIntervalMinutes: 0,
+        maxTokensPerDay: 0,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: FAKE_BETA_READER_KEY },
+      },
+    },
+  };
+}
+
+describe('betaReader provider.apiKey — mask / strip / reconcile (Beta 3 M22)', () => {
+  it('masks betaReader provider.apiKey before returning to the renderer', () => {
+    const masked = maskSettingsForRenderer(betaReaderKeyFixture());
+    expect(masked.agents.betaReader?.provider?.apiKey).not.toBe(FAKE_BETA_READER_KEY);
+    expect(masked.agents.betaReader?.provider?.apiKey).toMatch(MASKED_PATTERN);
+    expect(JSON.stringify(masked)).not.toContain(FAKE_BETA_READER_KEY);
+  });
+
+  it('masking tolerates settings without a betaReader slot (pre-M22 files)', () => {
+    const masked = maskSettingsForRenderer(agentKeysFixture());
+    expect(masked.agents.betaReader).toBeUndefined();
+  });
+
+  it('betaReader provider.apiKey is not written plaintext to app-settings.json', () => {
+    const { store, settingsPath } = mkStore();
+    const stripped = persistSecretsAndStripSettings(betaReaderKeyFixture(), store);
+    fs.writeFileSync(settingsPath, JSON.stringify(stripped, null, 2), 'utf-8');
+
+    const onDisk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(onDisk).not.toContain(FAKE_BETA_READER_KEY);
+    expect(onDisk).not.toContain('BetaReaderKey');
+    expect(store.get('provider.betaReader.apiKey')).toBe(FAKE_BETA_READER_KEY);
+    expect(stripped.agents.betaReader?.provider?.apiKey).toBe('');
+  });
+
+  it('restores the stored betaReader key when the renderer echoes the mask back', () => {
+    const stored = betaReaderKeyFixture();
+    const incoming: AppSettings = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      agents: {
+        ...stored.agents,
+        betaReader: {
+          ...stored.agents.betaReader!,
+          provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: maskApiKey(FAKE_BETA_READER_KEY) },
+        },
+      },
+    };
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(reconciled.agents.betaReader?.provider?.apiKey).toBe(FAKE_BETA_READER_KEY);
+  });
+});
+
 // ── STT / TTS cloud API key masking (SKY-816 / SKY-817) ────────────────────
 
 const FAKE_STT_CLOUD_KEY = 'sk-proj-TestSttCloudKey00000000000000000000000000';
