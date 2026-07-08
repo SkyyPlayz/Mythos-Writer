@@ -1927,6 +1927,8 @@ export interface AppSettings {
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
   onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
+  onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
   /** SKY-2005: last sample genre selected from the onboarding sample preview. */
