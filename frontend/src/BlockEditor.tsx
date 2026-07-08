@@ -13,6 +13,7 @@ import {
 import { countWords } from './wordStats';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import RichTextEditor from './RichTextEditor';
+import type { FormatToolbarActions } from './FormatToolbar';
 import { HeadingFocusExtension } from './HeadingFocusExtension';
 import { levelsPresent, focusState, stepFocus, headingsAtLevel } from './lib/headingFocus';
 import './BlockEditor.css';
@@ -64,6 +65,8 @@ interface Props {
   autoFocus?: boolean;
   /** GH #631: show the heading-focus control (H1–H6 section view splitting). Single-scene view only. */
   enableHeadingFocus?: boolean;
+  /** Beta 3 M10: optional Read/Dictate/Assist toolbar buttons (prototype 766–777). */
+  toolbarActions?: FormatToolbarActions;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -105,7 +108,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   const [wordCount, setWordCount] = useState<number>(() =>
@@ -485,6 +488,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
         wikiLinkCandidates={wikiLinkCandidates}
         wrapRef={editorWrapRef}
+        toolbarActions={toolbarActions}
         wrapClassName="tiptap-editor-wrap"
         contentClassName="tiptap-content"
         onWrapMouseOver={handleHintMouseOver}

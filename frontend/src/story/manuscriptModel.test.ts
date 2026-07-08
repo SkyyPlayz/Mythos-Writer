@@ -10,6 +10,7 @@ import {
   chapterStatus,
   cycleStatus,
   flatUnits,
+  moveParagraph,
   sceneStatus,
   zoomStep,
   type H3Block,
@@ -362,5 +363,77 @@ describe('breadcrumbs', () => {
     expect(breadcrumbs(story, cur('scene', 9, 9)).map((c) => c.label)).toEqual([
       'The Last City of Veynn',
     ]);
+  });
+});
+
+// ─── moveParagraph (Beta 3 M10 — prototype paraDrop 3708–3719) ───────────────
+
+describe('moveParagraph', () => {
+  const story = mkStory();
+  const order = (s: Story, sceneId: string): string[] => {
+    for (const ch of s.chapters) {
+      const sc = ch.scenes.find((x) => x.id === sceneId);
+      if (sc) return [...sc.blocks].sort((a, b) => a.order - b.order).map((b) => b.id);
+    }
+    return [];
+  };
+
+  it('moves a block before the target within the same scene (downward, −1 adjust)', () => {
+    const res = moveParagraph(
+      story,
+      { sceneId: 's4', blockId: 's4-b0' },
+      { sceneId: 's4', blockId: 's4-b2' }
+    );
+    expect(res).not.toBeNull();
+    // Prototype: removing the earlier sibling shifts the target left, so the
+    // dragged block lands where the gap closed — before the FINAL position of b2.
+    expect(order(res!.story, 's4')).toEqual(['s4-b1', 's4-b0', 's4-b2']);
+    expect(res!.changedSceneIds).toEqual(['s4']);
+  });
+
+  it('moves a block upward before an earlier target', () => {
+    const res = moveParagraph(
+      story,
+      { sceneId: 's4', blockId: 's4-b2' },
+      { sceneId: 's4', blockId: 's4-b0' }
+    );
+    expect(order(res!.story, 's4')).toEqual(['s4-b2', 's4-b0', 's4-b1']);
+  });
+
+  it('moves a block across scenes and renumbers both', () => {
+    const res = moveParagraph(
+      story,
+      { sceneId: 's1', blockId: 's1-b1' },
+      { sceneId: 's3', blockId: 's3-b0' }
+    );
+    expect(order(res!.story, 's1')).toEqual(['s1-b0']);
+    expect(order(res!.story, 's3')).toEqual(['s1-b1', 's3-b0']);
+    expect(res!.changedSceneIds.sort()).toEqual(['s1', 's3']);
+    // order fields renumbered 0..n-1
+    const s3 = res!.story.chapters[1].scenes[0];
+    expect([...s3.blocks].sort((a, b) => a.order - b.order).map((b) => b.order)).toEqual([0, 1]);
+  });
+
+  it('returns null for no-ops: self-drop, next-sibling drop, unknown ids', () => {
+    expect(
+      moveParagraph(story, { sceneId: 's4', blockId: 's4-b1' }, { sceneId: 's4', blockId: 's4-b1' })
+    ).toBeNull();
+    // Dropping onto the immediate next sibling re-inserts at the same index.
+    expect(
+      moveParagraph(story, { sceneId: 's4', blockId: 's4-b0' }, { sceneId: 's4', blockId: 's4-b1' })
+    ).toBeNull();
+    expect(
+      moveParagraph(story, { sceneId: 'nope', blockId: 'x' }, { sceneId: 's4', blockId: 's4-b1' })
+    ).toBeNull();
+    expect(
+      moveParagraph(story, { sceneId: 's4', blockId: 'ghost' }, { sceneId: 's4', blockId: 's4-b1' })
+    ).toBeNull();
+  });
+
+  it('never mutates the input story', () => {
+    const before = JSON.stringify(story);
+    moveParagraph(story, { sceneId: 's4', blockId: 's4-b0' }, { sceneId: 's4', blockId: 's4-b2' });
+    moveParagraph(story, { sceneId: 's1', blockId: 's1-b1' }, { sceneId: 's3', blockId: 's3-b0' });
+    expect(JSON.stringify(story)).toBe(before);
   });
 });

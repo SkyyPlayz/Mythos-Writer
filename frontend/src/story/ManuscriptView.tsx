@@ -1,13 +1,16 @@
-// Beta 3 M9 — Heading-zoom manuscript view (the centerpiece).
+// Beta 3 M9+M10 — Heading-zoom manuscript view (the centerpiece).
 //
 // Renders the continuous manuscript sheet from the Liquid Neon prototype
 // (design-handoff/prototype/"Mythos Writer - Liquid Neon.dc.html": zoom
 // control 718–722, chevrons 723–728, breadcrumbs 729–734, page-width slider
-// 736–740, floating page arrows 809–810, sheet + blocks 851–906, ←/→ keys
+// 736–740, toolbar v2 742–777 (fmtBtns/alignBtns/listBtns 4111–4114,
+// dictBtnSt 4815), floating page arrows 809–810, sheet + runes + edge drag
+// 851–906 (startDrag 3392–3400), paragraph grip drag 3705–3719, ←/→ keys
 // 3919–3922) on top of the pure model in manuscriptModel.ts.
 //
-// Self-contained: pure UI + local fold/width state. Persistence stays with
-// the caller via onEditParagraph / onCycleStatus / onCursorChange.
+// Self-contained: pure UI + local fold/width/toolbar state. Persistence stays
+// with the caller via onEditParagraph / onCycleStatus / onCursorChange /
+// onMoveParagraph / onPageWidthChange.
 
 import {
   useCallback,
@@ -15,7 +18,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type UIEvent,
 } from 'react';
 import {
@@ -24,9 +29,12 @@ import {
   zoomStep,
   type ManuscriptBlock,
   type ManuscriptCursor,
+  type ParagraphRef,
   type SceneStatus,
   type ZoomLevel,
 } from './manuscriptModel';
+import { pageModeChrome, PageModeRunes } from './pageMode';
+import type { LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
 import {
   AGENT_ACTION_SUCCESS_TOAST,
   findAnchorSceneId,
@@ -56,6 +64,17 @@ export interface ManuscriptViewProps {
   onCycleStatus: (sceneId: string) => void;
   /** Initial sheet width in px (prototype default 1000, range 520–3000). */
   pageWidth?: number;
+  /** M10: fired when the width slider or a page-edge drag commits a new width. */
+  onPageWidthChange?: (px: number) => void;
+  /** M10: grip drag dropped one paragraph onto another (lands before target). */
+  onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
+  /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
+  liquidNeon?: Partial<LiquidNeonV2Settings> | null;
+  /** M10 toolbar actions (prototype 766–777). Each button hides when its handler is absent. */
+  onRead?: () => void;
+  onDictate?: () => void;
+  dictating?: boolean;
+  onAssist?: () => void;
   /**
    * M11: true while the shell is in Focus writing mode — comments hide unless
    * the "Show in focus" override is on (prototype commentsVisible 3600).
@@ -83,6 +102,44 @@ const STATUS_TIP: Record<SceneStatus, string> = {
   todo: 'Not started',
 };
 
+// ── Toolbar v2 vocab (prototype 744–764, alignIc/listIcs 2967–2977) ──────────
+
+const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quote'];
+const FONT_OPTIONS = ['Lora', 'Georgia', 'Palatino Linotype', 'Inter'];
+const FSIZE_MIN = 9;
+const FSIZE_MAX = 18;
+
+type FmtKey = 'b' | 'i' | 'u' | 's';
+type AlignKey = 'left' | 'center' | 'right' | 'justify';
+
+const FMT_KEYS: Array<{ k: FmtKey; label: string }> = [
+  { k: 'b', label: 'Bold' },
+  { k: 'i', label: 'Italic' },
+  { k: 'u', label: 'Underline' },
+  { k: 's', label: 'Strikethrough' },
+];
+
+const ALIGN_PATHS: Array<{ k: AlignKey; label: string; p: string }> = [
+  { k: 'left', label: 'Align left', p: 'M4 7h16M4 12h10M4 17h13' },
+  { k: 'center', label: 'Align center', p: 'M4 7h16M7 12h10M6 17h12' },
+  { k: 'right', label: 'Align right', p: 'M4 7h16M10 12h10M7 17h13' },
+  { k: 'justify', label: 'Justify', p: 'M4 7h16M4 12h16M4 17h16' },
+];
+
+const LIST_PATHS: Array<{ k: string; label: string; p: string }> = [
+  { k: 'ul', label: 'Bulleted list', p: 'M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01' },
+  { k: 'ol', label: 'Numbered list', p: 'M10 7h10M10 12h10M10 17h10M4 5.5h1.5v3M4 11h2l-2 2.6h2M4.2 16h1.6a.9.9 0 0 1 0 1.8H5a.9.9 0 0 0 0 1.8h1.8' },
+  { k: 'indent', label: 'Indent', p: 'M13 7h7M13 12h7M13 17h7M4 9l3 3-3 3' },
+  { k: 'outdent', label: 'Outdent', p: 'M13 7h7M13 12h7M13 17h7M7 9l-3 3 3 3' },
+];
+
+/** Prototype fam mapping (4117). */
+function fontStack(font: string): string {
+  if (font === 'Inter') return "'Inter',sans-serif";
+  if (font === 'Lora') return "'Lora',Georgia,serif";
+  return "'" + font + "',Georgia,serif";
+}
+
 // ── Lazy windowing (GH#843): render only ~WINDOW blocks around the viewport,
 //    replacing everything outside with top/bottom spacers sized from an
 //    average block-height estimate. Keeps a 1,000-scene story smooth.
@@ -90,6 +147,11 @@ const WINDOW = 120;
 const EST_BLOCK_H = 96;
 /** Re-window only after the start index moves this far (scroll hysteresis). */
 const WINDOW_HYSTERESIS = 24;
+
+// ── Page width (prototype state 3227 + startDrag 3392–3400) ──────────────────
+const PAGE_W_MIN = 520;
+const PAGE_W_MAX = 3000;
+const clampPageW = (w: number) => Math.max(PAGE_W_MIN, Math.min(PAGE_W_MAX, w));
 
 const CHEVRON_RIGHT = (size: number) => (
   <svg
@@ -149,6 +211,22 @@ const PLUS_ICON = (
   </svg>
 );
 
+const TB_ICON = (path: string) => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.9"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d={path} />
+  </svg>
+);
+
 const NO_COMMENTS: readonly StoryComment[] = [];
 
 const SPEAKER_ICON = (
@@ -175,17 +253,36 @@ export default function ManuscriptView({
   onEditParagraph,
   onCycleStatus,
   pageWidth = 1000,
+  onPageWidthChange,
+  onMoveParagraph,
+  liquidNeon,
+  onRead,
+  onDictate,
+  dictating = false,
+  onAssist,
   focusMode = false,
   ttsSettings,
   voicePrefs,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const [pageW, setPageW] = useState(pageWidth);
+  const [pageW, setPageW] = useState(() => clampPageW(pageWidth));
   const [winStart, setWinStart] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Last text committed per paragraph block — prevents Enter+blur double-fires.
   const committedRef = useRef(new Map<string, string>());
+
+  // M10 toolbar state (prototype 3251: styleSel/font/fsize/fmt/align).
+  const [styleSel, setStyleSel] = useState('Body Text');
+  const [font, setFont] = useState('Lora');
+  const [fsize, setFsize] = useState(12);
+  const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
+  const [align, setAlign] = useState<AlignKey>('left');
+
+  // M10 page-edge drag + paragraph grip drag state.
+  const [edgeDragging, setEdgeDragging] = useState(false);
+  const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
 
   // ── M11 comments (store binding + selection/open UI state) ──
   const {
@@ -221,6 +318,14 @@ export default function ManuscriptView({
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
+
+  // M10: page-mode sheet chrome from M4's persisted settings (pageCfg).
+  const pageChrome = useMemo(() => pageModeChrome(liquidNeon), [liquidNeon]);
+
+  // Follow persisted width when it changes elsewhere (settings load after mount).
+  useEffect(() => {
+    setPageW(clampPageW(pageWidth));
+  }, [pageWidth]);
 
   const toggleFold = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -260,6 +365,17 @@ export default function ManuscriptView({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [cursor.zoom, step]);
+
+  // Abandoned grip drags (mouseup outside any paragraph) clear the drag state.
+  useEffect(() => {
+    if (!dragPara) return;
+    const clear = () => {
+      setDragPara(null);
+      setDropKey(null);
+    };
+    window.addEventListener('mouseup', clear);
+    return () => window.removeEventListener('mouseup', clear);
+  }, [dragPara]);
 
   const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
@@ -314,6 +430,76 @@ export default function ManuscriptView({
       onEditParagraph(sceneId, blockId, text);
     },
     [onEditParagraph]
+  );
+
+  const commitPageWidth = useCallback(
+    (w: number) => {
+      const next = clampPageW(w);
+      setPageW(next);
+      onPageWidthChange?.(next);
+    },
+    [onPageWidthChange]
+  );
+
+  // Prototype startDrag (3392–3400): the page is centered, so each edge moves
+  // the width by twice the pointer delta, signed per side.
+  const startEdgeDrag = useCallback(
+    (side: 1 | -1) => (e: ReactMouseEvent) => {
+      e.preventDefault();
+      const sx = e.clientX;
+      const sw = pageW;
+      const mv = (ev: MouseEvent) => {
+        setPageW(clampPageW(sw + (ev.clientX - sx) * side * 2));
+        setEdgeDragging(true);
+      };
+      const up = (ev: MouseEvent) => {
+        window.removeEventListener('mousemove', mv);
+        window.removeEventListener('mouseup', up);
+        setEdgeDragging(false);
+        commitPageWidth(sw + (ev.clientX - sx) * side * 2);
+      };
+      window.addEventListener('mousemove', mv);
+      window.addEventListener('mouseup', up);
+    },
+    [pageW, commitPageWidth]
+  );
+
+  const edgeKeyDown = useCallback(
+    (e: ReactKeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        commitPageWidth(pageW + 20);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        commitPageWidth(pageW - 20);
+      }
+    },
+    [pageW, commitPageWidth]
+  );
+
+  // Paragraph grip drag (prototype paraDown/paraOver/paraDrop 3705–3719).
+  const handleGripDown = useCallback((ref: ParagraphRef) => (e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragPara(ref);
+  }, []);
+
+  const handleParaOver = useCallback(
+    (blockId: string) => {
+      if (dragPara && dropKey !== blockId) setDropKey(blockId);
+    },
+    [dragPara, dropKey]
+  );
+
+  const handleParaDrop = useCallback(
+    (ref: ParagraphRef) => {
+      const d = dragPara;
+      setDragPara(null);
+      setDropKey(null);
+      if (!d || (d.sceneId === ref.sceneId && d.blockId === ref.blockId)) return;
+      onMoveParagraph?.(d, ref);
+    },
+    [dragPara, onMoveParagraph]
   );
 
   // ── M11 comment handlers ──
@@ -380,6 +566,19 @@ export default function ManuscriptView({
   const topPad = start * EST_BLOCK_H;
   const bottomPad = (blocks.length - end) * EST_BLOCK_H;
   const visible = blocks.slice(start, end);
+
+  // Prototype sheetWrapSt (4118) + pSt (4119) — toolbar state applied to the sheet.
+  const sheetWrapStyle: CSSProperties = {
+    width: `${pageW}px`,
+    fontFamily: fontStack(font),
+    fontSize: `${(fsize * 1.42).toFixed(1)}px`,
+  };
+  const paraStyle: CSSProperties = {
+    textAlign: align,
+    fontWeight: fmt.b ? 600 : 400,
+    fontStyle: fmt.i ? 'italic' : 'normal',
+    textDecoration: [fmt.u ? 'underline' : '', fmt.s ? 'line-through' : ''].join(' ').trim() || 'none',
+  };
 
   const renderFoldPill = (ownerId: string, text: string) => (
     <button
@@ -451,6 +650,8 @@ export default function ManuscriptView({
           </div>
         );
       case 'para': {
+        const ref: ParagraphRef = { sceneId: b.sceneId, blockId: b.blockId };
+        const showDropLine = !!dragPara && dropKey === b.blockId;
         // M11: underline comment anchors (prototype segsFor 3601–3615). The
         // joined segment text always equals b.content, so contentEditable
         // commits (textContent reads) are unaffected.
@@ -460,45 +661,59 @@ export default function ManuscriptView({
         // M13: moving per-paragraph highlight (prototype pStX 3376–3377).
         const reading = readerKey === b.blockId;
         return (
-          <div key={b.id} className="msv-para">
-            <span className="msv-grip" title="Drag block to move it" aria-hidden="true">
-              {GRIP_ICON}
-            </span>
+          <div key={b.id}>
+            {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
             <div
-              className={`msv-para-text${reading ? ' msv-para-text--reading' : ''}`}
-              data-testid={`msv-para-${b.blockId}`}
-              contentEditable
-              suppressContentEditableWarning
-              role="textbox"
-              aria-multiline="false"
-              onBlur={(e) => commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget)}
-              onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget);
-                  e.currentTarget.blur();
-                }
-              }}
+              className="msv-para"
+              onMouseEnter={() => handleParaOver(b.blockId)}
+              onMouseUp={() => handleParaDrop(ref)}
             >
-              {segs
-                ? segs.map((s, i) =>
-                    s.comment ? (
-                      <span
-                        // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
-                        key={`${s.comment.id}-${i}`}
-                        className={`msv-anchor msv-anchor--${s.comment.kind}`}
-                        data-testid={`msv-anchor-${s.comment.id}`}
-                        title="Open comment"
-                        onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
-                      >
-                        {s.text}
-                      </span>
-                    ) : (
-                      // eslint-disable-next-line react/no-array-index-key -- positional plain runs
-                      <span key={`t-${i}`}>{s.text}</span>
+              <span
+                className="msv-grip"
+                data-testid={`msv-grip-${b.blockId}`}
+                title="Drag block to move it"
+                aria-hidden="true"
+                onMouseDown={handleGripDown(ref)}
+              >
+                {GRIP_ICON}
+              </span>
+              <div
+                className={`msv-para-text${reading ? ' msv-para-text--reading' : ''}`}
+                style={paraStyle}
+                data-testid={`msv-para-${b.blockId}`}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="false"
+                onBlur={(e) => commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget)}
+                onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitParagraph(b.sceneId, b.blockId, b.content, e.currentTarget);
+                    e.currentTarget.blur();
+                  }
+                }}
+              >
+                {segs
+                  ? segs.map((s, i) =>
+                      s.comment ? (
+                        <span
+                          // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
+                          key={`${s.comment.id}-${i}`}
+                          className={`msv-anchor msv-anchor--${s.comment.kind}`}
+                          data-testid={`msv-anchor-${s.comment.id}`}
+                          title="Open comment"
+                          onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
+                        >
+                          {s.text}
+                        </span>
+                      ) : (
+                        // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+                        <span key={`t-${i}`}>{s.text}</span>
+                      )
                     )
-                  )
-                : b.content}
+                  : b.content}
+              </div>
             </div>
           </div>
         );
@@ -507,7 +722,7 @@ export default function ManuscriptView({
   };
 
   return (
-    <div className="msv-root" data-testid="msv-root">
+    <div className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}`} data-testid="msv-root">
       {/* zoom bar (prototype 717–741) */}
       <div className="msv-zoombar">
         <div className="msv-zoom-seg" role="group" aria-label="Zoom level">
@@ -612,7 +827,7 @@ export default function ManuscriptView({
           </svg>
           {comments.length}
         </button>
-        <div className="msv-width-ctl" title="Page width">
+        <div className="msv-width-ctl" title="Page width — also drag the page edges">
           <svg
             width="12"
             height="12"
@@ -627,15 +842,174 @@ export default function ManuscriptView({
           </svg>
           <input
             type="range"
-            min={520}
-            max={3000}
+            min={PAGE_W_MIN}
+            max={PAGE_W_MAX}
             value={pageW}
             data-testid="msv-width-slider"
             aria-label="Page width"
-            onChange={(e) => setPageW(Number(e.target.value))}
+            onChange={(e) => commitPageWidth(Number(e.target.value))}
           />
           <span className="msv-width-readout">{pageW}px</span>
         </div>
+      </div>
+
+      {/* toolbar v2 (prototype 742–777) */}
+      <div className="msv-toolbar" role="toolbar" aria-label="Manuscript formatting" data-testid="msv-toolbar">
+        <select
+          className="msv-tb-select"
+          data-testid="msv-style-select"
+          aria-label="Paragraph style"
+          value={styleSel}
+          onChange={(e) => setStyleSel(e.target.value)}
+        >
+          {STYLE_OPTIONS.map((s) => (
+            <option key={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          className="msv-tb-select msv-tb-font"
+          data-testid="msv-font-select"
+          aria-label="Font"
+          value={font}
+          onChange={(e) => setFont(e.target.value)}
+        >
+          {FONT_OPTIONS.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </select>
+        <div className="msv-tb-size">
+          <button
+            type="button"
+            className="msv-tb-size-btn"
+            data-testid="msv-size-down"
+            aria-label="Decrease font size"
+            onClick={() => setFsize((s) => Math.max(FSIZE_MIN, s - 1))}
+          >
+            −
+          </button>
+          <span className="msv-tb-size-val" data-testid="msv-size-val">
+            {fsize}
+          </span>
+          <button
+            type="button"
+            className="msv-tb-size-btn"
+            data-testid="msv-size-up"
+            aria-label="Increase font size"
+            onClick={() => setFsize((s) => Math.min(FSIZE_MAX, s + 1))}
+          >
+            +
+          </button>
+        </div>
+        <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
+        {FMT_KEYS.map(({ k, label }) => (
+          <button
+            key={k}
+            type="button"
+            className={`msv-tb-btn msv-tb-fmt-${k}${fmt[k] ? ' msv-tb-btn--active' : ''}`}
+            data-testid={`msv-fmt-${k}`}
+            aria-label={label}
+            aria-pressed={fmt[k]}
+            onClick={() => setFmt((prev) => ({ ...prev, [k]: !prev[k] }))}
+          >
+            <span className={`msv-tb-glyph msv-tb-glyph--${k}`}>{k.toUpperCase()}</span>
+          </button>
+        ))}
+        <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
+        {ALIGN_PATHS.map(({ k, label, p }) => (
+          <button
+            key={k}
+            type="button"
+            className={`msv-tb-btn${align === k ? ' msv-tb-btn--active' : ''}`}
+            data-testid={`msv-align-${k}`}
+            aria-label={label}
+            aria-pressed={align === k}
+            onClick={() => setAlign(k)}
+          >
+            {TB_ICON(p)}
+          </button>
+        ))}
+        <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
+        {LIST_PATHS.map(({ k, label, p }) => (
+          <button key={k} type="button" className="msv-tb-btn" aria-label={label} title={label}>
+            {TB_ICON(p)}
+          </button>
+        ))}
+        <div className="msv-flex-spacer" />
+        {onRead && (
+          <button
+            type="button"
+            className="msv-tb-action msv-tb-read"
+            data-testid="msv-tb-read"
+            title="Read aloud"
+            onClick={onRead}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 10v4h4l5 4V6l-5 4z" />
+              <path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />
+            </svg>
+            Read
+          </button>
+        )}
+        {onDictate && (
+          <button
+            type="button"
+            className={`msv-tb-action msv-tb-dictate${dictating ? ' msv-tb-dictate--on' : ''}`}
+            data-testid="msv-tb-dictate"
+            title="Dictate"
+            aria-pressed={dictating}
+            onClick={onDictate}
+          >
+            <span className="msv-dict-dot" aria-hidden="true" />
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <rect x="9.5" y="3.5" width="5" height="10" rx="2.5" />
+              <path d="M6 11a6 6 0 0 0 12 0M12 17v3.5" />
+            </svg>
+            Dictate
+          </button>
+        )}
+        {onAssist && (
+          <button
+            type="button"
+            className="msv-tb-action msv-tb-assist"
+            data-testid="msv-tb-assist"
+            title="Open the Writing Assistant"
+            onClick={onAssist}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+              <circle cx="12" cy="12" r="3.4" />
+            </svg>
+            Assist
+          </button>
+        )}
       </div>
 
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
@@ -681,8 +1055,46 @@ export default function ManuscriptView({
               onRead={handleReadSelection}
             />
           )}
-          <div className="msv-sheet-wrap" style={{ width: `${pageW}px` }}>
-            <div className="msv-sheet" data-testid="msv-sheet">
+          <div className="msv-sheet-wrap" style={sheetWrapStyle}>
+            <div
+              className="msv-sheet"
+              style={pageChrome.sheetStyle}
+              data-testid="msv-sheet"
+              data-page-mode={pageChrome.mode}
+            >
+              {pageChrome.mode === 'scroll' && <PageModeRunes sym={pageChrome.sym} />}
+              {/* page-edge drag handles (prototype 861–865, startDrag 3392–3400) */}
+              <div
+                className="msv-edge msv-edge--l"
+                data-testid="msv-edge-l"
+                title="Drag to resize page"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Drag to resize page width"
+                tabIndex={0}
+                onMouseDown={startEdgeDrag(-1)}
+                onKeyDown={edgeKeyDown}
+              >
+                <div className="msv-edge-bar" />
+              </div>
+              <div
+                className="msv-edge msv-edge--r"
+                data-testid="msv-edge-r"
+                title="Drag to resize page"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Drag to resize page width"
+                tabIndex={0}
+                onMouseDown={startEdgeDrag(1)}
+                onKeyDown={edgeKeyDown}
+              >
+                <div className="msv-edge-bar" />
+              </div>
+              {edgeDragging && (
+                <div className="msv-width-badge" data-testid="msv-width-badge">
+                  {pageW} px
+                </div>
+              )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
               {visible.map(renderBlock)}
               <div

@@ -178,3 +178,63 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
     await app.close().catch(() => undefined);
   }
 });
+
+// ─── GH #842 / Beta 3 M10 — Word-style draggable page ruler ─────────────────
+
+test('PC-05: page ruler drags width with live preview, snap-to-preset, and margin handles (GH #842)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const ruler = page.locator('[data-testid="page-ruler"]');
+    await expect(ruler).toBeVisible();
+
+    // Baseline: letter preset → 680px.
+    const widthOf = () =>
+      page
+        .locator('.story-page-canvas')
+        .evaluate((el) => getComputedStyle(el).getPropertyValue('--page-width-story').trim());
+
+    // Drag the right page edge outward by 100px → width grows by 2×∆ = 880px.
+    const edgeR = page.locator('[data-testid="pgr-edge-r"]');
+    const box = await edgeR.boundingBox();
+    expect(box).not.toBeNull();
+    const startX = box!.x + box!.width / 2;
+    const startY = box!.y + box!.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 100, startY, { steps: 5 });
+    // Live preview updates before release.
+    expect(await widthOf()).toBe('880px');
+    await page.mouse.up();
+    expect(await widthOf()).toBe('880px');
+    // Commit landed in prefs: the toolbar width slider follows.
+    await expect(page.locator('[role="group"][aria-label="Page width"] input.pct-slider')).toHaveValue('880');
+
+    // Keyboard: focused edge handle nudges width by 10px per arrow (WCAG 2.1 AA).
+    await edgeR.focus();
+    await expect(edgeR).toHaveAttribute('aria-valuenow', '880');
+    await page.keyboard.press('ArrowRight');
+    await expect(edgeR).toHaveAttribute('aria-valuenow', '890');
+    expect(await widthOf()).toBe('890px');
+
+    // Margin handle drag writes through to --story-page-pad-horiz (default 56).
+    const marginL = page.locator('[data-testid="pgr-margin-l"]');
+    const mbox = await marginL.boundingBox();
+    expect(mbox).not.toBeNull();
+    const mx = mbox!.x + mbox!.width / 2;
+    const my = mbox!.y + mbox!.height / 2;
+    await page.mouse.move(mx, my);
+    await page.mouse.down();
+    await page.mouse.move(mx + 30, my, { steps: 4 });
+    await page.mouse.up();
+    const pad = await page
+      .locator('.story-page-canvas')
+      .evaluate((el) => getComputedStyle(el).getPropertyValue('--story-page-pad-horiz').trim());
+    expect(pad).toBe('86px');
+    await expect(marginL).toHaveAttribute('aria-valuenow', '86');
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});

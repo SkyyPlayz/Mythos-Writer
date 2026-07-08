@@ -241,6 +241,79 @@ export function buildBlocks(
   return blocks;
 }
 
+// ─── moveParagraph (prototype paraDown/paraOver/paraDrop 3705–3719) ──────────
+
+export interface ParagraphRef {
+  sceneId: string;
+  blockId: string;
+}
+
+export interface MoveParagraphResult {
+  story: Story;
+  /** Scenes whose block lists changed (1 for same-scene moves, 2 across scenes). */
+  changedSceneIds: string[];
+}
+
+/**
+ * Move a paragraph block so it lands immediately BEFORE the target block,
+ * exactly like the prototype's grip drag (paraDrop 3708–3719): dropping a
+ * block onto position `ti` re-inserts it at `ti`, adjusted by −1 when the
+ * source sat earlier in the same list. Returns null for no-ops (unknown ids,
+ * dropping a block onto itself or onto its own next sibling). Pure — block
+ * `order` fields are renumbered 0..n-1; nothing else on the Story changes.
+ */
+export function moveParagraph(
+  story: Story,
+  from: ParagraphRef,
+  to: ParagraphRef
+): MoveParagraphResult | null {
+  if (from.sceneId === to.sceneId && from.blockId === to.blockId) return null;
+  let fromScene: Scene | undefined;
+  let toScene: Scene | undefined;
+  for (const ch of story.chapters) {
+    for (const sc of ch.scenes) {
+      if (sc.id === from.sceneId) fromScene = sc;
+      if (sc.id === to.sceneId) toScene = sc;
+    }
+  }
+  if (!fromScene || !toScene) return null;
+
+  const src = orderedBlocks(fromScene);
+  const srcIdx = src.findIndex((b) => b.id === from.blockId);
+  if (srcIdx === -1) return null;
+  const sameScene = fromScene.id === toScene.id;
+  const dst = sameScene ? src : orderedBlocks(toScene);
+  const dstIdx = dst.findIndex((b) => b.id === to.blockId);
+  if (dstIdx === -1) return null;
+
+  const moved = src.splice(srcIdx, 1)[0];
+  // Prototype adjustment: removing an earlier sibling shifts the target left.
+  let target = dstIdx;
+  if (sameScene && srcIdx < dstIdx) target = dstIdx - 1;
+  dst.splice(Math.min(target, dst.length), 0, moved);
+  if (sameScene && target === srcIdx) return null; // landed where it started
+
+  const renumber = (blocks: Block[]): Block[] => blocks.map((b, i) => ({ ...b, order: i }));
+  const nextBlocks = new Map<string, Block[]>();
+  nextBlocks.set(fromScene.id, renumber(src));
+  if (!sameScene) nextBlocks.set(toScene.id, renumber(dst));
+
+  const updated: Story = {
+    ...story,
+    chapters: story.chapters.map((ch) =>
+      ch.scenes.some((sc) => nextBlocks.has(sc.id))
+        ? {
+            ...ch,
+            scenes: ch.scenes.map((sc) =>
+              nextBlocks.has(sc.id) ? { ...sc, blocks: nextBlocks.get(sc.id)! } : sc
+            ),
+          }
+        : ch
+    ),
+  };
+  return { story: updated, changedSceneIds: [...nextBlocks.keys()] };
+}
+
 // ─── breadcrumbs (prototype crumbData 4101–4105) ─────────────────────────────
 
 /**

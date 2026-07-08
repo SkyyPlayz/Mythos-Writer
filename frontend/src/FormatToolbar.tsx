@@ -57,8 +57,22 @@ function AlignIcon({ align }: { align: TextAlignment }) {
   );
 }
 
+/**
+ * Beta 3 M10 — optional Read / Dictate / Assist buttons (Liquid Neon
+ * prototype toolbar 766–777, dictBtnSt/dictDotSt 4815–4816). Each button
+ * renders only when its handler is provided, so surfaces that reuse this
+ * toolbar without voice/assistant wiring (e.g. Notes) are unchanged.
+ */
+export interface FormatToolbarActions {
+  onRead?: () => void;
+  onDictate?: () => void;
+  dictating?: boolean;
+  onAssist?: () => void;
+}
+
 interface Props {
   editor: Editor | null;
+  actions?: FormatToolbarActions;
 }
 
 /**
@@ -66,7 +80,7 @@ interface Props {
  * Subscribes to editor selection/transaction events so active-mark state
  * stays current without the parent needing to lift any state.
  */
-export default function FormatToolbar({ editor }: Props) {
+export default function FormatToolbar({ editor, actions }: Props) {
   // Force re-render on every selection change / transaction so isActive() is fresh.
   const [, tick] = useState(0);
 
@@ -279,6 +293,58 @@ export default function FormatToolbar({ editor }: Props) {
       >
         <span aria-hidden="true">{"{ }"}</span>
       </button>
+
+      {/* ── Read / Dictate / Assist (Beta 3 M10, prototype 766–777) ──── */}
+      {(actions?.onRead || actions?.onDictate || actions?.onAssist) && (
+        <div className="fmt-spacer" aria-hidden="true" />
+      )}
+      {actions?.onRead && (
+        <button
+          type="button"
+          className="fmt-action fmt-action--read"
+          aria-label="Read aloud"
+          title="Read aloud"
+          onMouseDown={(e) => { e.preventDefault(); actions.onRead?.(); }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 10v4h4l5 4V6l-5 4z" />
+            <path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />
+          </svg>
+          Read
+        </button>
+      )}
+      {actions?.onDictate && (
+        <button
+          type="button"
+          className={`fmt-action fmt-action--dictate${actions.dictating ? ' fmt-action--dictate-on' : ''}`}
+          aria-label="Dictate"
+          aria-pressed={!!actions.dictating}
+          title="Dictate"
+          onMouseDown={(e) => { e.preventDefault(); actions.onDictate?.(); }}
+        >
+          <span className="fmt-dict-dot" aria-hidden="true" />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <rect x="9.5" y="3.5" width="5" height="10" rx="2.5" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3.5" />
+          </svg>
+          Dictate
+        </button>
+      )}
+      {actions?.onAssist && (
+        <button
+          type="button"
+          className="fmt-action fmt-action--assist"
+          aria-label="Open the Writing Assistant"
+          title="Open the Writing Assistant"
+          onMouseDown={(e) => { e.preventDefault(); actions.onAssist?.(); }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+            <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+            <circle cx="12" cy="12" r="3.4" />
+          </svg>
+          Assist
+        </button>
+      )}
     </div>
   );
 }
