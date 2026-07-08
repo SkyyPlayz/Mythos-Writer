@@ -45,3 +45,13 @@
 .chapter-interlude__editor {
   padding: 4px 12px 10px;
 }
+
+.chapter-interlude--error {
+  border-color: var(--color-danger, #c0392b);
+}
+
+.chapter-interlude__error {
+  padding: 8px 12px;
+  font-size: var(--text-xs, 11px);
+  color: var(--color-danger, #c0392b);
+}
