@@ -4386,7 +4386,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
-<<<<<<< HEAD
                   onMoveParagraph={handleManuscriptMoveParagraph}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
@@ -4395,9 +4394,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
-=======
                   focusMode={writingMode === 'focus'}
->>>>>>> origin/main
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4417,7 +4414,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
-<<<<<<< HEAD
                   onMoveParagraph={handleManuscriptMoveParagraph}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
@@ -4426,9 +4422,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
-=======
                   focusMode={writingMode === 'focus'}
->>>>>>> origin/main
                 />
                 <DepthEdgeArrows
                   depth="chapter"

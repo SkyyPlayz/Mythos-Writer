@@ -33,10 +33,8 @@ import {
   type SceneStatus,
   type ZoomLevel,
 } from './manuscriptModel';
-<<<<<<< HEAD
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
-=======
 import {
   AGENT_ACTION_SUCCESS_TOAST,
   findAnchorSceneId,
@@ -50,7 +48,6 @@ import {
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
 import { showLnToast } from '../theme/lnToast';
->>>>>>> origin/main
 import type { Story } from '../types';
 import './ManuscriptView.css';
 
@@ -64,7 +61,6 @@ export interface ManuscriptViewProps {
   onCycleStatus: (sceneId: string) => void;
   /** Initial sheet width in px (prototype default 1000, range 520–3000). */
   pageWidth?: number;
-<<<<<<< HEAD
   /** M10: fired when the width slider or a page-edge drag commits a new width. */
   onPageWidthChange?: (px: number) => void;
   /** M10: grip drag dropped one paragraph onto another (lands before target). */
@@ -76,13 +72,11 @@ export interface ManuscriptViewProps {
   onDictate?: () => void;
   dictating?: boolean;
   onAssist?: () => void;
-=======
   /**
    * M11: true while the shell is in Focus writing mode — comments hide unless
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
->>>>>>> origin/main
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -207,7 +201,6 @@ const PLUS_ICON = (
   </svg>
 );
 
-<<<<<<< HEAD
 const TB_ICON = (path: string) => (
   <svg
     width="14"
@@ -223,9 +216,8 @@ const TB_ICON = (path: string) => (
     <path d={path} />
   </svg>
 );
-=======
+
 const NO_COMMENTS: readonly StoryComment[] = [];
->>>>>>> origin/main
 
 export default function ManuscriptView({
   story,
@@ -234,7 +226,6 @@ export default function ManuscriptView({
   onEditParagraph,
   onCycleStatus,
   pageWidth = 1000,
-<<<<<<< HEAD
   onPageWidthChange,
   onMoveParagraph,
   liquidNeon,
@@ -242,9 +233,7 @@ export default function ManuscriptView({
   onDictate,
   dictating = false,
   onAssist,
-=======
   focusMode = false,
->>>>>>> origin/main
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -254,7 +243,6 @@ export default function ManuscriptView({
   // Last text committed per paragraph block — prevents Enter+blur double-fires.
   const committedRef = useRef(new Map<string, string>());
 
-<<<<<<< HEAD
   // M10 toolbar state (prototype 3251: styleSel/font/fsize/fmt/align).
   const [styleSel, setStyleSel] = useState('Body Text');
   const [font, setFont] = useState('Lora');
@@ -266,7 +254,7 @@ export default function ManuscriptView({
   const [edgeDragging, setEdgeDragging] = useState(false);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
-=======
+
   // ── M11 comments (store binding + selection/open UI state) ──
   const {
     ordered: comments,
@@ -295,7 +283,6 @@ export default function ManuscriptView({
     }
     return map;
   }, [comments]);
->>>>>>> origin/main
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
@@ -377,7 +364,6 @@ export default function ManuscriptView({
     [onEditParagraph]
   );
 
-<<<<<<< HEAD
   const commitPageWidth = useCallback(
     (w: number) => {
       const next = clampPageW(w);
@@ -447,7 +433,7 @@ export default function ManuscriptView({
     },
     [dragPara, onMoveParagraph]
   );
-=======
+
   // ── M11 comment handlers ──
 
   // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
@@ -505,7 +491,6 @@ export default function ManuscriptView({
   const handleToggleOpenComment = useCallback((id: string) => {
     setOpenCommentId((open) => (open === id ? null : id));
   }, []);
->>>>>>> origin/main
 
   // Clamp the window so it always covers real blocks (folding shrinks the list).
   const start = Math.max(0, Math.min(winStart, Math.max(0, blocks.length - WINDOW)));
@@ -597,17 +582,14 @@ export default function ManuscriptView({
           </div>
         );
       case 'para': {
-<<<<<<< HEAD
         const ref: ParagraphRef = { sceneId: b.sceneId, blockId: b.blockId };
         const showDropLine = !!dragPara && dropKey === b.blockId;
-=======
         // M11: underline comment anchors (prototype segsFor 3601–3615). The
         // joined segment text always equals b.content, so contentEditable
         // commits (textContent reads) are unaffected.
         const segs = commentsVisible
           ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
           : null;
->>>>>>> origin/main
         return (
           <div key={b.id}>
             {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
@@ -616,7 +598,6 @@ export default function ManuscriptView({
               onMouseEnter={() => handleParaOver(b.blockId)}
               onMouseUp={() => handleParaDrop(ref)}
             >
-<<<<<<< HEAD
               <span
                 className="msv-grip"
                 data-testid={`msv-grip-${b.blockId}`}
@@ -643,29 +624,26 @@ export default function ManuscriptView({
                   }
                 }}
               >
-                {b.content}
-              </div>
-=======
-              {segs
-                ? segs.map((s, i) =>
-                    s.comment ? (
-                      <span
-                        // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
-                        key={`${s.comment.id}-${i}`}
-                        className={`msv-anchor msv-anchor--${s.comment.kind}`}
-                        data-testid={`msv-anchor-${s.comment.id}`}
-                        title="Open comment"
-                        onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
-                      >
-                        {s.text}
-                      </span>
-                    ) : (
-                      // eslint-disable-next-line react/no-array-index-key -- positional plain runs
-                      <span key={`t-${i}`}>{s.text}</span>
+                {segs
+                  ? segs.map((s, i) =>
+                      s.comment ? (
+                        <span
+                          // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
+                          key={`${s.comment.id}-${i}`}
+                          className={`msv-anchor msv-anchor--${s.comment.kind}`}
+                          data-testid={`msv-anchor-${s.comment.id}`}
+                          title="Open comment"
+                          onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
+                        >
+                          {s.text}
+                        </span>
+                      ) : (
+                        // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+                        <span key={`t-${i}`}>{s.text}</span>
+                      )
                     )
-                  )
-                : b.content}
->>>>>>> origin/main
+                  : b.content}
+              </div>
             </div>
           </div>
         );
@@ -744,9 +722,6 @@ export default function ManuscriptView({
           ))}
         </nav>
         <div className="msv-flex-spacer" />
-<<<<<<< HEAD
-        <div className="msv-width-ctl" title="Page width — also drag the page edges">
-=======
         {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
         <button
           type="button"
@@ -769,8 +744,7 @@ export default function ManuscriptView({
           </svg>
           {comments.length}
         </button>
-        <div className="msv-width-ctl" title="Page width">
->>>>>>> origin/main
+        <div className="msv-width-ctl" title="Page width — also drag the page edges">
           <svg
             width="12"
             height="12"
@@ -796,7 +770,6 @@ export default function ManuscriptView({
         </div>
       </div>
 
-<<<<<<< HEAD
       {/* toolbar v2 (prototype 742–777) */}
       <div className="msv-toolbar" role="toolbar" aria-label="Manuscript formatting" data-testid="msv-toolbar">
         <select
@@ -956,74 +929,6 @@ export default function ManuscriptView({
         )}
       </div>
 
-      {/* page scroll area with floating arrows (prototype 808–810) */}
-      <div className="msv-page" ref={scrollRef} onScroll={handleScroll} data-testid="msv-page">
-        {cursor.zoom !== 'book' && (
-          <>
-            <button
-              type="button"
-              className="msv-page-arrow msv-page-arrow--prev"
-              data-testid="msv-page-prev"
-              title="Previous (←)"
-              onClick={() => step(-1)}
-            >
-              {CHEVRON_LEFT(14)}
-            </button>
-            <button
-              type="button"
-              className="msv-page-arrow msv-page-arrow--next"
-              data-testid="msv-page-next"
-              title="Next (→)"
-              onClick={() => step(1)}
-            >
-              {CHEVRON_RIGHT(14)}
-            </button>
-          </>
-        )}
-        <div className="msv-sheet-wrap" style={sheetWrapStyle}>
-          <div
-            className="msv-sheet"
-            style={pageChrome.sheetStyle}
-            data-testid="msv-sheet"
-            data-page-mode={pageChrome.mode}
-          >
-            {pageChrome.mode === 'scroll' && <PageModeRunes sym={pageChrome.sym} />}
-            {/* page-edge drag handles (prototype 861–865, startDrag 3392–3400) */}
-            <div
-              className="msv-edge msv-edge--l"
-              data-testid="msv-edge-l"
-              title="Drag to resize page"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Drag to resize page width"
-              tabIndex={0}
-              onMouseDown={startEdgeDrag(-1)}
-              onKeyDown={edgeKeyDown}
-            >
-              <div className="msv-edge-bar" />
-            </div>
-            <div
-              className="msv-edge msv-edge--r"
-              data-testid="msv-edge-r"
-              title="Drag to resize page"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Drag to resize page width"
-              tabIndex={0}
-              onMouseDown={startEdgeDrag(1)}
-              onKeyDown={edgeKeyDown}
-            >
-              <div className="msv-edge-bar" />
-            </div>
-            {edgeDragging && (
-              <div className="msv-width-badge" data-testid="msv-width-badge">
-                {pageW} px
-              </div>
-            )}
-            <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
-            {visible.map(renderBlock)}
-            <div style={{ height: bottomPad }} data-testid="msv-spacer-bottom" aria-hidden="true" />
-=======
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
       <div className="msv-body">
         {/* page scroll area with floating arrows (prototype 808–810) */}
@@ -1066,8 +971,46 @@ export default function ManuscriptView({
               onCancel={clearSelectionBar}
             />
           )}
-          <div className="msv-sheet-wrap" style={{ width: `${pageW}px` }}>
-            <div className="msv-sheet" data-testid="msv-sheet">
+          <div className="msv-sheet-wrap" style={sheetWrapStyle}>
+            <div
+              className="msv-sheet"
+              style={pageChrome.sheetStyle}
+              data-testid="msv-sheet"
+              data-page-mode={pageChrome.mode}
+            >
+              {pageChrome.mode === 'scroll' && <PageModeRunes sym={pageChrome.sym} />}
+              {/* page-edge drag handles (prototype 861–865, startDrag 3392–3400) */}
+              <div
+                className="msv-edge msv-edge--l"
+                data-testid="msv-edge-l"
+                title="Drag to resize page"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Drag to resize page width"
+                tabIndex={0}
+                onMouseDown={startEdgeDrag(-1)}
+                onKeyDown={edgeKeyDown}
+              >
+                <div className="msv-edge-bar" />
+              </div>
+              <div
+                className="msv-edge msv-edge--r"
+                data-testid="msv-edge-r"
+                title="Drag to resize page"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Drag to resize page width"
+                tabIndex={0}
+                onMouseDown={startEdgeDrag(1)}
+                onKeyDown={edgeKeyDown}
+              >
+                <div className="msv-edge-bar" />
+              </div>
+              {edgeDragging && (
+                <div className="msv-width-badge" data-testid="msv-width-badge">
+                  {pageW} px
+                </div>
+              )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
               {visible.map(renderBlock)}
               <div
@@ -1076,7 +1019,6 @@ export default function ManuscriptView({
                 aria-hidden="true"
               />
             </div>
->>>>>>> origin/main
           </div>
         </div>
         {/* M11: margin gutter dock (prototype 911–963) */}
