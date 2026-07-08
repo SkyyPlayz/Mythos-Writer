@@ -43,7 +43,7 @@ import {
   startVaultWatcher,
   stopVaultWatcher,
   markSelfWrite,
-  isSelfWrite,
+  isRecentSelfWrite,
 } from './vault.js';
 
 describe('Manuscript layout — slug and path helpers', () => {
@@ -1767,28 +1767,50 @@ describe('reindexVault — incremental cache', () => {
 });
 
 describe('watcher self-write suppression (perf audit)', () => {
-  it('marks a path and reports it as a self-write until the TTL expires', () => {
-    const p = '/tmp/some-vault/stories/s/sc.md';
-    markSelfWrite(p, 50);
-    expect(isSelfWrite(p)).toBe(true);
-    // normalization-insensitive
-    expect(isSelfWrite('/tmp/some-vault/stories/s/../s/sc.md')).toBe(true);
+  it('suppresses an event while the file still matches the recorded write', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'sc.md');
+    fs.writeFileSync(abs, 'app content');
+    markSelfWrite(abs, 5000);
+    expect(isRecentSelfWrite(abs)).toBe(true);
+    // identity-based, not consume-once: repeated events for one write all match
+    expect(isRecentSelfWrite(abs)).toBe(true);
   });
 
-  it('expires entries after the TTL', async () => {
-    const p = '/tmp/some-vault/stories/s/expiring.md';
-    markSelfWrite(p, 10);
+  it('lets a coalesced external edit through — file no longer matches', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'sc.md');
+    fs.writeFileSync(abs, 'app content');
+    markSelfWrite(abs, 5000);
+    fs.writeFileSync(abs, 'external edit with different size');
+    expect(isRecentSelfWrite(abs)).toBe(false);
+  });
+
+  it('treats a deleted file as external', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'gone.md');
+    fs.writeFileSync(abs, 'x');
+    markSelfWrite(abs, 5000);
+    fs.unlinkSync(abs);
+    expect(isRecentSelfWrite(abs)).toBe(false);
+  });
+
+  it('expires marks after the TTL', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'expiring.md');
+    fs.writeFileSync(abs, 'x');
+    markSelfWrite(abs, 10);
     await new Promise((r) => setTimeout(r, 30));
-    expect(isSelfWrite(p)).toBe(false);
+    expect(isRecentSelfWrite(abs)).toBe(false);
   });
 
   it('does not flag paths that were never marked', () => {
-    expect(isSelfWrite('/tmp/some-vault/external-edit.md')).toBe(false);
+    expect(isRecentSelfWrite('/tmp/some-vault/external-edit.md')).toBe(false);
   });
 
   it('is set by writeVaultFileAtomic so app writes are suppressed', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
     writeVaultFileAtomic(root, 'note.md', 'content');
-    expect(isSelfWrite(path.join(root, 'note.md'))).toBe(true);
+    expect(isRecentSelfWrite(path.join(root, 'note.md'))).toBe(true);
   });
 });

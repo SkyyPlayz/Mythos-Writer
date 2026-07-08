@@ -172,8 +172,8 @@ export function writeVaultFileUnsafe_testOnly(
   const fullPath = realSafePath(vaultRoot, filePath, true);
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  markSelfWrite(fullPath);
   fs.writeFileSync(fullPath, content, 'utf-8');
+  markSelfWrite(fullPath);
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 }
 
@@ -199,13 +199,13 @@ export function writeVaultFileAtomic(
   } finally {
     fs.closeSync(fd);
   }
-  markSelfWrite(fullPath);
   try {
     fs.renameSync(tmp, fullPath);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
     throw err;
   }
+  markSelfWrite(fullPath);
   return { path: filePath, bytes: buf.byteLength };
 }
 
@@ -936,27 +936,49 @@ export function importObsidianVault(
 // fs event latency; entries self-expire so external edits are never masked
 // for long.
 const SELF_WRITE_TTL_MS = 2500;
-const selfWrites = new Map<string, number>();
+const selfWrites = new Map<string, { mtimeMs: number; size: number; expiresAt: number }>();
 
+/**
+ * Record the on-disk identity (mtime + size) of a file the app just wrote.
+ * Must be called AFTER the write/rename lands so the recorded stat matches
+ * what the watcher will observe.
+ */
 export function markSelfWrite(absPath: string, ttlMs = SELF_WRITE_TTL_MS): void {
   const now = Date.now();
   if (selfWrites.size > 64) {
-    for (const [key, exp] of selfWrites) {
-      if (exp <= now) selfWrites.delete(key);
+    for (const [key, entry] of selfWrites) {
+      if (entry.expiresAt <= now) selfWrites.delete(key);
     }
   }
-  selfWrites.set(path.normalize(absPath), now + ttlMs);
+  const key = path.normalize(absPath);
+  try {
+    const st = fs.statSync(key);
+    selfWrites.set(key, { mtimeMs: st.mtimeMs, size: st.size, expiresAt: now + ttlMs });
+  } catch { /* file vanished — nothing to suppress */ }
 }
 
-export function isSelfWrite(absPath: string): boolean {
+/**
+ * True when a watcher event refers to a file that is byte-for-byte still the
+ * app's own recent write (same mtime + size as recorded). Identity-based
+ * rather than count-based on purpose: chokidar's awaitWriteFinish coalesces
+ * an app write and an external edit landing shortly after into ONE event —
+ * the stat comparison detects the external content and lets it through,
+ * where consume-once/TTL suppression silently dropped it.
+ */
+export function isRecentSelfWrite(absPath: string): boolean {
   const key = path.normalize(absPath);
-  const exp = selfWrites.get(key);
-  if (exp === undefined) return false;
-  if (exp <= Date.now()) {
+  const entry = selfWrites.get(key);
+  if (!entry) return false;
+  if (entry.expiresAt <= Date.now()) {
     selfWrites.delete(key);
     return false;
   }
-  return true;
+  try {
+    const st = fs.statSync(key);
+    return st.mtimeMs === entry.mtimeMs && st.size === entry.size;
+  } catch {
+    return false; // deleted since our write — external, let it through
+  }
 }
 
 let activeWatcher: FSWatcher | null = null;
@@ -982,13 +1004,13 @@ export async function startVaultWatcher(
   });
 
   activeWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isSelfWrite(filePath)) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isSelfWrite(filePath)) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('unlink', (filePath: string) => {
-    if (!isSelfWrite(filePath)) onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('addDir', (filePath: string) => {
     onChanged(filePath);
@@ -1175,13 +1197,13 @@ export async function startNotesVaultWatcher(
   });
 
   activeNotesWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isSelfWrite(filePath)) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeNotesWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isSelfWrite(filePath)) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeNotesWatcher.on('unlink', (filePath: string) => {
-    if (!isSelfWrite(filePath)) onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
   activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
