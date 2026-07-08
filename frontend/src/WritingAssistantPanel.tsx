@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useAgentActivity } from './agents/agentActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { SuggestionCard } from './SuggestionCard';
@@ -92,6 +93,8 @@ interface Props {
   autoApply?: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
+  displayName?: string;
 }
 
 function isBetaReadRequest(prompt: string) {
@@ -165,6 +168,7 @@ export default function WritingAssistantPanel({
   autoApply = false,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
+  displayName = 'Writing Assistant',
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -223,6 +227,10 @@ export default function WritingAssistantPanel({
     idleHeartbeatConstantInterval,
     idleDebounceSeconds,
   });
+
+  // Beta 3 M22: chat streaming, beta-read scans and writing scans all light
+  // the workspace tab strip's agents chip while running.
+  useAgentActivity(loading || betaReadLoading || scanning);
 
   useEffect(() => {
     window.api.writingAssistantSetActiveScene?.({
@@ -689,7 +697,7 @@ export default function WritingAssistantPanel({
         icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
         title={
           <>
-            Writing Assistant
+            {displayName}
             {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
           </>
         }

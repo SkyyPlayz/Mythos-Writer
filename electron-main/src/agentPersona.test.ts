@@ -22,6 +22,12 @@ import {
   resolvedInsideRoot,
   PERSONA_KEYS,
   validatePersonaPayload,
+  writePersonaFile,
+  resolveAgentDisplayName,
+  IDENTITY_FILES,
+  VALID_AGENT_NAMES,
+  DEFAULT_AGENT_DISPLAY_NAMES,
+  MAX_PERSONA_FILE_LENGTH,
 } from './agentPersona.js';
 import type { AgentPersonaName } from './agentPersona.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
@@ -376,6 +382,134 @@ describe('validatePersonaPayload — traversal rejection (§6c)', () => {
         const result = validatePersonaPayload(agent, key);
         expect(result).toMatchObject({ ok: true, agentName: agent, key });
       }
+    }
+  });
+});
+
+// ─── §7  Beta 3 M22 — four agents, identity files, editing, display names ─────
+
+describe('M22 §7a — all four named agents carry a full file set', () => {
+  it('VALID_AGENT_NAMES contains exactly the four named agents', () => {
+    expect([...VALID_AGENT_NAMES].sort()).toEqual(
+      ['archive', 'betaReader', 'brainstorm', 'writingAssistant'],
+    );
+  });
+
+  it('every agent+key combination has non-empty bundled content', () => {
+    for (const agent of VALID_AGENT_NAMES) {
+      for (const key of PERSONA_KEYS) {
+        expect(getBundledPersona(agent, key).length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('PERSONA_KEYS includes LEARNING', () => {
+    expect(PERSONA_KEYS).toContain('LEARNING');
+  });
+
+  it('betaReader AGENTS bundled default carries the JSON output contract and anti-injection guard', () => {
+    const content = getBundledPersona('betaReader', 'AGENTS');
+    expect(content).toContain('scene_context');
+    expect(content).toContain('"anchor"');
+    expect(content).toContain('"comment"');
+    expect(content.toLowerCase()).toMatch(/not.*instructions?/);
+  });
+
+  it('betaReader system prompt composes and keeps the output contract', () => {
+    const prompt = buildAgentSystemPrompt(tmpDir, 'betaReader');
+    expect(prompt).toContain('"anchor"');
+    expect(prompt).toContain('one JSON object per line');
+  });
+});
+
+describe('M22 §7b — IDENTITY_FILES mapping (agent/instructions/learning/soul)', () => {
+  it('maps the four prototype file names onto persona keys in prototype order', () => {
+    expect(IDENTITY_FILES.map((f) => f.fileName)).toEqual(
+      ['agent.md', 'instructions.md', 'learning.md', 'soul.md'],
+    );
+    expect(IDENTITY_FILES.map((f) => f.key)).toEqual(
+      ['AGENTS', 'HEARTBEAT', 'LEARNING', 'SOUL'],
+    );
+  });
+
+  it('every identity file key is a valid PersonaKey', () => {
+    for (const f of IDENTITY_FILES) expect(PERSONA_KEYS).toContain(f.key);
+  });
+});
+
+describe('M22 §7c — writePersonaFile (identity files editable)', () => {
+  it('round-trips: write → loadPersonaFile returns the custom content', () => {
+    writePersonaFile(tmpDir, 'betaReader', 'SOUL', '# Grumpy reviewer\nHard to please.');
+    const result = loadPersonaFile(tmpDir, 'betaReader', 'SOUL');
+    expect(result.isCustom).toBe(true);
+    expect(result.content).toBe('# Grumpy reviewer\nHard to please.');
+  });
+
+  it('editing an identity file changes the composed system prompt', () => {
+    const before = buildAgentSystemPrompt(tmpDir, 'betaReader');
+    expect(before).not.toContain('always mention the weather');
+
+    writePersonaFile(tmpDir, 'betaReader', 'LEARNING', '# Learning\n2026-07-07 · always mention the weather');
+    const after = buildAgentSystemPrompt(tmpDir, 'betaReader');
+    expect(after).toContain('always mention the weather');
+  });
+
+  it('reset after write restores the bundled default', () => {
+    writePersonaFile(tmpDir, 'archive', 'HEARTBEAT', '# custom checklist');
+    resetPersonaFile(tmpDir, 'archive', 'HEARTBEAT');
+    const result = loadPersonaFile(tmpDir, 'archive', 'HEARTBEAT');
+    expect(result.isCustom).toBe(false);
+    expect(result.content).toContain('Per-Request Checklist');
+  });
+
+  it('rejects content over the length cap', () => {
+    const huge = 'x'.repeat(MAX_PERSONA_FILE_LENGTH + 1);
+    expect(() => writePersonaFile(tmpDir, 'brainstorm', 'SOUL', huge)).toThrow('content_too_long');
+  });
+
+  it('rejects non-string content', () => {
+    expect(() =>
+      writePersonaFile(tmpDir, 'brainstorm', 'SOUL', { evil: true } as unknown as string),
+    ).toThrow('invalid_content');
+  });
+
+  it('containment guard blocks traversal through agentName', () => {
+    expect(() =>
+      writePersonaFile(tmpDir, '../secret' as AgentPersonaName, 'AGENTS', 'x'),
+    ).toThrow('Path escape detected');
+  });
+});
+
+describe('M22 §7d — buildAgentSystemPrompt includes LEARNING', () => {
+  it('includes bundled LEARNING content', () => {
+    const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
+    expect(prompt).toContain('# Writing Assistant — Learning');
+  });
+
+  it('still excludes TOOLS for every agent', () => {
+    for (const agent of VALID_AGENT_NAMES) {
+      expect(buildAgentSystemPrompt(tmpDir, agent)).not.toContain('Declared Tool Surface');
+    }
+  });
+});
+
+describe('M22 §7e — resolveAgentDisplayName (renames propagate)', () => {
+  it('returns the default display name when no custom name is set', () => {
+    expect(resolveAgentDisplayName('betaReader')).toBe('Beta Reader');
+    expect(resolveAgentDisplayName('archive', {})).toBe('Archive Agent');
+  });
+
+  it('returns the custom name when set', () => {
+    expect(resolveAgentDisplayName('betaReader', { betaReader: 'Ruthless Rita' })).toBe('Ruthless Rita');
+  });
+
+  it('falls back to the default for blank/whitespace custom names', () => {
+    expect(resolveAgentDisplayName('brainstorm', { brainstorm: '   ' })).toBe('Brainstorm Agent');
+  });
+
+  it('has a default for every valid agent', () => {
+    for (const agent of VALID_AGENT_NAMES) {
+      expect(DEFAULT_AGENT_DISPLAY_NAMES[agent].length).toBeGreaterThan(0);
     }
   });
 });

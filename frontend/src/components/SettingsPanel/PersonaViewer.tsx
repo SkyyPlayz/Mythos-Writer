@@ -1,7 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+// PersonaViewer — per-agent identity file editor.
+//
+// MYT-816 shipped this read-only (view + reset). Beta 3 M22 makes it the
+// prototype's "Identity & files" surface (HTML 1848–1868): every agent carries
+// four editable identity files — agent.md / instructions.md / learning.md /
+// soul.md — stored as persona-key overrides in the app dir and injected into
+// that agent's system prompt. tools.md stays visible as a descriptive fifth
+// file (never injected).
 
-type PersonaKey = 'AGENTS' | 'HEARTBEAT' | 'SOUL' | 'TOOLS';
-const PERSONA_KEYS: PersonaKey[] = ['AGENTS', 'HEARTBEAT', 'SOUL', 'TOOLS'];
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { IDENTITY_FILES, type NamedAgentId } from '../../agents/agentIdentity';
+
+interface PersonaTab {
+  key: string;
+  fileName: string;
+}
+
+const PERSONA_TABS: PersonaTab[] = [
+  ...IDENTITY_FILES.map((f) => ({ key: f.key, fileName: f.fileName })),
+  { key: 'TOOLS', fileName: 'tools.md' },
+];
 
 interface PersonaFileState {
   content: string;
@@ -10,19 +27,23 @@ interface PersonaFileState {
   error: string | null;
 }
 
-export default function PersonaViewer({ agentName }: { agentName: 'writingAssistant' | 'brainstorm' }) {
-  const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<PersonaKey>('AGENTS');
-  const tablistRef = useRef<HTMLDivElement>(null);
-  const [files, setFiles] = useState<Record<PersonaKey, PersonaFileState>>({
-    AGENTS:    { content: '', isCustom: false, loading: false, error: null },
-    HEARTBEAT: { content: '', isCustom: false, loading: false, error: null },
-    SOUL:      { content: '', isCustom: false, loading: false, error: null },
-    TOOLS:     { content: '', isCustom: false, loading: false, error: null },
-  });
-  const [resetBusy, setResetBusy] = useState(false);
+const EMPTY_FILE: PersonaFileState = { content: '', isCustom: false, loading: false, error: null };
 
-  const loadFile = useCallback(async (key: PersonaKey) => {
+function emptyFiles(): Record<string, PersonaFileState> {
+  return Object.fromEntries(PERSONA_TABS.map((t) => [t.key, { ...EMPTY_FILE }]));
+}
+
+export default function PersonaViewer({ agentName }: { agentName: NamedAgentId }) {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>(PERSONA_TABS[0].key);
+  const tablistRef = useRef<HTMLDivElement>(null);
+  const [files, setFiles] = useState<Record<string, PersonaFileState>>(emptyFiles);
+  // M22: draft holds unsaved edits for the active tab; null = no edit session.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+
+  const loadFile = useCallback(async (key: string) => {
     setFiles((prev) => ({ ...prev, [key]: { ...prev[key], loading: true, error: null } }));
     try {
       const res = await window.api.agentPersonaRead(agentName, key) as { content: string; isCustom: boolean };
@@ -34,28 +55,59 @@ export default function PersonaViewer({ agentName }: { agentName: 'writingAssist
 
   useEffect(() => {
     if (!open) return;
-    for (const key of PERSONA_KEYS) loadFile(key);
+    for (const tab of PERSONA_TABS) loadFile(tab.key);
   }, [open, loadFile]);
 
-  const handleReset = async (key: PersonaKey) => {
-    setResetBusy(true);
+  // Switching tabs discards any unsaved draft (matches the prototype, where
+  // opening another file chip replaces the open editor).
+  const selectTab = useCallback((key: string) => {
+    setActiveTab(key);
+    setDraft(null);
+    setSavedOk(false);
+  }, []);
+
+  const handleSave = async () => {
+    if (draft === null) return;
+    setBusy(true);
+    setSavedOk(false);
+    try {
+      await window.api.agentPersonaWrite(agentName, activeTab, draft);
+      setDraft(null);
+      await loadFile(activeTab);
+      setSavedOk(true);
+    } catch (err) {
+      setFiles((prev) => ({
+        ...prev,
+        [activeTab]: { ...prev[activeTab], error: (err as Error).message },
+      }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReset = async (key: string) => {
+    setBusy(true);
+    setSavedOk(false);
     try {
       await window.api.agentPersonaReset(agentName, key);
+      setDraft(null);
       await loadFile(key);
     } finally {
-      setResetBusy(false);
+      setBusy(false);
     }
   };
 
   const file = files[activeTab];
+  const activeFileName = PERSONA_TABS.find((t) => t.key === activeTab)?.fileName ?? activeTab;
 
   const handleTabKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    const idx = PERSONA_KEYS.indexOf(activeTab);
+    const keys = PERSONA_TABS.map((t) => t.key);
+    const idx = keys.indexOf(activeTab);
     const next = e.key === 'ArrowRight'
-      ? PERSONA_KEYS[(idx + 1) % PERSONA_KEYS.length]
-      : PERSONA_KEYS[(idx + PERSONA_KEYS.length - 1) % PERSONA_KEYS.length];
-    setActiveTab(next);
+      ? keys[(idx + 1) % keys.length]
+      : keys[(idx + keys.length - 1) % keys.length];
+    selectTab(next);
     e.preventDefault();
     const btn = tablistRef.current?.querySelector<HTMLElement>(`[data-tabkey="${next}"]`);
     btn?.focus();
@@ -72,26 +124,30 @@ export default function PersonaViewer({ agentName }: { agentName: 'writingAssist
         onClick={() => setOpen((v) => !v)}
       >
         <span className="settings-persona-chevron">{open ? '▾' : '▸'}</span>
-        Persona files
+        Identity &amp; files
       </button>
       {open && (
         <div className="settings-persona-panel">
-          <div className="settings-persona-tabs" role="tablist" aria-label="Persona file tabs" ref={tablistRef} onKeyDown={handleTabKeyDown}>
-            {PERSONA_KEYS.map((key) => (
+          <p className="settings-help-text">
+            These files shape the agent. agent.md, instructions.md, learning.md and
+            soul.md are injected into every prompt; tools.md is descriptive only.
+          </p>
+          <div className="settings-persona-tabs" role="tablist" aria-label="Identity file tabs" ref={tablistRef} onKeyDown={handleTabKeyDown}>
+            {PERSONA_TABS.map((tab) => (
               <button
-                key={key}
+                key={tab.key}
                 type="button"
                 role="tab"
-                id={`persona-tab-${agentName}-${key}`}
-                data-tabkey={key}
-                aria-selected={activeTab === key}
+                id={`persona-tab-${agentName}-${tab.key}`}
+                data-tabkey={tab.key}
+                aria-selected={activeTab === tab.key}
                 aria-controls={panelId}
-                tabIndex={activeTab === key ? 0 : -1}
-                className={`settings-persona-tab${activeTab === key ? ' settings-persona-tab--active' : ''}`}
-                onClick={() => setActiveTab(key)}
+                tabIndex={activeTab === tab.key ? 0 : -1}
+                className={`settings-persona-tab${activeTab === tab.key ? ' settings-persona-tab--active' : ''}`}
+                onClick={() => selectTab(tab.key)}
               >
-                {key}.md
-                {files[key].isCustom && (
+                {tab.fileName}
+                {files[tab.key].isCustom && (
                   <span className="settings-persona-custom-badge" title="Custom override">●</span>
                 )}
               </button>
@@ -108,7 +164,7 @@ export default function PersonaViewer({ agentName }: { agentName: 'writingAssist
                     <button
                       type="button"
                       className="settings-persona-reset-btn"
-                      disabled={resetBusy}
+                      disabled={busy}
                       onClick={() => handleReset(activeTab)}
                     >
                       Reset to default
@@ -117,11 +173,24 @@ export default function PersonaViewer({ agentName }: { agentName: 'writingAssist
                 )}
                 <textarea
                   className="settings-persona-textarea"
-                  readOnly
-                  value={file.content}
-                  aria-label={`${agentName} ${activeTab}.md content`}
+                  value={draft ?? file.content}
+                  onChange={(e) => { setDraft(e.target.value); setSavedOk(false); }}
+                  aria-label={`${agentName} ${activeFileName} content`}
                   spellCheck={false}
+                  data-testid={`persona-editor-${agentName}`}
                 />
+                <div className="settings-persona-actions">
+                  <button
+                    type="button"
+                    className="settings-btn"
+                    disabled={busy || draft === null || draft === file.content}
+                    onClick={handleSave}
+                    data-testid={`persona-save-${agentName}`}
+                  >
+                    Save file
+                  </button>
+                  {savedOk && <span className="settings-persona-custom-label" role="status">Saved ✓</span>}
+                </div>
               </>
             )}
           </div>

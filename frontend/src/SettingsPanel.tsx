@@ -44,6 +44,7 @@ import { SETTINGS_CATEGORIES, type SettingsCategoryId } from './settingsCategori
 import {
   DEFAULTS,
   DEFAULT_AGENT_OVERRIDE,
+  BETA_READER_DEFAULTS,
   PROVIDER_OPTIONS,
   LISTABLE_PROVIDERS,
   modelListErrorCopy,
@@ -116,17 +117,18 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [testConnectionStatus, setTestConnectionStatus] = useState<TestConnectionStatus>('idle');
   const [testConnectionMsg, setTestConnectionMsg] = useState('');
 
-  // Per-agent provider overrides (SKY-686)
+  // Per-agent provider overrides (SKY-686; Beta 3 M22 adds betaReader)
   const [agentOverrides, setAgentOverrides] = useState<Record<AgentName, AgentOverrideState>>({
     writingAssistant: { ...DEFAULT_AGENT_OVERRIDE },
     brainstorm: { ...DEFAULT_AGENT_OVERRIDE },
     archive: { ...DEFAULT_AGENT_OVERRIDE },
+    betaReader: { ...DEFAULT_AGENT_OVERRIDE },
   });
   const [agentTestStatus, setAgentTestStatus] = useState<Record<AgentName, TestConnectionStatus>>({
-    writingAssistant: 'idle', brainstorm: 'idle', archive: 'idle',
+    writingAssistant: 'idle', brainstorm: 'idle', archive: 'idle', betaReader: 'idle',
   });
   const [agentTestMsg, setAgentTestMsg] = useState<Record<AgentName, string>>({
-    writingAssistant: '', brainstorm: '', archive: '',
+    writingAssistant: '', brainstorm: '', archive: '', betaReader: '',
   });
   // Security warning: non-localhost endpoint confirmation. Not currently wired
   // to a producer (kept for parity with the pre-SKY-5694 monolith — no
@@ -188,7 +190,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [resetConfirm, setResetConfirm] = useState(false);
 
   useEffect(() => {
-    window.api.settingsGet().then((s) => {
+    window.api.settingsGet().then((rawSettings) => {
+      // Beta 3 M22: betaReader is optional in the AppSettings type (pre-M22
+      // files); normalize once at load so the panel can index it directly.
+      const s: AppSettings = rawSettings.agents.betaReader
+        ? rawSettings
+        : { ...rawSettings, agents: { ...rawSettings.agents, betaReader: { ...BETA_READER_DEFAULTS } } };
       setSettings(s);
       if (s.liquidNeon) {
         const raw = s.liquidNeon;
@@ -230,6 +237,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         writingAssistant: loadAgentOverride(s.agents.writingAssistant),
         brainstorm: loadAgentOverride(s.agents.brainstorm),
         archive: loadAgentOverride(s.agents.archive),
+        betaReader: loadAgentOverride(s.agents.betaReader ?? BETA_READER_DEFAULTS),
       });
       setTelemetryEnabled(s.telemetry?.enabled ?? false);
       if (s.pageBackground) setPageBg({ ...PAGE_BACKGROUND_DEFAULTS, ...s.pageBackground });
@@ -316,18 +324,32 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
 
-  const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof AppSettings['agents'][A]>(
+  // Beta 3 M22: NonNullable so the optional betaReader slot is editable with
+  // the same generic setter (the slot is normalized present at settings load).
+  const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof NonNullable<AppSettings['agents'][A]>>(
     agent: A,
     field: K,
-    value: AppSettings['agents'][A][K],
+    value: NonNullable<AppSettings['agents'][A]>[K],
   ) => {
     setSettings((prev) => ({
       ...prev,
       agents: {
         ...prev.agents,
-        [agent]: { ...prev.agents[agent], [field]: value },
+        [agent]: { ...(prev.agents[agent] ?? BETA_READER_DEFAULTS), [field]: value },
       },
     }));
+    setSavedOk(false);
+  }, []);
+
+  // Beta 3 M22: agent renames (prototype agentNames, HTML 3245). Empty input
+  // clears the override so the default display name comes back.
+  const setAgentDisplayName = useCallback((agent: AgentName, name: string) => {
+    setSettings((prev) => {
+      const next = { ...(prev.agentNames ?? {}) };
+      if (name.trim()) next[agent] = name;
+      else delete next[agent];
+      return { ...prev, agentNames: next };
+    });
     setSavedOk(false);
   }, []);
 
@@ -341,7 +363,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     enabled: boolean,
   ) => {
     setSettings((prev) => {
-      const current = prev.agents[agent];
+      const current = prev.agents[agent] ?? BETA_READER_DEFAULTS;
       const existing = current.autoApplyCategories ?? {};
       const seeded: Record<SuggestionCategory, boolean> = {
         'punctuation': existing.punctuation ?? true,
@@ -370,7 +392,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     return {
       kind: ov.kind,
       model: ov.model,
-      ...(def.needsKey ? { apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? '') } : {}),
+      ...(def.needsKey ? { apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName]?.provider?.apiKey ?? '') } : {}),
       ...(def.needsUrl && ov.baseUrl ? { baseUrl: ov.baseUrl } : {}),
     };
   }, [agentOverrides, settings.agents]);
@@ -403,6 +425,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
           brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
           archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
+          betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
         },
       };
       await window.api.settingsSet(payload);
@@ -532,7 +555,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     try {
       const result = await window.api.settingsTestConnection({
         kind: ov.kind,
-        apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName].provider?.apiKey ?? ''),
+        apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName]?.provider?.apiKey ?? ''),
         baseUrl: ov.baseUrl || undefined,
         model: ov.model,
       });
@@ -712,6 +735,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onAgentTest={handleAgentTestConnection}
                 micDevices={micDevices}
                 refreshMicDevices={refreshMicDevices}
+                setAgentDisplayName={setAgentDisplayName}
               />
 
               <AutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />

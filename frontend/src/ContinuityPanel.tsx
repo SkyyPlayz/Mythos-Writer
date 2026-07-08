@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollText, CircleCheck } from 'lucide-react';
+import { useAgentActivity } from './agents/agentActivity';
 import type { Scene } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
@@ -81,6 +82,8 @@ export default function ContinuityPanel({
 }: ContinuityPanelProps) {
   const [panelState, setPanelState] = useState<PanelState>('loading');
   const [items, setItems] = useState<InconsistencyItem[]>([]);
+  // Beta 3 M22: archive scans light the workspace tab strip's agents chip.
+  useAgentActivity(panelState === 'scanning');
   const [lastTokenUsed, setLastTokenUsed] = useState<number | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
   const [footerExpanded, setFooterExpanded] = useState(false);

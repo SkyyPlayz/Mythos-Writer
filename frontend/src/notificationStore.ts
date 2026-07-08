@@ -2,7 +2,7 @@
 // bell (prototype notifs 3104–3110 / notifRows 4455–4459). App systems push
 // events here; NotificationCenter subscribes and deep-links on click.
 
-export type NotificationKind = 'sync' | 'archive' | 'bs' | 'sugg' | 'crafter';
+export type NotificationKind = 'sync' | 'archive' | 'bs' | 'sugg' | 'crafter' | 'beta';
 
 export interface AppNotification {
   id: string;
