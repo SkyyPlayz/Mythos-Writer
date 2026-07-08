@@ -47,6 +47,9 @@ import GlobalSearchPanel from './GlobalSearchPanel';
 import TourModal from './TourModal';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
+import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
+import { useVaultAgentActions } from './agents/useVaultAgentActions';
+import { resolveAgentDisplayName } from './agents/agentIdentity';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
@@ -1249,6 +1252,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // non-fatal
     }
   }, []);
+
+  // ─── Beta 3 M22: agents-active chip + vault-tree agent actions ───
+  // useAgentsActive feeds WorkspaceTabBar's status chip (left idle by M6);
+  // useVaultAgentActions arms the notes-tree "Beta read" / "Continuity check"
+  // context-menu items (left disabled by M15). Hooks live above the loading
+  // early return per DesktopShell rules-of-hooks discipline.
+  const agentsActive = useAgentsActive();
+  useAgentActivity(betaReadLoading);
+  const { betaReadNote, continuityCheckNote } = useVaultAgentActions({ agentNames: appSettings?.agentNames });
 
   useEffect(() => {
     if (!window.api.onBudgetCapHit) return;
@@ -3381,6 +3393,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onContextChange={setVaultContext}
             onExport={(scope: ExportScope) => setExportScope(scope)}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
+            onBetaRead={betaReadNote}
+            onContinuityCheck={continuityCheckNote}
           />
         );
       case 'vault-graph':
@@ -3410,6 +3424,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             ttsSettings={appSettings?.tts}
             voiceEnabled={appSettings?.voice?.enabled ?? false}
             voicePrefs={appSettings?.voice}
+            displayName={resolveAgentDisplayName('writingAssistant', appSettings?.agentNames)}
           />
         );
       case 'archive-continuity':
@@ -3479,6 +3494,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
+    betaReadNote, continuityCheckNote,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -3991,6 +4007,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onNewTab={() => setTabPickerOpen(true)}
             onTabOpenInSplit={handleTabOpenInSplit}
             onTabPopOut={handleTabPopOut}
+            agentsActive={agentsActive}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -4672,6 +4689,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             handleNotesSubViewChange('editor');
           }}
           onOpenScene={handleOpenGraphScene}
+          onBetaRead={betaReadNote}
+          onContinuityCheck={continuityCheckNote}
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}

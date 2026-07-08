@@ -143,6 +143,17 @@ export function hydrateSecretsIntoSettings(
       },
     };
   }
+  // Beta Reader per-agent key (Beta 3 M22).
+  const betaReaderKey = store.get('provider.betaReader.apiKey');
+  if (betaReaderKey && out.agents.betaReader?.provider) {
+    out.agents = {
+      ...out.agents,
+      betaReader: {
+        ...out.agents.betaReader,
+        provider: { ...out.agents.betaReader.provider, apiKey: betaReaderKey },
+      },
+    };
+  }
   // STT cloud API key (SKY-816).
   const sttKey = store.get('stt.cloudApiKey');
   if (sttKey && out.stt) {
@@ -215,6 +226,18 @@ export function persistSecretsAndStripSettings(
       archive: {
         ...stripped.agents.archive,
         provider: { ...stripped.agents.archive.provider, apiKey: '' },
+      },
+    };
+  }
+  // Beta Reader per-agent key (Beta 3 M22) — never plaintext-at-rest.
+  if (stripped.agents.betaReader?.provider) {
+    const key = stripped.agents.betaReader.provider.apiKey ?? '';
+    store.set('provider.betaReader.apiKey', key);
+    stripped.agents = {
+      ...stripped.agents,
+      betaReader: {
+        ...stripped.agents.betaReader,
+        provider: { ...stripped.agents.betaReader.provider, apiKey: '' },
       },
     };
   }
