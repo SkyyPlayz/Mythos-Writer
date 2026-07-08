@@ -42,6 +42,8 @@ import {
   resolveEpubExportPath,
   startVaultWatcher,
   stopVaultWatcher,
+  markSelfWrite,
+  isRecentSelfWrite,
 } from './vault.js';
 
 describe('Manuscript layout — slug and path helpers', () => {
@@ -1761,5 +1763,54 @@ describe('reindexVault — incremental cache', () => {
     const staleCache = { appVersion: '1.0.0', schemaVersion: 1, entries: cacheEntries };
     const { skipped } = reindexVault(tmpDir, manifest, staleCache);
     expect(skipped).toBe(0);
+  });
+});
+
+describe('watcher self-write suppression (perf audit)', () => {
+  it('suppresses an event while the file still matches the recorded write', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'sc.md');
+    fs.writeFileSync(abs, 'app content');
+    markSelfWrite(abs, 5000);
+    expect(isRecentSelfWrite(abs)).toBe(true);
+    // identity-based, not consume-once: repeated events for one write all match
+    expect(isRecentSelfWrite(abs)).toBe(true);
+  });
+
+  it('lets a coalesced external edit through — file no longer matches', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'sc.md');
+    fs.writeFileSync(abs, 'app content');
+    markSelfWrite(abs, 5000);
+    fs.writeFileSync(abs, 'external edit with different size');
+    expect(isRecentSelfWrite(abs)).toBe(false);
+  });
+
+  it('treats a deleted file as external', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'gone.md');
+    fs.writeFileSync(abs, 'x');
+    markSelfWrite(abs, 5000);
+    fs.unlinkSync(abs);
+    expect(isRecentSelfWrite(abs)).toBe(false);
+  });
+
+  it('expires marks after the TTL', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    const abs = path.join(root, 'expiring.md');
+    fs.writeFileSync(abs, 'x');
+    markSelfWrite(abs, 10);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(isRecentSelfWrite(abs)).toBe(false);
+  });
+
+  it('does not flag paths that were never marked', () => {
+    expect(isRecentSelfWrite('/tmp/some-vault/external-edit.md')).toBe(false);
+  });
+
+  it('is set by writeVaultFileAtomic so app writes are suppressed', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    writeVaultFileAtomic(root, 'note.md', 'content');
+    expect(isRecentSelfWrite(path.join(root, 'note.md'))).toBe(true);
   });
 });

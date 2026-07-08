@@ -173,6 +173,7 @@ export function writeVaultFileUnsafe_testOnly(
   const dir = path.dirname(fullPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(fullPath, content, 'utf-8');
+  markSelfWrite(fullPath);
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 }
 
@@ -204,6 +205,7 @@ export function writeVaultFileAtomic(
     try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
     throw err;
   }
+  markSelfWrite(fullPath);
   return { path: filePath, bytes: buf.byteLength };
 }
 
@@ -923,6 +925,62 @@ export function importObsidianVault(
 
 // ─── File watcher ───
 
+// Self-write suppression: the app's own vault writes must not re-enter the
+// change watchers. Before this guard, every autosave fired watcher →
+// debounced full reindex + manifest rewrite + FTS rebuild, all synchronous on
+// the main-process event loop, with cost growing with vault size (the
+// long-session freeze root cause). IPC handlers already keep the manifest and
+// FTS in sync for their own writes, so watcher-driven reindexing is only
+// needed for external edits (e.g. Obsidian).
+// TTL must exceed chokidar's awaitWriteFinish window (300 ms stability) plus
+// fs event latency; entries self-expire so external edits are never masked
+// for long.
+const SELF_WRITE_TTL_MS = 2500;
+const selfWrites = new Map<string, { mtimeMs: number; size: number; expiresAt: number }>();
+
+/**
+ * Record the on-disk identity (mtime + size) of a file the app just wrote.
+ * Must be called AFTER the write/rename lands so the recorded stat matches
+ * what the watcher will observe.
+ */
+export function markSelfWrite(absPath: string, ttlMs = SELF_WRITE_TTL_MS): void {
+  const now = Date.now();
+  if (selfWrites.size > 64) {
+    for (const [key, entry] of selfWrites) {
+      if (entry.expiresAt <= now) selfWrites.delete(key);
+    }
+  }
+  const key = path.normalize(absPath);
+  try {
+    const st = fs.statSync(key);
+    selfWrites.set(key, { mtimeMs: st.mtimeMs, size: st.size, expiresAt: now + ttlMs });
+  } catch { /* file vanished — nothing to suppress */ }
+}
+
+/**
+ * True when a watcher event refers to a file that is byte-for-byte still the
+ * app's own recent write (same mtime + size as recorded). Identity-based
+ * rather than count-based on purpose: chokidar's awaitWriteFinish coalesces
+ * an app write and an external edit landing shortly after into ONE event —
+ * the stat comparison detects the external content and lets it through,
+ * where consume-once/TTL suppression silently dropped it.
+ */
+export function isRecentSelfWrite(absPath: string): boolean {
+  const key = path.normalize(absPath);
+  const entry = selfWrites.get(key);
+  if (!entry) return false;
+  if (entry.expiresAt <= Date.now()) {
+    selfWrites.delete(key);
+    return false;
+  }
+  try {
+    const st = fs.statSync(key);
+    return st.mtimeMs === entry.mtimeMs && st.size === entry.size;
+  } catch {
+    return false; // deleted since our write — external, let it through
+  }
+}
+
 let activeWatcher: FSWatcher | null = null;
 
 export async function startVaultWatcher(
@@ -933,7 +991,12 @@ export async function startVaultWatcher(
 
   const { default: chokidar } = await import('chokidar');
   activeWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\\\])\\../, // ignore dotfiles
+    // NOTE: this regex was previously over-escaped (/(^|[/\\\\])\\../) and
+    // matched nothing — dotdirs like .mythos (SQLite DB + WAL) and .snapshots
+    // were being watched, so the app's own DB/snapshot churn fed the watcher.
+    // Also ignore version-history dirs: every save writes versions/<id>/*.md,
+    // which made each save fire the watcher (and a full reindex) twice.
+    ignored: [/(^|[/\\])\../, /(^|[/\\])versions([/\\]|$)/],
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
@@ -941,13 +1004,13 @@ export async function startVaultWatcher(
   });
 
   activeWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('unlink', (filePath: string) => {
-    onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('addDir', (filePath: string) => {
     onChanged(filePath);
@@ -1126,7 +1189,7 @@ export async function startNotesVaultWatcher(
 
   const { default: chokidar } = await import('chokidar');
   activeNotesWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\\\])\\../,
+    ignored: /(^|[/\\])\../, // was over-escaped and matched nothing (see startVaultWatcher)
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
@@ -1134,12 +1197,14 @@ export async function startNotesVaultWatcher(
   });
 
   activeNotesWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeNotesWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
-  activeNotesWatcher.on('unlink', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('unlink', (filePath: string) => {
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
+  });
   activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
   activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
 }

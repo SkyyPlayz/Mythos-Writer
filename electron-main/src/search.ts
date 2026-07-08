@@ -110,6 +110,90 @@ export function buildFullIndex(db: DatabaseSync, vaultRoot: string, manifest: Ma
   }
 }
 
+// ─── Incremental update planning ───
+// The debounced watcher reindex used to run buildFullIndex (DELETE-all + a
+// full-vault re-read) on every external change. These helpers let it refresh
+// only the documents that actually changed, falling back to a full rebuild
+// for deletes/renames/large bursts.
+
+export interface FtsScenePlanDoc {
+  docId: string;
+  relPath: string;
+  title: string;
+}
+
+export type FtsUpdatePlan =
+  | { kind: 'full' }
+  | { kind: 'incremental'; docs: FtsScenePlanDoc[] };
+
+const normPath = (p: string): string => p.replace(/\\/g, '/');
+
+export function planFtsUpdate(
+  manifest: Manifest,
+  changedRelPaths: string[],
+  maxIncremental = 50,
+): FtsUpdatePlan {
+  if (changedRelPaths.length === 0) return { kind: 'incremental', docs: [] };
+  if (changedRelPaths.length > maxIncremental) return { kind: 'full' };
+
+  const byPath = new Map<string, FtsScenePlanDoc>();
+  const seen = new Set<string>();
+  const addScene = (scene: { id: string; path: string; title: string }): void => {
+    if (seen.has(scene.id)) return;
+    seen.add(scene.id);
+    byPath.set(normPath(scene.path), { docId: scene.id, relPath: scene.path, title: scene.title });
+  };
+  for (const story of manifest.stories ?? []) {
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) addScene(scene);
+    }
+  }
+  for (const scene of manifest.scenes ?? []) addScene(scene);
+
+  const docs: FtsScenePlanDoc[] = [];
+  for (const rel of changedRelPaths) {
+    const doc = byPath.get(normPath(rel));
+    // Unknown path — a delete, rename, or directory event. Only a full
+    // rebuild can drop stale rows, so bail out of the incremental plan.
+    if (!doc) return { kind: 'full' };
+    docs.push(doc);
+  }
+  return { kind: 'incremental', docs };
+}
+
+/** Re-index one scene from disk (title-only when unreadable, matching buildFullIndex). */
+export function indexSceneFromDisk(db: DatabaseSync, vaultRoot: string, doc: FtsScenePlanDoc): void {
+  let body = '';
+  try {
+    const { content } = readVaultFile(vaultRoot, doc.relPath);
+    body = parseFrontmatter(content).prose;
+  } catch { /* missing file — index title only */ }
+  indexDocument(db, { docId: doc.docId, vault: 'story', kind: 'scene', title: doc.title, body });
+}
+
+/** Refresh every entity document — bounded by entity count, not vault size. */
+export function refreshEntityIndex(db: DatabaseSync, vaultRoot: string, manifest: Manifest): void {
+  for (const entity of manifest.entities ?? []) {
+    let prose = '';
+    try {
+      const { content } = readVaultFile(vaultRoot, entity.path);
+      prose = parseFrontmatter(content).prose;
+    } catch { /* missing */ }
+    const bodyParts = [
+      entity.aliases?.join(' ') ?? '',
+      entity.tags?.join(' ') ?? '',
+      prose,
+    ].filter(Boolean);
+    indexDocument(db, {
+      docId: entity.id,
+      vault: 'notes',
+      kind: entity.type,
+      title: entity.name,
+      body: bodyParts.join('\n'),
+    });
+  }
+}
+
 // ─── Query ───
 
 function sanitizeFtsQuery(raw: string): string {
