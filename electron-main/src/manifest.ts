@@ -103,7 +103,11 @@ export function migrateManifest(raw: Raw): Manifest {
  */
 export function writeManifestAtomic(manifestPath: string, manifest: Manifest): void {
   const tmp = `${manifestPath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(manifest, null, 2), 'utf-8');
+  // Compact serialization: the manifest embeds every scene's prose and is
+  // rewritten on each save, so it reaches many MB on real projects. Pretty
+  // printing roughly doubled the synchronous stringify+write cost on the
+  // main-process event loop (and the file size) for a machine-managed file.
+  fs.writeFileSync(tmp, JSON.stringify(manifest), 'utf-8');
   fs.renameSync(tmp, manifestPath);
 }
 
