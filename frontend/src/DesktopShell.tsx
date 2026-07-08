@@ -4316,6 +4316,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   focusMode={writingMode === 'focus'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4336,6 +4338,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   focusMode={writingMode === 'focus'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
