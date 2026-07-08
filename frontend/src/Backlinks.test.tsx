@@ -1,6 +1,6 @@
 // M16: Backlinks panel — notes-vault backlinks via IPC + client-side story
 // backlinks with the gold STORY chip.
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Backlinks, { findStoryBacklinks } from './Backlinks';
 import type { Story } from './types';
@@ -44,7 +44,7 @@ const noteBacklinks = vi.fn(async () => ({
   notePath: 'Locations/The Sunken Gate.md',
   backlinks: [{ path: 'Characters/Mira.md', name: 'Mira', snippet: 'found a map near the [[The Sunken Gate]]' }],
 }));
-const onVaultFileChanged = vi.fn(() => () => {});
+const onVaultFileChanged = vi.fn((_cb: () => void) => () => {});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -125,5 +125,31 @@ describe('Backlinks panel (M16)', () => {
       <Backlinks notePath="Lonely.md" stories={[]} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />,
     );
     await waitFor(() => expect(onVaultFileChanged).toHaveBeenCalled());
+  });
+
+  it('debounces vault-file-changed rescans with a 500 ms trailing timer', async () => {
+    render(
+      <Backlinks notePath="Lonely.md" stories={[]} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />,
+    );
+    await waitFor(() => expect(onVaultFileChanged).toHaveBeenCalled());
+    // Initial mount load has already run exactly once.
+    await waitFor(() => expect(noteBacklinks).toHaveBeenCalledTimes(1));
+    const trigger = onVaultFileChanged.mock.calls[0][0];
+
+    vi.useFakeTimers();
+    try {
+      // A burst of change events must not rescan immediately…
+      act(() => { trigger(); trigger(); trigger(); });
+      expect(noteBacklinks).toHaveBeenCalledTimes(1);
+      act(() => { vi.advanceTimersByTime(499); });
+      expect(noteBacklinks).toHaveBeenCalledTimes(1);
+      // …only the trailing edge fires, once for the whole burst.
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(noteBacklinks).toHaveBeenCalledTimes(2);
+      // Flush the load() promise so its setState lands inside act().
+      await act(async () => { await Promise.resolve(); });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

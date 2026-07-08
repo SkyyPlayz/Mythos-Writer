@@ -93,9 +93,21 @@ export default function Backlinks({ notePath, stories, onOpenNote, onOpenScene }
   }, [load]);
 
   // Live list: rescan whenever any vault file changes (autosaves included).
+  // Debounced 500 ms trailing (audit P4) — noteBacklinks is a full-vault scan,
+  // and autosaves fire vault:file-changed about once per second while typing.
   useEffect(() => {
-    const off = window.api.onVaultFileChanged?.(() => { void load(); });
-    return off;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = window.api.onVaultFileChanged?.(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void load();
+      }, 500);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      off?.();
+    };
   }, [load]);
 
   const storyLinks = useMemo(() => findStoryBacklinks(stories, notePath), [stories, notePath]);
