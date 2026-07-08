@@ -176,6 +176,30 @@
   box-shadow: 0 0 12px -4px rgba(255, 211, 25, 0.5);
 }
 
+/* ── M13: reader chip in the zoombar (prototype Read toolbar button 748) ── */
+
+.msv-reader-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  cursor: pointer;
+  flex: none;
+  background: none;
+  font-family: inherit;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+}
+
+.msv-reader-chip--on {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.5));
+}
+
 /* ── M11: page + gutter row (prototype 806) ── */
 
 .msv-body {
@@ -386,6 +410,15 @@
 .msv-para-text:focus {
   background: var(--gs1, rgba(0, 240, 255, 0.06));
   box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+}
+
+/* ── M13: moving TTS highlight (prototype reading pStX 3376–3377) ── */
+
+.msv-para-text--reading {
+  background: var(--gs1, rgba(0, 240, 255, 0.14));
+  border-radius: 8px;
+  box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+  transition: background 0.25s ease;
 }
 
 /* ── fold pill (prototype 901–905) ── */
