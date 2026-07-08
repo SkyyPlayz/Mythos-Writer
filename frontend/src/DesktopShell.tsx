@@ -4339,6 +4339,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   focusMode={writingMode === 'focus'}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4361,6 +4363,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   focusMode={writingMode === 'focus'}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
