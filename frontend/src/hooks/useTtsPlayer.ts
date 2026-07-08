@@ -24,6 +24,20 @@ export interface TtsVoicePrefs {
   persistentMute?: boolean;
 }
 
+/** Why a started card's playback ended on its own (never fired for cancels). */
+export type TtsPlaybackEndReason = 'ended' | 'error';
+
+/** Optional hook behaviors — additive so existing call sites are untouched. */
+export interface UseTtsPlayerOptions {
+  /**
+   * Beta 3 M13: fired when playback of a started card stops on its own —
+   * the utterance finished ('ended') or failed ('error'). Never fired for
+   * explicit cancelCurrent / mute stops, so multi-utterance flows (the
+   * manuscript TTS reader) can chain without reacting to their own cancels.
+   */
+  onPlaybackEnd?: (cardId: string, reason: TtsPlaybackEndReason) => void;
+}
+
 export interface UseTtsPlayer {
   /** ID of the suggestion card currently playing, or null. */
   playingCardId: string | null;
@@ -44,8 +58,9 @@ export interface UseTtsPlayer {
 /**
  * Returns true when a Piper-local or cloud TTS backend is explicitly configured.
  * When false, the hook falls back to OS speechSynthesis (zero-config default).
+ * Exported for the M13 reader's availability / voice-list checks.
  */
-function hasTtsEngine(settings?: TtsEngineSettings): boolean {
+export function hasTtsEngine(settings?: TtsEngineSettings): boolean {
   if (!settings?.enabled) return false;
   const { provider, localBinaryPath, cloudApiKey } = settings;
   if (provider === 'local') return !!localBinaryPath;
@@ -94,7 +109,11 @@ const PCM_DEFAULT_SAMPLE_RATE = 22050;
  * `voicePrefs` (settings.voice) applies volume/rate on both paths, forwards
  * the configured voice, and seeds the initial mute state from persistentMute.
  */
-export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVoicePrefs): UseTtsPlayer {
+export function useTtsPlayer(
+  ttsSettings?: TtsEngineSettings,
+  voicePrefs?: TtsVoicePrefs,
+  options?: UseTtsPlayerOptions,
+): UseTtsPlayer {
   const [playingCardId, setPlayingCardId] = useState<string | null>(null);
   const [sessionMuted, setSessionMuted] = useState(voicePrefs?.persistentMute ?? false);
 
@@ -117,7 +136,10 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
   const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
   // Set once the user explicitly toggles mute — stored persistentMute stops driving state.
   const userToggledMuteRef = useRef(false);
+  // Latest onPlaybackEnd option — callers may pass a new closure every render.
+  const onPlaybackEndRef = useRef(options?.onPlaybackEnd);
 
+  useEffect(() => { onPlaybackEndRef.current = options?.onPlaybackEnd; });
   useEffect(() => { sessionMutedRef.current = sessionMuted; }, [sessionMuted]);
   useEffect(() => { playingCardIdRef.current = playingCardId; }, [playingCardId]);
   useEffect(() => { ttsSettingsRef.current = ttsSettings; }, [ttsSettings]);
@@ -142,11 +164,13 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
 
   // Subscribe to IPC push events (only relevant on the Piper/cloud path).
   useEffect(() => {
-    const clear = (speakId: string) => {
+    const clear = (speakId: string, reason: TtsPlaybackEndReason) => {
       if (activeSpeakIdRef.current !== speakId) return;
       activeSpeakIdRef.current = null;
+      const endedCardId = playingCardIdRef.current;
       setPlayingCardId(null);
       playingCardIdRef.current = null;
+      if (endedCardId) onPlaybackEndRef.current?.(endedCardId, reason);
     };
 
     // Decode the buffered synthesis output and play it through a GainNode so
@@ -160,7 +184,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
       const AudioContextCtor = window.AudioContext;
       const bytes = concatChunks(chunks);
       if (!AudioContextCtor || bytes.byteLength === 0) {
-        clear(speakId);
+        clear(speakId, 'error');
         return;
       }
       try {
@@ -172,7 +196,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         if (format === 'pcm') {
           // Piper --output-raw: headerless 16-bit mono little-endian PCM.
           const sampleCount = Math.floor(bytes.byteLength / 2);
-          if (sampleCount === 0) { clear(speakId); return; }
+          if (sampleCount === 0) { clear(speakId, 'error'); return; }
           const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, sampleCount);
           audioBuffer = ctx.createBuffer(1, sampleCount, sampleRate ?? PCM_DEFAULT_SAMPLE_RATE);
           const channel = audioBuffer.getChannelData(0);
@@ -195,41 +219,43 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         source.onended = () => {
           if (activeSourceRef.current !== source) return; // stopped/superseded
           activeSourceRef.current = null;
-          clear(speakId);
+          clear(speakId, 'ended');
         };
         activeSourceRef.current = source;
         source.start();
       } catch {
-        clear(speakId); // decode/playback failure — reset UI state
+        clear(speakId, 'error'); // decode/playback failure — reset UI state
       }
     };
 
     // Chunks can arrive before the voice:speak invoke resolves with our
     // speakId, so buffer everything; stale entries are dropped on done/error
-    // and whenever a new speak starts.
-    const unsubChunk = window.api.onVoiceSpeakChunk?.(({ speakId, chunk }) => {
+    // and whenever a new speak starts. The bridge itself can be absent in
+    // browser-only harnesses (jsdom component tests) — the OS path still works.
+    const api = (window as { api?: Window['api'] }).api;
+    const unsubChunk = api?.onVoiceSpeakChunk?.(({ speakId, chunk }) => {
       const buffered = chunkBuffersRef.current.get(speakId);
       if (buffered) buffered.push(chunk);
       else chunkBuffersRef.current.set(speakId, [chunk]);
     });
-    const unsubDone = window.api.onVoiceSpeakDone(({ speakId, format, sampleRate }) => {
+    const unsubDone = api?.onVoiceSpeakDone?.(({ speakId, format, sampleRate }) => {
       const chunks = chunkBuffersRef.current.get(speakId);
       chunkBuffersRef.current.delete(speakId);
       if (activeSpeakIdRef.current !== speakId) return; // stale/cancelled session
       if (!chunks || chunks.length === 0) {
-        clear(speakId); // engine produced no audio — nothing to play
+        clear(speakId, 'ended'); // engine produced no audio — nothing to play
         return;
       }
       void playBuffered(speakId, chunks, format, sampleRate);
     });
-    const unsubError = window.api.onVoiceSpeakError(({ speakId }) => {
+    const unsubError = api?.onVoiceSpeakError?.(({ speakId }) => {
       chunkBuffersRef.current.delete(speakId);
-      clear(speakId);
+      clear(speakId, 'error');
     });
     return () => {
       unsubChunk?.();
-      unsubDone();
-      unsubError();
+      unsubDone?.();
+      unsubError?.();
       if (audioCtxRef.current) {
         void audioCtxRef.current.close().catch(() => { /* already closed */ });
         audioCtxRef.current = null;
@@ -240,8 +266,10 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
   /** Silently stop every playback path (OS utterance, Web Audio, in-flight IPC). */
   const stopAllPlayback = useCallback(() => {
     if (osUtteranceRef.current) {
-      window.speechSynthesis.cancel();
+      // Detach BEFORE cancelling so an implementation firing onend
+      // synchronously is treated as stale (no onPlaybackEnd for cancels).
       osUtteranceRef.current = null;
+      window.speechSynthesis.cancel();
     }
     stopAudioSource();
     const id = activeSpeakIdRef.current;
@@ -286,6 +314,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         setPlayingCardId(null);
         playingCardIdRef.current = null;
         announce('Voice unavailable — configure a TTS engine in Settings.');
+        onPlaybackEndRef.current?.(cardId, 'error');
         return;
       }
       const utterance = new SpeechSynthesisUtterance(text);
@@ -304,6 +333,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         osUtteranceRef.current = null;
         setPlayingCardId(null);
         playingCardIdRef.current = null;
+        onPlaybackEndRef.current?.(cardId, 'ended');
       };
       utterance.onerror = () => {
         if (osUtteranceRef.current !== utterance) return;
@@ -311,6 +341,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         setPlayingCardId(null);
         playingCardIdRef.current = null;
         announce('Voice playback failed.');
+        onPlaybackEndRef.current?.(cardId, 'error');
       };
       window.speechSynthesis.speak(utterance);
       return;
@@ -328,6 +359,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
         setPlayingCardId(null);
         playingCardIdRef.current = null;
         if (r.error) announce(`Voice error: ${r.error}`);
+        onPlaybackEndRef.current?.(cardId, 'error');
         return;
       }
       activeSpeakIdRef.current = r.speakId;
@@ -337,6 +369,7 @@ export function useTtsPlayer(ttsSettings?: TtsEngineSettings, voicePrefs?: TtsVo
       setPlayingCardId(null);
       playingCardIdRef.current = null;
       announce('Voice playback failed.');
+      onPlaybackEndRef.current?.(cardId, 'error');
     });
   }, [stopAllPlayback]);
 
