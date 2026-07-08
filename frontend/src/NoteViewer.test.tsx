@@ -324,3 +324,58 @@ describe('NoteViewer save-failure surfacing (GH#616)', () => {
     expect(screen.queryByText(/^Saved /)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// M16: external frontmatter updates sync into the open editor
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer M16 frontmatter-update sync', () => {
+  it('adopts externally-updated content for the same path when no edits are pending', async () => {
+    readNotesVault.mockResolvedValue({ content: 'original body' });
+    writeNotesVault.mockClear(); // this suite's mocks persist across tests
+    render(<NoteViewer path="Notes/Test.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Test.md');
+    expect(textarea).toHaveValue('original body');
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+        detail: { path: 'Notes/Test.md', content: '---\ntags: [new]\n---\noriginal body' },
+      }));
+    });
+
+    expect(screen.getByLabelText('Edit note: Test.md')).toHaveValue('---\ntags: [new]\n---\noriginal body');
+    // Adopting external content is not a local edit — nothing gets autosaved.
+    expect(writeNotesVault).not.toHaveBeenCalled();
+  });
+
+  it('ignores updates for other paths', async () => {
+    readNotesVault.mockResolvedValue({ content: 'original body' });
+    render(<NoteViewer path="Notes/Test.md" />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+        detail: { path: 'Notes/Other.md', content: 'other content' },
+      }));
+    });
+
+    expect(screen.getByLabelText('Edit note: Test.md')).toHaveValue('original body');
+  });
+
+  it('keeps pending local edits instead of adopting the external update', async () => {
+    readNotesVault.mockResolvedValue({ content: 'original body' });
+    render(<NoteViewer path="Notes/Test.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Test.md');
+
+    // Local edit arms the debounce timer — the editor now wins.
+    fireEvent.change(textarea, { target: { value: 'locally edited body' } });
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+        detail: { path: 'Notes/Test.md', content: 'external content' },
+      }));
+    });
+
+    expect(screen.getByLabelText('Edit note: Test.md')).toHaveValue('locally edited body');
+  });
+});

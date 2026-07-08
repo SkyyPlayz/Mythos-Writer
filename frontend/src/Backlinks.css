@@ -1,0 +1,119 @@
+/* M16 (Beta 3): backlinks card — prototype right-panel Backlinks styling
+   (HTML 2441–2455). */
+
+.bl-card {
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.035); /* prototype rgba(255,255,255,.035) */
+  border: 1px solid rgb(255 255 255 / 0.08); /* prototype rgba(255,255,255,.08) */
+  padding: 13px;
+  margin: 0 12px 10px;
+}
+
+.np-panel .bl-card {
+  margin: 0;
+}
+
+.bl-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.bl-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgb(238 242 251); /* prototype #eef2fb */
+}
+
+.bl-count {
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype rgba(155,95,255,.12) */
+  border: var(--bw, 1px) solid var(--b2, rgb(155 95 255 / 0.5)); /* prototype rgba(155,95,255,.5) */
+  color: var(--n2, #9b5fff);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.bl-status,
+.bl-empty {
+  font-size: 11px;
+  color: rgb(118 134 162); /* prototype #7686a2 */
+}
+
+.bl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bl-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 255 255 / 0.07); /* prototype rgba(255,255,255,.07) */
+  background: rgb(255 255 255 / 0.02); /* prototype rgba(255,255,255,.02) */
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.bl-item:hover,
+.bl-item:focus-visible {
+  border-color: var(--b2, rgb(155 95 255 / 0.5)); /* prototype rgba(155,95,255,.5) */
+  box-shadow: 0 0 14px -5px var(--g2, rgb(155 95 255 / 0.4)); /* prototype rgba(155,95,255,.4) */
+  outline: none;
+}
+
+.bl-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bl-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(230 236 249); /* prototype #e6ecf9 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bl-story-chip {
+  flex: none;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgb(255 230 128); /* prototype #ffe680 */
+  border: 1px solid rgb(255 211 25 / 0.45); /* prototype rgba(255,211,25,.45) */
+  background: rgb(255 211 25 / 0.07); /* prototype rgba(255,211,25,.07) */
+  border-radius: 5px;
+  padding: 1.5px 6px;
+}
+
+.bl-item-snippet {
+  display: block;
+  font-size: 10.5px;
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+  line-height: 1.45;
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

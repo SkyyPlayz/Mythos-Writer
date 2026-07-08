@@ -1,0 +1,360 @@
+/* Beta 3 M11 — comments: selection bar (prototype 811–824), gutter dock
+   (944–963, gutterSt 4633–4645), kind colors (kMeta 4515 / kMeta2 4633 /
+   segment underline 3373–3374).
+
+   Kind palette (rgb per the tokensAudit ratchet — no bare hex):
+     user    rgb(255, 211, 25)   prototype #ffd319
+     writing var(--n1)           slot A neon (prototype #00f0ff default)
+     archive rgb(255, 95, 143)   prototype #ff5f8f
+     beta    var(--n3)           slot C neon (prototype #ff4dff default)
+
+   Local custom properties keep every per-kind rule derived from one place. */
+
+.msv-cmt--user,
+.msv-cmt-dot--user,
+.msv-anchor--user {
+  --cmt-kind: rgb(255, 211, 25); /* prototype #ffd319 */
+  --cmt-kind-soft: rgba(255, 211, 25, 0.13);
+}
+
+.msv-cmt--writing,
+.msv-cmt-dot--writing,
+.msv-anchor--writing {
+  --cmt-kind: var(--n1, rgb(0, 240, 255)); /* prototype #00f0ff */
+  --cmt-kind-soft: var(--gs1, rgba(0, 240, 255, 0.12));
+}
+
+.msv-cmt--archive,
+.msv-cmt-dot--archive,
+.msv-anchor--archive {
+  --cmt-kind: rgb(255, 95, 143); /* prototype #ff5f8f */
+  --cmt-kind-soft: rgba(255, 95, 143, 0.13);
+}
+
+.msv-cmt--beta,
+.msv-cmt-dot--beta,
+.msv-anchor--beta {
+  --cmt-kind: var(--n3, rgb(255, 77, 255)); /* prototype #ff4dff */
+  --cmt-kind-soft: var(--gs3, rgba(255, 77, 255, 0.12));
+}
+
+/* ── anchored-text underline (prototype seg style 3373–3374) ── */
+
+.msv-anchor {
+  background: var(--cmt-kind-soft);
+  border-bottom: 2px solid var(--cmt-kind);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* ── selection comment bar (prototype 811–824) ── */
+
+.msv-selbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 0 0 10px;
+}
+
+.msv-selbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(15, 19, 33, 0.97);
+  border: 1px solid rgb(255, 211, 25); /* prototype #ffd319 */
+  box-shadow:
+    0 8px 30px rgba(3, 5, 12, 0.6),
+    0 0 18px -5px rgba(255, 211, 25, 0.5);
+  max-width: 92%;
+  font-family: 'Inter', sans-serif;
+  animation: lnFadeUp 0.16s ease;
+}
+
+.msv-selbar-icon {
+  display: flex;
+  color: rgb(255, 211, 25); /* prototype #ffd319 */
+}
+
+.msv-selbar-quote {
+  font-size: 10.5px;
+  color: #8e9db8;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.msv-selbar-input {
+  width: 190px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 8px;
+  color: #dbe4f5;
+  font-size: 11px;
+  padding: 0 9px;
+  font-family: inherit;
+}
+
+.msv-selbar-save {
+  padding: 4px 11px;
+  border-radius: 8px;
+  background: rgb(255, 211, 25); /* prototype #ffd319 */
+  color: #0b0d17;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+.msv-selbar-save:hover {
+  transform: scale(1.05);
+}
+
+.msv-selbar-read {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--n1, #00f0ff);
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+}
+
+.msv-selbar-read:hover:not(:disabled) {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+}
+
+.msv-selbar-read:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.msv-selbar-cancel {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.msv-selbar-cancel:hover {
+  color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── gutter dock (prototype 944–963 / gutterSt 4645) ── */
+
+.msv-gutter {
+  width: 236px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 12px 40px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+}
+
+.msv-gutter-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7686a2;
+  padding: 0 2px;
+}
+
+.msv-gutter-hint {
+  font-size: 9px;
+  color: #586a88;
+  line-height: 1.5;
+  padding: 0 2px;
+}
+
+/* ── comment card (prototype gutterCards st 4638) ── */
+
+.msv-cmt {
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(15, 19, 33, 0.85);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  text-align: left;
+}
+
+.msv-cmt--open {
+  border: var(--bw, 1px) solid var(--cmt-kind);
+  box-shadow: 0 0 14px -5px var(--cmt-kind);
+}
+
+.msv-cmt-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msv-cmt-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--cmt-kind);
+  box-shadow: 0 0 7px var(--cmt-kind);
+}
+
+.msv-cmt-author {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  color: #dbe4f5;
+}
+
+.msv-cmt-anchor {
+  font-size: 9.5px;
+  color: #7686a2;
+  font-style: italic;
+  margin-top: 3px;
+}
+
+.msv-cmt-text {
+  font-size: 10.5px;
+  color: #c3cee2;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* ── expanded actions (prototype 953–956 / card actions 836–843) ── */
+
+.msv-cmt-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.msv-cmt-act,
+.msv-cmt-resolve {
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 9px;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+}
+
+.msv-cmt-act--match_archive {
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--n1, #00f0ff);
+  font-weight: 600;
+}
+
+.msv-cmt-act--match_archive:hover:not(:disabled) {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+}
+
+.msv-cmt-act--suggest_story_change {
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  color: var(--n2, #9b5fff);
+  font-weight: 600;
+}
+
+.msv-cmt-act--suggest_story_change:hover:not(:disabled) {
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+}
+
+.msv-cmt-act--ignore {
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.3));
+  color: #8e9db8;
+}
+
+.msv-cmt-act--ignore:hover:not(:disabled) {
+  color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
+}
+
+.msv-cmt-act:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.msv-cmt-resolve {
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  color: #c3cee2;
+  font-size: 10px;
+}
+
+.msv-cmt-resolve:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
+}
+
+/* ── "Show in focus" row (prototype 845–848, cifToggle 4522) ── */
+
+.msv-cmt-focusrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: default;
+}
+
+.msv-cmt-focuslabel {
+  flex: 1;
+  font-size: 9.5px;
+  color: #7686a2;
+}
+
+.msv-cmt-pill {
+  width: 30px;
+  height: 16px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+  flex: none;
+  transition: all 0.15s ease;
+}
+
+.msv-cmt-pill--on {
+  background: var(--gs1, rgba(0, 240, 255, 0.25));
+  border-color: var(--b1, rgba(0, 240, 255, 0.6));
+}
+
+.msv-cmt-pill-knob {
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #8e9db8;
+  transition: all 0.15s ease;
+}
+
+.msv-cmt-pill--on .msv-cmt-pill-knob {
+  left: 15px;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
+}

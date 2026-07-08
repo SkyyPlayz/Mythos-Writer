@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement } from 'react';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
@@ -19,6 +19,12 @@ import {
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
 import EntriesQuickAdd from './EntriesQuickAdd';
+import {
+  IDEA_GROUP_DEFS,
+  buildIdeaGroups,
+  buildMapLayout,
+  type BrainstormIdea,
+} from './brainstormCenter';
 import { PROMPT_MAX_CHARS } from './promptConstants';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
@@ -79,6 +85,90 @@ interface DetectedFact {
 
 type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status' | 'custom';
 type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
+
+// M19: Brainstorm center view modes. Chat is the load-bearing default; the
+// Board / Map / Clusters modes visualize the same session ideas (facts).
+type BrainstormMode = 'chat' | 'board' | 'map' | 'clusters';
+
+const MODE_LABELS: Record<BrainstormMode, string> = {
+  chat: 'Chat',
+  board: 'Board',
+  map: 'Map',
+  clusters: 'Clusters',
+};
+
+const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board', 'map', 'clusters'];
+
+// M19: composer suggestion chips (prototype bsChips, line 4330). The prototype
+// ships demo-story chips; these are story-agnostic starters sent through the
+// same real streaming path as typed messages.
+const SUGGESTION_CHIPS = [
+  'Introduce a new location in my world',
+  'Give my protagonist a rival',
+  'Suggest a plot twist for the next chapter',
+];
+
+// M19: board canvas tools (prototype bsTools, line 4856) — exact SVG paths.
+const BOARD_TOOLS = [
+  { key: 'select', title: 'Select', path: 'M5 3l14 8-7 1.5L9.5 20z' },
+  { key: 'connect', title: 'Connect ideas', path: 'M9.5 14.5l5-5M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M8 12l-1.5 1.5a3.5 3.5 0 0 0 5 5L13 17' },
+  { key: 'frame', title: 'Frame', path: 'M4 4h16v16H4z' },
+  { key: 'text', title: 'Text', path: 'M6 6h12M12 6v13' },
+] as const;
+type BoardTool = (typeof BOARD_TOOLS)[number]['key'];
+
+// M19: agent activity feed (prototype right panel, lines 2468–2496). Entries
+// mirror real events only — fact extraction, note filing, routing, proposals.
+type ActivityKind = 'note' | 'link' | 'prop' | 'scan';
+
+interface ActivityEntry {
+  id: string;
+  kind: ActivityKind;
+  text: string;
+}
+
+/** Feed icons ported from the prototype actMeta paths (lines 4331–4336). */
+const ACTIVITY_ICON_PATHS: Record<ActivityKind, ReactElement> = {
+  note: (
+    <>
+      <path d="M7 3.5h7l4 4v13H7z" />
+      <path d="M14 3.5v4h4" />
+      <path d="M10.5 13h5M13 10.5v5" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M9.5 14.5l5-5" />
+      <path d="M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M8 12l-1.5 1.5a3.5 3.5 0 0 0 5 5L13 17" />
+    </>
+  ),
+  prop: (
+    <>
+      <path d="M4.5 7.5h15M4.5 16.5h15" />
+      <circle cx="9.5" cy="7.5" r="2.4" />
+      <circle cx="14.5" cy="16.5" r="2.4" />
+    </>
+  ),
+  scan: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M20.5 20.5L16 16" />
+    </>
+  ),
+};
+
+const ACTIVITY_FEED_CAP = 50;
+
+/** Avatar initials for character cards (prototype `av: 'MV'`, line 3001). */
+function ideaInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
 
 const SORT_LABELS: Record<SortOrder, string> = {
   newest: 'Newest first',
@@ -293,6 +383,15 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [filterType, setFilterType] = useState<FilterType>('all');
+  // M19: Brainstorm center mode — chat (default), board, map, or clusters.
+  const [mode, setMode] = useState<BrainstormMode>('chat');
+  // M19: board canvas tool + zoom (prototype bsTool/bsZoom, lines 4852–4856)
+  // and the shared idea search that filters Board / Map / Clusters.
+  const [boardTool, setBoardTool] = useState<BoardTool>('select');
+  const [boardZoom, setBoardZoom] = useState(100);
+  const [ideaQuery, setIdeaQuery] = useState('');
+  // M19: agent activity feed — newest entry first, capped.
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   // Custom sort order: persisted list of fact IDs (empty = not yet initialized)
   const [customOrder, setCustomOrder] = useState<string[]>([]);
@@ -363,6 +462,43 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     () => (filterType === 'all' ? FACT_TYPE_ORDER : ([filterType] as DetectedFact['type'][])),
     [filterType],
   );
+
+  // M19: session ideas feeding the Board / Map / Clusters modes — same data
+  // source as the Detected Facts panel, so the chat's vault filing is reused.
+  const ideas: BrainstormIdea[] = useMemo(
+    () => facts.map((f) => ({ id: f.id, title: f.name, body: f.content, type: f.type })),
+    [facts],
+  );
+  // M19: idea search ("Search ideas…", prototype header line 1326–1328) —
+  // filters all three visual modes by title/body, case-insensitive.
+  const visibleIdeas = useMemo(() => {
+    const q = ideaQuery.trim().toLowerCase();
+    if (!q) return ideas;
+    return ideas.filter(
+      (idea) => idea.title.toLowerCase().includes(q) || idea.body.toLowerCase().includes(q),
+    );
+  }, [ideas, ideaQuery]);
+  const ideaGroups = useMemo(() => buildIdeaGroups(visibleIdeas), [visibleIdeas]);
+  const mapLayout = useMemo(() => buildMapLayout(ideaGroups), [ideaGroups]);
+  const clusterCount = useMemo(
+    () => ideaGroups.filter((group) => group.ideas.length > 0).length,
+    [ideaGroups],
+  );
+  // M19: activity stats row (prototype bsStatsRow, line 4340) — real counters:
+  // notes actually written to the vault, ideas detected, proposals queued.
+  const savedNoteCount = useMemo(
+    () => facts.filter((f) => f.savedStatus === 'saved').length,
+    [facts],
+  );
+
+  // M19: append to the agent activity feed (newest first, capped) — every
+  // entry corresponds to a real vault/proposal event, never mocked.
+  const pushActivity = useCallback((kind: ActivityKind, text: string) => {
+    setActivity((prev) => [
+      { id: `act-${Date.now()}-${Math.random().toString(36).slice(2)}`, kind, text },
+      ...prev,
+    ].slice(0, ACTIVITY_FEED_CAP));
+  }, []);
 
   const toggleGroup = useCallback((type: string) => {
     setCollapsedGroups((prev) => {
@@ -551,6 +687,8 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setSortOrder('newest');
     setDraggingId(null);
     setDragOverId(null);
+    setActivity([]);
+    setIdeaQuery('');
     dragSourceIdRef.current = null;
     contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
@@ -627,6 +765,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           savedStatus: 'saving' as const,
           createdAt: nowMs + i,
         }));
+        pushActivity(
+          'scan',
+          `Detected ${extracted.length} fact${extracted.length !== 1 ? 's' : ''} — filing to your vault`,
+        );
         setFacts((prev) => [...prev, ...newFacts]);
         setExpandedFactIds((prev) => {
           const next = new Set(prev);
@@ -687,7 +829,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       setLoading(false);
       setStreamPhase('idle');
     }
-  }, [announce]);
+  }, [announce, pushActivity]);
 
   const retryFromStalled = useCallback(async () => {
     const sid = streamIdRef.current;
@@ -705,14 +847,15 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     await _runStream(lastApiMessagesRef.current);
   }, [announce, _runStream]);
 
-  const send = useCallback(async () => {
-    const trimmed = prompt.trim();
+  // M19: shared submit path — used by the composer (clears the input) and the
+  // suggestion chips (leave the input untouched, prototype sendBs line 3761).
+  const submitText = useCallback(async (text: string) => {
+    const trimmed = text.trim();
     if (!trimmed || loading) return;
 
     onFirstSubmit?.();
     setLoading(true);
     setError(null);
-    setPrompt('');
     announce('Generating response…');
 
     const userMsg: Message = { role: 'user', text: trimmed };
@@ -745,7 +888,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     contextSystemRef.current = systemPrompt;
 
     await _runStream(apiMessages);
-  }, [prompt, loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
+  }, [loading, messages, announce, _runStream, effectiveAxes, onFirstSubmit]);
+
+  const send = useCallback(async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed || loading) return;
+    setPrompt('');
+    await submitText(trimmed);
+  }, [prompt, loading, submitText]);
 
   const handleRefine = useCallback((chip: RefinementChip) => {
     if (loading) return;
@@ -845,12 +995,20 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 : f
             )),
           );
+          pushActivity(
+            'note',
+            `Created note — “${fact.name}” (${FACT_TYPE_LABELS[fact.type]})`,
+          );
           return;
         }
         // status === 'needs_routing' — main staged the file; we ask the user.
         await ensureNotesFolders();
         setFacts((prev) =>
           prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'needs_routing' } : f)),
+        );
+        pushActivity(
+          'prop',
+          `Waiting for a destination — “${result.name}” (${CATEGORY_LABEL[result.category as NoteCategory]})`,
         );
         setRoutingPrompts((prev) => [
           ...prev,
@@ -868,9 +1026,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         setFacts((prev) =>
           prev.map((f) => (f.id === fact.id ? { ...f, savedStatus: 'error' } : f)),
         );
+        pushActivity('scan', `Couldn’t save “${fact.name}” — retry from the facts panel`);
       }
     },
-    [announce, ensureNotesFolders],
+    [announce, ensureNotesFolders, pushActivity],
   );
   persistFactWithRoutingRef.current = persistFactWithRouting;
 
@@ -910,6 +1069,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         setRoutingPrompts((prev) => prev.filter((p) => p.factId !== factId));
         // Folder list may have grown if the user typed a new path — refresh.
         if (prompt.customFolder.trim()) setNotesFolders([]);
+        pushActivity('link', `Filed “${prompt.name}” → ${chosen || 'vault root'}`);
         announce(`Saved to ${chosen || 'vault root'}.`);
       } catch {
         setFacts((prev) =>
@@ -917,7 +1077,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         );
       }
     },
-    [routingPrompts, announce],
+    [routingPrompts, announce, pushActivity],
   );
 
   const updateRoutingPrompt = useCallback(
@@ -1178,6 +1338,28 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     announce('New idea — edit details in the drawer.');
   }, [announce]);
 
+  // M19: Board mode add-idea row — prototype bsCols `add` (line 4244): a new
+  // "New idea" card captured to the column, announced with a toast. The card
+  // joins `facts`, so it flows into the draft, the facts panel, and the modes.
+  const addBoardIdea = useCallback((type: DetectedFact['type'], columnTitle: string) => {
+    const nowMs = Date.now();
+    const newFact: DetectedFact = {
+      id: `idea-${nowMs}-${Math.random().toString(36).slice(2)}`,
+      type,
+      name: 'New idea',
+      content: `Captured to ${columnTitle.toLowerCase()} — expand me later.`,
+      savedStatus: 'unsaved',
+      createdAt: nowMs,
+    };
+    setFacts((prev) => [...prev, newFact]);
+    setExpandedFactIds((prev) => {
+      const next = new Set(prev);
+      next.add(newFact.id);
+      return next;
+    });
+    showToast('Idea captured');
+  }, [showToast]);
+
   const handleDeleteFocused = useCallback(() => {
     const focused = document.activeElement;
     if (!focused) return;
@@ -1340,6 +1522,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         const fresh = incoming.filter((p) => !existingIds.has(p.id));
         if (fresh.length === 0) return prev;
         for (const p of fresh) proposalAppearAt.current.set(p.id, now);
+        for (const p of fresh) pushActivity('prop', `Proposal queued — “${p.title}”`);
         return [...prev, ...fresh];
       });
     });
@@ -1476,10 +1659,58 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             ← Back
           </button>
         }
-        title="Brainstorm Agent"
-        subtitle="Talk through your story — facts auto-extract to your vault"
+        title={mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'}
+        subtitle={
+          mode === 'chat'
+            ? 'Talk through your story — facts auto-extract to your vault'
+            : 'Capture. Connect. Develop.'
+        }
         actions={
           <>
+            {/* M19: mode segment — chat plus the Board/Map/Clusters visual modes
+                (prototype segMk styling, line 4221). Hidden in compact sidebar
+                contexts where only the chat fits. */}
+            {!compact && (
+              <div className="bsc-seg" role="group" aria-label="Brainstorm view mode">
+                {BRAINSTORM_MODES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`bsc-seg-btn${mode === m ? ' bsc-seg-btn--active' : ''}`}
+                    aria-pressed={mode === m}
+                    onClick={() => setMode(m)}
+                    data-testid={`bsc-mode-${m}`}
+                  >
+                    {MODE_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* M19: live extraction badge (prototype lines 1330–1335) — shown
+                while a reply is streaming and facts may be extracted. */}
+            {mode === 'chat' && loading && (
+              <div className="bs-extract-badge" data-testid="bs-extract-badge" role="status">
+                <span className="bs-extract-dot" aria-hidden="true" />
+                Extracting facts to vault
+              </div>
+            )}
+            {/* M19: idea search (prototype lines 1325–1328) — filters the
+                Board / Map / Clusters modes by idea title or body. */}
+            {!compact && mode !== 'chat' && (
+              <div className="bsc-search">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="6.5" />
+                  <path d="M20.5 20.5L16 16" />
+                </svg>
+                <input
+                  value={ideaQuery}
+                  onChange={(e) => setIdeaQuery(e.target.value)}
+                  placeholder="Search ideas…"
+                  aria-label="Search ideas"
+                  data-testid="bsc-search-input"
+                />
+              </div>
+            )}
             <div className="brainstorm-header-preset">
               <PresetSelector
                 activePresetId={presetId}
@@ -1540,6 +1771,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
       )}
 
+      {mode === 'chat' && (
       <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
         <div className="brainstorm-chat-col">
           <div className="brainstorm-messages">
@@ -1722,6 +1954,22 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </div>
             </div>
           )}
+          {/* M19: suggestion chips (prototype bsChips row, lines 1349–1354) —
+              each sends its text through the same streaming path as typing. */}
+          <div className="bs-chips-row">
+            {SUGGESTION_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                className="bs-suggest-chip"
+                onClick={() => void submitText(chip)}
+                disabled={loading}
+                data-testid="bs-suggest-chip"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
           <div className="brainstorm-input-area">
             {voiceEnabled && (
               <div className="brainstorm-mic-container">
@@ -1802,6 +2050,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               </button>
             )}
           </div>
+          {/* M19: composer footnote (prototype line 1362). */}
+          <div className="bs-composer-note">
+            Named characters, locations and rules are extracted automatically — watch the
+            activity feed on the right.
+          </div>
           <EntriesQuickAdd />
           {compact && proposals.length > 0 && (
             <ProposalCard
@@ -1815,6 +2068,49 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
 
         <div className="brainstorm-facts-col">
+          {/* M19: agent activity feed (prototype right panel, lines 2468–2496)
+              — LIVE header, real counters, and a feed of actual vault events. */}
+          <div className="bs-activity-section" data-testid="bs-activity-section">
+            <div className="bs-activity-header">
+              <span className="bs-activity-dot" aria-hidden="true" />
+              <span className="bs-activity-title">Agent Activity</span>
+              <span className="bs-activity-live">LIVE</span>
+            </div>
+            <div className="bs-activity-stats">
+              <div className="bs-activity-stat">
+                <span className="bs-activity-stat-v" data-testid="bs-stat-notes">{savedNoteCount}</span>
+                <span className="bs-activity-stat-k">Notes</span>
+              </div>
+              <div className="bs-activity-stat">
+                <span className="bs-activity-stat-v" data-testid="bs-stat-ideas">{facts.length}</span>
+                <span className="bs-activity-stat-k">Ideas</span>
+              </div>
+              <div className="bs-activity-stat">
+                <span className="bs-activity-stat-v" data-testid="bs-stat-queued">{proposals.length}</span>
+                <span className="bs-activity-stat-k">Queued</span>
+              </div>
+            </div>
+            <div className="bs-activity-label">BEHIND THE SCENES</div>
+            <div className="bs-activity-feed" data-testid="bs-activity-feed">
+              {activity.length === 0 ? (
+                <div className="bs-activity-empty">
+                  Agent actions land here as facts are filed to your vault.
+                </div>
+              ) : (
+                activity.map((entry) => (
+                  <div key={entry.id} className="bs-activity-item">
+                    <span className={`bs-activity-icon bs-activity-icon--${entry.kind}`} aria-hidden="true">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        {ACTIVITY_ICON_PATHS[entry.kind]}
+                      </svg>
+                    </span>
+                    <span className="bs-activity-text">{entry.text}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* SKY-2585/SKY-2588: ContinuityPanel always rendered; enabled prop gates disabled state */}
           <div className="brainstorm-continuity-section">
             <ContinuityPanel scene={activeScene} enabled={archiveContinuityEnabled} />
@@ -2173,6 +2469,197 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           )}
         </div>
       </div>
+      )}
+
+      {/* M19: Board / Map / Clusters modes — visualize the session's vault
+          ideas (prototype template lines 1371–1439 + renderVals 4230–4255). */}
+      {mode !== 'chat' && (
+        <div className="bsc-body">
+          {mode === 'board' && (
+            <>
+            <div className="bsc-board" data-testid="bsc-board">
+              {/* Zoom is a scale transform from top-left, prototype bsBoardSt line 4855. */}
+              <div
+                className="bsc-board-cols"
+                style={boardZoom !== 100 ? { transform: `scale(${boardZoom / 100})` } : undefined}
+              >
+                {IDEA_GROUP_DEFS.map((def) => {
+                  const columnIdeas = visibleIdeas.filter((idea) => idea.type === def.key);
+                  return (
+                    <div key={def.key} className="bsc-col" data-testid={`bsc-col-${def.key}`}>
+                      <div className={`bsc-col-head bsc-s${def.color + 1}`}>{def.title}</div>
+                      {columnIdeas.map((idea) => (
+                        <button
+                          key={idea.id}
+                          type="button"
+                          className={`bsc-card bsc-s${def.color + 1}`}
+                          onClick={() => openIdeaDetail(idea.id)}
+                          data-testid={`bsc-card-${idea.id}`}
+                        >
+                          <span className="bsc-card-row">
+                            {def.key === 'character' && (
+                              <span className="bsc-av" aria-hidden="true">
+                                {ideaInitials(idea.title)}
+                              </span>
+                            )}
+                            <span className="bsc-card-main">
+                              <span className="bsc-card-title">{idea.title}</span>
+                              {idea.body && <span className="bsc-card-desc">{idea.body}</span>}
+                            </span>
+                          </span>
+                          <span className="bsc-card-chips">
+                            <span className="bsc-chip">{FACT_TYPE_LABELS[idea.type]}</span>
+                          </span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        className={`bsc-add bsc-s${def.color + 1}`}
+                        onClick={() => addBoardIdea(def.key, def.title)}
+                        data-testid={`bsc-add-${def.key}`}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add idea
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* M19: floating canvas tools + zoom (prototype lines 1420–1433,
+                bsTools line 4856). Zoom is functional; connect/frame/text are
+                staged for the M17 canvas engine integration. */}
+            <div className="bsc-tools" role="toolbar" aria-label="Board tools">
+              {BOARD_TOOLS.map((tool) => (
+                <button
+                  key={tool.key}
+                  type="button"
+                  title={tool.title}
+                  aria-label={tool.title}
+                  aria-pressed={boardTool === tool.key}
+                  className={`bsc-tool${boardTool === tool.key ? ' bsc-tool--active' : ''}`}
+                  onClick={() => {
+                    setBoardTool(tool.key);
+                    if (tool.key !== 'select') showToast(`${tool.title} tool — coming soon`);
+                  }}
+                  data-testid={`bsc-tool-${tool.key}`}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d={tool.path} />
+                  </svg>
+                </button>
+              ))}
+              <div className="bsc-tools-sep" aria-hidden="true" />
+              <button
+                type="button"
+                className="bsc-zoom-btn"
+                onClick={() => setBoardZoom((z) => Math.max(50, z - 25))}
+                aria-label="Zoom out"
+                data-testid="bsc-zoom-out"
+              >
+                −
+              </button>
+              <span className="bsc-zoom-pct" data-testid="bsc-zoom-pct">{boardZoom}%</span>
+              <button
+                type="button"
+                className="bsc-zoom-btn"
+                onClick={() => setBoardZoom((z) => Math.min(200, z + 25))}
+                aria-label="Zoom in"
+                data-testid="bsc-zoom-in"
+              >
+                +
+              </button>
+            </div>
+            </>
+          )}
+
+          {mode === 'map' && (
+            <div className="bsc-map" data-testid="bsc-map" aria-label="Brainstorm mind map">
+              <svg className="bsc-map-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {mapLayout.lines.map((line, i) => (
+                  <line
+                    key={i}
+                    x1={line.x1}
+                    y1={line.y1}
+                    x2={line.x2}
+                    y2={line.y2}
+                    className={`bsc-map-line bsc-s${line.color + 1}`}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+              {mapLayout.hubs.map((hub) => (
+                <div
+                  key={hub.key}
+                  className={`bsc-map-hub bsc-s${hub.color + 1}`}
+                  style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
+                  data-testid={`bsc-hub-${hub.key}`}
+                >
+                  {hub.title}
+                </div>
+              ))}
+              {mapLayout.nodes.map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={`bsc-map-node bsc-s${node.color + 1}`}
+                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                  onClick={() => openIdeaDetail(node.id)}
+                  data-testid={`bsc-map-node-${node.id}`}
+                >
+                  {node.title}
+                </button>
+              ))}
+              <div className="bsc-map-legend">Mind-map of every idea, clustered by collection</div>
+            </div>
+          )}
+
+          {mode === 'clusters' && (
+            <div className="bsc-clusters" data-testid="bsc-clusters">
+              <div className="bsc-cluster-row">
+                {ideaGroups.map((group) => (
+                  <div
+                    key={group.key}
+                    className={`bsc-cluster bsc-s${group.color + 1}`}
+                    data-testid={`bsc-cluster-${group.key}`}
+                  >
+                    <div className="bsc-cluster-head">{group.title}</div>
+                    <div className="bsc-cluster-count">{group.ideas.length} ideas</div>
+                    <div className="bsc-cluster-chips">
+                      {group.ideas.map((idea) => (
+                        <button
+                          key={idea.id}
+                          type="button"
+                          className="bsc-cluster-chip"
+                          onClick={() => openIdeaDetail(idea.id)}
+                          data-testid={`bsc-cluster-chip-${idea.id}`}
+                        >
+                          {idea.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bsc-clusters-hint">
+                Clusters group ideas by gravity — the Brainstorm Agent re-clusters as your vault grows.
+              </div>
+            </div>
+          )}
+
+          <div className="bsc-statusbar">
+            <span>
+              {ideaQuery.trim() && visibleIdeas.length !== ideas.length
+                ? `${visibleIdeas.length} of ${ideas.length} ideas`
+                : `${visibleIdeas.length} ideas`}
+            </span>
+            <span className="bsc-statusbar-dot" aria-hidden="true">·</span>
+            <span>{clusterCount} clusters</span>
+          </div>
+        </div>
+      )}
 
       {showPresetEditor && (
         <PresetEditor

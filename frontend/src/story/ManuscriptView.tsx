@@ -33,8 +33,24 @@ import {
   type SceneStatus,
   type ZoomLevel,
 } from './manuscriptModel';
+<<<<<<< HEAD
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
+=======
+import {
+  AGENT_ACTION_SUCCESS_TOAST,
+  findAnchorSceneId,
+  isValidAnchor,
+  runAgentAction,
+  segmentsFor,
+  useStoryComments,
+  type AgentAction,
+  type StoryComment,
+} from '../comments';
+import CommentSelectionBar from './CommentSelectionBar';
+import CommentsGutter from './CommentsGutter';
+import { showLnToast } from '../theme/lnToast';
+>>>>>>> origin/main
 import type { Story } from '../types';
 import './ManuscriptView.css';
 
@@ -48,6 +64,7 @@ export interface ManuscriptViewProps {
   onCycleStatus: (sceneId: string) => void;
   /** Initial sheet width in px (prototype default 1000, range 520–3000). */
   pageWidth?: number;
+<<<<<<< HEAD
   /** M10: fired when the width slider or a page-edge drag commits a new width. */
   onPageWidthChange?: (px: number) => void;
   /** M10: grip drag dropped one paragraph onto another (lands before target). */
@@ -59,6 +76,13 @@ export interface ManuscriptViewProps {
   onDictate?: () => void;
   dictating?: boolean;
   onAssist?: () => void;
+=======
+  /**
+   * M11: true while the shell is in Focus writing mode — comments hide unless
+   * the "Show in focus" override is on (prototype commentsVisible 3600).
+   */
+  focusMode?: boolean;
+>>>>>>> origin/main
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -183,6 +207,7 @@ const PLUS_ICON = (
   </svg>
 );
 
+<<<<<<< HEAD
 const TB_ICON = (path: string) => (
   <svg
     width="14"
@@ -198,6 +223,9 @@ const TB_ICON = (path: string) => (
     <path d={path} />
   </svg>
 );
+=======
+const NO_COMMENTS: readonly StoryComment[] = [];
+>>>>>>> origin/main
 
 export default function ManuscriptView({
   story,
@@ -206,6 +234,7 @@ export default function ManuscriptView({
   onEditParagraph,
   onCycleStatus,
   pageWidth = 1000,
+<<<<<<< HEAD
   onPageWidthChange,
   onMoveParagraph,
   liquidNeon,
@@ -213,6 +242,9 @@ export default function ManuscriptView({
   onDictate,
   dictating = false,
   onAssist,
+=======
+  focusMode = false,
+>>>>>>> origin/main
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -222,6 +254,7 @@ export default function ManuscriptView({
   // Last text committed per paragraph block — prevents Enter+blur double-fires.
   const committedRef = useRef(new Map<string, string>());
 
+<<<<<<< HEAD
   // M10 toolbar state (prototype 3251: styleSel/font/fsize/fmt/align).
   const [styleSel, setStyleSel] = useState('Body Text');
   const [font, setFont] = useState('Lora');
@@ -233,6 +266,36 @@ export default function ManuscriptView({
   const [edgeDragging, setEdgeDragging] = useState(false);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
+=======
+  // ── M11 comments (store binding + selection/open UI state) ──
+  const {
+    ordered: comments,
+    showComments,
+    commentsInFocus,
+    setShowComments,
+    setCommentsInFocus,
+    create: createStoryComment,
+    resolve: resolveStoryComment,
+  } = useStoryComments(story);
+  /** Pending selection anchor (prototype cSel) — non-null shows the bar. */
+  const [selAnchor, setSelAnchor] = useState<string | null>(null);
+  const [commentInput, setCommentInput] = useState('');
+  /** Expanded gutter card (prototype cOpen). */
+  const [openCommentId, setOpenCommentId] = useState<string | null>(null);
+
+  // Prototype commentsVisible (3600): hidden in Focus unless overridden.
+  const commentsVisible = showComments && (!focusMode || commentsInFocus);
+
+  const commentsByScene = useMemo(() => {
+    const map = new Map<string, StoryComment[]>();
+    for (const c of comments) {
+      const arr = map.get(c.sceneId);
+      if (arr) arr.push(c);
+      else map.set(c.sceneId, [c]);
+    }
+    return map;
+  }, [comments]);
+>>>>>>> origin/main
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
@@ -314,6 +377,7 @@ export default function ManuscriptView({
     [onEditParagraph]
   );
 
+<<<<<<< HEAD
   const commitPageWidth = useCallback(
     (w: number) => {
       const next = clampPageW(w);
@@ -383,6 +447,65 @@ export default function ManuscriptView({
     },
     [dragPara, onMoveParagraph]
   );
+=======
+  // ── M11 comment handlers ──
+
+  // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
+  const handlePageMouseUp = useCallback(() => {
+    const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    const text = sel ? String(sel).trim() : '';
+    if (isValidAnchor(text)) {
+      setSelAnchor(text);
+      setOpenCommentId(null);
+    }
+  }, []);
+
+  const clearSelectionBar = useCallback(() => {
+    setSelAnchor(null);
+    setCommentInput('');
+  }, []);
+
+  // Prototype addCommentFromSel (3621–3629).
+  const handleSaveComment = useCallback(() => {
+    const body = commentInput.trim();
+    if (!selAnchor || !body) return;
+    const sceneId = findAnchorSceneId(story, selAnchor);
+    if (!sceneId) {
+      showLnToast('Select text inside a paragraph to comment on it');
+      clearSelectionBar();
+      return;
+    }
+    createStoryComment({ sceneId, anchor: selAnchor, text: body });
+    setShowComments(true);
+    clearSelectionBar();
+    showLnToast('Comment added — visible in the editor');
+  }, [commentInput, selAnchor, story, createStoryComment, setShowComments, clearSelectionBar]);
+
+  const handleResolveComment = useCallback(
+    (comment: StoryComment) => {
+      resolveStoryComment(comment.id);
+      setOpenCommentId((open) => (open === comment.id ? null : open));
+      showLnToast('Comment resolved');
+    },
+    [resolveStoryComment]
+  );
+
+  const handleAgentAction = useCallback((comment: StoryComment, action: AgentAction) => {
+    void runAgentAction(comment, action).then((result) => {
+      if (!result.ok) {
+        showLnToast(result.error ?? 'Archive action failed');
+        return;
+      }
+      setOpenCommentId((open) => (open === comment.id ? null : open));
+      const message = AGENT_ACTION_SUCCESS_TOAST[action];
+      if (message) showLnToast(message);
+    });
+  }, []);
+
+  const handleToggleOpenComment = useCallback((id: string) => {
+    setOpenCommentId((open) => (open === id ? null : id));
+  }, []);
+>>>>>>> origin/main
 
   // Clamp the window so it always covers real blocks (folding shrinks the list).
   const start = Math.max(0, Math.min(winStart, Math.max(0, blocks.length - WINDOW)));
@@ -474,8 +597,17 @@ export default function ManuscriptView({
           </div>
         );
       case 'para': {
+<<<<<<< HEAD
         const ref: ParagraphRef = { sceneId: b.sceneId, blockId: b.blockId };
         const showDropLine = !!dragPara && dropKey === b.blockId;
+=======
+        // M11: underline comment anchors (prototype segsFor 3601–3615). The
+        // joined segment text always equals b.content, so contentEditable
+        // commits (textContent reads) are unaffected.
+        const segs = commentsVisible
+          ? segmentsFor(b.content, commentsByScene.get(b.sceneId) ?? NO_COMMENTS)
+          : null;
+>>>>>>> origin/main
         return (
           <div key={b.id}>
             {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
@@ -484,6 +616,7 @@ export default function ManuscriptView({
               onMouseEnter={() => handleParaOver(b.blockId)}
               onMouseUp={() => handleParaDrop(ref)}
             >
+<<<<<<< HEAD
               <span
                 className="msv-grip"
                 data-testid={`msv-grip-${b.blockId}`}
@@ -512,6 +645,27 @@ export default function ManuscriptView({
               >
                 {b.content}
               </div>
+=======
+              {segs
+                ? segs.map((s, i) =>
+                    s.comment ? (
+                      <span
+                        // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
+                        key={`${s.comment.id}-${i}`}
+                        className={`msv-anchor msv-anchor--${s.comment.kind}`}
+                        data-testid={`msv-anchor-${s.comment.id}`}
+                        title="Open comment"
+                        onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
+                      >
+                        {s.text}
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+                      <span key={`t-${i}`}>{s.text}</span>
+                    )
+                  )
+                : b.content}
+>>>>>>> origin/main
             </div>
           </div>
         );
@@ -590,7 +744,33 @@ export default function ManuscriptView({
           ))}
         </nav>
         <div className="msv-flex-spacer" />
+<<<<<<< HEAD
         <div className="msv-width-ctl" title="Page width — also drag the page edges">
+=======
+        {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
+        <button
+          type="button"
+          className={`msv-comments-chip${showComments ? ' msv-comments-chip--on' : ''}`}
+          data-testid="msv-comments-chip"
+          title="Show / hide comments"
+          aria-pressed={showComments}
+          onClick={() => setShowComments(!showComments)}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M21 12c0 4-4 7-9 7s-9-3-9-7 4-7 9-7 9 3 9 7z" />
+          </svg>
+          {comments.length}
+        </button>
+        <div className="msv-width-ctl" title="Page width">
+>>>>>>> origin/main
           <svg
             width="12"
             height="12"
@@ -616,6 +796,7 @@ export default function ManuscriptView({
         </div>
       </div>
 
+<<<<<<< HEAD
       {/* toolbar v2 (prototype 742–777) */}
       <div className="msv-toolbar" role="toolbar" aria-label="Manuscript formatting" data-testid="msv-toolbar">
         <select
@@ -842,8 +1023,74 @@ export default function ManuscriptView({
             <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
             {visible.map(renderBlock)}
             <div style={{ height: bottomPad }} data-testid="msv-spacer-bottom" aria-hidden="true" />
+=======
+      {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
+      <div className="msv-body">
+        {/* page scroll area with floating arrows (prototype 808–810) */}
+        <div
+          className="msv-page"
+          ref={scrollRef}
+          onScroll={handleScroll}
+          onMouseUp={handlePageMouseUp}
+          data-testid="msv-page"
+        >
+          {cursor.zoom !== 'book' && (
+            <>
+              <button
+                type="button"
+                className="msv-page-arrow msv-page-arrow--prev"
+                data-testid="msv-page-prev"
+                title="Previous (←)"
+                onClick={() => step(-1)}
+              >
+                {CHEVRON_LEFT(14)}
+              </button>
+              <button
+                type="button"
+                className="msv-page-arrow msv-page-arrow--next"
+                data-testid="msv-page-next"
+                title="Next (→)"
+                onClick={() => step(1)}
+              >
+                {CHEVRON_RIGHT(14)}
+              </button>
+            </>
+          )}
+          {/* M11: selection comment bar (prototype 811–824) */}
+          {selAnchor !== null && (
+            <CommentSelectionBar
+              selectionText={selAnchor}
+              value={commentInput}
+              onChange={setCommentInput}
+              onSave={handleSaveComment}
+              onCancel={clearSelectionBar}
+            />
+          )}
+          <div className="msv-sheet-wrap" style={{ width: `${pageW}px` }}>
+            <div className="msv-sheet" data-testid="msv-sheet">
+              <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
+              {visible.map(renderBlock)}
+              <div
+                style={{ height: bottomPad }}
+                data-testid="msv-spacer-bottom"
+                aria-hidden="true"
+              />
+            </div>
+>>>>>>> origin/main
           </div>
         </div>
+        {/* M11: margin gutter dock (prototype 911–963) */}
+        {commentsVisible && (
+          <CommentsGutter
+            comments={comments}
+            openId={openCommentId}
+            onToggleOpen={handleToggleOpenComment}
+            onResolve={handleResolveComment}
+            onAgentAction={handleAgentAction}
+            commentsInFocus={commentsInFocus}
+            onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
+          />
+        )}
       </div>
     </div>
   );

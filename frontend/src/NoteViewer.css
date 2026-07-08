@@ -233,11 +233,13 @@
 
 /* ── Wiki-links ────────────────────────────────────────────────────────── */
 
+/* M16 (Beta 3): note links are slot-B purple in the notes editor — Liquid
+   Neon prototype `mkLink` parity (center panel · wiki-links role). */
 .note-wiki-link {
   border: 0;
   border-radius: 4px;
-  background: rgba(0, 229, 255, 0.1);
-  color: var(--neon-cyan, #00e5ff);
+  background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype rgba(155,95,255,.12) */
+  color: var(--n2, #9b5fff);
   cursor: pointer;
   font: inherit;
   padding: 0 3px;
@@ -245,8 +247,34 @@
 
 .note-wiki-link:hover,
 .note-wiki-link:focus-visible {
-  background: rgba(0, 229, 255, 0.2);
-  outline: 1px solid var(--neon-cyan, #00e5ff);
+  background: rgb(155 95 255 / 0.22); /* prototype #9b5fff at .22 */
+  outline: 1px solid var(--b2, rgb(155 95 255 / 0.5));
+}
+
+/* Rich-mode [[links]] inside the notes editor pick up the same slot-B purple;
+   scene-gold and unresolved-dashed variants keep their global styling. */
+.note-tiptap-content [data-wiki-link]:not(.wiki-link-scene):not(.wiki-link-unresolved) {
+  color: var(--n2, #9b5fff);
+  background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype rgba(155,95,255,.12) */
+}
+
+.note-tiptap-content [data-wiki-link]:not(.wiki-link-scene):not(.wiki-link-unresolved):hover {
+  background: rgb(155 95 255 / 0.22); /* prototype #9b5fff at .22 */
+  box-shadow: 0 0 12px -3px var(--g2, rgb(155 95 255 / 0.4)); /* prototype glow */
+}
+
+/* Unresolved links in notes: dashed grey "would create" affordance
+   (prototype mkLink unresolved branch). */
+.note-tiptap-content [data-wiki-link].wiki-link-unresolved {
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+  background: rgb(255 255 255 / 0.04); /* prototype rgba(255,255,255,.04) */
+  border-bottom: 1px dashed rgb(255 255 255 / 0.22); /* prototype rgba(255,255,255,.22) */
+}
+
+.note-tiptap-content [data-wiki-link].wiki-link-unresolved:hover {
+  color: rgb(195 206 226); /* prototype #c3cee2 */
+  background: rgb(255 255 255 / 0.08);
+  border-bottom-color: rgb(255 255 255 / 0.4); /* prototype rgba(255,255,255,.4) */
 }
 
 /* ── LC-2 fidelity guard dialog ────────────────────────────────────────── */

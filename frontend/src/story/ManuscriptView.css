@@ -152,6 +152,7 @@
   flex: none;
 }
 
+<<<<<<< HEAD
 /* ── toolbar v2 (prototype 742–777, tbBase 4111, dictBtnSt 4815) ── */
 
 .msv-toolbar {
@@ -293,10 +294,22 @@
   color: rgb(174, 186, 208); /* prototype #aebad0 */
   font-size: 11px;
   font-weight: 600;
+=======
+/* ── M11: comments chip in the zoombar (prototype 697–699 / commentsChipSt 4842) ── */
+
+.msv-comments-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 9px;
+  font-size: 11.5px;
+>>>>>>> origin/main
   cursor: pointer;
   flex: none;
   background: none;
   font-family: inherit;
+<<<<<<< HEAD
 }
 
 .msv-tb-read:hover {
@@ -343,6 +356,26 @@
 .msv-tb-assist:hover {
   background: var(--gs2, rgba(155, 95, 255, 0.12));
   box-shadow: 0 0 12px -3px var(--g2, rgba(155, 95, 255, 0.4));
+=======
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  color: #aebad0;
+}
+
+.msv-comments-chip--on {
+  border: 1px solid rgb(255, 211, 25); /* prototype #ffd319 */
+  color: rgb(255, 230, 128); /* prototype #ffe680 */
+  background: rgba(255, 211, 25, 0.07);
+  box-shadow: 0 0 12px -4px rgba(255, 211, 25, 0.5);
+}
+
+/* ── M11: page + gutter row (prototype 806) ── */
+
+.msv-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+>>>>>>> origin/main
 }
 
 /* ── page scroll area + floating arrows (prototype 808–810 / spPageSt 4646) ── */

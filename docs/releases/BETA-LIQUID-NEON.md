@@ -39,13 +39,13 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M8 | Panels restyle + live status bar | B Shell | CP1 | ✅ | #854 |
 | — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
 | M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
-| M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | 🔨 | branch `claude/beta3-m10-toolbar` (built + validated; PR pending) |
-| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ⏳ | |
+| M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | ⏳ | |
+| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | 🔨 | branch `claude/beta3-m11-comments` |
 | M12 | Drafts & diff UI | C Story | M9 | 🔀 | #859 |
 | M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ⏳ | |
 | M14 | Structure view + Book preview + export modal | C Story | M9 | 🔀 | #861 |
 | M15 | Notes tree v2 + templates + multi-vault | D Notes | CP2 | 🔀 | #860 |
-| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | ⏳ | |
+| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | 🔨 | branch `claude/beta3-m16-wikilinks` |
 | M17 | Canvas board engine (shared) | E Crafter | CP2 | 🔀 | #858 |
 | — | ⛔ **Merge checkpoint 3** (M17 — canvas engine) | | | | |
 | M18 | Scene Crafter (setup, cards, plan→board, mini canvas) | E Crafter | CP3 | 🔀 | #864 |
@@ -55,7 +55,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M22 | Agents: Beta Reader + identity files + autonomy | G Agents | CP2 | ⏳ | |
 | M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | ⏳ | |
 | M24 | Settings remainder + vault/story import | H Final | CP2 | ⏳ | |
-| M25 | Welcome wizard v2 | H Final | M2, M24 | ⏳ | |
+| M25 | Welcome wizard v2 | H Final | M2, M24 | 🔨 | built on branch `claude/beta3-m25-wizard` (needs PR) |
 | M26 | Release prep (v0.3.0-beta.3 or v0.4.0-beta.1, changelog, installer) | H Final | all | ⏳ | |
 
 Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merged
@@ -105,7 +105,7 @@ after a baseline commit require an empty-commit push ("re-kick").
 
 ### 3) Remaining milestones (not started)
 
-M11 (comments), M13 (TTS reader), M16 (wiki
+M10 (toolbar v2/page modes), M11 (comments), M13 (TTS reader), M16 (wiki
 links/metadata), M22–M23 (agents — also wire the tab-strip `agentsActive`
 chip and the notes-tree `onBetaRead`/`onContinuityCheck` props left disabled
 in M6/M15), M24 (settings remainder/import), M25 (wizard), M26 (release).
