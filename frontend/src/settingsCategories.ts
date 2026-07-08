@@ -4,13 +4,26 @@
  * no orphan or duplicate mappings exist relative to the sections actually
  * rendered in SettingsPanel.tsx / components/SettingsPanel/sections/*.
  *
- * This is the single source of truth for the 3-tab structure (Vaults /
- * Agents / Appearance) — SettingsPanel.tsx imports SETTINGS_CATEGORIES to
- * drive its category nav instead of maintaining a second, hand-written list
- * (SKY-5694).
+ * This is the single source of truth for the tab structure — SettingsPanel.tsx
+ * imports SETTINGS_CATEGORIES to drive its category nav instead of maintaining
+ * a second, hand-written list (SKY-5694).
+ *
+ * Beta 3 M24 fills in the remaining prototype §10 pages: Account, Editor,
+ * Sync & Backup, Shortcuts, About. Ordering constraint: 'vaults' stays first
+ * and 'agents' → 'appearance' stay adjacent-and-last — SettingsPanel.test.tsx
+ * (SKY-5691) pins the arrow-key roving-tabindex adjacency, and the settings
+ * e2e specs select tabs by those exact accessible names.
  */
 
-export type SettingsCategoryId = 'vaults' | 'agents' | 'appearance';
+export type SettingsCategoryId =
+  | 'vaults'
+  | 'account'
+  | 'editor'
+  | 'sync'
+  | 'shortcuts'
+  | 'about'
+  | 'agents'
+  | 'appearance';
 
 export interface SettingsCategory {
   id: SettingsCategoryId;
@@ -26,6 +39,8 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     sectionIds: [
       'section-account',
       'section-vault-paths',
+      'section-import-vault',
+      'section-import-story',
       'section-vault-health',
       'section-vault-danger-zone',
       'section-scene-fields',
@@ -33,6 +48,31 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-versions',
       'section-backup',
     ],
+  },
+  {
+    id: 'account',
+    label: 'Account',
+    sectionIds: ['section-account-profile'],
+  },
+  {
+    id: 'editor',
+    label: 'Editor',
+    sectionIds: ['section-editor'],
+  },
+  {
+    id: 'sync',
+    label: 'Sync & Backup',
+    sectionIds: ['section-sync-backup'],
+  },
+  {
+    id: 'shortcuts',
+    label: 'Shortcuts',
+    sectionIds: ['section-shortcuts'],
+  },
+  {
+    id: 'about',
+    label: 'About',
+    sectionIds: ['section-about'],
   },
   {
     id: 'agents',

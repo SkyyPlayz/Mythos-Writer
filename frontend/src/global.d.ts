@@ -365,6 +365,22 @@ interface ProviderConfig {
   capabilities?: { transcribe?: boolean; speak?: boolean };
 }
 
+/** Beta 3 M24 — Settings → Editor page preferences (prototype §10). */
+interface EditorPrefs {
+  /** Autosave snapshot cadence in seconds (5–120, default 30). */
+  autosaveSeconds?: number;
+  spellcheck?: boolean;
+  smartQuotes?: boolean;
+  /** Focus mode dims window chrome. */
+  dimFocus?: boolean;
+  /** Voice dictation (offline model). */
+  dictation?: boolean;
+}
+
+/** Beta 3 M24 — Settings → Vault & Files import flows. */
+type SettingsVaultImportKind = 'obsidian' | 'notion' | 'scriv' | 'markdown';
+type SettingsStoryImportFormat = 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub';
+
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -429,6 +445,8 @@ interface AppSettings {
   notesTabUpgradeToastShown?: boolean;
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
+  /** Beta 3 M24 — Settings → Editor page (prototype §10). Additive; absent = defaults. */
+  editorPrefs?: EditorPrefs;
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
   /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
@@ -1113,6 +1131,11 @@ interface Window {
     importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string }>;
     dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
     onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
+    // Beta 3 M24: Settings → Vault & Files import flows
+    vaultImportScan: (kind: SettingsVaultImportKind, srcPath: string) => Promise<{ ok: boolean; error?: string; noteCount?: number; attachmentCount?: number; totalFiles?: number; sampleFiles?: string[]; warnings?: string[] }>;
+    vaultImportRun: (payload: { kind: SettingsVaultImportKind; srcPath: string; into: 'second' | 'new'; targetPath?: string }) => Promise<{ ok: boolean; error?: string; targetPath?: string; imported?: number; skipped?: number; errors?: string[] }>;
+    storyImportPickFile: (format: SettingsStoryImportFormat) => Promise<{ filePath: string | null; cancelled: boolean }>;
+    storyImportRun: (format: SettingsStoryImportFormat, filePath: string) => Promise<{ ok: boolean; error?: string; storyTitle?: string; chapterCount?: number; sceneCount?: number; partCount?: number; planNotePath?: string; firstSceneId?: string; firstScenePath?: string; warnings?: string[] }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault
     // bridge — read/write/list/delete/move plus an intra-Story-Vault move for
     // symmetry. All paths resolve under the separately-configured notes vault
