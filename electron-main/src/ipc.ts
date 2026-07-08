@@ -219,6 +219,15 @@ export const IPC_CHANNELS = {
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
   VAULT_OBSIDIAN_REGISTER: 'vault:obsidian-register',
+
+  // Beta 3 M24 — Settings → Vault & Files: import another vault
+  // (Obsidian / Notion / Scrivener / Markdown → second vault or its own folder)
+  // and import a story (docx / gdocs export / md / scriv / epub →
+  // headings→parts/chapters/scenes + Story Plan note).
+  VAULT_IMPORT_SCAN: 'vault:import-scan',
+  VAULT_IMPORT_RUN: 'vault:import-run',
+  STORY_IMPORT_PICK: 'story:import-pick',
+  STORY_IMPORT_RUN: 'story:import-run',
   // Opens folder picker but does NOT save vault settings (used by wizard before dry-run)
   VAULT_PICK_FOLDER: 'vault:pick-folder',
   // First-run onboarding: load bundled sample project (MYT-242)
@@ -717,6 +726,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
+  // Beta 3 M24 — settings vault/story import
+  [IPC_CHANNELS.VAULT_IMPORT_SCAN]: (payload: VaultImportScanPayload) => Promise<VaultImportScanResponse>;
+  [IPC_CHANNELS.VAULT_IMPORT_RUN]: (payload: VaultImportRunPayload) => Promise<VaultImportRunResponse>;
+  [IPC_CHANNELS.STORY_IMPORT_PICK]: (payload: StoryImportPickPayload) => Promise<StoryImportPickResponse>;
+  [IPC_CHANNELS.STORY_IMPORT_RUN]: (payload: StoryImportRunPayload) => Promise<StoryImportRunResponse>;
   [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse | RegistrationTokenError>;
@@ -1962,6 +1976,17 @@ export interface AppSettings {
   voiceProviderId?: 'global' | 'writingAssistant' | 'brainstorm' | 'archive';
   /** Update channel: 'stable' = GitHub releases, 'beta' = GitHub pre-releases */
   updateChannel?: 'stable' | 'beta';
+  /** Beta 3 M24 — Settings → Editor page (prototype §10). Additive; absent = defaults. */
+  editorPrefs?: {
+    /** Autosave snapshot cadence in seconds (5–120, default 30). */
+    autosaveSeconds?: number;
+    spellcheck?: boolean;
+    smartQuotes?: boolean;
+    /** Focus mode dims window chrome. */
+    dimFocus?: boolean;
+    /** Voice dictation (offline model). */
+    dictation?: boolean;
+  };
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
   telemetry?: {
     enabled: boolean;
@@ -3007,6 +3032,72 @@ export interface AgentBudgetCapEvent {
   reason: 'hourly_token_cap' | 'daily_token_cap';
   /** Human-readable label, e.g. "Writing Assistant" */
   agentLabel: string;
+}
+
+// ─── Beta 3 M24: Settings vault/story import ───
+
+export type SettingsVaultImportKind = 'obsidian' | 'notion' | 'scriv' | 'markdown';
+export type SettingsVaultImportInto = 'second' | 'new';
+export type SettingsStoryImportFormat = 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub';
+
+export interface VaultImportScanPayload {
+  kind: SettingsVaultImportKind;
+  srcPath: string;
+}
+
+export interface VaultImportScanResponse {
+  ok: boolean;
+  error?: string;
+  noteCount?: number;
+  attachmentCount?: number;
+  totalFiles?: number;
+  sampleFiles?: string[];
+  warnings?: string[];
+}
+
+export interface VaultImportRunPayload {
+  kind: SettingsVaultImportKind;
+  srcPath: string;
+  /** 'second' → Imported/<name> inside the current Notes Vault; 'new' → targetPath. */
+  into: SettingsVaultImportInto;
+  /** Destination folder for into:'new' (from the folder picker). */
+  targetPath?: string;
+}
+
+export interface VaultImportRunResponse {
+  ok: boolean;
+  error?: string;
+  targetPath?: string;
+  imported?: number;
+  skipped?: number;
+  errors?: string[];
+}
+
+export interface StoryImportPickPayload {
+  format: SettingsStoryImportFormat;
+}
+
+export interface StoryImportPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
+}
+
+export interface StoryImportRunPayload {
+  format: SettingsStoryImportFormat;
+  filePath: string;
+}
+
+export interface StoryImportRunResponse {
+  ok: boolean;
+  error?: string;
+  storyTitle?: string;
+  chapterCount?: number;
+  sceneCount?: number;
+  partCount?: number;
+  planNotePath?: string;
+  firstSceneId?: string;
+  firstScenePath?: string;
+  warnings?: string[];
 }
 
 // ─── Obsidian vault import wizard (MYT-244) ───

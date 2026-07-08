@@ -151,6 +151,14 @@ import {
   type OnboardingImportObsidianResponse,
   type OnboardingDryRunObsidianPayload,
   type OnboardingDryRunObsidianResponse,
+  type VaultImportScanPayload,
+  type VaultImportScanResponse,
+  type VaultImportRunPayload,
+  type VaultImportRunResponse,
+  type StoryImportPickPayload,
+  type StoryImportPickResponse,
+  type StoryImportRunPayload,
+  type StoryImportRunResponse,
   type OnboardingValidatePathPayload,
   type OnboardingOpenExistingVaultPayload,
   type OnboardingDetectMythosVaultPayload,
@@ -184,6 +192,21 @@ import {
 import { loadOutline, saveOutline } from './outline.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
+// Beta 3 M24 — Settings → Vault & Files import flows
+import {
+  STORY_IMPORT_FILTERS,
+  STORY_IMPORT_MAX_BYTES,
+  docxToStoryMarkdown,
+  htmlToStoryMarkdown,
+  mdToStoryMarkdown,
+  epubToStoryMarkdown,
+  scrivToStoryMarkdown,
+  splitStoryMarkdown,
+  buildStoryPlanNote,
+  planNoteFileName,
+} from './storyImport.js';
+import { writeImportedStoryToVault } from './storyImportWriter.js';
+import { scanVaultSource, convertVaultSource, secondVaultDestination } from './vaultConvert.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
 import {
@@ -2640,6 +2663,181 @@ const handlers: IpcHandlers = {
     const preview = dryRunObsidianImport(srcPath);
     if ('error' in preview) return { error: preview.error };
     return { preview };
+  },
+
+  // ── Beta 3 M24: Settings → Vault & Files import flows ──────────────────────
+  // Import another vault: read-only scan (reuses the Beta-2 dry-run→confirm
+  // wizard shape; Obsidian/Markdown route through obsidianImporter verbatim).
+  [IPC_CHANNELS.VAULT_IMPORT_SCAN]: async (payload: VaultImportScanPayload): Promise<VaultImportScanResponse> => {
+    const { kind, srcPath } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { ok: false, error: 'srcPath must be a non-empty string' };
+    }
+    if (kind !== 'obsidian' && kind !== 'notion' && kind !== 'scriv' && kind !== 'markdown') {
+      return { ok: false, error: `Unknown vault import kind: ${String(kind)}` };
+    }
+    const resolved = (() => {
+      try { return fs.realpathSync.native(srcPath); } catch { return srcPath; }
+    })();
+    try {
+      const scan = scanVaultSource(kind, resolved);
+      if ('error' in scan) return { ok: false, error: scan.error };
+      return {
+        ok: true,
+        noteCount: scan.noteCount,
+        attachmentCount: scan.attachmentCount,
+        totalFiles: scan.totalFiles,
+        sampleFiles: scan.sampleFiles,
+        warnings: scan.warnings,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  [IPC_CHANNELS.VAULT_IMPORT_RUN]: async (payload: VaultImportRunPayload): Promise<VaultImportRunResponse> => {
+    const { kind, srcPath, into, targetPath } = payload ?? {};
+    if (typeof srcPath !== 'string' || !srcPath.trim()) {
+      return { ok: false, error: 'srcPath must be a non-empty string' };
+    }
+    if (kind !== 'obsidian' && kind !== 'notion' && kind !== 'scriv' && kind !== 'markdown') {
+      return { ok: false, error: `Unknown vault import kind: ${String(kind)}` };
+    }
+    const resolvedSrc = (() => {
+      try { return fs.realpathSync.native(srcPath); } catch { return srcPath; }
+    })();
+    try {
+      let dst: string;
+      if (into === 'new') {
+        if (typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) {
+          return { ok: false, error: 'Pick a destination folder for the new vault first' };
+        }
+        dst = targetPath;
+      } else {
+        // Default: a second vault folder inside the current Notes Vault, so it
+        // shows up in the notes tree and the Brainstorm Agent can read it.
+        ensureNotesVaultDir();
+        dst = secondVaultDestination(getNotesVaultRoot(), resolvedSrc);
+      }
+      // Never copy a tree into itself.
+      const relToSrc = path.relative(resolvedSrc, dst);
+      if (relToSrc === '' || (!relToSrc.startsWith('..') && !path.isAbsolute(relToSrc))) {
+        return { ok: false, error: 'Destination cannot be inside the import source' };
+      }
+      const res = convertVaultSource(kind, resolvedSrc, dst);
+      return {
+        ok: res.ok,
+        error: res.ok ? undefined : (res.errors[0] ?? 'Import failed'),
+        targetPath: res.targetPath,
+        imported: res.imported,
+        skipped: res.skipped,
+        errors: res.errors,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  // Import a story: native file picker (per-format filters), main-process owned.
+  [IPC_CHANNELS.STORY_IMPORT_PICK]: async (payload: StoryImportPickPayload): Promise<StoryImportPickResponse> => {
+    const format = payload?.format;
+    const filter = format ? STORY_IMPORT_FILTERS[format] : undefined;
+    if (!filter) return { filePath: null, cancelled: true };
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: 'Import story',
+      filters: [filter, { name: 'All files', extensions: ['*'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
+  // Import a story: convert → split headings into parts/chapters/scenes →
+  // write scene files + manifest → create a Story Plan note in the Notes Vault.
+  [IPC_CHANNELS.STORY_IMPORT_RUN]: async (payload: StoryImportRunPayload): Promise<StoryImportRunResponse> => {
+    const { format, filePath } = payload ?? {};
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return { ok: false, error: 'filePath must be a non-empty string' };
+    }
+    try {
+      ensureVaultDir();
+      const warnings: string[] = [];
+      let markdown: string;
+      let fallbackTitle = path.basename(filePath).replace(/\.[^.]+$/, '') || 'Imported Story';
+
+      if (format === 'scriv') {
+        const res = scrivToStoryMarkdown(filePath);
+        markdown = res.markdown;
+        fallbackTitle = res.title;
+        warnings.push(...res.warnings);
+      } else if (format === 'md' || format === 'epub' || format === 'docx' || format === 'gdoc') {
+        const stat = fs.statSync(filePath);
+        if (stat.size > STORY_IMPORT_MAX_BYTES) {
+          return { ok: false, error: `File exceeds the 50 MB size limit (${(stat.size / 1024 / 1024).toFixed(1)} MB)` };
+        }
+        if (format === 'md') {
+          markdown = mdToStoryMarkdown(fs.readFileSync(filePath, 'utf-8'));
+        } else if (format === 'epub') {
+          const res = await epubToStoryMarkdown(fs.readFileSync(filePath));
+          markdown = res.markdown;
+          if (res.title) fallbackTitle = res.title;
+          warnings.push(...res.warnings);
+        } else if (/\.html?$/i.test(filePath)) {
+          // Google Docs "Download → Web page (.html)" export.
+          markdown = htmlToStoryMarkdown(fs.readFileSync(filePath, 'utf-8'));
+        } else {
+          const res = await docxToStoryMarkdown(fs.readFileSync(filePath));
+          markdown = res.markdown;
+          warnings.push(...res.warnings);
+        }
+      } else {
+        return { ok: false, error: `Unknown story format: ${String(format)}` };
+      }
+
+      const split = splitStoryMarkdown(markdown, fallbackTitle);
+      const written = writeImportedStoryToVault(getVaultRoot(), getManifestPath(), split);
+
+      // Story Plan note → Notes Vault Plans/ (Scene Crafter + timeline read plans there).
+      let planNotePath: string | undefined;
+      try {
+        ensureNotesVaultDir();
+        const notesRoot = getNotesVaultRoot();
+        let rel = `Plans/${planNoteFileName(split.title)}`;
+        let n = 2;
+        while (fs.existsSync(path.join(notesRoot, rel))) {
+          rel = `Plans/${planNoteFileName(`${split.title} ${n}`)}`;
+          n++;
+        }
+        writeVaultFileAtomic(notesRoot, rel, buildStoryPlanNote({
+          id: crypto.randomUUID(),
+          title: split.title,
+          format,
+          sourceFile: filePath,
+          importedAt: new Date().toISOString(),
+          chapters: split.chapters,
+          partCount: split.partCount,
+        }));
+        planNotePath = rel;
+      } catch (err) {
+        warnings.push(`Story imported, but the plan note could not be written: ${(err as Error).message}`);
+      }
+
+      return {
+        ok: true,
+        storyTitle: written.storyTitle,
+        chapterCount: written.chapterCount,
+        sceneCount: written.sceneCount,
+        partCount: split.partCount,
+        planNotePath,
+        firstSceneId: written.firstSceneId,
+        firstScenePath: written.firstScenePath,
+        warnings,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   },
 
   // SKY-2991: onboarding v2 path validation + vault discovery handlers
