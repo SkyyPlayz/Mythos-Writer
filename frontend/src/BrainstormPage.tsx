@@ -1,9 +1,5 @@
-<<<<<<< HEAD
-import { useState, useCallback, useEffect, useRef, useMemo, Fragment } from 'react';
-import { useAgentActivity } from './agents/agentActivity';
-=======
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement } from 'react';
->>>>>>> origin/main
+import { useAgentActivity } from './agents/agentActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
