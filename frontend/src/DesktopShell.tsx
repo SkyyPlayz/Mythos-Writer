@@ -25,7 +25,7 @@ import WorkspaceTabPicker from './WorkspaceTabPicker';
 import WorkspaceSplitPane from './WorkspaceSplitPane';
 import { WORKSPACE_TAB_DRAG_MIME } from './WorkspaceTabBar';
 import { createOrFocusTab, tabKindForSection, SPLITTABLE_TAB_KINDS, TAB_KIND_META } from './workspaceTabKinds';
-import { NAV_RAIL_DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
+import { NAV_RAIL_DEFAULTS, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -3748,20 +3748,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory]);
 
-  const navItems = useMemo<NavRailItem[]>(() => {
-    const savedItems = savedNavConfig?.items ?? [];
-    const merged = [
-      ...savedItems,
-      ...NAV_RAIL_DEFAULTS.items.filter((d) => !savedItems.some((i) => i.id === d.id)),
-    ];
-    const enabled = merged
-      .filter((i) => i.enabled)
-      .sort((a, b) => a.order - b.order)
-      .map(({ id, label, icon }) => ({ id, label, icon }));
-    return enabled.length > 0
-      ? enabled
-      : NAV_RAIL_DEFAULTS.items.map(({ id, label, icon }) => ({ id, label, icon }));
-  }, [savedNavConfig]);
+  const navItems = useMemo<NavRailItem[]>(
+    () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
+    [savedNavConfig],
+  );
 
   if (loading) {
     return (

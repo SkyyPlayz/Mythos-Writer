@@ -201,3 +201,44 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
   showLabels: true,
   showIcons: true,
 };
+
+/**
+ * SKY-5903: merge a user's saved nav-rail items with the current app defaults.
+ * Items the user already has are kept as-is (their order/enabled/label/icon
+ * win). Defaults introduced by a newer app version are appended *after* the
+ * user's highest saved order — not at the default item's own hardcoded
+ * order — so a new item can never jump ahead of a re-ordered saved item
+ * (e.g. saved notes.order=0, story.order=5 must keep a new brainstorm item
+ * after story, not between notes and story just because brainstorm's own
+ * default order is 2).
+ */
+export function mergeNavConfigItems(
+  savedItems: NavRailItemConfig[] | undefined,
+  defaultItems: NavRailItemConfig[] = NAV_RAIL_DEFAULTS.items,
+): NavRailItemConfig[] {
+  const saved = savedItems ?? [];
+  const maxSavedOrder = saved.reduce((max, item) => Math.max(max, item.order), -1);
+  const appended = defaultItems
+    .filter((d) => !saved.some((i) => i.id === d.id))
+    .map((d, index) => ({ ...d, order: maxSavedOrder + 1 + index }));
+  return [...saved, ...appended];
+}
+
+/**
+ * SKY-5903: resolve the enabled, ordered nav-rail items to render, merging
+ * in newer defaults and falling back to the full defaults if the user has
+ * disabled every item (so the rail is never stranded empty).
+ */
+export function resolveNavRailItems(
+  savedNavConfig: NavRailConfig | undefined,
+  defaults: NavRailConfig = NAV_RAIL_DEFAULTS,
+): NavRailItem[] {
+  const merged = mergeNavConfigItems(savedNavConfig?.items, defaults.items);
+  const enabled = merged
+    .filter((i) => i.enabled)
+    .sort((a, b) => a.order - b.order)
+    .map(({ id, label, icon }) => ({ id, label, icon }));
+  return enabled.length > 0
+    ? enabled
+    : defaults.items.map(({ id, label, icon }) => ({ id, label, icon }));
+}
