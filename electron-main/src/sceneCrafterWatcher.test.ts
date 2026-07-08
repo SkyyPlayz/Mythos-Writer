@@ -105,15 +105,35 @@ describe('watchBoardFile', () => {
     expect(onExternalEdit).toHaveBeenCalledWith(slug);
   });
 
-  it('replaces a prior watcher when called again', async () => {
+  it('reuses the existing watcher on a repeat watch of the same path (audit P4: no churn)', async () => {
+    const chokidar = (await import('chokidar')).default;
+    const first = vi.fn();
+    await watchBoardFile(BOARD_PATH, STORY_SLUG, first);
+    expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(1);
+
+    const second = vi.fn();
+    await watchBoardFile(BOARD_PATH, STORY_SLUG, second);
+
+    // Same path: no new chokidar watcher is created, nothing is closed…
+    expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(1);
+    expect(mockWatcher.close).not.toHaveBeenCalled();
+
+    // …and the latest callback wins.
+    mockWatcher._triggerChange();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledWith(STORY_SLUG);
+  });
+
+  it('replaces the watcher when called with a different path', async () => {
     const first = vi.fn();
     await watchBoardFile(BOARD_PATH, STORY_SLUG, first);
     const oldWatcher = mockWatcher;
 
-    // Second call replaces the watcher
+    // Second call for another board replaces the watcher
     mockWatcher = makeMockWatcher();
     const second = vi.fn();
-    await watchBoardFile(BOARD_PATH, STORY_SLUG, second);
+    await watchBoardFile('/vault/notes/scenes/other-story/board.md', 'other-story', second);
 
     // Old watcher is closed
     expect(oldWatcher.close).toHaveBeenCalled();
@@ -122,6 +142,55 @@ describe('watchBoardFile', () => {
     mockWatcher._triggerChange();
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledWith('other-story');
+  });
+
+  it('serializes concurrent same-path calls so no watcher is orphaned (audit P4)', async () => {
+    const chokidar = (await import('chokidar')).default;
+    const first = vi.fn();
+    const second = vi.fn();
+
+    // Fire both without awaiting — simulates GET_BOARD/CREATE_BOARD calling
+    // watchBoardFile fire-and-forget back to back.
+    const p1 = watchBoardFile(BOARD_PATH, STORY_SLUG, first);
+    const p2 = watchBoardFile(BOARD_PATH, STORY_SLUG, second);
+    await Promise.all([p1, p2]);
+
+    // Exactly one watcher exists — the calls could not interleave and each
+    // create one (which would orphan the overwritten watcher).
+    expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(1);
+    expect(mockWatcher.close).not.toHaveBeenCalled();
+
+    mockWatcher._triggerChange();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+  });
+
+  it('serializes concurrent different-path calls — the first watcher is closed, not orphaned (audit P4)', async () => {
+    const chokidar = (await import('chokidar')).default;
+    const firstWatcher = makeMockWatcher();
+    const secondWatcher = makeMockWatcher();
+    vi.mocked(chokidar.watch)
+      .mockImplementationOnce(() => firstWatcher as unknown as ReturnType<typeof chokidar.watch>)
+      .mockImplementationOnce(() => secondWatcher as unknown as ReturnType<typeof chokidar.watch>);
+
+    const onFirst = vi.fn();
+    const onSecond = vi.fn();
+    const p1 = watchBoardFile(BOARD_PATH, STORY_SLUG, onFirst);
+    const p2 = watchBoardFile('/vault/notes/scenes/other-story/board.md', 'other-story', onSecond);
+    await Promise.all([p1, p2]);
+
+    // Two watchers created, the first closed → exactly one left alive.
+    expect(vi.mocked(chokidar.watch)).toHaveBeenCalledTimes(2);
+    expect(firstWatcher.close).toHaveBeenCalledOnce();
+    expect(secondWatcher.close).not.toHaveBeenCalled();
+
+    secondWatcher._triggerChange();
+    expect(onFirst).not.toHaveBeenCalled();
+    expect(onSecond).toHaveBeenCalledWith('other-story');
+
+    // Keep afterEach's stopBoardWatcher pointed at the live watcher.
+    mockWatcher = secondWatcher;
   });
 });
 
