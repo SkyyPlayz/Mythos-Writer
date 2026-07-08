@@ -190,6 +190,43 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     await expect(page.locator('.depth-context-label')).toContainText('Scene One', { timeout: 4_000 });
   });
 
+  // ─── SKY-5904 ─────────────────────────────────────────────────────────────
+  // On-canvas edge arrows (DepthEdgeArrows/.edge-arrow) must anchor to the
+  // 720px page column, not the full-width canvas behind it — else on a wide
+  // window they float far from the actual page edge they're meant to hug.
+
+  test('SKY-5904: on-canvas edge arrows hug the page column, not the outer canvas edges', async () => {
+    const originalSize = page.viewportSize();
+    // Very wide viewport: the right sidebar and navigator both eat into a
+    // 1440px window, leaving little slack between the page column and the
+    // canvas behind it. Go wide enough that a page column stuck at ~720px
+    // is unambiguously narrower than the canvas even with sidebars open.
+    await page.setViewportSize({ width: 2400, height: 1000 });
+    try {
+      const prevArrow = page.getByTestId('edge-arrow-prev');
+      const nextArrow = page.getByTestId('edge-arrow-next');
+      await expect(prevArrow).toBeVisible();
+      await expect(nextArrow).toBeVisible();
+
+      const pageBox = await page.locator('.shell-editor-beta-wrap--page-mode').boundingBox();
+      const canvasBox = await page.locator('.shell-editor-scene-wrap.story-page-canvas').boundingBox();
+      const prevBox = await prevArrow.boundingBox();
+      const nextBox = await nextArrow.boundingBox();
+      if (!pageBox || !canvasBox || !prevBox || !nextBox) {
+        throw new Error('Expected page column, canvas, and edge-arrow boxes to be measurable');
+      }
+      // Sanity check the viewport is actually wide enough to stress the bug.
+      expect(canvasBox.width).toBeGreaterThan(pageBox.width + 200);
+
+      // The arrows must hug the page column's edges, not the far edges of
+      // the full-width canvas behind it.
+      expect(Math.abs(prevBox.x - pageBox.x)).toBeLessThan(20);
+      expect(Math.abs(nextBox.x + nextBox.width - (pageBox.x + pageBox.width))).toBeLessThan(20);
+    } finally {
+      if (originalSize) await page.setViewportSize(originalSize);
+    }
+  });
+
   // ─── TC-DS-02 ─────────────────────────────────────────────────────────────
 
   test('TC-DS-02: clicking "Chapter" depth button shows chapter doc view', async () => {
