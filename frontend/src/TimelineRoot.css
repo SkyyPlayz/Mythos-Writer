@@ -118,6 +118,13 @@
   box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
+/* M23: skip-backward flags — planned scenes left behind the writing head
+   (warm-data slot D; prototype #ff9a3d). */
+.tlr-legend-item--skipped {
+  color: var(--n4, rgb(255, 154, 61)); /* prototype #ff9a3d */
+  cursor: help;
+}
+
 /* ── Grouping selector ── */
 
 .tlr-group-by {

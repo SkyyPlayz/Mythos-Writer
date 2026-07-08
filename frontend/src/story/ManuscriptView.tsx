@@ -21,6 +21,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type UIEvent,
 } from 'react';
 import {
@@ -47,6 +48,15 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
+import {
+  applyAllAutoLinkHints,
+  applyAutoLinkHint,
+  findAutoLinkHints,
+  splitRunByHints,
+  wikiLinkFor,
+  type EntityMatch,
+} from './autoLinkText';
 import ReaderBar from './ReaderBar';
 import { useManuscriptReader } from './useManuscriptReader';
 import { showLnToast } from '../theme/lnToast';
@@ -80,6 +90,13 @@ export interface ManuscriptViewProps {
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
+  /**
+   * M23: archive auto-[[link]]ing in the continuous manuscript (same entity
+   * matching as the scene editor's AutoLinkerExtension). 'suggest' underlines
+   * mentions — click to link; 'auto' additionally links on paragraph commit.
+   */
+  autoLinkEntities?: EntityEntry[];
+  autoLinkMode?: AutoLinkerMode;
   /**
    * M13: TTS engine config (AppSettings.tts) for the reader — Piper/cloud
    * when configured, OS speechSynthesis otherwise (same stack as Beta 2).
@@ -261,6 +278,8 @@ export default function ManuscriptView({
   dictating = false,
   onAssist,
   focusMode = false,
+  autoLinkEntities,
+  autoLinkMode = 'off',
   ttsSettings,
   voicePrefs,
 }: ManuscriptViewProps) {
@@ -305,6 +324,15 @@ export default function ManuscriptView({
 
   // Prototype commentsVisible (3600): hidden in Focus unless overridden.
   const commentsVisible = showComments && (!focusMode || commentsInFocus);
+
+  // ── M23 auto-[[link]]ing (same terms as the scene editor's TipTap plugin) ──
+  const autoLinkTerms = useMemo(
+    () =>
+      autoLinkMode !== 'off' && autoLinkEntities && autoLinkEntities.length > 0
+        ? buildEntityTerms(autoLinkEntities)
+        : [],
+    [autoLinkEntities, autoLinkMode]
+  );
 
   const commentsByScene = useMemo(() => {
     const map = new Map<string, StoryComment[]>();
@@ -423,13 +451,18 @@ export default function ManuscriptView({
 
   const commitParagraph = useCallback(
     (sceneId: string, blockId: string, original: string, el: HTMLElement) => {
-      const text = el.textContent ?? '';
+      let text = el.textContent ?? '';
+      // M23 'auto' mode: link entity mentions on commit (the plain-text
+      // analog of BlockEditor's auto-on-save apply path).
+      if (autoLinkMode === 'auto' && autoLinkTerms.length > 0) {
+        text = applyAllAutoLinkHints(text, autoLinkTerms);
+      }
       const prev = committedRef.current.get(blockId) ?? original;
       if (text === prev) return;
       committedRef.current.set(blockId, text);
       onEditParagraph(sceneId, blockId, text);
     },
-    [onEditParagraph]
+    [onEditParagraph, autoLinkMode, autoLinkTerms]
   );
 
   const commitPageWidth = useCallback(
@@ -560,6 +593,17 @@ export default function ManuscriptView({
     setOpenCommentId((open) => (open === id ? null : id));
   }, []);
 
+  // M23: click an auto-link hint → replace the mention with its [[wiki link]].
+  const handleApplyAutoLink = useCallback(
+    (sceneId: string, blockId: string, content: string, hint: EntityMatch) => {
+      const next = applyAutoLinkHint(content, hint);
+      committedRef.current.set(blockId, next);
+      onEditParagraph(sceneId, blockId, next);
+      showLnToast(`Linked ${wikiLinkFor(hint)}`);
+    },
+    [onEditParagraph]
+  );
+
   // Clamp the window so it always covers real blocks (folding shrinks the list).
   const start = Math.max(0, Math.min(winStart, Math.max(0, blocks.length - WINDOW)));
   const end = Math.min(blocks.length, start + WINDOW);
@@ -660,6 +704,60 @@ export default function ManuscriptView({
           : null;
         // M13: moving per-paragraph highlight (prototype pStX 3376–3377).
         const reading = readerKey === b.blockId;
+        // M23: entity mentions not already [[linked]] render as clickable
+        // hints inside the plain runs (comment anchors win on overlap).
+        const hints =
+          autoLinkTerms.length > 0 ? findAutoLinkHints(b.content, autoLinkTerms) : [];
+
+        const renderPlainRun = (text: string, start: number, keyBase: string) => {
+          const runs = hints.length > 0 ? splitRunByHints(text, start, hints) : null;
+          if (!runs) return <span key={keyBase}>{text}</span>;
+          return runs.map((r, j) =>
+            r.hint ? (
+              <span
+                // eslint-disable-next-line react/no-array-index-key -- runs are recomputed wholesale; offsets are positional
+                key={`${keyBase}-h${j}`}
+                className="msv-wl-hint"
+                data-testid={`msv-wl-hint-${b.blockId}-${r.hint.from}`}
+                title={`Link to [[${r.hint.canonicalName}]]`}
+                onClick={() => {
+                  if (r.hint) handleApplyAutoLink(b.sceneId, b.blockId, b.content, r.hint);
+                }}
+              >
+                {r.text}
+              </span>
+            ) : (
+              // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+              <span key={`${keyBase}-t${j}`}>{r.text}</span>
+            )
+          );
+        };
+
+        let renderedChildren: ReactNode = b.content;
+        if (segs) {
+          let offset = 0;
+          renderedChildren = segs.map((s, i) => {
+            const start = offset;
+            offset += s.text.length;
+            return s.comment ? (
+              <span
+                // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
+                key={`${s.comment.id}-${i}`}
+                className={`msv-anchor msv-anchor--${s.comment.kind}`}
+                data-testid={`msv-anchor-${s.comment.id}`}
+                title="Open comment"
+                onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
+              >
+                {s.text}
+              </span>
+            ) : (
+              renderPlainRun(s.text, start, `t-${i}`)
+            );
+          });
+        } else if (hints.length > 0) {
+          renderedChildren = renderPlainRun(b.content, 0, 'p');
+        }
+
         return (
           <div key={b.id}>
             {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
@@ -694,25 +792,7 @@ export default function ManuscriptView({
                   }
                 }}
               >
-                {segs
-                  ? segs.map((s, i) =>
-                      s.comment ? (
-                        <span
-                          // eslint-disable-next-line react/no-array-index-key -- segments are recomputed wholesale; offsets are positional
-                          key={`${s.comment.id}-${i}`}
-                          className={`msv-anchor msv-anchor--${s.comment.kind}`}
-                          data-testid={`msv-anchor-${s.comment.id}`}
-                          title="Open comment"
-                          onClick={() => setOpenCommentId(s.comment ? s.comment.id : null)}
-                        >
-                          {s.text}
-                        </span>
-                      ) : (
-                        // eslint-disable-next-line react/no-array-index-key -- positional plain runs
-                        <span key={`t-${i}`}>{s.text}</span>
-                      )
-                    )
-                  : b.content}
+                {renderedChildren}
               </div>
             </div>
           </div>

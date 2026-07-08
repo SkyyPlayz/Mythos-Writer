@@ -1391,6 +1391,15 @@ interface Window {
       partial: boolean;
     }) => void) => () => void;
     onArchiveContScanError: (cb: (data: { sceneId: string; error: string }) => void) => () => void;
+    /** Beta 3 M23: a continuity item was resolved/ignored anywhere (Continuity
+     *  panel or manuscript comment agent action) — drop the flag live.
+     *  Optional so older preload mocks keep type-checking. */
+    onArchiveContItemResolved?: (cb: (data: {
+      itemId: string;
+      sceneId: string;
+      status: 'resolved' | 'ignored';
+      action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
+    }) => void) => () => void;
 
     // SKY-1686: Global right-sidebar panel popout window
     panelPopout?: (panelId: string, sceneId: string | null) => Promise<void>;

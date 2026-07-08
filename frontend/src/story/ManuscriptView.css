@@ -712,3 +712,17 @@
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
   color: var(--n1, #00f0ff);
 }
+
+/* ── M23: auto-[[link]] hints (slot B — wiki-links role, prototype mkLink
+   4172–4177: resolved note links are the purple slot). Dashed = suggestion;
+   click links the mention. ── */
+.msv-wl-hint {
+  border-bottom: 2px dashed var(--b2, rgba(155, 95, 255, 0.5)); /* prototype #9b5fff */
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.msv-wl-hint:hover {
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  border-bottom-style: solid;
+}

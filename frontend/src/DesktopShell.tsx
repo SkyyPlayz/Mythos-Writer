@@ -49,6 +49,7 @@ import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
+import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
@@ -1261,6 +1262,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const agentsActive = useAgentsActive();
   useAgentActivity(betaReadLoading);
   const { betaReadNote, continuityCheckNote } = useVaultAgentActions({ agentNames: appSettings?.agentNames });
+  // Beta 3 M23: continuity flags surface as archive comments in the
+  // manuscript gutter (live agent actions via suggestionId → archiveConfirm).
+  useContinuityCommentsBridge(selectedStory, appSettings?.agentNames);
 
   useEffect(() => {
     if (!window.api.onBudgetCapHit) return;
@@ -4412,6 +4416,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  autoLinkEntities={allEntities}
+                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
                 />
@@ -4442,6 +4448,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  autoLinkEntities={allEntities}
+                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
                 />

@@ -53,7 +53,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M20 | Timeline v2 (5 views, eras, arcs, minimap, filters) | F Modules | CP2 | ✅ | #862 |
 | M21 | Vault graph v2 (stars, pinning, category wheels, inspector) | F Modules | CP2 | ✅ | #863 |
 | M22 | Agents: Beta Reader + identity files + autonomy | G Agents | CP2 | ✅ | #878 |
-| M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | 🔀 | #880 |
+| M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | ✅ | #880 |
 | M24 | Settings remainder + vault/story import | H Final | CP2 | ✅ | #877 |
 | M25 | Welcome wizard v2 | H Final | M2, M24 | ✅ | #875 |
 | M26 | Release prep (v0.4.0-beta.1, changelog, installer) | H Final | all | 🔀 | this PR (`claude/beta3-m26-release`) |
