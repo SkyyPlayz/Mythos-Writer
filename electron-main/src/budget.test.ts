@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { openDb, closeDb, upsertSuggestion, insertGenerationLog } from './db.js';
+import { openDb, closeDb, upsertSuggestion, insertGenerationLog, pruneGenerationLog } from './db.js';
 import { evaluateAutoApply, checkCallBudget, HARD_EXCLUDED_PAYLOAD_KINDS, type AgentBudgetSettings } from './budget.js';
 import type { DatabaseSync } from 'node:sqlite';
 
@@ -348,5 +348,53 @@ describe('checkCallBudget', () => {
     const result = checkCallBudget('brainstorm', CALL_SETTINGS, db);
     // 1100 tokens are outside the 1-hour window — hourly cap clear; 1100 < 5000 daily — allowed
     expect(result.allowed).toBe(true);
+  });
+});
+
+// ─── Budget correctness after generation_log retention pruning (perf audit P2) ───
+
+describe('checkCallBudget after pruneGenerationLog', () => {
+  let tmpDir: string;
+  let db: DatabaseSync;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-call-budget-prune-'));
+    db = openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('pruning rows older than 7 days does not change budget decisions', () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    // Rows outside every budget window (minute / hour / day) — prunable.
+    insertGenerationLog(makeGenLog({ tokens_in: 900_000, tokens_out: 0, created_at: tenDaysAgo }));
+    insertGenerationLog(makeGenLog({ tokens_in: 900_000, tokens_out: 0, created_at: tenDaysAgo }));
+    // Recent row inside all windows.
+    insertGenerationLog(makeGenLog({ tokens_in: 300, tokens_out: 100 }));
+
+    const settings = { ...CALL_SETTINGS, requestsPerMinute: 5 };
+    const before = checkCallBudget('brainstorm', settings, db);
+
+    const deleted = pruneGenerationLog(db, 7);
+    expect(deleted).toBe(2);
+
+    const after = checkCallBudget('brainstorm', settings, db);
+    expect(after).toEqual(before);
+    expect(after.allowed).toBe(true);
+  });
+
+  it('still blocks on hourly cap after pruning', () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    insertGenerationLog(makeGenLog({ tokens_in: 1, tokens_out: 1, created_at: tenDaysAgo }));
+    insertGenerationLog(makeGenLog({ tokens_in: 600, tokens_out: 500 })); // 1100 > 1000
+
+    pruneGenerationLog(db, 7);
+
+    const result = checkCallBudget('brainstorm', CALL_SETTINGS, db);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('hourly_token_cap');
   });
 });
