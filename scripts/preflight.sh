@@ -68,15 +68,24 @@ if $FAST; then
   exit 0
 fi
 
-if ! command -v xvfb-run >/dev/null 2>&1; then
-  abort "xvfb-run not found — install with: sudo apt-get install xvfb"
+OS="$(uname -s)"
+if [ "$OS" = "Linux" ]; then
+  if ! command -v xvfb-run >/dev/null 2>&1; then
+    abort "xvfb-run not found — install with: sudo apt-get install xvfb"
+  fi
+  e2e() {
+    local label="$1"; shift
+    xvfb-run --auto-servernum npm run "$@" || abort "e2e $label"
+    pass "E2E $label"
+  }
+else
+  echo -e "${YELLOW}(macOS: running e2e against native display, xvfb not required)${NC}"
+  e2e() {
+    local label="$1"; shift
+    npm run "$@" || abort "e2e $label"
+    pass "E2E $label"
+  }
 fi
-
-e2e() {
-  local label="$1"; shift
-  xvfb-run --auto-servernum npm run "$@" || abort "e2e $label"
-  pass "E2E $label"
-}
 
 step "E2E — Shard 1 (crud · draft-history · brainstorm · export · visual-capture · writing-modes · depth-slider · a11y · settings-background)"
 e2e crud               test:e2e:crud
