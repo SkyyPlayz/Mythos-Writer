@@ -1,7 +1,7 @@
 // Beta 3 "Liquid Neon" — background stack (M2): wallpaper (drifting), the
 // per-preset two-layer animated ambience, wallpaper scrim, and vignette.
 // Exact port of prototype HTML 45–54 + mkAmb (4649–4669).
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import { hexA, normalizeLiquidNeonV2, type LiquidNeonV2Settings } from './liquidNeonEngine';
 import { LIQUID_NEON_PRESETS, type AmbienceColor, type LiquidNeonPresetKey } from './presets';
@@ -39,6 +39,27 @@ export interface BackgroundStackProps {
 export default function BackgroundStack({ settings }: BackgroundStackProps) {
   const amb1 = useMemo(() => ambienceLayerStyle(settings, 0), [settings]);
   const amb2 = useMemo(() => ambienceLayerStyle(settings, 1), [settings]);
+
+  // Audit P4: freeze the always-on Liquid Neon loops (wallpaper drift,
+  // ambience, frame ring, border breathe) while the window is hidden or
+  // minimized. The class rides on <html> so the CSS rule in liquidNeon.css
+  // also reaches the FrameRing and BorderOverlay layers, which render
+  // elsewhere in the shell; BackgroundStack is the stack's owner and is
+  // always mounted, making it the natural home for the listener.
+  useEffect(() => {
+    const sync = () => {
+      document.documentElement.classList.toggle(
+        'ln-anim-paused',
+        document.visibilityState === 'hidden',
+      );
+    };
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => {
+      document.removeEventListener('visibilitychange', sync);
+      document.documentElement.classList.remove('ln-anim-paused');
+    };
+  }, []);
   return (
     <div className="ln-bg-stack" aria-hidden="true" data-testid="ln-bg-stack">
       <div className="ln-bg-wallpaper" data-testid="ln-bg-wallpaper" />

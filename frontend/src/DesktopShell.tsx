@@ -1349,10 +1349,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         : evt.error !== 'aborted' ? 'Voice recognition error. Please try again.' : null;
       if (msg) showVoiceToast(msg);
       const sid = voiceSessionRef.current;
+      // Mirror stopVoice: detach handlers and drop BOTH refs so a dead
+      // recognition object can't keep firing onresult or leak via
+      // voiceRecognitionRef (SKY audit P4).
+      recog.onresult = null;
+      recog.onerror = null;
       speechRecogRef.current = null;
+      voiceRecognitionRef.current = null;
       voiceSessionRef.current = null;
       pttDownRef.current = false;
       setVoiceActive(false);
+      setVoiceListening(false);
       if (sid) window.api.voiceStop(sid).catch(() => {});
     };
     speechRecogRef.current = recog;
@@ -1687,11 +1694,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     loadEntities();
   }, [loadEntities]);
 
+  // Debounced 500 ms trailing (audit P4): autosaves push vault:file-changed
+  // about once per second while typing, and each reload runs two IPC calls
+  // plus two setStates that re-render the whole shell. Only the last event in
+  // a burst triggers the reload; the initial load on mount (above) stays
+  // immediate.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const off = window.api.onVaultFileChanged(() => {
-      loadEntities();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        loadEntities();
+      }, 500);
     });
-    return off;
+    return () => {
+      if (timer) clearTimeout(timer);
+      off();
+    };
   }, [loadEntities]);
 
   // Handle project switches pushed from main process
@@ -2658,11 +2678,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLayout({ ...layout, [key]: newWidth });
   }, [layout, persistLayout]);
 
-  // SKY-3618: Update windowInnerWidth on resize so clamped sidebar widths recompute
+  // SKY-3618: Update windowInnerWidth on resize so clamped sidebar widths recompute.
+  // Throttled to one requestAnimationFrame per burst (audit P4) — resize fires
+  // many times per frame during an interactive window drag.
   useEffect(() => {
-    const onResize = () => setWindowInnerWidth(window.innerWidth);
+    let rafId: number | null = null;
+    const onResize = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        setWindowInnerWidth(window.innerWidth);
+      });
+    };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
   }, []);
 
   // SKY-1699: Split window drag — mousedown on the divider starts a drag tracking the ratio.
@@ -3033,14 +3065,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       document.documentElement.removeAttribute('data-context');
     }
   }, [vaultContext]);
-
-  // Insert final voice transcripts into the active editor
-  useEffect(() => {
-    if (!window.api.onVoiceTranscript) return;
-    return window.api.onVoiceTranscript(({ text, isFinal }) => {
-      if (isFinal && text.trim()) editorApiRef.current?.insertText(text.trim() + ' ');
-    });
-  }, []);
 
   // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
   useEffect(() => {

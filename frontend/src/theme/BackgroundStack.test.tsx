@@ -1,7 +1,7 @@
 // Exact-value tests for the M2 background stack — expected strings are the
 // prototype's mkAmb outputs (HTML 4649–4669).
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import BackgroundStack, { ambienceLayerStyle } from './BackgroundStack';
 import { LIQUID_NEON_PRESETS } from './presets';
 
@@ -54,5 +54,45 @@ describe('<BackgroundStack>', () => {
   it('is aria-hidden decoration', () => {
     render(<BackgroundStack settings={null} />);
     expect(screen.getByTestId('ln-bg-stack')).toHaveAttribute('aria-hidden', 'true');
+  });
+});
+
+describe('hidden-window animation pause (audit P4)', () => {
+  const setVisibility = (value: DocumentVisibilityState) => {
+    Object.defineProperty(document, 'visibilityState', { value, configurable: true });
+  };
+
+  afterEach(() => {
+    // Restore the jsdom prototype getter ('visible') for other tests.
+    delete (document as unknown as Record<string, unknown>).visibilityState;
+    document.documentElement.classList.remove('ln-anim-paused');
+  });
+
+  it('toggles ln-anim-paused on <html> with document visibility', () => {
+    render(<BackgroundStack settings={null} />);
+    // Visible on mount: no class, so nothing changes visually.
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    setVisibility('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+
+    setVisibility('visible');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+  });
+
+  it('removes the class and listener on unmount', () => {
+    const { unmount } = render(<BackgroundStack settings={null} />);
+    setVisibility('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+
+    unmount();
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    // Listener is gone: further events no longer re-add the class.
+    fireEvent(document, new Event('visibilitychange'));
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
   });
 });

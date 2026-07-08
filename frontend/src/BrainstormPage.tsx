@@ -718,6 +718,13 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const persistFactWithRoutingRef = useRef<((fact: DetectedFact) => Promise<void>) | null>(null);
 
   const _runStream = useCallback(async (apiMessages: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+    // Audit P4: if a previous stream is still live (re-entry before its end/
+    // error event), tear down its listeners first — otherwise the assignment
+    // to cleanupStreamRef below overwrites them without ever unsubscribing,
+    // orphaning three ipcRenderer listeners per re-entry. The cleanup closure
+    // nulls the ref itself, so this is a no-op when nothing is live.
+    cleanupStreamRef.current?.();
+
     lastApiMessagesRef.current = apiMessages;
     streamingTextRef.current = '';
     lastTokenAtRef.current = Date.now();
