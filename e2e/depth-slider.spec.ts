@@ -290,6 +290,28 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     await page.getByTestId('depth-slider').getByRole('button', { name: /previous/i }).click();
     await expect(page.locator('.depth-context-label')).toContainText('Scene One', { timeout: 4_000 });
   });
+
+  // ─── SKY-6010 regression: Part zoom must not snap back to Book ────────────
+  //
+  // PR #857's ManuscriptView zoom bar exposes a "Part" option, but DesktopShell
+  // derived the manuscript cursor's zoom entirely from `viewDepth` (which has
+  // no 'part' member) and reset it to 'book' as a side effect of selecting
+  // 'part'. The "Part" pill would flash active for a render, then silently
+  // revert to "Full Book" being the pressed option.
+
+  test('TC-DS-08: clicking "Part" in the manuscript zoom bar stays active', async () => {
+    const depthBookBtn = page.getByTestId('depth-slider').getByRole('button', { name: /full book/i });
+    await depthBookBtn.click();
+    await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
+
+    const partBtn = page.getByTestId('msv-zoom-part');
+    await partBtn.click();
+    await expect(partBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 4_000 });
+    // Give a snap-back regression a moment to occur before asserting it didn't.
+    await page.waitForTimeout(300);
+    await expect(partBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('msv-zoom-book')).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 
 // ─── Cross-chapter navigation (SKY-5156 / GH #631) ──────────────────────────

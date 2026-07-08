@@ -14,7 +14,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef } from './story/manuscriptModel';
+import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
@@ -878,7 +878,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const [viewDepth, setViewDepth] = useState<ViewDepth>('scene');
+  const [viewDepth, setViewDepthRaw] = useState<ViewDepth>('scene');
+  // SKY-6010: 'part' has no ViewDepth of its own (Parts don't exist in the
+  // data model yet — book zoom stands in for it), so it's tracked as a flag
+  // alongside viewDepth==='book' rather than folded into ViewDepth's union.
+  // Any navigation through setViewDepth that isn't the manuscript zoom bar
+  // itself must clear it, or the flag would go stale and misreport zoom.
+  const [manuscriptPartZoom, setManuscriptPartZoom] = useState(false);
+  const setViewDepth = useCallback((depth: ViewDepth) => {
+    setManuscriptPartZoom(false);
+    setViewDepthRaw(depth);
+  }, []);
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
@@ -2996,7 +3006,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleSelectScene(scene, chapter, story);
     setViewDepth('scene');
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest, requestText, handleSelectScene]);
+  }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
@@ -3188,7 +3198,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setView('editor');
     setViewDepth('scene');
     handleTabChange('story');
-  }, [stories, handleSelectScene, handleTabChange]);
+  }, [stories, handleSelectScene, handleTabChange, setViewDepth]);
 
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
@@ -3231,7 +3241,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setOpenedNotePath(match.entityPath);
     handleNotesSubViewChange('editor');
     handleTabChange('notes');
-  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange]);
+  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, setViewDepth]);
 
   const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
@@ -3592,7 +3602,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
       if (first) handleSelectScene(first, selectedChapter, selectedStory);
     }
-  }, [selectedScene, selectedChapter, selectedStory, handleSelectScene]);
+  }, [selectedScene, selectedChapter, selectedStory, handleSelectScene, setViewDepth]);
 
   // SKY-1699: word counts for both panes in split mode — must be before early returns (rules-of-hooks).
   const splitWordCounts = useMemo(() => {
@@ -3613,14 +3623,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
   // Cursor indices follow the model's order-field sorting.
   const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
-    const zoom = viewDepth === 'book' ? 'book' : viewDepth === 'chapter' ? 'chapter' : 'scene';
+    const zoom: ZoomLevel =
+      viewDepth === 'book'
+        ? (manuscriptPartZoom ? 'part' : 'book')
+        : viewDepth === 'chapter' ? 'chapter' : 'scene';
     if (!selectedStory) return { zoom, part: 0, chapter: 0, scene: 0 };
     const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
     const ci = Math.max(0, selectedChapter ? chapters.findIndex((c) => c.id === selectedChapter.id) : 0);
     const scenes = chapters[ci] ? [...chapters[ci].scenes].sort((a, b) => a.order - b.order) : [];
     const si = Math.max(0, selectedScene ? scenes.findIndex((sc) => sc.id === selectedScene.id) : 0);
     return { zoom, part: 0, chapter: ci, scene: si };
-  }, [viewDepth, selectedStory, selectedChapter, selectedScene]);
+  }, [viewDepth, manuscriptPartZoom, selectedStory, selectedChapter, selectedScene]);
 
   const handleManuscriptCursorChange = useCallback((cursor: ManuscriptCursor) => {
     if (!selectedStory) return;
@@ -3631,8 +3644,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const sc = scenes[Math.min(cursor.scene, Math.max(0, scenes.length - 1))];
       if (sc) handleSelectScene(sc, ch, selectedStory);
     }
+    // setViewDepth clears manuscriptPartZoom as a side effect, so the 'part'
+    // flag must be (re-)applied after it, not before — see SKY-6010.
     setViewDepth(cursor.zoom === 'part' ? 'book' : cursor.zoom);
-  }, [selectedStory, handleSelectScene]);
+    setManuscriptPartZoom(cursor.zoom === 'part');
+  }, [selectedStory, handleSelectScene, setViewDepth]);
 
   // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
   // SKY-3211 handlers assume selectedChapter, so these find the owner).
