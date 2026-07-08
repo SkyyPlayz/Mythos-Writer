@@ -94,3 +94,22 @@ export function focusState(doc: PMNode, level: number, index: number): FocusStep
   const clamped = clampIndex(doc, level, index);
   return { index: clamped, count, canPrev: clamped > 0, canNext: clamped < count - 1 };
 }
+
+export interface FocusSelection {
+  level: number | null;
+  index: number;
+}
+
+/**
+ * SKY-5902: if the user edits away every heading of the focused level,
+ * `levelsPresent` stops reporting it — but the caller's selection state
+ * doesn't know that on its own. Snap back to "All" (Word's outline-view
+ * behavior) so a level selector never points at an option nothing renders
+ * for. Returns the same object (by reference) when no reset is needed.
+ */
+export function reconcileFocusLevel(selection: FocusSelection, levels: number[]): FocusSelection {
+  if (selection.level !== null && !levels.includes(selection.level)) {
+    return { level: null, index: 0 };
+  }
+  return selection;
+}
