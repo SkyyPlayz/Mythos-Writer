@@ -40,22 +40,22 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | — | ⛔ **Merge checkpoint 2** (M5–M8) | | | ✅ | |
 | M9 | Heading-zoom manuscript (continuous doc, 4 zoom levels) | C Story | CP2 | ✅ | #857 |
 | M10 | Toolbar v2 + page modes + draggable blocks + width drag | C Story | M9 | 🔀 | #873 |
-| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | 🔀 | #872 |
+| M11 | Comments (selection bar, gutter, agent actions) | C Story | M9 | ✅ | #872 |
 | M12 | Drafts & diff UI | C Story | M9 | ✅ | #859 |
-| M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | 🔀 | #874 |
+| M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ✅ | #874 |
 | M14 | Structure view + Book preview + export modal | C Story | M9 | ✅ | #861 |
 | M15 | Notes tree v2 + templates + multi-vault | D Notes | CP2 | ✅ | #860 |
-| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | 🔀 | #876 |
+| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | ✅ | #876 |
 | M17 | Canvas board engine (shared) | E Crafter | CP2 | ✅ | #858 |
 | — | ⛔ **Merge checkpoint 3** (M17 — canvas engine) | | | ✅ | |
 | M18 | Scene Crafter (setup, cards, plan→board, mini canvas) | E Crafter | CP3 | ✅ | #864 |
-| M19 | Brainstorm center (chat + board/map/clusters) | F Modules | CP3 | 🔀 | #871 |
+| M19 | Brainstorm center (chat + board/map/clusters) | F Modules | CP3 | ✅ | #871 |
 | M20 | Timeline v2 (5 views, eras, arcs, minimap, filters) | F Modules | CP2 | ✅ | #862 |
 | M21 | Vault graph v2 (stars, pinning, category wheels, inspector) | F Modules | CP2 | ✅ | #863 |
 | M22 | Agents: Beta Reader + identity files + autonomy | G Agents | CP2 | 🔀 | #878 |
-| M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | 🔨 | PR pending |
-| M24 | Settings remainder + vault/story import | H Final | CP2 | 🔀 | #877 |
-| M25 | Welcome wizard v2 | H Final | M2, M24 | 🔀 | #875 |
+| M23 | Archive plumbing: flags→comments, auto-link, timeline build | G Agents | M11, M20, M22 | 🔀 | #880 |
+| M24 | Settings remainder + vault/story import | H Final | CP2 | ✅ | #877 |
+| M25 | Welcome wizard v2 | H Final | M2, M24 | ✅ | #875 |
 | M26 | Release prep (v0.4.0-beta.1, changelog, installer) | H Final | all | 🔀 | this PR (`claude/beta3-m26-release`) |
 
 Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merged
