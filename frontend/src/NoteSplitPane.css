@@ -1,0 +1,116 @@
+/* M16 (Beta 3): notes split pane — prototype split header (HTML 1281–1299). */
+
+.nsp-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nsp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 6px;
+  flex: none;
+}
+
+.nsp-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5)); /* prototype rgba(0,240,255,.5) */
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex: none;
+}
+
+.nsp-select {
+  height: 26px;
+  max-width: 220px;
+  background: rgb(255 255 255 / 0.05); /* prototype rgba(255,255,255,.05) */
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.4)); /* prototype rgba(0,240,255,.4) */
+  border-radius: 8px;
+  color: rgb(219 228 245); /* prototype #dbe4f5 */
+  font-size: 11px;
+  padding: 0 7px;
+  cursor: pointer;
+}
+
+.nsp-spacer {
+  flex: 1;
+}
+
+.nsp-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+  cursor: pointer;
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.3)); /* prototype rgba(0,240,255,.3) */
+  background: none;
+  font-size: 11px;
+  flex: none;
+}
+
+.nsp-close:hover {
+  color: rgb(255 255 255);
+  background: rgb(255 255 255 / 0.08); /* prototype rgba(255,255,255,.08) */
+}
+
+.nsp-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nsp-body .note-viewer {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Split layout row inside the notes center. */
+.notes-split-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.notes-split-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-split-main > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.notes-split-divider {
+  width: 10px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+}
+
+.notes-split-divider:hover {
+  background: rgb(255 255 255 / 0.04); /* prototype rgba(255,255,255,.04) */
+}
+
+.notes-split-divider-grip {
+  width: 3px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--b1, rgb(0 240 255 / 0.4)); /* prototype rgba(0,240,255,.4) */
+  box-shadow: 0 0 8px var(--g1, rgb(0 240 255 / 0.4)); /* prototype rgba(0,240,255,.4) */
+}

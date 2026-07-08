@@ -16,6 +16,8 @@ interface Props {
   onWikiLinkClick?: (target: string) => void;
   /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
   resolvedWikiLinkTitles?: ReadonlySet<string>;
+  /** M16: stems resolving to story scenes, for gold [[scene link]] styling. */
+  sceneWikiLinkTitles?: ReadonlySet<string>;
   /** SKY-5702: cross-vault candidate list for the [[ autocomplete popup. */
   wikiLinkCandidates?: WikiLinkCandidate[];
   onWordCountChange?: (wordCount: number) => void;
@@ -62,6 +64,9 @@ function renderInline(text: string, onWikiLinkClick?: (target: string) => void):
           type="button"
           className="note-wiki-link"
           data-testid="note-wiki-link"
+          // M16: hover-preview target hook (distinct from data-wiki-link so the
+          // rich editor's CSS never bleeds onto preview-mode buttons).
+          data-wiki-target={target}
           onClick={() => onWikiLinkClick?.(target)}
         >
           {tok}
@@ -131,13 +136,14 @@ interface RichEditorProps {
   onChange: (text: string) => void;
   onWikiLinkClick?: (target: string) => void;
   resolvedWikiLinkTitles?: ReadonlySet<string>;
+  sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
   fileName: string;
 }
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, fileName }: RichEditorProps) {
+function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName }: RichEditorProps) {
   return (
     <div className="note-rich-editor">
       <RichTextEditor
@@ -146,6 +152,7 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTi
         onChangeMarkdown={onChange}
         onWikiLinkClick={onWikiLinkClick}
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+        sceneWikiLinkTitles={sceneWikiLinkTitles}
         wikiLinkCandidates={wikiLinkCandidates}
         wrapClassName="note-rich-editor-wrap"
         contentClassName="note-tiptap-content"
@@ -216,6 +223,7 @@ export default function NoteViewer({
   onModeChange,
   onWikiLinkClick,
   resolvedWikiLinkTitles,
+  sceneWikiLinkTitles,
   wikiLinkCandidates,
   onWordCountChange,
   onClose,
@@ -311,6 +319,25 @@ export default function NoteViewer({
       }
     };
   }, [flushSave, saveContent]);
+
+  // M16: the properties/tags panel writes frontmatter to this same file. Sync
+  // its result into the open editor so a later autosave doesn't clobber it.
+  // If local edits are pending (debounce timer armed), the editor wins.
+  const [externalRev, setExternalRev] = useState(0);
+  useEffect(() => {
+    const onExternalUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ path: string; content: string }>).detail;
+      if (!detail || detail.path !== path) return;
+      if (saveTimerRef.current) return; // unsaved local edits — do not overwrite
+      if (detail.content === contentRef.current) return;
+      contentRef.current = detail.content;
+      setContent(detail.content);
+      setExternalRev((rev) => rev + 1); // remount rich editor with fresh content
+      onWordCountChange?.(countWords(detail.content));
+    };
+    window.addEventListener('mythos:note-frontmatter-updated', onExternalUpdate);
+    return () => window.removeEventListener('mythos:note-frontmatter-updated', onExternalUpdate);
+  }, [path, onWordCountChange]);
 
   const applyMode = useCallback((next: NoteViewerMode) => {
     setMode(next);
@@ -423,11 +450,12 @@ export default function NoteViewer({
 
       {mode === 'rich' && (
         <NoteRichEditor
-          key={path}
+          key={`${path}:${externalRev}`}
           content={content}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}
           resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+          sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
           fileName={fileName}
         />

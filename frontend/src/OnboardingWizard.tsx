@@ -3,13 +3,27 @@ import { type TruncatePathOptions } from './utils/truncatePath';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import { Button } from './components/ui/Button';
+// Beta 3 M25 (welcome wizard v2): brand header assets + real preset engine for
+// the guided-setup genre/theme steps (prototype welcome wizard, HTML 2779–2855).
+import logoUrl from './assets/logo.png';
+import cosmicBgUrl from './assets/cosmic-bg.webp';
+import {
+  applyLiquidNeonV2Tokens,
+  normalizeLiquidNeonV2,
+  hexA,
+  type LiquidNeonV2Settings,
+} from './theme/liquidNeonEngine';
+import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
+import { showLnToast } from './theme/lnToast';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 // SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
 // SKY-2990: step-import is the 3-section Import/Open picker screen
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'step-import';
+// Beta 3 M25: custom-genre + custom-theme extend the Custom Setup path into the
+// prototype's 4-step guided wizard (location → template → genre → neon theme).
+type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'step-import';
 // SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
 // title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
 // backend alias during the onboarding v2.1 transition.
@@ -74,6 +88,23 @@ const GENRE_OPTIONS: GenreOption[] = [
       'Story Vault/\n└── The Last Wednesday Club\n    ├── Manuscript/ (2 chapters, 6 scenes)\n    └── (Outline, Timeline sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (5 suspects)\n    └── Research/ (1 timeline)',
   },
 ];
+
+// ─── Beta 3 M25: guided-setup genre + theme steps (prototype welcome wizard) ──
+
+/** Prototype genre preset list (`this.genres`, prototype HTML 3118). */
+const WIZARD_GENRES = [
+  'Epic Fantasy', 'Dark Fantasy', 'Sci-Fi', 'Urban Fantasy',
+  'Thriller', 'Romance', 'Literary', 'Historical',
+] as const;
+type WizardGenre = (typeof WIZARD_GENRES)[number];
+
+/** Wizard theme shortlist (prototype `wizThemes`, HTML 4442). */
+const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = ['classic', 'aurora', 'cyber'];
+
+/** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
+function genreTestId(genre: string): string {
+  return `wiz-genre-${genre.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
 
 interface TemplateItem {
   id: string;
@@ -273,6 +304,17 @@ function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongsi
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`. */
+function WizardDots({ total, current }: { total: number; current: number }) {
+  return (
+    <div className="wiz-dots" data-testid="wiz-dots" aria-hidden="true">
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
+      ))}
+    </div>
+  );
+}
+
 interface StartingPointCardProps {
   icon: string;
   title: string;
@@ -282,9 +324,11 @@ interface StartingPointCardProps {
   testId: string;
   isSecondary?: boolean;
   cardRef?: React.RefObject<HTMLButtonElement>;
+  /** Beta 3 M25: prototype corner chip (e.g. "Recommended", HTML 2790). */
+  chip?: string;
 }
 
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, isSecondary, cardRef }: StartingPointCardProps) {
+function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, isSecondary, cardRef, chip }: StartingPointCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -301,6 +345,7 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       aria-label={`${title}: ${description}`}
       type="button"
     >
+      {chip && <span className="gs-card__chip" aria-hidden="true">{chip}</span>}
       <span className="gs-card__icon" aria-hidden="true">{icon}</span>
       <span className="gs-card__title">{title}</span>
       <span className="gs-card__desc">{description}</span>
@@ -528,6 +573,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const customVaultNameInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
+  // ─── Beta 3 M25: guided-setup personalization (genre + neon theme) ─────────
+  const [wizGenre, setWizGenre] = useState<WizardGenre>('Epic Fantasy');
+  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('classic');
+  // Non-null once "Open my vault ✦" ran, so Try Again keeps the personalization.
+  const guidedPersonalizationRef = useRef<{ genre: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
+
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
   const [importMwPath, setImportMwPath] = useState('');
   const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
@@ -668,6 +719,47 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setStep('custom-template');
   }
 
+  // ─── Beta 3 M25: guided-setup finish (genre + theme persisted) ─────────────
+
+  /**
+   * Fold the guided-setup personalization (genre + neon preset) into the
+   * completed settings. No-op unless the guided "Open my vault ✦" path ran.
+   * Applies the preset tokens immediately (same live-apply path as the
+   * Appearance settings page), persists via settingsSet (non-fatal — the shell
+   * re-saves settings on any later change), and fires the prototype's
+   * "Vault ready" toast (prototype `wizFinish`, HTML 4447).
+   */
+  function withGuidedPersonalization(updated: AppSettings): AppSettings {
+    const guided = guidedPersonalizationRef.current;
+    if (!guided) return updated;
+    const preset = LIQUID_NEON_PRESETS[guided.theme];
+    const liquidNeonV2: LiquidNeonV2Settings = {
+      ...normalizeLiquidNeonV2(initialSettings.liquidNeonV2),
+      setKey: guided.theme,
+      slots: [...preset.c] as LiquidNeonV2Settings['slots'],
+      wp: 'match',
+    };
+    const merged: AppSettings = { ...updated, liquidNeonV2, onboardingGenre: guided.genre };
+    applyLiquidNeonV2Tokens(liquidNeonV2, cosmicBgUrl);
+    // Persist as a patch over the FRESH on-disk settings — onboarding:complete
+    // just wrote main-side fields (firstLaunchAt, gettingStartedProgress, …)
+    // that a stale full-object write would clobber.
+    void (async () => {
+      try {
+        const fresh = await window.api.settingsGet();
+        await window.api.settingsSet({ ...fresh, liquidNeonV2, onboardingGenre: guided.genre });
+      } catch { /* non-fatal — shell re-saves settings on any later change */ }
+    })();
+    showLnToast('Vault ready — welcome to Mythos Writer');
+    return merged;
+  }
+
+  /** "Open my vault ✦" on the theme step — custom finish + personalization. */
+  function handleGuidedFinish() {
+    guidedPersonalizationRef.current = { genre: wizGenre, theme: wizTheme };
+    void handleCustomFinish();
+  }
+
   async function handleCustomFinish() {
     setScaffoldError('');
     setFromCustomSetup(true);
@@ -699,7 +791,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      // Beta 3 M25: merge guided-setup genre + theme when that path was used.
+      onComplete(withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
       setScaffolding(false);
@@ -880,6 +973,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setSampleError('');
     setScaffoldError('');
     setStep('step1b');
+  }
+
+  // Beta 3 M25: entry into the 4-step guided setup (location → template →
+  // genre → neon theme), the prototype's welcome-wizard flow.
+  function handleStartGuidedSetup() {
+    setScaffoldError('');
+    guidedPersonalizationRef.current = null;
+    setStep('custom-location');
   }
 
   async function handleOpenExistingVault(vaultPath?: string) {
@@ -1422,7 +1523,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      // Beta 3 M25: a guided-setup retry keeps the picked genre + theme.
+      onComplete(withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
       setScaffolding(false);
@@ -1453,7 +1555,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'step-import') {
+      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'step-import') {
         setShowCancelConfirm(true);
       }
     }
@@ -1480,6 +1582,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       data-testid="gs-overlay"
     >
       <Toast message={templateToastState?.message ?? null} level={templateToastState?.level} />
+
+      {/* Beta 3 M25: prototype brand header (HTML 2783–2785) */}
+      <div className="gs-brand" data-testid="gs-brand">
+        <img className="gs-brand__logo" src={logoUrl} alt="" />
+        <div className="gs-brand__name">Mythos Writer</div>
+        <div className="gs-brand__tagline">Write the world before you write the book.</div>
+      </div>
+
       {/* Confirm dialog */}
       {showCancelConfirm && (
         <ConfirmDialog
@@ -1604,6 +1714,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onActivate={handleQuickStart}
               testId="card-quick-start"
               cardRef={quickStartRef}
+              chip="Recommended"
             />
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
@@ -1678,7 +1789,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <h2 className="gs-modal__title">Create a custom vault</h2>
           <p className="gs-modal__subtitle">Choose what you want to start with.</p>
-          <div className="gs-cards" role="group" aria-label="Choose a custom vault starting point">
+          <div className="gs-cards gs-cards--four" role="group" aria-label="Choose a custom vault starting point">
             <StartingPointCard
               icon="&#x1F4DD;"
               title="Blank Slate"
@@ -1702,6 +1813,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               ctaLabel="Browse templates &#x2192;"
               onActivate={handleSelectTemplate}
               testId="card-template"
+            />
+            <StartingPointCard
+              icon="&#x2726;"
+              title="Guided Setup"
+              description="Pick a location, genre preset, and neon theme — the full tour."
+              ctaLabel="Start the tour &#x2192;"
+              onActivate={handleStartGuidedSetup}
+              testId="card-guided-setup"
             />
           </div>
         </div>
@@ -2259,7 +2378,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 1 of 2</span>
+            <span className="gs-step-label">Custom Setup · 1 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2270,7 +2389,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
+          <WizardDots total={4} current={1} />
           <h2 className="gs-modal__title">Where should your vault live?</h2>
+          <p className="gs-modal__subtitle">Plain Markdown files on disk — yours, portable, no lock-in.</p>
 
           <div className="gs-form">
             <div className="gs-form__field">
@@ -2403,7 +2524,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 2 of 2</span>
+            <span className="gs-step-label">Custom Setup · 2 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2414,6 +2535,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
+          <WizardDots total={4} current={2} />
           <h2 className="gs-modal__title">Choose a starting template</h2>
           <p className="gs-modal__subtitle">You can always change this later.</p>
 
@@ -2463,14 +2585,161 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             </button>
           </div>
 
-          <div className="gs-actions">
+          <div className="gs-actions gs-actions--wiz">
             <button
-              className="btn-primary gs-actions__cta"
+              className="btn-ghost gs-wiz-skip"
               type="button"
               onClick={handleCustomFinish}
               data-testid="custom-template-finish"
             >
-              Finish &#x2192;
+              Skip personalization — create vault
+            </button>
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => setStep('custom-genre')}
+              data-testid="custom-template-continue"
+            >
+              Continue &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Custom Setup: Screen 3 — Genre preset (Beta 3 M25, prototype 2807–2818) ── */}
+      {step === 'custom-genre' && (
+        <div className="gs-modal" data-testid="screen-custom-genre">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setStep('custom-template')}
+              data-testid="custom-genre-back"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Custom Setup · 3 of 4</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="custom-genre-close"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <WizardDots total={4} current={3} />
+          <h2 className="gs-modal__title">Pick a genre preset</h2>
+          <p className="gs-modal__subtitle">Seeds note templates, beat sheet and agent personas. Change anytime.</p>
+
+          <div
+            role="radiogroup"
+            aria-label="Genre preset"
+            className="wiz-genre-grid"
+            onKeyDown={handleGridArrowKeys}
+            data-testid="wiz-genre-grid"
+          >
+            {WIZARD_GENRES.map((g) => (
+              <button
+                key={g}
+                type="button"
+                role="radio"
+                aria-checked={wizGenre === g}
+                className={`wiz-genre-chip${wizGenre === g ? ' wiz-genre-chip--selected' : ''}`}
+                onClick={() => setWizGenre(g)}
+                data-testid={genreTestId(g)}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => setStep('custom-theme')}
+              data-testid="custom-genre-continue"
+            >
+              Continue &#x2192;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Custom Setup: Screen 4 — Neon theme (Beta 3 M25, prototype 2820–2829) ── */}
+      {step === 'custom-theme' && (
+        <div className="gs-modal" data-testid="screen-custom-theme">
+          <div className="gs-modal__header">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setStep('custom-genre')}
+              data-testid="custom-theme-back"
+            >
+              <span aria-hidden="true">&#x2190;</span> Back
+            </button>
+            <span className="gs-step-label">Custom Setup · 4 of 4</span>
+            <button
+              className="gs-close-btn"
+              type="button"
+              aria-label="Close setup"
+              onClick={() => setShowCancelConfirm(true)}
+              data-testid="custom-theme-close"
+            >
+              &#x2715;
+            </button>
+          </div>
+          <WizardDots total={4} current={4} />
+          <h2 className="gs-modal__title">Choose your neon</h2>
+          <p className="gs-modal__subtitle">Every border in the app glows with your palette. Fine-tune later in Settings.</p>
+
+          <div
+            role="radiogroup"
+            aria-label="Neon theme preset"
+            className="wiz-theme-row"
+            onKeyDown={handleGridArrowKeys}
+            data-testid="wiz-theme-row"
+          >
+            {WIZARD_THEME_KEYS.map((k) => {
+              const preset = LIQUID_NEON_PRESETS[k];
+              const selected = wizTheme === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={`wiz-theme-card${selected ? ' wiz-theme-card--selected' : ''}`}
+                  style={selected
+                    ? { borderColor: hexA(preset.c[0], 0.7), boxShadow: `0 0 18px -5px ${hexA(preset.c[0], 0.5)}` }
+                    : undefined}
+                  onClick={() => setWizTheme(k)}
+                  data-testid={`wiz-theme-${k}`}
+                >
+                  <span
+                    className="wiz-theme-card__bar"
+                    aria-hidden="true"
+                    style={{
+                      background: `linear-gradient(120deg,${preset.c.join(',')})`,
+                      boxShadow: `0 0 12px -2px ${hexA(preset.c[1], 0.55)}`,
+                    }}
+                  />
+                  <span className="wiz-theme-card__name">{preset.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="gs-actions">
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={handleGuidedFinish}
+              data-testid="custom-theme-finish"
+            >
+              Open my vault &#x2726;
             </button>
           </div>
         </div>

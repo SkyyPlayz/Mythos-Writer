@@ -70,7 +70,8 @@ import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import BrainstormPage from './BrainstormPage';
-import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, type CrossTabLinkMatch } from './crossTabLinkResolver';
+import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
+import type { WikiLinkPreviewData } from './WikiLinkHoverPreview';
 import {
   tabbedShellReducer,
   DEFAULT_TABBED_SHELL_STATE,
@@ -3217,6 +3218,89 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     () => buildWikiLinkCandidates({ stories, entities: allEntities, notePaths: allNotePaths }),
     [stories, allEntities, allNotePaths],
   );
+  // M16: stems that resolve to story scenes — those [[links]] render gold in
+  // the notes editor (Liquid Neon mkLink parity).
+  const sceneWikiLinkTitleIndex = useMemo(
+    () => buildSceneWikiLinkTitleIndex(stories),
+    [stories],
+  );
+
+  // M16: notes-editor wiki-link click — same resolution as the story editor,
+  // but an unresolved link CREATES the note in the Notes Vault (Obsidian
+  // parity, plan §M16 "unresolved click creates the note") instead of only
+  // toasting. The story editor keeps its warn-toast behavior.
+  const handleNotesWikiLinkClick = useCallback((target: string) => {
+    const resolution = resolveCrossTabLink(target, {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+    });
+    if (resolution.status === 'single') {
+      applyCrossTabLinkMatch(resolution.matches[0]);
+      return;
+    }
+    if (resolution.status === 'ambiguous') {
+      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
+      return;
+    }
+    const newNotePath = notePathForUnresolvedLink(target);
+    if (!newNotePath) return;
+    void (async () => {
+      const stem = wikiLinkTargetStem(target);
+      // Guard against a stale notePaths index: if the file already exists,
+      // just open it rather than overwrite.
+      const existing = await window.api.readNotesVault(newNotePath);
+      if (!('error' in existing)) {
+        setOpenedNotePath(newNotePath);
+        handleNotesSubViewChange('editor');
+        handleTabChange('notes');
+        return;
+      }
+      const written = await window.api.writeNotesVault(newNotePath, buildUnresolvedLinkNote(target));
+      if ('error' in written) {
+        showWikiLinkToast(`Could not create "${stem}" in the Notes Vault`, 'error');
+        return;
+      }
+      showWikiLinkToast(`Created "${stem}" in the Notes Vault`);
+      void loadEntities(); // refresh note paths so the link resolves immediately
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(newNotePath);
+      handleNotesSubViewChange('editor');
+      handleTabChange('notes');
+    })();
+  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
+
+  // M16: hover-preview resolver — notes read via the vault IPC, scenes from
+  // the already-loaded in-memory blocks. Null means "unresolved" and the card
+  // shows the click-would-create hint.
+  const resolveNotesWikiLinkPreview = useCallback(async (target: string): Promise<WikiLinkPreviewData | null> => {
+    const resolution = resolveCrossTabLink(target, {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+    });
+    if (resolution.matches.length === 0) return null;
+    const match = resolution.matches[0];
+    if (match.kind === 'scene') {
+      return {
+        kind: 'scene',
+        title: match.scene.title,
+        subtitle: `${match.story.title} › ${match.chapter.title}`,
+        markdown: match.scene.blocks.map((b) => b.content).join('\n\n'),
+      };
+    }
+    const r = await window.api.readNotesVault(match.entityPath);
+    if ('error' in r) return null; // fallback entity whose file does not exist yet
+    return {
+      kind: 'note',
+      title: match.entity.name,
+      subtitle: match.entityPath,
+      markdown: r.content,
+    };
+  }, [stories, allEntities, allNotePaths]);
 
   const handleSearchNavigate = useCallback((result: SearchResultItem) => {
     if (result.vault === 'story') {
@@ -4231,6 +4315,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  focusMode={writingMode === 'focus'}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4250,6 +4335,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCursorChange={handleManuscriptCursorChange}
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
+                  focusMode={writingMode === 'focus'}
                 />
                 <DepthEdgeArrows
                   depth="chapter"
@@ -4470,9 +4556,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onActiveNotePreviewChange={setNotePreviewMode}
           onActiveNoteWordCountChange={setOpenedNoteWordCount}
           onCloseActiveNote={() => setOpenedNotePath(null)}
-          onWikiLinkClick={handleWikiLinkClick}
+          onWikiLinkClick={handleNotesWikiLinkClick}
           resolvedWikiLinkTitles={wikiLinkTitleIndex}
           wikiLinkCandidates={wikiLinkCandidates}
+          sceneWikiLinkTitles={sceneWikiLinkTitleIndex}
+          resolveWikiLinkPreview={resolveNotesWikiLinkPreview}
+          notePaths={allNotePaths}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}
