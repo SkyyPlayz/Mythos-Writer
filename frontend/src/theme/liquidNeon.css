@@ -65,6 +65,23 @@
   }
 }
 
+/* ═══ Hidden-window animation pause (audit P4) ═══
+   BackgroundStack toggles `ln-anim-paused` on <html> from a visibilitychange
+   listener. While the window is hidden/minimized the always-on ambient loops
+   (wallpaper drift, ambience dot fields, frame ring spin/hue, per-panel
+   border breathe) freeze instead of burning GPU/CPU all session.
+   `!important` is required: the ambience, frame-spin, and border-overlay
+   layers get their `animation` shorthand inline, which implicitly resets
+   animation-play-state to `running`. No visual change while visible — the
+   class only exists while the document is hidden, so visual-regression
+   baselines are unaffected. */
+html.ln-anim-paused .ln-bg-wallpaper,
+html.ln-anim-paused .ln-bg-ambience,
+html.ln-anim-paused .ln-frame-mask > div,
+html.ln-anim-paused .ln-border-overlay {
+  animation-play-state: paused !important;
+}
+
 /* ═══ Window frame ring (M3, prototype HTML 2667–2677) ═══
    Two conic layers masked to the window edges: a crisp ring padded by --bw
    and a 7px halo blurred 9px at half opacity. The xor/exclude mask keeps only
