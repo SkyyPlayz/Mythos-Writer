@@ -224,14 +224,25 @@ describe('retention cap', () => {
     expect(listSnapshots(tmpDir, 'scene-unlimited')).toHaveLength(5);
   });
 
-  it('prunes snapshots older than maxAgeDays', () => {
+  // Backdate a snapshot the way saveSnapshot encodes age: rewrite the stored
+  // createdAt AND rename the file so its timestamp prefix matches. Returns the
+  // new filename.
+  function backdateSnapshot(sceneId: string, filename: string, snap: SceneSnapshot, oldDate: Date): string {
+    const snapshotDir = path.join(tmpDir, '.snapshots', sceneId);
+    const outdated = { ...snap, createdAt: oldDate.toISOString() };
+    const suffix = filename.split('_').slice(1).join('_'); // keep seq + id
+    const newName = `${oldDate.toISOString().replace(/[:.]/g, '-')}_${suffix}`;
+    fs.writeFileSync(path.join(snapshotDir, filename), JSON.stringify(outdated), 'utf-8');
+    fs.renameSync(path.join(snapshotDir, filename), path.join(snapshotDir, newName));
+    return newName;
+  }
+
+  it('prunes snapshots older than maxAgeDays (age derived from filename)', () => {
     const snap = saveSnapshot(tmpDir, 'scene-age', 'Old content');
-    // Backdate the stored snapshot to 40 days ago
     const snapshotDir = path.join(tmpDir, '.snapshots', 'scene-age');
     const files = fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.json'));
     const oldDate = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
-    const outdated = { ...snap, createdAt: oldDate.toISOString() };
-    fs.writeFileSync(path.join(snapshotDir, files[0]), JSON.stringify(outdated), 'utf-8');
+    backdateSnapshot('scene-age', files[0], snap, oldDate);
 
     // Save a fresh snapshot — pruning fires after write
     saveSnapshot(tmpDir, 'scene-age', 'New content', { maxPerScene: 100, maxAgeDays: 30 });
@@ -239,6 +250,59 @@ describe('retention cap', () => {
     const remaining = listSnapshots(tmpDir, 'scene-age');
     expect(remaining).toHaveLength(1);
     expect(remaining[0].content).toBe('New content');
+  });
+
+  it('keeps snapshots newer than maxAgeDays (filename fast path — no file read needed)', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-age-keep', 'Recent content');
+    const snapshotDir = path.join(tmpDir, '.snapshots', 'scene-age-keep');
+    const files = fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.json'));
+    const recentDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    backdateSnapshot('scene-age-keep', files[0], snap, recentDate);
+
+    saveSnapshot(tmpDir, 'scene-age-keep', 'New content', { maxPerScene: 100, maxAgeDays: 30 });
+
+    expect(listSnapshots(tmpDir, 'scene-age-keep')).toHaveLength(2);
+  });
+
+  it('falls back to reading the file when the filename timestamp is malformed (old → pruned)', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-age-fb', 'Old content');
+    const snapshotDir = path.join(tmpDir, '.snapshots', 'scene-age-fb');
+    const files = fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.json'));
+    // Malformed name (no parsable timestamp prefix) + backdated stored createdAt.
+    const oldDate = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+    const outdated = { ...snap, createdAt: oldDate.toISOString() };
+    fs.writeFileSync(path.join(snapshotDir, files[0]), JSON.stringify(outdated), 'utf-8');
+    fs.renameSync(path.join(snapshotDir, files[0]), path.join(snapshotDir, `legacy-name-${snap.id}.json`));
+
+    saveSnapshot(tmpDir, 'scene-age-fb', 'New content', { maxPerScene: 100, maxAgeDays: 30 });
+
+    const remaining = listSnapshots(tmpDir, 'scene-age-fb');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].content).toBe('New content');
+  });
+
+  it('fallback keeps a malformed-filename snapshot whose stored createdAt is recent', () => {
+    const snap = saveSnapshot(tmpDir, 'scene-age-fb2', 'Recent content');
+    const snapshotDir = path.join(tmpDir, '.snapshots', 'scene-age-fb2');
+    const files = fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.json'));
+    fs.renameSync(path.join(snapshotDir, files[0]), path.join(snapshotDir, `legacy-name-${snap.id}.json`));
+
+    saveSnapshot(tmpDir, 'scene-age-fb2', 'New content', { maxPerScene: 100, maxAgeDays: 30 });
+
+    expect(listSnapshots(tmpDir, 'scene-age-fb2')).toHaveLength(2);
+  });
+
+  it('keeps a malformed-filename snapshot with corrupt JSON (never deletes what it cannot date)', () => {
+    saveSnapshot(tmpDir, 'scene-age-corrupt', 'Good content');
+    const snapshotDir = path.join(tmpDir, '.snapshots', 'scene-age-corrupt');
+    fs.writeFileSync(path.join(snapshotDir, 'not-a-timestamp.json'), '{corrupt', 'utf-8');
+
+    saveSnapshot(tmpDir, 'scene-age-corrupt', 'New content', { maxPerScene: 100, maxAgeDays: 30 });
+
+    // Corrupt file is unreadable by listSnapshots but must still exist on disk.
+    const onDisk = fs.readdirSync(snapshotDir).filter((f) => f.endsWith('.json'));
+    expect(onDisk).toContain('not-a-timestamp.json');
+    expect(listSnapshots(tmpDir, 'scene-age-corrupt')).toHaveLength(2);
   });
 });
 

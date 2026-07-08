@@ -94,7 +94,6 @@ export const IPC_CHANNELS = {
 
   // Versioning — per-scene snapshots
   SNAPSHOT_SAVE: 'snapshot:save',
-  SNAPSHOT_SAVE_SYNC: 'snapshot:save-sync',
   SNAPSHOT_LIST: 'snapshot:list',
   SNAPSHOT_GET: 'snapshot:get',
   SNAPSHOT_RESTORE: 'snapshot:restore',

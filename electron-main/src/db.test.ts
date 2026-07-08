@@ -52,6 +52,8 @@ import {
   deleteContinuityIssue,
   insertArchiveAuditLog,
   listArchiveAuditLog,
+  pruneGenerationLog,
+  pruneArchiveHistory,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -135,6 +137,24 @@ describe('migrations', () => {
     const r2 = db2.prepare('PRAGMA user_version').get() as { user_version: number } | undefined;
     expect(r2?.user_version ?? 0).toBe(v1);
     expect(listSuggestions()).toEqual([]);
+  });
+
+  it('v27 creates idx_generation_log_agent_created and budget queries use it', () => {
+    const db = openDb(tmpDir);
+    const row = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_generation_log_agent_created'"
+      )
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe('idx_generation_log_agent_created');
+
+    // The hot budget-window aggregate must hit the index, not full-scan.
+    const plan = db
+      .prepare(
+        'EXPLAIN QUERY PLAN SELECT COUNT(*) as cnt FROM generation_log WHERE agent = ? AND created_at >= ?'
+      )
+      .all('writing-assistant', new Date().toISOString()) as Array<{ detail: string }>;
+    expect(plan.map((p) => p.detail).join(' ')).toContain('idx_generation_log_agent_created');
   });
 });
 
@@ -643,10 +663,10 @@ describe('world DB migration — entity tables', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('sets user_version to 26 on fresh vault', () => {
+  it('sets user_version to 27 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(26);
+    expect(row.user_version).toBe(27);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -688,12 +708,12 @@ describe('world DB migration — entity tables', () => {
     expect(row?.name).toBe('entity_fts');
   });
 
-  it('migration is idempotent — close/reopen keeps user_version at 26', () => {
+  it('migration is idempotent — close/reopen keeps user_version at 27', () => {
     openDb(tmpDir);
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(26);
+    expect(row.user_version).toBe(27);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -712,7 +732,7 @@ describe('world DB migration — entity tables', () => {
     expect(names).toContain('scene_text_hash');
   });
 
-  it('upgrading from v13 reaches v26 with all entity tables and writing_log', () => {
+  it('upgrading from v13 reaches v27 with all entity tables and writing_log', () => {
     const mythosDir = path.join(tmpDir, '.mythos');
     fs.mkdirSync(mythosDir, { recursive: true });
     const dbPath = path.join(mythosDir, 'state.db');
@@ -728,7 +748,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(26);
+    expect(row.user_version).toBe(27);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -996,11 +1016,11 @@ describe('scene_snapshots / SKY-1611', () => {
     expect(getDraftSnapshotContent(listDraftSnapshots('scene-A')[0].id)).toBe('content for A');
   });
 
-  it('migration is idempotent — reopening DB keeps user_version at 26', () => {
+  it('migration is idempotent — reopening DB keeps user_version at 27', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(26);
+    expect(row.user_version).toBe(27);
   });
 });
 
@@ -1045,7 +1065,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(26);
+    expect(row.user_version).toBe(27);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
@@ -1295,5 +1315,217 @@ describe('archive_audit_log table', () => {
     const byItem = listArchiveAuditLog(itemId);
     expect(byItem).toHaveLength(1);
     expect(byItem[0].item_id).toBe(itemId);
+  });
+});
+
+// ─── Retention pruning (perf audit P2) ───
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * DAY_MS).toISOString();
+}
+
+describe('pruneGenerationLog', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-prune-'));
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeGenRow(id: string, createdAt: string, agent = 'writing-assistant', tokens = 100) {
+    return {
+      id,
+      agent,
+      model: 'claude-haiku-4-5-20251001',
+      endpoint: 'messages.stream',
+      request_id: null,
+      tokens_in: tokens,
+      tokens_out: 0,
+      latency_ms: 1,
+      error: null,
+      created_at: createdAt,
+      payload_digest: null,
+    };
+  }
+
+  it('removes rows older than the cutoff and keeps recent ones', () => {
+    const db = openDb(tmpDir);
+    insertGenerationLog(makeGenRow('gen-old', daysAgoIso(10)));
+    insertGenerationLog(makeGenRow('gen-recent', daysAgoIso(1)));
+
+    const deleted = pruneGenerationLog(db, 7);
+    expect(deleted).toBe(1);
+
+    const rows = listGenerationLog();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('gen-recent');
+  });
+
+  it('default 7-day retention keeps a 6-day-old row', () => {
+    const db = openDb(tmpDir);
+    insertGenerationLog(makeGenRow('gen-6d', daysAgoIso(6)));
+    expect(pruneGenerationLog(db)).toBe(0);
+    expect(listGenerationLog()).toHaveLength(1);
+  });
+
+  it('budget counting stays correct after prune', () => {
+    const db = openDb(tmpDir);
+    // Old row is outside every budget window AND outside retention.
+    insertGenerationLog(makeGenRow('gen-old', daysAgoIso(10), 'writing-assistant', 999_999));
+    insertGenerationLog(makeGenRow('gen-now', new Date().toISOString(), 'writing-assistant', 150));
+
+    const hourMs = 60 * 60 * 1000;
+    const dayMs = DAY_MS;
+    const beforeHour = countTokensInWindow('writing-assistant', hourMs);
+    const beforeDay = countTokensInWindow('writing-assistant', dayMs);
+
+    pruneGenerationLog(db, 7);
+
+    expect(countTokensInWindow('writing-assistant', hourMs)).toBe(beforeHour);
+    expect(countTokensInWindow('writing-assistant', dayMs)).toBe(beforeDay);
+    expect(countTokensInWindow('writing-assistant', hourMs)).toBe(150);
+  });
+
+  it('openDb prunes stale generation_log rows on reopen', () => {
+    openDb(tmpDir);
+    insertGenerationLog(makeGenRow('gen-stale', daysAgoIso(30)));
+    insertGenerationLog(makeGenRow('gen-fresh', daysAgoIso(1)));
+    closeDb();
+
+    openDb(tmpDir);
+    const rows = listGenerationLog();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('gen-fresh');
+  });
+});
+
+describe('pruneArchiveHistory', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-prune-arch-'));
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeIssue(overrides: Partial<Parameters<typeof insertContinuityIssue>[0]> = {}) {
+    return {
+      id: crypto.randomUUID(),
+      category: 'character_attribute_drift' as const,
+      severity: 'high' as const,
+      manuscript_scene_id: 'scene-1',
+      manuscript_offset: 0,
+      manuscript_excerpt: 'She had blue eyes',
+      vault_note_path: 'characters/Alice.md',
+      vault_line: 7,
+      vault_excerpt: 'Eye color: green',
+      rationale: 'Eye color mismatch',
+      proposed_match_archive: 'Update manuscript to green',
+      proposed_suggest_story: 'Update archive to blue',
+      status: 'open' as const,
+      resolved_at: null,
+      resolved_action: null,
+      created_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  function makeAuditEntry(createdAt: string) {
+    return {
+      id: crypto.randomUUID(),
+      action: 'ignore' as const,
+      source: 'archive_agent',
+      item_id: crypto.randomUUID(),
+      target_path: null,
+      changed_from: null,
+      changed_to: null,
+      scene_id: 'scene-1',
+      reason: null,
+      created_at: createdAt,
+    };
+  }
+
+  it('deletes resolved and ignored issues older than the cutoff', () => {
+    const db = openDb(tmpDir);
+    insertContinuityIssue(makeIssue({
+      id: 'ci-old-resolved', status: 'resolved',
+      resolved_at: daysAgoIso(40), resolved_action: 'match_archive_to_story', created_at: daysAgoIso(45),
+    }));
+    insertContinuityIssue(makeIssue({
+      id: 'ci-old-ignored', status: 'ignored',
+      resolved_at: daysAgoIso(40), resolved_action: 'ignore', created_at: daysAgoIso(45),
+    }));
+
+    const { continuityIssues } = pruneArchiveHistory(db, 30);
+    expect(continuityIssues).toBe(2);
+    expect(getContinuityIssue('ci-old-resolved')).toBeNull();
+    expect(getContinuityIssue('ci-old-ignored')).toBeNull();
+  });
+
+  it('never deletes open issues, no matter how old', () => {
+    const db = openDb(tmpDir);
+    insertContinuityIssue(makeIssue({ id: 'ci-ancient-open', status: 'open', created_at: daysAgoIso(400) }));
+
+    const { continuityIssues } = pruneArchiveHistory(db, 30);
+    expect(continuityIssues).toBe(0);
+    expect(getContinuityIssue('ci-ancient-open')).not.toBeNull();
+  });
+
+  it('keeps recently ignored issues so re-surfacing (AC-CC-07) still works', () => {
+    const db = openDb(tmpDir);
+    insertContinuityIssue(makeIssue({
+      id: 'ci-recent-ignored', status: 'ignored',
+      resolved_at: daysAgoIso(2), resolved_action: 'ignore', created_at: daysAgoIso(50),
+    }));
+
+    const { continuityIssues } = pruneArchiveHistory(db, 30);
+    expect(continuityIssues).toBe(0);
+    // Row is still available for reSurfaceIgnoredItems (scene + status query).
+    expect(listContinuityIssuesByScene('scene-1', 'ignored')).toHaveLength(1);
+  });
+
+  it('falls back to created_at when resolved_at is null on a non-open row', () => {
+    const db = openDb(tmpDir);
+    insertContinuityIssue(makeIssue({ id: 'ci-null-resolved', status: 'ignored', resolved_at: null, created_at: daysAgoIso(40) }));
+
+    const { continuityIssues } = pruneArchiveHistory(db, 30);
+    expect(continuityIssues).toBe(1);
+    expect(getContinuityIssue('ci-null-resolved')).toBeNull();
+  });
+
+  it('deletes archive_audit_log rows older than the cutoff and keeps recent ones', () => {
+    const db = openDb(tmpDir);
+    insertArchiveAuditLog(makeAuditEntry(daysAgoIso(40)));
+    const recent = makeAuditEntry(daysAgoIso(1));
+    insertArchiveAuditLog(recent);
+
+    const { archiveAuditLog } = pruneArchiveHistory(db, 30);
+    expect(archiveAuditLog).toBe(1);
+    const remaining = listArchiveAuditLog();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe(recent.id);
+  });
+
+  it('openDb prunes stale archive history on reopen', () => {
+    openDb(tmpDir);
+    insertContinuityIssue(makeIssue({
+      id: 'ci-stale', status: 'resolved',
+      resolved_at: daysAgoIso(60), resolved_action: 'ignore', created_at: daysAgoIso(60),
+    }));
+    insertContinuityIssue(makeIssue({ id: 'ci-open', status: 'open', created_at: daysAgoIso(60) }));
+    closeDb();
+
+    openDb(tmpDir);
+    expect(getContinuityIssue('ci-stale')).toBeNull();
+    expect(getContinuityIssue('ci-open')).not.toBeNull();
   });
 });

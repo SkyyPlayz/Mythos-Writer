@@ -184,6 +184,12 @@ export function openDb(vaultRoot: string): DatabaseSync {
   _dbPath = dbPath;
   _db.exec('PRAGMA journal_mode = WAL');
   runMigrations(_db);
+  // Retention pruning at open — synchronous is fine here (startup-only).
+  // Keeps hot-path tables bounded across long-lived vaults (perf audit P2).
+  try {
+    pruneGenerationLog(_db);
+    pruneArchiveHistory(_db);
+  } catch { /* non-fatal — pruning must never block DB open */ }
   return _db;
 }
 
@@ -737,6 +743,72 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 26');
   }
+
+  if (currentVersion < 27) {
+    // Perf audit P2: budget counters (countTokensInWindow, checkCallBudget,
+    // countRequestsInWindowWithDb) run `WHERE agent = ? AND created_at >= ?`
+    // aggregate queries up to 3× per agent call and on every scheduler tick.
+    // generation_log grows unboundedly within a session, so without this index
+    // every check is a full-table scan on the main-process event loop.
+    // Guard matches v17/v24 pattern for artificially seeded test DBs.
+    const hasGenLog27 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='generation_log'"
+    ).get();
+    if (hasGenLog27) {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_generation_log_agent_created
+          ON generation_log (agent, created_at);
+      `);
+    }
+    db.exec('PRAGMA user_version = 27');
+  }
+}
+
+// ─── Retention pruning (perf audit P2) ───
+// Both prune functions run synchronously once at DB open — startup-only cost.
+// They keep the hot-path tables bounded so budget counters and continuity
+// list queries don't degrade over long-lived vaults.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Delete generation_log rows older than maxAgeDays. The longest budget window
+ * is daily, so 7 days of retention is generous while keeping the table (and
+ * the 3×-per-call budget aggregates that scan it) bounded.
+ * Returns the number of rows deleted.
+ */
+export function pruneGenerationLog(db: DatabaseSync, maxAgeDays = 7): number {
+  const cutoff = new Date(Date.now() - maxAgeDays * DAY_MS).toISOString();
+  const result = db.prepare('DELETE FROM generation_log WHERE created_at < ?').run(cutoff);
+  return Number(result.changes);
+}
+
+/**
+ * Delete settled archive-history rows older than maxAgeDays:
+ * - continuity_issues whose status is NOT 'open' (resolved/ignored) and whose
+ *   resolution timestamp (falling back to created_at) is older than the cutoff.
+ *   Open rows are never pruned. Ignored rows ARE re-surfaced by design
+ *   (AC-CC-07, reSurfaceIgnoredItems) — but re-surfacing flips them back to
+ *   'open' (clearing resolved_at), so pruning only ignored rows that stayed
+ *   ignored for the full retention window is compatible with it.
+ * - archive_audit_log rows older than the cutoff (append-only audit trail
+ *   that no hot path reads back beyond recency).
+ * Returns per-table deletion counts.
+ */
+export function pruneArchiveHistory(
+  db: DatabaseSync,
+  maxAgeDays = 30,
+): { continuityIssues: number; archiveAuditLog: number } {
+  const cutoff = new Date(Date.now() - maxAgeDays * DAY_MS).toISOString();
+  const issues = db
+    .prepare(
+      `DELETE FROM continuity_issues
+        WHERE status != 'open'
+          AND COALESCE(resolved_at, created_at) < ?`
+    )
+    .run(cutoff);
+  const audit = db.prepare('DELETE FROM archive_audit_log WHERE created_at < ?').run(cutoff);
+  return { continuityIssues: Number(issues.changes), archiveAuditLog: Number(audit.changes) };
 }
 
 // ─── Project settings (key-value store for per-project state) ───

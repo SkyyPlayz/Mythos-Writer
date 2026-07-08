@@ -159,31 +159,63 @@ export function deleteAllSnapshotsVault(vaultRoot: string): number {
   return total;
 }
 
+/**
+ * Parse the snapshot creation time from its filename. saveSnapshot encodes
+ * createdAt as the first `_`-delimited segment with ':' and '.' replaced by
+ * '-' (e.g. `2026-07-08T12-34-56-789Z_00000001_<uuid>.json`).
+ * Returns null when the filename does not match, so callers can fall back to
+ * reading the JSON payload.
+ */
+function parseCreatedAtFromFilename(filename: string): Date | null {
+  const stamp = filename.split('_')[0];
+  const m = stamp.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{1,3})Z$/);
+  if (!m) return null;
+  const date = new Date(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Perf audit P2: this runs on EVERY scene save. It previously readFileSync +
+// JSON.parse'd every snapshot file just to read createdAt — O(total snapshot
+// bytes) of synchronous main-process I/O per save. The filename already
+// encodes the timestamp, so derive age from it and only fall back to reading
+// the file when the filename doesn't parse. A single readdirSync feeds both
+// the age and count branches. Behavior is otherwise identical.
 function pruneOldSnapshots(dir: string, retention: SnapshotRetention): void {
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+
   const cutoff = retention.maxAgeDays > 0
     ? new Date(Date.now() - retention.maxAgeDays * 24 * 60 * 60 * 1000)
     : null;
 
-  // Age-based pruning: remove files whose stored createdAt is before the cutoff
+  // Age-based pruning: remove files created before the cutoff.
+  let remaining = files;
   if (cutoff) {
-    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    remaining = [];
+    for (const f of files) {
       const fullPath = path.join(dir, f);
-      try {
-        const snap = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as SceneSnapshot;
-        if (new Date(snap.createdAt) < cutoff) {
+      let createdAt = parseCreatedAtFromFilename(f);
+      if (!createdAt) {
+        // Fallback (legacy/renamed files): read the stored createdAt.
+        try {
+          const snap = JSON.parse(fs.readFileSync(fullPath, 'utf-8')) as SceneSnapshot;
+          const parsed = new Date(snap.createdAt);
+          if (!Number.isNaN(parsed.getTime())) createdAt = parsed;
+        } catch { /* ignore corrupt files — kept, as before */ }
+      }
+      if (createdAt && createdAt < cutoff) {
+        try {
           fs.unlinkSync(fullPath);
-        }
-      } catch { /* ignore corrupt files */ }
+          continue;
+        } catch { /* ignore — treat as still present */ }
+      }
+      remaining.push(f);
     }
   }
 
-  // Count-based pruning: keep newest maxPerScene files
-  if (retention.maxPerScene > 0) {
-    const remaining = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
-    if (remaining.length > retention.maxPerScene) {
-      for (const f of remaining.slice(0, remaining.length - retention.maxPerScene)) {
-        try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ }
-      }
+  // Count-based pruning: keep newest maxPerScene files (filenames sort in creation order).
+  if (retention.maxPerScene > 0 && remaining.length > retention.maxPerScene) {
+    for (const f of remaining.slice(0, remaining.length - retention.maxPerScene)) {
+      try { fs.unlinkSync(path.join(dir, f)); } catch { /* ignore */ }
     }
   }
 }
