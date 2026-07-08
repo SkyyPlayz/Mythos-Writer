@@ -82,6 +82,12 @@ export interface RichTextEditorProps {
    */
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   /**
+   * M16: normalized stems that resolve to STORY scenes (from
+   * `buildSceneWikiLinkTitleIndex`) — those links get `.wiki-link-scene`
+   * (gold, Liquid Neon prototype parity). Omit to skip scene-kind styling.
+   */
+  sceneWikiLinkTitles?: ReadonlySet<string>;
+  /**
    * SKY-5702: cross-vault candidate list (from `buildWikiLinkCandidates`) the
    * `[[` autocomplete popup filters client-side. Omit to disable the popup
    * (typed `[[links]]` still parse and click-navigate as before).
@@ -120,6 +126,7 @@ export default function RichTextEditor({
   plainTextWikiLinkFallback = false,
   onEntityClick,
   resolvedWikiLinkTitles,
+  sceneWikiLinkTitles,
   wikiLinkCandidates = EMPTY_WIKI_LINK_CANDIDATES,
   showToolbar = true,
   wrapClassName,
@@ -252,13 +259,17 @@ export default function RichTextEditor({
   }, [editor]);
 
   // SKY-5702: push the resolved-title index into the WikiLinkResolution plugin
-  // whenever the vault state (or the editor instance) changes.
+  // whenever the vault state (or the editor instance) changes. M16 adds the
+  // scene-title subset so scene links render gold (prototype parity).
   useEffect(() => {
     if (!editor) return;
     editor.view.dispatch(
-      editor.state.tr.setMeta(WIKI_LINK_RESOLUTION_META, resolvedWikiLinkTitles ?? new Set())
+      editor.state.tr.setMeta(WIKI_LINK_RESOLUTION_META, {
+        resolvedTitles: resolvedWikiLinkTitles ?? new Set<string>(),
+        sceneTitles: sceneWikiLinkTitles ?? new Set<string>(),
+      })
     );
-  }, [editor, resolvedWikiLinkTitles]);
+  }, [editor, resolvedWikiLinkTitles, sceneWikiLinkTitles]);
 
   // Flush a pending debounced change on unmount so surface switches never drop text.
   // flushPendingOnUnmount is config, read once by design.

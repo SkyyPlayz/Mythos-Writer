@@ -45,7 +45,7 @@ Beta 3 turns Mythos Writer into the **Liquid Neon design**: a macOS-liquid-glass
 | M13 | Reader (TTS moving highlight, voices, audiobook bar) | C Story | M9, M11 | ⏳ | |
 | M14 | Structure view + Book preview + export modal | C Story | M9 | 🔀 | #861 |
 | M15 | Notes tree v2 + templates + multi-vault | D Notes | CP2 | 🔀 | #860 |
-| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | ⏳ | |
+| M16 | Wiki-link parity + tags/properties/backlinks + splits | D Notes | M15 | 🔨 | branch `claude/beta3-m16-wikilinks` |
 | M17 | Canvas board engine (shared) | E Crafter | CP2 | 🔀 | #858 |
 | — | ⛔ **Merge checkpoint 3** (M17 — canvas engine) | | | | |
 | M18 | Scene Crafter (setup, cards, plan→board, mini canvas) | E Crafter | CP3 | 🔀 | #864 |
