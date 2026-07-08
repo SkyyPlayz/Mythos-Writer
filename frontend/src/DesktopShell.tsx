@@ -4395,6 +4395,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="book"
@@ -4423,6 +4425,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  ttsSettings={appSettings?.tts}
+                  voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
                   depth="chapter"

@@ -1,0 +1,171 @@
+/* Beta 3 M13 — audiobook bar, ported from the Liquid Neon prototype's
+   Book-preview reader bar (design-handoff/prototype/"Mythos Writer - Liquid
+   Neon.dc.html" 641–658; gradient play disc + jump pills shared with the
+   gutter dock 913–943). No bare hex: rgb() literals carry the prototype hex
+   in a comment; token fallbacks live inside var(). */
+
+.msv-reader-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  margin: 0 22px 12px;
+  border-radius: 14px;
+  background: rgba(15, 19, 33, 0.94); /* prototype #0f1321 @ .94 */
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  box-shadow:
+    0 10px 30px rgba(3, 5, 12, 0.5),
+    0 0 var(--gr, 26px) -8px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.msv-reader-nav {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  flex: none;
+  font-family: inherit;
+}
+
+.msv-reader-nav--wide {
+  width: 32px;
+  font-size: 8.5px;
+  font-weight: 700;
+}
+
+.msv-reader-nav:hover {
+  color: var(--n1, #00f0ff);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.msv-reader-play {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* prototype gradient #00f0ff → #9b5fff → #ff4dff */
+  background: var(
+    --grad,
+    linear-gradient(120deg, rgb(0, 240, 255), rgb(155, 95, 255), rgb(255, 77, 255))
+  );
+  color: rgb(11, 13, 23); /* prototype #0b0d17 */
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  flex: none;
+  box-shadow: 0 0 18px -4px var(--g2, rgba(155, 95, 255, 0.5));
+  transition: transform 0.12s ease;
+}
+
+.msv-reader-play:hover {
+  transform: scale(1.07);
+}
+
+.msv-reader-status {
+  font-size: 10.5px;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  margin-left: 4px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.msv-reader-pos {
+  width: 110px;
+  min-width: 0;
+  flex: none;
+  accent-color: var(--n1, #00f0ff);
+}
+
+.msv-reader-pos:disabled {
+  opacity: 0.4;
+}
+
+.msv-reader-spacer {
+  flex: 1;
+}
+
+.msv-reader-rate-readout {
+  font-size: 10px;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  flex: none;
+}
+
+.msv-reader-rate {
+  width: 90px;
+  min-width: 0;
+  flex: none;
+  accent-color: var(--n1, #00f0ff);
+}
+
+.msv-reader-voice {
+  height: 26px;
+  max-width: 150px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 8px;
+  color: rgb(219, 228, 245); /* prototype #dbe4f5 */
+  font-size: 10.5px;
+  padding: 0 6px;
+  cursor: pointer;
+  flex: none;
+  font-family: inherit;
+}
+
+.msv-reader-jump {
+  padding: 4px 11px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  color: var(--n1, #00f0ff);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  flex: none;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.msv-reader-jump:hover {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+}
+
+.msv-reader-jump--dim {
+  border-color: var(--b1, rgba(0, 240, 255, 0.3));
+  color: rgb(174, 186, 208); /* prototype #aebad0 */
+  font-weight: 400;
+}
+
+.msv-reader-jump--dim:hover {
+  color: rgb(255, 255, 255);
+  background: none;
+}
+
+.msv-reader-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(142, 157, 184); /* prototype #8e9db8 */
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  flex: none;
+}
+
+.msv-reader-close:hover {
+  color: rgb(255, 255, 255);
+  background: rgba(255, 255, 255, 0.08);
+}
