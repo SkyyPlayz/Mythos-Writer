@@ -620,13 +620,15 @@ describe('writeFacts — real DB persistence', () => {
 // ─── runExtractionSideCall ───
 
 describe('EXTRACTION_SYSTEM_PROMPT', () => {
-  it('teaches an inclusion rule aligned with the 0.6 confidence filter', () => {
-    // runExtractionSideCall discards items with extractionConfidence < 0.6, so
-    // the prompt must ask the model to keep borderline entities (with honest
-    // confidence) while omitting sub-threshold ones at the source.
-    expect(EXTRACTION_SYSTEM_PROMPT).toContain('honest extractionConfidence');
-    expect(EXTRACTION_SYSTEM_PROMPT).toContain('below 0.6');
+  it('teaches coverage with honest confidence and must not leak the 0.6 threshold', () => {
+    // runExtractionSideCall discards items with extractionConfidence < 0.6.
+    // The prompt asks for every entity with an honest score and lets that
+    // filter triage — naming the threshold would invite score inflation.
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('even minor or uncertain ones');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('honestly low extractionConfidence');
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('Return [] only when the turn names no story entities at all');
+    expect(EXTRACTION_SYSTEM_PROMPT).not.toContain('0.6:');
+    expect(EXTRACTION_SYSTEM_PROMPT).not.toContain('below 0.6');
   });
 
   it('keeps the JSON contract phrasing the parser depends on', () => {
@@ -649,6 +651,24 @@ describe('runExtractionSideCall — parsing', () => {
     expect(proposals[0].sourceConversationTurnId).toBe('turn-1');
     expect(proposals[0].status).toBe('pending');
     expect(proposals[1].kind).toBe('location');
+  });
+
+  it('salvages the well-formed prefix of an array truncated mid-element (max_tokens cutoff)', async () => {
+    const full = [
+      { kind: 'character', title: 'Aria', destinationPath: 'characters/aria.md', body: 'A fierce warrior', frontmatter: {}, extractionConfidence: 0.9 },
+      { kind: 'location', title: 'Iron Gate', destinationPath: 'locations/iron-gate.md', body: 'A massive fortress', frontmatter: {}, extractionConfidence: 0.85 },
+    ];
+    // Simulate stop_reason max_tokens: the array is cut off inside a third element.
+    const truncated = `${JSON.stringify(full).slice(0, -1)},{"kind":"item","title":"Moonbl`;
+    const callLlm = async () => truncated;
+    const proposals = await runExtractionSideCall('Some text', new Set(), new Set(), 'turn-t', { callLlm });
+    expect(proposals.map((p) => p.title)).toEqual(['Aria', 'Iron Gate']);
+  });
+
+  it('still returns [] for unsalvageable non-array garbage', async () => {
+    const callLlm = async () => 'Sorry, I cannot extract entities right now.';
+    const proposals = await runExtractionSideCall('Some text', new Set(), new Set(), 'turn-g', { callLlm });
+    expect(proposals).toEqual([]);
   });
 
   it('preserves extraction order from LLM response', async () => {

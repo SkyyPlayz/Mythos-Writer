@@ -277,13 +277,13 @@ export function writeFacts(
 /**
  * System prompt for the extraction side-call (sent by the IPC handler in
  * main.ts). Keep the JSON shape on a single line — it nudges the model toward
- * compact output, which matters because the response is one all-or-nothing
- * JSON array parsed by parseExtractionResponse.
+ * compact output, which matters because the response is one JSON array with a
+ * bounded output budget.
  *
- * The inclusion rule mirrors the extractionConfidence >= 0.6 filter in
- * runExtractionSideCall: borderline-but-real entities are kept with an honest
- * confidence score, while sub-threshold entities are omitted at the source so
- * they don't spend output budget on entries the filter would discard anyway.
+ * Inclusion policy: report everything with an honest confidence score and let
+ * the extractionConfidence >= 0.6 filter in runExtractionSideCall do the
+ * triage. Do NOT teach the model the 0.6 threshold — that invites inflating
+ * borderline scores to clear the bar, which defeats the filter.
  */
 export const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
 Extract named story entities from the conversation turn provided.
@@ -298,10 +298,9 @@ Rules:
 - extractionConfidence: clarity with which the entity appears in the text (0.0–1.0).
 - One entry per distinct named entity. No duplicates.
 - destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md".
-- Include every entity that appears with reasonable clarity — when torn, include it
-  with an honest extractionConfidence rather than leaving it out. Omit only entities
-  you would score below 0.6: those are discarded automatically, and spending output
-  on them crowds out real entries.
+- Include every distinct named story entity, even minor or uncertain ones — express
+  doubt through an honestly low extractionConfidence instead of leaving the entity
+  out. Keep each body to one short sentence so the array stays compact.
 - Return [] only when the turn names no story entities at all.
 - Raw JSON array only — no markdown fences.`;
 
@@ -328,7 +327,8 @@ function parseExtractionResponse(raw: string): RawExtractionItem[] {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return [];
+    parsed = salvageTruncatedArray(cleaned);
+    if (parsed === null) return [];
   }
   if (!Array.isArray(parsed)) return [];
   return parsed.filter(
@@ -339,6 +339,27 @@ function parseExtractionResponse(raw: string): RawExtractionItem[] {
       typeof (item as Record<string, unknown>).title === 'string' &&
       typeof (item as Record<string, unknown>).extractionConfidence === 'number',
   );
+}
+
+/**
+ * Salvage the well-formed prefix of a JSON array cut off mid-element (e.g. the
+ * model hit max_tokens on an entity-dense turn). Walks back to each `}` and
+ * tries to close the array there, keeping the longest parseable prefix.
+ * Returns null when no prefix parses — the caller then treats the response as
+ * unusable, same as before.
+ */
+function salvageTruncatedArray(text: string): unknown[] | null {
+  if (!text.startsWith('[')) return null;
+  let cursor = text.length;
+  while ((cursor = text.lastIndexOf('}', cursor - 1)) !== -1) {
+    try {
+      const candidate = JSON.parse(`${text.slice(0, cursor + 1)}]`);
+      return Array.isArray(candidate) ? candidate : null;
+    } catch {
+      // Try the previous `}` — this one was inside a nested object or string.
+    }
+  }
+  return null;
 }
 
 /**
