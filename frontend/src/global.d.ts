@@ -891,6 +891,7 @@ interface Window {
       system?: string;
       model?: string;
       maxTokens?: number;
+      thinking?: 'adaptive';
     }) => Promise<{ streamId: string }>;
     streamCancel: (streamId: string) => Promise<{ cancelled: boolean }>;
     streamAck: (streamId: string, count: number) => void;

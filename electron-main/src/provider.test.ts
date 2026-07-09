@@ -16,6 +16,7 @@ import {
   providerConfigForAgent,
   isModelValid,
   ANTHROPIC_MODEL_ALLOWLIST,
+  anthropicThinkingParam,
   createProvider,
   PROVIDER_CAPABILITIES,
   getVoiceProvider,
@@ -166,6 +167,70 @@ describe('Anthropic routing (§1)', () => {
     const controller = new AbortController();
     await collectTokens(streamFromProvider(makeAnthropicConfig(), makeReq({ signal: controller.signal })));
     expect((capturedOptions as { signal: AbortSignal }).signal).toBe(controller.signal);
+  });
+});
+
+// ─── Anthropic thinking config (§1b) ─────────────────────────────────────────
+
+describe('Anthropic thinking config (§1b)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function captureParams(): { get: () => Record<string, unknown> } {
+    let captured: unknown;
+    const mockMessages = {
+      stream: vi.fn().mockImplementation(function (params: unknown) {
+        captured = params;
+        return (async function* () {})();
+      }),
+    };
+    (Anthropic as unknown as ReturnType<typeof vi.fn>).mockImplementation(function (this: unknown) {
+      return { messages: mockMessages };
+    });
+    return { get: () => captured as Record<string, unknown> };
+  }
+
+  it('sends adaptive thinking when requested on a supporting model', async () => {
+    const params = captureParams();
+    await collectTokens(streamFromProvider(
+      makeAnthropicConfig({ model: 'claude-sonnet-4-6' }),
+      makeReq({ thinking: 'adaptive' }),
+    ));
+    expect(params.get().thinking).toEqual({ type: 'adaptive' });
+  });
+
+  it('omits thinking when adaptive is requested on a model without adaptive support (Haiku 4.5)', async () => {
+    const params = captureParams();
+    await collectTokens(streamFromProvider(
+      makeAnthropicConfig({ model: 'claude-haiku-4-5-20251001' }),
+      makeReq({ thinking: 'adaptive' }),
+    ));
+    expect(params.get()).not.toHaveProperty('thinking');
+  });
+
+  it('omits thinking by default on models where omission means thinking-off', async () => {
+    const params = captureParams();
+    await collectTokens(streamFromProvider(
+      makeAnthropicConfig({ model: 'claude-sonnet-4-6' }),
+      makeReq(),
+    ));
+    expect(params.get()).not.toHaveProperty('thinking');
+  });
+
+  it('sends explicit disabled thinking on thinking-on-by-default models when no thinking requested', async () => {
+    const params = captureParams();
+    await collectTokens(streamFromProvider(
+      makeAnthropicConfig({ model: 'claude-sonnet-5' }),
+      makeReq(),
+    ));
+    expect(params.get().thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('anthropicThinkingParam gates adaptive by model and defaults sonnet-5 to disabled', () => {
+    expect(anthropicThinkingParam('claude-opus-4-8', 'adaptive')).toEqual({ thinking: { type: 'adaptive' } });
+    expect(anthropicThinkingParam('claude-opus-4-7', 'adaptive')).toEqual({ thinking: { type: 'adaptive' } });
+    expect(anthropicThinkingParam('claude-haiku-4-5-20251001', 'adaptive')).toEqual({});
+    expect(anthropicThinkingParam('claude-sonnet-5', undefined)).toEqual({ thinking: { type: 'disabled' } });
+    expect(anthropicThinkingParam('claude-sonnet-4-6', undefined)).toEqual({});
   });
 });
 
@@ -482,6 +547,11 @@ describe('isModelValid (§5)', () => {
     for (const m of ANTHROPIC_MODEL_ALLOWLIST) {
       expect(isModelValid(m, 'anthropic')).toBe(true);
     }
+  });
+
+  it('includes the newer Opus/Sonnet tiers in the allowlist', () => {
+    expect(isModelValid('claude-opus-4-8', 'anthropic')).toBe(true);
+    expect(isModelValid('claude-sonnet-5', 'anthropic')).toBe(true);
   });
 
   it('rejects unknown model for anthropic kind', () => {

@@ -65,7 +65,9 @@ export const LG_DEFAULTS: LiquidNeonPrefs = LIQUID_NEON_DEFAULTS;
 export const MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku' },
   { value: 'claude-sonnet-4-6', label: 'claude-sonnet' },
+  { value: 'claude-sonnet-5', label: 'claude-sonnet-5' },
   { value: 'claude-opus-4-7', label: 'claude-opus' },
+  { value: 'claude-opus-4-8', label: 'claude-opus-4-8' },
 ];
 
 export type AgentName = 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader';

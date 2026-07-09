@@ -276,7 +276,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('provenance:upsert', { entityId, entityKind, agentId, agentType, runId }),
 
   // Generalized token streaming — stream:* channels (MYT-156)
-  streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number }) =>
+  streamStart: (payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; system?: string; model?: string; maxTokens?: number; thinking?: 'adaptive' }) =>
     ipcRenderer.invoke('stream:start', payload),
   streamCancel: (streamId: string) =>
     ipcRenderer.invoke('stream:cancel', { streamId }),

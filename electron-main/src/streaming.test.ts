@@ -457,6 +457,30 @@ describe('STREAM_START payload validation (F19)', () => {
     expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
   });
 
+  it('rejects unknown thinking value with INVALID_PAYLOAD', async () => {
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+      thinking: 'extended',
+    } as unknown as StreamStartPayload);
+    expect(result).toEqual({ error: STREAM_ERRORS.INVALID_PAYLOAD });
+  });
+
+  it("accepts thinking: 'adaptive' and forwards it to the provider", async () => {
+    let capturedReq: unknown;
+    mockStreamFromProvider.mockImplementation(async function* (_cfg, req) {
+      capturedReq = req;
+    });
+    const { startHandler } = getHandlers(reg);
+    const result = await startHandler(makeEvent(makeSender()), {
+      messages: [{ role: 'user', content: 'Hi' }],
+      thinking: 'adaptive',
+    });
+    expect((result as { streamId: string }).streamId).toBeDefined();
+    await vi.waitFor(() => expect(capturedReq).toBeDefined());
+    expect((capturedReq as { thinking?: string }).thinking).toBe('adaptive');
+  });
+
   it('accepts maxTokens equal to cap', async () => {
     mockStreamFromProvider.mockImplementation(async function*() {});
     const { startHandler } = getHandlers(reg);

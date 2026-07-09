@@ -34,14 +34,16 @@ import type { Scene } from './types';
 import './BrainstormPage.css';
 
 
-const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. When the user mentions specific named characters, locations, items, or notable concepts, emit structured fact tags using this format:
+const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. Respond naturally to help develop the story — be generative and specific, offer possibilities rather than prescriptions, and keep replies conversational.
+
+Fact tagging (required): at the end of your response, emit one structured fact tag per named entity using this format:
 
 [FACT:type|Name|Brief description]
 
 Where type is: character, location, item, or note.
 Example: [FACT:character|Aria Voss|A young sorceress who discovers her hidden powers]
 
-Emit one FACT tag per entity. Place them at the end of your response. Then respond naturally to help develop the story.`;
+Tag every named character, location, item, or notable concept in the turn — entities the author mentions and ones you introduce alike. When unsure whether something deserves a tag, emit the tag: the author reviews every detected fact before it is saved, so a missed fact costs more than an extra one. Use note for anything that fits no other type.`;
 
 export const STALL_TIMEOUT_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
@@ -825,9 +827,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     };
 
     try {
+      // Interactive chat: request adaptive thinking (honored only on models
+      // that support it) with token headroom, since thinking tokens count
+      // against the same maxTokens budget as the visible reply.
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
         system: contextSystemRef.current,
+        maxTokens: 2048,
+        thinking: 'adaptive',
       });
       streamIdRef.current = sid;
     } catch (err) {

@@ -104,6 +104,8 @@ export interface StreamStartPayload {
   system?: string;
   model?: string;
   maxTokens?: number;
+  /** Thinking-mode hint forwarded to the provider (see StreamRequest.thinking). */
+  thinking?: 'adaptive';
 }
 
 interface StreamEntry {
@@ -232,6 +234,7 @@ async function runStream(
       messages: payload.messages,
       system: payload.system,
       maxTokens: payload.maxTokens,
+      thinking: payload.thinking,
       signal: controller.signal,
     })) {
       const entry = reg.get(streamId);
@@ -299,7 +302,8 @@ export function registerStreamingHandlers(
       (payload.model !== undefined && !isModelValid(payload.model, baseConfig.kind)) ||
       (payload.maxTokens !== undefined &&
         (!Number.isInteger(payload.maxTokens) || payload.maxTokens < 1 || payload.maxTokens > MAX_TOKENS_CAP)) ||
-      (payload.system !== undefined && (typeof payload.system !== 'string' || payload.system.length > MAX_SYSTEM_LENGTH))
+      (payload.system !== undefined && (typeof payload.system !== 'string' || payload.system.length > MAX_SYSTEM_LENGTH)) ||
+      (payload.thinking !== undefined && payload.thinking !== 'adaptive')
     ) {
       return { error: STREAM_ERRORS.INVALID_PAYLOAD };
     }
