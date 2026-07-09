@@ -274,33 +274,35 @@ export function writeFacts(
 
 // ─── Extraction side-call ───
 
-const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
+/**
+ * System prompt for the extraction side-call (sent by the IPC handler in
+ * main.ts). Keep the JSON shape on a single line — it nudges the model toward
+ * compact output, which matters because the response is one JSON array with a
+ * bounded output budget.
+ *
+ * Inclusion policy: report everything with an honest confidence score and let
+ * the extractionConfidence >= 0.6 filter in runExtractionSideCall do the
+ * triage. Do NOT teach the model the 0.6 threshold — that invites inflating
+ * borderline scores to clear the bar, which defeats the filter.
+ */
+export const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
 Extract named story entities from the conversation turn provided.
 
 Return ONLY a valid JSON array. Each element must have this exact shape:
-{
-  "kind": "character" | "location" | "item" | "faction" | "scene_card" | "inbox",
-  "title": "<entity name>",
-  "destinationPath": "<suggested/vault/relative/path>",
-  "body": "<description or prose>",
-  "frontmatter": {},
-  "extractionConfidence": <0.0–1.0>
-}
+{"kind":"character"|"location"|"item"|"faction"|"scene_card"|"inbox","title":"<name>","destinationPath":"<suggested/path>","body":"<description>","frontmatter":{},"extractionConfidence":<0.0-1.0>}
 
 Rules:
-- character: named persons, beings, or creatures with story significance
-- location: named places, regions, settings, or environments
-- item: named objects, artifacts, tools, or props with story significance
-- faction: named organizations, groups, guilds, or factions
-- scene_card: a discrete scene, event, or plot beat worth capturing
-- inbox: general notes, themes, concepts, world-rules, or anything that does not fit above
-- extractionConfidence: how clearly and unambiguously the entity appears in the text (0.0–1.0)
-- One entry per distinct named entity; do not duplicate
-- destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md"
+- character: named persons or beings. location: named places. item: named objects/artifacts.
+- faction: organizations or groups. scene_card: a discrete scene or plot beat.
+- inbox: general notes, themes, world-rules, or unclassified concepts.
+- extractionConfidence: clarity with which the entity appears in the text (0.0–1.0).
+- One entry per distinct named entity. No duplicates.
+- destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md".
 - Include every distinct named story entity, even minor or uncertain ones — express
-  doubt through a lower extractionConfidence instead of leaving the entity out
-- Return [] only when the turn names no story entities at all
-- Do NOT include markdown code fences in your response — raw JSON array only`;
+  doubt through an honestly low extractionConfidence instead of leaving the entity
+  out. Keep each body to one short sentence so the array stays compact.
+- Return [] only when the turn names no story entities at all.
+- Raw JSON array only — no markdown fences.`;
 
 interface RawExtractionItem {
   kind: string;
@@ -325,7 +327,8 @@ function parseExtractionResponse(raw: string): RawExtractionItem[] {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    return [];
+    parsed = salvageTruncatedArray(cleaned);
+    if (parsed === null) return [];
   }
   if (!Array.isArray(parsed)) return [];
   return parsed.filter(
@@ -336,6 +339,27 @@ function parseExtractionResponse(raw: string): RawExtractionItem[] {
       typeof (item as Record<string, unknown>).title === 'string' &&
       typeof (item as Record<string, unknown>).extractionConfidence === 'number',
   );
+}
+
+/**
+ * Salvage the well-formed prefix of a JSON array cut off mid-element (e.g. the
+ * model hit max_tokens on an entity-dense turn). Walks back to each `}` and
+ * tries to close the array there, keeping the longest parseable prefix.
+ * Returns null when no prefix parses — the caller then treats the response as
+ * unusable, same as before.
+ */
+function salvageTruncatedArray(text: string): unknown[] | null {
+  if (!text.startsWith('[')) return null;
+  let cursor = text.length;
+  while ((cursor = text.lastIndexOf('}', cursor - 1)) !== -1) {
+    try {
+      const candidate = JSON.parse(`${text.slice(0, cursor + 1)}]`);
+      return Array.isArray(candidate) ? candidate : null;
+    } catch {
+      // Try the previous `}` — this one was inside a nested object or string.
+    }
+  }
+  return null;
 }
 
 /**
