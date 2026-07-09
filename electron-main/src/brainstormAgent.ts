@@ -297,7 +297,9 @@ Rules:
 - extractionConfidence: how clearly and unambiguously the entity appears in the text (0.0–1.0)
 - One entry per distinct named entity; do not duplicate
 - destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md"
-- Return [] if the text contains no clearly named story entities worth capturing
+- Include every distinct named story entity, even minor or uncertain ones — express
+  doubt through a lower extractionConfidence instead of leaving the entity out
+- Return [] only when the turn names no story entities at all
 - Do NOT include markdown code fences in your response — raw JSON array only`;
 
 interface RawExtractionItem {

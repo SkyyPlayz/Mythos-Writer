@@ -213,6 +213,19 @@ export interface StreamRequest {
   system?: string;
   maxTokens?: number;
   signal?: AbortSignal;
+  /**
+   * Thinking-mode hint, honored by providers/models that support it (currently
+   * Anthropic only; ignored by OpenAI-compatible providers).
+   *
+   * - 'adaptive' — request adaptive thinking on models that support it
+   *   (interactive chat surfaces, where reasoning quality matters and the
+   *   caller has budgeted maxTokens headroom for thinking tokens).
+   * - omitted — thinking off. Scan-style calls with small token budgets and
+   *   strict output contracts rely on this; on models that would otherwise
+   *   run thinking by default an explicit disabled config is sent so thinking
+   *   tokens can't eat the output budget.
+   */
+  thinking?: 'adaptive';
 }
 
 export interface StreamResult {
@@ -288,6 +301,45 @@ export const PROVIDER_CAPABILITIES: Record<ProviderKind, ReadonlyArray<ProviderC
 
 // ─── Anthropic implementation ─────────────────────────────────────────────────
 
+/**
+ * Anthropic models that accept `thinking: {type: 'adaptive'}` (the 4.6 family
+ * and newer). Haiku 4.5 predates adaptive thinking and rejects it with a 400,
+ * so it must stay out of this set.
+ */
+export const ANTHROPIC_ADAPTIVE_THINKING_MODELS = new Set([
+  'claude-sonnet-4-6',
+  'claude-opus-4-7',
+  'claude-opus-4-8',
+  'claude-sonnet-5',
+]);
+
+/**
+ * Anthropic models that run adaptive thinking when the `thinking` parameter is
+ * omitted (Claude Sonnet 5 and newer Sonnets). Requests that want thinking off
+ * must send an explicit disabled config on these models — otherwise thinking
+ * tokens count against max_tokens and can truncate small structured-output
+ * scans (JSON-per-line contracts) into unparseable fragments.
+ */
+export const ANTHROPIC_THINKING_ON_BY_DEFAULT_MODELS = new Set(['claude-sonnet-5']);
+
+/**
+ * Build the `thinking` request fragment for an Anthropic Messages call.
+ * Shared by the streaming path and the non-streaming extraction side-call so
+ * both apply the same model gating.
+ */
+export function anthropicThinkingParam(
+  model: string,
+  mode: 'adaptive' | undefined,
+): { thinking: Anthropic.Messages.ThinkingConfigParam } | Record<string, never> {
+  if (mode === 'adaptive' && ANTHROPIC_ADAPTIVE_THINKING_MODELS.has(model)) {
+    return { thinking: { type: 'adaptive' } };
+  }
+  if (ANTHROPIC_THINKING_ON_BY_DEFAULT_MODELS.has(model)) {
+    return { thinking: { type: 'disabled' } };
+  }
+  return {};
+}
+
 async function* runAnthropicStream(
   config: ProviderConfig,
   req: StreamRequest,
@@ -298,6 +350,7 @@ async function* runAnthropicStream(
     {
       model: config.model,
       max_tokens: req.maxTokens ?? 1024,
+      ...anthropicThinkingParam(config.model, req.thinking),
       ...(req.system !== undefined ? { system: req.system } : {}),
       messages: req.messages,
     },
@@ -454,7 +507,9 @@ export function createProvider(config: ProviderConfig): Provider {
 export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
   'claude-haiku-4-5-20251001',
   'claude-sonnet-4-6',
+  'claude-sonnet-5',
   'claude-opus-4-7',
+  'claude-opus-4-8',
 ]);
 
 

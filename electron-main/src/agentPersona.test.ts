@@ -202,6 +202,28 @@ describe('getBundledPersona (§5)', () => {
     const content = getBundledPersona('brainstorm', 'AGENTS');
     expect(content).toContain('[FACT:');
   });
+
+  it('brainstorm AGENTS teaches only tag types parseFacts accepts (no deprecated note)', () => {
+    const content = getBundledPersona('brainstorm', 'AGENTS');
+    // parseFacts accepts character|location|item|faction|scene_card|inbox;
+    // the deprecated 'note' type is silently dropped by the parser, so the
+    // bundled prompt must not teach it.
+    expect(content).not.toContain('[FACT:note|');
+    expect(content).toContain('[FACT:inbox|');
+    expect(content).toContain('[FACT:faction|');
+    expect(content).toContain('[FACT:scene_card|');
+  });
+
+  it('archive AGENTS instructs coverage with severity marking rather than dropping uncertain flags', () => {
+    const content = getBundledPersona('archive', 'AGENTS');
+    expect(content).toContain('Report every genuine contradiction');
+    expect(content).toContain('lower severity');
+  });
+
+  it('betaReader AGENTS requires verbatim anchors', () => {
+    const content = getBundledPersona('betaReader', 'AGENTS');
+    expect(content).toContain('character-for-character');
+  });
 });
 
 // ─── §6  Security: validatePersonaArgs + resetPersonaFile containment ─────────
