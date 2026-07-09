@@ -11,6 +11,7 @@ import {
   validateVaultPath,
   parseAliasHints,
   runExtractionSideCall,
+  EXTRACTION_SYSTEM_PROMPT,
   type BrainstormAgentDeps,
   type ParsedFact,
   type WrittenEntity,
@@ -617,6 +618,22 @@ describe('writeFacts — real DB persistence', () => {
 });
 
 // ─── runExtractionSideCall ───
+
+describe('EXTRACTION_SYSTEM_PROMPT', () => {
+  it('teaches an inclusion rule aligned with the 0.6 confidence filter', () => {
+    // runExtractionSideCall discards items with extractionConfidence < 0.6, so
+    // the prompt must ask the model to keep borderline entities (with honest
+    // confidence) while omitting sub-threshold ones at the source.
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('honest extractionConfidence');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('below 0.6');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Return [] only when the turn names no story entities at all');
+  });
+
+  it('keeps the JSON contract phrasing the parser depends on', () => {
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Return ONLY a valid JSON array');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('no markdown fences');
+  });
+});
 
 describe('runExtractionSideCall — parsing', () => {
   it('parses a valid multi-entity LLM response', async () => {

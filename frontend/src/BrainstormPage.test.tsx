@@ -417,6 +417,30 @@ describe('BrainstormPage', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('sends the tuned stream payload: fact-tag coverage prompt, 2048 budget, no thinking', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test payload' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() => expect(mockStreamStart).toHaveBeenCalled());
+    const payload = mockStreamStart.mock.calls[0][0] as {
+      system?: string;
+      maxTokens?: number;
+      thinking?: string;
+    };
+    // 2048 == the stream:start MAX_TOKENS_CAP — gives long replies room for
+    // the required trailing [FACT:...] tags.
+    expect(payload.maxTokens).toBe(2048);
+    // Thinking must stay off: this surface's stall/hard-timeout timers reset
+    // only on visible tokens, and thinking would share the capped budget.
+    expect(payload.thinking).toBeUndefined();
+    // The system prompt carries the coverage-first tagging rule.
+    expect(payload.system).toContain('[FACT:type|Name|Brief description]');
+    expect(payload.system).toContain('When unsure whether something deserves a tag, emit the tag');
+  });
+
   it('shows an error when streamStart fails', async () => {
     mockStreamStart.mockRejectedValueOnce(new Error('ANTHROPIC_API_KEY is not set.'));
 

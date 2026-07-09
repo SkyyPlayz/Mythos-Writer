@@ -827,14 +827,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     };
 
     try {
-      // Interactive chat: request adaptive thinking (honored only on models
-      // that support it) with token headroom, since thinking tokens count
-      // against the same maxTokens budget as the visible reply.
+      // 2048 (the IPC cap) doubles the old 1024 default so long replies keep
+      // room for the required trailing [FACT:...] tags. Thinking stays off:
+      // this surface's stall/hard-timeout timers reset only on visible tokens,
+      // and a silent thinking phase would trip them (and share this budget).
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
         system: contextSystemRef.current,
         maxTokens: 2048,
-        thinking: 'adaptive',
       });
       streamIdRef.current = sid;
     } catch (err) {
