@@ -100,6 +100,13 @@ describe('buildScanPrompt', () => {
     expect(userContent).toContain('hair: blonde');
   });
 
+  it('defines a concrete contradiction bar and coverage-over-omission triage rule', () => {
+    const { systemPrompt } = buildScanPrompt('Scene text here.', [candidate], DEFAULT_SCAN_BUDGET_TOKENS);
+    expect(systemPrompt).toContain('cannot both be true');
+    expect(systemPrompt).toContain('severity "low"');
+    expect(systemPrompt).toContain('NOT an issue');
+  });
+
   it('marks partial=false when scene fits within budget', () => {
     const shortScene = 'Elara walked away.';
     const { partial } = buildScanPrompt(shortScene, [candidate], DEFAULT_SCAN_BUDGET_TOKENS);

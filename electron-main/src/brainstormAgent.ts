@@ -274,33 +274,36 @@ export function writeFacts(
 
 // ─── Extraction side-call ───
 
-const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
+/**
+ * System prompt for the extraction side-call (sent by the IPC handler in
+ * main.ts). Keep the JSON shape on a single line — it nudges the model toward
+ * compact output, which matters because the response is one all-or-nothing
+ * JSON array parsed by parseExtractionResponse.
+ *
+ * The inclusion rule mirrors the extractionConfidence >= 0.6 filter in
+ * runExtractionSideCall: borderline-but-real entities are kept with an honest
+ * confidence score, while sub-threshold entities are omitted at the source so
+ * they don't spend output budget on entries the filter would discard anyway.
+ */
+export const EXTRACTION_SYSTEM_PROMPT = `You are a structured entity extractor for creative writing sessions.
 Extract named story entities from the conversation turn provided.
 
 Return ONLY a valid JSON array. Each element must have this exact shape:
-{
-  "kind": "character" | "location" | "item" | "faction" | "scene_card" | "inbox",
-  "title": "<entity name>",
-  "destinationPath": "<suggested/vault/relative/path>",
-  "body": "<description or prose>",
-  "frontmatter": {},
-  "extractionConfidence": <0.0–1.0>
-}
+{"kind":"character"|"location"|"item"|"faction"|"scene_card"|"inbox","title":"<name>","destinationPath":"<suggested/path>","body":"<description>","frontmatter":{},"extractionConfidence":<0.0-1.0>}
 
 Rules:
-- character: named persons, beings, or creatures with story significance
-- location: named places, regions, settings, or environments
-- item: named objects, artifacts, tools, or props with story significance
-- faction: named organizations, groups, guilds, or factions
-- scene_card: a discrete scene, event, or plot beat worth capturing
-- inbox: general notes, themes, concepts, world-rules, or anything that does not fit above
-- extractionConfidence: how clearly and unambiguously the entity appears in the text (0.0–1.0)
-- One entry per distinct named entity; do not duplicate
-- destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md"
-- Include every distinct named story entity, even minor or uncertain ones — express
-  doubt through a lower extractionConfidence instead of leaving the entity out
-- Return [] only when the turn names no story entities at all
-- Do NOT include markdown code fences in your response — raw JSON array only`;
+- character: named persons or beings. location: named places. item: named objects/artifacts.
+- faction: organizations or groups. scene_card: a discrete scene or plot beat.
+- inbox: general notes, themes, world-rules, or unclassified concepts.
+- extractionConfidence: clarity with which the entity appears in the text (0.0–1.0).
+- One entry per distinct named entity. No duplicates.
+- destinationPath: suggest a vault-relative path using lowercase with hyphens, e.g. "characters/aria.md".
+- Include every entity that appears with reasonable clarity — when torn, include it
+  with an honest extractionConfidence rather than leaving it out. Omit only entities
+  you would score below 0.6: those are discarded automatically, and spending output
+  on them crowds out real entries.
+- Return [] only when the turn names no story entities at all.
+- Raw JSON array only — no markdown fences.`;
 
 interface RawExtractionItem {
   kind: string;

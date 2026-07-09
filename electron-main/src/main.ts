@@ -474,6 +474,7 @@ import {
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
   runExtractionSideCall,
+  EXTRACTION_SYSTEM_PROMPT,
 } from './brainstormAgent.js';
 import {
   dismissPendingBrainstormProposals,
@@ -6882,28 +6883,14 @@ function registerBrainstormExtractionHandlers(): void {
           const model = agentSettings.model || 'claude-haiku-4-5-20251001';
           const response = await client.messages.create({
             model,
-            max_tokens: 512,
-            // Structured-output side-call: keep thinking off so the 512-token
-            // budget stays available for the JSON array itself.
+            // 1024 gives entity-dense turns room for the whole JSON array —
+            // parseExtractionResponse is all-or-nothing, so a truncated array
+            // loses every proposal, not just the tail.
+            max_tokens: 1024,
+            // Structured-output side-call: keep thinking off so the budget
+            // stays available for the JSON array itself.
             ...anthropicThinkingParam(model, undefined),
-            system: `You are a structured entity extractor for creative writing sessions.
-Extract named story entities from the conversation turn provided.
-
-Return ONLY a valid JSON array. Each element must have this exact shape:
-{"kind":"character"|"location"|"item"|"faction"|"scene_card"|"inbox","title":"<name>","destinationPath":"<suggested/path>","body":"<description>","frontmatter":{},"extractionConfidence":<0.0-1.0>}
-
-Rules:
-- character: named persons or beings. location: named places. item: named objects/artifacts.
-- faction: organizations or groups. scene_card: a discrete scene or plot beat.
-- inbox: general notes, themes, world-rules, or unclassified concepts.
-- extractionConfidence: clarity with which the entity appears in the text (0.0–1.0).
-- One entry per distinct named entity. No duplicates.
-- Include every distinct named story entity, even minor or uncertain ones — express
-  doubt through a lower extractionConfidence instead of leaving the entity out.
-  The author reviews every proposal before it is saved, so a missed entity costs
-  more than an extra one.
-- Return [] only when the turn names no story entities at all.
-- Raw JSON array only — no markdown fences.`,
+            system: EXTRACTION_SYSTEM_PROMPT,
             messages: [{ role: 'user', content: userPrompt }],
           });
           const block = response.content[0];
@@ -7114,14 +7101,13 @@ function registerBrainstormHandler() {
     }
 
     try {
-      // Interactive chat surface: adaptive thinking improves idea quality on
-      // models that support it. maxTokens is raised because thinking tokens
-      // count against the same budget as the visible reply.
+      // Thinking stays off here: the brainstorm UI's stall/hard-timeout timers
+      // reset only on visible tokens, so a silent adaptive-thinking phase
+      // reads as a hung stream. Revisit together with thinking-aware timers.
       for await (const token of streamFromProvider(providerConfig, {
         system: systemPrompt,
         messages,
-        maxTokens: 4096,
-        thinking: 'adaptive',
+        maxTokens: 1024,
         signal: controller.signal,
       })) {
         fullText += token;
@@ -7347,14 +7333,13 @@ function registerWritingAssistantHandler() {
     }
 
     try {
-      // Interactive chat surface: adaptive thinking improves advice quality on
-      // models that support it. maxTokens is raised because thinking tokens
-      // count against the same budget as the visible reply.
+      // Thinking stays off here: the Writing Assistant panel's stall timer
+      // resets only on visible tokens, so a silent adaptive-thinking phase
+      // reads as a hung stream. Revisit together with thinking-aware timers.
       for await (const token of streamFromProvider(providerConfig, {
         system: buildAgentSystemPrompt(app.getPath('userData'), 'writingAssistant'),
         messages: [{ role: 'user', content: userContent }],
-        maxTokens: 4096,
-        thinking: 'adaptive',
+        maxTokens: 1024,
         signal: controller.signal,
       })) {
         fullText += token;
@@ -7510,10 +7495,13 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     }
 
     try {
+      // 2048: the prompt asks for every genuine contradiction plus a summary;
+      // a 1024 cap could truncate trailing [ISSUE:...] tags mid-line, silently
+      // dropping issues (the tag regex only matches complete tags).
       for await (const token of streamFromProvider(vaultCheckProviderConfig, {
         system: systemPrompt,
         messages: [{ role: 'user', content: vaultCheckContent }],
-        maxTokens: 1024,
+        maxTokens: 2048,
         signal: controller.signal,
       })) {
         fullText += token;
@@ -7988,10 +7976,13 @@ async function runArchiveContScan(
   const scanTimeout = setTimeout(() => scanAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
 
   try {
+    // 2048: the scan prompt asks for every genuine issue (~150-200 tokens per
+    // JSON line); a 1024 cap could truncate the list mid-line, silently
+    // dropping higher-index issues with no partial indicator.
     for await (const token of streamFromProvider(providerConfig, {
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
-      maxTokens: 1024,
+      maxTokens: 2048,
       signal: scanAbort.signal,
     })) {
       text += token;
