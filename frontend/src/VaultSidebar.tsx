@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type MouseEvent, type KeyboardEvent } from 'react';
 import type { Story, Chapter, Scene } from './types';
+import { isStoryInternalTreeItem } from './components/VaultBrowser/treeUtils';
 import './VaultSidebar.css';
 
 // ─── Sort / Filter types ───
@@ -517,6 +518,9 @@ function isNotesItem(item: VaultListItem): boolean {
   for (const prefix of INTERNAL_PREFIXES) {
     if (item.path === prefix || item.path.startsWith(prefix + '/')) return false;
   }
+  // W0.1 (GAP #1): scene-UUID folders and dot-dir children never render in
+  // the Notes tree (defense in depth; main filters the IPC at the source).
+  if (isStoryInternalTreeItem(item)) return false;
   return true;
 }
 

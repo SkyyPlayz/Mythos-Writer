@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
-import { buildTree, flattenTree } from './treeUtils';
+import {
+  buildTree,
+  flattenTree,
+  isStoryInternalTreeItem,
+  mapUuidNamesToTitles,
+} from './treeUtils';
 import { useTreeState } from './useTreeState';
 import VaultBrowser from './index';
 import type { Story } from '../../types';
@@ -377,6 +382,114 @@ describe('VaultBrowser', () => {
       expect(screen.getByTestId('vb-notes-vault')).toBeInTheDocument();
     });
     expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+  });
+});
+
+// ─── W0.1 (Beta 4, GAP #1): notes-tree hygiene ───
+
+const SCENE_UUID = '3f6a804a-1c2b-4d3e-9f10-abcdef012345';
+
+describe('isStoryInternalTreeItem (W0.1 GAP #1)', () => {
+  it('excludes UUID-named directories and their subtrees', () => {
+    expect(isStoryInternalTreeItem({ path: SCENE_UUID, isDirectory: true })).toBe(true);
+    expect(isStoryInternalTreeItem({ path: `${SCENE_UUID}/draft.md`, isDirectory: false })).toBe(true);
+    expect(isStoryInternalTreeItem({ path: `versions/${SCENE_UUID}`, isDirectory: true })).toBe(true);
+  });
+
+  it('excludes children of dot-dirs so they are never promoted to root rows', () => {
+    expect(isStoryInternalTreeItem({ path: '.obsidian/plugins', isDirectory: true })).toBe(true);
+    expect(isStoryInternalTreeItem({ path: '.snapshots/x/y.md', isDirectory: false })).toBe(true);
+  });
+
+  it('keeps normal notes content, including UUID-named .md files', () => {
+    expect(isStoryInternalTreeItem({ path: 'Universes', isDirectory: true })).toBe(false);
+    expect(isStoryInternalTreeItem({ path: 'Inbox/idea.md', isDirectory: false })).toBe(false);
+    expect(isStoryInternalTreeItem({ path: `${SCENE_UUID}.md`, isDirectory: false })).toBe(false);
+  });
+});
+
+describe('mapUuidNamesToTitles (W0.1 GAP #1)', () => {
+  const titles = new Map([[SCENE_UUID, 'Scene One']]);
+
+  it('maps a UUID-named directory to its manifest title', () => {
+    const [mapped] = mapUuidNamesToTitles(
+      [{ path: SCENE_UUID, name: SCENE_UUID, isDirectory: true, modifiedAt: '' }],
+      titles,
+    );
+    expect(mapped.name).toBe('Scene One');
+    expect(mapped.path).toBe(SCENE_UUID); // identity path is untouched
+  });
+
+  it('maps a UUID-named .md file, preserving the extension', () => {
+    const [mapped] = mapUuidNamesToTitles(
+      [{ path: `${SCENE_UUID}.md`, name: `${SCENE_UUID}.md`, isDirectory: false, modifiedAt: '' }],
+      titles,
+    );
+    expect(mapped.name).toBe('Scene One.md');
+  });
+
+  it('leaves unknown UUIDs and normal names untouched', () => {
+    const items = [
+      { path: 'f8c62a1a-9b71-4f22-8f6f-0123456789ab', name: 'f8c62a1a-9b71-4f22-8f6f-0123456789ab', isDirectory: true, modifiedAt: '' },
+      { path: 'Universes', name: 'Universes', isDirectory: true, modifiedAt: '' },
+    ];
+    expect(mapUuidNamesToTitles(items, titles)).toEqual(items);
+  });
+});
+
+describe('VaultBrowser notes-tree hygiene (W0.1 GAP #1)', () => {
+  it('never renders UUID-named folders in the Notes tree', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: SCENE_UUID, name: SCENE_UUID, isDirectory: true, modifiedAt: '' },
+        { path: `${SCENE_UUID}/draft.md`, name: 'draft.md', isDirectory: false, modifiedAt: '' },
+        { path: 'Universes', name: 'Universes', isDirectory: true, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    await waitFor(() => expect(screen.getByText('Universes')).toBeInTheDocument());
+    expect(screen.queryByText(SCENE_UUID)).not.toBeInTheDocument();
+    expect(screen.queryByText('draft')).not.toBeInTheDocument();
+  });
+
+  it('does not promote children of filtered dot-dirs to root rows', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: '.obsidian', name: '.obsidian', isDirectory: true, modifiedAt: '' },
+        { path: '.obsidian/plugins', name: 'plugins', isDirectory: true, modifiedAt: '' },
+        { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    await waitFor(() => expect(screen.getByText('note')).toBeInTheDocument());
+    expect(screen.queryByText('plugins')).not.toBeInTheDocument();
+  });
+
+  it('display-maps a surviving UUID-named note to its story/scene title', async () => {
+    const stories: Story[] = [{
+      id: 's1', title: 'My Story', path: 'stories/s1',
+      chapters: [{
+        id: 'ch1', title: 'Chapter One', path: 'ch1', order: 0,
+        scenes: [{
+          id: SCENE_UUID, title: 'The Departure', path: 'x.md', order: 0,
+          blocks: [], createdAt: '', updatedAt: '',
+        }],
+        createdAt: '', updatedAt: '',
+      }],
+      createdAt: '', updatedAt: '',
+    }];
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: `${SCENE_UUID}.md`, name: `${SCENE_UUID}.md`, isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    render(<VaultBrowser {...baseProps} stories={stories} />);
+    fireEvent.click(screen.getByTestId('vb-scope-notes'));
+    // VirtualTree strips the .md extension from display names.
+    await waitFor(() => expect(screen.getByText('The Departure')).toBeInTheDocument());
+    expect(screen.queryByText(SCENE_UUID)).not.toBeInTheDocument();
   });
 });
 

@@ -10,6 +10,8 @@
  *   TC-V-04  Edit + save scene    — prose written to vault .md file on disk
  *   TC-V-05  Reload persistence   — prose survives full app restart (same userData)
  *   TC-V-06  Notes Vault note     — entity created, shown in Entities tab, file written to disk
+ *   TC-V-08  Notes tree hygiene   — W0.1/GAP #1: no UUID-pattern rows in the Notes tree;
+ *                                   seed-once markers written to both vault roots on boot
  *
  * Run (after `npm run build:electron`):
  *   npx playwright install chromium   # first time only
@@ -168,10 +170,20 @@ let notesVaultDir: string;
 let app: ElectronApplication | undefined;
 let page: Page;
 
+// W0.1 / GAP #1 (TC-V-08): a scene-UUID folder strewn into the notes vault the
+// way the shipped bug did — it must never render in the Notes tree.
+const LEAKED_SCENE_UUID = '3f6a804a-1c2b-4d3e-9f10-abcdef012345';
+
 test.beforeAll(async () => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-two-vault-'));
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-story-vault-'));
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-notes-vault-'));
+  // W0.1 (TC-V-08): pollute the notes vault BEFORE boot — a leaked scene-UUID
+  // dir plus a legitimate note. Boot must adopt the populated root (no seed
+  // dumped over it) and the tree must hide the UUID dir but show the note.
+  fs.mkdirSync(path.join(notesVaultDir, LEAKED_SCENE_UUID), { recursive: true });
+  fs.mkdirSync(path.join(notesVaultDir, 'Research'), { recursive: true });
+  fs.writeFileSync(path.join(notesVaultDir, 'Research', 'keep-me.md'), '# Keep me\n', 'utf-8');
   seedUserData(userData, vaultDir, notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -445,4 +457,44 @@ test('TC-V-06: create entity (note), entity shown in Entities tab, file written 
     entityFileFound,
     `Entity "${ENTITY_NAME}" not found in <vaultDir>/entities/characters/`,
   ).toBe(true);
+});
+
+// ─── TC-V-08: Notes tree hygiene + seed-once markers (W0.1 / GAP #1) ─────────
+//
+// The notes vault was polluted BEFORE boot (see beforeAll) with a scene-UUID
+// folder alongside a legitimate note. The Beta 4 W0.1 contract:
+//   • UUID-pattern folders never appear in the Notes tree (FULL-SPEC §2);
+//   • a populated pre-marker root is adopted, not re-seeded — the app records
+//     `.mythos-seeded` in both vault roots instead of scaffolding over them.
+
+test('TC-V-08: Notes tree never shows UUID-pattern folders; seed-once markers on disk', async () => {
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // Seed-once markers were written to both roots on boot. The polluted notes
+  // root was adopted as-is: no SKY-15 seed layout dumped over user content.
+  const storyMarker = await waitUntil(() => fs.existsSync(path.join(vaultDir, '.mythos-seeded')), 10_000);
+  expect(storyMarker, `.mythos-seeded not found in Story Vault: ${vaultDir}`).toBe(true);
+  const notesMarker = await waitUntil(() => fs.existsSync(path.join(notesVaultDir, '.mythos-seeded')), 10_000);
+  expect(notesMarker, `.mythos-seeded not found in Notes Vault: ${notesVaultDir}`).toBe(true);
+  expect(fs.existsSync(path.join(notesVaultDir, 'Universes'))).toBe(false);
+
+  // Open the Vault panel and switch to the Notes scope.
+  const vaultPanel = page.locator('[data-panel-id="vault"]');
+  const vaultPanelCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (vaultPanelCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
+  await page.locator('[data-testid="vb-scope-notes"]').click();
+  await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 6_000 });
+
+  // The legitimate note renders (VirtualTree strips the .md extension) …
+  await expect(page.locator('.vb-name', { hasText: 'keep-me' })).toBeVisible({ timeout: 8_000 });
+  // … and no UUID-pattern row exists anywhere in the tree.
+  await expect(page.getByText(LEAKED_SCENE_UUID)).toHaveCount(0);
+  const uuidRows = await page
+    .locator('.vb-name')
+    .evaluateAll((els) =>
+      els
+        .map((el) => el.textContent ?? '')
+        .filter((t) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t.trim())),
+    );
+  expect(uuidRows, `UUID-pattern rows leaked into the Notes tree: ${uuidRows.join(', ')}`).toEqual([]);
 });
