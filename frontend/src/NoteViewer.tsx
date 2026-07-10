@@ -1,8 +1,12 @@
 // SKY-204 / SKY-3208 / SKY-3624: Notes tri-mode editor — Source (textarea) / Rich (TipTap) / Preview.
+// W0.2 (Beta 4): frontmatter and %% kanban:settings %% trailers never render in
+// Rich or Preview — they are held aside verbatim and reassembled on save.
+// Source mode keeps showing the raw file.
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { countWords } from './wordStats';
 import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
+import { replaceDisplayBody, stripHiddenBlocks } from './lib/frontmatter';
 import RichTextEditor from './RichTextEditor';
 import './NoteViewer.css';
 
@@ -31,15 +35,6 @@ interface Props {
 // ---------------------------------------------------------------------------
 // Preview renderer — safe, no dangerouslySetInnerHTML
 // ---------------------------------------------------------------------------
-
-function stripFrontmatter(content: string): string {
-  if (!content.startsWith('---')) return content;
-  const rest = content.slice(3);
-  if (rest.length > 0 && rest[0] !== '\n' && rest[0] !== '\r') return content;
-  const end = rest.indexOf('\n---');
-  if (end === -1) return content;
-  return rest.slice(end + 4).replace(/^\r?\n/, '');
-}
 
 function renderInline(text: string, onWikiLinkClick?: (target: string) => void): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -80,7 +75,8 @@ function renderInline(text: string, onWikiLinkClick?: (target: string) => void):
 }
 
 function renderMarkdownPreview(content: string, onWikiLinkClick?: (target: string) => void): ReactNode {
-  const body = stripFrontmatter(content);
+  // W0.2: preview never renders frontmatter or kanban-settings trailers.
+  const body = stripHiddenBlocks(content);
   const lines = body.split('\n');
   const nodes: ReactNode[] = [];
   let i = 0;
@@ -294,7 +290,11 @@ export default function NoteViewer({
     saveTimerRef.current = setTimeout(() => saveContent(text), 800);
   }, [saveContent, onWordCountChange]);
 
-  const handleRichChange = useCallback((text: string) => {
+  const handleRichChange = useCallback((bodyText: string) => {
+    // W0.2: Rich mode edits only the display body. The frontmatter block and
+    // any %% kanban:settings %% trailer were hidden from the editor — splice
+    // them back verbatim so a Rich-mode save never drops or reorders them.
+    const text = replaceDisplayBody(contentRef.current, bodyText);
     contentRef.current = text;
     setContent(text);
     onWordCountChange?.(countWords(text));
@@ -348,7 +348,9 @@ export default function NoteViewer({
   const handleModeClick = useCallback((next: NoteViewerMode) => {
     if (next === mode) return;
     if (next === 'rich') {
-      const lossy = detectLossyFeatures(contentRef.current);
+      // W0.2: judge fidelity on what Rich mode actually consumes — the display
+      // body. Frontmatter/kanban-settings are held aside verbatim, not lost.
+      const lossy = detectLossyFeatures(stripHiddenBlocks(contentRef.current));
       if (lossy.length > 0) {
         setPendingMode(next);
         setFidelityWarning(lossy);
@@ -451,7 +453,9 @@ export default function NoteViewer({
       {mode === 'rich' && (
         <NoteRichEditor
           key={`${path}:${externalRev}`}
-          content={content}
+          // W0.2 (FULL-SPEC §6): frontmatter + kanban-settings never render in
+          // Rich view — the hidden chunks are re-attached in handleRichChange.
+          content={stripHiddenBlocks(content)}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}
           resolvedWikiLinkTitles={resolvedWikiLinkTitles}

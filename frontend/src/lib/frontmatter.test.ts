@@ -1,7 +1,7 @@
 // W0.2 (Beta 4 "Refine"): shared frontmatter splitter — the engine behind
 // "frontmatter never renders in Rich view" (FULL-SPEC §6, GAP-REPORT-v2 P0#2).
 import { describe, expect, it } from 'vitest';
-import { splitFrontmatter, splitKanbanSettings, stripHiddenBlocks } from './frontmatter';
+import { replaceDisplayBody, splitFrontmatter, splitKanbanSettings, stripHiddenBlocks } from './frontmatter';
 
 // The exact first-minute-embarrassment fixture from GAP-REPORT-v2 P0#2: an
 // Obsidian-Kanban board.md whose plugin frontmatter rendered as a giant heading.
@@ -145,5 +145,35 @@ describe('stripHiddenBlocks (Rich/preview display body)', () => {
   it('is the identity for a plain note', () => {
     const raw = '# Title\n\nA plain note with a --- ruler nowhere near the top.\n';
     expect(stripHiddenBlocks(raw)).toBe(raw);
+  });
+});
+
+describe('replaceDisplayBody (Rich-mode save reassembly)', () => {
+  it('is the exact inverse of stripHiddenBlocks when the body is unchanged', () => {
+    for (const raw of [
+      KANBAN_BOARD,
+      '---\ntitle: T\n---\nBody.\n',
+      'No frontmatter at all.\n',
+      '---\r\ntitle: CRLF\r\n---\r\nBody.\r\n',
+      '---\nunterminated: fence\n\nAll of this is body.\n',
+    ]) {
+      expect(replaceDisplayBody(raw, stripHiddenBlocks(raw))).toBe(raw);
+    }
+  });
+
+  it('splices an edited body between the verbatim frontmatter and settings trailer', () => {
+    const out = replaceDisplayBody(KANBAN_BOARD, '## To Do\n\n- [ ] A brand-new card\n');
+    expect(out.startsWith('---\nkanban-plugin: board\n')).toBe(true);
+    expect(out).toContain('A brand-new card');
+    expect(out).toContain('%% kanban:settings');
+    expect(out.trimEnd().endsWith('%%')).toBe(true);
+    // The hidden chunks stayed byte-identical.
+    expect(splitFrontmatter(out).frontmatter).toBe(splitFrontmatter(KANBAN_BOARD).frontmatter);
+    expect(splitKanbanSettings(splitFrontmatter(out).body).kanbanSettings)
+      .toBe(splitKanbanSettings(splitFrontmatter(KANBAN_BOARD).body).kanbanSettings);
+  });
+
+  it('leaves a plain note fully editable (no hidden chunks to re-attach)', () => {
+    expect(replaceDisplayBody('Old body.\n', 'New body.\n')).toBe('New body.\n');
   });
 });

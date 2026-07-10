@@ -174,15 +174,30 @@ describe('NoteViewer LC-2 fidelity guard', () => {
     expect(screen.getByText(/Markdown tables/i)).toBeTruthy();
   });
 
-  it('shows fidelity warning when note has YAML frontmatter', async () => {
+  it('does NOT raise the guard for YAML frontmatter — W0.2 preserves it verbatim outside Rich mode', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: My Note\n---\nContent.' });
     render(<NoteViewer path="Notes/Frontmatter.md" />);
     await screen.findByLabelText('Edit note: Frontmatter.md');
 
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    });
+
+    // Switched straight into Rich mode — no dialog, no textarea.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByLabelText('Edit note: Frontmatter.md')).toBeNull();
+  });
+
+  it('still raises the guard for lossy features in the display body (tables under frontmatter)', async () => {
+    readNotesVault.mockResolvedValue({ content: '---\ntitle: T\n---\n| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/FmTable.md" />);
+    await screen.findByLabelText('Edit note: FmTable.md');
+
     fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
 
     await screen.findByRole('dialog', { name: 'Rich mode may lose content' });
-    expect(screen.getByText(/YAML frontmatter/i)).toBeTruthy();
+    expect(screen.getByText(/Markdown tables/i)).toBeTruthy();
+    expect(screen.queryByText(/YAML frontmatter/i)).toBeNull();
   });
 
   it('"Edit in Source" closes the warning and stays in Source mode', async () => {
@@ -377,5 +392,109 @@ describe('NoteViewer M16 frontmatter-update sync', () => {
     });
 
     expect(screen.getByLabelText('Edit note: Test.md')).toHaveValue('locally edited body');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W0.2 (Beta 4, FULL-SPEC §6): frontmatter NEVER renders in Rich/Preview views
+// ---------------------------------------------------------------------------
+
+// GAP-REPORT-v2 P0#2 fixture: an Obsidian-Kanban board.md whose plugin
+// frontmatter rendered as a giant bold heading in Rich mode.
+const KANBAN_BOARD = [
+  '---',
+  'kanban-plugin: board',
+  'mythos-board-version: 1',
+  'story-id: 3f6a804a-aaaa-bbbb-cccc-000000000000',
+  '---',
+  '',
+  '## To Do',
+  '',
+  '- [ ] Draft the flood scene',
+  '',
+  '%% kanban:settings',
+  '```json',
+  '{"kanban-plugin":"board"}',
+  '```',
+  '%%',
+].join('\n');
+
+describe('NoteViewer W0.2 — frontmatter never renders in Rich/Preview', () => {
+  it('Rich mode renders a kanban board file without frontmatter or settings text', async () => {
+    readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
+    render(<NoteViewer path="Notes/board.md" />);
+    await screen.findByLabelText('Edit note: board.md');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    });
+
+    const rich = await waitFor(() => {
+      const el = document.querySelector('.note-rich-editor .ProseMirror');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    await waitFor(() => expect(rich.textContent).toContain('Draft the flood scene'));
+    expect(rich.textContent).not.toContain('kanban-plugin');
+    expect(rich.textContent).not.toContain('mythos-board-version');
+    expect(rich.textContent).not.toContain('story-id');
+    expect(rich.textContent).not.toContain('kanban:settings');
+  });
+
+  it('saving from Rich mode without edits preserves the raw file byte-for-byte', async () => {
+    readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
+    writeNotesVault.mockClear();
+    render(<NoteViewer path="Notes/board.md" />);
+    await screen.findByLabelText('Edit note: board.md');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Rich' }));
+    });
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    await act(async () => {
+      window.dispatchEvent(new Event('mythos:save-note'));
+    });
+
+    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith('Notes/board.md', KANBAN_BOARD));
+  });
+
+  it('Preview mode strips frontmatter and the kanban settings block', async () => {
+    readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
+    render(<NoteViewer path="Notes/board.md" previewMode />);
+
+    const preview = await screen.findByTestId('note-viewer-preview');
+    expect(preview.textContent).toContain('Draft the flood scene');
+    expect(preview.textContent).not.toContain('kanban-plugin');
+    expect(preview.textContent).not.toContain('story-id');
+    expect(preview.textContent).not.toContain('kanban:settings');
+  });
+
+  it('Source mode keeps showing the raw file including frontmatter', async () => {
+    readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
+    render(<NoteViewer path="Notes/board.md" />);
+
+    const textarea = await screen.findByLabelText('Edit note: board.md');
+    expect(textarea).toHaveValue(KANBAN_BOARD);
+  });
+
+  it('an unterminated frontmatter fence renders as body — nothing is swallowed', async () => {
+    const raw = '---\ntitle: Oops no closing fence\n\nThis paragraph must stay visible.';
+    readNotesVault.mockResolvedValue({ content: raw });
+    render(<NoteViewer path="Notes/unterminated.md" previewMode />);
+
+    const preview = await screen.findByTestId('note-viewer-preview');
+    expect(preview.textContent).toContain('This paragraph must stay visible.');
+    expect(preview.textContent).toContain('title: Oops no closing fence');
+  });
+
+  it('handles \\r\\n frontmatter in Preview mode', async () => {
+    const raw = '---\r\nkanban-plugin: board\r\n---\r\nBoard body text.\r\n';
+    readNotesVault.mockResolvedValue({ content: raw });
+    render(<NoteViewer path="Notes/crlf.md" previewMode />);
+
+    const preview = await screen.findByTestId('note-viewer-preview');
+    expect(preview.textContent).toContain('Board body text.');
+    expect(preview.textContent).not.toContain('kanban-plugin');
   });
 });

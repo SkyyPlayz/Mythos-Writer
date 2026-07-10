@@ -101,3 +101,15 @@ export function splitKanbanSettings(body: string): KanbanSettingsSplit {
 export function stripHiddenBlocks(raw: string): string {
   return splitKanbanSettings(splitFrontmatter(raw).body).body;
 }
+
+/**
+ * Rebuild a full note file after a Rich-mode edit: the previous file's
+ * verbatim frontmatter block and kanban-settings trailer are spliced back
+ * around the newly serialized display body. Inverse of `stripHiddenBlocks`:
+ * `replaceDisplayBody(raw, stripHiddenBlocks(raw)) === raw`.
+ */
+export function replaceDisplayBody(raw: string, newDisplayBody: string): string {
+  const { frontmatter, body } = splitFrontmatter(raw);
+  const { kanbanSettings } = splitKanbanSettings(body);
+  return frontmatter + newDisplayBody + kanbanSettings;
+}
