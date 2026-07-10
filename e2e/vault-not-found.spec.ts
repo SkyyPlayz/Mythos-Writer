@@ -44,9 +44,34 @@ test('missing Story Vault shows recovery screen after load-time vault check fail
     expect(fs.existsSync(missingStoryVault)).toBe(false);
     expect(fs.existsSync(missingNotesVault)).toBe(false);
 
-    await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('vault:validate-path');
-      ipcMain.handle('vault:validate-path', () => ({ valid: false }));
+    // Wait for the app's own IPC registration phase before swapping the
+    // handler: on slow runners this evaluate used to win the race against
+    // whenReady's setupIpcMain, whose duplicate registration then threw an
+    // unhandled rejection that killed boot before the window was created
+    // (deterministic firstWindow timeout in CI). Public-API readiness probe:
+    // handle() throws only when the real handler already exists; the
+    // probe register+remove pair is synchronous, so the app can never observe
+    // the temporary registration.
+    await app.evaluate(async ({ app: electronApp, ipcMain }) => {
+      await electronApp.whenReady();
+      const mock = () => ({ valid: false });
+      let installed = false;
+      for (let i = 0; i < 400; i++) {
+        try {
+          ipcMain.handle('vault:validate-path', mock);
+          ipcMain.removeHandler('vault:validate-path'); // too early — undo atomically
+        } catch {
+          ipcMain.removeHandler('vault:validate-path'); // real handler present — replace
+          ipcMain.handle('vault:validate-path', mock);
+          installed = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      if (!installed) {
+        ipcMain.removeHandler('vault:validate-path');
+        ipcMain.handle('vault:validate-path', mock);
+      }
     });
 
     const page = await app.firstWindow();
