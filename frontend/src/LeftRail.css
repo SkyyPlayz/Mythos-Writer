@@ -163,8 +163,9 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* W0.5 (PERFORMANCE §5): panel-internal changes must not relayout the shell. */
-  contain: layout paint;
+  /* W0.5 note: contain: layout paint was considered here but rejected —
+     layout containment would re-anchor position:fixed descendants (the
+     EntityBrowser entity dialog overlay renders from inside this subtree). */
 }
 
 /* Add panel button + picker */
