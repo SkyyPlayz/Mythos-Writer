@@ -24,7 +24,7 @@ features.
 
 | Agent | Contract |
 |---|---|
-| **Writing Coach** (was "Writing Assistant") | Teaches the writer using their own pages — lessons, drills, per-chapter suggestions, scene analysis. **Never ghost-writes manuscript prose.** Its only drafting surface is the Scene Crafter first-pass scaffold, which exists to be annotated and rewritten. |
+| **Writing Coach** (was "Writing Assistant") | Teaches the writer using their own pages — lessons, drills, per-chapter suggestions, scene analysis. **Never ghost-writes manuscript prose.** Its only drafting surface is the Scene Crafter first-pass scaffold, which lands on the scene's canvas board (never the manuscript — B4-9) as material to build off. |
 | **Brainstorm Agent** | Curator of the Notes Vault: chat → files notes, builds idea cards, asks questions, pre-fills templates. |
 | **Archive Agent** | Continuity (story↔story, story↔vault), fact checks with citations, **auto-builds timelines**, flags → actionable margin comments. |
 | **Beta Reader** | First-time-reader reactions: chapter reads, margin reactions, pacing/clarity reports. Reacts emotionally, never edits. |
@@ -37,6 +37,13 @@ folders, format-on-save. Badge everywhere: `BUILT-IN · NO AI`.
 Agent sessions are universal: every chat surface has a session dropdown
 (rename/duplicate/delete, per-agent seeded greeting). The Coach page and Coach
 panel chat share one conversation store.
+
+**The approval model (B4-8):** the **Suggestion Inbox** stays, alongside the
+autonomy auto-apply toggles. Every toggle defaults **OFF**, and each category
+(Grammar/Clarity/Pacing/Style/Tone) has a **certainty slider** — suggestions
+at/above the threshold auto-apply (snapshot-first, undoable); everything below
+lands in the Inbox for review. Nothing else modifies manuscript prose without
+an explicit user action.
 
 ## Data architecture (owner-ratified 2026-07-10)
 
@@ -95,8 +102,9 @@ layers pause when hidden, reduce-motion kills everything in one switch.
   panel with Archive continuity flags, frontmatter never renders in Rich view.
 - **Scene Crafter** — setup form (POV/goal/conflict/beats/tone/length),
   suggested cards from the vault, canvas boards (Obsidian-canvas-style), Coach
-  scaffold generation with Insert/Retry/Discard — summaries land on the board,
-  never silently into the manuscript.
+  scaffold generation with **Add to scene board** / Retry / Discard — generated
+  prose goes to the scene's canvas board only, **never into the manuscript**
+  (B4-9); the writer lifts what they want by hand.
 - **Brainstorm Center** — Agent Chat (default) + **one** Board canvas (Map and
   Clusters modes are deleted): floating category regions, drag-anywhere cards,
   connect tool, inline card edit, starter library (beats, 12 tropes, 6 themes,
@@ -119,9 +127,12 @@ layers pause when hidden, reduce-motion kills everything in one switch.
   menu; not on the nav rail).
 - **Settings** — full workspace view (not a modal). Rail: Account & profile ·
   Appearance · AI Agents · Editor · Vault & Files · Sync & Backup · Shortcuts ·
-  About. AI Agents page includes provider seg, masked key + Test, and a
-  `Log in with Claude` button shipped in **connect-later** state (explains that
-  account linking is coming; points to the API-key path). Vault & Files leads
+  About. AI Agents page keeps **full BYO providers** (B4-10): Claude API, any
+  OpenAI-compatible endpoint, and local runtimes (Ollama/LM Studio/llama.cpp),
+  with masked key + Test, plus **OAuth login buttons for every provider that
+  supports it** — all in **connect-later** state until credentials exist. The
+  Autonomy card ships every auto-apply toggle OFF with a per-category
+  **certainty slider** feeding the Suggestion Inbox (B4-8). Vault & Files leads
   with the Auto Note Linker card.
 
 ## Shell
@@ -157,7 +168,10 @@ styled 8px scrollbars everywhere · hit targets ≥24px panels / ≥32px toolbar
 
 ## Release framing
 
-Target: **v0.5.0-beta.1 "Liquid Neon — Refined"**. Sequencing (owner-approved):
+Target: **v0.5.0-beta.1 "Liquid Neon — Refined"**. The monetization roadmap
+(one-time license → in-app AI subscription → hosted sync/mobile) is
+**re-included as a parked post-Beta-4 track** (B4-11) — no monetization work in
+this release, but the plan is preserved, not canceled. Sequencing (owner-approved):
 **Wave 0** = GAP-REPORT-v2 P0 bugs + remaining PERFORMANCE work, then a **smoke
 pass on a packaged build to confirm those fixes land for a real user**, then the
 module builds, with demo seed + welcome wizard last. Full milestone plan:
