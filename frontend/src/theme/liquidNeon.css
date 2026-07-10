@@ -145,17 +145,6 @@ html.ln-anim-paused .ln-border-overlay {
   z-index: 60;
 }
 
-/* ═══ Transparent window mode (M3) ═══
-   Applied to <html> when wallpaper is `No background` AND the Electron window
-   was created transparent (restart-gated). Clears every opaque app-level
-   background so the desktop shows through; panels keep their own glass. */
-html.ln-transparent,
-html.ln-transparent body,
-html.ln-transparent #root,
-html.ln-transparent .desktop-shell {
-  background: transparent !important;
-}
-
 /* M5: notification popover rows (prototype 100–108) */
 .ln-notif-row:hover {
   background: rgba(255, 255, 255, .07);

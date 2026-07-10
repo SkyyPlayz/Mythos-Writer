@@ -124,9 +124,9 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
     case 'deep':
       return 'linear-gradient(#07080d,#07080d)';
     case 'none':
-      // Prototype stand-in for a transparent window (M3 makes the Electron
-      // window actually transparent; this checkerboard remains the dev fallback).
-      return 'repeating-conic-gradient(#151a23 0% 25%,#0b0e14 0% 50%)';
+      // Beta 4 W0.5 (B4-2): window transparency is removed — `No background`
+      // renders a plain dark backdrop instead of the desktop showing through.
+      return 'linear-gradient(#07090f,#07090f)';
     case 'custom':
       return s.customWp ? "url('" + s.customWp + "')" : "url('" + cosmicUrl + "')";
     case 'match':
@@ -135,15 +135,6 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
         ? "url('" + cosmicUrl + "')"
         : 'radial-gradient(1.6px 1.6px at 12% 22%,rgba(255,255,255,.85),transparent 100%),radial-gradient(1.2px 1.2px at 34% 64%,rgba(255,255,255,.6),transparent 100%),radial-gradient(1.8px 1.8px at 58% 18%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.2px 1.2px at 73% 48%,rgba(255,255,255,.55),transparent 100%),radial-gradient(1.5px 1.5px at 88% 76%,rgba(255,255,255,.7),transparent 100%),radial-gradient(1.1px 1.1px at 22% 86%,rgba(255,255,255,.5),transparent 100%),radial-gradient(85% 65% at 12% 8%,' + hexA(c1, .2) + ',transparent 58%),radial-gradient(75% 60% at 88% 12%,' + hexA(c2, .24) + ',transparent 55%),radial-gradient(60% 50% at 68% 42%,' + hexA(c3, .14) + ',transparent 60%),radial-gradient(95% 85% at 50% 100%,' + hexA(c4, .1) + ',transparent 62%),linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)';
   }
-}
-
-export interface LiquidNeonApplyOpts {
-  /**
-   * M3: the Electron window was actually created transparent (wp was 'none'
-   * at launch). Replaces the checkerboard stand-in with a truly clear
-   * wallpaper layer so the desktop shows through.
-   */
-  transparentWindow?: boolean;
 }
 
 /**
@@ -155,7 +146,6 @@ export interface LiquidNeonApplyOpts {
 export function computeLiquidNeonV2Tokens(
   settings: Partial<LiquidNeonV2Settings> | null | undefined,
   cosmicUrl: string,
-  opts?: LiquidNeonApplyOpts,
 ): Record<string, string> {
   const S = normalizeLiquidNeonV2(settings);
   const I = S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
@@ -184,14 +174,9 @@ export function computeLiquidNeonV2Tokens(
     '--txNB': S.txtCfg.split ? S.txtCfg.nBody : S.txtCfg.body,
     '--blur': S.blur + 'px',
     '--wp': wallpaperCss(S, cosmicUrl),
-    '--wpsize': S.wp === 'none' ? '26px 26px' : 'cover',
+    '--wpsize': 'cover',
     '--ln-scrim': String(S.scrim / 100),
   };
-  if (opts?.transparentWindow && S.wp === 'none') {
-    // Real transparency instead of the prototype's checkerboard stand-in.
-    tokens['--wp'] = 'none';
-    tokens['--wpsize'] = 'cover';
-  }
   return tokens;
 }
 
@@ -202,9 +187,8 @@ export function applyLiquidNeonV2Tokens(
   settings: Partial<LiquidNeonV2Settings> | null | undefined,
   cosmicUrl: string,
   el: HTMLElement = document.documentElement,
-  opts?: LiquidNeonApplyOpts,
 ): Record<string, string> {
-  const tokens = computeLiquidNeonV2Tokens(settings, cosmicUrl, opts);
+  const tokens = computeLiquidNeonV2Tokens(settings, cosmicUrl);
   for (const [k, v] of Object.entries(tokens)) {
     el.style.setProperty(k, v);
     if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
