@@ -12,7 +12,8 @@ export type LiquidNeonSetKey = LiquidNeonPresetKey | 'custom';
 
 /** Ambience particle layer (two per preset). Rendered by AmbienceLayer (M2). */
 export interface AmbienceLayerSpec {
-  /** Falling (`lnSnow`) or rising (`lnRise`) particle keyframe. */
+  /** Falling or rising particle field; rendered as the transform-only
+   *  `lnSnowT`/`lnRiseT` keyframes (W0.5, prototype mkAmb HTML 6800). */
   anim: 'lnSnow' | 'lnRise';
   /** Animation durations for layer 1 / layer 2, seconds. */
   dur: [number, number];
