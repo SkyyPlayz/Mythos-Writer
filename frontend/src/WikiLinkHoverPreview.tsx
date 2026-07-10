@@ -5,6 +5,7 @@
 // the panel body: it covers rich-mode `[data-wiki-link]` spans and
 // preview-mode `[data-wiki-target]` buttons in every pane, including splits.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { stripHiddenBlocks } from './lib/frontmatter';
 import './WikiLinkHoverPreview.css';
 
 export interface WikiLinkPreviewData {
@@ -27,9 +28,8 @@ const CARD_MARGIN = 10;
  * flattened, truncated on a word boundary. Exported for unit tests.
  */
 export function extractPreviewExcerpt(markdown: string, maxChars = 420): string {
-  let body = markdown;
-  const fm = body.match(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/);
-  if (fm) body = body.slice(fm[0].length);
+  // W0.2: preview surfaces share ONE frontmatter/kanban-settings engine.
+  let body = stripHiddenBlocks(markdown);
   body = body
     .replace(/^#{1,6}[ \t]+/gm, '') // heading markers
     .replace(/\*\*([^*]+)\*\*/g, '$1')
