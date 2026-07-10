@@ -371,6 +371,7 @@ import {
   NOTES_VAULT_SEED_LAYOUT,
   type SeedRegistry,
 } from './vaultSeeding.js';
+import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
 import {
@@ -4912,7 +4913,15 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     if (payload.root) safePath(root, payload.root);
-    return listVaultFiles(root, payload.root);
+    // W0.1 (GAP #1): story-vault internals (scene-UUID dirs, Manuscript/,
+    // manifest bookkeeping, dot-dirs) must never appear in the Notes tree —
+    // filter at the source so every renderer consumer sees a clean listing,
+    // even when the configured roots overlap.
+    const { items } = listVaultFiles(root, payload.root);
+    const listedRoot = payload.root ? path.join(root, payload.root) : root;
+    return {
+      items: filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())),
+    };
   },
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureNotesVaultDir();
