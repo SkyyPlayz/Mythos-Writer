@@ -13,11 +13,12 @@ The Board has already documented the product vision, feature goals, design
 system, and decisions. Most questions are already answered there.
 
 Mandatory reading before starting any task:
-- [`plans/ProjectGoalOverView/01-overview.md`](plans/ProjectGoalOverView/01-overview.md) — vision, guiding principles, two-vault model
-- [`plans/ProjectGoalOverView/00-decisions-log.md`](plans/ProjectGoalOverView/00-decisions-log.md) — decisions already made by the Board/CEO
-- [`plans/ProjectGoalOverView/questions.md`](plans/ProjectGoalOverView/questions.md) — open and answered questions
-- [`plans/ProjectGoalOverView/13-team-goals.md`](plans/ProjectGoalOverView/13-team-goals.md) — this policy in full, with a complete index of plan files
-- [`plans/PROJECT_PLAN.md`](plans/PROJECT_PLAN.md) — feature roadmap
+- [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](plans/ProjectGoalOverView/14-beta4-refine-overview.md) — CURRENT product overview (Beta 4 "Refine")
+- [`plans/design-handoff/v2/FULL-SPEC.md`](plans/design-handoff/v2/FULL-SPEC.md) — the build spec; the prototype beside it wins every disagreement
+- [`docs/releases/BETA-REFINE.md`](docs/releases/BETA-REFINE.md) — the active build plan (waves, milestones, acceptance)
+- [`plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`](plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md) — binding carry-overs from the older docs
+- [`plans/ProjectGoalOverView/00-decisions-log.md`](plans/ProjectGoalOverView/00-decisions-log.md) — decisions already made (see the Beta 4 block)
+- [`plans/ProjectGoalOverView/13-team-goals.md`](plans/ProjectGoalOverView/13-team-goals.md) — working policy (unchanged)
 
 Only escalate to the Board after you have checked those files and the answer is
 genuinely not there. When you do ask, state which plan files you already read.

@@ -1,3 +1,5 @@
+> **⚠️ OUTDATED (2026-07-10).** Superseded by [`14-beta4-refine-overview.md`](14-beta4-refine-overview.md) and the design package in [`plans/design-handoff/v2/`](../design-handoff/v2/) (FULL-SPEC v1.1 + prototype — the prototype wins every disagreement). Commitments from this doc that remain binding are recorded in [`15-beta4-comparison-and-carryovers.md`](15-beta4-comparison-and-carryovers.md). Kept for historical context.
+
 # Visual Design System — Liquid Neon
 
 > **CEO decision (MYT-516):** Mythos Writer's official visual identity is **Liquid Neon** — translucent frosted-glass surfaces with restrained neon accents, applied consistently across every surface of the app.

@@ -1,3 +1,5 @@
+> **⚠️ OUTDATED (2026-07-10).** Superseded by [`ProjectGoalOverView/14-beta4-refine-overview.md`](ProjectGoalOverView/14-beta4-refine-overview.md), the design package in [`design-handoff/v2/`](design-handoff/v2/), and the build plan [`docs/releases/BETA-REFINE.md`](../docs/releases/BETA-REFINE.md). Binding carry-overs: [`ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`](ProjectGoalOverView/15-beta4-comparison-and-carryovers.md).
+
 # Mythos Writer — Project Plan
 
 ## Purpose

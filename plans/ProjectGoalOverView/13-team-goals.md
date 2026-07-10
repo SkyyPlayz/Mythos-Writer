@@ -1,3 +1,13 @@
+> **Index update (2026-07-10):** the product source of truth is now
+> [`14-beta4-refine-overview.md`](14-beta4-refine-overview.md) +
+> [`plans/design-handoff/v2/FULL-SPEC.md`](../design-handoff/v2/FULL-SPEC.md)
+> (prototype-authoritative) + the build plan
+> [`docs/releases/BETA-REFINE.md`](../../docs/releases/BETA-REFINE.md).
+> Docs 01–12 and `questions.md` are historical; binding carry-overs live in
+> [`15-beta4-comparison-and-carryovers.md`](15-beta4-comparison-and-carryovers.md).
+> [`13-Code-Quality.md`](13-Code-Quality.md) remains fully in force.
+> The read-the-plans-first policy below is unchanged.
+
 # Team Goal: Plans-First Policy
 
 ## Goal
