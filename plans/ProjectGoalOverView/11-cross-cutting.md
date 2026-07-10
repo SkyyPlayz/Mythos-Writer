@@ -1,3 +1,5 @@
+> **⚠️ OUTDATED (2026-07-10).** Superseded by [`14-beta4-refine-overview.md`](14-beta4-refine-overview.md) and the design package in [`plans/design-handoff/v2/`](../design-handoff/v2/) (FULL-SPEC v1.1 + prototype — the prototype wins every disagreement). Commitments from this doc that remain binding are recorded in [`15-beta4-comparison-and-carryovers.md`](15-beta4-comparison-and-carryovers.md). Kept for historical context.
+
 # Cross-Cutting Decisions
 
 This document captures product-wide decisions that don't fit neatly inside the agent or surface-specific docs (`01-` through `10-`). All entries are MVP defaults unless noted otherwise.

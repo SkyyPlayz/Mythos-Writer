@@ -92,3 +92,21 @@ The Q&A Explainer document on MYT-183 is the conversation record and should not 
 | Date | Issue | Change |
 | --- | --- | --- |
 | 2026-05-28 | SKY-9 | Two-vault foundation lands against the board-accepted [SKY-15 #document-plan](/SKY/issues/SKY-15#document-plan) (which supersedes the old Q4.5 example). Default vault roots are now `~/Mythos/Story Vault/` and `~/Mythos/Notes Vault/` as siblings under `~/Mythos/`; existing installs keep persisted paths. Notes Vault scaffolds the six SKY-15 top-level folders (`Universes/`, `Stories/`, `Inbox/`, `Research/`, `Daily Notes/`, `Archive/`) with `.gitkeep` sentinels, plus a seeded `My First Universe/{Characters,Locations,Factions,History,Systems,Items}/` example and a per-story `Stories/My First Story/` folder. Story Vault scaffolds `My First Story/Manuscript/01 - Opening/01 - Scene One.md` plus seeded `Outline.md` and `Synopsis.md`. Added `layoutMode` to `VaultSettings` (`default` \| `blank` \| `imported`) so the seeding hook honors Blank-mode (only the top-level vault folder is created). `ensure*VaultDir` seeds when the root exists but is empty (not only when missing). Added Notes-Vault-scoped IPC handlers `notesVault:read/write/list/delete/move` plus `vault:move` for symmetry; renderer bridge exposes `readNotesVault`/`writeNotesVault`/`listNotesVault`/`deleteNotesVault`/`moveNotesVault` and `moveVault`. Settings UI gained a "Vault paths" section backed by a new generic `vault:chooseFolder` IPC decoupled from the Obsidian-import token flow. Brainstorm asks-once-per-category routing in Blank-mode vaults (SKY-15 item 5) is split into a separate Brainstorm-Agent child issue blocked by SKY-9. |
+
+---
+
+## Beta 4 "Refine" decisions (Skyy, 2026-07-10 — supersede all earlier conflicting rows)
+
+Context: the "Refine Mythos Writer" handoff (`plans/design-handoff/v2/`, FULL-SPEC
+v1.1 + refreshed prototype) becomes the product source of truth. Overview doc:
+[`14-beta4-refine-overview.md`](14-beta4-refine-overview.md).
+
+| # | Decision |
+| --- | --- |
+| B4-1 | **Neon window frame ring: deleted entirely.** No legacy toggle — dead settings are clutter. (Removes the Beta 3 M3 feature + its Appearance controls.) |
+| B4-2 | **Window transparency: removed.** Opaque BrowserWindow always; "No background" wallpaper option renders a plain dark backdrop. `PERFORMANCE.md` governs. |
+| B4-3 | **Vault re-architecture approved** (single `MythosVault/` folder, `mythos.json`, `timelines.json`, per-vault `settings.json`, drafts as numbered `.md`). Rule: **user work lives in the vault as files; SQLite holds only regenerable machine-local state.** Comments, draft snapshots, and agent chat sessions = files inside the vault (sidecar JSON / draft `.md`) so they survive vault copy and Dropbox sync. SQLite keeps continuity flags, budgets, caches, indexes. App-global prefs (window size, last vault) stay in AppData. One-time migration wizard converts existing vaults. |
+| B4-4 | **Demolition consented:** Brainstorm Map + Clusters modes, the old 5-mode timeline implementation, and the settings modal are replaced per design review. Timeline is rebuilt wholesale (no retrofit). Existing user data (card positions, timeline events) migrates into the new models before old structures are deleted. |
+| B4-5 | **CI stays green.** Repo `CLAUDE.md` governs; the handoff's "don't worry about CI" is superseded. |
+| B4-6 | **`Log in with Claude` ships in connect-later state:** button present; clicking explains account linking is coming and points to the API-key path. Real OAuth wired when credentials exist. |
+| B4-7 | **Sequencing:** Wave 0 = GAP-REPORT-v2 P0s + PERFORMANCE work, then a packaged-build smoke pass verifying those fixes land for a real user, then the big builds. Target **v0.5.0-beta.1**. |
