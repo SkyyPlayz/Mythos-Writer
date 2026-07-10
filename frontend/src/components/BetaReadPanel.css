@@ -7,11 +7,24 @@
   color: inherit;
 }
 
+/* W0.3 (GAP P0#3): prototype right-panel spacing (8px gaps) + wrapping —
+   long scene titles ("Reviewing …") wrap inside the summary column and the
+   Beta-Read/history buttons never overlap them at 280–320px panel widths. */
 .br-panel-header {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: flex-start;
   justify-content: space-between;
+}
+
+.br-summary-card {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.br-summary-card h3 {
+  overflow-wrap: anywhere;
 }
 
 .br-summary-card h3,
@@ -40,6 +53,12 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* W0.3: keep the action cluster right-aligned when the header wraps. */
+.br-panel-actions {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .br-primary-btn,

@@ -2446,6 +2446,15 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
     render(<BrainstormPage onClose={() => {}} compact />);
     expect(screen.queryByTestId('bsc-mode-board')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
+    // W0.3 (GAP P0#3): compact contexts get the prototype right-panel spacing
+    // (12px padding / 8px gaps) so ← Back never collides with the preset chip.
+    expect(document.querySelector('.brainstorm-header--compact')).toBeInTheDocument();
+  });
+
+  it('full-page contexts keep the default header spacing (no compact modifier)', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(document.querySelector('.brainstorm-header--compact')).not.toBeInTheDocument();
+    expect(document.querySelector('.brainstorm-header')).toBeInTheDocument();
   });
 });
 

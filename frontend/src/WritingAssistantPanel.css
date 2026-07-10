@@ -18,8 +18,11 @@
 
 /* AC-WA-2: Liquid Neon panel header — layout from PanelChrome (.pc-header) */
 .writing-assistant-header,
+/* W0.3 (GAP P0#3): prototype right-panel spacing — 12px padding, 8px gaps
+   (gap comes from .pc-header). Rows wrap at 280–320px so the header
+   controls never overlap the title. */
 .wa-panel-header {
-  padding: 10px 12px 8px;
+  padding: 12px 12px 8px;
 }
 
 .wa-sparkle-icon {
@@ -49,6 +52,9 @@
 .wa-header-controls {
   display: flex;
   align-items: center;
+  /* W0.3: cadence select + mute wrap instead of colliding at 280px. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -284,10 +290,14 @@
   overflow-y: auto;
 }
 
+/* W0.3 (GAP P0#3): flex row with the prototype 8px gap — "Heartbeat tips"
+   and "Scan now" keep clear separation, and the row wraps (never overlaps)
+   at 280–320px panel widths. */
 .wa-heartbeat-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   padding: 6px 12px;
   position: sticky;
   top: 0;

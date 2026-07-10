@@ -37,4 +37,15 @@ describe('WritingAssistantPanel Liquid Neon CSS', () => {
     expect(css).toContain('outline: 2px solid var(--accent, #00f0ff);');
     expect(css).toContain('outline-offset: 2px;');
   });
+
+  // W0.3 (GAP P0#3): "Heartbeat tips" / "Scan now" keep an explicit flex gap
+  // and the row wraps instead of overlapping at 280–320px panel widths.
+  it('heartbeat header is a wrapping flex row with the prototype gap', () => {
+    const css = readSrcCss('WritingAssistantPanel.css');
+    const m = css.match(/\.wa-heartbeat-header\s*\{([^}]*)\}/);
+    expect(m).not.toBeNull();
+    expect(m![1]).toContain('display: flex');
+    expect(m![1]).toContain('flex-wrap: wrap');
+    expect(m![1]).toContain('gap: 4px 8px');
+  });
 });

@@ -144,4 +144,13 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     const btn = screen.getByTestId('action-btn');
     expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
+
+  // W0.3 (GAP P0#3): header rows must be wrapping flex layouts so buttons and
+  // dropdowns never overlap at 280–320px right-panel widths.
+  it('header row wraps at narrow panel widths instead of overlapping (W0.3)', () => {
+    const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
+    expect(header?.[1] ?? '').toContain('flex-wrap: wrap');
+    const actions = PANEL_CSS.match(/\.pc-header-actions\s*\{([^}]*)\}/);
+    expect(actions?.[1] ?? '').toContain('flex-wrap: wrap');
+  });
 });
