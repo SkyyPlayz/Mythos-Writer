@@ -67,6 +67,20 @@ describe('NoteViewer cross-tab links', () => {
     );
   });
 
+  it('debounces word-count reporting off the keystroke path (W0.5, PERFORMANCE §4)', async () => {
+    const onWordCountChange = vi.fn();
+    render(<NoteViewer path="Notes/Test.md" onWordCountChange={onWordCountChange} />);
+    const textarea = await screen.findByLabelText('Edit note: Test.md');
+    await waitFor(() => expect(onWordCountChange).toHaveBeenCalled()); // initial load count
+    onWordCountChange.mockClear();
+
+    fireEvent.change(textarea, { target: { value: 'one two three' } });
+    // No synchronous shell update per keystroke...
+    expect(onWordCountChange).not.toHaveBeenCalled();
+    // ...but the debounced count lands shortly after.
+    await waitFor(() => expect(onWordCountChange).toHaveBeenCalledWith(3));
+  });
+
   it('does not fall back to story vault when readNotesVault fails (SKY-2976/GH#620)', async () => {
     readNotesVault.mockResolvedValue({ error: 'File not found' });
 

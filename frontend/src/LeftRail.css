@@ -163,6 +163,8 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* W0.5 (PERFORMANCE §5): panel-internal changes must not relayout the shell. */
+  contain: layout paint;
 }
 
 /* Add panel button + picker */

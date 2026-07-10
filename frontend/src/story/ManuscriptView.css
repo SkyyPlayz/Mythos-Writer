@@ -647,6 +647,11 @@
 .msv-para {
   position: relative;
   margin: 0 0 1.1em;
+  /* W0.5 (PERFORMANCE §5): rows outside the viewport (within the 120-block
+     lazy window, GH#843) skip layout+paint entirely; the intrinsic size
+     matches the windowing estimate (EST_BLOCK_H) so scroll metrics hold. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }
 
 .msv-grip {

@@ -198,6 +198,10 @@
 
 .grs-panel-body {
   padding: 0;
+  /* W0.5 (PERFORMANCE §5): panel-internal changes must not relayout the shell.
+     Layout-only (no paint) — the body declares no overflow, so paint
+     containment would newly clip panel-content popovers. */
+  contain: layout;
 }
 
 .grs-panel-popout-placeholder {
