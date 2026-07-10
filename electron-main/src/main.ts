@@ -8410,6 +8410,10 @@ function setupAgentPersonaIpc(): void {
 // Must be called before the app 'ready' event.
 app.disableHardwareAcceleration();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] Unhandled promise rejection:', reason);
+});
+
 app.whenReady().then(async () => {
   performance.mark('app:ready-start');
   const appReadyT0 = performance.now();
@@ -8441,7 +8445,15 @@ app.whenReady().then(async () => {
   // gate was introduced and remain trustable as user-controlled state).
   seedTrustedBinariesFromSettings(loadAppSettings());
   performance.mark('app:secrets-end');
-  setupIpcMain(handlers);
+  // Boot must never hang invisibly: an IPC-registration failure (e.g. a test
+  // harness or plugin registering a handler first) is logged loudly and boot
+  // proceeds to create the window instead of dying as an unhandled rejection
+  // before any UI exists.
+  try {
+    setupIpcMain(handlers);
+  } catch (e) {
+    console.error('[boot] setupIpcMain failed — continuing to window creation:', e);
+  }
   registerAgentCancelHandlers();
   registerBrainstormExtractionHandlers();
   registerBrainstormHandler();

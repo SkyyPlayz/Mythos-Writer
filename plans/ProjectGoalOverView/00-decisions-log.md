@@ -110,3 +110,12 @@ v1.1 + refreshed prototype) becomes the product source of truth. Overview doc:
 | B4-5 | **CI stays green.** Repo `CLAUDE.md` governs; the handoff's "don't worry about CI" is superseded. |
 | B4-6 | **`Log in with Claude` ships in connect-later state:** button present; clicking explains account linking is coming and points to the API-key path. Real OAuth wired when credentials exist. |
 | B4-7 | **Sequencing:** Wave 0 = GAP-REPORT-v2 P0s + PERFORMANCE work, then a packaged-build smoke pass verifying those fixes land for a real user, then the big builds. Target **v0.5.0-beta.1**. |
+
+## Beta 4 rulings on the carry-over conflicts (Skyy, 2026-07-10, round 2)
+
+| # | Ruling |
+| --- | --- |
+| B4-8 | **⚖️-1 resolved — BOTH.** Keep the Suggestion Inbox AND the new auto-apply autonomy toggles. All toggles **OFF by default**, and each category (Grammar/Clarity/Pacing/Style/Tone) gets a **certainty slider**: suggestions at/above the threshold auto-apply (snapshot-first, undoable); below it they land in the Suggestion Inbox for review. |
+| B4-9 | **⚖️-2 resolved — generated prose never enters the manuscript.** Crafter generation is welcome as *ideas to build off*, but the draft card's action becomes **“Add to scene board”** (the canvas board just created for that scene) instead of “Insert into manuscript.” The writer moves prose into the manuscript only by hand. |
+| B4-10 | **⚖️-3 resolved — full BYO stays.** Keep ANY API (OpenAI-compatible endpoints included) and any local runtime, plus **OAuth login options for every provider that supports it** (Claude, and others as available) — all OAuth buttons in connect-later state until credentials exist (extends B4-6). |
+| B4-11 | **⚖️-4 resolved — monetization was dropped by accident.** The monetization plan (one-time license → in-app AI subscription → hosted sync/mobile later) is **re-included** in the roadmap as a parked, post-Beta-4 track. |

@@ -8,6 +8,12 @@
 > [`plans/ProjectGoalOverView/00-decisions-log.md`](../../plans/ProjectGoalOverView/00-decisions-log.md).
 > Product overview: [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](../../plans/ProjectGoalOverView/14-beta4-refine-overview.md).
 
+> **Round-2 rulings (B4-8…B4-11, 2026-07-10):** Suggestion Inbox kept alongside
+> autonomy toggles (all OFF + per-category certainty sliders) · Crafter drafts go
+> to the scene board, never the manuscript · full BYO providers + multi-provider
+> OAuth (connect-later) · monetization roadmap re-included as a parked
+> post-Beta-4 track.
+
 ## Release goal
 
 Ship the app the approved prototype shows — not approximately, exactly. The gap
@@ -326,13 +332,17 @@ Book: compiled read-only + comments + page width follows editor; Export modal
 Files: existing M14-era components refreshed to prototype values.
 Accept: export produces files for all three formats on Linux CI (smoke).
 
-**M15 — Right panel agent hub + sessions everywhere** *(§5.6, §11)*
+**M15 — Right panel agent hub + Suggestion Inbox + sessions everywhere** *(§5.6, §11; B4-8)*
 AGENTS card (compact rows: 30px tile, status dot; hover tooltip desc; click →
 in-panel chat with back button, session pill, issue/note cards, chips, input);
 Beta Reader row routes to the Beta view; Suggestions card (badge + 3 rows +
 `See All Suggestions`); Scene Analysis card; Scenes/Notes/References tabs.
 **Session dropdowns on every chat surface** (§11: rename inline, duplicate,
 delete-last recreates, per-agent greetings), stores = vault files (M5).
+**Suggestion Inbox (B4-8):** a review surface in the agent hub listing every
+below-threshold suggestion (source agent, confidence, rationale, target,
+accept/dismiss; accepted → snapshot-first apply; dismissed → never reappears,
+CF-10).
 Files: `WritingAssistantPanel.tsx` → agent hub rework, shared
 `AgentSessionPicker`, session file store.
 Spec: §5.6/§11; prototype 2806–3080 (right panel), 6252 (agent defs).
@@ -374,13 +384,15 @@ tone chips, length seg); SUGGESTED CARDS panel (searchable, grouped, click/drag
 to canvas, title-case display-mapping — GAP P2 #13); canvas (2200×1500 world,
 pan/zoom 40–240%, colored card headers, avatar chip → opens note, link tool);
 gradient generate → **draft card** (`— first pass`, word count, preview;
-Insert into manuscript (after current) / Retry / Discard; Coach-framed copy:
-"…annotates why it made each choice, so the rewrite teaches you"); right kanban
-(beats/cast/places); editor right-panel Scenes tab mini canvas (Open full).
+**Add to scene board** (B4-9 — the draft lands on the scene's canvas board;
+generated prose NEVER enters the manuscript; the writer lifts it by hand) /
+Retry / Discard; Coach-framed copy: "…annotates why it made each choice, so the
+rewrite teaches you"); right kanban (beats/cast/places); editor right-panel
+Scenes tab mini canvas (Open full).
 Files: `pages/SceneCrafter/*`, `canvas/*` engine reuse.
 Spec: §7.1; prototype 533+1325 regions.
-Accept: draft never lands in manuscript without explicit Insert; board mini
-canvas pans/zooms.
+Accept: no code path writes generated prose into the manuscript; Add to scene
+board places the draft card on the board; board mini canvas pans/zooms.
 
 **M20 — Brainstorm unification** *(§7.2; B4-4)*
 Agent Chat default page + **ONE Board** (delete Map/Clusters; migrate card
@@ -484,10 +496,15 @@ Accept: §14.7 (Run produces report AND margin comments).
 **M28 — Settings workspace** *(§13; GAP #8)*
 Full view (not modal), left rail: Account & profile · Appearance · AI Agents ·
 Editor · Vault & Files · Sync & Backup · Shortcuts · About (prototype
-`settingsMeta`, 6458). AI Agents page: provider seg (Claude API/Local), masked
-key + Test, **`Log in with Claude` gradient button in connect-later state**
-(B4-6), models ×4, autonomy toggles, green linker callout, identity & files
-(rename, duties chips, agent/instructions/learning/soul editors). Editor page:
+`settingsMeta`, 6458). AI Agents page (B4-10): **full BYO providers** — Claude API, any
+OpenAI-compatible endpoint (keep the existing adapter), local runtimes
+(Ollama/LM Studio/llama.cpp) — masked key + Test each, plus **OAuth login
+buttons for every provider that supports it, all in connect-later state**
+(B4-6/B4-10); models ×4; **Autonomy card: every auto-apply toggle OFF by
+default + a per-category certainty slider (B4-8)** — at/above threshold
+auto-applies snapshot-first, below routes to the M15 Suggestion Inbox; green
+linker callout; identity & files (rename, duties chips,
+agent/instructions/learning/soul editors). Editor page:
 text colors (story/notes split, wiki links), manuscript page modes incl. Custom,
 autosave slider, defaults, behavior toggles. Vault & Files: linker card first
 (M6), vault cards (click switches, per-vault theme, stats, new), import
