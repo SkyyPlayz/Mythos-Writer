@@ -1670,7 +1670,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       <Toast message={toastState?.message ?? null} level={toastState?.level} />
 
       <PanelHeader
-        className="brainstorm-header"
+        className={compact ? 'brainstorm-header brainstorm-header--compact' : 'brainstorm-header'}
         icon={
           <button className="brainstorm-back-btn" onClick={onClose} aria-label="Close brainstorm">
             ← Back

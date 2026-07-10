@@ -57,6 +57,15 @@
   background: var(--bg-bar);
 }
 
+/* W0.3 (GAP P0#3): compact sidebar contexts (notes-tab agent panel) use the
+ * prototype right-panel spacing — 12px padding, 8px gaps. Combined with the
+ * wrapping .pc-header rows, the ← Back button and the genre preset dropdown
+ * never overlap at 280–320px panel widths. */
+.brainstorm-header--compact {
+  padding: 12px;
+  gap: 8px;
+}
+
 .brainstorm-header .pc-header-title {
   font-family: 'Lora', Georgia, serif;
   font-size: 21px;
@@ -1333,7 +1342,9 @@
 .brainstorm-header-preset {
   display: flex;
   align-items: center;
-  padding: 4px 12px 0;
+  /* W0.3: spacing comes from the header's flex gap — the old 12px side
+     padding pushed the preset chip into its row neighbours at 280–320px. */
+  padding: 0;
   flex-shrink: 0;
 }
 

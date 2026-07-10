@@ -77,8 +77,12 @@ export interface ManuscriptViewProps {
   onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
   /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
   liquidNeon?: Partial<LiquidNeonV2Settings> | null;
-  /** M10 toolbar actions (prototype 766–777). Each button hides when its handler is absent. */
-  onRead?: () => void;
+  /**
+   * M10 toolbar actions (prototype 766–777). Dictate/Assist hide when their
+   * handler is absent. Read is built in (W0.4): the toolbar's single Read
+   * button toggles the M13 reader dock — the old zoombar reader chip and the
+   * onRead prop were the duplicated instance (GAP P0#4).
+   */
   onDictate?: () => void;
   dictating?: boolean;
   onAssist?: () => void;
@@ -232,23 +236,6 @@ const TB_ICON = (path: string) => (
 
 const NO_COMMENTS: readonly StoryComment[] = [];
 
-const SPEAKER_ICON = (
-  <svg
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M4 10v4h4l5 4V6l-5 4z" />
-    <path d="M16.5 9a4 4 0 0 1 0 6" />
-  </svg>
-);
-
 export default function ManuscriptView({
   story,
   cursor,
@@ -259,7 +246,6 @@ export default function ManuscriptView({
   onPageWidthChange,
   onMoveParagraph,
   liquidNeon,
-  onRead,
   onDictate,
   dictating = false,
   onAssist,
@@ -371,8 +357,21 @@ export default function ManuscriptView({
   }, [scopeKey]);
 
   // ←/→ hop same-level siblings (prototype 3919–3922), except while typing.
+  // W0.4: Ctrl/Cmd+Alt+↑/↓ steps the zoom level here too — the shell's
+  // DepthSlider (which owned that shortcut) no longer mounts while the
+  // manuscript's own doc header is the single zoom bar.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const depthMod = (e.ctrlKey || e.metaKey) && e.altKey;
+      if (depthMod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        const idx = ZOOM_LEVELS.findIndex(([level]) => level === cursor.zoom);
+        const next = ZOOM_LEVELS[idx + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) {
+          e.preventDefault();
+          onCursorChange({ ...cursor, zoom: next[0] });
+        }
+        return;
+      }
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       if (cursor.zoom === 'book') return;
       const target = e.target as HTMLElement | null;
@@ -385,7 +384,7 @@ export default function ManuscriptView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cursor.zoom, step]);
+  }, [cursor, onCursorChange, step]);
 
   // Abandoned grip drags (mouseup outside any paragraph) clear the drag state.
   useEffect(() => {
@@ -801,19 +800,9 @@ export default function ManuscriptView({
           ))}
         </nav>
         <div className="msv-flex-spacer" />
-        {/* M13: reader chip — opens/closes the audiobook bar (prototype Read
-            toolbar button 748 / gutter Reader dock 913) */}
-        <button
-          type="button"
-          className={`msv-reader-chip${reader.open ? ' msv-reader-chip--on' : ''}`}
-          data-testid="msv-reader-chip"
-          title={reader.open ? 'Close the reader' : 'Read aloud — open the reader'}
-          aria-pressed={reader.open}
-          onClick={() => (reader.open ? reader.close() : reader.openReader())}
-        >
-          {SPEAKER_ICON}
-          Read
-        </button>
+        {/* W0.4 (GAP P0#4): the zoombar's duplicate Read chip is gone — the
+            single Read button lives right-aligned on the format toolbar below
+            (prototype 748) and toggles the same M13 reader dock. */}
         {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
         <button
           type="button"
@@ -944,31 +933,33 @@ export default function ManuscriptView({
           </button>
         ))}
         <div className="msv-flex-spacer" />
-        {onRead && (
-          <button
-            type="button"
-            className="msv-tb-action msv-tb-read"
-            data-testid="msv-tb-read"
-            title="Read aloud"
-            onClick={onRead}
+        {/* W0.4 (GAP P0#4): the ONE Read button — right-aligned on the format
+            toolbar per the prototype (748), wired to the M13 reader dock the
+            deleted zoombar chip used to open. */}
+        <button
+          type="button"
+          className={`msv-tb-action msv-tb-read${reader.open ? ' msv-tb-read--on' : ''}`}
+          data-testid="msv-tb-read"
+          title={reader.open ? 'Close the reader' : 'Read aloud — open the reader'}
+          aria-pressed={reader.open}
+          onClick={() => (reader.open ? reader.close() : reader.openReader())}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 10v4h4l5 4V6l-5 4z" />
-              <path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />
-            </svg>
-            Read
-          </button>
-        )}
+            <path d="M4 10v4h4l5 4V6l-5 4z" />
+            <path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />
+          </svg>
+          Read
+        </button>
         {onDictate && (
           <button
             type="button"

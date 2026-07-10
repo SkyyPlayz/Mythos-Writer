@@ -368,24 +368,41 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
     expect(para.style.textAlign).toBe('justify');
   });
 
-  it('hides Read/Dictate/Assist without handlers and wires them when provided', () => {
-    const onRead = vi.fn();
+  it('hides Dictate/Assist without handlers and wires them when provided', () => {
     const onDictate = vi.fn();
     const onAssist = vi.fn();
     const { unmount } = renderView();
-    expect(screen.queryByTestId('msv-tb-read')).not.toBeInTheDocument();
     expect(screen.queryByTestId('msv-tb-dictate')).not.toBeInTheDocument();
     expect(screen.queryByTestId('msv-tb-assist')).not.toBeInTheDocument();
     unmount();
 
-    renderView({ onRead, onDictate, onAssist, dictating: true });
-    fireEvent.click(screen.getByTestId('msv-tb-read'));
+    renderView({ onDictate, onAssist, dictating: true });
     fireEvent.click(screen.getByTestId('msv-tb-dictate'));
     fireEvent.click(screen.getByTestId('msv-tb-assist'));
-    expect(onRead).toHaveBeenCalledTimes(1);
     expect(onDictate).toHaveBeenCalledTimes(1);
     expect(onAssist).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('msv-tb-dictate')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // W0.4 (GAP P0#4): exactly ONE Read button — on the format toolbar, always
+  // present, toggling the built-in M13 reader dock (the old zoombar reader
+  // chip was the duplicate and is gone).
+  it('renders a single always-on Read button that toggles the reader dock', () => {
+    renderView();
+    expect(screen.queryByTestId('msv-reader-chip')).not.toBeInTheDocument();
+    const readButtons = screen.getAllByRole('button', { name: /read/i })
+      .filter((b) => b.textContent === 'Read');
+    expect(readButtons).toHaveLength(1);
+
+    const read = screen.getByTestId('msv-tb-read');
+    expect(read).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
+    fireEvent.click(read);
+    expect(read).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+    fireEvent.click(read);
+    expect(read).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
   });
 });
 

@@ -97,8 +97,10 @@ function renderView(over: Partial<Parameters<typeof ManuscriptView>[0]> = {}) {
   return { ...render(<ManuscriptView {...props} />), props };
 }
 
+// W0.4: the single Read button lives on the format toolbar (msv-tb-read);
+// the old zoombar reader chip was the duplicated instance and is gone.
 function openBar() {
-  fireEvent.click(screen.getByTestId('msv-reader-chip'));
+  fireEvent.click(screen.getByTestId('msv-tb-read'));
   return screen.getByTestId('msv-reader-bar');
 }
 
@@ -123,15 +125,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('reader chip + audiobook bar', () => {
-  it('the chip opens the bar (Ready) and close hides it again', () => {
+describe('toolbar Read button + audiobook bar', () => {
+  it('the Read button opens the bar (Ready) and close hides it again', () => {
     renderView();
     expect(screen.queryByTestId('msv-reader-bar')).toBeNull();
-    const chip = screen.getByTestId('msv-reader-chip');
-    expect(chip).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(chip);
+    const read = screen.getByTestId('msv-tb-read');
+    expect(read).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(read);
     expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(read).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Ready');
     fireEvent.click(screen.getByTestId('msv-reader-close'));
     expect(screen.queryByTestId('msv-reader-bar')).toBeNull();
