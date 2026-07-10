@@ -31,6 +31,38 @@ describe('extractPreviewExcerpt (M16)', () => {
   it('returns short bodies unchanged', () => {
     expect(extractPreviewExcerpt('Short note.')).toBe('Short note.');
   });
+
+  // W0.2: hover previews route through the shared frontmatter engine.
+  it('strips kanban frontmatter and the %% kanban:settings %% trailer', () => {
+    const md = [
+      '---',
+      'kanban-plugin: board',
+      'story-id: abc-123',
+      '---',
+      '',
+      '## To Do',
+      '',
+      '- [ ] Draft the flood scene',
+      '',
+      '%% kanban:settings',
+      '```json',
+      '{"kanban-plugin":"board"}',
+      '```',
+      '%%',
+    ].join('\n');
+    const out = extractPreviewExcerpt(md);
+    expect(out).not.toContain('kanban-plugin');
+    expect(out).not.toContain('story-id');
+    expect(out).not.toContain('kanban:settings');
+    expect(out).toContain('Draft the flood scene');
+  });
+
+  it('keeps an unterminated frontmatter fence visible as body', () => {
+    const md = '---\ntitle: broken fence\n\nStill visible prose.';
+    const out = extractPreviewExcerpt(md);
+    expect(out).toContain('Still visible prose.');
+    expect(out).toContain('title: broken fence');
+  });
 });
 
 function Harness({ resolve }: { resolve: WikiLinkPreviewResolver }) {

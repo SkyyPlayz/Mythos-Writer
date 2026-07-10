@@ -1,11 +1,16 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Story, Scene, Chapter } from '../../types';
 import type { ExportScope } from '../../ExportDialog';
 import StoryContextMenu from './StoryContextMenu';
 import { useVaultFiles } from './useVaultFiles';
 import { useTreeState } from './useTreeState';
-import { buildTree, flattenTree } from './treeUtils';
-import type { FlatRow } from './treeUtils';
+import {
+  buildTree,
+  flattenTree,
+  isStoryInternalTreeItem,
+  mapUuidNamesToTitles,
+} from './treeUtils';
+import type { FlatRow, VaultListItem } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
@@ -20,12 +25,19 @@ import './VaultBrowser.css';
 // up in the tree.
 
 const INTERNAL_PREFIXES = ['.versions', '.snapshots', '.git'];
+const INTERNAL_FILES = new Set(['manifest.json', 'manifest.json.bak']);
 
-function isNotesItem(item: { path: string; name: string }): boolean {
+function isNotesItem(item: { path: string; name: string; isDirectory: boolean }): boolean {
   if (item.name.startsWith('.')) return false;
   for (const prefix of INTERNAL_PREFIXES) {
     if (item.path === prefix || item.path.startsWith(prefix + '/')) return false;
   }
+  // W0.1 (GAP #1): story-vault internals must never render in the Notes tree
+  // — scene-UUID folders, manifest bookkeeping, and children of dot-dirs
+  // (which buildTree would otherwise promote to root rows). The main process
+  // filters these at the notesVault:list source; this is defense in depth.
+  if (INTERNAL_FILES.has(item.path)) return false;
+  if (isStoryInternalTreeItem(item)) return false;
   return true;
 }
 
@@ -501,10 +513,17 @@ interface NotesVaultProps {
   onBetaRead?: (path: string) => void;
   /** M15: run an Archive continuity check on a note (context menu). */
   onContinuityCheck?: (path: string) => void;
+  /** W0.1: manifest id → title map for display-mapping UUID-named entries. */
+  uuidTitleMap?: ReadonlyMap<string, string>;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck }: NotesVaultProps) {
-  const allNotesItems = items.filter(isNotesItem);
+const EMPTY_TITLE_MAP: ReadonlyMap<string, string> = new Map();
+
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap }: NotesVaultProps) {
+  const allNotesItems = mapUuidNamesToTitles(
+    (items as VaultListItem[]).filter(isNotesItem),
+    uuidTitleMap ?? EMPTY_TITLE_MAP,
+  );
   const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
 
   useEffect(() => {
@@ -860,6 +879,22 @@ export default function VaultBrowser({
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
   const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
 
+  // W0.1 (GAP #1): manifest id → title map so any UUID-named entry that
+  // legitimately reaches a tree renders its story/chapter/scene title.
+  const uuidTitleMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const story of stories) {
+      map.set(story.id.toLowerCase(), story.title);
+      for (const chapter of story.chapters) {
+        map.set(chapter.id.toLowerCase(), chapter.title);
+        for (const scene of chapter.scenes) {
+          map.set(scene.id.toLowerCase(), scene.title);
+        }
+      }
+    }
+    return map;
+  }, [stories]);
+
   useEffect(() => {
     window.api.notesVaultReadIcons().then((m) => {
       if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
@@ -961,6 +996,7 @@ export default function VaultBrowser({
                 onOpenInNewTab={onOpenInNewTab}
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
+                uuidTitleMap={uuidTitleMap}
               />
             )}
           </div>

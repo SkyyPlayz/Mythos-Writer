@@ -635,6 +635,10 @@
 .msv-para {
   position: relative;
   margin: 0 0 1.1em;
+  /* W0.5 note: content-visibility:auto was considered here but rejected — it
+     implies paint containment, which clips the .msv-grip drag handle that
+     lives at left:-24px OUTSIDE the row bounds. Offscreen DOM is already
+     bounded by the 120-block lazy window (GH#843). */
 }
 
 .msv-grip {

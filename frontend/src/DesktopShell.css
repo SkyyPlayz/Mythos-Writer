@@ -408,7 +408,10 @@
 /* READ-ONLY chip (prototype 606) */
 .full-book-preview__readonly-badge { display: inline-block; font-family: 'Inter', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 7px; background: transparent; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); color: #8e9db8; margin-bottom: 0; }
 .full-book-preview__synopsis { font-size: 14px; color: #8e9db8; font-style: italic; margin: 14px auto 0; line-height: 1.7; max-width: 480px; }
-.full-book-preview__chapter { margin-bottom: 56px; }
+/* W0.5 (PERFORMANCE §5): the read-only Full Book preview mounts every
+   chapter; content-visibility lets offscreen chapters skip layout+paint
+   (scrollIntoView still renders them on navigation). */
+.full-book-preview__chapter { margin-bottom: 56px; content-visibility: auto; contain-intrinsic-size: auto 1400px; }
 /* Chapter heading (prototype 629–633): centered 21px/600 under a slot-1 eyebrow */
 .full-book-preview__chapter-title { text-align: center; font-size: 21px; font-weight: 600; color: var(--txH, #eef2fb); margin: 44px 0 26px; padding-bottom: 0; border-bottom: none; line-height: 1.3; }
 .full-book-preview__chapter-title::before { content: 'Chapter'; display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .26em; text-transform: uppercase; color: var(--n1, #00f0ff); margin-bottom: 6px; }
@@ -454,8 +457,6 @@
   /* Beta 3 M8: slot-A glass card (prototype 242) */
   border-radius: 18px;
   background: var(--glass, rgba(13, 16, 28, .72));
-  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
   box-shadow: 0 0 var(--gr, 26px) -7px var(--g1, rgba(0, 240, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
 }
@@ -479,8 +480,6 @@
   /* Beta 3 M8: slot-B glass card (prototype 467) */
   border-radius: 18px;
   background: var(--glass, rgba(13, 16, 28, .72));
-  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
   border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .5));
   box-shadow: 0 0 var(--gr, 26px) -7px var(--g2, rgba(155, 95, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
   /* SKY-3618: Lowered from 300px; JS in DesktopShell enforces CENTER_MIN_WIDTH (280px) by
@@ -1409,8 +1408,6 @@
 @supports (backdrop-filter: blur(1px)) {
   .top-bar-chrome--peeking {
     background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(180%);
   }
 }
 

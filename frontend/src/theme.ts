@@ -399,11 +399,16 @@ export function applyPageBackgroundTokens(
   const glowAlpha = (p.glowIntensity / 100 * 0.3).toFixed(3);
   root.style.setProperty('--page-bg-glow-color', `rgba(${gr},${gg},${gb},${glowAlpha})`);
 
-  // Glass backdrop-filter: only on glass presets
+  // Glass backdrop-filter: only on glass presets.
+  // W0.5 (PERFORMANCE §2): the page is the single persistent surface still
+  // allowed a live backdrop-filter; --page-bg-backdrop-filter collapses to
+  // `none` (no backdrop root at all) whenever it would be a no-op blur.
   if (GLASS_PRESETS.has(p.preset)) {
     root.style.setProperty('--page-bg-backdrop-blur', `${p.blur}px`);
+    root.style.setProperty('--page-bg-backdrop-filter', p.blur > 0 ? `blur(${p.blur}px)` : 'none');
   } else {
     root.style.setProperty('--page-bg-backdrop-blur', '0px');
+    root.style.setProperty('--page-bg-backdrop-filter', 'none');
   }
 }
 
@@ -418,6 +423,7 @@ export function resetPageBackgroundTokens(): void {
   root.style.removeProperty('--page-bg-glow');
   root.style.removeProperty('--page-bg-glow-color');
   root.style.removeProperty('--page-bg-backdrop-blur');
+  root.style.removeProperty('--page-bg-backdrop-filter');
   root.removeAttribute('data-page-preset');
 }
 

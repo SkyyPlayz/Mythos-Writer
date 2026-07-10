@@ -10,8 +10,6 @@
   user-select: none;
   z-index: 60;
   background: linear-gradient(rgba(10, 12, 22, .6), rgba(10, 12, 22, .38));
-  backdrop-filter: blur(var(--blur, 18px)) saturate(160%);
-  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(160%);
 }
 
 .wc-drag-region {

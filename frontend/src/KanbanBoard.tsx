@@ -4,6 +4,7 @@ import {
   buildSceneCrafterPayload,
   type EntrySourcePayload,
 } from './EntriesPanel';
+import { stripHiddenBlocks } from './lib/frontmatter';
 import './KanbanBoard.css';
 
 export { buildSceneCrafterPayload, type EntrySourcePayload };
@@ -22,9 +23,9 @@ export interface KanbanColumn {
 
 export function parseBoard(md: string): KanbanColumn[] {
   const columns: KanbanColumn[] = [];
-  const body = md
-    .replace(/^---[\s\S]*?---\n?/, '')
-    .replace(/%%[\s\S]*?%%/g, '');
+  // W0.2: the shared engine strips the frontmatter block + trailing
+  // kanban:settings trailer; the extra pass drops remaining %% comments %%.
+  const body = stripHiddenBlocks(md).replace(/%%[\s\S]*?%%/g, '');
 
   let current: KanbanColumn | null = null;
   for (const line of body.split('\n')) {

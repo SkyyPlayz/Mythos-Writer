@@ -12,8 +12,6 @@
 @supports (backdrop-filter: blur(1px)) {
   .left-rail {
     background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
     border-right: 1px solid var(--glass-border);
   }
 }
@@ -165,6 +163,9 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* W0.5 note: contain: layout paint was considered here but rejected —
+     layout containment would re-anchor position:fixed descendants (the
+     EntityBrowser entity dialog overlay renders from inside this subtree). */
 }
 
 /* Add panel button + picker */

@@ -546,12 +546,6 @@ export const IPC_CHANNELS = {
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
-
-  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
-  // Transparency is fixed at BrowserWindow creation; the renderer queries the
-  // actual state and offers an app relaunch when the setting disagrees.
-  WINDOW_IS_TRANSPARENT: 'window:is-transparent',
-  APP_RELAUNCH: 'app:relaunch',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -946,10 +940,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WINDOW_MINIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_MAXIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_CLOSE]: (payload: never) => void;
-
-  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
-  [IPC_CHANNELS.WINDOW_IS_TRANSPARENT]: (payload: never) => boolean;
-  [IPC_CHANNELS.APP_RELAUNCH]: (payload: never) => void;
 }
 
 // ─── Payload / Response types ───

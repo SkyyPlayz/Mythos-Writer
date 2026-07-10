@@ -8,7 +8,6 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
 import BackgroundStack from './theme/BackgroundStack';
-import FrameRing from './theme/FrameRing';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
@@ -112,20 +111,9 @@ const DEFAULT_LAYOUT: LayoutPrefs = {
   leftTab: 'stories',
 };
 
-// Beta 3 M3 (Liquid Neon): window transparency is fixed at BrowserWindow
-// creation, so the one-time query is cached and folded into every v2 token
-// apply — wp:'none' renders truly clear only when the window can show it;
-// otherwise the prototype's checkerboard stand-in appears (restart pending).
-let windowTransparentCache: boolean | null = null;
+// Beta 4 W0.5 (B4-2): the window is always opaque — `No background` renders a
+// plain dark backdrop from the token engine; no transparency plumbing remains.
 async function applyLiquidNeonV2Theme(settings?: Partial<LiquidNeonV2Settings> | null): Promise<void> {
-  if (windowTransparentCache === null) {
-    try {
-      windowTransparentCache = (await window.api?.windowIsTransparent?.()) === true;
-    } catch {
-      windowTransparentCache = false;
-    }
-  }
-  const transparentActive = windowTransparentCache && settings?.wp === 'none';
   // M4: a custom wallpaper is stored as a file path (pickBgImage) — resolve it
   // to a data URL for the CSS url() the same way the v1 background does.
   let resolved = settings;
@@ -135,8 +123,7 @@ async function applyLiquidNeonV2Theme(settings?: Partial<LiquidNeonV2Settings> |
       if (res?.dataUrl) resolved = { ...settings, customWp: res.dataUrl };
     } catch { /* fall back to the raw path */ }
   }
-  applyLiquidNeonV2Tokens(resolved, cosmicBgUrl, undefined, { transparentWindow: transparentActive });
-  document.documentElement.classList.toggle('ln-transparent', transparentActive);
+  applyLiquidNeonV2Tokens(resolved, cosmicBgUrl);
 }
 
 // SKY-3618: Responsive layout constants
@@ -3988,9 +3975,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
           behind every glass panel (prototype HTML 45–54). */}
       <BackgroundStack settings={appSettings?.liquidNeonV2} />
-      {/* Beta 3 Liquid Neon (M3): animated neon window frame, above all
-          chrome (prototype 2667–2677, z-index 56). */}
-      <FrameRing settings={appSettings?.liquidNeonV2} />
+      {/* Beta 4 W0.5 (B4-1): the animated neon window frame ring is deleted —
+          a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
+          §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
       {/* Beta 3 M5: the prototype's single 44px title bar replaces the old
           WindowChrome + AppMenuBar rows (menus, Ctrl-K pill, bell, account). */}

@@ -1,7 +1,7 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
-import { loadWindowState, saveWindowState, isBoundsOnScreen, readTransparentWindowPreference } from './windowState.js';
+import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { isAutoUpdateEnabled } from './updater.js';
 import { createRequire } from 'node:module';
@@ -365,6 +365,13 @@ import {
   readArcManifest,
   writeArcManifest,
 } from './vault.js';
+import {
+  ensureVaultSeeded,
+  STORY_VAULT_SEED_LAYOUT,
+  NOTES_VAULT_SEED_LAYOUT,
+  type SeedRegistry,
+} from './vaultSeeding.js';
+import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
 import {
@@ -519,9 +526,6 @@ process.env.MYTHOS_IS_PACKAGED = app.isPackaged ? '1' : '0';
 
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
-// Beta 3 M3 (Liquid Neon): whether the main window was created transparent
-// (wp:'none' at launch). Queried by the renderer via WINDOW_IS_TRANSPARENT.
-let mainWindowTransparent = false;
 
 // Maps requestId → AbortController for in-flight streaming agent calls.
 // Populated on invoke, cleaned up in finally block or on cancel.
@@ -561,6 +565,11 @@ interface VaultSettings {
   recentProjects?: ProjectEntry[];
   // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
   syncWarningDismissed?: Record<string, boolean>;
+  // W0.1 (Beta 4): durable seed-once registry — resolved vault root → ISO
+  // timestamp of when its SKY-15 seeding decision was recorded. Pairs with
+  // the `.mythos-seeded` sentinel inside each root; either half suffices to
+  // block a re-seed. M5's mythos.json can migrate this.
+  seededVaultRoots?: Record<string, string>;
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -653,6 +662,19 @@ const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
 
+// W0.1: settings-backed half of the seed-once marker (see vaultSeeding.ts).
+// Keyed by resolved absolute root so path spelling can't sidestep it.
+const vaultSeedRegistry: SeedRegistry = {
+  has: (root: string) =>
+    Boolean(loadVaultSettings().seededVaultRoots?.[path.resolve(root)]),
+  add: (root: string) => {
+    const key = path.resolve(root);
+    const current = loadVaultSettings().seededVaultRoots ?? {};
+    if (current[key]) return;
+    saveVaultSettings({ seededVaultRoots: { ...current, [key]: new Date().toISOString() } });
+  },
+};
+
 /**
  * SKY-10: locate a scene's chapter directory (relative path inside the vault)
  * by looking it up in the manifest. Returns null when the scene id is not
@@ -696,15 +718,19 @@ function shouldInitializeVaultsOnStartup(): boolean {
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
-  // SKY-9: treat a missing OR empty directory as needing first-run seeding so
-  // a user who pre-creates the folder still gets the canonical layout.
-  // Scaffold itself is idempotent — never touches existing entries.
-  if (!fs.existsSync(vaultRoot)) {
-    fs.mkdirSync(vaultRoot, { recursive: true });
-  }
-  if (isEmptyOrMissing(vaultRoot)) {
-    scaffoldStoryVault(vaultRoot, getLayoutMode());
-  }
+  // W0.1 (GAP #1): seed exactly once per root. The old guard was only the
+  // stateless empty-dir heuristic, re-evaluated on every boot and IPC call —
+  // any path drift or emptied folder re-ran the SKY-15 seed (the shipped
+  // `Archive ×4 / Universes ×9` bug). ensureVaultSeeded keeps the idempotent
+  // scaffold but gates it behind a durable marker (`.mythos-seeded` sentinel
+  // + seededVaultRoots registry in vault-settings.json).
+  ensureVaultSeeded({
+    root: vaultRoot,
+    mode: getLayoutMode(),
+    layout: STORY_VAULT_SEED_LAYOUT,
+    scaffold: scaffoldStoryVault,
+    registry: vaultSeedRegistry,
+  });
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
   const manifestPath = getManifestPath();
@@ -813,16 +839,16 @@ function persistBrainstormSuggestion(
 }
 
 function ensureNotesVaultDir() {
-  const notesVaultRoot = getNotesVaultRoot();
-  // SKY-9 / SKY-15: same empty-dir trigger as ensureVaultDir so a user who
-  // pre-creates the notes vault dir still gets the six-folder layout seeded.
-  // Blank/imported modes skip scaffolding (the scaffold function is a no-op).
-  if (!fs.existsSync(notesVaultRoot)) {
-    fs.mkdirSync(notesVaultRoot, { recursive: true });
-  }
-  if (isEmptyOrMissing(notesVaultRoot)) {
-    scaffoldNotesVault(notesVaultRoot, getLayoutMode());
-  }
+  // W0.1 (GAP #1): seed-once — see ensureVaultDir. A user who pre-creates an
+  // empty notes dir still gets the six-folder layout seeded (once); blank/
+  // imported modes record the decision without scaffolding.
+  ensureVaultSeeded({
+    root: getNotesVaultRoot(),
+    mode: getLayoutMode(),
+    layout: NOTES_VAULT_SEED_LAYOUT,
+    scaffold: scaffoldNotesVault,
+    registry: vaultSeedRegistry,
+  });
 }
 
 // Notify renderer when vault changes so it can refresh state
@@ -2294,8 +2320,16 @@ const handlers: IpcHandlers = {
       });
       addToRecentProjects(storyVaultPathDefault, notesVaultPathDefault);
       ensureVaultDir();
-      fs.mkdirSync(notesVaultPathDefault, { recursive: true });
-      scaffoldNotesVault(notesVaultPathDefault, 'default');
+      // W0.1: route the notes seed through the seed-once gate so the marker
+      // is recorded — quick-start persists layoutMode 'blank' for the story
+      // half but seeds the notes half with the full SKY-15 layout.
+      ensureVaultSeeded({
+        root: notesVaultPathDefault,
+        mode: 'default',
+        layout: NOTES_VAULT_SEED_LAYOUT,
+        scaffold: scaffoldNotesVault,
+        registry: vaultSeedRegistry,
+      });
 
       // Seed a first scene so the editor opens on something writable.
       const effectiveStoryTitle = (storyTitle?.trim() || 'My First Story');
@@ -2386,8 +2420,14 @@ const handlers: IpcHandlers = {
         saveVaultSettings({ vaultRoot: svp, notesVaultRoot: nvp, layoutMode: 'blank' });
         addToRecentProjects(svp, nvp);
         ensureVaultDir();
-        fs.mkdirSync(nvp, { recursive: true });
-        scaffoldNotesVault(nvp, 'default');
+        // W0.1: seed-once gate (see quick-start above).
+        ensureVaultSeeded({
+          root: nvp,
+          mode: 'default',
+          layout: NOTES_VAULT_SEED_LAYOUT,
+          scaffold: scaffoldNotesVault,
+          registry: vaultSeedRegistry,
+        });
 
         const effectiveStoryTitle = storyTitle?.trim() || 'My First Story';
         const nowStr = new Date().toISOString();
@@ -4870,7 +4910,15 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     if (payload.root) safePath(root, payload.root);
-    return listVaultFiles(root, payload.root);
+    // W0.1 (GAP #1): story-vault internals (scene-UUID dirs, Manuscript/,
+    // manifest bookkeeping, dot-dirs) must never appear in the Notes tree —
+    // filter at the source so every renderer consumer sees a clean listing,
+    // even when the configured roots overlap.
+    const { items } = listVaultFiles(root, payload.root);
+    const listedRoot = payload.root ? path.join(root, payload.root) : root;
+    return {
+      items: filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())),
+    };
   },
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureNotesVaultDir();
@@ -6122,11 +6170,6 @@ const handlers: IpcHandlers = {
     else mainWindow?.maximize();
   },
   [IPC_CHANNELS.WINDOW_CLOSE]: () => { mainWindow?.close(); },
-
-  // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
-  [IPC_CHANNELS.WINDOW_IS_TRANSPARENT]: () => mainWindowTransparent,
-  [IPC_CHANNELS.APP_RELAUNCH]: () => { app.relaunch(); app.quit(); },
-
 };
 
 // ─── Panel popout windows (SKY-1686) ───
@@ -6369,17 +6412,16 @@ function createWindow() {
     ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
     : { width: 1200, height: 800 };
 
-  // Beta 3 M3 (Liquid Neon): `No background` wallpaper -> transparent window.
-  // Transparency can only be set at BrowserWindow creation, so the preference
-  // is read from app-settings.json here; changing it later relaunches the app.
-  mainWindowTransparent = readTransparentWindowPreference(app.getPath('userData'));
-
+  // Beta 4 W0.5 (B4-2): always an OPAQUE window. Transparent/frameless-alpha
+  // windows cripple GPU compositing (PERFORMANCE.md §1); the `No background`
+  // wallpaper now renders a plain dark backdrop inside the renderer instead.
+  // backgroundColor matches that backdrop so no white flash shows on boot.
   mainWindow = new BrowserWindow({
     ...restoreBounds,
     title: 'Mythos Writer',
     // SKY-3033: Custom Liquid Neon window chrome — renderer provides title bar + controls.
     frame: false,
-    ...(mainWindowTransparent ? { transparent: true, backgroundColor: '#00000000' } : {}),
+    backgroundColor: '#07090f',
     webPreferences: secureWebPreferences({ preloadPath }),
   });
 
@@ -8359,6 +8401,10 @@ function setupAgentPersonaIpc(): void {
 // Must be called before the app 'ready' event.
 app.disableHardwareAcceleration();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] Unhandled promise rejection:', reason);
+});
+
 app.whenReady().then(async () => {
   performance.mark('app:ready-start');
   const appReadyT0 = performance.now();
@@ -8390,7 +8436,15 @@ app.whenReady().then(async () => {
   // gate was introduced and remain trustable as user-controlled state).
   seedTrustedBinariesFromSettings(loadAppSettings());
   performance.mark('app:secrets-end');
-  setupIpcMain(handlers);
+  // Boot must never hang invisibly: an IPC-registration failure (e.g. a test
+  // harness or plugin registering a handler first) is logged loudly and boot
+  // proceeds to create the window instead of dying as an unhandled rejection
+  // before any UI exists.
+  try {
+    setupIpcMain(handlers);
+  } catch (e) {
+    console.error('[boot] setupIpcMain failed — continuing to window creation:', e);
+  }
   registerAgentCancelHandlers();
   registerBrainstormExtractionHandlers();
   registerBrainstormHandler();

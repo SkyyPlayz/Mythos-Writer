@@ -1,7 +1,7 @@
 // M4 — Appearance page controls bind to liquidNeonV2, apply live, and follow
 // the prototype's behaviors (preset pick resets wp to match, swatch pick
 // flips to custom, split toggle seeds notes colors, page modes gate config).
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import LiquidNeonAppearanceSection from './LiquidNeonAppearanceSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
@@ -10,20 +10,14 @@ import { resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../the
 async function setup(liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined = undefined) {
   const onChange = vi.fn();
   const setSavedOk = vi.fn();
-  // act-wrapped async render lets the windowIsTransparent effect settle.
   await act(async () => {
     render(<LiquidNeonAppearanceSection liquidNeonV2={liquidNeonV2} onChange={onChange} setSavedOk={setSavedOk} />);
   });
   return { onChange, setSavedOk };
 }
 
-beforeEach(() => {
-  (window as unknown as { api: unknown }).api = { windowIsTransparent: () => Promise.resolve(false) };
-});
-
 afterEach(() => {
   resetLiquidNeonV2Tokens();
-  delete (window as unknown as { api?: unknown }).api;
 });
 
 describe('LiquidNeonAppearanceSection', () => {
@@ -105,9 +99,12 @@ describe('LiquidNeonAppearanceSection', () => {
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).wp).toBe('aurora');
   });
 
-  it('shows the restart affordance when wp none but the window is opaque', async () => {
-    await setup({ wp: 'none' });
-    expect(await screen.findByTestId('lnas-restart-row')).toBeInTheDocument();
+  it('wp none applies the plain dark backdrop with no restart affordance (B4-2)', async () => {
+    const { onChange } = await setup();
+    fireEvent.click(screen.getByTestId('lnas-wp-none'));
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).wp).toBe('none');
+    expect(document.documentElement.style.getPropertyValue('--wp')).toBe('linear-gradient(#07090f,#07090f)');
+    expect(screen.queryByTestId('lnas-restart-row')).not.toBeInTheDocument();
   });
 
   it('reset restores the Neon Classic defaults', async () => {

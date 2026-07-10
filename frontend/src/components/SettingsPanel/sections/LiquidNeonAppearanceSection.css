@@ -75,32 +75,6 @@
   background: rgba(255, 255, 255, .045);
 }
 
-.lnas-restart-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 9px 12px;
-  border-radius: 11px;
-  background: rgba(255, 217, 122, .07);
-  border: 1px solid rgba(255, 217, 122, .3);
-}
-
-.lnas-restart-btn {
-  padding: 5px 13px;
-  border-radius: 9px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  color: #ffd97a;
-  background: transparent;
-  border: var(--bw, 1px) solid rgba(255, 217, 122, .5);
-}
-
-.lnas-restart-btn:hover {
-  background: rgba(255, 217, 122, .12);
-}
-
 /* Reset row (prototype 2643) */
 .lnas-reset {
   text-align: center;
