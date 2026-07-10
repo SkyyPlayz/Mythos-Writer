@@ -10,8 +10,6 @@
   /* Beta 3 M8: slot-C glass card (prototype 2084) */
   border-radius: 18px;
   background: var(--glass, rgba(13, 16, 28, .72));
-  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
   border: var(--bw, 1px) solid var(--b3, rgba(255, 77, 255, .5));
   box-shadow: 0 0 var(--gr, 26px) -7px var(--g3, rgba(255, 77, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
   flex-shrink: 0;

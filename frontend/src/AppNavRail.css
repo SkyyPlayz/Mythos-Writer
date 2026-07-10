@@ -19,8 +19,6 @@
   border-radius: 18px;
   z-index: 40;
   background: var(--glass, rgba(13, 16, 28, .72));
-  backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--blur, 18px)) saturate(150%);
   border: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .4));
   box-shadow: 0 0 var(--gr, 26px) -8px var(--g6, rgba(61, 155, 255, .35)), inset 0 1px 0 rgba(255, 255, 255, .06);
   transition: width .22s ease;

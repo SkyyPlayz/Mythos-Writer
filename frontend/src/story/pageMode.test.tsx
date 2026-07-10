@@ -22,6 +22,8 @@ describe('pageModeChrome', () => {
     expect(c.mode).toBe('neon');
     expect(c.sym).toBe(false);
     expect(c.sheetStyle.background).toBe('rgba(10,13,24,0.660)');
+    // W0.5: page blur 0 (the default) must not create a live backdrop root.
+    expect(c.sheetStyle.backdropFilter).toBe('none');
     expect(c.sheetStyle.border).toBe('var(--bw,1px) solid var(--b2,rgba(155,95,255,.5))');
     expect(c.sheetStyle.borderRadius).toBe('12px');
     expect(c.sheetStyle.padding).toBe('64px 84px 90px');

@@ -32,8 +32,6 @@
   border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-1), 0 0 calc(18px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
-  backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(150%);
 }
 
 .dataview.table-view-table :is(thead, .table-view-thead) {
@@ -113,8 +111,6 @@
   border: var(--frame-width-rest, 1px) solid color-mix(in srgb, var(--state-danger) 56%, var(--glass-rim));
   border-radius: var(--radius-lg);
   box-shadow: 0 0 calc(16px * var(--lg-neon, 0.5)) var(--dataview-ln-danger-glow);
-  backdrop-filter: blur(var(--lg-blur, 16px));
-  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
 }
 
 :is(.dataview-error, .block-language-dataviewjs .error, .block-language-dataview .error)::before {
@@ -149,8 +145,6 @@
   border: var(--frame-width-rest, 1px) solid var(--dataview-ln-border);
   border-radius: var(--radius-lg);
   box-shadow: 0 0 calc(14px * var(--lg-neon, 0.5)) var(--dataview-ln-glow);
-  backdrop-filter: blur(var(--lg-blur, 16px));
-  -webkit-backdrop-filter: blur(var(--lg-blur, 16px));
 }
 
 .callout[data-callout="info"] {

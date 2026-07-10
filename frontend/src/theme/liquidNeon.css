@@ -6,8 +6,11 @@
 @keyframes lnHueSoft { 0%, 100% { filter: hue-rotate(-14deg); } 50% { filter: hue-rotate(14deg); } }
 @keyframes lnFlicker { 0%, 100% { opacity: 1; } 7% { opacity: .55; } 9% { opacity: 1; } 54% { opacity: .92; } 56% { opacity: .5; } 58% { opacity: 1; } }
 @keyframes lnShimmer { 0%, 100% { filter: brightness(.85); } 50% { filter: brightness(1.35); } }
-@keyframes lnSnow { from { background-position: 0 -120vh, 40px -90vh, -60px -60vh; } to { background-position: 0 20vh, 40px 50vh, -60px 80vh; } }
-@keyframes lnRise { from { background-position: 0 30vh, 40px 60vh, -60px 90vh; } to { background-position: 0 -110vh, 40px -80vh, -60px -50vh; } }
+/* W0.5 (PERFORMANCE §3, prototype lnSnowT/lnRiseT): ambience scrolls by
+   compositor-only translate3d on an oversized (inset -72vh) layer instead of
+   background-position, which repainted the full-screen dot field every frame. */
+@keyframes lnSnowT { from { transform: translate3d(0, -70vh, 0); } to { transform: translate3d(0, 70vh, 0); } }
+@keyframes lnRiseT { from { transform: translate3d(0, 70vh, 0); } to { transform: translate3d(0, -70vh, 0); } }
 @keyframes lnBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .32; } }
 @keyframes lnPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes lnFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -26,7 +29,12 @@
 .ln-bg-wallpaper {
   position: absolute;
   inset: 0;
-  background-image: var(--wp);
+  /* W0.5 (PERFORMANCE §2): when the engine has produced a pre-blurred copy
+     (--wp-blur, image wallpapers with blur > 0) it replaces the sharp
+     wallpaper, so semi-opaque --glass panel fills read as frosted glass
+     without any live backdrop-filter. Gradient wallpapers fall back to
+     var(--wp) — blurring a smooth gradient is visually an identity. */
+  background-image: var(--wp-blur, var(--wp));
   background-size: var(--wpsize, cover);
   background-position: center;
   animation: lnDrift 70s linear infinite alternate;

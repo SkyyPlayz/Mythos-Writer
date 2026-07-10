@@ -16,8 +16,6 @@
   position: relative;
   z-index: 55;
   background: rgba(8, 10, 18, .35);
-  backdrop-filter: blur(var(--blur, 18px));
-  -webkit-backdrop-filter: blur(var(--blur, 18px));
   -webkit-app-region: no-drag;
   /* No overflow clip — the context menu (top: ~43px) hangs below the strip
      exactly like the prototype (strip z-55, menu z-48 inside it). */

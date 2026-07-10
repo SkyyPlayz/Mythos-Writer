@@ -585,6 +585,7 @@
   --page-bg-glow: 0.600;
   --page-bg-glow-color: rgba(0, 240, 255, 0.180); /* glow 60 * 0.3 = 0.18 */
   --page-bg-backdrop-blur: 12px;
+  --page-bg-backdrop-filter: blur(12px); /* W0.5: the ONE persistent live backdrop-filter */
 }
 
 /* SKY-2102: Liquid Neon page-background — light app theme variants.
@@ -596,6 +597,7 @@
   --page-bg-glow: 0.300;                             /* softer overall glow           */
   --page-bg-glow-color: rgba(0, 200, 240, 0.090);   /* muted cyan in light ambiance  */
   --page-bg-backdrop-blur: 12px;                     /* same blur, preserves glass feel */
+  --page-bg-backdrop-filter: blur(12px);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -337,6 +337,23 @@ describe('applyPageBackgroundTokens / resetPageBackgroundTokens', () => {
     expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('8px');
   });
 
+  // W0.5 (PERFORMANCE §2): the consumed var collapses to `none` (no backdrop
+  // root) unless a glass preset carries an explicit blur > 0.
+  it('glass preset with blur > 0 → --page-bg-backdrop-filter is a live blur()', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'liquid-neon', blur: 8 });
+    expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-filter')).toBe('blur(8px)');
+  });
+
+  it('glass preset with blur 0 → --page-bg-backdrop-filter is none', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'liquid-neon', blur: 0 });
+    expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-filter')).toBe('none');
+  });
+
+  it('non-glass preset → --page-bg-backdrop-filter is none', () => {
+    applyPageBackgroundTokens({ ...PAGE_BACKGROUND_DEFAULTS, preset: 'minimal', blur: 8 });
+    expect(document.documentElement.style.getPropertyValue('--page-bg-backdrop-filter')).toBe('none');
+  });
+
   it('resets all page-bg vars and removes data-page-preset attribute', () => {
     applyPageBackgroundTokens(PAGE_BACKGROUND_DEFAULTS);
     resetPageBackgroundTokens();
@@ -346,6 +363,7 @@ describe('applyPageBackgroundTokens / resetPageBackgroundTokens', () => {
     expect(root.style.getPropertyValue('--page-bg-glow')).toBe('');
     expect(root.style.getPropertyValue('--page-bg-glow-color')).toBe('');
     expect(root.style.getPropertyValue('--page-bg-backdrop-blur')).toBe('');
+    expect(root.style.getPropertyValue('--page-bg-backdrop-filter')).toBe('');
     expect(root.getAttribute('data-page-preset')).toBeNull();
   });
 
@@ -388,8 +406,8 @@ describe('NotesTabPanel.css page-background (SKY-2102)', () => {
   it('liquid-neon preset applies ambient box-shadow to notes-tab-center', () => {
     expect(notesTabCss).toMatch(/\[data-page-preset="liquid-neon"\]\s+\.notes-tab-center/);
   });
-  it('notes-tab-center gets backdrop-filter with page-bg-backdrop-blur', () => {
-    expect(notesTabCss).toMatch(/backdrop-filter:\s*blur\(var\(--page-bg-backdrop-blur\)\)/);
+  it('notes-tab-center consumes --page-bg-backdrop-filter (none unless page blur set)', () => {
+    expect(notesTabCss).toMatch(/backdrop-filter:\s*var\(--page-bg-backdrop-filter,\s*none\)/);
   });
   it('notes-tab-center forces near-opaque surface under prefers-contrast: more', () => {
     expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
@@ -507,9 +525,9 @@ describe('BlockEditor.css paper panel (SKY-3625)', () => {
     expect(blockEditorCss).toMatch(/\.tiptap-content\b[\s\S]*?border-radius:/);
   });
 
-  it('@supports backdrop-filter applies blur to .tiptap-content', () => {
+  it('@supports backdrop-filter routes .tiptap-content through --page-bg-backdrop-filter', () => {
     expect(blockEditorCss).toMatch(
-      /@supports[^{]*backdrop-filter[\s\S]*?\.tiptap-content[\s\S]*?backdrop-filter:\s*blur\(var\(--page-bg-backdrop-blur\)\)/,
+      /@supports[^{]*backdrop-filter[\s\S]*?\.tiptap-content[\s\S]*?backdrop-filter:\s*var\(--page-bg-backdrop-filter,\s*none\)/,
     );
   });
 

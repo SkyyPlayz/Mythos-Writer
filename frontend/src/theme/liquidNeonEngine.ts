@@ -4,6 +4,7 @@
 // formats below are verbatim — do not "improve" them.
 // Map: docs/releases/LIQUID-NEON-PROTOTYPE-MAP.md §B.
 import { LIQUID_NEON_PRESETS, type LiquidNeonSetKey } from './presets';
+import { schedulePreBlurredWallpaper } from './preBlurWallpaper';
 
 export interface LiquidNeonPageCfg {
   /** Manuscript page mode. 'default' is the "No glow" option (prototype key, 4619). */
@@ -191,6 +192,10 @@ export function applyLiquidNeonV2Tokens(
     el.style.setProperty(k, v);
     if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
   }
+  // W0.5 (PERFORMANCE §2): regenerate the pre-blurred wallpaper copy exactly
+  // when the wallpaper or blur radius changes — the panels' faked glass reads
+  // it through `--wp-blur` instead of stacking live backdrop-filters.
+  schedulePreBlurredWallpaper(tokens['--wp'], parseFloat(tokens['--blur']) || 0, el);
   return tokens;
 }
 

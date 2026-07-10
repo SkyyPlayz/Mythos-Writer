@@ -27,8 +27,6 @@
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-toolbar {
     background: var(--glass-fill);
-    backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
-    -webkit-backdrop-filter: blur(var(--lg-blur, 12px)) saturate(160%);
   }
 }
 
@@ -250,8 +248,9 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-center {
-    backdrop-filter: blur(var(--page-bg-backdrop-blur));
-    -webkit-backdrop-filter: blur(var(--page-bg-backdrop-blur));
+    /* W0.5: none unless the user sets a page blur (see BlockEditor.css). */
+    backdrop-filter: var(--page-bg-backdrop-filter, none);
+    -webkit-backdrop-filter: var(--page-bg-backdrop-filter, none);
   }
 }
 
