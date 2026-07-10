@@ -239,19 +239,28 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
   });
 
   // ─── TC-DS-03 ─────────────────────────────────────────────────────────────
+  // W0.4 (GAP P0#4): at chapter/book depth the manuscript's own doc header is
+  // the single zoom bar (the top-bar DepthSlider only mounts at scene depth),
+  // so zoom clicks from those depths go through the msv zoom segment.
 
-  test('TC-DS-03: clicking "Full Book" depth button shows book outline view', async () => {
-    const depthBookBtn = page.getByTestId('depth-slider').getByRole('button', { name: /full book/i });
-    await depthBookBtn.click();
+  test('TC-DS-03: clicking "Full Book" zoom button shows book outline view', async () => {
+    const msvBookBtn = page.getByTestId('msv-zoom-book');
+    await msvBookBtn.click();
     await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
+    // W0.4 acceptance: exactly one zoom seg in the DOM — the DepthSlider is
+    // unmounted while the manuscript doc header shows its zoom segment.
+    await expect(page.getByTestId('depth-slider')).toHaveCount(0);
+    await expect(page.getByTestId('msv-tb-read')).toHaveCount(1);
   });
 
   // ─── TC-DS-04 ─────────────────────────────────────────────────────────────
 
-  test('TC-DS-04: clicking "Scene" depth button returns to block editor', async () => {
-    const depthSceneBtn = page.getByTestId('depth-slider').getByRole('button', { name: /^scene$/i });
-    await depthSceneBtn.click();
+  test('TC-DS-04: clicking "Scene" zoom button returns to block editor', async () => {
+    const msvSceneBtn = page.getByTestId('msv-zoom-scene');
+    await msvSceneBtn.click();
     await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
+    // The scene editor is where the DepthSlider (single zoom seg) mounts.
+    await expect(page.getByTestId('depth-slider')).toBeVisible({ timeout: 4_000 });
   });
 
   // ─── TC-DS-07 boundary (before nav tests move us away from Scene One) ─────

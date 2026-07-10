@@ -4251,7 +4251,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <div className="shell-editor">
           {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
           <div className="shell-editor-toolbar">
-            {selectedStory && showTabBar && !splitWindowEnabled && (
+            {/* W0.4 (GAP P0#4): at book/chapter depth the ManuscriptView's own
+                doc header (zoom seg + breadcrumbs) is the single zoom bar —
+                the DepthSlider only mounts at scene depth, where that header
+                doesn't render. Exactly one zoom seg in the DOM at any time. */}
+            {selectedStory && showTabBar && !splitWindowEnabled && viewDepth === 'scene' && (
               <DepthSlider
                 depth={viewDepth}
                 onDepthChange={handleViewDepthChange}
@@ -4441,7 +4445,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
-                  onRead={manuscriptToolbarActions.onRead}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -4473,7 +4476,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
-                  onRead={manuscriptToolbarActions.onRead}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}

@@ -304,6 +304,15 @@
   box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
+/* W0.4 (GAP P0#4): the single toolbar Read button carries the reader-open
+   state the deleted zoombar chip used to show (prototype 748 styling). */
+.msv-tb-read--on {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.5));
+}
+
 .msv-tb-dictate {
   border-color: var(--b1, rgba(0, 240, 255, 0.35));
 }
@@ -369,29 +378,8 @@
   box-shadow: 0 0 12px -4px rgba(255, 211, 25, 0.5);
 }
 
-/* ── M13: reader chip in the zoombar (prototype Read toolbar button 748) ── */
-
-.msv-reader-chip {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
-  border-radius: 9px;
-  font-size: 11.5px;
-  cursor: pointer;
-  flex: none;
-  background: none;
-  font-family: inherit;
-  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
-  color: rgb(174, 186, 208); /* prototype #aebad0 */
-}
-
-.msv-reader-chip--on {
-  border-color: var(--b1, rgba(0, 240, 255, 0.5));
-  color: var(--n1, #00f0ff);
-  background: var(--gs1, rgba(0, 240, 255, 0.12));
-  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.5));
-}
+/* W0.4 (GAP P0#4): the M13 zoombar reader chip was the duplicated Read —
+   deleted; the format toolbar's .msv-tb-read is the single Read button. */
 
 /* ── M11: page + gutter row (prototype 806) ── */
 
