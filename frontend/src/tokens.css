@@ -604,7 +604,7 @@
    runtime; the values below are the Neon Classic defaults at intensity 50 so
    surfaces paint correctly before settings load. Slot roles:
    1 left panel/primary · 2 center/wiki-links · 3 right/agents ·
-   4 warm data · 5 cool data · 6 nav rail/timeline/frame.
+   4 warm data · 5 cool data · 6 nav rail/timeline.
    ═══════════════════════════════════════════════════════════════════════ */
 :root {
   --n1: #00f0ff; --n2: #9b5fff; --n3: #ff4dff;
@@ -615,8 +615,6 @@
   --g4: rgba(255,154,61,1.000); --g5: rgba(47,230,200,1.000); --g6: rgba(61,155,255,1.000);
   --gs1: rgba(0,240,255,0.310); --gs2: rgba(155,95,255,0.310); --gs3: rgba(255,77,255,0.310);
   --gs4: rgba(255,154,61,0.310); --gs5: rgba(47,230,200,0.310); --gs6: rgba(61,155,255,0.310);
-  --ring: #00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff,#00f0ff;
-  --ringA: 1;
   --grad: linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff);
   --glass: rgba(13,16,28,0.20); --glass2: rgba(21,26,45,0.50);
   --bw: 1px; --gr: 60px; --blur: 1px; --ln-scrim: 0.1;

@@ -113,7 +113,7 @@ export const LIQUID_NEON_SLOT_ROLES = [
   'Right panel · agents',
   'Warm data · ideas & items',
   'Cool data · systems',
-  'Nav rail · timeline · frame',
+  'Nav rail · timeline',
 ] as const;
 
 /** Curated swatch strip offered per slot (prototype 2886). */

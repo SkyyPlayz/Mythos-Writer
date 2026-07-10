@@ -8,7 +8,6 @@ import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
 import BackgroundStack from './theme/BackgroundStack';
-import FrameRing from './theme/FrameRing';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
@@ -3976,9 +3975,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
           behind every glass panel (prototype HTML 45–54). */}
       <BackgroundStack settings={appSettings?.liquidNeonV2} />
-      {/* Beta 3 Liquid Neon (M3): animated neon window frame, above all
-          chrome (prototype 2667–2677, z-index 56). */}
-      <FrameRing settings={appSettings?.liquidNeonV2} />
+      {/* Beta 4 W0.5 (B4-1): the animated neon window frame ring is deleted —
+          a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
+          §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
       {/* Beta 3 M5: the prototype's single 44px title bar replaces the old
           WindowChrome + AppMenuBar rows (menus, Ctrl-K pill, bell, account). */}

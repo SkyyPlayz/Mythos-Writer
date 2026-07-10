@@ -41,11 +41,11 @@ export default function BackgroundStack({ settings }: BackgroundStackProps) {
   const amb2 = useMemo(() => ambienceLayerStyle(settings, 1), [settings]);
 
   // Audit P4: freeze the always-on Liquid Neon loops (wallpaper drift,
-  // ambience, frame ring, border breathe) while the window is hidden or
-  // minimized. The class rides on <html> so the CSS rule in liquidNeon.css
-  // also reaches the FrameRing and BorderOverlay layers, which render
-  // elsewhere in the shell; BackgroundStack is the stack's owner and is
-  // always mounted, making it the natural home for the listener.
+  // ambience, border breathe) while the window is hidden or minimized. The
+  // class rides on <html> so the CSS rule in liquidNeon.css also reaches the
+  // BorderOverlay layers, which render elsewhere in the shell;
+  // BackgroundStack is the stack's owner and is always mounted, making it
+  // the natural home for the listener.
   useEffect(() => {
     const sync = () => {
       document.documentElement.classList.toggle(

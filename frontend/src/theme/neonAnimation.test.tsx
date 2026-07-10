@@ -1,34 +1,10 @@
 // Exact-value tests for M3 — expected strings are the prototype's outputs
-// (frameSpinSt 4632, borderAnim 4158–4160, breathe 4161).
+// (borderAnim 4158–4160, breathe 4161). B4-1: the window frame ring
+// (frameSpinSt / <FrameRing>) is deleted; panel border overlays remain.
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { frameSpinStyle, borderAnimation, breatheOverlayStyle } from './neonAnimation';
-import FrameRing from './FrameRing';
+import { borderAnimation, breatheOverlayStyle } from './neonAnimation';
 import BorderOverlay from './BorderOverlay';
-
-describe('frameSpinStyle (verbatim frameSpinSt)', () => {
-  it('is a centered 170vmax conic square of --ring', () => {
-    const st = frameSpinStyle(null);
-    expect(st.width).toBe('170vmax');
-    expect(st.height).toBe('170vmax');
-    expect(st.marginLeft).toBe('-85vmax');
-    expect(st.marginTop).toBe('-85vmax');
-    expect(st.background).toBe('conic-gradient(var(--ring,#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff,#00f0ff))');
-  });
-
-  it('defaults (frameAnim off) to no animation', () => {
-    expect(frameSpinStyle(null).animation).toBe('none');
-  });
-
-  it('cycle spins via lnSpin at frameSpeed', () => {
-    expect(frameSpinStyle({ frameAnim: 'cycle' }).animation).toBe('lnSpin 12s linear infinite');
-    expect(frameSpinStyle({ frameAnim: 'cycle', frameSpeed: 7.25 }).animation).toBe('lnSpin 7.25s linear infinite');
-  });
-
-  it('sparkle hue-shifts via lnHue at frameSpeed', () => {
-    expect(frameSpinStyle({ frameAnim: 'sparkle' }).animation).toBe('lnHue 12s linear infinite');
-  });
-});
 
 describe('borderAnimation (verbatim borderAnim)', () => {
   it('idles on the preset animation with the panel stagger', () => {
@@ -62,19 +38,6 @@ describe('breatheOverlayStyle (verbatim breathe)', () => {
   });
 });
 
-describe('<FrameRing>', () => {
-  it('renders the crisp ring + blurred halo, both spinning layers', () => {
-    render(<FrameRing settings={{ frameAnim: 'cycle' }} />);
-    expect(screen.getByTestId('ln-frame')).toBeInTheDocument();
-    expect(screen.getByTestId('ln-frame-spin')).toHaveStyle({ animation: 'lnSpin 12s linear infinite' });
-    expect(screen.getByTestId('ln-frame-spin-halo')).toBeInTheDocument();
-  });
-
-  it('is hidden entirely when animGlow is off (prototype sc-if 2668)', () => {
-    render(<FrameRing settings={{ animGlow: false }} />);
-    expect(screen.queryByTestId('ln-frame')).not.toBeInTheDocument();
-  });
-});
 
 describe('<BorderOverlay>', () => {
   it('renders an aria-hidden inset overlay for its slot', () => {

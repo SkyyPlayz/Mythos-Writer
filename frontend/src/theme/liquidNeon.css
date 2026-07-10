@@ -2,7 +2,6 @@
    Verbatim port of the prototype's global style block (HTML 17–38) and
    background layers (HTML 45–54). The prototype is the spec. */
 
-@keyframes lnSpin { to { transform: rotate(360deg); } }
 @keyframes lnHue { 0% { filter: hue-rotate(0deg); opacity: .7; } 50% { opacity: 1; } 100% { filter: hue-rotate(360deg); opacity: .7; } }
 @keyframes lnHueSoft { 0%, 100% { filter: hue-rotate(-14deg); } 50% { filter: hue-rotate(14deg); } }
 @keyframes lnFlicker { 0%, 100% { opacity: 1; } 7% { opacity: .55; } 9% { opacity: 1; } 54% { opacity: .92; } 56% { opacity: .5; } 58% { opacity: 1; } }
@@ -58,7 +57,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ln-bg-wallpaper,
   .ln-bg-ambience,
-  .ln-frame-mask > div,
   .ln-border-overlay {
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
@@ -68,53 +66,25 @@
 /* ═══ Hidden-window animation pause (audit P4) ═══
    BackgroundStack toggles `ln-anim-paused` on <html> from a visibilitychange
    listener. While the window is hidden/minimized the always-on ambient loops
-   (wallpaper drift, ambience dot fields, frame ring spin/hue, per-panel
-   border breathe) freeze instead of burning GPU/CPU all session.
-   `!important` is required: the ambience, frame-spin, and border-overlay
-   layers get their `animation` shorthand inline, which implicitly resets
-   animation-play-state to `running`. No visual change while visible — the
-   class only exists while the document is hidden, so visual-regression
-   baselines are unaffected. */
+   (wallpaper drift, ambience dot fields, per-panel border breathe) freeze
+   instead of burning GPU/CPU all session.
+   `!important` is required: the ambience and border-overlay layers get their
+   `animation` shorthand inline, which implicitly resets animation-play-state
+   to `running`. No visual change while visible — the class only exists while
+   the document is hidden, so visual-regression baselines are unaffected. */
 html.ln-anim-paused .ln-bg-wallpaper,
 html.ln-anim-paused .ln-bg-ambience,
-html.ln-anim-paused .ln-frame-mask > div,
 html.ln-anim-paused .ln-border-overlay {
   animation-play-state: paused !important;
 }
 
-/* ═══ Window frame ring (M3, prototype HTML 2667–2677) ═══
-   Two conic layers masked to the window edges: a crisp ring padded by --bw
-   and a 7px halo blurred 9px at half opacity. The xor/exclude mask keeps only
-   the padding band, so the spinning 170vmax conic square reads as a border. */
-.ln-frame {
-  position: absolute;
-  inset: 0;
-  border-radius: 0;
-  pointer-events: none;
-  z-index: 56;
-  opacity: var(--ringA, 0.7);
-}
-
-.ln-frame-mask {
-  position: absolute;
-  inset: 0;
-  padding: var(--bw, 1px);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  overflow: hidden;
-}
-
-.ln-frame-mask--halo {
-  padding: 7px;
-  filter: blur(9px);
-  opacity: 0.5;
-}
+/* Beta 4 W0.5 (B4-1): the window frame ring (.ln-frame conic layers, lnSpin)
+   is deleted — a full-viewport conic-gradient/hue-rotate repaint every frame
+   (PERFORMANCE.md §3). Panel border overlays keep the neon look. */
 
 /* Layering: the shell is a flex container, so plain z-index works on its
    children (flex items) without forcing position. The stack sits at 0;
-   every other shell child paints above it; the frame ring rides on top
-   (prototype z-index 56). */
+   every other shell child paints above it. */
 .desktop-shell {
   isolation: isolate;
 }
@@ -125,14 +95,10 @@ html.ln-anim-paused .ln-border-overlay {
 
 /* :where() keeps this at zero specificity: it lifts plain shell children
    above the background stack WITHOUT clobbering any child that declares
-   its own layer (title-bar popovers z-60, modal overlays z-1000, the
-   frame ring z-56, toasts). Those intents must win. */
+   its own layer (title-bar popovers z-60, modal overlays z-1000, toasts).
+   Those intents must win. */
 :where(.desktop-shell > *:not(.ln-bg-stack)) {
   z-index: 1;
-}
-
-.desktop-shell > .ln-frame {
-  z-index: 56;
 }
 
 /* The title bar hosts dropdown popovers (File…Help menus, project menu,

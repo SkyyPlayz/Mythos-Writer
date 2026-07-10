@@ -47,13 +47,13 @@ export interface LiquidNeonV2Settings {
   scrim: number;
   /** Accessibility: cap intensity contribution (prototype 3935). */
   reduceGlow: boolean;
-  /** Master toggle for the frame ring + idle border animations. */
+  /** Master toggle for the idle panel-border animations (B4-1: ring removed). */
   animGlow: boolean;
   /** Border thickness 1–4 (px) → --bw. */
   glowW: number;
   /** Glow radius 8–160 (px) → --gr. */
   glowR: number;
-  /** Neon animation mode for frame + panel borders. */
+  /** Neon animation mode for panel borders (B4-1: ring removed). */
   frameAnim: LiquidNeonFrameAnim;
   /** Animation period 1–30s (quantized 0.25s in UI). */
   frameSpeed: number;
@@ -162,8 +162,6 @@ export function computeLiquidNeonV2Tokens(
     '--g4': hexA(c4, .18 + .5 * I), '--g5': hexA(c5, .18 + .5 * I),
     '--gs4': hexA(c4, .05 + .13 * I), '--gs5': hexA(c5, .05 + .13 * I),
     '--n6': c6, '--b6': hexA(c6, .3 + .4 * I), '--g6': hexA(c6, .18 + .5 * I), '--gs6': hexA(c6, .05 + .13 * I),
-    '--ring': allSlots.join(',') + ',' + c1,
-    '--ringA': String(Math.min(1, .35 + .65 * I)),
     '--grad': 'linear-gradient(120deg,' + allSlots.join(',') + ')',
     '--glass': 'rgba(13,16,28,' + (S.glassA / 100).toFixed(2) + ')',
     '--glass2': 'rgba(21,26,45,' + Math.max(.5, Math.min(.97, S.glassA / 100 + .16)).toFixed(2) + ')',

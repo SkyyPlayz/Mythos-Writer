@@ -328,7 +328,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>{presetCards}</div>
       </Card>
 
-      <Card title="Neon border colors" sub="Six slots. A · B · C frame the panels, tabs and gradients; D · E color data accents like graph categories; F lights the nav rail and window frame. Pick a swatch — or use the wheel to get it just right.">
+      <Card title="Neon border colors" sub="Six slots. A · B · C frame the panels, tabs and gradients; D · E color data accents like graph categories; F lights the nav rail. Pick a swatch — or use the wheel to get it just right.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>{slotRows}</div>
       </Card>
 
@@ -342,8 +342,8 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
           <NeonSlider label="Wallpaper scrim" value={S.scrim} min={0} max={70} unit="%" onChange={(v) => patch({ scrim: v })} testId="lnas-scrim" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 3 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Neon window frame</div>
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Six-color gradient ring around the window — static, laptop-friendly</div>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Breathing panel borders</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Idle glow animation on panel borders — off keeps them static, laptop-friendly</div>
             </div>
             <NeonToggle on={S.animGlow !== false} onClick={() => patch({ animGlow: S.animGlow === false })} testId="lnas-animglow" />
           </div>
@@ -378,7 +378,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
-      <Card title="Neon animation" sub="Animates the window frame and every panel border — Cycle rotates the colors, Sparkle fades your palette in and out.">
+      <Card title="Neon animation" sub="Animates every panel border — Cycle rotates the colors, Sparkle fades your palette in and out.">
         <NeonSeg
           options={[['off', 'Off'], ['cycle', 'Cycle'], ['sparkle', 'Sparkle']]}
           current={S.frameAnim}
