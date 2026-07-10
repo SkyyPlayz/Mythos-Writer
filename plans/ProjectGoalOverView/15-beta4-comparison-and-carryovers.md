@@ -26,9 +26,9 @@ Items the new spec does NOT restate. **CF-x** = carried forward as binding
 conflict with the new design — owner ruling required before the affected
 milestone starts.
 
-### ⚖️ Needs an owner ruling (design conflict)
+### ⚖️ Owner rulings — RESOLVED 2026-07-10 (B4-8…B4-11; details in 00-decisions-log.md)
 
-- **⚖️-1 · The suggestion/approval safety model.** Old docs promise, pervasively
+- **⚖️-1 · RESOLVED (B4-8): keep BOTH — Inbox + toggles, all OFF by default, per-category certainty sliders.** Original conflict: Old docs promise, pervasively
   and explicitly: *"agents never change your story text without your approval"*,
   *"every agent action is a suggestion by default"*, a **Suggestion Inbox**,
   provenance records, and *"accepting a suggestion always creates a snapshot"*
@@ -41,17 +41,17 @@ milestone starts.
   draft snapshot + is undoable); notes-vault writes by Brainstorm/Archive remain
   confirmation-free for *creation* but confirmed for *edits* (04's old
   create-vs-edit asymmetry). Drop the separate Suggestion Inbox surface.
-- **⚖️-2 · "AI never generates manuscript prose" vs Scene Crafter.** §7.1's
+- **⚖️-2 · RESOLVED (B4-9): generated prose goes to the scene board only ("Add to scene board"); never into the manuscript.** Original conflict: §7.1's
   Coach scaffold generates prose with an *Insert into manuscript* button. The
   spec's framing (explicit insert, never silent) is a deliberate design change —
   confirm it, and we'll restate the boundary as: *generation only in the
   Crafter, insertion only by explicit user action, never in the editor.*
-- **⚖️-3 · Model-agnostic BYO providers.** Old commitment: any provider
+- **⚖️-3 · RESOLVED (B4-10): full BYO stays (any API + any local) + OAuth buttons for every supporting provider, connect-later.** Original conflict: Old commitment: any provider
   (OpenAI-compatible endpoints, Ollama/LM Studio/llama.cpp, HermesAI). New §11:
   `Claude API / Local model` + OAuth only. Confirm the narrowing, or keep the
   OpenAI-compatible adapter that already exists in the repo behind the
   "Local model" path.
-- **⚖️-4 · Old release/monetization roadmap** (Windows-first signed release,
+- **⚖️-4 · RESOLVED (B4-11): dropped by accident — monetization plan re-included as a parked post-Beta-4 roadmap track.** Original conflict: (Windows-first signed release,
   license tiers, Mythos cloud sync, mobile) — absent from the new spec and
   partly contradicted by GOALS.md's private-repo stance. Confirm it's parked,
   not canceled-by-accident.
@@ -122,6 +122,5 @@ Brainstorm Map/Clusters (B4-4) · old 5-mode timeline (B4-4) · Scene Crafter as
 Obsidian-Kanban markdown note (07 — replaced by §7.1; board data still lives as
 vault files per B4-3) · twin independently-relocatable vault roots (02) ·
 universe-centric notes scaffold `Universes/…` (02 — new vaults use §2's layout;
-imported/migrated vaults keep their existing folders) · suggestion-inbox
-surface (pending ⚖️-1) · Beta-Read as a Writing-Assistant sub-mode (05 — now
+imported/migrated vaults keep their existing folders) · Beta-Read as a Writing-Assistant sub-mode (05 — now
 its own agent/view).
