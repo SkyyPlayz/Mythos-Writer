@@ -48,11 +48,6 @@ describe('token computation at prototype defaults (Neon Classic, intensity 50 �
     expect(t['--gs1']).toBe('rgba(0,240,255,0.310)');
   });
 
-  it('ring is the 7-stop slot list; ringA clamps to 1', () => {
-    expect(t['--ring']).toBe('#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff,#00f0ff');
-    expect(t['--ringA']).toBe('1');
-  });
-
   it('grad is the 120deg 6-color gradient', () => {
     expect(t['--grad']).toBe('linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff)');
   });
@@ -82,20 +77,18 @@ describe('token computation at prototype defaults (Neon Classic, intensity 50 �
 });
 
 describe('intensity scale (old 100% == new 50%)', () => {
-  it('intensity 25 → I=1 → border .700 / glow .680 / soft .180 / ringA 1', () => {
+  it('intensity 25 → I=1 → border .700 / glow .680 / soft .180', () => {
     const t = compute({ intensity: 25 });
     expect(t['--b1']).toBe('rgba(0,240,255,0.700)');
     expect(t['--g1']).toBe('rgba(0,240,255,0.680)');
     expect(t['--gs1']).toBe('rgba(0,240,255,0.180)');
-    expect(t['--ringA']).toBe('1');
   });
 
-  it('intensity 0 → floors .300/.180/.050, ringA .35', () => {
+  it('intensity 0 → floors .300/.180/.050', () => {
     const t = compute({ intensity: 0 });
     expect(t['--b1']).toBe('rgba(0,240,255,0.300)');
     expect(t['--g1']).toBe('rgba(0,240,255,0.180)');
     expect(t['--gs1']).toBe('rgba(0,240,255,0.050)');
-    expect(t['--ringA']).toBe('0.35');
   });
 
   it('reduceGlow caps the contribution at intensity 5 (I=.2)', () => {
@@ -108,7 +101,7 @@ describe('presets & wallpaper modes', () => {
   it('winterlight slots flow through raw tokens', () => {
     const t = compute({ setKey: 'winter', slots: [...LIQUID_NEON_PRESETS.winter.c] });
     expect(t['--n1']).toBe('#eaf6ff');
-    expect(t['--ring'].startsWith('#eaf6ff,#9fd4ff')).toBe(true);
+    expect(t['--n2']).toBe('#9fd4ff');
   });
 
   it("match on a non-classic preset generates the starfield gradient", () => {
@@ -117,10 +110,10 @@ describe('presets & wallpaper modes', () => {
     expect(t['--wp']).toContain('linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)');
   });
 
-  it("'none' is the transparent-window checkerboard at 26px tiling", () => {
+  it("'none' is a plain dark backdrop (B4-2: transparency removed)", () => {
     const t = compute({ wp: 'none' });
-    expect(t['--wp']).toBe('repeating-conic-gradient(#151a23 0% 25%,#0b0e14 0% 50%)');
-    expect(t['--wpsize']).toBe('26px 26px');
+    expect(t['--wp']).toBe('linear-gradient(#07090f,#07090f)');
+    expect(t['--wpsize']).toBe('cover');
   });
 
   it("'custom' without an upload falls back to the cosmic asset", () => {
@@ -150,24 +143,5 @@ describe('apply/reset', () => {
     expect(el.style.getPropertyValue('--n1')).toBe('#00f0ff');
     resetLiquidNeonV2Tokens(el);
     expect(el.style.getPropertyValue('--n1')).toBe('');
-  });
-});
-
-describe('transparent window override (M3)', () => {
-  it('wp none + transparent window clears the wallpaper instead of checkerboard', () => {
-    const t = computeLiquidNeonV2Tokens({ wp: 'none' }, 'test.webp', { transparentWindow: true });
-    expect(t['--wp']).toBe('none');
-    expect(t['--wpsize']).toBe('cover');
-  });
-
-  it('wp none without a transparent window keeps the checkerboard stand-in', () => {
-    const t = computeLiquidNeonV2Tokens({ wp: 'none' }, 'test.webp');
-    expect(t['--wp']).toBe('repeating-conic-gradient(#151a23 0% 25%,#0b0e14 0% 50%)');
-    expect(t['--wpsize']).toBe('26px 26px');
-  });
-
-  it('transparent window with any other wallpaper changes nothing', () => {
-    const t = computeLiquidNeonV2Tokens({ wp: 'deep' }, 'test.webp', { transparentWindow: true });
-    expect(t['--wp']).toBe('linear-gradient(#07080d,#07080d)');
   });
 });

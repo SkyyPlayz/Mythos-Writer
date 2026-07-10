@@ -3,7 +3,7 @@
 // prototype is the spec: card layouts, copy, and computed style strings are
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   applyLiquidNeonV2Tokens,
@@ -142,17 +142,6 @@ const SCROLL_WHEEL_GRADIENT = 'conic-gradient(#5a4014,#8a6a2c,#2b2213,#4a3a1a,#5
 export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk }: Props) {
   const S = useMemo(() => normalizeLiquidNeonV2(liquidNeonV2), [liquidNeonV2]);
 
-  // M3: wp:'none' means a transparent Electron window, which is fixed at
-  // creation — surface the restart-to-apply affordance when they disagree.
-  const [windowTransparent, setWindowTransparent] = useState<boolean | null>(null);
-  useEffect(() => {
-    let alive = true;
-    window.api?.windowIsTransparent?.()
-      .then((v) => { if (alive) setWindowTransparent(v === true); })
-      .catch(() => { if (alive) setWindowTransparent(null); });
-    return () => { alive = false; };
-  }, []);
-
   const patch = (p: Partial<LiquidNeonV2Settings>) => {
     const next: LiquidNeonV2Settings = { ...S, ...p };
     onChange(next);
@@ -278,12 +267,13 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         <div
           style={{
             height: 58, borderRadius: 9, backgroundImage: thumbBg,
-            backgroundSize: k === 'none' ? '13px 13px' : 'cover', backgroundPosition: 'center',
+            backgroundSize: 'cover', backgroundPosition: 'center',
             border: '1px solid rgba(255,255,255,.08)',
+            // B4-2: `No background` is a plain dark backdrop now (no transparency).
             ...(k === 'none' ? { display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7686a2', fontSize: 9, letterSpacing: '.06em' } : {}),
           }}
         >
-          {k === 'none' ? 'transparent' : ''}
+          {k === 'none' ? 'plain dark' : ''}
         </div>
         <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', ...(active ? { color: 'var(--n1,#00f0ff)', fontWeight: 600 } : { color: '#aebad0' }) }}>{label}</div>
       </div>
@@ -316,8 +306,6 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
   const pc = S.pageCfg;
   const setPc = (p: Partial<LiquidNeonV2Settings['pageCfg']>) => patch({ pageCfg: { ...pc, ...p } });
 
-  const transparencyMismatch = windowTransparent !== null && (S.wp === 'none') !== windowTransparent;
-
   const resetToDefaults = () => patch({
     setKey: 'classic',
     slots: [...LIQUID_NEON_PRESETS.classic.c] as LiquidNeonV2Settings['slots'],
@@ -340,7 +328,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>{presetCards}</div>
       </Card>
 
-      <Card title="Neon border colors" sub="Six slots. A · B · C frame the panels, tabs and gradients; D · E color data accents like graph categories; F lights the nav rail and window frame. Pick a swatch — or use the wheel to get it just right.">
+      <Card title="Neon border colors" sub="Six slots. A · B · C frame the panels, tabs and gradients; D · E color data accents like graph categories; F lights the nav rail. Pick a swatch — or use the wheel to get it just right.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>{slotRows}</div>
       </Card>
 
@@ -354,8 +342,8 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
           <NeonSlider label="Wallpaper scrim" value={S.scrim} min={0} max={70} unit="%" onChange={(v) => patch({ scrim: v })} testId="lnas-scrim" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 3 }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Neon window frame</div>
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Six-color gradient ring around the window — static, laptop-friendly</div>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Breathing panel borders</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Idle glow animation on panel borders — off keeps them static, laptop-friendly</div>
             </div>
             <NeonToggle on={S.animGlow !== false} onClick={() => patch({ animGlow: S.animGlow === false })} testId="lnas-animglow" />
           </div>
@@ -369,7 +357,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
-      <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — or go fully transparent and let your desktop show through.">
+      <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — or go minimal with a plain dark backdrop.">
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {wpCards}
           <label
@@ -388,26 +376,9 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', color: '#aebad0' }}>+ Add your own…</div>
           </label>
         </div>
-        {transparencyMismatch && (
-          <div className="lnas-restart-row" data-testid="lnas-restart-row">
-            <span style={{ flex: 1, fontSize: 11, color: '#ffd97a' }}>
-              {S.wp === 'none'
-                ? 'True transparency needs a window restart — until then a checkerboard stands in.'
-                : 'The window is still transparent — restart to bring the solid backdrop back.'}
-            </span>
-            <button
-              type="button"
-              className="lnas-restart-btn"
-              data-testid="lnas-restart-btn"
-              onClick={() => { void window.api?.appRelaunch?.(); }}
-            >
-              Restart now
-            </button>
-          </div>
-        )}
       </Card>
 
-      <Card title="Neon animation" sub="Animates the window frame and every panel border — Cycle rotates the colors, Sparkle fades your palette in and out.">
+      <Card title="Neon animation" sub="Animates every panel border — Cycle rotates the colors, Sparkle fades your palette in and out.">
         <NeonSeg
           options={[['off', 'Off'], ['cycle', 'Cycle'], ['sparkle', 'Sparkle']]}
           current={S.frameAnim}

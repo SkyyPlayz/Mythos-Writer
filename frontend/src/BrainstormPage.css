@@ -1986,8 +1986,6 @@
   padding: 6px 8px;
   border-radius: 13px;
   background: var(--glass2, rgba(21, 26, 45, 0.88));
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
   border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
   box-shadow:
     0 10px 34px rgba(3, 5, 12, 0.55),

@@ -6,29 +6,32 @@ import BackgroundStack, { ambienceLayerStyle } from './BackgroundStack';
 import { LIQUID_NEON_PRESETS } from './presets';
 
 describe('ambienceLayerStyle (verbatim mkAmb)', () => {
-  it('Neon Classic layer 0: white dots, lnRise 46s, opacity .4', () => {
+  it('Neon Classic layer 0: white dots, lnRiseT 46s, opacity .4', () => {
     const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 0)!;
     expect(st.backgroundImage).toBe(
       'radial-gradient(1.8px 1.8px at 25% 30%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.4px 1.4px at 65% 72%,rgba(255,255,255,.75),transparent 100%)',
     );
     expect(st.backgroundSize).toBe('230px 230px,190px 190px');
-    expect(st.animation).toBe('lnRise 46s linear infinite');
+    expect(st.animation).toBe('lnRiseT 46s linear infinite');
     expect(st.opacity).toBe(0.4);
+    // W0.5: compositor-only scrolling — oversized layer moved by transform.
+    expect(st.inset).toBe('-72vh 0 -72vh 0');
+    expect(st.willChange).toBe('transform');
   });
 
-  it('Neon Classic layer 1: slot-B tinted dots at .7 scale, lnRise 70s', () => {
+  it('Neon Classic layer 1: slot-B tinted dots at .7 scale, lnRiseT 70s', () => {
     const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 1)!;
     // hexA('#9b5fff', .5) — layer color derives from the LIVE palette.
     expect(st.backgroundImage).toContain('rgba(155,95,255,0.500)');
     expect(st.backgroundImage).toContain('radial-gradient(1.3px 1.3px at 25% 30%');
     expect(st.backgroundSize).toBe('150px 150px,110px 110px');
-    expect(st.animation).toBe('lnRise 70s linear infinite');
+    expect(st.animation).toBe('lnRiseT 70s linear infinite');
     expect(st.opacity).toBe(0.28);
   });
 
-  it('Cyberpunk rains: lnSnow with tall 1.4×15 streaks', () => {
+  it('Cyberpunk rains: lnSnowT with tall 1.4×15 streaks', () => {
     const st = ambienceLayerStyle({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c] }, 0)!;
-    expect(st.animation).toBe('lnSnow 7s linear infinite');
+    expect(st.animation).toBe('lnSnowT 7s linear infinite');
     expect(st.backgroundImage).toContain('1.4px 15.0px at 25% 30%');
   });
 

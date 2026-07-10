@@ -42,7 +42,10 @@ describe('Obsidian community plugin Liquid Neon CSS', () => {
   });
 
   it('uses Liquid Neon tokens instead of raw Obsidian theme colors', () => {
-    for (const token of ['--lg-neon', '--glass-fill', '--lg-blur', '--lg-glass']) {
+    // W0.5 (PERFORMANCE §2): --lg-blur left this list when the dataview/callout
+    // backdrop-filters were removed — panels are faked glass over the
+    // pre-blurred wallpaper now, so the blur token is legitimately unused here.
+    for (const token of ['--lg-neon', '--glass-fill', '--lg-glass']) {
       expect(css).toContain(`var(${token}`);
     }
 

@@ -21,7 +21,6 @@
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-default);
   background: var(--glass-fill);
-  backdrop-filter: blur(var(--blur-panel));
   flex-shrink: 0;
 }
 
@@ -106,7 +105,6 @@
   overflow: hidden;
   cursor: grab;
   background: var(--bg-base);
-  backdrop-filter: blur(var(--blur-panel));
 }
 
 .vgv-canvas:active {
@@ -239,7 +237,6 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--glass-fill);
-  backdrop-filter: blur(var(--blur-panel));
 }
 
 .vgv-legend-wrap {
@@ -531,7 +528,6 @@
   padding: 0 12px;
   border-top: 1px solid var(--border-default);
   background: var(--glass-fill);
-  backdrop-filter: blur(var(--blur-panel));
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -739,7 +735,6 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--glass-fill);
-  backdrop-filter: blur(var(--blur-panel));
 }
 
 .vgv-filters-wrap > button {
@@ -895,7 +890,6 @@
   border: 1px solid var(--border-default);
   border-radius: 14px;
   background: var(--glass-fill);
-  backdrop-filter: blur(var(--blur-panel));
   font-family: var(--font-sans);
   z-index: 2;
 }

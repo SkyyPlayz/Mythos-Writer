@@ -18,10 +18,8 @@
   gap: var(--space-4);
   border-radius: var(--radius-lg);
 
-  /* Glassmorphism — spec calls out --glass-fill + 12px blur explicitly. */
+  /* W0.5: faked glass — fill over the pre-blurred wallpaper (PERFORMANCE §2). */
   background: var(--glass-fill);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
   box-shadow: var(--elev-2), var(--glass-inner-shadow);
   color: var(--text-body);

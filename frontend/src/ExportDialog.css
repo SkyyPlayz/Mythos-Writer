@@ -6,7 +6,7 @@
 .export-dialog-overlay { position: fixed; inset: 0; background: rgba(4, 6, 12, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 9000; }
 
 /* Prototype 2726: 540px glass panel with slot-2 rim */
-.export-dialog { position: relative; width: 540px; max-width: 92%; border-radius: 18px; background: rgba(15, 19, 33, .97); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .5)); box-shadow: 0 24px 70px rgba(2, 4, 10, .7), 0 0 34px -8px var(--g2, rgba(155, 95, 255, .4)); animation: lnFadeUp .18s ease; padding: 18px 20px; }
+.export-dialog { position: relative; width: 540px; max-width: 92%; border-radius: 18px; background: rgba(15, 19, 33, .97); border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .5)); box-shadow: 0 24px 70px rgba(2, 4, 10, .7), 0 0 34px -8px var(--g2, rgba(155, 95, 255, .4)); animation: lnFadeUp .18s ease; padding: 18px 20px; }
 
 @media (prefers-reduced-motion: reduce) {
   .export-dialog { animation: none; }

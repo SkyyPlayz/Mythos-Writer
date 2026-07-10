@@ -12,9 +12,11 @@ function resolveAmbColor(color: AmbienceColor, slots: LiquidNeonV2Settings['slot
 }
 
 /**
- * Style for ambience layer `i` (0 or 1) — verbatim `mkAmb` (prototype 4663–4669):
- * two repeating radial-gradient dot fields at different scales, animated by
- * lnSnow (falling) or lnRise (rising).
+ * Style for ambience layer `i` (0 or 1) — v2 prototype `mkAmb` (HTML 6800):
+ * two repeating radial-gradient dot fields at different scales. W0.5
+ * (PERFORMANCE §3): the layer is oversized (`inset: -72vh 0`) and scrolled by
+ * the compositor-only lnSnowT/lnRiseT translate3d keyframes with
+ * `will-change: transform` — never by background-position.
  */
 export function ambienceLayerStyle(settings: Partial<LiquidNeonV2Settings> | null | undefined, i: 0 | 1): CSSProperties | null {
   const S = normalizeLiquidNeonV2(settings);
@@ -23,11 +25,13 @@ export function ambienceLayerStyle(settings: Partial<LiquidNeonV2Settings> | nul
   if (!ac) return null; // `custom` palettes have no ambience (prototype 4662–4667)
   const color = resolveAmbColor(ac.colors[i], S.slots);
   return {
+    inset: '-72vh 0 -72vh 0',
+    willChange: 'transform',
     backgroundImage:
       'radial-gradient(' + (ac.dot[0] * (i ? .7 : 1)).toFixed(1) + 'px ' + (ac.dot[1] * (i ? .7 : 1)).toFixed(1) + 'px at 25% 30%,' + color + ',transparent 100%),' +
       'radial-gradient(' + (ac.dot[0] * (i ? .55 : .8)).toFixed(1) + 'px ' + (ac.dot[1] * (i ? .55 : .8)).toFixed(1) + 'px at 65% 72%,' + color + ',transparent 100%)',
     backgroundSize: (i ? '150px 150px' : '230px 230px') + ',' + (i ? '110px 110px' : '190px 190px'),
-    animation: ac.anim + ' ' + ac.dur[i] + 's linear infinite',
+    animation: ac.anim + 'T ' + ac.dur[i] + 's linear infinite',
     opacity: ac.op[i],
   };
 }
@@ -41,11 +45,11 @@ export default function BackgroundStack({ settings }: BackgroundStackProps) {
   const amb2 = useMemo(() => ambienceLayerStyle(settings, 1), [settings]);
 
   // Audit P4: freeze the always-on Liquid Neon loops (wallpaper drift,
-  // ambience, frame ring, border breathe) while the window is hidden or
-  // minimized. The class rides on <html> so the CSS rule in liquidNeon.css
-  // also reaches the FrameRing and BorderOverlay layers, which render
-  // elsewhere in the shell; BackgroundStack is the stack's owner and is
-  // always mounted, making it the natural home for the listener.
+  // ambience, border breathe) while the window is hidden or minimized. The
+  // class rides on <html> so the CSS rule in liquidNeon.css also reaches the
+  // BorderOverlay layers, which render elsewhere in the shell;
+  // BackgroundStack is the stack's owner and is always mounted, making it
+  // the natural home for the listener.
   useEffect(() => {
     const sync = () => {
       document.documentElement.classList.toggle(

@@ -15,13 +15,6 @@
   z-index: 10;
 }
 
-@supports (backdrop-filter: blur(1px)) {
-  .bottom-bar {
-    backdrop-filter: blur(var(--blur, 18px));
-    -webkit-backdrop-filter: blur(var(--blur, 18px));
-  }
-}
-
 .bottom-nav {
   display: flex;
   gap: 4px;

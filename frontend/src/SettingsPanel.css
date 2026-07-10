@@ -23,8 +23,6 @@
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
     background: var(--glass-fill);
-    backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
-    -webkit-backdrop-filter: blur(calc(var(--lg-blur, 16px) * 1.5)) saturate(180%);
   }
 }
 

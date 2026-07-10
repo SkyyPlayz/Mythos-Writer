@@ -39,7 +39,9 @@ export function pageModeChrome(
   const pc = S.pageCfg;
   const includePadding = opts?.includePadding !== false;
   const pcBg = hexA(pc.bg, pc.op / 100);
-  const blurCss = 'blur(' + pc.blur + 'px)';
+  // W0.5 (PERFORMANCE §2): `none` creates no backdrop root; only an explicit
+  // page blur > 0 pays for a live backdrop-filter (the one allowed surface).
+  const blurCss = pc.blur > 0 ? 'blur(' + pc.blur + 'px)' : 'none';
   let sheetStyle: CSSProperties;
   if (pc.mode === 'off') {
     sheetStyle = {

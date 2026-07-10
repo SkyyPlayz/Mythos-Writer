@@ -1466,12 +1466,6 @@ interface Window {
     windowMaximize?: () => Promise<void>;
     windowClose?: () => Promise<void>;
 
-    // Beta 3 M3 (Liquid Neon): transparent-window plumbing for wp:'none'.
-    // Transparency is fixed at BrowserWindow creation; a settings change is
-    // applied via appRelaunch (restart-to-apply affordance).
-    windowIsTransparent?: () => Promise<boolean>;
-    appRelaunch?: () => Promise<void>;
-
     // SKY-3189 (G3): true when running in a packaged Electron build.
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
     isPackaged?: boolean;

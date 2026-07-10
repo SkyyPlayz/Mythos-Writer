@@ -249,6 +249,22 @@ export default function NoteViewer({
   const contentRef = useRef(content);
   contentRef.current = content;
 
+  // W0.5 (PERFORMANCE §4): the word count reaches the app shell
+  // (setOpenedNoteWordCount → BottomBar) — never per keystroke. Counting and
+  // reporting are debounced; the count is per-note (this file only).
+  const wcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onWordCountChangeRef = useRef(onWordCountChange);
+  onWordCountChangeRef.current = onWordCountChange;
+  const scheduleWordCount = useCallback((text: string) => {
+    if (wcTimerRef.current) clearTimeout(wcTimerRef.current);
+    wcTimerRef.current = setTimeout(() => {
+      onWordCountChangeRef.current?.(countWords(text));
+    }, 300);
+  }, []);
+  useEffect(() => () => {
+    if (wcTimerRef.current) clearTimeout(wcTimerRef.current);
+  }, []);
+
   const fileName = path.split('/').pop() ?? path;
 
   useEffect(() => {
@@ -287,22 +303,22 @@ export default function NoteViewer({
     // so the unmount save below would otherwise persist stale content.
     contentRef.current = text;
     setContent(text);
-    onWordCountChange?.(countWords(text));
+    scheduleWordCount(text);
     setSavedAt(null);
     setSaveError(null); // GH#616: editing is a retry — drop the stale error until the next save resolves.
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveContent(text), 800);
-  }, [saveContent, onWordCountChange]);
+  }, [saveContent, scheduleWordCount]);
 
   const handleRichChange = useCallback((text: string) => {
     contentRef.current = text;
     setContent(text);
-    onWordCountChange?.(countWords(text));
+    scheduleWordCount(text);
     setSavedAt(null);
     setSaveError(null); // GH#616: editing is a retry — drop the stale error until the next save resolves.
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveContent(text), 800);
-  }, [saveContent, onWordCountChange]);
+  }, [saveContent, scheduleWordCount]);
 
   const flushSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
