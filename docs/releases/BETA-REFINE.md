@@ -532,12 +532,12 @@ Accept: every §14 item checked off in the PR description with evidence.
 
 | # | Milestone | Wave | Depends on | Status | PR |
 |---|-----------|------|-----------|--------|----|
-| W0.1 | Seed-once + tree hygiene | 0 | — | ⏳ | |
-| W0.2 | Frontmatter stripping | 0 | — | ⏳ | |
-| W0.3 | Right-panel layout fixes | 0 | — | ⏳ | |
-| W0.4 | Editor chrome dedup | 0 | — | ⏳ | |
-| W0.5 | Performance to targets | 0 | — | ⏳ | |
-| W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | ⏳ | |
+| W0.1 | Seed-once + tree hygiene | 0 | — | ✅ merged | #903 |
+| W0.2 | Frontmatter stripping | 0 | — | ✅ merged | #901 |
+| W0.3 | Right-panel layout fixes | 0 | — | ✅ merged | #902 |
+| W0.4 | Editor chrome dedup | 0 | — | ✅ merged | #902 |
+| W0.5 | Performance to targets | 0 | — | ✅ merged | #905 |
+| W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | 🔨 in progress — smoke build v0.5.0-beta.0 (draft release), then Skyy sign-off | |
 | M1 | Theme engine refresh | 1 | W0.6 | ⏳ | |
 | M2 | Title/status bar parity | 1 | W0.6 | ⏳ | |
 | M3 | Nav rail + stories switcher | 1 | W0.6 | ⏳ | |
