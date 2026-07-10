@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import RichTextEditor from './RichTextEditor';
+import { splitFrontmatter } from './lib/frontmatter';
 import type { Chapter } from './types';
 import './ChapterInterlude.css';
 
@@ -8,13 +9,11 @@ import './ChapterInterlude.css';
 // already persisted by the vault layer (SKY-10) but never surfaced in the UI
 // until now. The frontmatter block is preserved byte-for-byte; only the prose
 // below it is edited, so scene files and version backups are untouched.
-
-const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\n---\r?\n?/;
+// W0.2: the split is delegated to the shared lib/frontmatter engine.
 
 export function splitChapterMeta(content: string): { fmRaw: string | null; prose: string } {
-  const match = content.match(FRONTMATTER_RE);
-  if (!match) return { fmRaw: null, prose: content };
-  return { fmRaw: match[0], prose: content.slice(match[0].length) };
+  const { frontmatter, body } = splitFrontmatter(content);
+  return { fmRaw: frontmatter || null, prose: body };
 }
 
 /** Mirror of electron-main serializeFrontmatter for a chapter.md that does not exist yet. */

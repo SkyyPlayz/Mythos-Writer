@@ -180,10 +180,13 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
 
     // Rich is opt-in: switching onto lossy content must raise the fidelity guard.
+    // W0.2 (Beta 4): YAML frontmatter is no longer flagged — it is held aside
+    // verbatim and never fed to (or rendered by) the Rich editor. The table in
+    // the display body still triggers the guard.
     await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
     const guard = page.locator('.note-fidelity-overlay[role="dialog"]');
     await expect(guard).toBeVisible();
-    await expect(guard).toContainText('YAML frontmatter');
+    await expect(guard).not.toContainText('YAML frontmatter');
     await expect(guard).toContainText('Markdown tables');
 
     // Choosing the safe path keeps source mode active and the file untouched.

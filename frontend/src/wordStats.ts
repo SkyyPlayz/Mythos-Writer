@@ -1,6 +1,9 @@
+import { splitFrontmatter } from './lib/frontmatter';
+
 export function stripFrontmatter(text: string): string {
-  // YAML frontmatter: --- block at the very start of the document
-  return text.replace(/^---\r?\n[\s\S]*?\n---\r?\n?/, '');
+  // YAML frontmatter: --- block at the very start of the document.
+  // W0.2: delegated to the shared lib/frontmatter engine.
+  return splitFrontmatter(text).body;
 }
 
 function stripMarkdown(text: string): string {

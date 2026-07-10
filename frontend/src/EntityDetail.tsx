@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
 import TagInput from './TagInput';
+import { splitFrontmatter } from './lib/frontmatter';
 import './EntityDetail.css';
 
 const TYPE_LABELS: Record<EntityType, string> = {
@@ -23,9 +24,9 @@ const TYPE_ICONS: Record<EntityType, string> = {
   other: '📄',
 };
 
+// W0.2: entity prose display never includes the frontmatter block — shared engine.
 function extractProse(markdown: string): string {
-  const match = markdown.match(/^---[\s\S]*?---\n?([\s\S]*)$/);
-  return match ? match[1].trimStart() : markdown;
+  return splitFrontmatter(markdown).body.trimStart();
 }
 
 interface ProposedRelation {

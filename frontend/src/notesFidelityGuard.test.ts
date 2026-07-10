@@ -6,10 +6,9 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures('Just plain text with [[wiki-link]] and **bold**.')).toEqual([]);
   });
 
-  it('detects YAML frontmatter', () => {
+  it('does NOT flag YAML frontmatter — W0.2 holds it aside verbatim, Rich mode never sees it', () => {
     const md = '---\ntitle: My Note\ntags: [a, b]\n---\nContent here.';
-    const features = detectLossyFeatures(md);
-    expect(features.map((f) => f.key)).toContain('frontmatter');
+    expect(detectLossyFeatures(md)).toEqual([]);
   });
 
   it('detects Markdown tables', () => {
@@ -47,9 +46,9 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
   });
 
   it('detects multiple lossy features at once', () => {
-    const md = '---\ntitle: x\n---\n| a | b |\n|---|---|\n| 1 | 2 |';
+    const md = 'See note[^1].\n\n[^1]: text\n\n| a | b |\n|---|---|\n| 1 | 2 |';
     const keys = detectLossyFeatures(md).map((f) => f.key);
-    expect(keys).toContain('frontmatter');
+    expect(keys).toContain('footnotes');
     expect(keys).toContain('tables');
   });
 
