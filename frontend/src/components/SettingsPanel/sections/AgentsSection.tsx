@@ -876,6 +876,30 @@ export default function AgentsSection({
         </div>
         <PersonaViewer agentName="betaReader" />
       </div>
+
+      {/* M6: green callout — note linking is built-in, no agent needed (spec §13) */}
+      <div className="settings-autolinker-callout" role="note" aria-label="Note linking is automatic">
+        <span className="settings-autolinker-callout__icon" aria-hidden="true">🔗</span>
+        <div className="settings-autolinker-callout__body">
+          <strong>Note linking is automatic — no agent needed.</strong>{' '}
+          The built-in Auto Note Linker converts plain mentions of note titles into{' '}
+          <code>{'[[wiki links]]'}</code> without using any AI credits.{' '}
+          Configure it under{' '}
+          <button
+            type="button"
+            className="settings-autolinker-callout__link"
+            onClick={() => {
+              // Navigate the parent SettingsPanel to the Vaults tab.
+              // The panel listens for this custom event.
+              window.dispatchEvent(
+                new CustomEvent('settings:navigate', { detail: { category: 'vaults' } }),
+              );
+            }}
+          >
+            Vaults &amp; Files
+          </button>.
+        </div>
+      </div>
     </section>
   );
 }

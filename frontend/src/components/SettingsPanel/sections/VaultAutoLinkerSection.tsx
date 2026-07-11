@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 interface VaultAutoLinkerSectionProps {
@@ -6,28 +7,25 @@ interface VaultAutoLinkerSectionProps {
   setSavedOk: (ok: boolean) => void;
 }
 
-type LinkerSettings = NonNullable<AppSettings['autoLinker']>;
-
-const LINKER_DEFAULTS: LinkerSettings = {
-  mode: 'suggest',
+const DEFAULTS: AutoLinkerSettings = {
   formatOnSave: false,
   includeAliases: true,
   proximityPreference: false,
   ignoreCase: true,
-  preventSelfLinking: true,
-  ignoreDateFormats: true,
+  preventSelfLink: true,
+  ignoreDates: true,
   formatDelay: 500,
-  excludedFolders: 'Templates/\nArchive/',
+  excludedFolders: [],
 };
 
 function patchLinker(
   setSettings: Dispatch<SetStateAction<AppSettings>>,
   setSavedOk: (ok: boolean) => void,
-  patch: Partial<LinkerSettings>,
+  patch: Partial<AutoLinkerSettings>,
 ) {
   setSettings((prev) => ({
     ...prev,
-    autoLinker: { ...LINKER_DEFAULTS, ...prev.autoLinker, ...patch },
+    autoLinkerSettings: { ...DEFAULTS, ...prev.autoLinkerSettings, ...patch },
   }));
   setSavedOk(false);
 }
@@ -65,20 +63,23 @@ export default function VaultAutoLinkerSection({
   setSettings,
   setSavedOk,
 }: VaultAutoLinkerSectionProps) {
-  const linker: LinkerSettings = { ...LINKER_DEFAULTS, ...settings.autoLinker };
+  const linker: AutoLinkerSettings = { ...DEFAULTS, ...settings.autoLinkerSettings };
 
-  const formatOnSave = linker.formatOnSave ?? false;
-  const includeAliases = linker.includeAliases ?? true;
-  const proximityPreference = linker.proximityPreference ?? false;
-  const ignoreCase = linker.ignoreCase ?? true;
-  const preventSelfLinking = linker.preventSelfLinking ?? true;
-  const ignoreDateFormats = linker.ignoreDateFormats ?? true;
-  const formatDelay = linker.formatDelay ?? 500;
-  const excludedFolders = linker.excludedFolders ?? 'Templates/\nArchive/';
+  // Load authoritative settings from main process on mount.
+  useEffect(() => {
+    window.api.autoLinkerGetSettings?.().then((s) => {
+      setSettings((prev) => ({ ...prev, autoLinkerSettings: s }));
+    }).catch(() => { /* settings layer may not be ready on first render */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function set(patch: Partial<NonNullable<AppSettings['autoLinker']>>) {
+  const [formatStatus, setFormatStatus] = useState<string | null>(null);
+
+  function set(patch: Partial<AutoLinkerSettings>) {
     patchLinker(setSettings, setSavedOk, patch);
   }
+
+  const excludedFoldersText = (linker.excludedFolders ?? []).join('\n');
 
   return (
     <section
@@ -96,15 +97,14 @@ export default function VaultAutoLinkerSection({
       </div>
       <p className="settings-hint">
         Detects plain-text mentions of note titles and aliases and wraps them in{' '}
-        <code>{'[[wiki links]]'}</code>. Behaviorally equivalent to{' '}
-        <em>obsidian-automatic-linker</em>. Existing links are never modified.
+        <code>{'[[wiki links]]'}</code>. Existing links are never modified.
       </p>
 
       <ToggleRow
         id="al-format-on-save"
         label="Format on save"
         hint="Automatically apply links whenever a note is saved."
-        checked={formatOnSave}
+        checked={linker.formatOnSave}
         onChange={(v) => set({ formatOnSave: v })}
       />
 
@@ -112,7 +112,7 @@ export default function VaultAutoLinkerSection({
         id="al-include-aliases"
         label="Include aliases"
         hint="Match aliases declared in note frontmatter in addition to the note title."
-        checked={includeAliases}
+        checked={linker.includeAliases}
         onChange={(v) => set({ includeAliases: v })}
       />
 
@@ -120,7 +120,7 @@ export default function VaultAutoLinkerSection({
         id="al-proximity"
         label="Proximity-based linking"
         hint="When the same name exists in multiple folders, prefer the note closest to the current file."
-        checked={proximityPreference}
+        checked={linker.proximityPreference}
         onChange={(v) => set({ proximityPreference: v })}
       />
 
@@ -128,7 +128,7 @@ export default function VaultAutoLinkerSection({
         id="al-ignore-case"
         label="Ignore case"
         hint="Treat 'Aragorn' and 'aragorn' as the same name."
-        checked={ignoreCase}
+        checked={linker.ignoreCase}
         onChange={(v) => set({ ignoreCase: v })}
       />
 
@@ -136,16 +136,16 @@ export default function VaultAutoLinkerSection({
         id="al-prevent-self"
         label="Prevent self-linking"
         hint="Do not add a link inside the note that the link would point to."
-        checked={preventSelfLinking}
-        onChange={(v) => set({ preventSelfLinking: v })}
+        checked={linker.preventSelfLink}
+        onChange={(v) => set({ preventSelfLink: v })}
       />
 
       <ToggleRow
         id="al-ignore-dates"
         label="Ignore date formats"
         hint="Skip strings that look like dates (e.g. 2024-01-01, Jan 1 2024)."
-        checked={ignoreDateFormats}
-        onChange={(v) => set({ ignoreDateFormats: v })}
+        checked={linker.ignoreDates}
+        onChange={(v) => set({ ignoreDates: v })}
       />
 
       <div className="settings-field">
@@ -160,7 +160,7 @@ export default function VaultAutoLinkerSection({
           min={0}
           max={10000}
           step={100}
-          value={formatDelay}
+          value={linker.formatDelay}
           onChange={(e) => {
             const val = Math.max(0, Math.min(10000, Number(e.target.value) || 0));
             set({ formatDelay: val });
@@ -181,8 +181,15 @@ export default function VaultAutoLinkerSection({
           className="settings-textarea"
           rows={4}
           placeholder={'Templates/\nArchive/'}
-          value={excludedFolders}
-          onChange={(e) => set({ excludedFolders: e.target.value })}
+          value={excludedFoldersText}
+          onChange={(e) =>
+            set({
+              excludedFolders: e.target.value
+                .split('\n')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            })
+          }
         />
         <p className="settings-hint">
           One folder path per line. Notes inside these folders are never formatted.
@@ -193,8 +200,15 @@ export default function VaultAutoLinkerSection({
         <button
           type="button"
           className="settings-btn settings-btn--secondary"
-          onClick={() => {
-            window.api.notesAutoLinker?.formatVaultNow?.();
+          onClick={async () => {
+            setFormatStatus('Formatting…');
+            try {
+              const r = await window.api.autoLinkerFormatVaultNow();
+              setFormatStatus(`Done — ${r.linked} link${r.linked === 1 ? '' : 's'} added`);
+            } catch {
+              setFormatStatus('Error formatting vault');
+            }
+            setTimeout(() => setFormatStatus(null), 4000);
           }}
         >
           Format vault now
@@ -202,12 +216,15 @@ export default function VaultAutoLinkerSection({
         <button
           type="button"
           className="settings-btn settings-btn--ghost"
-          onClick={() => {
-            window.api.notesAutoLinker?.rebuildIndex?.();
-          }}
+          onClick={() => { window.api.autoLinkerRebuildIndex(); }}
         >
           Rebuild index
         </button>
+        {formatStatus && (
+          <span className="settings-hint" aria-live="polite" style={{ alignSelf: 'center' }}>
+            {formatStatus}
+          </span>
+        )}
       </div>
     </section>
   );
