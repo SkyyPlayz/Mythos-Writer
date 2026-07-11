@@ -163,7 +163,8 @@ describe('WindowChrome — project menu create-vault parity', () => {
     fireEvent.click(screen.getByTestId('wc-project-trigger'));
     const row = screen.getByTestId('project-switcher-create-new');
     expect(row).toHaveClass('project-switcher-item');
-    expect(row).toHaveTextContent('+ Create new Mythos Vault');
+    // Beta 4 M2: spec label (§4) — the sky-906 E2E anchors on the testid.
+    expect(row).toHaveTextContent('New Mythos vault…');
     fireEvent.click(row);
     expect(onCreateVault).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
@@ -174,5 +175,84 @@ describe('WindowChrome — project menu create-vault parity', () => {
     await act(async () => { render(<WindowChrome />); });
     fireEvent.click(screen.getByTestId('wc-project-trigger'));
     expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
+  });
+});
+
+// ─── Beta 4 M2 — vault switcher popover: location + stats per vault (§4) ─────
+
+describe('WindowChrome — vault switcher stats', () => {
+  function stubApiWithProjects() {
+    stubApi('linux');
+    const projectList = vi.fn().mockResolvedValue({
+      projects: [
+        { name: 'The Last City of Veynn', vaultRoot: '/vaults/veynn/Story Vault', notesVaultRoot: '/vaults/veynn/Notes Vault', openedAt: '2026-07-01T00:00:00Z' },
+      ],
+    });
+    const projectStats = vi.fn().mockResolvedValue({
+      stats: [
+        { vaultRoot: '/vaults/veynn/Story Vault', storyFileCount: 12, noteCount: 45 },
+      ],
+    });
+    (window as unknown as { api: Record<string, unknown> }).api = {
+      ...(window as unknown as { api: Record<string, unknown> }).api,
+      projectList,
+      projectStats,
+    };
+    return { projectList, projectStats };
+  }
+
+  it('fetches stats when the popover opens and renders name, location, and stats', async () => {
+    const { projectList, projectStats } = stubApiWithProjects();
+    await act(async () => { render(<WindowChrome activeVaultRoot="/vaults/veynn/Story Vault" />); });
+    await act(async () => { fireEvent.click(screen.getByTestId('wc-project-trigger')); });
+    expect(projectList).toHaveBeenCalledTimes(1);
+    expect(projectStats).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('The Last City of Veynn')).toBeInTheDocument();
+    expect(screen.getByText('/vaults/veynn/Story Vault')).toBeInTheDocument();
+    expect(screen.getByTestId('wc-vault-stats')).toHaveTextContent('12 story files · 45 notes');
+  });
+
+  it('renders rows without a stats line when the stats API is absent', async () => {
+    stubApi('linux');
+    const projectList = vi.fn().mockResolvedValue({
+      projects: [{ name: 'Old Vault', vaultRoot: '/old', openedAt: '2026-01-01T00:00:00Z' }],
+    });
+    (window as unknown as { api: Record<string, unknown> }).api = {
+      ...(window as unknown as { api: Record<string, unknown> }).api,
+      projectList,
+    };
+    await act(async () => { render(<WindowChrome />); });
+    await act(async () => { fireEvent.click(screen.getByTestId('wc-project-trigger')); });
+    expect(screen.getByText('Old Vault')).toBeInTheDocument();
+    expect(screen.queryByTestId('wc-vault-stats')).not.toBeInTheDocument();
+  });
+});
+
+// ─── Beta 4 M2 — center "Search vault…" field + Ctrl-K hint (§4 / CF-14) ─────
+
+describe('WindowChrome — search field', () => {
+  it('typing hands the draft query to the palette and stays empty itself', async () => {
+    stubApi('linux');
+    const onOpenPalette = vi.fn();
+    await act(async () => { render(<WindowChrome onOpenPalette={onOpenPalette} />); });
+    const input = screen.getByTestId('wc-search-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Mira' } });
+    expect(onOpenPalette).toHaveBeenCalledWith('Mira');
+    expect(input.value).toBe(''); // palette owns the query from keystroke one
+  });
+
+  it('clicking the pill opens the palette without a seed', async () => {
+    stubApi('linux');
+    const onOpenPalette = vi.fn();
+    await act(async () => { render(<WindowChrome onOpenPalette={onOpenPalette} />); });
+    fireEvent.click(screen.getByTestId('wc-search-pill'));
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+    expect(onOpenPalette).toHaveBeenCalledWith();
+  });
+
+  it('shows the Ctrl K hint', async () => {
+    stubApi('linux');
+    await act(async () => { render(<WindowChrome onOpenPalette={() => {}} />); });
+    expect(screen.getByText('Ctrl K')).toBeInTheDocument();
   });
 });

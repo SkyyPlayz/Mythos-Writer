@@ -556,6 +556,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Multi-project switcher (MYT-374, extended SKY-320)
   projectList: () => ipcRenderer.invoke('project:list', undefined),
+  // Beta 4 M2 — per-vault stats for the vault-switcher popover
+  projectStats: () => ipcRenderer.invoke('project:stats', undefined),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {

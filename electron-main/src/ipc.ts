@@ -257,6 +257,8 @@ export const IPC_CHANNELS = {
   // Multi-project switcher (MYT-374)
   PROJECT_LIST: 'project:list',
   PROJECT_SWITCH: 'project:switch',
+  // Beta 4 M2 — per-vault stats for the title-bar Mythos-vault switcher (§4)
+  PROJECT_STATS: 'project:stats',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -738,6 +740,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TELEMETRY_REPORT]: (payload: TelemetryReportPayload) => TelemetryReportResponse;
   [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
+  [IPC_CHANNELS.PROJECT_STATS]: (payload: never) => ProjectStatsResponse;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -2237,6 +2240,18 @@ export interface ProjectSwitchResponse {
   notesVaultRoot?: string;
   switched: boolean;
   error?: string;
+}
+
+// Beta 4 M2 — vault-switcher popover stats (FULL-SPEC §4)
+
+export interface ProjectStatsResponse {
+  stats: Array<{
+    vaultRoot: string;
+    /** `.md` files under the Story Vault root. */
+    storyFileCount: number;
+    /** `.md` files under the paired Notes Vault root; null when unpaired. */
+    noteCount: number | null;
+  }>;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────

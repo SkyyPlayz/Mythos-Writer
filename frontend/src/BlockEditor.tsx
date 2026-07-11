@@ -10,7 +10,6 @@ import {
   collectAutoLinkerRanges,
   type AutoLinkerMode,
 } from './AutoLinkerExtension';
-import { countWords } from './wordStats';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
@@ -111,9 +110,11 @@ const WC_DEBOUNCE_MS = 250;
 export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
-  const [wordCount, setWordCount] = useState<number>(() =>
-    scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0)
-  );
+  // Beta 4 M2: the toolbar word-count badge is gone — the app status bar is
+  // the ONE stat surface (§4 / GAP #10). This debounced tick keeps the badge's
+  // old re-render cadence, which heading-focus (GH #631) derives its options
+  // and step state from during typing.
+  const [, setDocRev] = useState(0);
   const wcDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectionText, setSelectionText] = useState<string>('');
   const [isEditorEmpty, setIsEditorEmpty] = useState(() => blocksToMarkdownBody(scene.blocks).trim().length === 0);
@@ -147,10 +148,10 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
 
   const handleEditorUpdate = useCallback((ed: Editor) => {
     setIsEditorEmpty(ed.isEmpty);
-    // Word count: debounced at 250ms so typing stays smooth
+    // Doc-revision tick: debounced at 250ms so typing stays smooth
     if (wcDebounceRef.current) clearTimeout(wcDebounceRef.current);
     wcDebounceRef.current = setTimeout(() => {
-      setWordCount(countWords(getEditorMarkdown(ed)));
+      setDocRev((r) => r + 1);
     }, WC_DEBOUNCE_MS);
   }, []);
 
@@ -367,7 +368,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
 
   // GH #631: heading-focus state. Level/index live here; the extension's
   // plugin renders the hide-decorations and re-clamps on document edits. The
-  // level list and step state are derived per render — the word-count
+  // level list and step state are derived per render — the doc-revision
   // debounce already re-renders during typing, keeping them fresh.
   const [hf, setHf] = useState<{ level: number | null; index: number }>({ level: null, index: 0 });
   const headingLevelOptions = enableHeadingFocus && editor ? levelsPresent(editor.state.doc) : [];
@@ -426,11 +427,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     <div className="block-editor">
       <div className="block-editor-toolbar">
         <span className="scene-name">{scene.title}</span>
-        {wordCount > 0 && (
-          <span className="be-wordcount" aria-label={`${wordCount.toLocaleString()} words`}>
-            {wordCount.toLocaleString()} words
-          </span>
-        )}
+        {/* Beta 4 M2: no in-editor word-count badge — ONE status bar (§4).
+            Words/chars/read-time live in the app-level BottomBar only. */}
         <div className="draft-state-group">
           {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
             <button

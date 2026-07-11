@@ -24,8 +24,9 @@ export interface WindowChromeMenu {
 export interface WindowChromeProps {
   /** File…Help menus (prototype menuDefs 4673–4678). Omit to hide the strip. */
   menus?: WindowChromeMenu[];
-  /** Opens the Ctrl-K command palette (prototype openCmd). */
-  onOpenPalette?: () => void;
+  /** Opens the Ctrl-K command palette (prototype openCmd). Beta 4 M2: typing
+   *  in the title-bar field hands the draft query to the palette as `seed`. */
+  onOpenPalette?: (seed?: string) => void;
   onOpenSettings?: () => void;
   /** Opens the account page/modal (prototype goAccount). */
   onOpenAccount?: () => void;
@@ -46,6 +47,21 @@ interface ProjectEntry {
   vaultRoot: string;
   notesVaultRoot?: string;
   openedAt: string;
+}
+
+/** Beta 4 M2 — per-vault stats shown in the switcher popover (§4). */
+interface ProjectStats {
+  vaultRoot: string;
+  storyFileCount: number;
+  noteCount: number | null;
+}
+
+/** "12 story files · 45 notes" — the popover's stats line. */
+export function formatVaultStats(stats: ProjectStats | undefined): string | null {
+  if (!stats) return null;
+  const story = `${stats.storyFileCount.toLocaleString()} story file${stats.storyFileCount === 1 ? '' : 's'}`;
+  if (stats.noteCount === null) return story;
+  return `${story} · ${stats.noteCount.toLocaleString()} note${stats.noteCount === 1 ? '' : 's'}`;
 }
 
 function CloseIcon() {
@@ -128,6 +144,8 @@ export default function WindowChrome({
   const [projOpen, setProjOpen] = useState(false);
   const [acctOpen, setAcctOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
+  // Beta 4 M2: vault stats keyed by vaultRoot (loaded when the popover opens).
+  const [projStats, setProjStats] = useState<Record<string, ProjectStats>>({});
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -154,6 +172,15 @@ export default function WindowChrome({
     window.api?.projectList?.()
       .then((res) => { if (res?.projects) setProjects(res.projects); })
       .catch(() => {});
+    // Beta 4 M2: stats land async so the popover opens instantly.
+    window.api?.projectStats?.()
+      .then((res) => {
+        if (!res?.stats) return;
+        const byRoot: Record<string, ProjectStats> = {};
+        for (const s of res.stats) byRoot[s.vaultRoot] = s;
+        setProjStats(byRoot);
+      })
+      .catch(() => {});
   }, []);
 
   const isMac = platform === 'darwin';
@@ -162,10 +189,12 @@ export default function WindowChrome({
   const handleMinimize = () => { void window.api?.windowMinimize?.(); };
   const handleMaximize = () => { void window.api?.windowMaximize?.(); };
 
-  const projItems: { t: string; sub: string; on?: boolean; testId?: string; pick: () => void }[] = [
+  const projItems: { t: string; sub: string; stats?: string | null; on?: boolean; testId?: string; pick: () => void }[] = [
     ...projects.map((p) => ({
       t: p.name || p.vaultRoot.split(/[/\\]/).filter(Boolean).pop() || p.vaultRoot,
       sub: p.vaultRoot,
+      // Beta 4 M2 (§4): location + stats per vault row.
+      stats: formatVaultStats(projStats[p.vaultRoot]),
       on: p.vaultRoot === activeVaultRoot,
       pick: () => {
         setProjOpen(false);
@@ -177,7 +206,8 @@ export default function WindowChrome({
     })),
     ...(onNewStory ? [{ t: 'New story…', sub: 'Fresh vault, ready to write', pick: () => { setProjOpen(false); onNewStory(); } }] : []),
     ...(onOpenVault ? [{ t: 'Open vault…', sub: 'Bring in an existing folder', pick: () => { setProjOpen(false); onOpenVault(); } }] : []),
-    ...(onCreateVault ? [{ t: '+ Create new Mythos Vault', sub: 'Fresh Story + Notes pair', testId: 'project-switcher-create-new', pick: () => { setProjOpen(false); onCreateVault(); } }] : []),
+    // Beta 4 M2: spec label "New Mythos vault…"; testid stays for sky-906 E2E.
+    ...(onCreateVault ? [{ t: 'New Mythos vault…', sub: 'Fresh Story + Notes pair', testId: 'project-switcher-create-new', pick: () => { setProjOpen(false); onCreateVault(); } }] : []),
     ...(onReplayOnboarding ? [{ t: 'Replay onboarding', sub: 'The welcome wizard, once more', pick: () => { setProjOpen(false); onReplayOnboarding(); } }] : []),
   ];
 
@@ -204,7 +234,8 @@ export default function WindowChrome({
                 <div key={p.t + p.sub} className="wc-pop-row project-switcher-item" data-testid={p.testId} onClick={p.pick}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="wc-pop-row-title">{p.t}</div>
-                    <div className="wc-pop-row-sub">{p.sub}</div>
+                    <div className="wc-pop-row-sub" title={p.sub}>{p.sub}</div>
+                    {p.stats && <div className="wc-pop-row-stats" data-testid="wc-vault-stats">{p.stats}</div>}
                   </div>
                   {p.on && <span className="wc-active-dot" />}
                 </div>
@@ -247,11 +278,31 @@ export default function WindowChrome({
 
         <div style={{ flex: 1 }} />
 
-        {/* Ctrl-K search pill (prototype 89–93) */}
+        {/* Center "Search vault…" field + Ctrl-K hint (prototype 89–93).
+            Beta 4 M2: a real input fronting the FTS5 search — typing hands the
+            draft query to the Ctrl-K palette (CF-14: FTS5 + scoping stay). */}
         {onOpenPalette && (
-          <div className="wc-search" onClick={onOpenPalette} data-testid="wc-search-pill">
+          <div className="wc-search" onClick={() => onOpenPalette()} data-testid="wc-search-pill">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M20.5 20.5L16 16" /></svg>
-            <span className="wc-search-ph">Search vault…</span>
+            <input
+              className="wc-search-input"
+              type="text"
+              placeholder="Search vault…"
+              aria-label="Search vault"
+              value=""
+              data-testid="wc-search-input"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                // The palette owns the query from the first keystroke — the
+                // title-bar field stays empty so it never desyncs (§1.4-adjacent).
+                const q = e.target.value;
+                if (q.trim()) onOpenPalette(q);
+                else onOpenPalette();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); onOpenPalette(); }
+              }}
+            />
             <span className="wc-kbd">Ctrl K</span>
           </div>
         )}

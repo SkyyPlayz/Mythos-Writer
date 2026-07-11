@@ -142,3 +142,60 @@ describe('continuityCheckNote', () => {
     expect(agentsActiveSnapshot()).toBe(false);
   });
 });
+
+// ─── Beta 4 M2 — bell rows deep-link to their source (§4) ────────────────────
+
+describe('notification deep-links (Beta 4 M2)', () => {
+  it('beta-read rows deep-link to the scanned note', async () => {
+    const onOpenNote = vi.fn();
+    const { result } = renderHook(() => useVaultAgentActions({ onOpenNote }));
+    act(() => { result.current.betaReadNote('lore/drownlight.md'); });
+
+    await waitFor(() => expect(listNotifications()).toHaveLength(1));
+    const [n] = listNotifications();
+    expect(n.onOpen).toBeDefined();
+    n.onOpen?.();
+    expect(onOpenNote).toHaveBeenCalledWith('lore/drownlight.md');
+  });
+
+  it('continuity rows with open flags deep-link to the Continuity panel', async () => {
+    const onOpenNote = vi.fn();
+    const onOpenContinuity = vi.fn();
+    const { result } = renderHook(() => useVaultAgentActions({ onOpenNote, onOpenContinuity }));
+    act(() => { result.current.continuityCheckNote('lore/drownlight.md'); });
+
+    await waitFor(() => expect(listNotifications()).toHaveLength(1));
+    listNotifications()[0].onOpen?.();
+    expect(onOpenContinuity).toHaveBeenCalledTimes(1);
+    expect(onOpenNote).not.toHaveBeenCalled();
+  });
+
+  it('clean continuity rows deep-link to the note itself', async () => {
+    mockArchiveListContinuity.mockResolvedValueOnce({ items: [] });
+    const onOpenNote = vi.fn();
+    const onOpenContinuity = vi.fn();
+    const { result } = renderHook(() => useVaultAgentActions({ onOpenNote, onOpenContinuity }));
+    act(() => { result.current.continuityCheckNote('lore/drownlight.md'); });
+
+    await waitFor(() => expect(listNotifications()).toHaveLength(1));
+    listNotifications()[0].onOpen?.();
+    expect(onOpenNote).toHaveBeenCalledWith('lore/drownlight.md');
+    expect(onOpenContinuity).not.toHaveBeenCalled();
+  });
+
+  it('uses the LATEST navigation handler, not the render-time one', async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ cb }: { cb: (p: string) => void }) => useVaultAgentActions({ onOpenNote: cb }),
+      { initialProps: { cb: first } },
+    );
+    act(() => { result.current.betaReadNote('lore/drownlight.md'); });
+    await waitFor(() => expect(listNotifications()).toHaveLength(1));
+
+    rerender({ cb: second });
+    listNotifications()[0].onOpen?.();
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith('lore/drownlight.md');
+  });
+});

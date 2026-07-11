@@ -449,6 +449,7 @@ import {
   handleContinuityReadEntity,
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
+import { collectProjectStats } from './projectStats.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -4661,6 +4662,17 @@ const handlers: IpcHandlers = {
       projects: getRecentProjects(),
       activeVaultRoot: getVaultRoot(),
       activeNotesVaultRoot: getNotesVaultRoot(),
+    };
+  },
+
+  // Beta 4 M2 — per-vault stats for the title-bar Mythos-vault switcher (§4).
+  // Includes the active vault even when recents predate it.
+  [IPC_CHANNELS.PROJECT_STATS]: () => {
+    return {
+      stats: collectProjectStats([
+        { vaultRoot: getVaultRoot(), notesVaultRoot: getNotesVaultRoot() },
+        ...getRecentProjects(),
+      ]),
     };
   },
 

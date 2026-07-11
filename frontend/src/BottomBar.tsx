@@ -14,6 +14,18 @@ interface Props {
   isVoiceActive?: boolean;
   /** SKY-1699 (Wave 2e): when split view is active, show per-pane word counts. */
   splitWordCounts?: { pane1: number; pane2: number } | null;
+  /** Beta 4 M2 (§4): current manuscript page width — renders the prototype's
+   *  "Page W px — drag page edge to resize" hint when a scene is open. */
+  pageWidthPx?: number | null;
+}
+
+/** "Saved just now" → "Saved 2m ago" → "Saved 1h ago" (prototype 3630). */
+export function formatSavedAgo(savedAt: number, now: number): string {
+  const s = Math.max(0, Math.round((now - savedAt) / 1000));
+  if (s < 60) return 'Saved just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `Saved ${m}m ago`;
+  return `Saved ${Math.round(m / 60)}h ago`;
 }
 
 export default function BottomBar({
@@ -25,6 +37,7 @@ export default function BottomBar({
   activeNoteWordCount,
   isVoiceActive = false,
   splitWordCounts = null,
+  pageWidthPx = null,
 }: Props) {
   const allScenes: { scene: Scene; chapter: Chapter; story: Story }[] = [];
   if (selectedStory) {
@@ -62,6 +75,9 @@ export default function BottomBar({
 
   // SKY-2305: live daily goal progress chip
   const [goalStats, setGoalStats] = useState<{ todayWords: number; dailyGoal: number } | null>(null);
+  // Beta 4 M2 (§4): "Saved Xm ago" + pulse dot — armed by scene:saved events.
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -72,14 +88,26 @@ export default function BottomBar({
       }).catch(() => { /* non-fatal */ });
     };
 
+    const onSaved = () => {
+      setLastSavedAt(Date.now());
+      fetchStats();
+    };
+
     fetchStats();
 
-    window.addEventListener('scene:saved', fetchStats);
+    window.addEventListener('scene:saved', onSaved);
     return () => {
       cancelled = true;
-      window.removeEventListener('scene:saved', fetchStats);
+      window.removeEventListener('scene:saved', onSaved);
     };
   }, []);
+
+  // Re-render the relative "Saved Xm ago" label every 30s while armed.
+  useEffect(() => {
+    if (lastSavedAt === null) return;
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [lastSavedAt]);
 
   const showGoalChip = !isNoteActive && selectedScene !== null && goalStats !== null;
   const goalMet = showGoalChip && goalStats!.dailyGoal > 0 && goalStats!.todayWords >= goalStats!.dailyGoal;
@@ -140,6 +168,12 @@ export default function BottomBar({
               {currentIndex >= 0 && (
                 <> · Scene {currentIndex + 1} / {allScenes.length}</>
               )}
+              {/* Beta 4 M2 (§4): page-width hint (prototype 3625) */}
+              {pageWidthPx !== null && (
+                <span className="bottom-page-hint" data-testid="bottom-page-hint">
+                  {' '}· Page {pageWidthPx.toLocaleString()} px — drag page edge to resize
+                </span>
+              )}
             </span>
           </>
         ) : (
@@ -169,6 +203,14 @@ export default function BottomBar({
           {goalStats!.dailyGoal > 0
             ? `${goalStats!.todayWords.toLocaleString()} / ${goalStats!.dailyGoal.toLocaleString()} today`
             : `${goalStats!.todayWords.toLocaleString()} today`}
+        </span>
+      )}
+
+      {/* Beta 4 M2 (§4): "Saved Xm ago" + pulsing dot (prototype 3630) */}
+      {lastSavedAt !== null && (
+        <span className="bottom-saved" data-testid="bottom-saved" role="status" aria-live="polite">
+          <span className="bottom-saved-dot" aria-hidden="true" />
+          {formatSavedAgo(lastSavedAt, nowTick)}
         </span>
       )}
 

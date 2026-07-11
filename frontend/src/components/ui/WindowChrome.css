@@ -166,6 +166,16 @@
   white-space: nowrap;
 }
 
+/* Beta 4 M2 — per-vault stats line in the switcher popover (§4) */
+.wc-pop-row-stats {
+  font-size: 10px;
+  color: #7686a2;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wc-active-dot {
   width: 7px;
   height: 7px;
@@ -216,6 +226,22 @@
   font-size: 12px;
   min-width: 0;
   text-align: left;
+}
+
+/* Beta 4 M2 — real input inside the pill (prototype 91: bare input) */
+.wc-search-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: #dbe4f5;
+  font-size: 12px;
+  padding: 0;
+}
+
+.wc-search-input::placeholder {
+  color: #7686a2;
 }
 
 .wc-kbd {

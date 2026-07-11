@@ -864,6 +864,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Beta 4 M2: query handed off from the title-bar "Search vault…" field.
+  const [globalSearchSeed, setGlobalSearchSeed] = useState('');
+  // Beta 4 M2: View → Toggle left panel (§4) — a real user toggle, ANDed into
+  // showLeftSidebar below (focus/distraction-free rules unchanged).
+  const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepthRaw] = useState<ViewDepth>('scene');
   // SKY-6010: 'part' has no ViewDepth of its own (Parts don't exist in the
@@ -1258,7 +1263,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // early return per DesktopShell rules-of-hooks discipline.
   const agentsActive = useAgentsActive();
   useAgentActivity(betaReadLoading);
-  const { betaReadNote, continuityCheckNote } = useVaultAgentActions({ agentNames: appSettings?.agentNames });
+  // Beta 4 M2 (§4): bell rows deep-link to their source. The handlers below
+  // are consts declared later in the component — safe because these closures
+  // only run on notification click, long after render; the hook re-captures
+  // them every render via refs.
+  const { betaReadNote, continuityCheckNote } = useVaultAgentActions({
+    agentNames: appSettings?.agentNames,
+    onOpenNote: (path) => handleOpenContinuityEntityNote(path),
+    onOpenContinuity: () => handleGrsVisibilityChange(true),
+  });
   // Beta 3 M23: continuity flags surface as archive comments in the
   // manuscript gutter (live agent actions via suggestionId → archiveConfirm).
   useContinuityCommentsBridge(selectedStory, appSettings?.agentNames);
@@ -2463,11 +2476,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         }
         return;
       }
+      // Beta 4 M2 (§1 keyboard map / CF-14): Ctrl/Cmd+K = the command palette
+      // fronting FTS5 search — the title-bar pill's "Ctrl K" hint must not lie
+      // (§1.2). The old story-tab Scene Crafter binding moved to the Insert
+      // menu ("Beat (Scene Crafter)") and the nav rail.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
-        if (tabShellRef.current.activeTab === 'story') {
-          e.preventDefault();
-          handleSetView('kanban');
-        }
+        e.preventDefault();
+        setGlobalSearchSeed('');
+        setGlobalSearchOpen(true);
         return;
       }
       if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
@@ -2615,7 +2631,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -3828,10 +3844,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     prevContinuityRef.current = continuityCount;
   }, [continuityCount, handleGrsVisibilityChange]);
 
-  // Beta 3 M5: prototype title-bar menus (menuDefs 4673-4678) mapped to the
-  // app's real handlers; prototype-only mocks keep their toast copy.
+  // Beta 3 M5 / Beta 4 M2: prototype title-bar menus (menuDefs, prototype 6810–
+  // 6816) mapped to the app's real handlers — every item acts or explains
+  // itself (§1.2, no silent no-ops).
   const titleBarMenus: WindowChromeMenu[] = useMemo(() => [
     { label: 'File', items: [
+      { label: 'New scene', run: () => {
+        if (selectedStory && selectedChapter) void createScene(selectedStory.id, selectedChapter.id);
+        else showLnToast('Open a chapter first — New scene appends to the current chapter');
+      } },
       { label: 'New story', run: () => { void createStory(); } },
       { label: 'New note…', run: () => handleNavSectionChange('notes') },
       { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
@@ -3841,9 +3862,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { label: 'Edit', items: [
       { label: 'Undo', run: () => { document.execCommand('undo'); } },
       { label: 'Redo', run: () => { document.execCommand('redo'); } },
-      { label: 'Find everywhere…', run: () => setGlobalSearchOpen(true) },
+      { label: 'Find everywhere…', run: () => { setGlobalSearchSeed(''); setGlobalSearchOpen(true); } },
     ] },
     { label: 'View', items: [
+      { label: 'Toggle left panel', run: () => setLeftPanelHidden((h) => !h) },
       { label: 'Toggle right panel', run: () => handleGrsVisibilityChange(!(grsVisible ?? true)) },
       { label: 'Focus mode', run: () => toggleDistractionFree() },
       { label: 'Slim rail', run: () => persistNavRailCollapsed(!navRailCollapsed) },
@@ -3851,20 +3873,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
     ] },
     { label: 'Insert', items: [
+      { label: 'Beat (Scene Crafter)', run: () => { handleTabChange('story'); handleSetView('kanban'); } },
       { label: 'Comment', run: () => showLnToast('Select text in the manuscript, then hit Comment') },
       { label: 'Wiki link [[…]]', run: () => showLnToast('Type [[ in any note to link — Obsidian style') },
     ] },
     { label: 'Tools', items: [
       { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
-      { label: 'Rebuild search index', run: () => showLnToast('Search index rebuilds automatically as you write') },
+      // Prototype 6814: Beta Reader reads the open scene/chapter, reactions
+      // land as margin comments (BetaReadMargin next to the manuscript).
+      { label: 'Beta read this chapter', run: () => {
+        if (!selectedScene) { showLnToast('Open a scene first — the Beta Reader reads the open chapter'); return; }
+        const text = selectedScene.blocks.map((b) => b.content).join('\n\n');
+        if (!text.trim()) { showLnToast('This scene is empty — nothing to beta read'); return; }
+        void handleBetaReadRequest(text);
+        showLnToast('Beta Reader queued — reactions land as margin comments');
+      } },
+      { label: 'Rebuild search index', run: () => {
+        showLnToast('Rebuilding search index…');
+        void window.api.reindexVault?.()
+          .then((r) => showLnToast(`Index rebuilt — ${r.scanned} files scanned, ${r.updated} updated`))
+          .catch(() => showLnToast('Index rebuild failed — the index still updates as you write'));
+      } },
     ] },
     { label: 'Help', items: [
       { label: 'Welcome tour', run: () => setTourOpen(true) },
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
+      { label: 'Check for updates', run: () => {
+        showLnToast('Checking for updates…');
+        void window.api.checkForUpdate?.()
+          .then((r) => { if (!r?.queued) showLnToast(r?.reason ?? 'Updates are unavailable in this build'); })
+          .catch(() => showLnToast('Update check failed — try again later'));
+      } },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory]);
+  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, handleBetaReadRequest]);
 
   const navItems = useMemo<NavRailItem[]>(
     () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
@@ -3905,7 +3948,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ...layout.focusPrefs,
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
-  const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
+  // Beta 4 M2: View → Toggle left panel is a real user toggle (§4).
+  const showLeftSidebar = !distractionFree && !leftPanelHidden && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
 
   // SKY-3618: Compute clamped display widths so center column always gets >= CENTER_MIN_WIDTH pixels.
@@ -3984,7 +4028,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {showTitleBar && (
         <WindowChrome
           menus={titleBarMenus}
-          onOpenPalette={() => setGlobalSearchOpen(true)}
+          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
@@ -4652,6 +4696,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             activeNoteWordCount={openedNoteWordCount}
             isVoiceActive={voiceActive}
             splitWordCounts={splitWordCounts}
+            pageWidthPx={selectedScene
+              ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+              : null}
           />
         )}
       </div>
@@ -4925,6 +4972,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <GlobalSearchPanel
         open={globalSearchOpen}
         commands={paletteCommands}
+        initialQuery={globalSearchSeed}
         defaultScope={tabShell.activeTab === 'story' ? 'story' : 'notes'}
         onNavigate={(result) => {
           handleSearchNavigate(result);
