@@ -537,12 +537,12 @@ Accept: every §14 item checked off in the PR description with evidence.
 | W0.3 | Right-panel layout fixes | 0 | — | ✅ merged | #902 |
 | W0.4 | Editor chrome dedup | 0 | — | ✅ merged | #902 |
 | W0.5 | Performance to targets | 0 | — | ✅ merged | #905 |
-| W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | 🔨 in progress — smoke build v0.5.0-beta.0 (draft release), then Skyy sign-off | |
-| M1 | Theme engine refresh | 1 | W0.6 | ⏳ | |
-| M2 | Title/status bar parity | 1 | W0.6 | ⏳ | |
-| M3 | Nav rail + stories switcher | 1 | W0.6 | ⏳ | |
-| M4 | Tabs = documents + splits | 1 | W0.6 | ⏳ | |
-| M5 | MythosVault + migration | 2 | W0.6 | ⏳ | |
+| W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | ✅ PASSED — Skyy sign-off 2026-07-11 on v0.5.0-beta.0 ("not really lagging at all") | |
+| M1 | Theme engine refresh | 1 | W0.6 | 🔨 in progress (claude/beta4-m01) | |
+| M2 | Title/status bar parity | 1 | W0.6 | 🔨 in progress (claude/beta4-m02) | |
+| M3 | Nav rail + stories switcher | 1 | W0.6 | 🔨 in progress (claude/beta4-m03) | |
+| M4 | Tabs = documents + splits | 1 | W0.6 | 🔨 in progress (claude/beta4-m04) | |
+| M5 | MythosVault + migration | 2 | W0.6 | 🔨 in progress (claude/beta4-m05) | |
 | M6 | Auto Note Linker | 2 | M5 | ⏳ | |
 | M7 | Editor chrome & page | 3 | W0.4, M1 | ⏳ | |
 | M8 | Editing model hardening | 3 | M7 | ⏳ | |
@@ -581,3 +581,5 @@ Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merg
   prototype source; never approximate.
 - Preserve unrelated repo code; migrations before deletions (B4-4).
 - W0.6 is a hard gate: no Wave 1+ merges until Skyy confirms the packaged build.
+  (Gate PASSED 2026-07-11; owner then authorized building all remaining waves and
+  cutting v0.5.0-beta.1 when the full handoff is implemented.)
