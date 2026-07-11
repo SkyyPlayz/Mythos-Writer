@@ -974,13 +974,13 @@ export async function startVaultWatcher(
   });
 
   activeWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('unlink', (filePath: string) => {
-    onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeWatcher.on('addDir', (filePath: string) => {
     onChanged(filePath);
@@ -1168,12 +1168,14 @@ export async function startNotesVaultWatcher(
   });
 
   activeNotesWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
   activeNotesWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md')) onChanged(filePath);
+    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
   });
-  activeNotesWatcher.on('unlink', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('unlink', (filePath: string) => {
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
+  });
   activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
   activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
 }

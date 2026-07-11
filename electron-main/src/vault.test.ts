@@ -42,6 +42,9 @@ import {
   resolveEpubExportPath,
   startVaultWatcher,
   stopVaultWatcher,
+  startNotesVaultWatcher,
+  stopNotesVaultWatcher,
+  isRecentSelfWrite,
 } from './vault.js';
 
 describe('Manuscript layout — slug and path helpers', () => {
@@ -1829,5 +1832,90 @@ describe('startVaultWatcher — emits events for files below vault root (GH#892)
 
     const normalEvents = events.filter((p) => p.endsWith('scene.md'));
     expect(normalEvents.length).toBeGreaterThan(0);
+  }, 10_000);
+});
+
+// ─── isRecentSelfWrite + writeVaultFileAtomic self-write suppression (GH#898) ───
+
+describe('isRecentSelfWrite — unit behaviour', () => {
+  it('returns false for an unknown path', () => {
+    expect(isRecentSelfWrite('/never/written/file.md')).toBe(false);
+  });
+
+  it('returns true immediately after writeVaultFileAtomic writes a file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
+    try {
+      writeVaultFileAtomic(dir, 'scene.md', '# Hello');
+      const fullPath = path.join(dir, 'scene.md');
+      expect(isRecentSelfWrite(fullPath)).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('startVaultWatcher — self-write suppression (GH#898)', () => {
+  let vaultDir: string;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-watcher-'));
+  });
+
+  afterEach(async () => {
+    await stopVaultWatcher();
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  it('suppresses onChanged for a file written by writeVaultFileAtomic', async () => {
+    const events: string[] = [];
+    await startVaultWatcher(vaultDir, (p) => events.push(p));
+    await new Promise((r) => setTimeout(r, 400));
+
+    writeVaultFileAtomic(vaultDir, 'self.md', '# app write');
+
+    // Seed an external write on a different file as positive-control proof
+    // that the watcher is alive during the suppression window.
+    const externalFile = path.join(vaultDir, 'external.md');
+    fs.writeFileSync(externalFile, '# external');
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const selfEvents = events.filter((p) => p.endsWith('self.md'));
+    expect(selfEvents).toEqual([]);
+
+    const externalEvents = events.filter((p) => p.endsWith('external.md'));
+    expect(externalEvents.length).toBeGreaterThan(0);
+  }, 10_000);
+});
+
+describe('startNotesVaultWatcher — self-write suppression (GH#898)', () => {
+  let vaultDir: string;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-notes-selfwrite-'));
+  });
+
+  afterEach(async () => {
+    await stopNotesVaultWatcher();
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  it('suppresses onChanged for a file written by writeVaultFileAtomic', async () => {
+    const events: string[] = [];
+    await startNotesVaultWatcher(vaultDir, (p) => events.push(p));
+    await new Promise((r) => setTimeout(r, 400));
+
+    writeVaultFileAtomic(vaultDir, 'note.md', '# app note');
+
+    const externalFile = path.join(vaultDir, 'external.md');
+    fs.writeFileSync(externalFile, '# external note');
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const selfEvents = events.filter((p) => p.endsWith('note.md'));
+    expect(selfEvents).toEqual([]);
+
+    const externalEvents = events.filter((p) => p.endsWith('external.md'));
+    expect(externalEvents.length).toBeGreaterThan(0);
   }, 10_000);
 });
