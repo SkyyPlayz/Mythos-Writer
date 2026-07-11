@@ -258,6 +258,8 @@ test.beforeAll(async () => {
   // (heartbeat/scan-now) is behind the "Writing Assistant" agent row.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
   await page.locator('[aria-label="Open Writing Assistant chat"]').click();
+  // Wait for the WA chat view (WritingAssistantPanel) to render before tests begin.
+  await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });
 
 test.afterAll(async () => {
