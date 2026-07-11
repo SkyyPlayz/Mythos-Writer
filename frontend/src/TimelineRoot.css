@@ -200,3 +200,31 @@
 .tlr-state-error {
   color: var(--color-danger, #ff5f8f);
 }
+
+/* M21: picker wrapper */
+.tlr-picker-wrap {
+  padding: 8px 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* M21: modal stub overlay */
+.tlr-modal-stub {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tlr-modal-stub__inner {
+  background: var(--color-surface-elevated, #1e1e2e);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 360px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

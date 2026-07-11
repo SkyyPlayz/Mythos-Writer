@@ -422,6 +422,11 @@ import {
 } from './timelineProposals.js';
 import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
 import {
+  handleTimelinesGetStore,
+  handleTimelinesUpsert,
+  handleTimelinesSetActive,
+} from './timelinesStoreIpc.js';
+import {
   buildArchiveIndex,
   getArchiveIndex,
   getArchiveStatus,
@@ -6471,6 +6476,20 @@ const handlers: IpcHandlers = {
     const vaultRoot = getNotesVaultRoot() || getVaultRoot();
     const index = autoLinkerBuildIndex(vaultRoot, opts);
     return { count: index.length };
+  },
+
+  // SKY-6306 M21: Multi-timeline store
+  [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesGetStore(getVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.TIMELINES_UPSERT]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesUpsert(getVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesSetActive(getVaultRoot(), payload);
   },
 };
 

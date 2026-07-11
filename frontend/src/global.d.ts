@@ -1566,6 +1566,11 @@ interface Window {
     windowMaximize?: () => Promise<void>;
     windowClose?: () => Promise<void>;
 
+    // SKY-6306 M21: Multi-timeline store
+    timelinesGetStore?: () => Promise<{ store: import('./timelinesTypes').TimelinesStore }>;
+    timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
+    timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
+
     // SKY-3189 (G3): true when running in a packaged Electron build.
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
     isPackaged?: boolean;

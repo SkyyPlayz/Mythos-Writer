@@ -10,6 +10,13 @@ import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/typ
 export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
 export type { OutlineNode, OutlineData };
+import type {
+  TimelinesStore,
+  TimelineDefinition,
+  TimelineKind,
+  TimelineCalendar,
+} from './timelines/model.js';
+export type { TimelinesStore, TimelineDefinition, TimelineKind, TimelineCalendar };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
 // SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
@@ -454,6 +461,11 @@ export const IPC_CHANNELS = {
   TIMELINE_PROPOSALS_GENERATE: 'timeline:proposals:generate',
   TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
   TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
+
+  // SKY-6306 M21: Multi-timeline store IPC
+  TIMELINES_GET_STORE: 'timelines:getStore',
+  TIMELINES_UPSERT: 'timelines:upsert',
+  TIMELINES_SET_ACTIVE: 'timelines:setActive',
 
   // SKY-863: Cloud-sync conflict detection + lockfile
   VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
@@ -967,6 +979,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
   [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
   [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
+  // SKY-6306 M21: Multi-timeline store
+  [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload: TimelinesGetStorePayload) => TimelinesGetStoreResponse;
+  [IPC_CHANNELS.TIMELINES_UPSERT]: (payload: TimelinesUpsertPayload) => TimelinesUpsertResponse;
+  [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload: TimelinesSetActivePayload) => TimelinesSetActiveResponse;
 }
 
 // ─── Payload / Response types ───
@@ -4607,3 +4623,18 @@ export interface OutlineLoadPayload { storyVaultPath: string; }
 export type OutlineLoadResponse = OutlineData | null;
 export interface OutlineSavePayload { storyVaultPath: string; data: OutlineData; }
 export interface OutlineSaveResponse { saved: boolean; }
+
+// SKY-6306 M21: Multi-timeline store IPC
+export interface TimelinesGetStorePayload { vaultRoot?: string; }
+export interface TimelinesGetStoreResponse { store: TimelinesStore; }
+
+export interface TimelinesUpsertPayload {
+  id?: string;
+  name: string;
+  kind: TimelineKind;
+  calendar?: Partial<TimelineCalendar>;
+}
+export interface TimelinesUpsertResponse { ok: boolean; id: string; store: TimelinesStore; }
+
+export interface TimelinesSetActivePayload { timelineId: string; }
+export interface TimelinesSetActiveResponse { ok: boolean; store: TimelinesStore; }
