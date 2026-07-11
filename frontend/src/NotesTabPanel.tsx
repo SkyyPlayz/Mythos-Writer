@@ -4,7 +4,7 @@
 // SKY-3626: N/F/E writing mode controls added to editor sub-view toolbar.
 // M16 (Beta 3): note splits, [[wiki link]] hover previews, and the right-panel
 // Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
 import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
@@ -54,6 +54,10 @@ export interface NotesTabPanelProps {
   resolveWikiLinkPreview?: WikiLinkPreviewResolver;
   /** M16: all notes-vault file paths, for the split-pane note selector. */
   notePaths?: string[];
+  /** Beta 4 M4: shell-driven note split — set when a note tab is dragged onto
+   * a split drop zone or "Open to the side" is picked; the token makes
+   * repeated requests for the same path re-apply. */
+  noteSplitRequest?: { path: string; token: number } | null;
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
@@ -116,6 +120,7 @@ export default function NotesTabPanel({
   sceneWikiLinkTitles,
   resolveWikiLinkPreview,
   notePaths,
+  noteSplitRequest,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
   stories,
@@ -172,6 +177,15 @@ export default function NotesTabPanel({
       return other ?? activeNotePath;
     });
   }, [mdNotePaths, activeNotePath]);
+
+  // Beta 4 M4: apply a shell-driven split request (note tab dragged onto a
+  // split drop zone / context-menu "Open to the side").
+  const appliedSplitTokenRef = useRef(0);
+  useEffect(() => {
+    if (!noteSplitRequest || noteSplitRequest.token === appliedSplitTokenRef.current) return;
+    appliedSplitTokenRef.current = noteSplitRequest.token;
+    setNoteSplitPath(noteSplitRequest.path);
+  }, [noteSplitRequest]);
 
   const handleSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

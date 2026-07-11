@@ -22,10 +22,19 @@ import PageRuler from './PageRuler';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
-import WorkspaceTabPicker from './WorkspaceTabPicker';
 import WorkspaceSplitPane from './WorkspaceSplitPane';
-import { WORKSPACE_TAB_DRAG_MIME } from './WorkspaceTabBar';
-import { createOrFocusTab, tabKindForSection, SPLITTABLE_TAB_KINDS, TAB_KIND_META } from './workspaceTabKinds';
+import WorkspaceSplitDropZones, { type SplitDropZone } from './WorkspaceSplitDropZones';
+// Beta 4 M4: tabs are documents (scenes/notes), not module mirrors (§4).
+import {
+  makeSceneTab,
+  upsertSceneTab,
+  upsertNoteTab,
+  reconcileSceneTabs,
+  workspaceStripModeFor,
+  provisionalSceneIsAway,
+  PROVISIONAL_CREATED_TOAST,
+  PROVISIONAL_DISCARDED_TOAST,
+} from './workspaceDocTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
 import NewStoryWizard from './NewStoryWizard';
@@ -855,7 +864,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
   // GH #643: split-pane feedback (e.g. non-splittable tab kinds).
-  const { toast: splitToastState, showToast: showSplitToast } = useToast(3500);
   const { toast: upgradeToastState, showToast: showUpgradeToast } = useToast(5000);
   const { toast: wikiLinkToastState, showToast: showWikiLinkToast } = useToast(3000);
 
@@ -948,18 +956,27 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [dockedTabs, setDockedTabs] = useState<DockedTab[]>([]);
   const [activeDockedTabId, setActiveDockedTabId] = useState<string | null>(null);
 
-  // SKY-3098 (v0.3): workspace tab bar
-  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>(() => [
-    { id: crypto.randomUUID(), kind: 'story-editor', title: 'Story', icon: '📖' },
-    { id: crypto.randomUUID(), kind: 'notes-editor', title: 'Notes', icon: '📁' },
-  ]);
-  const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState<string | null>(null);
-  // GH #643: "+" new-tab content picker.
-  const [tabPickerOpen, setTabPickerOpen] = useState(false);
-  // GH #643 split panes v1: right-hand workspace pane + tab-drag drop zone.
+  // SKY-3098 (v0.3) → Beta 4 M4: workspace tabs are documents. Each section
+  // keeps its own strip (prototype etabs/ntabs): scenes on Story, notes on
+  // Notes. Strips start empty and fill as documents open.
+  const [storyDocTabs, setStoryDocTabs] = useState<WorkspaceTab[]>([]);
+  const [activeStoryDocTabId, setActiveStoryDocTabId] = useState<string | null>(null);
+  const [notesDocTabs, setNotesDocTabs] = useState<WorkspaceTab[]>([]);
+  const [activeNotesDocTabId, setActiveNotesDocTabId] = useState<string | null>(null);
+  // Beta 4 M4 (§1.5): the provisional scene created by "+" — its Scene lives
+  // only in selectedScene until the first keystroke commits it.
+  const [provisionalScene, setProvisionalScene] = useState<
+    { tabId: string; sceneId: string; storyId: string; chapterId: string } | null
+  >(null);
+  // GH #643 split panes v1: right-hand workspace pane (module surfaces —
+  // restored from persisted settings only since M4).
   const [workspaceSplitKind, setWorkspaceSplitKind] = useState<WorkspaceTabKind | null>(null);
-  const [tabDragActive, setTabDragActive] = useState(false);
-  const [splitDropHover, setSplitDropHover] = useState(false);
+  // Beta 4 M4: tab drag in flight (captured at dragstart) → split drop zones.
+  const [tabDragPayload, setTabDragPayload] = useState<WorkspaceTab | null>(null);
+  // Beta 4 M4: drop DOWN stacks the 2-pane editor, drop RIGHT sides it.
+  const [splitDirection, setSplitDirection] = useState<SplitDropZone>('right');
+  // Beta 4 M4: shell-driven note split request (note tab dropped on a zone).
+  const [noteSplitRequest, setNoteSplitRequest] = useState<{ path: string; token: number } | null>(null);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -970,7 +987,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [pane2Story, setPane2Story] = useState<Story | null>(null);
   const pane2EditorApiRef = useRef<BlockEditorApi | null>(null);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
-  const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number } | null>(null);
+  const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number; axis: 'x' | 'y' } | null>(null);
 
   // SKY-2094 (Phase 2 #1): two-tab app shell state (Story / Notes).
   const [tabShell, dispatchTabShell] = useReducer(tabbedShellReducer, DEFAULT_TABBED_SHELL_STATE);
@@ -1540,9 +1557,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           // "start collapsed" preference.
           setNavRailCollapsed(true);
         }
-        if (Array.isArray(s.activeLayout?.workspaceTabs) && s.activeLayout.workspaceTabs.length > 0) {
-          setWorkspaceTabs(s.activeLayout.workspaceTabs);
-          setActiveWorkspaceTabId(s.activeLayout.activeWorkspaceTabId ?? null);
+        // Beta 4 M4: restore document tabs. ≤Beta 3 module-mirror tabs
+        // (activeLayout.workspaceTabs) are deliberately ignored — tabs are
+        // documents now; provisional tabs never persist (§1.5).
+        if (Array.isArray(s.activeLayout?.storyDocTabs)) {
+          const restored = s.activeLayout.storyDocTabs.filter((t) => t.kind === 'scene' && !t.provisional);
+          setStoryDocTabs(restored);
+          const act = s.activeLayout.activeStoryDocTabId ?? null;
+          setActiveStoryDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
+        }
+        if (Array.isArray(s.activeLayout?.notesDocTabs)) {
+          const restored = s.activeLayout.notesDocTabs.filter((t) => t.kind === 'note');
+          setNotesDocTabs(restored);
+          const act = s.activeLayout.activeNotesDocTabId ?? null;
+          setActiveNotesDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
         }
         // GH #643: restore the right-hand workspace split pane.
         if (s.activeLayout?.workspaceSplitPane?.kind) {
@@ -1922,8 +1950,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-  // SKY-3098 (v0.3): Persist workspace tabs + active tab id.
-  const persistWorkspaceTabs = useCallback((tabs: WorkspaceTab[], activeId: string | null) => {
+  // Beta 4 M4: Persist per-section document tabs + active ids. Provisional
+  // tabs never persist — nothing about a provisional scene is saved (§1.5).
+  const persistDocTabs = useCallback((patch: {
+    story?: { tabs: WorkspaceTab[]; activeId: string | null };
+    notes?: { tabs: WorkspaceTab[]; activeId: string | null };
+  }) => {
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated: AppSettings = {
@@ -1931,8 +1963,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         activeLayout: {
           ...prev.activeLayout,
           leftSidebar: leftSidebarLayoutRef.current,
-          workspaceTabs: tabs,
-          activeWorkspaceTabId: activeId,
+          ...(patch.story
+            ? {
+                storyDocTabs: patch.story.tabs.filter((t) => !t.provisional),
+                activeStoryDocTabId: patch.story.activeId,
+              }
+            : {}),
+          ...(patch.notes
+            ? { notesDocTabs: patch.notes.tabs, activeNotesDocTabId: patch.notes.activeId }
+            : {}),
         },
       };
       window.api.settingsSet(updated).catch(() => {});
@@ -1970,51 +2009,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistTabShell({ ...tabShellRef.current, activeTab: tab });
   }, [persistTabShell]);
 
-  // SKY-3098 (v0.3): Workspace tab handlers.
-  // Route the shell (section + story sub-view) to show a tab kind's content.
-  const routeToTabKind = useCallback((kind: WorkspaceTabKind) => {
-    if (kind === 'notes-editor' || kind === 'vault-graph' || kind === 'entities') {
-      handleTabChange('notes');
-    } else if (kind === 'brainstorm') {
-      handleTabChange('brainstorm');
-    } else {
-      handleTabChange('story');
-      if (kind === 'kanban') setView('kanban');
-      else if (kind === 'timeline') setView('timeline');
-      else setView('editor');
-    }
+  // Beta 4 M4: nav-rail section clicks only route — they no longer create
+  // workspace tabs (tabs are documents, not module mirrors).
+  const handleNavSectionChange = useCallback((tab: AppTab) => {
+    handleTabChange(tab);
   }, [handleTabChange]);
 
-  const handleWorkspaceTabSelect = useCallback((tabId: string) => {
-    setActiveWorkspaceTabId(tabId);
-    const tab = workspaceTabs.find((t) => t.id === tabId);
-    if (tab) routeToTabKind(tab.kind);
-    persistWorkspaceTabs(workspaceTabs, tabId);
-  }, [workspaceTabs, routeToTabKind, persistWorkspaceTabs]);
-
-  // GH #643: opening content from the nav rail or the "+" picker focuses the
-  // existing tab of that kind, or appends a new one.
-  const focusOrCreateTab = useCallback((kind: WorkspaceTabKind) => {
-    const result = createOrFocusTab(workspaceTabs, kind);
-    if (result.created) setWorkspaceTabs(result.tabs);
-    setActiveWorkspaceTabId(result.activeId);
-    persistWorkspaceTabs(result.tabs, result.activeId);
-  }, [workspaceTabs, persistWorkspaceTabs]);
-
-  const openWorkspaceTabKind = useCallback((kind: WorkspaceTabKind) => {
-    focusOrCreateTab(kind);
-    routeToTabKind(kind);
-  }, [focusOrCreateTab, routeToTabKind]);
-
-  // Nav-rail section click: same tab create/focus, but route through plain
-  // handleTabChange so the Story section keeps restoring the last sub-view
-  // (routeToTabKind forces the editor sub-view, which is tab-click semantics).
-  const handleNavSectionChange = useCallback((tab: AppTab) => {
-    focusOrCreateTab(tabKindForSection(tab));
-    handleTabChange(tab);
-  }, [focusOrCreateTab, handleTabChange]);
-
-  // ── GH #643 split panes v1 ──
+  // ── GH #643 split panes v1 (module surfaces) ──
+  // Since M4 the strip no longer offers module tabs, but a previously
+  // persisted right-hand pane still restores; keep close/persist working.
   const persistWorkspaceSplit = useCallback((kind: WorkspaceTabKind | null) => {
     setAppSettings((prev) => {
       if (!prev) return prev;
@@ -2031,58 +2034,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-  const openInSplitPane = useCallback((kind: WorkspaceTabKind) => {
-    if (!SPLITTABLE_TAB_KINDS.has(kind)) {
-      showSplitToast(`${TAB_KIND_META[kind].title} can't open in a split pane yet — use the Split editor for manuscript panes.`, 'info');
-      return;
-    }
-    setWorkspaceSplitKind(kind);
-    persistWorkspaceSplit(kind);
-  }, [persistWorkspaceSplit, showSplitToast]);
-
   const closeSplitPane = useCallback(() => {
     setWorkspaceSplitKind(null);
     persistWorkspaceSplit(null);
   }, [persistWorkspaceSplit]);
 
-  const handleTabOpenInSplit = useCallback((tabId: string) => {
-    const tab = workspaceTabs.find((t) => t.id === tabId);
-    if (tab) openInSplitPane(tab.kind);
-  }, [workspaceTabs, openInSplitPane]);
-
-  // Track workspace-tab drags at the document level so the drop zone only
-  // intercepts pointer events while a tab drag is actually in flight.
+  // Beta 4 M4: clear the drag payload when any drag ends, wherever it ends —
+  // the drop zones unmount with it. (Set by WorkspaceTabBar's onTabDragStart.)
   useEffect(() => {
-    const onDragStart = (e: DragEvent) => {
-      if (e.dataTransfer?.types.includes(WORKSPACE_TAB_DRAG_MIME)) setTabDragActive(true);
-    };
-    const onDragEnd = () => { setTabDragActive(false); setSplitDropHover(false); };
-    document.addEventListener('dragstart', onDragStart);
+    const onDragEnd = () => setTabDragPayload(null);
     document.addEventListener('dragend', onDragEnd);
     document.addEventListener('drop', onDragEnd);
     return () => {
-      document.removeEventListener('dragstart', onDragStart);
       document.removeEventListener('dragend', onDragEnd);
       document.removeEventListener('drop', onDragEnd);
     };
   }, []);
-
-  const handleWorkspaceTabClose = useCallback((tabId: string) => {
-    const next = workspaceTabs.filter((t) => t.id !== tabId);
-    if (next.length === 0) return; // never close the last tab
-    const newActiveId = tabId === activeWorkspaceTabId ? (next[0]?.id ?? null) : activeWorkspaceTabId;
-    setWorkspaceTabs(next);
-    setActiveWorkspaceTabId(newActiveId);
-    persistWorkspaceTabs(next, newActiveId);
-  }, [workspaceTabs, activeWorkspaceTabId, persistWorkspaceTabs]);
-
-  const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
-    const arr = [...workspaceTabs];
-    const [removed] = arr.splice(fromIndex, 1);
-    arr.splice(toIndex, 0, removed);
-    setWorkspaceTabs(arr);
-    persistWorkspaceTabs(arr, activeWorkspaceTabId);
-  }, [workspaceTabs, activeWorkspaceTabId, persistWorkspaceTabs]);
 
   const focusContinuitySearch = useCallback(() => {
     window.setTimeout(() => {
@@ -2452,6 +2419,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-1699: Toggle split window on/off (declared early so keyboard useEffect can reference it).
   const handleToggleSplitWindow = useCallback(() => {
+    // Beta 4 M4: the toolbar toggle always opens the side-by-side layout;
+    // stacked splits come from dropping a tab on the DOWN zone.
+    setSplitDirection('right');
     setSplitWindowEnabled((prev) => {
       if (prev) {
         // Closing split: focused pane's scene becomes the active scene.
@@ -2748,21 +2718,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     e.preventDefault();
     const container = splitContainerRef.current;
     if (!container) return;
+    // Beta 4 M4: the divider drags along the split axis — X for side-by-side,
+    // Y for the stacked (drop DOWN) layout.
+    const rect = container.getBoundingClientRect();
     splitDragRef.current = {
-      startX: e.clientX,
+      startX: splitDirection === 'down' ? e.clientY : e.clientX,
       startRatio: splitRatio,
-      containerWidth: container.getBoundingClientRect().width,
+      containerWidth: splitDirection === 'down' ? rect.height : rect.width,
+      axis: splitDirection === 'down' ? 'y' : 'x',
     };
-  }, [splitRatio]);
+  }, [splitRatio, splitDirection]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!splitDragRef.current) return;
-      const { startX, startRatio, containerWidth } = splitDragRef.current;
+      const { startX, startRatio, containerWidth, axis } = splitDragRef.current;
       if (containerWidth === 0) return;
-      const delta = e.clientX - startX;
+      const delta = (axis === 'y' ? e.clientY : e.clientX) - startX;
       const deltaPct = (delta / containerWidth) * 100;
-      const minPanePct = (320 / containerWidth) * 100;
+      const minPane = axis === 'y' ? 180 : 320;
+      const minPanePct = (minPane / containerWidth) * 100;
       const newRatio = Math.max(minPanePct, Math.min(100 - minPanePct, startRatio + deltaPct));
       setSplitRatio(newRatio);
     };
@@ -2794,16 +2769,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleSplitDividerKey = useCallback((e: React.KeyboardEvent) => {
     const container = splitContainerRef.current;
     if (!container) return;
-    const containerWidth = container.getBoundingClientRect().width;
-    const minPanePct = containerWidth > 0 ? (320 / containerWidth) * 100 : 0;
-    if (e.key === 'ArrowLeft') {
+    // Beta 4 M4: arrows follow the split axis (Left/Right sided, Up/Down stacked).
+    const vertical = splitDirection === 'down';
+    const rect = container.getBoundingClientRect();
+    const containerSize = vertical ? rect.height : rect.width;
+    const minPanePct = containerSize > 0 ? ((vertical ? 180 : 320) / containerSize) * 100 : 0;
+    const shrinkKey = vertical ? 'ArrowUp' : 'ArrowLeft';
+    const growKey = vertical ? 'ArrowDown' : 'ArrowRight';
+    if (e.key === shrinkKey) {
       e.preventDefault();
       setSplitRatio((r) => {
         const next = Math.max(minPanePct, r - 2);
         persistSplitRatio(next);
         return next;
       });
-    } else if (e.key === 'ArrowRight') {
+    } else if (e.key === growKey) {
       e.preventDefault();
       setSplitRatio((r) => {
         const next = Math.min(100 - minPanePct, r + 2);
@@ -2811,7 +2791,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return next;
       });
     }
-  }, [persistSplitRatio]);
+  }, [persistSplitRatio, splitDirection]);
 
   // ─── Story/scene management ───
 
@@ -2847,20 +2827,37 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!selectedScene || !selectedChapter || !selectedStory) return;
     const updatedScene: Scene = { ...selectedScene, blocks, updatedAt: now() };
     setSelectedScene(updatedScene);
+    const content = blocks.map((b) => b.content).join('\n\n');
+    // Beta 4 M4 (§1.5): a provisional scene lives only in editor state until
+    // the first real keystroke; while it's still empty, nothing persists.
+    const isProvisional = provisionalScene?.sceneId === updatedScene.id;
+    if (isProvisional && !content.trim()) return;
     const updatedStories = stories.map((story) =>
       story.id !== selectedStory.id ? story : {
         ...story,
         chapters: story.chapters.map((ch) =>
           ch.id !== selectedChapter.id ? ch : {
             ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+            // Committing a provisional scene appends it to its chapter;
+            // ordinary edits replace the stored scene in place.
+            scenes: isProvisional
+              ? [...ch.scenes, updatedScene]
+              : ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
         ),
       }
     );
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
-    const content = blocks.map((b) => b.content).join('\n\n');
+    if (isProvisional && provisionalScene) {
+      // The scene is real now — its tab stops being provisional.
+      const committedTabs = storyDocTabs.map((t) =>
+        t.id === provisionalScene.tabId ? { ...t, provisional: undefined } : t,
+      );
+      setStoryDocTabs(committedTabs);
+      persistDocTabs({ story: { tabs: committedTabs, activeId: provisionalScene.tabId } });
+      setProvisionalScene(null);
+    }
     if (content.trim()) {
       checkGettingStartedItem('write-scene');
       setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
@@ -2872,7 +2869,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setSaveState('saved');
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem]);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem, provisionalScene, storyDocTabs, persistDocTabs]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -3228,6 +3225,285 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setViewDepth('scene');
     handleTabChange('story');
   }, [stories, handleSelectScene, handleTabChange, setViewDepth]);
+
+  // ═══ Beta 4 M4: workspace tabs = documents (§4, §1.5) ═══════════════════
+
+  // §4: which strip the tab bar shows for the current route — Story/Notes get
+  // document strips, Scene Crafter/Entities a static pseudo-tab, and
+  // Brainstorm/Timeline/Graph hide it entirely.
+  const workspaceStripMode = useMemo(
+    () => workspaceStripModeFor(tabShell.activeTab, view, tabShell.notesSubView),
+    [tabShell.activeTab, view, tabShell.notesSubView],
+  );
+
+  // Opening a scene anywhere (tree, graph, timeline, palette…) surfaces or
+  // focuses its document tab — never duplicating it (prototype tree pick).
+  useEffect(() => {
+    if (!selectedScene) return;
+    if (provisionalScene?.sceneId === selectedScene.id) return; // created explicitly with its tab
+    const result = upsertSceneTab(storyDocTabs, selectedScene);
+    const activeChanged = activeStoryDocTabId !== result.activeId;
+    if (result.tabs !== storyDocTabs) setStoryDocTabs(result.tabs);
+    if (activeChanged) setActiveStoryDocTabId(result.activeId);
+    if (result.tabs !== storyDocTabs || activeChanged) {
+      persistDocTabs({ story: { tabs: result.tabs, activeId: result.activeId } });
+    }
+  }, [selectedScene, provisionalScene, storyDocTabs, activeStoryDocTabId, persistDocTabs]);
+
+  // Opening a note surfaces/focuses its tab in the Notes strip.
+  useEffect(() => {
+    if (!openedNotePath) return;
+    const result = upsertNoteTab(notesDocTabs, openedNotePath);
+    const activeChanged = activeNotesDocTabId !== result.activeId;
+    if (result.tabs !== notesDocTabs) setNotesDocTabs(result.tabs);
+    if (activeChanged) setActiveNotesDocTabId(result.activeId);
+    if (result.tabs !== notesDocTabs || activeChanged) {
+      persistDocTabs({ notes: { tabs: result.tabs, activeId: result.activeId } });
+    }
+  }, [openedNotePath, notesDocTabs, activeNotesDocTabId, persistDocTabs]);
+
+  // Keep scene tabs honest against the manifest: refresh titles/status dots,
+  // drop tabs whose scene was deleted (restored layouts included).
+  useEffect(() => {
+    if (loading) return;
+    const result = reconcileSceneTabs(storyDocTabs, stories);
+    if (!result.changed) return;
+    const nextActive =
+      activeStoryDocTabId !== null && result.tabs.some((t) => t.id === activeStoryDocTabId)
+        ? activeStoryDocTabId
+        : result.tabs[0]?.id ?? null;
+    setStoryDocTabs(result.tabs);
+    if (nextActive !== activeStoryDocTabId) setActiveStoryDocTabId(nextActive);
+    persistDocTabs({ story: { tabs: result.tabs, activeId: nextActive } });
+  }, [loading, stories, storyDocTabs, activeStoryDocTabId, persistDocTabs]);
+
+  // §1.5: discard the untouched provisional scene the moment the user
+  // navigates away from it — silently, with the spec toast.
+  const discardProvisionalScene = useCallback((prov: { tabId: string; sceneId: string }) => {
+    setStoryDocTabs((prev) => prev.filter((t) => t.id !== prov.tabId));
+    setActiveStoryDocTabId((cur) => (cur === prov.tabId ? null : cur));
+    setSelectedScene((cur) => (cur?.id === prov.sceneId ? null : cur));
+    setProvisionalScene(null);
+    showLnToast(PROVISIONAL_DISCARDED_TOAST);
+  }, []);
+
+  useEffect(() => {
+    if (!provisionalScene) return;
+    const away = provisionalSceneIsAway({
+      activeTab: tabShell.activeTab,
+      storySubView: view,
+      viewDepth,
+      selectedSceneId: selectedScene?.id ?? null,
+      provisionalSceneId: provisionalScene.sceneId,
+    });
+    if (away) discardProvisionalScene(provisionalScene);
+  }, [provisionalScene, tabShell.activeTab, view, viewDepth, selectedScene, discardProvisionalScene]);
+
+  // §1.5: "+" opens a provisional scene immediately — nothing persists until
+  // the user types (prototype addProvScene).
+  const handleNewProvisionalScene = useCallback(() => {
+    if (provisionalScene) {
+      // One provisional at a time — refocus it (it is discarded on any
+      // navigation, so it is already the open document).
+      setActiveStoryDocTabId(provisionalScene.tabId);
+      return;
+    }
+    const story = selectedStory ?? stories[0] ?? null;
+    const chapter = story
+      ? (selectedChapter && story.chapters.some((c) => c.id === selectedChapter.id)
+          ? selectedChapter
+          : story.chapters[story.chapters.length - 1] ?? null)
+      : null;
+    if (!story || !chapter) {
+      showLnToast('Create a story with a chapter first — a new scene needs a home');
+      return;
+    }
+    const id = generateId();
+    const scene: Scene = {
+      id,
+      title: 'Untitled Scene',
+      path: `stories/${story.id}/chapters/${chapter.id}/scenes/${id}.md`,
+      order: chapter.scenes.length,
+      chapterId: chapter.id,
+      storyId: story.id,
+      blocks: [],
+      draftState: undefined,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    const tab = makeSceneTab(scene, undefined, true);
+    setStoryDocTabs((prev) => [...prev, tab]);
+    setActiveStoryDocTabId(tab.id);
+    setProvisionalScene({ tabId: tab.id, sceneId: id, storyId: story.id, chapterId: chapter.id });
+    handleTabChange('story');
+    setView('editor');
+    setViewDepth('scene');
+    handleSelectScene(scene, chapter, story);
+    showLnToast(PROVISIONAL_CREATED_TOAST);
+  }, [provisionalScene, selectedStory, selectedChapter, stories, handleTabChange, setViewDepth, handleSelectScene]);
+
+  const handleNewWorkspaceTab = useCallback(() => {
+    if (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') {
+      // Prototype routes notes "+" to the note template picker, which lives
+      // in the explorer toolbar here (§6) — explain instead of a dead click.
+      showLnToast('New note lives in the notes explorer — use its New note button');
+      return;
+    }
+    handleNewProvisionalScene();
+  }, [workspaceStripMode, handleNewProvisionalScene]);
+
+  // Selecting a tab opens its document.
+  const handleWorkspaceTabSelect = useCallback((tabId: string) => {
+    const storyTab = storyDocTabs.find((t) => t.id === tabId);
+    if (storyTab) {
+      setActiveStoryDocTabId(tabId);
+      persistDocTabs({ story: { tabs: storyDocTabs, activeId: tabId } });
+      if (!storyTab.provisional && storyTab.docId) {
+        handleTabChange('story');
+        setViewDepth('scene');
+        handleOpenSceneById(storyTab.docId);
+      }
+      return;
+    }
+    const noteTab = notesDocTabs.find((t) => t.id === tabId);
+    if (noteTab?.docPath) {
+      setActiveNotesDocTabId(tabId);
+      persistDocTabs({ notes: { tabs: notesDocTabs, activeId: tabId } });
+      handleTabChange('notes');
+      handleNotesSubViewChange('editor');
+      setOpenedNotePath(noteTab.docPath);
+    }
+  }, [storyDocTabs, notesDocTabs, persistDocTabs, handleTabChange, handleOpenSceneById, handleNotesSubViewChange, setViewDepth]);
+
+  const handleWorkspaceTabClose = useCallback((tabId: string) => {
+    // Closing the provisional tab = discarding the untouched scene (§1.5).
+    if (provisionalScene?.tabId === tabId) {
+      discardProvisionalScene(provisionalScene);
+      return;
+    }
+    if (storyDocTabs.some((t) => t.id === tabId)) {
+      const next = storyDocTabs.filter((t) => t.id !== tabId);
+      // Mirror the bar's neighbor pick (left, or right from the first slot) so
+      // the persisted active id matches what the bar just selected.
+      let nextActive = activeStoryDocTabId;
+      if (activeStoryDocTabId === tabId) {
+        const idx = storyDocTabs.findIndex((t) => t.id === tabId);
+        nextActive = next.length > 0 ? (idx > 0 ? storyDocTabs[idx - 1].id : storyDocTabs[1].id) : null;
+        if (next.length === 0) setSelectedScene(null);
+      }
+      setStoryDocTabs(next);
+      setActiveStoryDocTabId(nextActive);
+      persistDocTabs({ story: { tabs: next, activeId: nextActive } });
+      return;
+    }
+    if (notesDocTabs.some((t) => t.id === tabId)) {
+      const next = notesDocTabs.filter((t) => t.id !== tabId);
+      let nextActive = activeNotesDocTabId;
+      if (activeNotesDocTabId === tabId) {
+        const idx = notesDocTabs.findIndex((t) => t.id === tabId);
+        nextActive = next.length > 0 ? (idx > 0 ? notesDocTabs[idx - 1].id : notesDocTabs[1].id) : null;
+        if (next.length === 0) setOpenedNotePath(null);
+      }
+      setNotesDocTabs(next);
+      setActiveNotesDocTabId(nextActive);
+      persistDocTabs({ notes: { tabs: next, activeId: nextActive } });
+    }
+  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs]);
+
+  const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    if (workspaceStripMode.kind !== 'docs') return;
+    if (workspaceStripMode.strip === 'notes') {
+      const arr = [...notesDocTabs];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      setNotesDocTabs(arr);
+      persistDocTabs({ notes: { tabs: arr, activeId: activeNotesDocTabId } });
+    } else {
+      const arr = [...storyDocTabs];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      setStoryDocTabs(arr);
+      persistDocTabs({ story: { tabs: arr, activeId: activeStoryDocTabId } });
+    }
+  }, [workspaceStripMode, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs]);
+
+  // §4: dropping a scene tab opens a second fully editable editor pane
+  // (SKY-1699 split window) sided or stacked by drop zone; the doc's tab
+  // moves into the split while other tabs remain (prototype tabDown up).
+  const openSceneInSplitPane = useCallback((sceneId: string, tabId: string | null, zone: SplitDropZone) => {
+    let found: { scene: Scene; chapter: Chapter; story: Story } | null = null;
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const scene = chapter.scenes.find((sc) => sc.id === sceneId);
+        if (scene) { found = { scene, chapter, story }; break; }
+      }
+      if (found) break;
+    }
+    if (!found) return;
+    setPane2Scene(found.scene);
+    setPane2Chapter(found.chapter);
+    setPane2Story(found.story);
+    setSplitDirection(zone);
+    setSplitWindowEnabled(true);
+    handleTabChange('story');
+    setView('editor');
+    setViewDepth('scene');
+    if (tabId) {
+      const rest = storyDocTabs.filter((t) => t.id !== tabId);
+      if (rest.length > 0) {
+        setStoryDocTabs(rest);
+        let nextActive = activeStoryDocTabId;
+        if (activeStoryDocTabId === tabId) {
+          nextActive = rest[0].id;
+          setActiveStoryDocTabId(nextActive);
+          if (rest[0].docId) handleOpenSceneById(rest[0].docId);
+        }
+        persistDocTabs({ story: { tabs: rest, activeId: nextActive } });
+      }
+    }
+    showLnToast(`“${found.scene.title}” moved ${zone === 'down' ? 'below' : 'to the side'}`);
+  }, [stories, storyDocTabs, activeStoryDocTabId, persistDocTabs, handleTabChange, handleOpenSceneById, setViewDepth]);
+
+  // §4/§6: dropping a notes tab splits notes (NotesTabPanel's M16 split).
+  const openNoteInSplitPane = useCallback((notePath: string, title: string, zone: SplitDropZone) => {
+    handleTabChange('notes');
+    handleNotesSubViewChange('editor');
+    if (!openedNotePath) setOpenedNotePath(notePath);
+    setNoteSplitRequest({ path: notePath, token: Date.now() });
+    showLnToast(`“${title}” moved ${zone === 'down' ? 'below' : 'to the side'}`);
+  }, [handleTabChange, handleNotesSubViewChange, openedNotePath]);
+
+  const handleSplitZoneDrop = useCallback((zone: SplitDropZone) => {
+    const payload = tabDragPayload;
+    setTabDragPayload(null);
+    if (!payload) return;
+    if (payload.kind === 'note' && payload.docPath) {
+      openNoteInSplitPane(payload.docPath, payload.title, zone);
+      return;
+    }
+    if (payload.kind === 'scene' && payload.docId) {
+      if (provisionalScene?.tabId === payload.id) {
+        showLnToast('Type in the new scene first — an empty provisional scene has nothing to split');
+        return;
+      }
+      openSceneInSplitPane(payload.docId, payload.id, zone);
+    }
+  }, [tabDragPayload, provisionalScene, openNoteInSplitPane, openSceneInSplitPane]);
+
+  // Context menu / Shift+click "Open to the side" (§4).
+  const handleTabOpenInSplit = useCallback((tabId: string) => {
+    const storyTab = storyDocTabs.find((t) => t.id === tabId);
+    if (storyTab) {
+      if (storyTab.provisional || !storyTab.docId) {
+        showLnToast('Type in the new scene first — an empty provisional scene has nothing to split');
+        return;
+      }
+      openSceneInSplitPane(storyTab.docId, tabId, 'right');
+      return;
+    }
+    const noteTab = notesDocTabs.find((t) => t.id === tabId);
+    if (noteTab?.docPath) openNoteInSplitPane(noteTab.docPath, noteTab.title, 'right');
+  }, [storyDocTabs, notesDocTabs, openSceneInSplitPane, openNoteInSplitPane]);
 
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
@@ -3789,11 +4065,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     onAssist: handleToolbarAssist,
   }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist]);
 
-  // Beta 3 M6: pop a workspace tab out into a floating window. Tab kinds with
-  // a FloatingPanelApp renderer (timeline / entities / vault-graph) reuse the
-  // SKY-1697 float flow; the rest explain themselves instead of mocking.
+  // Beta 3 M6 → Beta 4 M4: context-menu "Pop out into new window". Document
+  // tabs have no dedicated window host yet, so they explain themselves (§1.2
+  // "nothing is dead") until the doc pop-out window lands; module kinds with
+  // a FloatingPanelApp renderer keep the SKY-1697 float flow.
   const handleTabPopOut = useCallback((tabId: string) => {
-    const tab = workspaceTabs.find((t) => t.id === tabId);
+    const tab = storyDocTabs.find((t) => t.id === tabId) ?? notesDocTabs.find((t) => t.id === tabId);
     if (!tab) return;
     const floatable: Partial<Record<WorkspaceTabKind, SidebarPanelId>> = {
       timeline: 'timeline',
@@ -3802,7 +4079,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     const panelId = floatable[tab.kind];
     if (!panelId) {
-      showLnToast('Only Timeline, Entities and Vault Graph tabs can pop out right now');
+      showLnToast('Documents can’t pop out into their own window yet — use Open to the side');
       return;
     }
     window.api.panelFloat?.(panelId, { sourceSidebar: 'right' }).catch(() => {});
@@ -3816,7 +4093,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return updated;
     });
     handleWorkspaceTabClose(tabId);
-  }, [workspaceTabs, handleWorkspaceTabClose]);
+  }, [storyDocTabs, notesDocTabs, handleWorkspaceTabClose]);
 
   // Beta 3 M7: Stories popover data for the nav rail (prototype 179-203).
   // Beta 4 M3: subtitle = the wizard's voice preset (genre · voice · POV),
@@ -3840,18 +4117,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // ── Beta 4 M3: six-module nav rail (FULL-SPEC §4; prototype navItems 5681) ──
   // story/notes/brainstorm stay top-level tabs; crafter/timeline are Story
-  // sub-view surfaces and graph is the Notes graph surface, all routed through
-  // the workspace-tab create-or-focus path so the tab strip stays in sync.
+  // sub-view surfaces and graph is the Notes graph surface. M4's document-tab
+  // model owns the strip (static pseudo-tab / hidden per view), so rail clicks
+  // switch section + sub-view directly instead of creating module tabs.
   const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
     switch (moduleId) {
       case 'crafter':
-        openWorkspaceTabKind('kanban');
+        handleNavSectionChange('story');
+        handleSetView('kanban');
         break;
       case 'timeline':
-        openWorkspaceTabKind('timeline');
+        handleNavSectionChange('story');
+        handleSetView('timeline');
         break;
       case 'graph':
-        openWorkspaceTabKind('vault-graph');
+        handleNavSectionChange('notes');
         handleNotesSubViewChange('graph');
         break;
       case 'story':
@@ -3871,7 +4151,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       default:
         handleNavSectionChange(moduleId);
     }
-  }, [openWorkspaceTabKind, handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
+  }, [handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
 
   // Which rail module is lit: derived from the actual displayed surface so
   // the slot-glow pill follows crafter/timeline/graph sub-views too.
@@ -4184,17 +4464,35 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         )}
         <div className="desktop-shell__main-col">
-        {showTitleBar && (
+        {/* Beta 4 M4 (§4): document tab strip — Story + Notes views only;
+            static pseudo-tab on Scene Crafter/Entities; hidden on
+            Brainstorm/Timeline/Graph (Settings/Beta are overlays). */}
+        {showTitleBar && workspaceStripMode.kind !== 'hidden' && (
           <WorkspaceTabBar
-            tabs={workspaceTabs}
-            activeTabId={activeWorkspaceTabId}
+            tabs={
+              workspaceStripMode.kind === 'docs'
+                ? (workspaceStripMode.strip === 'notes' ? notesDocTabs : storyDocTabs)
+                : []
+            }
+            activeTabId={
+              workspaceStripMode.kind === 'docs'
+                ? (workspaceStripMode.strip === 'notes' ? activeNotesDocTabId : activeStoryDocTabId)
+                : null
+            }
+            staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
             onTabReorder={handleWorkspaceTabReorder}
-            onNewTab={() => setTabPickerOpen(true)}
+            onNewTab={handleNewWorkspaceTab}
             onTabOpenInSplit={handleTabOpenInSplit}
             onTabPopOut={handleTabPopOut}
+            onTabDragStart={setTabDragPayload}
             agentsActive={agentsActive}
+            newTabTitle={
+              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes'
+                ? 'New note — via the notes explorer'
+                : 'New blank scene — it only saves once you type'
+            }
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -4506,7 +4804,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 </div>
               )}
               <div
-                className="split-window-container"
+                className={`split-window-container${splitDirection === 'down' ? ' split-window-container--down' : ''}`}
                 ref={splitContainerRef}
               >
                 <SplitEditorPane
@@ -4535,7 +4833,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   className="split-window-divider"
                   role="separator"
                   aria-label="Resize split panes"
-                  aria-orientation="vertical"
+                  aria-orientation={splitDirection === 'down' ? 'horizontal' : 'vertical'}
                   tabIndex={0}
                   onMouseDown={startSplitDrag}
                   onKeyDown={handleSplitDividerKey}
@@ -4875,6 +5173,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           sceneWikiLinkTitles={sceneWikiLinkTitleIndex}
           resolveWikiLinkPreview={resolveNotesWikiLinkPreview}
           notePaths={allNotePaths}
+          noteSplitRequest={noteSplitRequest}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}
@@ -5082,7 +5381,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
-      <Toast message={splitToastState?.message ?? null} level={splitToastState?.level} className="app-toast--stacked" />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />
       <Toast message={wikiLinkToastState?.message ?? null} level={wikiLinkToastState?.level} className="app-toast--stacked" />
@@ -5136,14 +5434,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onCreate={(draft) => { void handleCreateStoryFromWizard(draft); }}
         />
       )}
-      {/* GH #643: "+" new-tab content picker */}
-      {tabPickerOpen && (
-        <WorkspaceTabPicker
-          open={tabPickerOpen}
-          onClose={() => setTabPickerOpen(false)}
-          onPick={openWorkspaceTabKind}
-        />
-      )}
         </div>{/* end desktop-shell__main-col */}
         {/* GH #643 split panes v1: right-hand workspace pane */}
         {workspaceSplitKind && (
@@ -5183,28 +5473,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             ) : null}
           </WorkspaceSplitPane>
         )}
-        {/* Drop zone: visible/interactive only while a workspace tab drag is in flight */}
-        {tabDragActive && (
-          <div
-            className={`workspace-split-dropzone${splitDropHover ? ' workspace-split-dropzone--active' : ''}`}
-            data-testid="workspace-split-dropzone"
-            onDragOver={(e) => {
-              if (e.dataTransfer.types.includes(WORKSPACE_TAB_DRAG_MIME)) {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                setSplitDropHover(true);
-              }
-            }}
-            onDragLeave={() => setSplitDropHover(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setSplitDropHover(false);
-              setTabDragActive(false);
-              try {
-                const payload = JSON.parse(e.dataTransfer.getData(WORKSPACE_TAB_DRAG_MIME)) as { id: string; kind: WorkspaceTabKind };
-                if (payload?.kind) openInSplitPane(payload.kind);
-              } catch { /* malformed payload — ignore */ }
-            }}
+        {/* Beta 4 M4 (§4): DOWN (lower 45%) / RIGHT (right 44%) split drop
+            zones — mounted only while a workspace tab drag is in flight. */}
+        {tabDragPayload && (
+          <WorkspaceSplitDropZones
+            dragLabel={tabDragPayload.title}
+            onDropZone={handleSplitZoneDrop}
           />
         )}
       </div>{/* end desktop-shell__body */}

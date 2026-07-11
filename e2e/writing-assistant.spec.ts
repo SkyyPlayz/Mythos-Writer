@@ -1060,7 +1060,15 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     if (await editorMenu.count()) {
       await editorMenu.click();
     } else {
-      await disabledPage.getByRole('tab', { name: /^Story$/ }).click();
+      // M4: module-mirror workspace tabs are gone — navigate via the nav rail,
+      // and only when Story isn't already the active section (re-clicking the
+      // active item opens the stories switcher popover once M3 lands).
+      const railStory = disabledPage
+        .getByRole('navigation', { name: 'Main navigation' })
+        .getByRole('button', { name: /^Story( Writer)?$/ });
+      if ((await railStory.getAttribute('aria-current').catch(() => null)) !== 'page') {
+        await railStory.click();
+      }
     }
     // GlobalRightSidebar uses role="button" panel headers instead of role="tab".
     const showSidebarBtn = disabledPage.getByRole('button', { name: 'Show right sidebar' });

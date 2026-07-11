@@ -1,7 +1,7 @@
 // GH #643: workspace-tab kind metadata + pure create-or-focus semantics.
-// Tabs are section-level surfaces (not per-document), so opening a kind that
-// already has a tab focuses it instead of duplicating it — matching how the
-// nav rail sections behave.
+// Beta 4 M4: the strip now shows DOCUMENT tabs (see workspaceDocTabs.ts);
+// the module-kind helpers below remain for the legacy right-hand
+// WorkspaceSplitPane restore path and old persisted layouts.
 
 export const TAB_KIND_META: Record<WorkspaceTabKind, { title: string; icon: string }> = {
   'story-editor': { title: 'Story', icon: '📖' },
@@ -11,9 +11,13 @@ export const TAB_KIND_META: Record<WorkspaceTabKind, { title: string; icon: stri
   entities: { title: 'Entities', icon: '👤' },
   'vault-graph': { title: 'Graph', icon: '🕸️' },
   brainstorm: { title: 'Brainstorm', icon: '💡' },
+  // Beta 4 M4: document tab kinds (per-document titles are set on the tab itself).
+  scene: { title: 'Scene', icon: '📄' },
+  note: { title: 'Note', icon: '📝' },
 };
 
-/** Every kind offered by the new-tab picker, in display order. */
+/** ≤Beta 3: every module kind the old new-tab picker offered, in display
+ * order. Kept for the legacy split-pane metadata sweep in tests. */
 export const PICKABLE_TAB_KINDS: WorkspaceTabKind[] = [
   'story-editor',
   'notes-editor',

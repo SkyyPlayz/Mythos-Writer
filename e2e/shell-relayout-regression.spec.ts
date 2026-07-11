@@ -3,12 +3,9 @@
 // Covers the acceptance criteria that PR #809's selector-migration pass did not:
 //   - Single GlobalRightSidebar instance across every AppNavRail/tab mode (Story, Notes, Brainstorm).
 //   - Story sub-view render sweep (editor/kanban/structure/timeline) under the new shell.
-//   - WorkspaceTabBar select/close/reorder driven end-to-end against a real (persisted) layout.
-//
-// Note: WorkspaceTabBar's "+" (open new tab) affordance is currently a no-op stub
-// (`onNewTab={() => {}}` in DesktopShell.tsx) — there is no in-app action yet that creates a
-// new workspace tab, so "open" is exercised here via a persisted 3-tab layout rather than a
-// live open action. See SKY-5579 for wiring up real tab-open behavior.
+//   - Beta 4 M4: workspace tab strip visibility — tabs are documents now, so
+//     the strip starts empty on a fresh vault, shows a static pseudo-tab on
+//     Scene Crafter, and is hidden on Timeline/Brainstorm (FULL-SPEC §4).
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -25,33 +22,6 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
     JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
-  );
-  fs.writeFileSync(
-    path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesVaultDir }, null, 2),
-  );
-}
-
-/** Seed a layout with 3 persisted workspace tabs (story, notes, kanban) so
- * select/close/reorder can be exercised without a live "open tab" action. */
-function seedUserDataWithWorkspaceTabs(userData: string, vaultDir: string, notesVaultDir: string): void {
-  fs.mkdirSync(userData, { recursive: true });
-  fs.mkdirSync(vaultDir, { recursive: true });
-  fs.mkdirSync(notesVaultDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(userData, 'app-settings.json'),
-    JSON.stringify({
-      onboardingComplete: true,
-      theme: 'dark',
-      activeLayout: {
-        workspaceTabs: [
-          { id: 'tab-story', kind: 'story-editor', title: 'Story', icon: '📖' },
-          { id: 'tab-notes', kind: 'notes-editor', title: 'Notes', icon: '📁' },
-          { id: 'tab-kanban', kind: 'kanban', title: 'Scene Board', icon: '🗂️' },
-        ],
-        activeWorkspaceTabId: 'tab-story',
-      },
-    }, null, 2),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
@@ -176,9 +146,9 @@ test.describe('Shell relayout — Story sub-view render sweep', () => {
   });
 });
 
-// ─── WorkspaceTabBar select / close / reorder ─────────────────────────────────
+// ─── Beta 4 M4: workspace tab strip = documents (FULL-SPEC §4) ────────────────
 
-test.describe('Shell relayout — WorkspaceTabBar select/close/reorder', () => {
+test.describe('Shell relayout — M4 workspace tab strip visibility', () => {
   let tempRoot: string;
   let userData: string;
   let app: ElectronApplication;
@@ -187,7 +157,7 @@ test.describe('Shell relayout — WorkspaceTabBar select/close/reorder', () => {
   test.beforeAll(async () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-shell-wtb-'));
     userData = path.join(tempRoot, 'userData');
-    seedUserDataWithWorkspaceTabs(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
+    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.getByRole('tablist', { name: 'Workspace tabs' })).toBeVisible({ timeout: 15_000 });
@@ -198,41 +168,33 @@ test.describe('Shell relayout — WorkspaceTabBar select/close/reorder', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('all 3 persisted workspace tabs render with Story active by default', async () => {
+  test('the strip starts with no document tabs on a fresh vault, + button present', async () => {
+    // M4: tabs are documents — module mirrors no longer seed the strip.
     const tabs = page.getByRole('tablist', { name: 'Workspace tabs' }).getByRole('tab');
-    await expect(tabs).toHaveCount(3);
-    await expect(page.locator('#workspace-tab-tab-story')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#workspace-tab-tab-notes')).toHaveAttribute('aria-selected', 'false');
-    await expect(page.locator('#workspace-tab-tab-kanban')).toHaveAttribute('aria-selected', 'false');
+    await expect(tabs).toHaveCount(0);
+    await expect(page.locator('[data-testid="wtb-new-tab-btn"]')).toBeVisible();
   });
 
-  test('selecting the Scene Board tab activates it and switches to kanban view', async () => {
-    await page.locator('#workspace-tab-tab-kanban').click();
-    await expect(page.locator('#workspace-tab-tab-kanban')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-    await expect(page.locator('#workspace-tab-tab-story')).toHaveAttribute('aria-selected', 'false');
-    await expect(page.locator('[data-testid="story-subview-kanban"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-    await expect(page.locator('.shell-kanban')).toBeVisible({ timeout: 5_000 });
+  test('Scene Crafter (kanban) shows the static view pseudo-tab', async () => {
+    await page.locator('[data-testid="story-subview-kanban"]').click();
+    await expect(page.locator('[data-testid="wtb-static-tab"]')).toHaveText(/Scene Crafter/, { timeout: 5_000 });
+    // The + (provisional scene) stays available (prototype 512).
+    await expect(page.locator('[data-testid="wtb-new-tab-btn"]')).toBeVisible();
   });
 
-  test('closing a non-active tab removes only that tab', async () => {
-    // Active tab is Scene Board (kanban) from the previous test; close the inactive Notes tab.
-    await page.locator('button[aria-label="Close Notes"]').click();
-    const tabs = page.getByRole('tablist', { name: 'Workspace tabs' }).getByRole('tab');
-    await expect(tabs).toHaveCount(2, { timeout: 3_000 });
-    await expect(page.locator('#workspace-tab-tab-notes')).toHaveCount(0);
-    // Active selection (Scene Board) is unaffected by closing an inactive tab.
-    await expect(page.locator('#workspace-tab-tab-kanban')).toHaveAttribute('aria-selected', 'true');
+  test('the strip is hidden on the Timeline sub-view', async () => {
+    await page.locator('[data-testid="story-subview-timeline"]').click();
+    await expect(page.locator('.shell-timeline')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('tablist', { name: 'Workspace tabs' })).toHaveCount(0);
   });
 
-  test('drag-reordering moves a tab to a new position', async () => {
-    // Remaining tabs: Story, Scene Board (in that order). Drag Scene Board before Story.
-    const storyTab = page.locator('#workspace-tab-tab-story');
-    const kanbanTab = page.locator('#workspace-tab-tab-kanban');
-    await kanbanTab.dragTo(storyTab);
+  test('the strip is hidden on Brainstorm and returns on the Story editor', async () => {
+    await page.keyboard.press(CTRL3);
+    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByRole('tablist', { name: 'Workspace tabs' })).toHaveCount(0);
 
-    const tabs = page.getByRole('tablist', { name: 'Workspace tabs' }).getByRole('tab');
-    await expect(tabs).toHaveCount(2);
-    await expect(tabs.nth(0)).toHaveAttribute('id', 'workspace-tab-tab-kanban', { timeout: 3_000 });
-    await expect(tabs.nth(1)).toHaveAttribute('id', 'workspace-tab-tab-story');
+    await clickStoryNav(page);
+    await page.locator('[data-testid="story-subview-editor"]').click();
+    await expect(page.getByRole('tablist', { name: 'Workspace tabs' })).toBeVisible({ timeout: 5_000 });
   });
 });
