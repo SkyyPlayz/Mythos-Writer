@@ -571,6 +571,14 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
+  // ─── Explorer toolbar state (§6) ───
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<'manual' | 'a-z' | 'z-a'>('manual');
+  const [autoReveal, setAutoReveal] = useState(true);
+  const [recentNotes, setRecentNotes] = useState<string[]>(() => {
+    try { const r = localStorage.getItem('vb-recent-notes'); return r ? JSON.parse(r) : []; } catch { return []; }
+  });
+
   const handleContextMenu = useCallback((e: React.MouseEvent, row: FlatRow) => {
     e.preventDefault();
     setCtxRow(row);
@@ -582,9 +590,25 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       select(path);
       onOpenFile?.(path);
       onContextChange?.('file');
+      // Track recent notes (max 10, no duplicates)
+      setRecentNotes((prev) => {
+        const next = [path, ...prev.filter((p) => p !== path)].slice(0, 10);
+        try { localStorage.setItem('vb-recent-notes', JSON.stringify(next)); } catch { /**/ }
+        return next;
+      });
     },
     [select, onOpenFile, onContextChange],
   );
+
+  // Auto-reveal: expand tree parents when selected note changes (§6)
+  useEffect(() => {
+    if (!autoReveal || !selected) return;
+    const parts = selected.split('/');
+    for (let i = 1; i < parts.length - 1; i++) {
+      const parentPath = parts.slice(0, i + 1).join('/');
+      if (!expanded.has(parentPath)) toggle(parentPath);
+    }
+  }, [selected, autoReveal, expanded, toggle]);
 
   const handleToggleFolder = useCallback(
     (path: string) => {
@@ -705,19 +729,81 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [onReload],
   );
 
-  const rows = flattenTree(tree, expanded, selected);
+  // Apply search filter and sort (§6)
+  const processedTree = useMemo(() => {
+    let result = tree;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((n) => n.name.toLowerCase().includes(q) || n.isDirectory);
+    }
+    if (sortMode !== 'manual') {
+      result = [...result].sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return sortMode === 'a-z' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      });
+    }
+    return result;
+  }, [tree, searchQuery, sortMode]);
+
+  const rows = flattenTree(processedTree, expanded, selected);
 
   return (
     <div className="vb-notes-vault" data-testid="vb-notes-vault">
-      <div className="vb-section-header">
-        <span className="vb-section-label">Notes Vault</span>
+      {/* §6: vault switcher + search field */}
+      <div className="vb-notes-header">
+        <select className="vb-vault-switcher" aria-label="Notes vault">
+          <option value="main">Main Vault</option>
+          <option value="imports">Imports</option>
+        </select>
+        <input
+          className="vb-search-field"
+          type="text"
+          placeholder="Search notes…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search notes"
+        />
+      </div>
+      {/* §6: 5-button explorer toolbar */}
+      <div className="vb-explorer-toolbar" role="toolbar" aria-label="Notes explorer toolbar">
+        <button className="vb-toolbar-btn" onClick={() => handleNewNote('')} title="New note" aria-label="New note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button className="vb-toolbar-btn" onClick={() => handleNewFolder('')} title="New folder" aria-label="New folder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>
         <button
-          className="vb-section-add"
-          onClick={() => handleNewNote('')}
-          title="New Note"
-          aria-label="New Note"
+          className={`vb-toolbar-btn${sortMode !== 'manual' ? ' vb-toolbar-active' : ''}`}
+          onClick={() => setSortMode((m) => m === 'manual' ? 'a-z' : m === 'a-z' ? 'z-a' : 'manual')}
+          title={`Sort: ${sortMode === 'manual' ? 'Manual' : sortMode === 'a-z' ? 'A–Z' : 'Z–A'} (click to cycle)`}
+          aria-label={`Sort ${sortMode}`}
         >
-          +
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
+        </button>
+        <button
+          className={`vb-toolbar-btn${autoReveal ? ' vb-toolbar-active' : ''}`}
+          onClick={() => setAutoReveal((r) => !r)}
+          title="Auto-reveal current note"
+          aria-label="Auto-reveal current note"
+          aria-pressed={autoReveal}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button
+          className="vb-toolbar-btn"
+          onClick={() => {
+            const dirs = processedTree.filter((n) => n.isDirectory);
+            const allOpen = dirs.length > 0 && dirs.every((n) => expanded.has(n.path));
+            if (allOpen) {
+              dirs.forEach((n) => { if (expanded.has(n.path)) toggle(n.path); });
+            } else {
+              dirs.forEach((n) => { if (!expanded.has(n.path)) toggle(n.path); });
+            }
+          }}
+          title="Collapse / expand all"
+          aria-label="Collapse or expand all folders"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
         </button>
       </div>
       <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
@@ -767,6 +853,25 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       />
       {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
+      )}
+      {/* §6: RECENT list */}
+      {recentNotes.length > 0 && (
+        <div className="vb-recent-list">
+          <div className="vb-recent-label">RECENT</div>
+          <ul className="vb-recent-items" role="list">
+            {recentNotes.map((path) => {
+              const item = allNotesItems.find((i) => i.path === path && !i.isDirectory);
+              if (!item) return null;
+              return (
+                <li key={path}>
+                  <button className="vb-recent-btn" onClick={() => handleOpen(path)} title={item.name}>
+                    <span className="vb-recent-name">{item.name}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );
