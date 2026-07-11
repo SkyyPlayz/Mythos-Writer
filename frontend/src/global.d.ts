@@ -77,6 +77,57 @@ interface MigrationApplyResult {
   snapshotsWritten: string[];
 }
 
+// Beta 4 M5 — MythosVault (v2) migration wizard
+interface MythosMigrationStatus {
+  format: 'mythos-v2' | 'v0.4-twin-root' | 'empty';
+  shouldPrompt: boolean;
+  storyVaultRoot: string;
+  notesVaultRoot: string;
+  vaultName: string;
+  suggestedTarget: string;
+}
+
+interface MythosMigrationPlanResult {
+  ok: boolean;
+  error?: string;
+  plan?: {
+    targetRoot: string;
+    vaultName: string;
+    stories: number;
+    chapters: number;
+    scenes: number;
+    noteFiles: number;
+    commentFiles: number;
+    betaCommentRows: number;
+    versionSnapshots: number;
+    fileSnapshots: number;
+    dbSnapshotRows: number;
+    timelineArcs: number;
+    timelineSceneEntries: number;
+    warnings: string[];
+  };
+}
+
+interface MythosMigrationRunResult {
+  ok: boolean;
+  error?: string;
+  targetRoot: string;
+  counts: {
+    stories: number;
+    chapters: number;
+    scenes: number;
+    notes: number;
+    comments: number;
+    drafts: number;
+    extras: number;
+  };
+  verified: {
+    scenesChecked: number;
+    notesChecked: number;
+    mismatches: string[];
+  };
+}
+
 interface EntityRelation {
   type: string;
   target: string; // entity id
@@ -830,6 +881,13 @@ interface Window {
     // SKY-10 — Legacy single-file-per-chapter migration
     migrationDryRun: (storyPath?: string) => Promise<{ plans: MigrationPlan[] }>;
     migrationApply: (planId: string, storyPath: string) => Promise<{ result: MigrationApplyResult }>;
+
+    // Beta 4 M5 — MythosVault (v2) migration wizard
+    mythosMigrationStatus: () => Promise<MythosMigrationStatus>;
+    mythosMigrationPlan: () => Promise<MythosMigrationPlanResult>;
+    mythosMigrationRun: () => Promise<MythosMigrationRunResult>;
+    mythosMigrationConfirm: () => Promise<{ switched: boolean; vaultRoot?: string; notesVaultRoot?: string; error?: string }>;
+    mythosMigrationDismiss: () => Promise<{ dismissed: boolean }>;
 
     // Entity CRUD
     entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) => Promise<EntityEntry>;

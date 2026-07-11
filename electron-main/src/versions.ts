@@ -21,6 +21,18 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+// Beta 4 M5 version gate: MythosVault v2 vaults store history as numbered
+// draft files (`<Story>/drafts/…/Scene NN.draft-K.md`) instead of the
+// per-chapter `versions/` tree. The public functions below transparently
+// delegate for v2 roots so the SKY-10 IPC surface serves both formats.
+import { mythosRootForStoryVault } from './mythosFormat/mythosJson.js';
+import {
+  getDraftAsVersion,
+  listDraftsAsVersions,
+  parseDraftTs,
+  saveDraftForScene,
+  toSceneVersion,
+} from './mythosFormat/draftFiles.js';
 
 export type VersionIntent =
   | 'save'
@@ -211,6 +223,20 @@ export function saveVersion(
   assertValidIntent(intent);
   const retention = normalizeRetention(options.retention ?? DEFAULT_RETENTION);
 
+  // M5 gate: v2 vaults snapshot into numbered draft files.
+  if (mythosRootForStoryVault(vaultRoot) !== null) {
+    assertSafeId(sceneId, 'sceneId');
+    return toSceneVersion(
+      saveDraftForScene(vaultRoot, {
+        sceneId,
+        chapterRelPath: options.chapterRelPath,
+        content,
+        intent,
+        retention,
+      }),
+    );
+  }
+
   const dir = safeVersionsDir(vaultRoot, options.chapterRelPath, sceneId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -313,6 +339,11 @@ export function listVersions(
   sceneId: string,
   options: { chapterRelPath: string },
 ): SceneVersion[] {
+  // M5 gate: v2 vaults list numbered draft files (newest first).
+  if (mythosRootForStoryVault(vaultRoot) !== null) {
+    assertSafeId(sceneId, 'sceneId');
+    return listDraftsAsVersions(vaultRoot, sceneId, options.chapterRelPath);
+  }
   const dir = safeVersionsDir(vaultRoot, options.chapterRelPath, sceneId);
   if (!fs.existsSync(dir)) return [];
   return listSnapshotFiles(dir)
@@ -345,6 +376,12 @@ export function getVersion(
   options: { chapterRelPath: string },
 ): SceneVersion | null {
   assertSafeTs(ts);
+  // M5 gate: v2 vaults resolve `draft-K` tokens against draft files.
+  if (mythosRootForStoryVault(vaultRoot) !== null) {
+    assertSafeId(sceneId, 'sceneId');
+    if (parseDraftTs(ts) === null) return null;
+    return getDraftAsVersion(vaultRoot, sceneId, ts, options.chapterRelPath);
+  }
   const dir = safeVersionsDir(vaultRoot, options.chapterRelPath, sceneId);
   const fullPath = path.join(dir, `${ts}.md`);
   if (!fs.existsSync(fullPath)) return null;

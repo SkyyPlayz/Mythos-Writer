@@ -333,7 +333,7 @@ import {
   deleteVaultFile,
   moveVaultFile,
   readManifest,
-  writeManifest,
+  writeManifest as writeManifestRaw,
   defaultManifest,
   reindexVault,
   loadVaultIndexCache,
@@ -371,6 +371,22 @@ import {
   NOTES_VAULT_SEED_LAYOUT,
   type SeedRegistry,
 } from './vaultSeeding.js';
+// Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
+import { resolveManifestPath, mythosRootForStoryVault } from './mythosFormat/mythosJson.js';
+import {
+  scanMythosStoryVault,
+  syncCanonicalFromManifest,
+  nextV2ChapterRelPath,
+  nextV2SceneRelPath,
+  isCanonicalV2ChapterPath,
+} from './mythosFormat/v2Manifest.js';
+import { ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
+import {
+  detectVaultFormat,
+  planMythosVaultMigration,
+  runMythosVaultMigration,
+  suggestMigrationTarget,
+} from './migration/mythosVaultMigrator.js';
 import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
@@ -571,6 +587,9 @@ interface VaultSettings {
   // the `.mythos-seeded` sentinel inside each root; either half suffices to
   // block a re-seed. M5's mythos.json can migrate this.
   seededVaultRoots?: Record<string, string>;
+  // M5 (Beta 4): per-vault dismissal of the MythosVault upgrade prompt —
+  // resolved v0.4 story vault root → ISO timestamp of the dismissal.
+  mythosMigrationDismissed?: Record<string, string>;
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -659,9 +678,27 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
-const getManifestPath = () => path.join(getVaultRoot(), 'manifest.json');
+// M5 VERSION GATE: v0.4 vaults keep `manifest.json` at the Story Vault root;
+// MythosVault v2 vaults (mythos.json beside the Story Vault) route the legacy
+// manifest to a regenerable cache under `.mythos/` — canonical structure
+// lives in mythos.json + book.md + scene frontmatter (see writeManifest).
+const getManifestPath = () => resolveManifestPath(getVaultRoot());
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+
+/**
+ * M5: every manifest write in this process funnels through here. For v2
+ * vaults, after the cache write the canonical files (mythos.json story list,
+ * per-story book.md spines) are re-synced so the FILES stay the source of
+ * truth — copying the vault folder carries all structure (the storage rule).
+ */
+function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): void {
+  writeManifestRaw(manifestPath, manifest);
+  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+  if (mythosRoot !== null && manifestPath === getManifestPath()) {
+    syncCanonicalFromManifest(mythosRoot, manifest);
+  }
+}
 
 // W0.1: settings-backed half of the seed-once marker (see vaultSeeding.ts).
 // Keyed by resolved absolute root so path spelling can't sidestep it.
@@ -675,6 +712,16 @@ const vaultSeedRegistry: SeedRegistry = {
     saveVaultSettings({ seededVaultRoots: { ...current, [key]: new Date().toISOString() } });
   },
 };
+
+// M5: the last VERIFIED migration run awaiting user confirmation. Keyed to
+// the source vault so a project switch invalidates it. Main-process memory
+// only — the renderer can never inject paths into the confirm step.
+let pendingMythosMigration: {
+  sourceStoryVault: string;
+  storyVaultPath: string;
+  notesVaultPath: string;
+  targetRoot: string;
+} | null = null;
 
 /**
  * SKY-10: locate a scene's chapter directory (relative path inside the vault)
@@ -719,6 +766,30 @@ function shouldInitializeVaultsOnStartup(): boolean {
 
 function ensureVaultDir() {
   const vaultRoot = getVaultRoot();
+  const mythosRoot = mythosRootForStoryVault(vaultRoot);
+  if (mythosRoot !== null) {
+    // M5 (MythosVault v2): the SKY-15 scaffold and .mythos-seeded sentinel
+    // never touch v2 vaults — the seed decision lives in mythos.json and is
+    // recorded at CREATION time (or adopted here for pre-marker v2 vaults).
+    // Demo seeding never runs on open (W0.1 rule).
+    ensureMythosV2SeedMarker(mythosRoot);
+    openDb(vaultRoot);
+    const cachePath = getManifestPath();
+    if (!fs.existsSync(cachePath)) {
+      // Fresh machine / deleted .mythos: rebuild the regenerable manifest
+      // cache from the canonical files (book.md + scene frontmatter).
+      try {
+        writeManifestRaw(cachePath, scanMythosStoryVault(mythosRoot));
+      } catch {
+        writeManifestRaw(cachePath, defaultManifest(vaultRoot));
+      }
+    }
+    try {
+      const { versions: vRetention } = loadAppSettings();
+      if (vRetention) pruneAllVersions(vaultRoot, vRetention);
+    } catch { /* non-fatal */ }
+    return;
+  }
   // W0.1 (GAP #1): seed exactly once per root. The old guard was only the
   // stateless empty-dir heuristic, re-evaluated on every boot and IPC call —
   // any path drift or emptied folder re-ran the SKY-15 seed (the shipped
@@ -840,6 +911,13 @@ function persistBrainstormSuggestion(
 }
 
 function ensureNotesVaultDir() {
+  // M5: the Notes Vault half of a MythosVault v2 never receives the SKY-15
+  // legacy scaffold — its layout was written at creation/migration time.
+  if (mythosRootForStoryVault(getVaultRoot()) !== null) {
+    const notesRoot = getNotesVaultRoot();
+    if (!fs.existsSync(notesRoot)) fs.mkdirSync(notesRoot, { recursive: true });
+    return;
+  }
   // W0.1 (GAP #1): seed-once — see ensureVaultDir. A user who pre-creates an
   // empty notes dir still gets the six-folder layout seeded (once); blank/
   // imported modes record the decision without scaffolding.
@@ -1924,6 +2002,172 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     const result = applyMigrationPlan(getVaultRoot(), payload.storyPath, payload.planId);
     return { result };
+  },
+
+  // ─── Beta 4 M5 — MythosVault (v2) migration wizard ───
+  //
+  // Copy-based, main-driven. Every path is computed from the ACTIVE vault
+  // settings — the renderer supplies none, so this surface cannot re-root the
+  // sandbox. The original vault is opened read-only and stays untouched; only
+  // `mythosMigration:confirm` (after the user reviews the verification
+  // report) repoints the app at the new folder.
+  [IPC_CHANNELS.MYTHOS_MIGRATION_STATUS]: (): import('./ipc.js').MythosMigrationStatusResponse => {
+    const storyVaultRoot = getVaultRoot();
+    const notesVaultRoot = getNotesVaultRoot();
+    const format = detectVaultFormat(storyVaultRoot);
+    const dismissed = Boolean(
+      loadVaultSettings().mythosMigrationDismissed?.[path.resolve(storyVaultRoot)],
+    );
+    // Only volunteer the corner prompt when the v0.4 vault holds more than
+    // the pristine SKY-15 seed (one story, one scene) — a vault with nothing
+    // meaningful to migrate shouldn't nag, and fresh-vault fixtures render
+    // byte-identically. The Settings → Vaults card offers the upgrade always.
+    let hasUserContent = false;
+    if (format === 'v0.4-twin-root' && !dismissed) {
+      try {
+        const manifest = readManifest(getManifestPath());
+        const nestedScenes = (manifest.stories ?? []).reduce(
+          (acc, s) => acc + (s.chapters ?? []).reduce((a, c) => a + (c.scenes ?? []).length, 0),
+          0,
+        );
+        const totalScenes = Math.max(nestedScenes, (manifest.scenes ?? []).length);
+        hasUserContent = (manifest.stories ?? []).length > 1 || totalScenes > 1;
+      } catch {
+        hasUserContent = false;
+      }
+    }
+    return {
+      format,
+      shouldPrompt: format === 'v0.4-twin-root' && !dismissed && hasUserContent,
+      storyVaultRoot,
+      notesVaultRoot,
+      vaultName: deriveProjectName(storyVaultRoot, notesVaultRoot),
+      suggestedTarget: suggestMigrationTarget(storyVaultRoot, notesVaultRoot),
+    };
+  },
+  [IPC_CHANNELS.MYTHOS_MIGRATION_PLAN]: (): import('./ipc.js').MythosMigrationPlanResponse => {
+    const storyVaultRoot = getVaultRoot();
+    const notesVaultRoot = getNotesVaultRoot();
+    if (detectVaultFormat(storyVaultRoot) !== 'v0.4-twin-root') {
+      return { ok: false, error: 'The active vault is not a v0.4 twin-root vault.' };
+    }
+    try {
+      const plan = planMythosVaultMigration({
+        sourceStoryVault: storyVaultRoot,
+        sourceNotesVault: notesVaultRoot,
+        targetRoot: suggestMigrationTarget(storyVaultRoot, notesVaultRoot),
+      });
+      return {
+        ok: true,
+        plan: {
+          targetRoot: plan.targetRoot,
+          vaultName: plan.vaultName,
+          stories: plan.stories,
+          chapters: plan.chapters,
+          scenes: plan.scenes,
+          noteFiles: plan.noteFiles,
+          commentFiles: plan.commentFiles,
+          betaCommentRows: plan.betaCommentRows,
+          versionSnapshots: plan.versionSnapshots,
+          fileSnapshots: plan.fileSnapshots,
+          dbSnapshotRows: plan.dbSnapshotRows,
+          timelineArcs: plan.timelineArcs,
+          timelineSceneEntries: plan.timelineSceneEntries,
+          warnings: plan.warnings,
+        },
+      };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  },
+  [IPC_CHANNELS.MYTHOS_MIGRATION_RUN]: (): import('./ipc.js').MythosMigrationRunResponse => {
+    const storyVaultRoot = getVaultRoot();
+    const notesVaultRoot = getNotesVaultRoot();
+    const emptyCounts = { stories: 0, chapters: 0, scenes: 0, notes: 0, comments: 0, drafts: 0, extras: 0 };
+    if (detectVaultFormat(storyVaultRoot) !== 'v0.4-twin-root') {
+      return {
+        ok: false,
+        error: 'The active vault is not a v0.4 twin-root vault.',
+        targetRoot: '',
+        counts: emptyCounts,
+        verified: { scenesChecked: 0, notesChecked: 0, mismatches: [] },
+      };
+    }
+    const report = runMythosVaultMigration({
+      sourceStoryVault: storyVaultRoot,
+      sourceNotesVault: notesVaultRoot,
+      targetRoot: suggestMigrationTarget(storyVaultRoot, notesVaultRoot),
+      layoutMode: getLayoutMode(),
+    });
+    if (report.ok) {
+      pendingMythosMigration = {
+        sourceStoryVault: storyVaultRoot,
+        storyVaultPath: report.storyVaultPath,
+        notesVaultPath: report.notesVaultPath,
+        targetRoot: report.targetRoot,
+      };
+    }
+    return {
+      ok: report.ok,
+      ...(report.error ? { error: report.error } : {}),
+      targetRoot: report.targetRoot,
+      counts: report.counts,
+      verified: report.verified,
+    };
+  },
+  [IPC_CHANNELS.MYTHOS_MIGRATION_CONFIRM]: async (): Promise<import('./ipc.js').MythosMigrationConfirmResponse> => {
+    const pending = pendingMythosMigration;
+    if (!pending || pending.sourceStoryVault !== getVaultRoot()) {
+      return { switched: false, error: 'No verified migration is awaiting confirmation.' };
+    }
+    if (!fs.existsSync(pending.storyVaultPath) || !fs.existsSync(pending.notesVaultPath)) {
+      return { switched: false, error: 'The migrated vault folder is missing.' };
+    }
+    pendingMythosMigration = null;
+    // Mirror project:switch — stop watchers/scheduler, close the DB, repoint
+    // settings, re-open. The ORIGINAL vault is left exactly as it was.
+    stopWritingScanScheduler();
+    await stopBoardWatcher();
+    await stopVaultWatcher();
+    await stopNotesVaultWatcher();
+    closeDb();
+    saveVaultSettings({
+      vaultRoot: pending.storyVaultPath,
+      notesVaultRoot: pending.notesVaultPath,
+    });
+    addToRecentProjects(pending.storyVaultPath, pending.notesVaultPath);
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    try {
+      const manifest = readManifest(getManifestPath());
+      const { manifest: synced } = reindexVault(pending.storyVaultPath, manifest);
+      writeManifest(getManifestPath(), synced);
+      try { buildFullIndex(getDb(), pending.storyVaultPath, synced); } catch { /* non-fatal */ }
+    } catch { /* non-fatal */ }
+    await startVaultWatcher(pending.storyVaultPath, notifyVaultChanged);
+    await startNotesVaultWatcher(pending.notesVaultPath, notifyNotesVaultChanged);
+    startWritingScanScheduler();
+    if (mainWindow) {
+      mainWindow.webContents.send('project:switched', {
+        vaultRoot: pending.storyVaultPath,
+        notesVaultRoot: pending.notesVaultPath,
+      });
+    }
+    return {
+      switched: true,
+      vaultRoot: pending.storyVaultPath,
+      notesVaultRoot: pending.notesVaultPath,
+    };
+  },
+  [IPC_CHANNELS.MYTHOS_MIGRATION_DISMISS]: (): import('./ipc.js').MythosMigrationDismissResponse => {
+    const key = path.resolve(getVaultRoot());
+    const current = loadVaultSettings().mythosMigrationDismissed ?? {};
+    if (!current[key]) {
+      saveVaultSettings({
+        mythosMigrationDismissed: { ...current, [key]: new Date().toISOString() },
+      });
+    }
+    return { dismissed: true };
   },
 
   // ─── Entity CRUD ───
@@ -3269,7 +3513,12 @@ const handlers: IpcHandlers = {
     const story = manifest.stories.find((s) => s.id === payload.storyId);
     if (!story) throw new Error(`Story not found: ${payload.storyId}`);
 
-    const dirPath = chapterVaultPath(getVaultRoot(), story.title, payload.title);
+    // M5 gate: v2 vaults create canonical `<Story>/Part N/Chapter NN` dirs;
+    // v0.4 keeps the legacy `Manuscript/<story-slug>/<chapter-slug>` layout.
+    const dirPath =
+      mythosRootForStoryVault(getVaultRoot()) !== null
+        ? nextV2ChapterRelPath(getVaultRoot(), story.path.split(/[\\/]/).filter(Boolean)[0] ?? story.path)
+        : chapterVaultPath(getVaultRoot(), story.title, payload.title);
     const fullDir = path.join(getVaultRoot(), dirPath);
     if (!fs.existsSync(fullDir)) fs.mkdirSync(fullDir, { recursive: true });
 
@@ -3296,7 +3545,12 @@ const handlers: IpcHandlers = {
     const chapter = story.chapters.find((c) => c.id === payload.chapterId);
     if (!chapter) throw new Error(`Chapter not found: ${payload.chapterId}`);
 
-    const filePath = sceneVaultPath(getVaultRoot(), chapter.path, payload.title);
+    // M5 gate: canonical `Scene NN.md` names inside canonical v2 chapters;
+    // slug-based names everywhere else (v0.4 vaults, non-canonical chapters).
+    const filePath =
+      mythosRootForStoryVault(getVaultRoot()) !== null && isCanonicalV2ChapterPath(chapter.path)
+        ? nextV2SceneRelPath(getVaultRoot(), chapter.path)
+        : sceneVaultPath(getVaultRoot(), chapter.path, payload.title);
     const nowStr = new Date().toISOString();
     const scene = {
       id: crypto.randomUUID(),
@@ -3450,10 +3704,15 @@ const handlers: IpcHandlers = {
     const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
     let priorProse: string | null = null;
     let existingCustomFields: Record<string, unknown> | undefined;
+    let existingPov: string | undefined;
     try {
       const prior = readSceneFile(getVaultRoot(), found.path);
       priorProse = prior.prose;
       existingCustomFields = prior.customFields;
+      // M5: `pov` is a spec'd v2 frontmatter field ({title,status,pov,when});
+      // preserve it across prose saves like the custom fields (it is a
+      // built-in key, so it never rides in customFields).
+      existingPov = prior.pov;
     } catch { /* new file — nothing to snapshot or preserve */ }
     if (priorProse !== null) {
       try {
@@ -3476,6 +3735,7 @@ const handlers: IpcHandlers = {
       chapterId: found.chapterId,
       storyId: found.storyId,
       order: found.order,
+      ...(existingPov ? { pov: existingPov } : {}),
       prose: payload.prose,
       customFields: mergedCustomFields,
     });

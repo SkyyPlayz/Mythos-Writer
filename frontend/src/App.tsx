@@ -3,6 +3,7 @@ import DesktopShell from './DesktopShell';
 import OnboardingWizard from './OnboardingWizard';
 import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
+import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import './App.css';
 
 type AppRoute =
@@ -118,6 +119,9 @@ function App() {
   return (
     <div className="root-layout">
       <DesktopShell initialSettings={'settings' in view ? view.settings : undefined} />
+      {/* Beta 4 M5: v0.4 → MythosVault upgrade prompt + wizard. Renders
+          nothing unless main detected a v0.4 twin-root vault on boot. */}
+      <MythosMigrationCenter />
     </div>
   );
 }

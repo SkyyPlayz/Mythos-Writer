@@ -857,10 +857,15 @@ function collectMarkdownFiles(dir: string, base = ''): string[] {
       if (entry.name.startsWith('.')) continue;
       // SKY-10: skip `versions/` — snapshot files are not scenes.
       if (entry.name === 'versions') continue;
+      // M5 (MythosVault v2): skip `drafts/` — numbered draft snapshots are
+      // history, not scenes (they would otherwise be adopted as orphans).
+      if (entry.name === 'drafts') continue;
       results.push(...collectMarkdownFiles(path.join(dir, entry.name), rel));
     } else if (entry.name.endsWith('.md')) {
       // SKY-10: chapter.md is metadata, not a scene.
       if (entry.name === CHAPTER_META_FILENAME) continue;
+      // M5 (MythosVault v2): book.md is compiled order + metadata, not a scene.
+      if (entry.name === 'book.md') continue;
       results.push(rel);
     }
   }
