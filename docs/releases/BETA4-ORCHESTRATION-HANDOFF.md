@@ -32,16 +32,13 @@ agent/team continuing that campaign.
   changes ran VR 7/7, 0 failures.)
 
 ### In flight — YOUR IMMEDIATE QUEUE
-1. **#910 (M4, workspace tabs = documents)** — branch `claude/beta4-m04`,
-   head `c3713e4` (the M3↔M4 merge resolution, PUSHED; fresh CI triggered).
-   The resolution's key semantic: **rail clicks never create tabs** —
-   `handleNavModuleChange` routes crafter→`handleSetView('kanban')`,
-   timeline→`handleSetView('timeline')`, graph→`handleNotesSubViewChange('graph')`
-   (M4's document-tab model owns the strip). Validated against a private
-   packaged harness of the merged tree: shell-relayout 12/12, TC-WA-26 green,
-   both unit suites green (3074 + 3782). **Your first action: arm auto-merge
-   (squash) on #910** — an API rate limit blocked me at handoff. If shard-3
-   fails on VR, follow the baseline loop below.
+1. **#910 (M4) — MERGED 2026-07-11 ~03:1x.** Wave 1 is COMPLETE (M1–M4) and
+   M5 is in. Nothing from Waves 0–2 (minus M6) remains open. Your queue is
+   now: (a) the VR-baselines-on-main check below, (b) the status-table docs
+   PR below, then (c) launch the next batch — M6, M7, M15, M16, and the M21
+   timeline chain first (longest path). Note for anyone touching the shell:
+   the merged rail semantics are **rail clicks never create tabs** —
+   crafter/timeline are Story sub-views, graph is the Notes graph sub-view.
 2. **#912 (M5, MythosVault keystone) — MERGED 2026-07-11 ~03:0x** (owner/team
    merged it right at handoff). Consequences: Wave 2+ milestones gated on M5
    are UNBLOCKED NOW (M6, M15, M16, and especially the M21 timeline chain).
