@@ -42,11 +42,12 @@ agent/team continuing that campaign.
    both unit suites green (3074 + 3782). **Your first action: arm auto-merge
    (squash) on #910** — an API rate limit blocked me at handoff. If shard-3
    fails on VR, follow the baseline loop below.
-2. **#912 (M5, MythosVault keystone)** — branch `claude/beta4-m05`, opened
-   green-validated, rebased onto post-Wave-1 main. **Arm auto-merge (squash)**
-   (same rate limit). If #910 merges first and #912 goes `dirty`, resolve the
-   same way (expect small overlaps in DesktopShell / settings types; M5 is
-   main-process-heavy so odds are low).
+2. **#912 (M5, MythosVault keystone) — MERGED 2026-07-11 ~03:0x** (owner/team
+   merged it right at handoff). Consequences: Wave 2+ milestones gated on M5
+   are UNBLOCKED NOW (M6, M15, M16, and especially the M21 timeline chain).
+   Check whether #910 went `dirty` against M5-main; if so resolve the same way
+   as the M3 pass (details above) — expect at most small overlaps in
+   DesktopShell / settings types.
    Post-merge follow-ups the M5 agent flagged: wire `e2e/mythos-migration.spec.ts`
    into a CI shard (one line in `.github/workflows/ci.yml`), and keep default
    onboarding on v0.4 format until M29 flips it.
