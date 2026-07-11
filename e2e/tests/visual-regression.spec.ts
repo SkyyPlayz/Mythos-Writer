@@ -201,6 +201,7 @@ async function assertMatchesBaseline(page: Page, name: string): Promise<number> 
   if (baseline.width !== current.width || baseline.height !== current.height) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, buf);
+    fs.writeFileSync(path.join(DIFF_DIR, `${name}-actual.png`), buf);
     const ratio = 1;
     console.warn(`  [VR] FAIL ${name}: viewport size changed (${current.width}x${current.height} vs ${baseline.width}x${baseline.height})`);
     return ratio;
@@ -218,6 +219,9 @@ async function assertMatchesBaseline(page: Page, name: string): Promise<number> 
   if (ratio > THRESHOLD) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, PNG.sync.write(diff));
+    // Also save the actual screenshot so CI artifacts can be promoted to baselines
+    const actualPath = path.join(DIFF_DIR, `${name}-actual.png`);
+    fs.writeFileSync(actualPath, buf);
     console.warn(
       `  [VR] FAIL ${name}: ${(ratio * 100).toFixed(3)}% diff (${mismatchedPixels} px) — threshold ${(THRESHOLD * 100).toFixed(2)}%`,
     );
@@ -400,6 +404,7 @@ test('VR-06 vault browser sidebar', async () => {
   if (baseline.width !== current.width || baseline.height !== current.height) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, buf);
+    fs.writeFileSync(path.join(DIFF_DIR, 'vault-sidebar-actual.png'), buf);
     expect(false, `vault-sidebar: viewport size changed (${current.width}x${current.height} vs ${baseline.width}x${baseline.height})`).toBe(true);
     return;
   }
@@ -416,6 +421,7 @@ test('VR-06 vault browser sidebar', async () => {
   if (ratio > THRESHOLD) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, PNG.sync.write(diff));
+    fs.writeFileSync(path.join(DIFF_DIR, 'vault-sidebar-actual.png'), buf);
     console.warn(`  [VR] FAIL vault-sidebar: ${(ratio * 100).toFixed(3)}% — diff → ${path.relative(process.cwd(), diffPath)}`);
   } else {
     console.log(`  [VR] PASS vault-sidebar: ${(ratio * 100).toFixed(3)}% diff`);
