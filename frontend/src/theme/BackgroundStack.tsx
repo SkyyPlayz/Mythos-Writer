@@ -21,9 +21,18 @@ function resolveAmbColor(color: AmbienceColor, slots: LiquidNeonV2Settings['slot
 export function ambienceLayerStyle(settings: Partial<LiquidNeonV2Settings> | null | undefined, i: 0 | 1): CSSProperties | null {
   const S = normalizeLiquidNeonV2(settings);
   const preset = LIQUID_NEON_PRESETS[S.setKey as LiquidNeonPresetKey];
-  const ac = preset?.ambience;
+  let ac = preset?.ambience;
   if (!ac) return null; // `custom` palettes have no ambience (prototype 4662–4667)
-  const color = resolveAmbColor(ac.colors[i], S.slots);
+  // Beta 4 M1 — Background animation card (prototype ambMode 6793–6798):
+  // `off` removes the layers; Snowfall/Rising force the field's direction.
+  const ambMode = S.ambMode || 'match';
+  if (ambMode === 'off') return null;
+  if (ambMode === 'snow') ac = { ...ac, anim: 'lnSnow', dur: [22, 34] };
+  else if (ambMode === 'rise') ac = { ...ac, anim: 'lnRise', dur: [26, 40] };
+  // Particle color override (prototype 6799) — else theme-matched.
+  const color = S.ambColor
+    ? hexA(S.ambColor, i ? .45 : .65)
+    : resolveAmbColor(ac.colors[i], S.slots);
   return {
     inset: '-72vh 0 -72vh 0',
     willChange: 'transform',
@@ -31,7 +40,8 @@ export function ambienceLayerStyle(settings: Partial<LiquidNeonV2Settings> | nul
       'radial-gradient(' + (ac.dot[0] * (i ? .7 : 1)).toFixed(1) + 'px ' + (ac.dot[1] * (i ? .7 : 1)).toFixed(1) + 'px at 25% 30%,' + color + ',transparent 100%),' +
       'radial-gradient(' + (ac.dot[0] * (i ? .55 : .8)).toFixed(1) + 'px ' + (ac.dot[1] * (i ? .55 : .8)).toFixed(1) + 'px at 65% 72%,' + color + ',transparent 100%)',
     backgroundSize: (i ? '150px 150px' : '230px 230px') + ',' + (i ? '110px 110px' : '190px 190px'),
-    animation: ac.anim + 'T ' + ac.dur[i] + 's linear infinite',
+    // Drift speed % (prototype 6803): 100 = preset speed; 200 = twice as fast.
+    animation: ac.anim + 'T ' + (ac.dur[i] * 100 / (S.ambSpeed || 100)).toFixed(1) + 's linear infinite',
     opacity: ac.op[i],
   };
 }

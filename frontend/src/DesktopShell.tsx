@@ -6,7 +6,8 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import { applyLiquidNeonV2Tokens, vaultDefaultThemePatch, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import { deriveVaultDisplayName } from './ProjectSwitcher';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -831,10 +832,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
-  const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
+  // Beta 4 M1: set by the two project-switch paths right before loadVault so
+  // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
+  const pendingVaultThemeRootRef = useRef<string | null>(null);
   const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
@@ -1442,6 +1445,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Beta 4 M1: consume the pending vault-switch marker synchronously so a
+    // second concurrent loadVault (main push + local handler) can't re-apply.
+    const switchedVaultRoot = pendingVaultThemeRootRef.current;
+    pendingVaultThemeRootRef.current = null;
     let cachedSettings: AppSettings | null = null;
     try {
       const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
@@ -1612,9 +1619,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           applyLiquidNeonTokens(lg);
         }
-        // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
-        // v1 axis tokens so v2 values win where both define a property.
-        void applyLiquidNeonV2Theme(s.liquidNeonV2);
+        // Beta 4 M1: per-vault default theme — when this reload came from a
+        // vault switch and the target vault stores a default, apply it
+        // (setKey + slots + wp per prototype 7111), persist, and toast.
+        const vaultPatch = switchedVaultRoot
+          ? vaultDefaultThemePatch(s.vaultThemes, s.liquidNeonV2, switchedVaultRoot)
+          : null;
+        if (vaultPatch && switchedVaultRoot) {
+          const themed = { ...s, liquidNeonV2: vaultPatch.liquidNeonV2 } as AppSettings;
+          cachedSettings = themed;
+          setAppSettings(themed);
+          window.api.settingsSet(themed).catch(() => {});
+          void applyLiquidNeonV2Theme(vaultPatch.liquidNeonV2);
+          showLnToast(
+            'Switched Mythos vault — '
+            + deriveVaultDisplayName({ vaultRoot: switchedVaultRoot, notesVaultRoot: notesPath || undefined })
+            + ' · ' + vaultPatch.presetName + ' theme',
+          );
+        } else {
+          // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
+          // v1 axis tokens so v2 values win where both define a property.
+          void applyLiquidNeonV2Theme(s.liquidNeonV2);
+        }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
@@ -1728,6 +1754,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api?.onProjectSwitched) return;
     const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
       setActiveVaultRoot(data.vaultRoot);
       // Reset selection state and reload vault content
       setSelectedScene(null);
@@ -1742,6 +1769,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [loadVault]);
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
     setActiveVaultRoot(vaultRoot);
     setSelectedScene(null);
     setSelectedChapter(null);
@@ -2946,7 +2974,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(story);
     setSelectedEntity(null);
     setOpenedNotePath(null);
-    setVaultContext('file');
     editorApiRef.current?.focus();
     setTimeout(() => {
       if (document.activeElement?.classList.contains('vb-rename-input')) return;
@@ -3070,14 +3097,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
 
-  // SKY-127: Update window chrome neon border context based on selected vault item
-  useEffect(() => {
-    if (vaultContext) {
-      document.documentElement.setAttribute('data-context', vaultContext);
-    } else {
-      document.documentElement.removeAttribute('data-context');
-    }
-  }, [vaultContext]);
+  // Beta 4 M1: the SKY-127 data-context window-ring effect is deleted with the
+  // html frame ring (§3: no neon window frame ring around the app).
 
   // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
   useEffect(() => {
@@ -3431,7 +3452,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onCreateChapter={createChapter}
             onCreateScene={createScene}
             onOpenFile={handleOpenSceneByPath}
-            onContextChange={setVaultContext}
             onExport={(scope: ExportScope) => setExportScope(scope)}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
             onBetaRead={betaReadNote}
@@ -3530,7 +3550,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleSelectScene, setViewDepth, createStory, createChapter, createScene,
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
-    handleOpenSceneByPath, handleOpenGraphScene, setVaultContext, setExportScope, appSettings,
+    handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,

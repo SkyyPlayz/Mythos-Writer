@@ -1988,6 +1988,8 @@ export interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** Beta 3 Liquid Neon v2 slot engine — renderer-owned shape; main persists it opaquely. */
   liquidNeonV2?: Record<string, unknown>;
+  /** Beta 4 M1: per-vault default theme — Story Vault root → preset key; renderer-owned. */
+  vaultThemes?: Record<string, string>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-130: last-opened scene for cross-restart restore. */

@@ -227,3 +227,14 @@
     opacity: 0.6;
   }
 }
+
+/* ═══ Beta 4 M1 — Button text color (Appearance → Interface) ═══
+   The v2 theme engine stamps `data-ln-btn-text` on <html> and sets --btn-text
+   ONLY when the user picks a custom color, so the variant colors above keep
+   owning the defaults. Placed last so it wins the same-specificity race
+   against the variant hover rules. */
+:root[data-ln-btn-text] .btn,
+:root[data-ln-btn-text] .btn:hover,
+:root[data-ln-btn-text] .settings-btn {
+  color: var(--btn-text);
+}

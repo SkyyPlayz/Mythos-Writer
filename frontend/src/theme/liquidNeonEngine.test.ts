@@ -9,8 +9,12 @@ import {
   resetLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
   wallpaperCss,
+  exportLiquidNeonPreset,
+  parseLiquidNeonPreset,
+  vaultDefaultThemePatch,
   LIQUID_NEON_V2_DEFAULTS,
 } from './liquidNeonEngine';
+import { contrastRatio } from '../theme';
 import { LIQUID_NEON_PRESETS } from './presets';
 
 const COSMIC = '/assets/cosmic-bg.webp';
@@ -143,5 +147,149 @@ describe('apply/reset', () => {
     expect(el.style.getPropertyValue('--n1')).toBe('#00f0ff');
     resetLiquidNeonV2Tokens(el);
     expect(el.style.getPropertyValue('--n1')).toBe('');
+  });
+});
+
+// ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
+
+describe('preset import/export (§3; prototype 7191–7192)', () => {
+  it('export → import round-trips slots, setKey, wp, ambMode, frameAnim (§14.9 #9)', () => {
+    const json = exportLiquidNeonPreset({
+      setKey: 'cyber',
+      slots: [...LIQUID_NEON_PRESETS.cyber.c],
+      wp: 'deep',
+      ambMode: 'snow',
+      frameAnim: 'cycle',
+      intensity: 90, // NOT part of the preset payload
+    });
+    const parsed = parseLiquidNeonPreset(json)!;
+    expect(parsed).toEqual({
+      slots: [...LIQUID_NEON_PRESETS.cyber.c],
+      setKey: 'cyber',
+      wp: 'deep',
+      ambMode: 'snow',
+      frameAnim: 'cycle',
+    });
+  });
+
+  it('export contains exactly the five preset keys', () => {
+    const obj = JSON.parse(exportLiquidNeonPreset(null));
+    expect(Object.keys(obj).sort()).toEqual(['ambMode', 'frameAnim', 'setKey', 'slots', 'wp']);
+  });
+
+  it('invalid JSON → null (caller toasts, no crash)', () => {
+    expect(parseLiquidNeonPreset('not json {')).toBeNull();
+    expect(parseLiquidNeonPreset('')).toBeNull();
+    expect(parseLiquidNeonPreset('42')).toBeNull();
+    expect(parseLiquidNeonPreset('[1,2,3]')).toBeNull();
+    expect(parseLiquidNeonPreset('null')).toBeNull();
+  });
+
+  it('valid JSON with none of the five keys → null', () => {
+    expect(parseLiquidNeonPreset('{"foo":"bar"}')).toBeNull();
+  });
+
+  it('garbage-typed fields are dropped, valid ones survive', () => {
+    const parsed = parseLiquidNeonPreset(JSON.stringify({
+      slots: 'nope',
+      setKey: 'not-a-preset',
+      wp: 'deep',
+      ambMode: 12,
+      frameAnim: 'sparkle',
+    }))!;
+    expect(parsed).toEqual({ wp: 'deep', frameAnim: 'sparkle' });
+  });
+
+  it('slots must be six #rrggbb strings', () => {
+    expect(parseLiquidNeonPreset(JSON.stringify({ slots: ['#fff', '#000', '#111', '#222', '#333'] }))).toBeNull();
+    expect(parseLiquidNeonPreset(JSON.stringify({ slots: ['red', '#000000', '#111111', '#222222', '#333333', '#444444'] }))).toBeNull();
+  });
+});
+
+describe('per-vault default theme (§3; prototype cardH 7111)', () => {
+  it('returns setKey + slots + wp:match for the stored preset', () => {
+    const res = vaultDefaultThemePatch(
+      { '/vaults/A/Story Vault': 'ice' },
+      { setKey: 'classic', wp: 'deep', intensity: 80 },
+      '/vaults/A/Story Vault',
+    )!;
+    expect(res.presetName).toBe('Ice Mono');
+    expect(res.liquidNeonV2.setKey).toBe('ice');
+    expect(res.liquidNeonV2.slots).toEqual([...LIQUID_NEON_PRESETS.ice.c]);
+    expect(res.liquidNeonV2.wp).toBe('match');
+    // The rest of the settings survive the switch.
+    expect(res.liquidNeonV2.intensity).toBe(80);
+  });
+
+  it('null when the vault has no stored default or the key is unknown', () => {
+    expect(vaultDefaultThemePatch(undefined, null, '/x')).toBeNull();
+    expect(vaultDefaultThemePatch({}, null, '/x')).toBeNull();
+    expect(vaultDefaultThemePatch({ '/x': 'not-a-preset' }, null, '/x')).toBeNull();
+    expect(vaultDefaultThemePatch({ '/y': 'ice' }, null, '/x')).toBeNull();
+  });
+});
+
+describe('Interface card engine hooks (Beta 4 M1)', () => {
+  it('density stamps data-ln-density (comfortable = absent) and reset clears it', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ density: 'compact' }, COSMIC, el);
+    expect(el.getAttribute('data-ln-density')).toBe('compact');
+    applyLiquidNeonV2Tokens({ density: 'cozy' }, COSMIC, el);
+    expect(el.getAttribute('data-ln-density')).toBe('cozy');
+    applyLiquidNeonV2Tokens({ density: 'comfortable' }, COSMIC, el);
+    expect(el.hasAttribute('data-ln-density')).toBe(false);
+    applyLiquidNeonV2Tokens({ density: 'compact' }, COSMIC, el);
+    resetLiquidNeonV2Tokens(el);
+    expect(el.hasAttribute('data-ln-density')).toBe(false);
+  });
+
+  it("ambMode 'off' stamps data-ln-amb so the mote layers hide live", () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ ambMode: 'off' }, COSMIC, el);
+    expect(el.getAttribute('data-ln-amb')).toBe('off');
+    applyLiquidNeonV2Tokens({ ambMode: 'match' }, COSMIC, el);
+    expect(el.hasAttribute('data-ln-amb')).toBe(false);
+    applyLiquidNeonV2Tokens({ ambMode: 'off' }, COSMIC, el);
+    resetLiquidNeonV2Tokens(el);
+    expect(el.hasAttribute('data-ln-amb')).toBe(false);
+  });
+
+  it('reduceMotion toggles the ln-reduce-motion kill switch class (§14.9 #9)', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ reduceMotion: true }, COSMIC, el);
+    expect(el.classList.contains('ln-reduce-motion')).toBe(true);
+    applyLiquidNeonV2Tokens({ reduceMotion: false }, COSMIC, el);
+    expect(el.classList.contains('ln-reduce-motion')).toBe(false);
+    applyLiquidNeonV2Tokens({ reduceMotion: true }, COSMIC, el);
+    resetLiquidNeonV2Tokens(el);
+    expect(el.classList.contains('ln-reduce-motion')).toBe(false);
+  });
+
+  it('default uiTextCol emits no text tokens (v1 clamped values keep owning them)', () => {
+    const t = compute();
+    expect(t['--text-body']).toBeUndefined();
+    expect(t['--btn-text']).toBeUndefined();
+  });
+
+  it('CF-6: a custom app text color is hard-clamped to ≥ 4.5:1 against the glass base', () => {
+    const t = compute({ uiTextCol: '#222222' }); // fails badly on dark glass
+    expect(t['--text-body']).toBeDefined();
+    expect(contrastRatio(t['--text-body'], '#0d101c')).toBeGreaterThanOrEqual(4.5);
+    expect(t['--text-secondary']).toBe(t['--text-body']);
+  });
+
+  it('a passing custom app text color is kept verbatim', () => {
+    const t = compute({ uiTextCol: '#ffffff' });
+    expect(t['--text-body']).toBe('#ffffff');
+  });
+
+  it('custom button text emits --btn-text + the opt-in attribute; default clears both', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ uiBtnCol: '#0b0d17' }, COSMIC, el);
+    expect(el.style.getPropertyValue('--btn-text')).toBe('#0b0d17');
+    expect(el.hasAttribute('data-ln-btn-text')).toBe(true);
+    applyLiquidNeonV2Tokens({}, COSMIC, el);
+    expect(el.style.getPropertyValue('--btn-text')).toBe('');
+    expect(el.hasAttribute('data-ln-btn-text')).toBe(false);
   });
 });
