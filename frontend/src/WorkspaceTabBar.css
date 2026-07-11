@@ -142,6 +142,23 @@
   box-shadow: 0 0 6px var(--n1, #00f0ff);
 }
 
+/* Beta 4 M4: static view pseudo-tab on non-document views (prototype ~5713:
+   slot-B border/glow, purple dot, not closable, no pointer affordance). */
+.wtb-tab--static,
+.wtb-tab--static:hover {
+  cursor: default;
+  padding: 0 12px;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .5));
+  border-bottom: none;
+  box-shadow: 0 -6px 18px -8px var(--g2, rgba(155, 95, 255, .4));
+}
+
+.wtb-tab--static .wtb-tab-dot,
+.wtb-tab-dot--static {
+  background: var(--n2, #9b5fff);
+  box-shadow: 0 0 6px var(--n2, #9b5fff);
+}
+
 /* Label (prototype 148) */
 .wtb-tab-label {
   white-space: nowrap;

@@ -3,8 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import WorkspaceTabBar, { WORKSPACE_TAB_DRAG_MIME } from './WorkspaceTabBar';
 
 const tabs: WorkspaceTab[] = [
-  { id: 'tab-story', kind: 'story-editor', title: 'Story', icon: '📖' },
-  { id: 'tab-graph', kind: 'vault-graph', title: 'Graph', icon: '🕸️' },
+  { id: 'tab-story', kind: 'scene', title: 'Story', icon: '📄', docId: 'sc-story' },
+  { id: 'tab-graph', kind: 'note', title: 'Graph', icon: '📝', docPath: 'Notes/Graph.md' },
 ];
 
 function makeProps(overrides: Partial<Parameters<typeof WorkspaceTabBar>[0]> = {}) {
@@ -19,8 +19,8 @@ function makeProps(overrides: Partial<Parameters<typeof WorkspaceTabBar>[0]> = {
   };
 }
 
-describe('WorkspaceTabBar split-pane hooks (GH#643)', () => {
-  it('sets the workspace-tab drag payload on dragstart', () => {
+describe('WorkspaceTabBar split-pane hooks (GH#643 → Beta 4 M4)', () => {
+  it('sets the workspace-tab drag payload (with document identity) on dragstart', () => {
     render(<WorkspaceTabBar {...makeProps()} />);
     const setData = vi.fn();
     fireEvent.dragStart(screen.getByRole('tab', { name: /Graph/ }), {
@@ -28,7 +28,13 @@ describe('WorkspaceTabBar split-pane hooks (GH#643)', () => {
     });
     expect(setData).toHaveBeenCalledWith(
       WORKSPACE_TAB_DRAG_MIME,
-      JSON.stringify({ id: 'tab-graph', kind: 'vault-graph' }),
+      JSON.stringify({
+        id: 'tab-graph',
+        kind: 'note',
+        docId: null,
+        docPath: 'Notes/Graph.md',
+        title: 'Graph',
+      }),
     );
   });
 

@@ -4,6 +4,10 @@
  * Beta 3 M6: Liquid Neon restyle (prototype HTML 136–165 + renderVals tab logic
  * ~4013–4044): glass strip, neon active tab, right-click context menu
  * (Open to the side / Pop out into new window / Close tab), agents status chip.
+ * Beta 4 M4 (§4): tabs are documents — the last tab is not closable (prototype
+ * `closable: tabIds.length > 1`), drags carry the document identity for the
+ * shell's split drop zones, `+` creates a provisional scene (§1.5), and
+ * non-document views render a single static pseudo-tab (prototype ~5713).
  *
  * Standalone component; wired into DesktopShell by PE-C (SKY-3098).
  * AC-LN-06: X closes immediately, no popover. Active-tab close selects left neighbor.
@@ -18,7 +22,7 @@ export interface WorkspaceTabBarProps {
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
   onTabReorder: (fromIndex: number, toIndex: number) => void;
-  /** Called when the + button is clicked; parent shows a content picker overlay. */
+  /** Beta 4 M4 (§1.5): the + button creates a provisional scene in the shell. */
   onNewTab: () => void;
   /** GH#643 split panes: Shift+click / Shift+Enter on a tab opens it in the split pane. */
   onTabOpenInSplit?: (tabId: string) => void;
@@ -26,6 +30,15 @@ export interface WorkspaceTabBarProps {
   onTabPopOut?: (tabId: string) => void;
   /** Beta3 M6: agents status chip; false shows the prototype "All agents idle" state. */
   agentsActive?: boolean;
+  /** Beta 4 M4: notifies the shell a tab drag started so it can mount the
+   * split drop zones (drag DOWN/RIGHT → split pane, §4). Cleared by the
+   * shell's document-level dragend/drop listeners. */
+  onTabDragStart?: (tab: WorkspaceTab) => void;
+  /** Beta 4 M4: render a single non-interactive view pseudo-tab instead of
+   * document tabs (Scene Crafter/Entities — prototype tabList fallback). */
+  staticTabLabel?: string;
+  /** Tooltip for the + button (prototype 512). */
+  newTabTitle?: string;
 }
 
 /** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
@@ -41,6 +54,9 @@ export default function WorkspaceTabBar({
   onTabOpenInSplit,
   onTabPopOut,
   agentsActive = false,
+  onTabDragStart,
+  staticTabLabel,
+  newTabTitle = 'New blank scene — it only saves once you type',
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -198,16 +214,22 @@ export default function WorkspaceTabBar({
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     dragSrcIndex.current = index;
     setDraggingIndex(index);
+    const tab = tabs[index];
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
-      // GH#643: carry the tab identity so drop targets outside this bar
-      // (the shell's split-pane drop zone) can act on it. Feature-detected —
+      // GH#643→M4: carry the document identity so drop targets outside this
+      // bar (the shell's split drop zones) can act on it. Feature-detected —
       // jsdom fireEvent stubs often omit setData.
-      const tab = tabs[index];
       if (tab && typeof e.dataTransfer.setData === 'function') {
         e.dataTransfer.setData(
           WORKSPACE_TAB_DRAG_MIME,
-          JSON.stringify({ id: tab.id, kind: tab.kind }),
+          JSON.stringify({
+            id: tab.id,
+            kind: tab.kind,
+            docId: tab.docId ?? null,
+            docPath: tab.docPath ?? null,
+            title: tab.title,
+          }),
         );
       }
       // Blank drag image (same pattern as DockedTabBar)
@@ -216,7 +238,10 @@ export default function WorkspaceTabBar({
         'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
       e.dataTransfer.setDragImage(blank, 0, 0);
     }
-  }, [tabs]);
+    // M4: dataTransfer payloads are unreadable during dragover, so the shell
+    // captures the dragged tab up front for its drop-zone highlight/label.
+    if (tab) onTabDragStart?.(tab);
+  }, [tabs, onTabDragStart]);
 
   const handleDragEnd = useCallback(() => {
     dragSrcIndex.current = null;
@@ -249,18 +274,32 @@ export default function WorkspaceTabBar({
 
   const menuTab = ctxMenu === null ? undefined : tabs.find((t) => t.id === ctxMenu.tabId);
 
+  // Beta 4 M4: the last document tab is not closable (prototype
+  // `closable: tabIds.length > 1`) — an empty strip would orphan the editor.
+  const closable = tabs.length > 1;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="wtb-root" role="tablist" aria-label="Workspace tabs" ref={rootRef}>
       {/* SKY-5704: scrollable strip so overflow tabs stay reachable without
           pushing the pinned + button off-screen. */}
       <div
-        className={['wtb-tabs-scroll', tabs.length === 0 ? 'wtb-tabs-scroll--empty' : '']
+        className={['wtb-tabs-scroll', tabs.length === 0 && !staticTabLabel ? 'wtb-tabs-scroll--empty' : '']
           .filter(Boolean)
           .join(' ')}
         onScroll={() => setCtxMenu(null)}
       >
-        {tabs.map((tab, i) => {
+        {/* Beta 4 M4: non-document views show the view name as a single static
+            pseudo-tab (prototype tabList fallback, ~5713). */}
+        {staticTabLabel && (
+          <div className="wtb-tab-slot wtb-tab-slot--active wtb-tab-slot--static">
+            <div className="wtb-tab wtb-tab--active wtb-tab--static" data-testid="wtb-static-tab">
+              <span className="wtb-tab-dot wtb-tab-dot--static" aria-hidden="true" />
+              <span className="wtb-tab-label">{staticTabLabel}</span>
+            </div>
+          </div>
+        )}
+        {!staticTabLabel && tabs.map((tab, i) => {
           const isActive = tab.id === activeTabId;
           return (
             /*
@@ -305,31 +344,35 @@ export default function WorkspaceTabBar({
                 onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
                 onKeyDown={(e) => handleTabKeyDown(e, i)}
                 title={onTabOpenInSplit ? `${tab.title} (Shift+click: open in split pane)` : tab.title}
+                data-status={tab.status}
+                data-provisional={tab.provisional || undefined}
               >
                 {/* Prototype 147: neon status dot — cyan on the active tab. */}
                 <span className="wtb-tab-dot" aria-hidden="true" />
                 <span className="wtb-tab-label">{tab.title}</span>
               </button>
 
-              <button
-                className="wtb-tab-close"
-                aria-label={`Close ${tab.title}`}
-                tabIndex={-1}
-                onClick={() => handleClose(tab.id)}
-              >
-                {/* Prototype 151: 9px rounded X */}
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 12 12"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  aria-hidden="true"
+              {closable && (
+                <button
+                  className="wtb-tab-close"
+                  aria-label={`Close ${tab.title}`}
+                  tabIndex={-1}
+                  onClick={() => handleClose(tab.id)}
                 >
-                  <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
-                </svg>
-              </button>
+                  {/* Prototype 151: 9px rounded X */}
+                  <svg
+                    width="9"
+                    height="9"
+                    viewBox="0 0 12 12"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}
@@ -338,7 +381,7 @@ export default function WorkspaceTabBar({
       <button
         className="wtb-new-tab-btn"
         aria-label="Open new tab"
-        title="New tab"
+        title={newTabTitle}
         onClick={onNewTab}
         data-testid="wtb-new-tab-btn"
       >

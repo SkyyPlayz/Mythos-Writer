@@ -1,0 +1,53 @@
+/* Beta 4 M4: tab-drag split drop zones (prototype 3686–3700).
+ * Anchored to .desktop-shell__body (position: relative). Zones are invisible
+ * until hovered mid-drag; the active state uses the prototype's slot-B accent
+ * fill + border, with a centered doc chip. */
+
+.wsdz-zone {
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  pointer-events: auto;
+}
+
+/* RIGHT = right 44% of the workspace (§4). Starts below the 40px tab strip so
+   in-strip reorder drags never collide with the zone. */
+.wsdz-zone--right {
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  width: 44%;
+}
+
+/* DOWN = lower 45% of the workspace (§4). Higher z-index so the bottom-right
+   overlap resolves to "down" (prototype zoneOf checks down first). */
+.wsdz-zone--down {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 45%;
+  z-index: 81;
+}
+
+.wsdz-zone--active {
+  background: var(--gs2, rgba(155, 95, 255, .22));
+  border-color: var(--b2, rgba(155, 95, 255, .55));
+}
+
+/* Doc chip (prototype 3689) */
+.wsdz-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 9px;
+  background: rgba(15, 19, 33, .92);
+  border: 1px solid var(--b2, rgba(155, 95, 255, .55));
+  font-size: 12px;
+  color: #e6ecf9;
+  pointer-events: none;
+}

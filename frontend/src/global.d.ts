@@ -549,12 +549,20 @@ interface AppSettings {
     tabShell?: AppTabShellState;
     /** SKY-3098 (v0.3): nav rail collapsed state. */
     navRailCollapsed?: boolean;
-    /** SKY-3098 (v0.3): workspace tab bar tabs. */
+    /** SKY-3098 (v0.3): workspace tab bar tabs (≤Beta 3 module mirrors — ignored since Beta 4 M4). */
     workspaceTabs?: WorkspaceTab[];
-    /** SKY-3098 (v0.3): active workspace tab id. */
+    /** SKY-3098 (v0.3): active workspace tab id (≤Beta 3 — ignored since Beta 4 M4). */
     activeWorkspaceTabId?: string | null;
     /** GH#643: right-hand workspace split pane (drag a tab to the screen edge). */
     workspaceSplitPane?: { kind: WorkspaceTabKind } | null;
+    /** Beta 4 M4: Story-strip document tabs (kind 'scene'; provisional tabs never persist). */
+    storyDocTabs?: WorkspaceTab[];
+    /** Beta 4 M4: active Story-strip document tab id. */
+    activeStoryDocTabId?: string | null;
+    /** Beta 4 M4: Notes-strip document tabs (kind 'note'). */
+    notesDocTabs?: WorkspaceTab[];
+    /** Beta 4 M4: active Notes-strip document tab id. */
+    activeNotesDocTabId?: string | null;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──
@@ -632,8 +640,11 @@ interface DockedTab {
   panels: SidebarPanelId[];
 }
 
-/** SKY-3097 (v0.3): Content kind for a workspace tab. */
-type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm';
+/** SKY-3097 (v0.3): Content kind for a workspace tab.
+ * Beta 4 M4 (§4): tabs are documents — 'scene' and 'note' are the document
+ * kinds shown in the strip; the module kinds remain only for the legacy
+ * right-hand WorkspaceSplitPane restore path and old persisted layouts. */
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm' | 'scene' | 'note';
 
 /** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
 interface WorkspaceTab {
@@ -646,6 +657,12 @@ interface WorkspaceTab {
   /** Vault-relative path for editor tabs. */
   docPath?: string;
   storyId?: string;
+  /** Beta 4 M4: document identity — the scene id for kind 'scene' (notes use docPath). */
+  docId?: string;
+  /** Beta 4 M4: scene status derived from draftState (todo | draft | done). */
+  status?: 'todo' | 'draft' | 'done';
+  /** Beta 4 M4 (§1.5): provisional scene tab — nothing persists until the first keystroke. */
+  provisional?: boolean;
 }
 
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */

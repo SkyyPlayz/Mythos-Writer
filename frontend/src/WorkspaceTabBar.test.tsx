@@ -118,17 +118,15 @@ describe('WorkspaceTabBar tab close (AC-LN-06)', () => {
     expect(onTabClose).toHaveBeenCalledWith('tab-a');
   });
 
-  it('does not call onTabSelect when closing the only active tab', () => {
-    const onTabClose = vi.fn();
-    const onTabSelect = vi.fn();
-    render(
-      <WorkspaceTabBar
-        {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a', onTabClose, onTabSelect })}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Close Chapter One' }));
-    expect(onTabSelect).not.toHaveBeenCalled();
-    expect(onTabClose).toHaveBeenCalledWith('tab-a');
+  it('Beta 4 M4: the last remaining tab shows no close button (prototype closable rule)', () => {
+    render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a' })} />);
+    expect(screen.queryByRole('button', { name: 'Close Chapter One' })).toBeNull();
+  });
+
+  it('Beta 4 M4: close buttons appear as soon as there is more than one tab', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    expect(screen.getByRole('button', { name: 'Close Chapter One' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Close Chapter Two' })).toBeTruthy();
   });
 });
 
@@ -483,6 +481,46 @@ describe('WorkspaceTabBar context menu (M6)', () => {
     fireEvent.contextMenu(screen.getByRole('tab', { name: 'Chapter One' }));
     fireEvent.mouseDown(document.body);
     expect(screen.queryByTestId('wtb-tab-context-menu')).toBeNull();
+  });
+});
+
+// ── Beta 4 M4: document-tab strip behaviors ───────────────────────────────────
+
+describe('WorkspaceTabBar document tabs (Beta 4 M4)', () => {
+  it('notifies the shell when a tab drag starts (split drop zones)', () => {
+    const onTabDragStart = vi.fn();
+    const sceneTab: WorkspaceTab = {
+      id: 'tab-sc',
+      kind: 'scene',
+      title: 'Into the Undercity',
+      icon: '📄',
+      docId: 'sc-1',
+      status: 'draft',
+    };
+    render(<WorkspaceTabBar {...defaultProps({ tabs: [sceneTab, TAB_B], onTabDragStart })} />);
+    fireEvent.dragStart(screen.getByRole('tab', { name: /Into the Undercity/ }), { dataTransfer: makeDT() });
+    expect(onTabDragStart).toHaveBeenCalledWith(sceneTab);
+  });
+
+  it('renders the static view pseudo-tab instead of document tabs', () => {
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({ tabs: [], activeTabId: null, staticTabLabel: 'Scene Crafter' })}
+      />,
+    );
+    const staticTab = screen.getByTestId('wtb-static-tab');
+    expect(staticTab).toHaveTextContent('Scene Crafter');
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    // The + (provisional scene) and agents chip stay visible (prototype 512+).
+    expect(screen.getByTestId('wtb-new-tab-btn')).toBeTruthy();
+    expect(screen.getByTestId('wtb-agents-chip')).toBeTruthy();
+  });
+
+  it('titles the + button with the provisional-scene hint (§1.5)', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    expect(screen.getByTestId('wtb-new-tab-btn').getAttribute('title')).toBe(
+      'New blank scene — it only saves once you type',
+    );
   });
 });
 
