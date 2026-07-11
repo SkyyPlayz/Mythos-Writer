@@ -759,3 +759,189 @@
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* ─── Notes Vault header (vault switcher + search) per §6 ─── */
+
+.vb-notes-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+.vb-vault-switcher {
+  background: var(--glass-fill-fallback, rgba(20, 22, 32, 0.8));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-body, #c8d3e7);
+  font-size: var(--text-xs, 0.75rem);
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: border-color 80ms ease, background 80ms ease;
+}
+
+.vb-vault-switcher:hover {
+  border-color: var(--glass-highlight-border, rgba(255,255,255,0.12));
+  background: var(--glass-highlight, rgba(255,255,255,0.04));
+}
+
+.vb-vault-switcher:focus {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: -1px;
+}
+
+.vb-search-field {
+  background: var(--glass-fill-fallback, rgba(20, 22, 32, 0.8));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-body, #c8d3e7);
+  font-size: var(--text-xs, 0.75rem);
+  padding: 6px 8px;
+  transition: border-color 80ms ease, background 80ms ease;
+}
+
+.vb-search-field::placeholder {
+  color: var(--text-muted, rgba(255,255,255,0.35));
+}
+
+.vb-search-field:hover {
+  border-color: var(--glass-highlight-border, rgba(255,255,255,0.12));
+}
+
+.vb-search-field:focus {
+  outline: none;
+  border-color: var(--neon-cyan, #00f0ff);
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.1);
+}
+
+/* ─── Explorer toolbar per §6 ─── */
+
+.vb-explorer-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+.vb-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs, 4px);
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  cursor: pointer;
+  transition: color 80ms ease, background 80ms ease, border-color 80ms ease;
+}
+
+.vb-toolbar-btn:hover {
+  color: var(--text-body, #c8d3e7);
+  background: var(--glass-highlight, rgba(255,255,255,0.08));
+  border-color: var(--glass-highlight-border, rgba(255,255,255,0.12));
+}
+
+.vb-toolbar-btn:active {
+  transform: scale(0.95);
+  transition-duration: 40ms;
+}
+
+.vb-toolbar-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: -2px;
+}
+
+.vb-toolbar-btn.vb-toolbar-active {
+  color: var(--neon-cyan, #00f0ff);
+  background: rgba(0, 240, 255, 0.1);
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.vb-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ─── Notes tree container ─── */
+
+.vb-notes-tree-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ─── RECENT list per §6 ─── */
+
+.vb-recent-list {
+  border-top: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+}
+
+.vb-recent-label {
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  padding: 6px 10px 4px 10px;
+  background: var(--glass-fill-fallback, rgba(15, 19, 33, 0.5));
+}
+
+.vb-recent-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.vb-recent-item {
+  display: flex;
+}
+
+.vb-recent-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-body, #c8d3e7);
+  font-size: var(--text-xs, 0.75rem);
+  border-radius: var(--radius-xs, 3px);
+  transition: background 80ms ease;
+  min-height: 28px;
+}
+
+.vb-recent-btn:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.08));
+}
+
+.vb-recent-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan, #00f0ff);
+  outline-offset: -2px;
+}
+
+.vb-recent-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.vb-recent-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
