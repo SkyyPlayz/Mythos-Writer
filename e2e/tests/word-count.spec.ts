@@ -1,10 +1,12 @@
 /**
- * word-count.spec.ts — SKY-615
+ * word-count.spec.ts — SKY-615 (retargeted for Beta 4 M2)
  *
- * Verifies the real-time word count badges:
- *   TC-WC-01  Scene title bar badge appears after typing into a scene
- *   TC-WC-02  Navigator scene badge matches the editor badge
- *   TC-WC-03  Badge updates when more words are typed
+ * Verifies the real-time word count surfaces. Beta 4 M2 deleted the in-editor
+ * `.be-wordcount` badge — the app-level status bar (BottomBar) is the ONE stat
+ * surface (FULL-SPEC §4 / GAP #10):
+ *   TC-WC-01  Status-bar stats show the typed word count
+ *   TC-WC-02  Navigator scene badge shows a word count
+ *   TC-WC-03  Status-bar stats update when more words are typed
  */
 
 import path from 'path';
@@ -119,15 +121,18 @@ test.afterAll(async () => {
   fs.rmSync(vaultDir, { recursive: true, force: true });
 });
 
-// TC-WC-01: Scene title bar badge appears after typing
-test('TC-WC-01: word count badge appears in scene title bar after typing', async () => {
+// TC-WC-01: the app status bar shows the typed word count (Beta 4 M2: the
+// in-editor badge is gone — one status bar in the DOM).
+test('TC-WC-01: status bar shows word count after typing', async () => {
   const editor = page.locator('.ProseMirror');
   await editor.click();
   await editor.type(PROSE_10);
 
-  // Wait for the 250ms debounce + rendering buffer
-  await expect(page.locator('.be-wordcount')).toBeVisible({ timeout: 3_000 });
-  await expect(page.locator('.be-wordcount')).toContainText('words', { timeout: 3_000 });
+  const stats = page.locator('[data-testid="bottom-live-stats"]');
+  await expect(stats).toBeVisible({ timeout: 3_000 });
+  await expect(stats).toContainText('10 words', { timeout: 3_000 });
+  // Regression (M2 acceptance): the deleted in-editor stat row must not return.
+  await expect(page.locator('.be-wordcount')).toHaveCount(0);
 });
 
 // TC-WC-02: Navigator scene badge reflects the word count
@@ -138,10 +143,10 @@ test('TC-WC-02: navigator scene badge shows a word count for the active scene', 
   await expect(sceneRow.locator('.nav-wordcount')).not.toBeEmpty();
 });
 
-// TC-WC-03: Badge updates when more words are typed
-test('TC-WC-03: word count badge updates when additional words are typed', async () => {
-  const badge = page.locator('.be-wordcount');
-  const countBefore = await badge.textContent();
+// TC-WC-03: status-bar stats update when more words are typed
+test('TC-WC-03: status bar word count updates when additional words are typed', async () => {
+  const stats = page.locator('[data-testid="bottom-live-stats"]');
+  const countBefore = await stats.textContent();
 
   const editor = page.locator('.ProseMirror');
   await editor.click();
@@ -149,7 +154,7 @@ test('TC-WC-03: word count badge updates when additional words are typed', async
   await editor.press('End');
   await editor.type(' one two three four five');
 
-  // Badge should show a higher number after debounce
-  await expect(badge).not.toHaveText(countBefore ?? '', { timeout: 3_000 });
-  await expect(badge).toContainText('words', { timeout: 3_000 });
+  // Stats should show a higher number after the editor flush
+  await expect(stats).not.toHaveText(countBefore ?? '', { timeout: 3_000 });
+  await expect(stats).toContainText('15 words', { timeout: 3_000 });
 });

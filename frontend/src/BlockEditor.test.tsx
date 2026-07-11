@@ -629,6 +629,43 @@ describe('BlockEditor scene backup/restore heading round trip', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Beta 4 M2 — ONE status bar (§4 / GAP #10): the in-editor word-count badge
+// was the duplicate stat row and must not come back. Words/chars/read-time
+// live only in the app-level BottomBar.
+// ---------------------------------------------------------------------------
+
+describe('Beta 4 M2 — no in-editor stat row', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'api', {
+      value: { entityList: vi.fn().mockResolvedValue({ entities: [] }) },
+      configurable: true,
+    });
+  });
+
+  it('renders no word-count badge in the editor toolbar', async () => {
+    const scene = makeSceneWithBlocks([
+      { id: 'prose-1', type: 'prose', content: 'Ten little words march bravely into the cold dark night.', order: 0, updatedAt: '2026-07-02T00:00:00.000Z' },
+    ]);
+
+    let editorApi: { getMarkdown: () => string } | undefined;
+    const { container } = render(
+      <BlockEditor
+        scene={scene}
+        onBlocksChange={vi.fn()}
+        onDraftStateChange={vi.fn()}
+        onEditorReady={(api) => { editorApi = api; }}
+      />
+    );
+    await waitFor(() => expect(editorApi).toBeDefined());
+
+    expect(container.querySelector('.be-wordcount')).toBeNull();
+    const toolbar = container.querySelector('.block-editor-toolbar');
+    expect(toolbar).not.toBeNull();
+    expect(toolbar!.textContent).not.toMatch(/\d+\s*words/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GH #631 — heading-focus view splitting (decoration-only)
 // ---------------------------------------------------------------------------
 

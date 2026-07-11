@@ -30,6 +30,9 @@ interface Props {
   defaultScope?: SearchScope;
   /** Beta 3 M5: commands shown as the palette's first group, filtered by query, cap 5. */
   commands?: PaletteCommand[];
+  /** Beta 4 M2: seed query handed off from the title-bar "Search vault…"
+   *  field — applied (and searched) each time the panel opens with one. */
+  initialQuery?: string;
 }
 
 const KIND_ICONS: Record<string, string> = {
@@ -55,7 +58,7 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
   { id: 'notes', label: 'Notes Vault' },
 ];
 
-export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both', commands }: Props) {
+export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both', commands, initialQuery }: Props) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -83,7 +86,17 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
   }, [commands, query]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (!open) return;
+    inputRef.current?.focus();
+    // Beta 4 M2: the title-bar field hands its draft here — seed and search
+    // immediately so the FTS5 results appear without retyping (CF-14).
+    if (initialQuery && initialQuery.trim()) {
+      setQuery(initialQuery);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => runSearch(initialQuery, scope), 150);
+    }
+    // Only on open — scope/runSearch identity churn must not re-seed mid-session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {

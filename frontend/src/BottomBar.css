@@ -145,6 +145,38 @@
   background: var(--color-success-bg, rgba(74, 222, 128, 0.12));
 }
 
+/* Beta 4 M2 (§4) — page-width hint inside the stats run (prototype 3625) */
+.bottom-page-hint {
+  color: var(--text-body);
+}
+
+/* Beta 4 M2 (§4) — "Saved Xm ago" + pulsing slot-A dot (prototype 3630) */
+.bottom-saved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.bottom-saved-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4));
+  animation: bottom-saved-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes bottom-saved-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-saved-dot { animation: none; }
+}
+
 .bottom-voice {
   display: flex;
   align-items: center;

@@ -138,6 +138,30 @@ describe('GlobalSearchPanel', () => {
   });
 });
 
+// Beta 4 M2 — the title-bar "Search vault…" field hands its draft query to
+// the palette, which seeds and searches the FTS5 index immediately (CF-14).
+describe('GlobalSearchPanel — initialQuery seed', () => {
+  it('seeds the input and runs the FTS5 search on open', async () => {
+    const searchVault = vi.fn().mockResolvedValue({ results: [] });
+    (window as unknown as { api: unknown }).api = { searchVault };
+
+    render(
+      <GlobalSearchPanel open={true} onNavigate={() => {}} onClose={() => {}} initialQuery="Mira" defaultScope="story" />,
+    );
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Mira');
+    await waitFor(() => expect(searchVault).toHaveBeenCalledWith('Mira', 'story', 20, undefined), { timeout: 600 });
+  });
+
+  it('does not seed when initialQuery is empty', () => {
+    const searchVault = vi.fn().mockResolvedValue({ results: [] });
+    (window as unknown as { api: unknown }).api = { searchVault };
+
+    render(<GlobalSearchPanel open={true} onNavigate={() => {}} onClose={() => {}} initialQuery="" />);
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('');
+    expect(searchVault).not.toHaveBeenCalled();
+  });
+});
+
 describe('GlobalSearchPanel — context-aware defaultScope', () => {
   beforeEach(() => {
     (window as unknown as { api: unknown }).api = mockApi();

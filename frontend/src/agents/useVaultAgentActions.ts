@@ -15,7 +15,7 @@
 // Activity windows are tracked via beginAgentActivity so the workspace tab
 // strip's agents chip lights while either action runs.
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { pushNotification } from '../notificationStore';
 import { beginAgentActivity } from './agentActivity';
 import { resolveAgentDisplayName, type NamedAgentId } from './agentIdentity';
@@ -32,6 +32,11 @@ function noteTitleFromPath(notePath: string): string {
 
 interface VaultAgentActionsOptions {
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  /** Beta 4 M2 (§4): bell rows deep-link to their source — navigates to the
+   *  scanned note. Kept in a ref so the latest navigation handlers win. */
+  onOpenNote?: (path: string) => void;
+  /** Beta 4 M2: deep-link for continuity results — opens the Continuity panel. */
+  onOpenContinuity?: () => void;
 }
 
 export interface VaultAgentActions {
@@ -47,10 +52,19 @@ async function readNoteContent(path: string): Promise<string> {
   return res.content ?? '';
 }
 
-export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = {}): VaultAgentActions {
+export function useVaultAgentActions({ agentNames, onOpenNote, onOpenContinuity }: VaultAgentActionsOptions = {}): VaultAgentActions {
+  // Latest-wins refs: notifications fire long after render, so their
+  // deep-links must use the freshest navigation handlers.
+  const onOpenNoteRef = useRef(onOpenNote);
+  onOpenNoteRef.current = onOpenNote;
+  const onOpenContinuityRef = useRef(onOpenContinuity);
+  onOpenContinuityRef.current = onOpenContinuity;
+
   const betaReadNote = useCallback((path: string) => {
     const agentLabel = resolveAgentDisplayName('betaReader', agentNames);
     const title = noteTitleFromPath(path);
+    // Beta 4 M2: every row deep-links to its source note (§4).
+    const openNote = () => onOpenNoteRef.current?.(path);
     const release = beginAgentActivity();
     void (async () => {
       try {
@@ -60,6 +74,7 @@ export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = 
             kind: 'beta',
             title: `${agentLabel} skipped “${title}”`,
             detail: 'The note is empty — nothing to read.',
+            onOpen: openNote,
           });
           return;
         }
@@ -72,12 +87,14 @@ export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = 
           detail: n > 0
             ? `${n} reaction${n === 1 ? '' : 's'} recorded.`
             : 'No reactions this pass.',
+          onOpen: openNote,
         });
       } catch (err) {
         pushNotification({
           kind: 'beta',
           title: `${agentLabel} couldn’t read “${title}”`,
           detail: err instanceof Error ? err.message : 'Unknown error.',
+          onOpen: openNote,
         });
       } finally {
         release();
@@ -88,6 +105,7 @@ export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = 
   const continuityCheckNote = useCallback((path: string) => {
     const agentLabel = resolveAgentDisplayName('archive', agentNames);
     const title = noteTitleFromPath(path);
+    const openNote = () => onOpenNoteRef.current?.(path);
     const release = beginAgentActivity();
     void (async () => {
       try {
@@ -97,6 +115,7 @@ export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = 
             kind: 'archive',
             title: `${agentLabel} skipped “${title}”`,
             detail: 'The note is empty — nothing to check.',
+            onOpen: openNote,
           });
           return;
         }
@@ -112,12 +131,17 @@ export function useVaultAgentActions({ agentNames }: VaultAgentActionsOptions = 
           detail: n > 0
             ? `${n} open flag${n === 1 ? '' : 's'} — review in the Continuity panel.`
             : 'No continuity flags found.',
+          // Open flags → the Continuity panel is the source; else the note.
+          onOpen: n > 0 && onOpenContinuityRef.current
+            ? () => onOpenContinuityRef.current?.()
+            : openNote,
         });
       } catch (err) {
         pushNotification({
           kind: 'archive',
           title: `${agentLabel} couldn’t check “${title}”`,
           detail: err instanceof Error ? err.message : 'Unknown error.',
+          onOpen: openNote,
         });
       } finally {
         release();

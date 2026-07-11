@@ -29,13 +29,8 @@
   font-weight: 500;
 }
 
-.be-wordcount {
-  font-size: 0.75rem;
-  color: var(--text-muted, #52525b);
-  margin: 0 auto 0 0.75rem;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
+/* Beta 4 M2: .be-wordcount deleted — the app status bar (BottomBar) is the
+   ONE stat surface (§4 / GAP #10). */
 
 .draft-state-group {
   display: flex;
