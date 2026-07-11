@@ -220,6 +220,24 @@ describe('detectMythosVaultAt', () => {
     expect(detectMythosVaultAt(parent)).toBe(false);
   });
 
+  // Beta 4 M5: MythosVault v2 folders carry mythos.json instead of a
+  // root-level manifest.json (which v2 keeps only as a regenerable cache).
+  it('returns true for a MythosVault v2 layout (mythos.json, no manifest.json)', () => {
+    const parent = mkTmp();
+    fs.mkdirSync(path.join(parent, 'Story Vault'));
+    fs.mkdirSync(path.join(parent, 'Notes Vault'));
+    fs.writeFileSync(path.join(parent, 'mythos.json'), JSON.stringify({ formatVersion: 2 }));
+
+    expect(detectMythosVaultAt(parent)).toBe(true);
+  });
+
+  it('returns false for mythos.json without the two vault halves', () => {
+    const parent = mkTmp();
+    fs.writeFileSync(path.join(parent, 'mythos.json'), JSON.stringify({ formatVersion: 2 }));
+
+    expect(detectMythosVaultAt(parent)).toBe(false);
+  });
+
   it('returns false when Notes Vault is absent', () => {
     const parent = mkTmp();
     fs.mkdirSync(path.join(parent, 'Story Vault'));

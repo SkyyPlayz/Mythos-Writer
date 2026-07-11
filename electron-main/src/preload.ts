@@ -203,6 +203,14 @@ contextBridge.exposeInMainWorld('api', {
   migrationApply: (planId: string, storyPath: string) =>
     ipcRenderer.invoke('migration:apply', { planId, storyPath }),
 
+  // Beta 4 M5 — MythosVault (v2) migration wizard. Copy-based; every path is
+  // computed main-side from the active vault settings (no renderer paths).
+  mythosMigrationStatus: () => ipcRenderer.invoke('mythosMigration:status', undefined),
+  mythosMigrationPlan: () => ipcRenderer.invoke('mythosMigration:plan', undefined),
+  mythosMigrationRun: () => ipcRenderer.invoke('mythosMigration:run', undefined),
+  mythosMigrationConfirm: () => ipcRenderer.invoke('mythosMigration:confirm', undefined),
+  mythosMigrationDismiss: () => ipcRenderer.invoke('mythosMigration:dismiss', undefined),
+
   // Entity CRUD
   entityCreate: (payload: { name: string; type: string; aliases?: string[]; tags?: string[]; prose?: string; properties?: Record<string, unknown> }) =>
     ipcRenderer.invoke('entity:create', payload),

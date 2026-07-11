@@ -1,0 +1,200 @@
+/* Beta 4 M5 — MythosVault migration prompt + wizard (Liquid Neon glass). */
+
+.mythos-migration-prompt {
+  position: fixed;
+  left: 88px; /* clear of the nav rail */
+  bottom: 44px; /* above the status bar */
+  width: 320px;
+  z-index: 1200;
+  padding: 14px 16px;
+  border-radius: 13px;
+  background: rgba(13, 16, 28, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 26px -7px rgba(0, 240, 255, 0.55);
+  color: #c8d3e7;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.mythos-migration-prompt-title {
+  color: #f0f3fc;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.mythos-migration-prompt-actions,
+.mythos-migration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mythos-migration-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(142, 157, 184, 0.4);
+  background: transparent;
+  color: #c8d3e7;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mythos-migration-btn:hover {
+  border-color: rgba(0, 240, 255, 0.55);
+  color: #f0f3fc;
+}
+
+.mythos-migration-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mythos-migration-btn-primary {
+  background: linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff);
+  border: none;
+  color: #0b0d17;
+  font-weight: 700;
+}
+
+.mythos-migration-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 14, 0.6);
+}
+
+.mythos-migration-modal {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  border-radius: 18px;
+  background: rgba(13, 16, 28, 0.96);
+  border: 1px solid rgba(155, 95, 255, 0.5);
+  box-shadow: 0 0 40px -8px rgba(155, 95, 255, 0.6);
+  color: #c8d3e7;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mythos-migration-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 0;
+}
+
+.mythos-migration-header h2 {
+  margin: 0;
+  color: #f0f3fc;
+  font-size: 16px;
+}
+
+.mythos-migration-close {
+  background: transparent;
+  border: none;
+  color: #8e9db8;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.mythos-migration-close:hover {
+  color: #f0f3fc;
+}
+
+.mythos-migration-body {
+  padding: 12px 20px 20px;
+}
+
+.mythos-migration-list {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+
+.mythos-migration-safety {
+  border-left: 2px solid rgba(0, 240, 255, 0.5);
+  padding-left: 10px;
+  margin: 12px 0 0;
+}
+
+.mythos-migration-path {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #8e9db8;
+  font-size: 10.5px;
+  word-break: break-all;
+}
+
+.mythos-migration-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.mythos-migration-stats div {
+  border: 1px solid rgba(142, 157, 184, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.mythos-migration-stats dt {
+  color: #7686a2;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mythos-migration-stats dd {
+  margin: 2px 0 0;
+  color: #f0f3fc;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mythos-migration-warnings {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: #ffd319;
+}
+
+.mythos-migration-error {
+  color: #ff5f8f;
+}
+
+.mythos-migration-muted {
+  color: #7686a2;
+}
+
+.mythos-migration-spinner {
+  width: 26px;
+  height: 26px;
+  margin: 16px auto 4px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 240, 255, 0.25);
+  border-top-color: #00f0ff;
+  animation: mythos-migration-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mythos-migration-spinner {
+    animation: none;
+  }
+}
+
+@keyframes mythos-migration-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

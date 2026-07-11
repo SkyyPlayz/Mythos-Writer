@@ -16,6 +16,7 @@ import {
   mergeProvenanceFrontmatter,
   safePath,
 } from './vault.js';
+import { resolveManifestPath } from './mythosFormat/mythosJson.js';
 import { applyTypedRelation } from './entities.js';
 import type { SuggestionPayload } from './shared/types/suggestion.js';
 
@@ -58,7 +59,7 @@ export function applyVaultWrite(
       if (!relationType || !sourceEntityId || !targetEntityId) {
         return { finalStatus: 'accepted', snapshotPath: null };
       }
-      const manifestPath = path.join(vaultRoot, 'manifest.json');
+      const manifestPath = resolveManifestPath(vaultRoot); // M5: v2 vaults use the .mythos cache
       const manifest = readManifest(manifestPath);
       // Save manifest snapshot before mutation so rollback can restore it.
       insertSuggestionSnapshot({
@@ -145,7 +146,7 @@ export function rollbackVaultWrite(
     // Try manifest snapshot (typed-relation rollback).
     const manifestSnap = getSuggestionSnapshot(suggestionId, 'manifest');
     if (manifestSnap) {
-      const manifestPath = path.join(vaultRoot, 'manifest.json');
+      const manifestPath = resolveManifestPath(vaultRoot); // M5: v2 vaults use the .mythos cache
       const savedManifest = JSON.parse(manifestSnap.payload_json) as Parameters<typeof writeManifest>[1];
       writeManifest(manifestPath, savedManifest);
       return manifestPath;

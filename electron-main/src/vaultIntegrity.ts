@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import { SCHEMA_VERSION } from './manifest.js';
 import { parseFrontmatter, defaultManifest, reindexVault, writeManifest, CHAPTER_META_FILENAME } from './vault.js';
+import { mythosRootForStoryVault, resolveManifestPath } from './mythosFormat/mythosJson.js';
+import { scanMythosStoryVault } from './mythosFormat/v2Manifest.js';
 import { reindexEntities } from './entities.js';
 import { isUnderRoot } from './pathSecurity.js';
 import type { Manifest, VaultIntegrityReport, VaultRebuildManifestResponse } from './ipc.js';
@@ -108,7 +110,11 @@ export function checkIntegrity(manifest: Manifest, vaultRoot: string): VaultInte
  * Overwrites the existing manifest.json atomically.
  */
 export function rebuildManifest(vaultRoot: string): VaultRebuildManifestResponse {
-  const empty = defaultManifest(vaultRoot);
+  // M5 (MythosVault v2): rebuild the regenerable cache from the canonical
+  // files (book.md spines + scene frontmatter) so hierarchy survives, then
+  // let reindexVault adopt any stray .md files the scanner doesn't own.
+  const mythosRoot = mythosRootForStoryVault(vaultRoot);
+  const empty = mythosRoot !== null ? scanMythosStoryVault(mythosRoot) : defaultManifest(vaultRoot);
 
   // reindexVault scans all scene .md files and adds them to the manifest.
   const { manifest: withScenes } = reindexVault(vaultRoot, empty);
@@ -125,7 +131,8 @@ export function rebuildManifest(vaultRoot: string): VaultRebuildManifestResponse
     );
   const entitiesFound = (withScenes.entities ?? []).length;
 
-  writeManifest(path.join(vaultRoot, 'manifest.json'), withScenes);
+  // v0.4: <vaultRoot>/manifest.json — v2: the .mythos cache (version gate).
+  writeManifest(resolveManifestPath(vaultRoot), withScenes);
 
   return { rebuilt: true, scenesFound, entitiesFound };
 }

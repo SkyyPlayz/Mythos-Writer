@@ -40,6 +40,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-account',
       'section-mythos-vaults', // Beta 4 M1: per-vault default theme cards
       'section-vault-paths',
+      'section-vault-format',
       'section-import-vault',
       'section-import-story',
       'section-vault-health',

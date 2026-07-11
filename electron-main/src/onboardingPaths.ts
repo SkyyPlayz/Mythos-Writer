@@ -113,13 +113,23 @@ export function readExistingVaultPaths(vaultParentPath: string): ExistingVaultPa
   };
 }
 
-/** Returns true when p contains a valid Mythos two-vault layout (Story Vault/manifest.json + Notes Vault/). */
+/**
+ * Returns true when p contains a valid Mythos vault layout:
+ *  - v0.4 twin-root: `Story Vault/manifest.json` + `Notes Vault/`, or
+ *  - MythosVault v2 (Beta 4 M5): `mythos.json` + both vault halves — the
+ *    marker file replaces manifest.json, which v2 keeps only as a
+ *    regenerable cache. Without this branch a v2 folder copied to a second
+ *    machine could not be opened through onboarding.
+ */
 export function detectMythosVaultAt(p: string, exists: ExistsFn = fs.existsSync): boolean {
   if (!p || typeof p !== 'string') return false;
   try {
+    const halves =
+      exists(path.join(p, 'Story Vault')) && exists(path.join(p, 'Notes Vault'));
+    if (!halves) return false;
     return (
-      exists(path.join(p, 'Story Vault', 'manifest.json')) &&
-      exists(path.join(p, 'Notes Vault'))
+      exists(path.join(p, 'mythos.json')) ||
+      exists(path.join(p, 'Story Vault', 'manifest.json'))
     );
   } catch {
     return false;

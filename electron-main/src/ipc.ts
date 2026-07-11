@@ -109,6 +109,13 @@ export const IPC_CHANNELS = {
   MIGRATION_DRY_RUN: 'migration:dryRun',
   MIGRATION_APPLY: 'migration:apply',
 
+  // Beta 4 M5 — v0.4 twin-root → MythosVault (v2) migration wizard
+  MYTHOS_MIGRATION_STATUS: 'mythosMigration:status',
+  MYTHOS_MIGRATION_PLAN: 'mythosMigration:plan',
+  MYTHOS_MIGRATION_RUN: 'mythosMigration:run',
+  MYTHOS_MIGRATION_CONFIRM: 'mythosMigration:confirm',
+  MYTHOS_MIGRATION_DISMISS: 'mythosMigration:dismiss',
+
   // Entity CRUD
   ENTITY_CREATE: 'entity:create',
   ENTITY_READ: 'entity:read',
@@ -660,6 +667,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
   [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
   [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
+  [IPC_CHANNELS.MYTHOS_MIGRATION_STATUS]: (payload: never) => MythosMigrationStatusResponse;
+  [IPC_CHANNELS.MYTHOS_MIGRATION_PLAN]: (payload: never) => MythosMigrationPlanResponse;
+  [IPC_CHANNELS.MYTHOS_MIGRATION_RUN]: (payload: never) => MythosMigrationRunResponse;
+  [IPC_CHANNELS.MYTHOS_MIGRATION_CONFIRM]: (payload: never) => Promise<MythosMigrationConfirmResponse>;
+  [IPC_CHANNELS.MYTHOS_MIGRATION_DISMISS]: (payload: never) => MythosMigrationDismissResponse;
   [IPC_CHANNELS.ENTITY_CREATE]: (payload: EntityCreatePayload) => EntityEntry;
   [IPC_CHANNELS.ENTITY_READ]: (payload: EntityReadPayload) => EntityEntry | null;
   [IPC_CHANNELS.ENTITY_UPDATE]: (payload: EntityUpdatePayload) => EntityEntry;
@@ -1472,6 +1484,75 @@ export interface MigrationApplyResult {
 
 export interface MigrationApplyResponse {
   result: MigrationApplyResult;
+}
+
+// ─── Beta 4 M5 — MythosVault migration wizard IPC types ───
+// All paths in these responses are computed MAIN-SIDE from the active vault
+// settings; the renderer never supplies a path, so the wizard cannot be used
+// to re-root the sandbox (contrast vault:setPaths' token gate).
+
+export interface MythosMigrationStatusResponse {
+  /** Format of the ACTIVE story vault root. */
+  format: 'mythos-v2' | 'v0.4-twin-root' | 'empty';
+  /** True when a v0.4 vault was detected on boot and not dismissed for it. */
+  shouldPrompt: boolean;
+  storyVaultRoot: string;
+  notesVaultRoot: string;
+  vaultName: string;
+  /** Main-computed sibling folder the migration would build. */
+  suggestedTarget: string;
+}
+
+export interface MythosMigrationPlanResponse {
+  ok: boolean;
+  error?: string;
+  plan?: {
+    targetRoot: string;
+    vaultName: string;
+    stories: number;
+    chapters: number;
+    scenes: number;
+    noteFiles: number;
+    commentFiles: number;
+    betaCommentRows: number;
+    versionSnapshots: number;
+    fileSnapshots: number;
+    dbSnapshotRows: number;
+    timelineArcs: number;
+    timelineSceneEntries: number;
+    warnings: string[];
+  };
+}
+
+export interface MythosMigrationRunResponse {
+  ok: boolean;
+  error?: string;
+  targetRoot: string;
+  counts: {
+    stories: number;
+    chapters: number;
+    scenes: number;
+    notes: number;
+    comments: number;
+    drafts: number;
+    extras: number;
+  };
+  verified: {
+    scenesChecked: number;
+    notesChecked: number;
+    mismatches: string[];
+  };
+}
+
+export interface MythosMigrationConfirmResponse {
+  switched: boolean;
+  vaultRoot?: string;
+  notesVaultRoot?: string;
+  error?: string;
+}
+
+export interface MythosMigrationDismissResponse {
+  dismissed: boolean;
 }
 
 // ─── Entity IPC payload / response types ───
