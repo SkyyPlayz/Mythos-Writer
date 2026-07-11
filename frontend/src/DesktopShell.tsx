@@ -1007,7 +1007,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [pageStyle, setPageStyle] = useState<PageStyle>('neon');
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [docZoom, setDocZoom] = useState(1.0);
-  const [focusMode, setFocusMode] = useState(false);
   const pageWrapRef = useRef<HTMLDivElement | null>(null);
   const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -4960,8 +4959,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
                   zoom={docZoom}
                   onZoomChange={setDocZoom}
-                  isFocusMode={focusMode}
-                  onFocusToggle={() => setFocusMode(f => !f)}
+                  isFocusMode={writingMode === 'focus'}
+                  onFocusToggle={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
                 />
                 <MarginRuler
                   widthPx={
