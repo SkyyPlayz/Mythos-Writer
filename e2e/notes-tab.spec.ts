@@ -61,7 +61,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
 
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible();
@@ -78,7 +78,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
       await expect(page.locator('[data-testid="notes-editor-placeholder"]')).toBeVisible();
     } finally {
@@ -92,7 +92,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
 
       await page.locator('[data-testid="notes-subview-graph"]').click();
@@ -112,7 +112,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
       // Switch to Notes tab
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
 
       // Switch to Graph sub-view
@@ -124,7 +124,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
 
       // Switch back to Notes tab — Graph must still be selected
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
       await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
     } finally {
@@ -139,7 +139,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       let page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
       await page.locator('[data-testid="notes-subview-graph"]').click();
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
@@ -155,7 +155,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
       // Notes tab should still be active
-      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       // Graph sub-view should still be selected
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     } finally {
@@ -169,7 +169,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 5_000 });
 
       // Collapse the Brainstorm panel

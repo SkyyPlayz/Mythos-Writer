@@ -250,12 +250,27 @@
   border: 1px solid var(--b2, rgba(155, 95, 255, .4));
 }
 
-.nav-rail__story-title {
+.nav-rail__story-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-rail__story-title {
   min-width: 0;
   font-size: 11.5px;
   font-weight: 600;
   color: #e6ecf9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Beta 4 M3 — prototype 187: genre · voice · POV line under the story name */
+.nav-rail__story-sub {
+  font-size: 9px;
+  color: #8e9db8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -276,15 +291,41 @@
   margin: 8px 4px;
 }
 
-/* "+ New Story" row — task-spec condensation of the prototype's NEW STORY
-   form (190–202); chip tinted slot-1 like the prototype's new-vault "+". */
-.nav-rail__story--new .nav-rail__story-icon {
-  background: var(--gs1, rgba(0, 240, 255, .12));
-  border: 1px solid var(--b1, rgba(0, 240, 255, .4));
-  color: var(--n1, #00f0ff);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
+/* Beta 4 M3 — prototype 190–202: gradient "New Story…" button + hint copy.
+   Opens the New Story wizard (name · voice preset · linked plans). */
+.nav-rail__new-story {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px;
+  border-radius: 9px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 0 2px 4px;
+  width: calc(100% - 4px);
+  font-family: inherit;
+  transition: transform .15s ease;
+}
+
+.nav-rail__new-story:hover {
+  transform: scale(1.02);
+}
+
+.nav-rail__new-story:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.nav-rail__stories-hint {
+  font-size: 8.5px;
+  color: #586a88;
+  line-height: 1.5;
+  padding: 0 4px 2px;
 }
 
 /* ── Bottom: divider + settings + slim toggle (prototype 211–238) ─────── */
@@ -357,8 +398,16 @@
   font-weight: 600;
 }
 
-/* Slim toggle (prototype 236) */
-.nav-rail__toggle {
+/* Beta 4 M3 — prototype 216: pencil + slim toggle row at the rail bottom */
+.nav-rail__tools {
+  display: flex;
+  gap: 4px;
+  position: relative;
+}
+
+/* Slim toggle (prototype 236) + edit pencil (prototype 217) */
+.nav-rail__toggle,
+.nav-rail__edit-btn {
   width: 20px;
   height: 20px;
   border-radius: 6px;
@@ -375,14 +424,136 @@
   flex: none;
 }
 
-.nav-rail__toggle:hover {
+.nav-rail__toggle:hover,
+.nav-rail__edit-btn:hover {
   color: #fff;
   background: rgba(255, 255, 255, .08);
 }
 
-.nav-rail__toggle:focus-visible {
+.nav-rail__toggle:focus-visible,
+.nav-rail__edit-btn:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* ── Beta 4 M3: rail edit popover (prototype 219–235) ─────────────────── */
+
+.nav-rail__edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+
+.nav-rail__edit {
+  position: absolute;
+  left: 26px;
+  bottom: 0;
+  width: 236px;
+  z-index: 46;
+  padding: 9px;
+  border-radius: 14px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g6, rgba(61, 155, 255, .4));
+  animation: lnFadeUp .16s ease;
+  text-align: left;
+}
+
+.nav-rail__edit-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: #7686a2;
+  padding: 2px 8px 8px;
+}
+
+.nav-rail__edit-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: grab;
+}
+
+.nav-rail__edit-row:hover {
+  background: rgba(255, 255, 255, .05);
+}
+
+.nav-rail__edit-row--dragging {
+  opacity: .38;
+}
+
+.nav-rail__edit-eye {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: none;
+  color: var(--n1, #00f0ff);
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.nav-rail__edit-eye--hidden {
+  color: #586a88;
+}
+
+.nav-rail__edit-eye:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.nav-rail__edit-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: #cdd8ea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-rail__edit-move {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  flex: none;
+}
+
+.nav-rail__edit-move:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+}
+
+.nav-rail__edit-move:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.nav-rail__edit-move:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.nav-rail__edit-hint {
+  font-size: 9.5px;
+  color: #7686a2;
+  padding: 7px 8px 2px;
 }
 
 /* ── Reduced motion ────────────────────────────────────────────────────── */
@@ -398,7 +569,16 @@
     transition: none;
   }
 
-  .nav-rail__stories {
+  .nav-rail__stories,
+  .nav-rail__edit {
     animation: none;
+  }
+
+  .nav-rail__new-story {
+    transition: none;
+  }
+
+  .nav-rail__new-story:hover {
+    transform: none;
   }
 }

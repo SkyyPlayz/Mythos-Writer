@@ -1,3 +1,5 @@
+import { reorderNavConfigItems } from '../settingsPanelTypes';
+
 interface NavConfigSectionProps {
   navConfig: NavRailConfig;
   setNavConfig: React.Dispatch<React.SetStateAction<NavRailConfig>>;
@@ -41,11 +43,8 @@ export default function NavConfigSection({ navConfig, setNavConfig, setSavedOk }
                   aria-label={`Move ${item.label} up`}
                   disabled={index === 0}
                   onClick={() => {
-                    setNavConfig((prev) => {
-                      const next = [...prev.items];
-                      [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                      return { ...prev, items: next.map((it, i) => ({ ...it, order: i })) };
-                    });
+                    // Beta 4 M3: same reorder helper as the rail edit popover.
+                    setNavConfig((prev) => ({ ...prev, items: reorderNavConfigItems(prev.items, index, index - 1) }));
                     setSavedOk(false);
                   }}
                 >▲</button>
@@ -55,11 +54,7 @@ export default function NavConfigSection({ navConfig, setNavConfig, setSavedOk }
                   aria-label={`Move ${item.label} down`}
                   disabled={index === navConfig.items.length - 1}
                   onClick={() => {
-                    setNavConfig((prev) => {
-                      const next = [...prev.items];
-                      [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                      return { ...prev, items: next.map((it, i) => ({ ...it, order: i })) };
-                    });
+                    setNavConfig((prev) => ({ ...prev, items: reorderNavConfigItems(prev.items, index, index + 1) }));
                     setSavedOk(false);
                   }}
                 >▼</button>

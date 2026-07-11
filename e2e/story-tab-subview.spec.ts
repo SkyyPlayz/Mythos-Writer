@@ -7,7 +7,8 @@
  *   AC-SV-02  Sub-view bar is visible inside the Story tab
  *   AC-SV-03  Default sub-view is Editor (aria-selected=true)
  *   AC-SV-04  Clicking Scene Crafter switches to kanban view
- *   AC-SV-05  Switching to Notes tab then back restores Scene Crafter sub-view
+ *   AC-SV-05  Story Writer rail click after a Notes round-trip lands on the
+ *             editor (Beta 4 M3 — Scene Crafter has its own rail module now)
  */
 
 import path from 'path';
@@ -120,7 +121,7 @@ test.afterAll(async () => {
 // ─── AC-SV-01: Story tab active by default ───────────────────────────────────
 
 test('AC-SV-01: Story tab is active by default', async () => {
-  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
+  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
   await expect(storyTab).toBeVisible({ timeout: 10_000 });
   await expect(storyTab).toHaveAttribute('aria-current', 'page');
 });
@@ -154,15 +155,18 @@ test('AC-SV-04: clicking Scene Crafter switches to kanban view', async () => {
   await expect(editorTab).toHaveAttribute('aria-selected', 'false');
 });
 
-// ─── AC-SV-05: Sub-view persists through Notes tab round-trip ────────────────
+// ─── AC-SV-05: Story Writer rail click lands on the editor (Beta 4 M3) ───────
+// Scene Crafter has its own rail module now (BETA-REFINE M3 / FULL-SPEC §4),
+// so clicking the Story Writer rail item after a Notes round-trip lands on
+// the EDITOR sub-view — kanban no longer piggybacks on the Story restore.
 
-test('AC-SV-05: Scene Crafter sub-view persists after Notes tab round-trip', async () => {
+test('AC-SV-05: Story Writer rail click lands on the editor after a Notes round-trip', async () => {
   // Precondition: Scene Crafter should be active from AC-SV-04; confirm it.
   const kanbanTab = page.locator('[data-testid="story-subview-kanban"]');
   await expect(kanbanTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
 
   // Switch to Notes tab.
-  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]');
+  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
   await notesTab.click();
   await expect(notesTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
@@ -170,12 +174,13 @@ test('AC-SV-05: Scene Crafter sub-view persists after Notes tab round-trip', asy
   const bar = page.locator('[data-testid="story-subview-bar"]');
   await expect(bar).not.toBeVisible({ timeout: 2_000 });
 
-  // Switch back to Story tab.
-  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
+  // Switch back via the Story Writer rail item.
+  const storyTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
   await clickStoryNav(page);
   await expect(storyTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
-  // Scene Crafter sub-view should still be selected.
+  // Story Writer is the editor module — the editor sub-view is selected.
   await expect(bar).toBeVisible({ timeout: 3_000 });
-  await expect(kanbanTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+  const editorTab = page.locator('[data-testid="story-subview-editor"]');
+  await expect(editorTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
 });

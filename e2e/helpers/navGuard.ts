@@ -11,7 +11,7 @@ import { expect, type Page } from '@playwright/test';
 export async function clickStoryNav(page: Page): Promise<void> {
   const nav = page.locator('nav[aria-label="Main navigation"]');
   await expect(nav).toBeVisible({ timeout: 10_000 });
-  const storyBtn = nav.locator('button[aria-label="Story"]');
+  const storyBtn = nav.locator('button[aria-label="Story Writer"]');
   if (await storyBtn.getAttribute('aria-current') !== 'page') {
     await storyBtn.click();
   }

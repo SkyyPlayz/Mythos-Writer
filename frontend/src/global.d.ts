@@ -588,16 +588,24 @@ interface AppTabShellState {
   notesSidebarCollapsed: boolean;
 }
 
+/**
+ * Beta 4 M3 (FULL-SPEC §4): the six nav-rail modules. story/notes/brainstorm
+ * are top-level AppTabs; crafter/timeline are Story sub-view surfaces and
+ * graph is the Notes graph surface — the rail routes them through the
+ * workspace-tab create-or-focus path.
+ */
+type NavRailModuleId = AppTab | 'crafter' | 'timeline' | 'graph';
+
 /** SKY-3096 (v0.3 AppNavRail): A single item in the persistent left nav rail. */
 interface NavRailItem {
-  id: AppTab;
+  id: NavRailModuleId;
   label: string;
   icon: string;
 }
 
 /** SKY-3218: Nav-rail item with user-configurable visibility and order. */
 interface NavRailItemConfig {
-  id: AppTab;
+  id: NavRailModuleId;
   enabled: boolean;
   label: string;
   icon: string;
