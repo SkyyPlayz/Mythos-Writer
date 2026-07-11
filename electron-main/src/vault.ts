@@ -204,6 +204,7 @@ export function writeVaultFileAtomic(
     try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
     throw err;
   }
+  markSelfWrite(fullPath);
   return { path: filePath, bytes: buf.byteLength };
 }
 
@@ -921,6 +922,33 @@ export function importObsidianVault(
   return { imported, skipped, errors };
 }
 
+// ─── Self-write suppression (GH#898) ───
+// writeVaultFileAtomic stamps the absolute path here; both vault watchers check
+// this before forwarding events to onChanged so app-originated writes don't
+// round-trip as spurious external-edit notifications.
+//
+// Window: awaitWriteFinish stabilityThreshold (300 ms) + slack → 1 000 ms total.
+// The rename-based atomic write lands instantly, so chokidar fires ~300 ms later;
+// 1 000 ms covers that plus any process scheduling jitter.
+
+const SELF_WRITE_WINDOW_MS = 1_000;
+const recentSelfWrites = new Map<string, number>();
+
+function markSelfWrite(absPath: string): void {
+  recentSelfWrites.set(absPath, Date.now());
+}
+
+export function isRecentSelfWrite(absPath: string): boolean {
+  const ts = recentSelfWrites.get(absPath);
+  if (ts === undefined) return false;
+  const age = Date.now() - ts;
+  if (age > SELF_WRITE_WINDOW_MS) {
+    recentSelfWrites.delete(absPath);
+    return false;
+  }
+  return true;
+}
+
 // ─── File watcher ───
 
 let activeWatcher: FSWatcher | null = null;
@@ -932,8 +960,13 @@ export async function startVaultWatcher(
   if (activeWatcher) return;
 
   const { default: chokidar } = await import('chokidar');
+  // chokidar v4+ requires ignored to be a function (regex/glob support removed).
+  // GH#892: the previous regex was also syntactically wrong — `\\.` in a regex
+  // literal is "backslash + any char", not "literal dot" — so dotfiles were
+  // never actually ignored and the TypeError from calling a RegExp as a function
+  // silently killed event delivery for all paths below the vault root.
   activeWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\\\])\\../, // ignore dotfiles
+    ignored: (filePath: string) => path.basename(filePath).startsWith('.'),
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
@@ -1125,8 +1158,9 @@ export async function startNotesVaultWatcher(
   if (activeNotesWatcher) return;
 
   const { default: chokidar } = await import('chokidar');
+  // Same fix as startVaultWatcher (GH#892): chokidar v4+ requires a function.
   activeNotesWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\\\])\\../,
+    ignored: (filePath: string) => path.basename(filePath).startsWith('.'),
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
