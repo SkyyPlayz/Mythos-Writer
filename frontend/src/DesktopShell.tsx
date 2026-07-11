@@ -66,7 +66,6 @@ import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
-import { resolveAgentDisplayName } from './agents/agentIdentity';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider, { type ViewDepth } from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
@@ -109,7 +108,7 @@ import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
-import WritingAssistantPanel from './WritingAssistantPanel';
+import AgentHubPanel from './AgentHubPanel';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
@@ -3756,7 +3755,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return <StoryTimeline story={selectedStory} />;
       case 'writing-assistant':
         return (
-          <WritingAssistantPanel
+          <AgentHubPanel
             scene={activeSceneForSidebar}
             enabled={appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true}
             scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
@@ -3773,7 +3772,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             ttsSettings={appSettings?.tts}
             voiceEnabled={appSettings?.voice?.enabled ?? false}
             voicePrefs={appSettings?.voice}
-            displayName={resolveAgentDisplayName('writingAssistant', appSettings?.agentNames)}
+            agentNames={appSettings?.agentNames}
           />
         );
       case 'archive-continuity':

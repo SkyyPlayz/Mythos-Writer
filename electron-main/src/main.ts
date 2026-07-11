@@ -188,8 +188,21 @@ import {
   type OutlineLoadPayload,
   type OutlineSavePayload,
   type OutlineSaveResponse,
+  type AgentSessionListPayload,
+  type AgentSessionCreatePayload,
+  type AgentSessionRenamePayload,
+  type AgentSessionDuplicatePayload,
+  type AgentSessionDeletePayload,
+  type AgentSessionAppendTurnsPayload,
 } from './ipc.js';
 import { loadOutline, saveOutline } from './outline.js';
+import {
+  listSessions,
+  createSession,
+  appendTurns,
+  readSession,
+} from './mythosFormat/agentSessions.js';
+import type { AgentSessionSummary } from './mythosFormat/agentSessions.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
 // Beta 3 M24 — Settings → Vault & Files import flows
@@ -6471,6 +6484,91 @@ const handlers: IpcHandlers = {
     const vaultRoot = getNotesVaultRoot() || getVaultRoot();
     const index = autoLinkerBuildIndex(vaultRoot, opts);
     return { count: index.length };
+  },
+
+  // SKY-6228: M15 — agent chat sessions
+  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => {
+    const notesRoot = getNotesVaultRoot();
+    let sessions = listSessions(notesRoot);
+    if (payload?.agent) sessions = sessions.filter((s: AgentSessionSummary) => s.agent === payload.agent);
+    return { sessions };
+  },
+  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => {
+    const notesRoot = getNotesVaultRoot();
+    const firstTurn = payload.greeting
+      ? [{ role: 'agent' as const, text: payload.greeting, at: new Date().toISOString() }]
+      : [];
+    const { session, relPath } = createSession(notesRoot, {
+      agent: payload.agent,
+      title: payload.title,
+      turns: firstTurn,
+    });
+    return { session, relPath };
+  },
+  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => {
+    const notesRoot = getNotesVaultRoot();
+    const existing = readSession(notesRoot, payload.sessionId);
+    if (!existing) return { ok: false };
+    existing.title = payload.title.replace(/[\r\n]+/g, ' ').trim() || existing.title;
+    existing.updatedAt = new Date().toISOString();
+    const { writeFileAtomic } = require('./vault.js');
+    const { serializeSessionFile, sessionsDir } = require('./mythosFormat/agentSessions.js');
+    const p = require('node:path');
+    // Re-read to find the file path
+    const dir = sessionsDir(notesRoot);
+    const names: string[] = fs.readdirSync(dir).filter((n: string) => n.endsWith('.md'));
+    for (const name of names) {
+      try {
+        const raw = fs.readFileSync(p.join(dir, name), 'utf-8');
+        if (raw.includes(`id: ${payload.sessionId}`)) {
+          writeFileAtomic(p.join(dir, name), serializeSessionFile(existing));
+          return { ok: true };
+        }
+      } catch { /* skip */ }
+    }
+    return { ok: false };
+  },
+  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => {
+    const notesRoot = getNotesVaultRoot();
+    const source = readSession(notesRoot, payload.sessionId);
+    if (!source) throw new Error(`Session not found: ${payload.sessionId}`);
+    const { session, relPath } = createSession(notesRoot, {
+      agent: source.agent,
+      title: source.title ? `${source.title} (copy)` : undefined,
+      turns: [...source.turns],
+    });
+    return { session, relPath };
+  },
+  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) => {
+    const notesRoot = getNotesVaultRoot();
+    const { sessionsDir: getSessionsDir } = require('./mythosFormat/agentSessions.js');
+    const p = require('node:path');
+    const dir = getSessionsDir(notesRoot);
+    const existing = readSession(notesRoot, payload.sessionId);
+    if (!existing) return { ok: false };
+    try {
+      const names: string[] = fs.readdirSync(dir).filter((n: string) => n.endsWith('.md'));
+      for (const name of names) {
+        const full = p.join(dir, name);
+        const raw = fs.readFileSync(full, 'utf-8');
+        if (raw.includes(`id: ${payload.sessionId}`)) {
+          fs.unlinkSync(full);
+          break;
+        }
+      }
+    } catch { return { ok: false }; }
+    const remaining = listSessions(notesRoot).filter((s: AgentSessionSummary) => s.agent === existing.agent);
+    if (remaining.length === 0) {
+      const { createSession: cs } = require('./mythosFormat/agentSessions.js');
+      const { session: rep, relPath: rp } = cs(notesRoot, { agent: existing.agent });
+      return { ok: true, replacement: rep, replacementRelPath: rp };
+    }
+    return { ok: true };
+  },
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => {
+    const notesRoot = getNotesVaultRoot();
+    const session = appendTurns(notesRoot, payload.sessionId, payload.turns);
+    return { session };
   },
 };
 

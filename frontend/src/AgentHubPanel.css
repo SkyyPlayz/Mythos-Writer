@@ -1,0 +1,322 @@
+/* SKY-6228: M15 — AgentHubPanel */
+
+.ahp-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Tabs ─────────────────────────────────────────── */
+
+.ahp-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 77, 255, 0.18);
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+
+.ahp-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8e9db8;
+  font-size: 11px;
+  font-family: Inter, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 8px 10px 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.ahp-tab:hover {
+  color: #c8d3e7;
+}
+
+.ahp-tab--active {
+  color: #f0f3fc;
+  border-bottom-color: #ff4dff;
+}
+
+/* ── Body ─────────────────────────────────────────── */
+
+.ahp-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.ahp-body::-webkit-scrollbar { width: 8px; }
+.ahp-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+}
+.ahp-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Hub view ─────────────────────────────────────── */
+
+.ahp-hub {
+  padding: 8px 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ahp-card {
+  margin: 0 8px;
+  background: rgba(13, 16, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 13px;
+  padding: 10px 12px;
+}
+
+.ahp-card-header {
+  margin-bottom: 8px;
+}
+
+.ahp-card-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8e9db8;
+}
+
+.ahp-badge {
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.ahp-badge--coach {
+  background: rgba(0, 240, 255, 0.12);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+}
+
+/* ── Agent rows ───────────────────────────────────── */
+
+.ahp-agent-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ahp-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #c8d3e7;
+  width: 100%;
+  text-align: left;
+  transition: background 0.12s;
+  font-family: Inter, sans-serif;
+}
+
+.ahp-agent-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ahp-agent-tile {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: rgba(var(--agent-color-rgb, 255 255 255), 0.08);
+  border: 1px solid color-mix(in srgb, var(--agent-color, #fff) 30%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.ahp-agent-name {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ahp-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ahp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.ahp-status-dot--idle {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ahp-status-dot--active {
+  background: #00f0ff;
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.8);
+}
+
+.ahp-status-dot--busy {
+  background: #ffd319;
+  box-shadow: 0 0 6px rgba(255, 211, 25, 0.8);
+  animation: ahp-pulse 1s infinite;
+}
+
+@keyframes ahp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.ahp-status-text {
+  font-size: 9.5px;
+  color: #8e9db8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Suggestions card ─────────────────────────────── */
+
+.ahp-suggestion-empty {
+  font-size: 11px;
+  color: #8e9db8;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+
+.ahp-see-all-btn {
+  background: none;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 99px;
+  color: #00f0ff;
+  font-size: 10.5px;
+  font-family: Inter, sans-serif;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ahp-see-all-btn:hover {
+  background: rgba(0, 240, 255, 0.08);
+  border-color: rgba(0, 240, 255, 0.5);
+}
+
+/* ── Scene Analysis card ──────────────────────────── */
+
+.ahp-analysis-placeholder {
+  font-size: 11px;
+  color: #8e9db8;
+  margin: 0;
+}
+
+/* ── In-panel chat view ───────────────────────────── */
+
+.ahp-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ahp-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.ahp-back-btn {
+  background: none;
+  border: none;
+  color: #8e9db8;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.ahp-back-btn:hover {
+  color: #c8d3e7;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ahp-chat-agent-tile {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid color-mix(in srgb, var(--agent-color, #fff) 30%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.ahp-chat-agent-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f0f3fc;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ahp-session-pill {
+  flex-shrink: 0;
+}
+
+.ahp-chat-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px;
+}
+
+.ahp-chat-coming-soon {
+  font-size: 12px;
+  color: #8e9db8;
+  text-align: center;
+}
+
+/* ── Stub tabs ────────────────────────────────────── */
+
+.ahp-stub-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.ahp-stub-label {
+  font-size: 12px;
+  color: #8e9db8;
+  text-align: center;
+}
