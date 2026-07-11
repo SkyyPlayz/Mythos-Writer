@@ -269,10 +269,12 @@ describe('tokens.css neon border slots (SKY-910)', () => {
     expect(tokensCss).toMatch(/--neon-border-3:\s*var\(--neon-magenta\)/);
   });
 
-  it('composes --border-neon-default over --border-neon-outline (slot A)', () => {
-    expect(tokensCss).toMatch(
-      /--border-neon-default:\s*0\s+0\s+16px\s+var\(--grad-neon\),\s*0\s+0\s+2px\s+var\(--border-neon-outline\)/,
-    );
+  it('Beta 4 M1 (§3): the window-ring shadows are gone; the slot-A outline token stays', () => {
+    expect(tokensCss).toMatch(/--border-neon-outline:\s*var\(--neon-border-1\)/);
+    // No declarations left (a prose comment may still name them).
+    expect(tokensCss).not.toMatch(/--border-neon-default:/);
+    expect(tokensCss).not.toMatch(/--border-neon-hover:/);
+    expect(tokensCss).not.toMatch(/--border-neon-context/);
   });
 });
 

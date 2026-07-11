@@ -90,6 +90,27 @@ html.ln-anim-paused .ln-border-overlay {
    is deleted — a full-viewport conic-gradient/hue-rotate repaint every frame
    (PERFORMANCE.md §3). Panel border overlays keep the neon look. */
 
+/* ═══ Beta 4 M1 — Reduce motion (Appearance → Interface; §14.9 #9) ═══
+   The engine toggles `ln-reduce-motion` on <html>. One switch stops the
+   drifting motes, wallpaper drift, and every neon border animation — the same
+   mechanism as the app's prefers-reduced-motion reset (index.css), but user
+   driven and reversible without an OS setting. `!important` is required for
+   the ambience/border layers, whose `animation` shorthand is set inline. */
+html.ln-reduce-motion *,
+html.ln-reduce-motion *::before,
+html.ln-reduce-motion *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+
+/* Beta 4 M1 — Background animation `Off` applies live from the Appearance
+   panel: the engine stamps data-ln-amb="off" on <html>; the mote layers are
+   hidden immediately even before the panel Save re-renders BackgroundStack. */
+html[data-ln-amb='off'] .ln-bg-ambience {
+  display: none !important;
+}
+
 /* Layering: the shell is a flex container, so plain z-index works on its
    children (flex items) without forcing position. The stack sits at 0;
    every other shell child paints above it. */

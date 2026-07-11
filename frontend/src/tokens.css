@@ -57,14 +57,8 @@
   --neon-border-3: var(--neon-magenta);
   /* Solid outline composed over the gradient — picks up slot A by default. */
   --border-neon-outline: var(--neon-border-1);
-  --border-neon-default: 0 0 16px var(--grad-neon), 0 0 2px var(--border-neon-outline);
-  --border-neon-hover: 0 0 24px var(--grad-neon), 0 0 4px var(--border-neon-outline);
-  --border-neon-context-folder: 0 0 16px
-      linear-gradient(120deg, #9b5fff 0%, #ff4dff 50%, #9b5fff 100%),
-      0 0 2px var(--neon-violet);
-  --border-neon-context-file: 0 0 16px
-      linear-gradient(120deg, #00f0ff 0%, #9b5fff 50%, #00f0ff 100%),
-      0 0 2px var(--neon-cyan);
+  /* Beta 4 M1 (§3): the --border-neon-default/-hover/-context-* window-ring
+     shadows are deleted with the html frame ring (no ring around the app). */
 
   /* ---- 1.2 Color — axis-driven surfaces (DEFAULT s≈0.40) --------------- */
   /* Background image override — set by applyLiquidNeonTokens (MYT-613/716).
@@ -110,6 +104,11 @@
   --space-8: 32px;
   --space-10: 40px;            /* min control target          */
   --space-12: 48px;
+
+  /* Beta 4 M1 — Interface density (Appearance -> Interface, prototype 7020).
+     Liquid Neon settings card padding; the density blocks below shrink it. */
+  --ln-card-pad-y: 15px;
+  --ln-card-pad-x: 17px;
 
   /* ---- 1.5 Type scale (base 16, Inter / system sans) ------------------- */
   --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -622,4 +621,33 @@
   --bw: 1px; --gr: 60px; --blur: 1px; --ln-scrim: 0.1;
   --txH: #f0f3fc; --txB: #c8d3e7; --txNH: #f0f3fc; --txNB: #c8d3e7;
   --wpsize: cover;
+}
+
+/* ═══ Beta 4 M1 — Interface density (Appearance → Interface; §3 card 7) ═══
+   The v2 theme engine stamps `data-ln-density` on <html> (absent =
+   Comfortable). Spacing tokens shrink so panel/list paddings change LIVE
+   everywhere they are consumed. --space-10/12 are untouched: 40px stays the
+   minimum control target (WCAG 2.5.8 / CF-7). */
+:root[data-ln-density="cozy"] {
+  --space-1: 3px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 13px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-8: 26px;
+  --ln-card-pad-y: 12px;
+  --ln-card-pad-x: 14px;
+}
+
+:root[data-ln-density="compact"] {
+  --space-1: 2px;
+  --space-2: 5px;
+  --space-3: 8px;
+  --space-4: 11px;
+  --space-5: 13px;
+  --space-6: 16px;
+  --space-8: 22px;
+  --ln-card-pad-y: 9px;
+  --ln-card-pad-x: 11px;
 }

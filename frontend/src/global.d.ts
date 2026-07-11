@@ -320,8 +320,6 @@ interface LiquidNeonPrefs {
   advancedDecoupled?: boolean;
   /** Text contrast boost 0–100; hard-clamped so body text stays ≥ 4.5:1. Default 50. */
   textContrast?: number;
-  /** Neon frame width 0–100 → 0–2px rest / 1–4px hover. Default 50. */
-  neonFrameWidth?: number;
   /** Border alpha strength 0–100 → 0.06–0.24. Default 50. */
   borderStrength?: number;
   /** Background mode: colour swatch or image wallpaper. Default 'color'. */
@@ -455,6 +453,9 @@ interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
   liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
+  /** Beta 4 M1: per-vault default theme — Story Vault root path → preset key.
+   *  Applied (setKey + slots + wp 'match') when switching to that vault. */
+  vaultThemes?: Record<string, string>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */

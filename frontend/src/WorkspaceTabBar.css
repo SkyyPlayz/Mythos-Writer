@@ -41,8 +41,8 @@
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  /* Beta 4 M1 (GAP P2 #11): scrollbar-width/color removed — they made Chromium
+     ignore the ::-webkit-scrollbar rules below AND the global ones (index.css). */
 }
 
 /* MYT-520 §5.3: smooth scrolling is motion — only enable it when the user has

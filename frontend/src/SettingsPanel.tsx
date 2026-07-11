@@ -27,6 +27,7 @@ import ArchiveAgentSection from './components/SettingsPanel/sections/ArchiveAgen
 import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
+import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -760,6 +761,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             <>
               <AccountSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
 
+              {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
+              <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+
               <VaultPathsSection
                 vaults={vaults}
                 setVaults={setVaults}
@@ -814,6 +818,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 liquidNeonV2={settings.liquidNeonV2}
                 onChange={(next) => setSettings((p) => ({ ...p, liquidNeonV2: next }))}
                 setSavedOk={setSavedOk}
+                navRailLabels={navConfig.showLabels}
+                onNavRailLabelsChange={(show) => {
+                  setNavConfig((prev) => ({ ...prev, showLabels: show }));
+                  setSavedOk(false);
+                }}
               />
 
               <AppearanceSection

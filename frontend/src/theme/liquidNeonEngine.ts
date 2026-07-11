@@ -3,8 +3,11 @@
 // hexA 3305–3309). The prototype is the spec: formulas, constants, and string
 // formats below are verbatim — do not "improve" them.
 // Map: docs/releases/LIQUID-NEON-PROTOTYPE-MAP.md §B.
-import { LIQUID_NEON_PRESETS, type LiquidNeonSetKey } from './presets';
+import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey, type LiquidNeonSetKey } from './presets';
 import { schedulePreBlurredWallpaper } from './preBlurWallpaper';
+// Resolves to frontend/src/theme.ts (file wins over this directory's index-less
+// folder). CF-6: the body-text contrast clamp is shared with the v1 engine.
+import { enforceContrastFloor } from '../theme';
 
 export interface LiquidNeonPageCfg {
   /** Manuscript page mode. 'default' is the "No glow" option (prototype key, 4619). */
@@ -29,6 +32,10 @@ export interface LiquidNeonTextCfg {
 
 export type LiquidNeonWallpaperKey = 'match' | 'aurora' | 'slate' | 'deep' | 'none' | 'custom';
 export type LiquidNeonFrameAnim = 'off' | 'cycle' | 'sparkle';
+/** Background ambience mode (prototype ambMode, HTML 6793–6798). */
+export type LiquidNeonAmbMode = 'match' | 'snow' | 'rise' | 'off';
+/** Interface density (prototype uiDensity, 7020). */
+export type LiquidNeonDensity = 'comfortable' | 'cozy' | 'compact';
 
 export interface LiquidNeonV2Settings {
   setKey: LiquidNeonSetKey;
@@ -63,6 +70,20 @@ export interface LiquidNeonV2Settings {
   /** Scroll page mode: parchment tint + opacity (prototype state 3222). */
   scrollTint: string;
   scrollOp: number;
+  /** Beta 4 M1 — Background animation mode (prototype ambMode, 6793). */
+  ambMode: LiquidNeonAmbMode;
+  /** Ambience drift speed % (prototype ambSpeedPct, 7024): 50–200, 100 = preset speed. */
+  ambSpeed: number;
+  /** Particle color override; null/absent = theme-matched (prototype ambColor, 7025–7028). */
+  ambColor?: string | null;
+  /** Beta 4 M1 — Interface density; changes spacing tokens live (prototype uiDensity). */
+  density: LiquidNeonDensity;
+  /** Beta 4 M1 — Reduce motion: one switch stops motes + neon animation (§14.9 #9). */
+  reduceMotion: boolean;
+  /** App (UI chrome) text color — separate from manuscript txtCfg (prototype uiTextCol, 7189). */
+  uiTextCol: string;
+  /** Button/chip text color (prototype uiBtnCol, 7190). */
+  uiBtnCol: string;
 }
 
 /** Prototype state defaults (HTML 3212–3230). Default preset: Neon Classic. */
@@ -84,6 +105,13 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   txtCfg: { head: '#f0f3fc', body: '#c8d3e7', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7' },
   scrollTint: '#2b2213',
   scrollOp: 92,
+  ambMode: 'match',
+  ambSpeed: 100,
+  ambColor: null,
+  density: 'comfortable',
+  reduceMotion: false,
+  uiTextCol: '#c8d3e7',
+  uiBtnCol: '#cdd8ea',
 };
 
 /** Verbatim hexA (prototype 3305–3309): #rrggbb + alpha → rgba string, alpha clamped and toFixed(3). */
@@ -138,6 +166,35 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
   }
 }
 
+// ── Beta 4 M1: per-vault default theme (§3; prototype cardH/switchH 7111–7121) ──
+
+/**
+ * Compute the `liquidNeonV2` patch to apply when switching to `vaultRoot`:
+ * the vault's stored preset key becomes setKey + slots, and the wallpaper
+ * resets to `match` (prototype 7111). Returns null when the vault has no
+ * stored default or the stored key is not a known preset.
+ */
+export function vaultDefaultThemePatch(
+  vaultThemes: Record<string, string> | undefined,
+  current: Partial<LiquidNeonV2Settings> | null | undefined,
+  vaultRoot: string,
+): { liquidNeonV2: LiquidNeonV2Settings; presetName: string } | null {
+  const key = vaultThemes?.[vaultRoot];
+  if (!key) return null;
+  const preset = LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey];
+  if (!preset) return null;
+  const S = normalizeLiquidNeonV2(current);
+  return {
+    liquidNeonV2: {
+      ...S,
+      setKey: preset.key,
+      slots: [...preset.c] as LiquidNeonV2Settings['slots'],
+      wp: 'match',
+    },
+    presetName: preset.name,
+  };
+}
+
 /**
  * Compute every Liquid Neon CSS custom property from settings — exact port of
  * the prototype's `themeStyle` (HTML 3948–3966) plus `--ln-scrim` (3967's
@@ -176,7 +233,75 @@ export function computeLiquidNeonV2Tokens(
     '--wpsize': 'cover',
     '--ln-scrim': String(S.scrim / 100),
   };
+  // Beta 4 M1 — Interface card color wheels. Only emitted when customized so
+  // the v1 engine's clamped defaults keep owning the tokens otherwise.
+  // CF-6: app body text stays hard-clamped ≥ 4.5:1 against the darkest glass
+  // fill base (rgba(13,16,28) → #0d101c) at every wheel position.
+  if (S.uiTextCol.toLowerCase() !== LIQUID_NEON_V2_DEFAULTS.uiTextCol) {
+    const safe = enforceContrastFloor(S.uiTextCol, '#0d101c');
+    tokens['--text-body'] = safe;
+    tokens['--text-secondary'] = safe;
+  }
+  if (S.uiBtnCol.toLowerCase() !== LIQUID_NEON_V2_DEFAULTS.uiBtnCol) {
+    tokens['--btn-text'] = S.uiBtnCol;
+  }
   return tokens;
+}
+
+// ── Beta 4 M1: preset import/export (§3; prototype 7191–7192) ────────────────
+
+/** The shareable preset payload: `{slots, setKey, wp, ambMode, frameAnim}`. */
+export interface LiquidNeonPresetFile {
+  slots: LiquidNeonV2Settings['slots'];
+  setKey: LiquidNeonSetKey;
+  wp: LiquidNeonWallpaperKey;
+  ambMode: LiquidNeonAmbMode;
+  frameAnim: LiquidNeonFrameAnim;
+}
+
+/** Serialize the current theme as a shareable JSON preset (prototype 7191). */
+export function exportLiquidNeonPreset(settings: Partial<LiquidNeonV2Settings> | null | undefined): string {
+  const S = normalizeLiquidNeonV2(settings);
+  const file: LiquidNeonPresetFile = {
+    slots: [...S.slots] as LiquidNeonV2Settings['slots'],
+    setKey: S.setKey,
+    wp: S.wp,
+    ambMode: S.ambMode,
+    frameAnim: S.frameAnim,
+  };
+  return JSON.stringify(file, null, 2);
+}
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+const SET_KEYS: readonly string[] = [...(Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]), 'custom'];
+const WP_KEYS: readonly string[] = ['match', 'aurora', 'slate', 'deep', 'none', 'custom'];
+const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
+const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
+
+/**
+ * Parse a preset JSON string. Returns the recognized subset of
+ * `{slots,setKey,wp,ambMode,frameAnim}` (prototype 7192 copies each key that
+ * is present), or `null` when the text isn't valid preset JSON — the caller
+ * toasts `Not a valid theme preset file` and must not crash.
+ */
+export function parseLiquidNeonPreset(text: string): Partial<LiquidNeonV2Settings> | null {
+  let d: unknown;
+  try {
+    d = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof d !== 'object' || d === null || Array.isArray(d)) return null;
+  const o = d as Record<string, unknown>;
+  const out: Partial<LiquidNeonV2Settings> = {};
+  if (Array.isArray(o.slots) && o.slots.length === 6 && o.slots.every((c) => typeof c === 'string' && HEX_RE.test(c))) {
+    out.slots = [...o.slots] as LiquidNeonV2Settings['slots'];
+  }
+  if (typeof o.setKey === 'string' && SET_KEYS.includes(o.setKey)) out.setKey = o.setKey as LiquidNeonSetKey;
+  if (typeof o.wp === 'string' && WP_KEYS.includes(o.wp)) out.wp = o.wp as LiquidNeonWallpaperKey;
+  if (typeof o.ambMode === 'string' && AMB_MODES.includes(o.ambMode)) out.ambMode = o.ambMode as LiquidNeonAmbMode;
+  if (typeof o.frameAnim === 'string' && FRAME_ANIMS.includes(o.frameAnim)) out.frameAnim = o.frameAnim as LiquidNeonFrameAnim;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 const APPLIED_KEYS: string[] = [];
@@ -187,11 +312,31 @@ export function applyLiquidNeonV2Tokens(
   cosmicUrl: string,
   el: HTMLElement = document.documentElement,
 ): Record<string, string> {
+  const S = normalizeLiquidNeonV2(settings);
   const tokens = computeLiquidNeonV2Tokens(settings, cosmicUrl);
   for (const [k, v] of Object.entries(tokens)) {
     el.style.setProperty(k, v);
     if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
   }
+  // Customized button text was previously applied but is now default again —
+  // clear the stale inline token so Button.css variants take back over.
+  if (!tokens['--btn-text']) el.style.removeProperty('--btn-text');
+  // Beta 4 M1 — Interface density: tokens.css shrinks the --space-* /
+  // --ln-card-pad-* scales off this attribute, so paddings change live.
+  if (S.density === 'comfortable') el.removeAttribute('data-ln-density');
+  else el.setAttribute('data-ln-density', S.density);
+  // Beta 4 M1 — Button text color opt-in hook for Button.css (only when customized).
+  if (tokens['--btn-text']) el.setAttribute('data-ln-btn-text', '');
+  else el.removeAttribute('data-ln-btn-text');
+  // Beta 4 M1 — Reduce motion (§14.9 #9): one class stops the motes, wallpaper
+  // drift, and every neon border animation (rule in liquidNeon.css).
+  el.classList.toggle('ln-reduce-motion', S.reduceMotion === true);
+  // Beta 4 M1 — Background animation Off must be LIVE from the settings panel:
+  // the BackgroundStack layers re-render from persisted settings on Save, so
+  // the engine stamps the mode and liquidNeon.css hides the layers meanwhile.
+  // (Snowfall/Rising direction + drift speed re-render through BackgroundStack.)
+  if (S.ambMode === 'off') el.setAttribute('data-ln-amb', 'off');
+  else el.removeAttribute('data-ln-amb');
   // W0.5 (PERFORMANCE §2): regenerate the pre-blurred wallpaper copy exactly
   // when the wallpaper or blur radius changes — the panels' faked glass reads
   // it through `--wp-blur` instead of stacking live backdrop-filters.
@@ -203,4 +348,8 @@ export function applyLiquidNeonV2Tokens(
 export function resetLiquidNeonV2Tokens(el: HTMLElement = document.documentElement): void {
   for (const k of APPLIED_KEYS) el.style.removeProperty(k);
   APPLIED_KEYS.length = 0;
+  el.removeAttribute('data-ln-density');
+  el.removeAttribute('data-ln-btn-text');
+  el.removeAttribute('data-ln-amb');
+  el.classList.remove('ln-reduce-motion');
 }

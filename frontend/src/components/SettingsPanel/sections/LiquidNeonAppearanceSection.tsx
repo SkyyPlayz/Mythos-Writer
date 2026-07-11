@@ -3,12 +3,14 @@
 // prototype is the spec: card layouts, copy, and computed style strings are
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import {
   applyLiquidNeonV2Tokens,
+  exportLiquidNeonPreset,
   hexA,
   normalizeLiquidNeonV2,
+  parseLiquidNeonPreset,
   wallpaperCss,
   LIQUID_NEON_V2_DEFAULTS,
   type LiquidNeonV2Settings,
@@ -20,6 +22,7 @@ import {
   LIQUID_NEON_SWATCHES,
   type LiquidNeonPresetKey,
 } from '../../../theme/presets';
+import { showLnToast } from '../../../theme/lnToast';
 import ColorWheel from '../ColorWheel';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 import './LiquidNeonAppearanceSection.css';
@@ -28,6 +31,9 @@ interface Props {
   liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined;
   onChange: (next: LiquidNeonV2Settings) => void;
   setSavedOk: (ok: boolean) => void;
+  /** Beta 4 M1 — Interface card "Nav rail labels" toggle (navConfig.showLabels). */
+  navRailLabels?: boolean;
+  onNavRailLabelsChange?: (show: boolean) => void;
 }
 
 /** Keyboard activation for div/label elements standing in for a button (Enter/Space). */
@@ -139,8 +145,9 @@ const SCROLL_WHEEL_GRADIENT = 'conic-gradient(#5a4014,#8a6a2c,#2b2213,#4a3a1a,#5
 
 // ── The section ───────────────────────────────────────────────────────────────
 
-export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk }: Props) {
+export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk, navRailLabels, onNavRailLabelsChange }: Props) {
   const S = useMemo(() => normalizeLiquidNeonV2(liquidNeonV2), [liquidNeonV2]);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const patch = (p: Partial<LiquidNeonV2Settings>) => {
     const next: LiquidNeonV2Settings = { ...S, ...p };
@@ -148,6 +155,68 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     applyLiquidNeonV2Tokens(next, cosmicBgUrl); // live preview
     setSavedOk(false);
   };
+
+  // ── Beta 4 M1: preset import/export (§3; prototype 7191–7192) ──────────────
+
+  /** Export: clipboard + JSON file in one action (M1: "clipboard AND file"). */
+  const exportPreset = () => {
+    const json = exportLiquidNeonPreset(S);
+    try {
+      void navigator.clipboard?.writeText(json);
+    } catch { /* clipboard unavailable — the file half still runs */ }
+    try {
+      if (typeof URL.createObjectURL === 'function') {
+        const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'mythos-theme-preset.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      }
+    } catch { /* download unavailable — clipboard copy already happened */ }
+    showLnToast('Theme preset exported — copied to clipboard and saved as JSON');
+  };
+
+  /** Shared import tail: invalid text → toast, no crash (prototype 7192). */
+  const importFromText = (text: string) => {
+    const parsed = parseLiquidNeonPreset(text);
+    if (!parsed) {
+      showLnToast('Not a valid theme preset file');
+      return;
+    }
+    patch(parsed);
+    showLnToast('Theme preset imported — applied live');
+  };
+
+  const onImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-importing the same file
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => importFromText(String(r.result ?? ''));
+    r.onerror = () => showLnToast('Not a valid theme preset file');
+    r.readAsText(f);
+  };
+
+  const importFromClipboard = async () => {
+    let text = '';
+    try {
+      text = (await navigator.clipboard?.readText?.()) ?? '';
+    } catch { /* permission denied or unavailable */ }
+    if (!text) {
+      showLnToast('Clipboard has no theme preset');
+      return;
+    }
+    importFromText(text);
+  };
+
+  /** Header pill style (prototype 2241–2242). */
+  const hdrBtnSt = (borderVar: string): CSSProperties => ({
+    padding: '4px 11px', borderRadius: 8, border: `var(--bw,1px) solid var(${borderVar},rgba(0,240,255,.4))`,
+    color: '#aebad0', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', flex: 'none',
+  });
 
   // Preset cards (prototype 4185–4194)
   const presetCards = (Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]).map((k) => {
@@ -318,13 +387,69 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     glowR: LIQUID_NEON_V2_DEFAULTS.glowR,
     reduceGlow: false,
     animGlow: true,
+    // Beta 4 M1 additions
+    ambMode: LIQUID_NEON_V2_DEFAULTS.ambMode,
+    ambSpeed: LIQUID_NEON_V2_DEFAULTS.ambSpeed,
+    ambColor: null,
+    density: LIQUID_NEON_V2_DEFAULTS.density,
+    reduceMotion: false,
+    uiTextCol: LIQUID_NEON_V2_DEFAULTS.uiTextCol,
+    uiBtnCol: LIQUID_NEON_V2_DEFAULTS.uiBtnCol,
   });
 
   return (
     <section className="settings-section lnas-root" aria-labelledby="section-liquid-neon" data-settings-cat="appearance">
       <h3 className="settings-section-title" id="section-liquid-neon">Liquid Neon</h3>
 
-      <Card title="Color theme" sub="Curated neon sets. Pick one, or build your own below.">
+      {/* §3 card 1 — Color theme, with preset export/import in the header
+          (prototype 2238–2243; Beta 4 M1: clipboard AND file both ways). */}
+      <Card title="Color theme">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 12px' }}>
+          <div style={{ flex: 1, fontSize: 11, color: '#8e9db8' }}>Curated neon sets. Pick one, or build your own below.</div>
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid="lnas-export"
+            title="Copies your theme — colors, background & animation — to the clipboard and saves it as a shareable .json preset"
+            onClick={exportPreset}
+            onKeyDown={onActivateKey(exportPreset)}
+            className="lnas-hdr-btn"
+            style={hdrBtnSt('--b1')}
+          >
+            Export preset
+          </div>
+          <div
+            role="button"
+            tabIndex={0}
+            data-testid="lnas-import-paste"
+            title="Apply a theme preset JSON from your clipboard"
+            onClick={() => { void importFromClipboard(); }}
+            onKeyDown={onActivateKey(() => { void importFromClipboard(); })}
+            className="lnas-hdr-btn"
+            style={hdrBtnSt('--b2')}
+          >
+            Paste
+          </div>
+          <label
+            role="button"
+            tabIndex={0}
+            data-testid="lnas-import"
+            title="Import a shared theme preset (.json)"
+            onKeyDown={onActivateKey(() => importFileRef.current?.click())}
+            className="lnas-hdr-btn"
+            style={hdrBtnSt('--b2')}
+          >
+            Import…
+            <input
+              ref={importFileRef}
+              type="file"
+              accept=".json,application/json"
+              data-testid="lnas-import-file"
+              onChange={onImportFile}
+              style={{ display: 'none' }}
+            />
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>{presetCards}</div>
       </Card>
 
@@ -378,6 +503,56 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
+      {/* §3 card 5 — Background animation (prototype 2311–2332, ambSeg 7022). */}
+      <Card title="Background animation" sub="The drifting motes behind the glass — snowfall, rising sparks, or nothing at all.">
+        <NeonSeg
+          options={[['match', 'Theme match'], ['snow', 'Snowfall'], ['rise', 'Rising'], ['off', 'Off']]}
+          current={S.ambMode}
+          onPick={(k) => {
+            patch({ ambMode: k });
+            showLnToast(k === 'off'
+              ? 'Background animation off'
+              : 'Background animation — ' + (k === 'match' ? 'theme match' : k === 'snow' ? 'snowfall' : 'rising motes'));
+          }}
+          testIdPrefix="lnas-amb"
+        />
+        {S.ambMode !== 'off' && (
+          <>
+            <div style={{ marginTop: 12 }}>
+              <NeonSlider label="Drift speed" value={S.ambSpeed} min={50} max={200} unit="%" onChange={(v) => patch({ ambSpeed: v })} testId="lnas-ambspeed" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11.5, color: '#aebad0' }}>Particle color</div>
+                <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Make it your own — or leave it matched to the theme</div>
+              </div>
+              {!!S.ambColor && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  data-testid="lnas-ambcolor-clear"
+                  onClick={() => { patch({ ambColor: null }); showLnToast('Particles back to theme colors'); }}
+                  onKeyDown={onActivateKey(() => { patch({ ambColor: null }); showLnToast('Particles back to theme colors'); })}
+                  className="lnas-hdr-btn"
+                  style={{ fontSize: 10, color: '#aebad0', border: '1px solid rgba(255,255,255,.14)', borderRadius: 7, padding: '2px 8px', cursor: 'pointer' }}
+                >
+                  Reset to theme
+                </div>
+              )}
+              <input
+                type="color"
+                value={S.ambColor || '#9fd4ff'}
+                data-testid="lnas-ambcolor"
+                aria-label="Particle color"
+                onChange={(e) => patch({ ambColor: e.target.value })}
+                style={{ width: 38, height: 26, padding: 0, border: '1px solid rgba(255,255,255,.14)', borderRadius: 8, background: 'none', cursor: 'pointer' }}
+              />
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/* §3 card 6 — Neon animation. */}
       <Card title="Neon animation" sub="Animates every panel border — Cycle rotates the colors, Sparkle fades your palette in and out.">
         <NeonSeg
           options={[['off', 'Off'], ['cycle', 'Cycle'], ['sparkle', 'Sparkle']]}
@@ -401,6 +576,70 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         )}
       </Card>
 
+      {/* §3 card 7 — Interface (prototype 2346–2373; handlers 7018–7020, 7189–7190). */}
+      <Card title="Interface">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Interface density</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>How much breathing room panels and lists get</div>
+            </div>
+            <NeonSeg
+              options={[['comfortable', 'Comfortable'], ['cozy', 'Cozy'], ['compact', 'Compact']]}
+              current={S.density}
+              onPick={(k) => { patch({ density: k }); showLnToast('Density — ' + k); }}
+              testIdPrefix="lnas-density"
+            />
+          </div>
+          {onNavRailLabelsChange && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11.5, color: '#aebad0' }}>Nav rail labels</div>
+                <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Show names under the left-rail icons — off gives a slim rail</div>
+              </div>
+              <NeonToggle
+                on={navRailLabels !== false}
+                onClick={() => { onNavRailLabelsChange(navRailLabels === false); setSavedOk(false); }}
+                testId="lnas-raillabels"
+              />
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Reduce motion</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Pauses the drifting motes and all neon animation in one switch</div>
+            </div>
+            <NeonToggle
+              on={S.reduceMotion}
+              onClick={() => {
+                const on = !S.reduceMotion;
+                patch({ reduceMotion: on });
+                showLnToast(on ? 'Motion reduced — motes & neon animation paused' : 'Motion restored');
+              }}
+              testId="lnas-reducemotion"
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>App text color</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Interface text everywhere — separate from manuscript text colors</div>
+            </div>
+            <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.uiTextCol}</span>
+            <ColorWheel value={S.uiTextCol} onChange={(v) => patch({ uiTextCol: v })} data-testid="lnas-uitext" />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Button text color</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Text on every button and chip across the app</div>
+            </div>
+            <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.uiBtnCol}</span>
+            <ColorWheel value={S.uiBtnCol} onChange={(v) => patch({ uiBtnCol: v })} data-testid="lnas-uibtn" />
+          </div>
+        </div>
+      </Card>
+
+      {/* §13 moves the two manuscript cards below to the Editor page in M28;
+          until then they stay here, after the seven §3-ordered cards. */}
       <Card title="Text colors" sub="Story and notes match by default — split them to style each on its own.">
         {txRows.map((r) => (
           <div key={r.k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
