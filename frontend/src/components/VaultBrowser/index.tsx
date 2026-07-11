@@ -583,6 +583,19 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     } catch { /**/ }
   }, []);
 
+  // Auto-reveal: expand tree to current note per §6
+  useEffect(() => {
+    if (!autoReveal || !selected) return;
+    // Expand all parent directories of the selected note
+    const parts = selected.split('/');
+    for (let i = 1; i < parts.length - 1; i++) {
+      const parentPath = parts.slice(0, i + 1).join('/');
+      if (!expanded.has(parentPath)) {
+        toggle(parentPath);
+      }
+    }
+  }, [selected, autoReveal, expanded, toggle]);
+
   const handleToggleFolder = useCallback(
     (path: string) => {
       toggle(path);
