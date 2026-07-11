@@ -295,7 +295,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo
     needs: [build-electron]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -350,6 +350,9 @@ jobs:
 
       - name: E2E — Entity system regression create/alias/browse (SKY-220)
         run: xvfb-run --auto-servernum npm run test:e2e:entity
+
+      - name: E2E — Title bar Edit -> Undo/Redo wired to focused editor (SKY-6059)
+        run: xvfb-run --auto-servernum npm run test:e2e:title-bar-undo-redo
 
       - name: Upload E2E report on failure
         if: failure()

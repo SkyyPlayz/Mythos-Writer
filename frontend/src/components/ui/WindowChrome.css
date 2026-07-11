@@ -30,19 +30,57 @@
   opacity: .38;
 }
 
+/* ── Button resets for interactive surfaces (SKY-6059) ─────────────── */
+/* wc-project, wc-menu, wc-menu-item, wc-pop-row, wc-icon-btn, and wc-avatar
+   are now real <button> elements (wc-search stays a <div> — it wraps a real
+   <input>, which is natively focusable). Reset browser defaults so the
+   visual appearance is unchanged. */
+
+.wc-project,
+.wc-menu,
+.wc-menu-item,
+.wc-pop-row,
+.wc-icon-btn,
+.wc-avatar {
+  font: inherit;
+  letter-spacing: inherit;
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  text-align: inherit;
+}
+
+/* Focus-visible ring — consistent with .wc-btn pattern, using --focus-ring token */
+.wc-project:focus-visible,
+.wc-menu:focus-visible,
+.wc-menu-item:focus-visible,
+.wc-pop-row:focus-visible,
+.wc-icon-btn:focus-visible,
+.wc-avatar:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
 /* ── Project menu trigger ──────────────────────────────────────────── */
+
+/* Positioned wrapper: the popover is a sibling of the trigger <button>
+   (not a child), so it stays valid HTML — buttons can't contain
+   interactive content like other buttons (SKY-6059). */
+.wc-project-wrap {
+  position: relative;
+  margin-right: 14px;
+  margin-left: -8px;
+  -webkit-app-region: no-drag;
+}
 
 .wc-project {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-right: 14px;
-  margin-left: -8px;
-  position: relative;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 8px; /* restored after button reset */
   border-radius: 9px;
-  -webkit-app-region: no-drag;
 }
 
 .wc-project:hover {
@@ -75,8 +113,12 @@
   -webkit-app-region: no-drag;
 }
 
-.wc-menu {
+/* Positioned wrapper — see .wc-project-wrap comment (SKY-6059). */
+.wc-menu-wrap {
   position: relative;
+}
+
+.wc-menu {
   padding: 4px 10px;
   border-radius: 7px;
   font-size: 12px;
@@ -280,6 +322,12 @@
   color: #e8eefc;
 }
 
+/* Positioned wrapper — see .wc-project-wrap comment (SKY-6059). */
+.wc-avatar-wrap {
+  position: relative;
+  margin-left: 5px;
+}
+
 .wc-avatar {
   width: 27px;
   height: 27px;
@@ -291,10 +339,8 @@
   font-size: 11.5px;
   font-weight: 700;
   color: #0b0d17;
-  margin-left: 5px;
   cursor: pointer;
   box-shadow: 0 0 12px -2px var(--g2, rgba(155, 95, 255, .4));
-  position: relative;
 }
 
 .wc-avatar--lg {
