@@ -2015,10 +2015,11 @@ describe('SKY-3218 nav-bar configuration', () => {
 
     const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
     expect(saved.navConfig).toBeDefined();
-    expect(saved.navConfig?.items).toHaveLength(3);
-    expect(saved.navConfig?.items[0].id).toBe('story');
-    expect(saved.navConfig?.items[1].id).toBe('notes');
-    expect(saved.navConfig?.items[2].id).toBe('brainstorm');
+    // Beta 4 M3: the six §4 modules in spec order.
+    expect(saved.navConfig?.items).toHaveLength(6);
+    expect(saved.navConfig?.items.map((i) => i.id)).toEqual([
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'graph',
+    ]);
     expect(saved.navConfig?.showLabels).toBe(true);
     expect(saved.navConfig?.showIcons).toBe(true);
     expect(saved.navConfig?.collapsedDefault).toBe(false);

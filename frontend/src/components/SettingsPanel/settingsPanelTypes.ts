@@ -201,11 +201,17 @@ export const FOCUS_PREFS_DEFAULTS = {
   showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
 };
 
+// Beta 4 M3 (FULL-SPEC §4): the six modules in spec order — Story Writer,
+// Notes Editor, Scene Crafter, Brainstorm, Timeline, Vault Graph. Settings is
+// pinned at the rail bottom and never part of this list.
 export const NAV_RAIL_DEFAULTS: NavRailConfig = {
   items: [
-    { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 0 },
-    { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 1 },
-    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 2 },
+    { id: 'story', enabled: true, label: 'Story Writer', icon: '✍', order: 0 },
+    { id: 'notes', enabled: true, label: 'Notes Editor', icon: '📝', order: 1 },
+    { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: '🗂️', order: 2 },
+    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 3 },
+    { id: 'timeline', enabled: true, label: 'Timeline', icon: '📅', order: 4 },
+    { id: 'graph', enabled: true, label: 'Vault Graph', icon: '🕸️', order: 5 },
   ],
   collapsedDefault: false,
   showLabels: true,
@@ -213,25 +219,74 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
 };
 
 /**
+ * The pre-Beta-4 default rail (id/order/enabled). A saved config that still
+ * matches this exactly was never customized by the user, so the Beta 4 module
+ * order may replace it wholesale without violating the SKY-5903 guarantee.
+ */
+const LEGACY_NAV_RAIL_DEFAULT_ITEMS: ReadonlyArray<Pick<NavRailItemConfig, 'id' | 'order' | 'enabled'>> = [
+  { id: 'story', enabled: true, order: 0 },
+  { id: 'notes', enabled: true, order: 1 },
+  { id: 'brainstorm', enabled: true, order: 2 },
+];
+
+/** True when the saved items are exactly the untouched pre-Beta-4 defaults. */
+function isLegacyDefaultNavConfig(saved: NavRailItemConfig[]): boolean {
+  if (saved.length !== LEGACY_NAV_RAIL_DEFAULT_ITEMS.length) return false;
+  return LEGACY_NAV_RAIL_DEFAULT_ITEMS.every((legacy) =>
+    saved.some((s) => s.id === legacy.id && s.order === legacy.order && s.enabled === legacy.enabled),
+  );
+}
+
+/**
  * SKY-5903: merge a user's saved nav-rail items with the current app defaults.
- * Items the user already has are kept as-is (their order/enabled/label/icon
- * win). Defaults introduced by a newer app version are appended *after* the
- * user's highest saved order — not at the default item's own hardcoded
- * order — so a new item can never jump ahead of a re-ordered saved item
- * (e.g. saved notes.order=0, story.order=5 must keep a new brainstorm item
- * after story, not between notes and story just because brainstorm's own
- * default order is 2).
+ * The user's order/enabled always win for items they already have. Defaults
+ * introduced by a newer app version are appended *after* the user's highest
+ * saved order — not at the default item's own hardcoded order — so a new item
+ * can never jump ahead of a re-ordered saved item (e.g. saved notes.order=0,
+ * story.order=5 must keep a new brainstorm item after story, not between
+ * notes and story just because brainstorm's own default order is 2).
+ *
+ * Beta 4 M3 refinements (both keep the SKY-5903 order guarantee intact):
+ * - label/icon are app-owned display fields and are refreshed from the current
+ *   defaults, so module renames (Story → Story Writer) reach older configs;
+ * - a saved config that is byte-for-byte the untouched pre-Beta-4 default
+ *   (story/notes/brainstorm, default order, all enabled) is treated as
+ *   uncustomized and replaced with the new six-module default order.
  */
 export function mergeNavConfigItems(
   savedItems: NavRailItemConfig[] | undefined,
   defaultItems: NavRailItemConfig[] = NAV_RAIL_DEFAULTS.items,
 ): NavRailItemConfig[] {
   const saved = savedItems ?? [];
-  const maxSavedOrder = saved.reduce((max, item) => Math.max(max, item.order), -1);
+  if (isLegacyDefaultNavConfig(saved)) return defaultItems.map((d) => ({ ...d }));
+  const defaultsById = new Map(defaultItems.map((d) => [d.id, d]));
+  const kept = saved.map((item) => {
+    const def = defaultsById.get(item.id);
+    return def ? { ...item, label: def.label, icon: def.icon } : item;
+  });
+  const maxSavedOrder = kept.reduce((max, item) => Math.max(max, item.order), -1);
   const appended = defaultItems
     .filter((d) => !saved.some((i) => i.id === d.id))
     .map((d, index) => ({ ...d, order: maxSavedOrder + 1 + index }));
-  return [...saved, ...appended];
+  return [...kept, ...appended];
+}
+
+/**
+ * Beta 4 M3: move one row of the rail-edit popover (or the Settings Nav-bar
+ * list) and re-normalize order values to array positions. Pure.
+ */
+export function reorderNavConfigItems(
+  items: NavRailItemConfig[],
+  from: number,
+  to: number,
+): NavRailItemConfig[] {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) {
+    return items.map((it, i) => ({ ...it, order: i }));
+  }
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next.map((it, i) => ({ ...it, order: i }));
 }
 
 /**

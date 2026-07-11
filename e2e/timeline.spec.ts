@@ -239,7 +239,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 async function activateStorySection(pg: Page): Promise<void> {
   const nav = pg.getByRole('navigation', { name: 'Main navigation' });
   await expect(nav).toBeVisible({ timeout: 10_000 });
-  const storyNavBtn = nav.getByRole('button', { name: 'Story', exact: true });
+  const storyNavBtn = nav.getByRole('button', { name: 'Story Writer', exact: true });
   if (await storyNavBtn.getAttribute('aria-current') !== 'page') {
     await storyNavBtn.click();
   }

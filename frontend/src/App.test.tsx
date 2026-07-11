@@ -142,7 +142,7 @@ describe('App — onboarding gate (SKY-152)', () => {
     render(<App />);
 
     const navRail = await screen.findByRole('navigation', { name: 'Main navigation' });
-    const notesTab = within(navRail).getByRole('button', { name: 'Notes' });
+    const notesTab = within(navRail).getByRole('button', { name: 'Notes Editor' }); // Beta 4 M3 module label
     fireEvent.click(notesTab);
 
     await waitFor(() => expect(screen.getByRole('heading', { name: /no notes vault/i })).toBeInTheDocument());

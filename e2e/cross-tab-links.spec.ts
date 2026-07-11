@@ -97,17 +97,17 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
       await page.getByRole('button', { name: 'Preview' }).click();
       await page.getByRole('button', { name: '[[Scene: Chapter One/Opening Scene]]' }).click();
 
-      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.locator('.scene-name', { hasText: 'Opening Scene' })).toBeVisible();
 
       await page.getByText('[[Character: Elara]]', { exact: true }).click();
-      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
     } finally {
       await app.close().catch(() => undefined);
@@ -119,7 +119,7 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.keyboard.press('Control+G');
       await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible({ timeout: 5_000 });

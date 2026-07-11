@@ -137,6 +137,13 @@ export interface Story {
   chapters: Chapter[];
   createdAt: string;
   updatedAt: string;
+  // Beta 4 M3 (New Story wizard): genre voice preset — "tunes the Writing
+  // Coach" (FULL-SPEC §4). Optional; older manifests simply lack them.
+  genre?: string;
+  voice?: string;
+  pov?: string;
+  /** Beta 4 M3: Notes-Vault folders linked as this story's existing plans. */
+  linkedPlanFolders?: string[];
 }
 
 export type WritingMode = 'normal' | 'focus' | 'edit';

@@ -481,7 +481,7 @@ test('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', a
   const CARD_TITLE = 'HeroArrivesAtVillage';
 
   // Navigate to Notes tab so BrainstormPage mounts with the selected story context.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
 
   // Inject the proposal from the main process.
@@ -512,7 +512,7 @@ test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal lis
   const CARD_TITLE = 'VillainRevealedAtBanquet';
 
   // Navigate to Notes tab so BrainstormPage mounts.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 8_000 });
 
   // Inject the proposal.

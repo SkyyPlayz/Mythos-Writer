@@ -50,7 +50,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 async function openNoteInRichMode(page: Page, noteBaseName: string): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await page.locator('[data-testid^="vb-row-"]', { hasText: noteBaseName }).first().click();
   await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
   await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
@@ -175,7 +175,7 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
   try {
     const page = await firstWindow(app);
     await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'lossless-guard' }).first().click();
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
 

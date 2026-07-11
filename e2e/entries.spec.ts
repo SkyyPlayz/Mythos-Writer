@@ -88,7 +88,7 @@ async function installStreamMock(app: ElectronApplication, expandedText: string)
 }
 
 async function openQuickEntry(page: Page): Promise<void> {
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 5_000 });
   await expect(page.locator('[data-testid="entries-qa-textarea"]')).toBeVisible({ timeout: 5_000 });
 }

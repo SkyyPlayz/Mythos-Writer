@@ -26,8 +26,11 @@ import WorkspaceTabPicker from './WorkspaceTabPicker';
 import WorkspaceSplitPane from './WorkspaceSplitPane';
 import { WORKSPACE_TAB_DRAG_MIME } from './WorkspaceTabBar';
 import { createOrFocusTab, tabKindForSection, SPLITTABLE_TAB_KINDS, TAB_KIND_META } from './workspaceTabKinds';
-import { NAV_RAIL_DEFAULTS, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
+import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
+import NewStoryWizard from './NewStoryWizard';
+import { buildNewStoryPlanNote, dedupePlanRelPath, makeStoryFromDraft } from './newStoryFlow';
+import type { NewStoryDraft } from './newStoryFlow';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -904,6 +907,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-3177: AppNavRail collapse state + account modal
   const [navRailCollapsed, setNavRailCollapsed] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  // Beta 4 M3: New Story wizard (rail stories switcher → "New Story…").
+  const [newStoryOpen, setNewStoryOpen] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
   const [topBarHidden, setTopBarHidden] = useState(false);
@@ -3814,8 +3819,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [workspaceTabs, handleWorkspaceTabClose]);
 
   // Beta 3 M7: Stories popover data for the nav rail (prototype 179-203).
+  // Beta 4 M3: subtitle = the wizard's voice preset (genre · voice · POV),
+  // falling back to a chapter count for pre-wizard stories.
   const navRailStories = useMemo(
-    () => stories.map((st) => ({ id: st.id, title: st.title, active: st.id === selectedStory?.id })),
+    () => stories.map((st) => ({
+      id: st.id,
+      title: st.title,
+      subtitle: [st.genre, st.voice, st.pov].filter(Boolean).join(' · ')
+        || `${st.chapters.length} chapter${st.chapters.length === 1 ? '' : 's'}`,
+      active: st.id === selectedStory?.id,
+    })),
     [stories, selectedStory],
   );
   const handleRailStorySelect = useCallback((id: string) => {
@@ -3824,6 +3837,93 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(st);
     handleNavSectionChange('story');
   }, [stories, handleNavSectionChange]);
+
+  // ── Beta 4 M3: six-module nav rail (FULL-SPEC §4; prototype navItems 5681) ──
+  // story/notes/brainstorm stay top-level tabs; crafter/timeline are Story
+  // sub-view surfaces and graph is the Notes graph surface, all routed through
+  // the workspace-tab create-or-focus path so the tab strip stays in sync.
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    switch (moduleId) {
+      case 'crafter':
+        openWorkspaceTabKind('kanban');
+        break;
+      case 'timeline':
+        openWorkspaceTabKind('timeline');
+        break;
+      case 'graph':
+        openWorkspaceTabKind('vault-graph');
+        handleNotesSubViewChange('graph');
+        break;
+      case 'story':
+        handleNavSectionChange('story');
+        // Scene Crafter and Timeline have their own rail items now, so a
+        // Story Writer click always lands on the editor sub-view (the other
+        // Story sub-tabs — structure/book — still restore normally).
+        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
+          handleSetView('editor');
+        }
+        break;
+      case 'notes':
+        handleNavSectionChange('notes');
+        // Vault Graph is its own rail item — a Notes Editor click shows notes.
+        if (tabShellRef.current.notesSubView === 'graph') handleNotesSubViewChange('editor');
+        break;
+      default:
+        handleNavSectionChange(moduleId);
+    }
+  }, [openWorkspaceTabKind, handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
+
+  // Which rail module is lit: derived from the actual displayed surface so
+  // the slot-glow pill follows crafter/timeline/graph sub-views too.
+  const activeNavModule: NavRailModuleId = tabShell.activeTab === 'story'
+    ? (view === 'kanban' ? 'crafter' : view === 'timeline' ? 'timeline' : 'story')
+    : tabShell.activeTab === 'notes'
+      ? (tabShell.notesSubView === 'graph' ? 'graph' : 'notes')
+      : 'brainstorm';
+
+  // Beta 4 M3: rail edit popover rows — the full merged module config
+  // (hidden items included) in user order; SKY-5903 merge semantics apply.
+  const railEditItems = useMemo(
+    () => mergeNavConfigItems(appSettings?.navConfig?.items, NAV_RAIL_DEFAULTS.items)
+      .sort((a, b) => a.order - b.order),
+    [appSettings?.navConfig?.items],
+  );
+
+  // Beta 4 M3: persist rail reorder/hide from the edit popover (survives
+  // restarts via the same settings file the Settings → Nav-bar card writes).
+  const persistNavRailConfigItems = useCallback((items: NavRailItemConfig[]) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const base = prev.navConfig ?? NAV_RAIL_DEFAULTS;
+      const updated: AppSettings = { ...prev, navConfig: { ...base, items } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // Beta 4 M3: New Story wizard create — the story AND its Story Plan note
+  // (import-flow convention: Notes Vault `Plans/Plan — <name>.md`, which
+  // Scene Crafter and the timeline auto-build already read).
+  const handleCreateStoryFromWizard = useCallback(async (draft: NewStoryDraft) => {
+    const story = makeStoryFromDraft(draft, { id: generateId(), createdAt: now() });
+    updateManifest([...stories, story]);
+    setSelectedStory(story);
+    setNewStoryOpen(false);
+    handleNavSectionChange('story');
+    let planWritten = false;
+    try {
+      const listing = await window.api.listNotesVault?.();
+      const taken = listing && !('error' in listing) ? listing.items.map((i) => i.path) : [];
+      const rel = dedupePlanRelPath(story.title, taken);
+      const res = await window.api.writeNotesVault?.(rel, buildNewStoryPlanNote(story, draft));
+      planWritten = !!res && !('error' in res);
+    } catch {
+      /* non-fatal — the toast reports it */
+    }
+    showLnToast(planWritten
+      ? `“${story.title}” created — plan note added; Brainstorm will fill the outline`
+      : `“${story.title}” created — the Story Plan note could not be written`);
+  }, [stories, updateManifest, handleNavSectionChange]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
@@ -4066,8 +4166,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <div className="desktop-shell__body">
         {showTitleBar && (
           <AppNavRail
-            activeSection={tabShell.activeTab}
-            onSectionChange={handleNavSectionChange}
+            activeSection={activeNavModule}
+            onSectionChange={handleNavModuleChange}
             onOpenAccount={() => setAccountModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             navItems={navItems}
@@ -4078,7 +4178,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
             stories={navRailStories}
             onStorySelect={handleRailStorySelect}
-            onNewStory={() => { void createStory(); }}
+            onNewStory={() => setNewStoryOpen(true)}
+            editableItems={railEditItems}
+            onEditableItemsChange={persistNavRailConfigItems}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -5025,6 +5127,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-3098 (v0.3): AccountModal — wired to nav rail brand glyph */}
       {accountModalOpen && (
         <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      )}
+      {/* Beta 4 M3: New Story wizard — rail stories switcher → "New Story…" */}
+      {newStoryOpen && (
+        <NewStoryWizard
+          open={newStoryOpen}
+          onClose={() => setNewStoryOpen(false)}
+          onCreate={(draft) => { void handleCreateStoryFromWizard(draft); }}
+        />
       )}
       {/* GH #643: "+" new-tab content picker */}
       {tabPickerOpen && (

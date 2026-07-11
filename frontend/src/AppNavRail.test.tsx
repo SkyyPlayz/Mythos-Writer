@@ -328,6 +328,165 @@ describe('AppNavRail', () => {
     fireEvent.keyDown(screen.getByTestId('nav-rail-stories'), { key: 'Escape' });
     expect(screen.queryByTestId('nav-rail-stories')).not.toBeInTheDocument();
   });
+
+  // ─── Beta 4 M3: six-module rail ──────────────────────────────────────────────
+
+  it('renders all six §4 modules and routes their clicks', () => {
+    const onSectionChange = vi.fn();
+    render(
+      <AppNavRail
+        {...makeProps({
+          onSectionChange,
+          navItems: [
+            { id: 'story', label: 'Story Writer', icon: '✍' },
+            { id: 'notes', label: 'Notes Editor', icon: '📝' },
+            { id: 'crafter', label: 'Scene Crafter', icon: '🗂️' },
+            { id: 'brainstorm', label: 'Brainstorm', icon: '💡' },
+            { id: 'timeline', label: 'Timeline', icon: '📅' },
+            { id: 'graph', label: 'Vault Graph', icon: '🕸️' },
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Scene Crafter' }));
+    expect(onSectionChange).toHaveBeenCalledWith('crafter');
+    fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+    expect(onSectionChange).toHaveBeenCalledWith('timeline');
+    fireEvent.click(screen.getByRole('button', { name: 'Vault Graph' }));
+    expect(onSectionChange).toHaveBeenCalledWith('graph');
+  });
+
+  it('tags crafter/timeline with slot 2 and graph with slot 3 (prototype modDefs)', () => {
+    render(
+      <AppNavRail
+        {...makeProps({
+          navItems: [
+            { id: 'crafter', label: 'Scene Crafter', icon: '🗂️' },
+            { id: 'timeline', label: 'Timeline', icon: '📅' },
+            { id: 'graph', label: 'Vault Graph', icon: '🕸️' },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Scene Crafter' })).toHaveClass('nav-rail__item--slot-2');
+    expect(screen.getByRole('button', { name: 'Timeline' })).toHaveClass('nav-rail__item--slot-2');
+    expect(screen.getByRole('button', { name: 'Vault Graph' })).toHaveClass('nav-rail__item--slot-3');
+  });
+
+  it('shows the story subtitle line (genre · voice · POV) in the switcher', () => {
+    render(
+      <AppNavRail
+        {...makeProps({
+          stories: [{ id: 's1', title: 'Veynn', active: true, subtitle: 'Epic Fantasy · Dark & Gritty · Third Limited' }],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(screen.getByText('Epic Fantasy · Dark & Gritty · Third Limited')).toBeInTheDocument();
+  });
+});
+
+// ─── Beta 4 M3: rail edit popover ─────────────────────────────────────────────
+
+describe('AppNavRail edit popover', () => {
+  const EDIT_ITEMS: NavRailItemConfig[] = [
+    { id: 'story', enabled: true, label: 'Story Writer', icon: '✍', order: 0 },
+    { id: 'notes', enabled: true, label: 'Notes Editor', icon: '📝', order: 1 },
+    { id: 'crafter', enabled: false, label: 'Scene Crafter', icon: '🗂️', order: 2 },
+  ];
+
+  function makeEditProps(onEditableItemsChange = vi.fn()) {
+    return {
+      ...makeProps(),
+      editableItems: EDIT_ITEMS.map((i) => ({ ...i })),
+      onEditableItemsChange,
+    };
+  }
+
+  it('renders no pencil button when editableItems are absent', () => {
+    render(<AppNavRail {...makeProps()} />);
+    expect(screen.queryByTestId('nav-rail-edit-btn')).not.toBeInTheDocument();
+  });
+
+  it('opens the CUSTOMIZE NAVIGATION popover from the pencil button', () => {
+    render(<AppNavRail {...makeEditProps()} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    expect(screen.getByTestId('nav-rail-edit')).toBeInTheDocument();
+    expect(screen.getByText('CUSTOMIZE NAVIGATION')).toBeInTheDocument();
+    // Hidden modules stay listed so they can be re-shown.
+    expect(screen.getByTestId('nav-rail-edit-row-crafter')).toBeInTheDocument();
+  });
+
+  it('toggles a module hidden via the eye button', () => {
+    const onChange = vi.fn();
+    render(<AppNavRail {...makeEditProps(onChange)} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Notes Editor' }));
+    const items = onChange.mock.calls[0][0] as NavRailItemConfig[];
+    expect(items.find((i) => i.id === 'notes')?.enabled).toBe(false);
+    // Other rows untouched.
+    expect(items.find((i) => i.id === 'story')?.enabled).toBe(true);
+  });
+
+  it('re-shows a hidden module via the eye button', () => {
+    const onChange = vi.fn();
+    render(<AppNavRail {...makeEditProps(onChange)} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show Scene Crafter' }));
+    const items = onChange.mock.calls[0][0] as NavRailItemConfig[];
+    expect(items.find((i) => i.id === 'crafter')?.enabled).toBe(true);
+  });
+
+  it('reorders with the move-down button and renormalizes order values', () => {
+    const onChange = vi.fn();
+    render(<AppNavRail {...makeEditProps(onChange)} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    fireEvent.click(screen.getByRole('button', { name: 'Move Story Writer down' }));
+    const items = onChange.mock.calls[0][0] as NavRailItemConfig[];
+    expect(items.map((i) => i.id)).toEqual(['notes', 'story', 'crafter']);
+    expect(items.map((i) => i.order)).toEqual([0, 1, 2]);
+  });
+
+  it('disables move-up on the first row and move-down on the last row', () => {
+    render(<AppNavRail {...makeEditProps()} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    expect(screen.getByRole('button', { name: 'Move Story Writer up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Scene Crafter down' })).toBeDisabled();
+  });
+
+  it('drag-reorders a row onto another row', () => {
+    const onChange = vi.fn();
+    render(<AppNavRail {...makeEditProps(onChange)} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    const source = screen.getByTestId('nav-rail-edit-row-crafter');
+    const target = screen.getByTestId('nav-rail-edit-row-story');
+    fireEvent.dragStart(source);
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    const items = onChange.mock.calls[0][0] as NavRailItemConfig[];
+    expect(items.map((i) => i.id)).toEqual(['crafter', 'story', 'notes']);
+    expect(items.map((i) => i.order)).toEqual([0, 1, 2]);
+  });
+
+  it('closes on backdrop click and on Escape', () => {
+    render(<AppNavRail {...makeEditProps()} />);
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    fireEvent.click(screen.getByTestId('nav-rail-edit-backdrop'));
+    expect(screen.queryByTestId('nav-rail-edit')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('nav-rail-edit-btn'));
+    fireEvent.keyDown(screen.getByTestId('nav-rail-edit'), { key: 'Escape' });
+    expect(screen.queryByTestId('nav-rail-edit')).not.toBeInTheDocument();
+  });
+
+  it('closes on Escape while focus is still on the pencil button', () => {
+    render(<AppNavRail {...makeEditProps()} />);
+    const pencil = screen.getByTestId('nav-rail-edit-btn');
+    fireEvent.click(pencil);
+    expect(screen.getByTestId('nav-rail-edit')).toBeInTheDocument();
+    // Focus never entered the popover — Escape from the trigger must work.
+    fireEvent.keyDown(pencil, { key: 'Escape' });
+    expect(screen.queryByTestId('nav-rail-edit')).not.toBeInTheDocument();
+  });
 });
 
 // ─── AccountModal ─────────────────────────────────────────────────────────────
