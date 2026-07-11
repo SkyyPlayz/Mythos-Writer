@@ -19,6 +19,9 @@ import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import PageRuler from './PageRuler';
+import DocHeader from './DocHeader';
+import MarginRuler from './MarginRuler';
+import PageSetupPopover, { type PageStyle } from './PageSetupPopover';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
@@ -1001,6 +1004,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-3206: story page chrome
   const [pagePrefs, setPagePrefs] = useState<StoryPagePrefs>(STORY_PAGE_DEFAULTS);
+  const [pageStyle, setPageStyle] = useState<PageStyle>('neon');
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
+  const [docZoom, setDocZoom] = useState(1.0);
+  const [focusMode, setFocusMode] = useState(false);
   const pageWrapRef = useRef<HTMLDivElement | null>(null);
   const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
@@ -4946,6 +4953,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               </div>
             ) : selectedScene ? (
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
+                <DocHeader
+                  title={selectedScene.title ?? ''}
+                  onTitleChange={(_t) => { /* no-op: scene title editing not wired in this view */ }}
+                  wordCount={0}
+                  breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
+                  zoom={docZoom}
+                  onZoomChange={setDocZoom}
+                  isFocusMode={focusMode}
+                  onFocusToggle={() => setFocusMode(f => !f)}
+                />
+                <MarginRuler
+                  widthPx={
+                    pagePrefs.sizePreset === 'custom' && pagePrefs.customWidthPx != null
+                      ? pagePrefs.customWidthPx
+                      : (STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+                  }
+                  onWidthChange={(px) => handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: px })}
+                />
+                <PageSetupPopover
+                  isOpen={pageSetupOpen}
+                  onClose={() => setPageSetupOpen(false)}
+                  prefs={pagePrefs}
+                  onPrefsChange={handlePagePrefsChange}
+                  pageStyle={pageStyle}
+                  onPageStyleChange={setPageStyle}
+                />
                 <div className="scene-snapshot-toolbar">
                   <button
                     className="scene-snapshot-save"

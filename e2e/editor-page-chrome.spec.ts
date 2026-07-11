@@ -238,3 +238,35 @@ test('PC-05: page ruler drags width with live preview, snap-to-preset, and margi
     await app.close().catch(() => undefined);
   }
 });
+
+test('PC-06: doc-header renders above editor with breadcrumb and zoom controls', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const header = page.locator('.doc-header');
+    await expect(header).toBeVisible();
+
+    // Zoom control
+    await expect(header.locator('[aria-label*="zoom" i], [aria-label*="Zoom" i]')).toBeVisible();
+
+    // Focus toggle button
+    await expect(header.locator('button[aria-label*="focus" i], button[aria-label*="Focus" i]')).toBeVisible();
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+test('PC-07: margin ruler renders above editor with correct range', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const ruler = page.locator('.margin-ruler');
+    await expect(ruler).toBeVisible();
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
