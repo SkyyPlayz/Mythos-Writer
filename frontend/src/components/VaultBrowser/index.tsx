@@ -6,11 +6,12 @@ import { useVaultFiles } from './useVaultFiles';
 import { useTreeState } from './useTreeState';
 import {
   buildTree,
+  filterTree,
   flattenTree,
   isStoryInternalTreeItem,
   mapUuidNamesToTitles,
 } from './treeUtils';
-import type { FlatRow, VaultListItem } from './treeUtils';
+import type { FlatRow, TreeSortMode, VaultListItem } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
@@ -515,16 +516,61 @@ interface NotesVaultProps {
   onContinuityCheck?: (path: string) => void;
   /** W0.1: manifest id → title map for display-mapping UUID-named entries. */
   uuidTitleMap?: ReadonlyMap<string, string>;
+  /** M16: active file path for auto-reveal. */
+  activeFilePath?: string | null;
 }
 
 const EMPTY_TITLE_MAP: ReadonlyMap<string, string> = new Map();
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap }: NotesVaultProps) {
+// ─── M16: localStorage helpers ───
+
+const SORT_MODE_KEY = 'vb-sort-mode-notes';
+const AUTO_REVEAL_KEY = 'vb-auto-reveal';
+const RECENT_KEY = 'vb-notes-recent';
+const RECENT_MAX = 5;
+
+function readSortMode(): TreeSortMode {
+  try {
+    const v = localStorage.getItem(SORT_MODE_KEY);
+    if (v === 'manual' || v === 'az' || v === 'za') return v;
+  } catch { /**/ }
+  return 'az';
+}
+
+function readAutoReveal(): boolean {
+  try { return localStorage.getItem(AUTO_REVEAL_KEY) === 'true'; } catch { return false; }
+}
+
+function readRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (raw) return JSON.parse(raw) as string[];
+  } catch { /**/ }
+  return [];
+}
+
+function saveRecent(paths: string[]) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(paths)); } catch { /**/ }
+}
+
+function addRecent(current: string[], path: string): string[] {
+  const deduped = [path, ...current.filter((p) => p !== path)];
+  return deduped.slice(0, RECENT_MAX);
+}
+
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
   );
   const [tagPaths, setTagPaths] = useState<Set<string> | null>(null);
+
+  // ─── M16: toolbar state ───
+  const [sortMode, setSortMode] = useState<TreeSortMode>(readSortMode);
+  const [autoReveal, setAutoReveal] = useState<boolean>(readAutoReveal);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recentPaths, setRecentPaths] = useState<string[]>(readRecent);
+  const [recentOpen, setRecentOpen] = useState(true);
 
   useEffect(() => {
     if (!activeTag) { setTagPaths(null); return; }
@@ -543,12 +589,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     }).catch(() => setTagPaths(null));
   }, [activeTag]);
 
-  const notesItems = tagPaths
+  const tagFilteredItems = tagPaths
     ? allNotesItems.filter((item) => !item.isDirectory && tagPaths.has(item.path))
     : allNotesItems;
-  const tree = buildTree(notesItems);
+  // M16: pass sortMode to buildTree; filterTree handles the search query
+  const tree = useMemo(() => {
+    const built = buildTree(tagFilteredItems, sortMode);
+    return searchQuery.trim() ? filterTree(built, searchQuery) : built;
+  }, [tagFilteredItems, sortMode, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep legacy alias for backward-compat (used in rename path-exists check below)
+  const notesItems = tagFilteredItems;
 
-  const { expanded, selected, toggle, initExpand, select } = useTreeState('notes');
+  const { expanded, selected, toggle, initExpand, setExpandedPaths, reveal, select } = useTreeState('notes');
 
   const treeLen = tree.length;
   useEffect(() => {
@@ -582,6 +634,12 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       select(path);
       onOpenFile?.(path);
       onContextChange?.('file');
+      // M16: track in RECENT
+      setRecentPaths((prev) => {
+        const next = addRecent(prev, path);
+        saveRecent(next);
+        return next;
+      });
     },
     [select, onOpenFile, onContextChange],
   );
@@ -705,21 +763,168 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [onReload],
   );
 
+  // ─── M16: toolbar handlers ───
+
+  const cycleSortMode = useCallback(() => {
+    setSortMode((prev) => {
+      const next: TreeSortMode = prev === 'manual' ? 'az' : prev === 'az' ? 'za' : 'manual';
+      try { localStorage.setItem(SORT_MODE_KEY, next); } catch { /**/ }
+      return next;
+    });
+  }, []);
+
+  const toggleAutoReveal = useCallback(() => {
+    setAutoReveal((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(AUTO_REVEAL_KEY, next ? 'true' : 'false'); } catch { /**/ }
+      return next;
+    });
+  }, []);
+
+  // Auto-reveal: when activeFilePath changes and autoReveal is on, expand ancestor
+  // folders and select the note so the tree scrolls it into view.
+  const [revealPath, setRevealPath] = useState<string | null>(null);
+  useEffect(() => {
+    if (!autoReveal || !activeFilePath) return;
+    reveal(activeFilePath);
+    setRevealPath(activeFilePath);
+  }, [activeFilePath, autoReveal, reveal]);
+
+  function collectDirPaths(nodes: import('./treeUtils').TreeNode[]): string[] {
+    const result: string[] = [];
+    for (const n of nodes) {
+      if (!n.isDirectory) continue;
+      result.push(n.path);
+      result.push(...collectDirPaths(n.children));
+    }
+    return result;
+  }
+
+  const handleCollapseAll = useCallback(() => {
+    setExpandedPaths([]);
+  }, [setExpandedPaths]);
+
+  const handleExpandAll = useCallback(() => {
+    setExpandedPaths(collectDirPaths(tree));
+  }, [tree, setExpandedPaths]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const rows = flattenTree(tree, expanded, selected);
+
+  const sortLabel = sortMode === 'az' ? 'A–Z' : sortMode === 'za' ? 'Z–A' : 'Manual';
 
   return (
     <div className="vb-notes-vault" data-testid="vb-notes-vault">
-      <div className="vb-section-header">
+      {/* M16: 5-button toolbar */}
+      <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
         <span className="vb-section-label">Notes Vault</span>
         <button
-          className="vb-section-add"
+          className="vb-toolbar-btn"
           onClick={() => handleNewNote('')}
-          title="New Note"
-          aria-label="New Note"
+          title="New note"
+          aria-label="New note"
+          data-testid="vb-btn-new-note"
         >
           +
         </button>
+        <button
+          className="vb-toolbar-btn"
+          onClick={() => handleNewFolder('')}
+          title="New folder"
+          aria-label="New folder"
+          data-testid="vb-btn-new-folder"
+        >
+          📁+
+        </button>
+        <button
+          className="vb-toolbar-btn"
+          onClick={cycleSortMode}
+          title={`Sort: ${sortLabel}`}
+          aria-label={`Sort: ${sortLabel}`}
+          data-testid="vb-btn-sort"
+        >
+          {sortMode === 'az' ? '↑A' : sortMode === 'za' ? '↓Z' : '↕'}
+        </button>
+        <button
+          className={`vb-toolbar-btn${autoReveal ? ' vb-toolbar-btn--active' : ''}`}
+          onClick={toggleAutoReveal}
+          title={autoReveal ? 'Auto-reveal: on' : 'Auto-reveal: off'}
+          aria-label="Toggle auto-reveal"
+          aria-pressed={autoReveal}
+          data-testid="vb-btn-auto-reveal"
+        >
+          ⦿
+        </button>
+        <button
+          className="vb-toolbar-btn"
+          onClick={handleCollapseAll}
+          title="Collapse all"
+          aria-label="Collapse all"
+          data-testid="vb-btn-collapse-all"
+        >
+          ⊟
+        </button>
+        <button
+          className="vb-toolbar-btn"
+          onClick={handleExpandAll}
+          title="Expand all"
+          aria-label="Expand all"
+          data-testid="vb-btn-expand-all"
+        >
+          ⊞
+        </button>
       </div>
+      {/* M16: search field */}
+      <div className="vb-notes-search" data-testid="vb-notes-search">
+        <input
+          className="vb-notes-search-input"
+          type="text"
+          placeholder="Search notes…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search notes"
+          data-testid="vb-search-input"
+        />
+        {searchQuery && (
+          <button
+            className="vb-notes-search-clear"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+            data-testid="vb-search-clear"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {/* M16: RECENT list */}
+      {recentPaths.length > 0 && (
+        <div className="vb-recent" data-testid="vb-recent">
+          <button
+            className="vb-recent-toggle"
+            onClick={() => setRecentOpen((o) => !o)}
+            aria-expanded={recentOpen}
+            data-testid="vb-recent-toggle"
+          >
+            <span className="vb-recent-chevron" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
+            RECENT
+          </button>
+          {recentOpen && (
+            <ul className="vb-recent-list" data-testid="vb-recent-list">
+              {recentPaths.map((p) => (
+                <li key={p} className="vb-recent-item">
+                  <button
+                    className="vb-recent-btn"
+                    onClick={() => handleOpen(p)}
+                    title={p}
+                    data-testid={`vb-recent-item-${p}`}
+                  >
+                    {p.split('/').pop()?.replace(/\.md$/i, '') ?? p}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
       {allNotesItems.length === 0 ? (
         <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
@@ -744,6 +949,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           onRenameCancel={handleRenameCancel}
           iconMap={iconMap}
           onMove={onMove}
+          scrollToPath={revealPath}
         />
       )}
       <ContextMenu
@@ -798,6 +1004,8 @@ export interface VaultBrowserProps {
   onBetaRead?: (path: string) => void;
   /** M15: notes-tree context menu "Continuity check" (disabled until wired). */
   onContinuityCheck?: (path: string) => void;
+  /** M16: active file path for auto-reveal in the notes tree. */
+  activeFilePath?: string | null;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -873,6 +1081,7 @@ export default function VaultBrowser({
   onOpenInNewTab,
   onBetaRead,
   onContinuityCheck,
+  activeFilePath,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -981,6 +1190,24 @@ export default function VaultBrowser({
 
         {showNotes && (
           <div className={`vb-section${scope === 'both' ? ' vb-section-notes-split' : ' vb-section-full'}`}>
+            {/* M16: vault switcher */}
+            <div className="vb-vault-switcher" data-testid="vb-vault-switcher">
+              <select
+                className="vb-vault-select"
+                data-testid="vb-vault-select"
+                defaultValue="main"
+                onChange={(e) => {
+                  if (e.target.value === 'import') {
+                    e.target.value = 'main';
+                    window.api.openVaultFolder?.();
+                  }
+                }}
+                aria-label="Select vault"
+              >
+                <option value="main">Notes Vault</option>
+                <option value="import">Import a vault…</option>
+              </select>
+            </div>
             {notesLoading ? (
               <div className="vb-loading">Loading…</div>
             ) : (
@@ -997,6 +1224,7 @@ export default function VaultBrowser({
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
                 uuidTitleMap={uuidTitleMap}
+                activeFilePath={activeFilePath}
               />
             )}
           </div>

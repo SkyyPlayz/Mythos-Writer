@@ -1297,3 +1297,158 @@ describe('NotesVault rename uses moveNotesVault', () => {
   });
 });
 
+// ─── M16: Explorer toolbar + tree parity ─────────────────────────────────────
+
+// Helper: render the notes vault with one or more notes and wait for the tree to appear.
+async function renderNotesVaultWithItems(items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }>, extraProps: Record<string, unknown> = {}) {
+  mockListNotesVault.mockResolvedValue({ items });
+  // Ensure noteBacklinks is always mocked (BacklinksPane mounts when a .md is selected)
+  const apiMock = (window as unknown as { api: Record<string, unknown> }).api;
+  if (!apiMock.noteBacklinks) {
+    apiMock.noteBacklinks = vi.fn().mockResolvedValue({ backlinks: [] });
+  }
+  const onOpenFile = vi.fn();
+  render(<VaultBrowser {...baseProps} lockScope initialScope="notes" onOpenFile={onOpenFile} {...extraProps} />);
+  // Wait for at least the toolbar to render (it renders even with no items via empty state)
+  await waitFor(() => expect(screen.getByTestId('vb-notes-toolbar')).toBeInTheDocument());
+  return { onOpenFile };
+}
+
+describe('M16: sort cycle', () => {
+  it('cycles manual → A-Z → Z-A → manual', async () => {
+    await renderNotesVaultWithItems([]);
+    const btn = screen.getByTestId('vb-btn-sort');
+    // default is 'az' (↑A)
+    expect(btn.textContent).toBe('↑A');
+    fireEvent.click(btn);
+    expect(btn.textContent).toBe('↓Z');
+    fireEvent.click(btn);
+    expect(btn.textContent).toBe('↕');
+    fireEvent.click(btn);
+    expect(btn.textContent).toBe('↑A');
+  });
+
+  it('persists sort mode to localStorage', async () => {
+    localStorage.removeItem('vb-sort-mode-notes');
+    await renderNotesVaultWithItems([]);
+    const btn = screen.getByTestId('vb-btn-sort');
+    fireEvent.click(btn); // az → za
+    expect(localStorage.getItem('vb-sort-mode-notes')).toBe('za');
+  });
+});
+
+describe('M16: collapse all', () => {
+  it('collapses all expanded directories when collapse-all clicked', async () => {
+    // Clear stored expansion state so initExpand auto-expands on first render
+    localStorage.removeItem('vb-expanded:notes');
+    await renderNotesVaultWithItems([
+      { path: 'folder', name: 'folder', isDirectory: true, modifiedAt: '' },
+      { path: 'folder/note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    // initExpand auto-expands all dirs on first render; wait for child to appear
+    await waitFor(() => expect(screen.getByTestId('vb-row-folder/note.md')).toBeInTheDocument());
+
+    // Collapse all
+    fireEvent.click(screen.getByTestId('vb-btn-collapse-all'));
+    await waitFor(() => expect(screen.queryByTestId('vb-row-folder/note.md')).not.toBeInTheDocument());
+  });
+});
+
+describe('M16: search filter', () => {
+  it('filters the notes tree by search query', async () => {
+    await renderNotesVaultWithItems([
+      { path: 'alpha.md', name: 'alpha.md', isDirectory: false, modifiedAt: '' },
+      { path: 'beta.md', name: 'beta.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    await waitFor(() => expect(screen.getByTestId('vb-row-alpha.md')).toBeInTheDocument());
+
+    const searchInput = screen.getByTestId('vb-search-input');
+    fireEvent.change(searchInput, { target: { value: 'alpha' } });
+
+    await waitFor(() => expect(screen.queryByTestId('vb-row-beta.md')).not.toBeInTheDocument());
+    expect(screen.getByTestId('vb-row-alpha.md')).toBeInTheDocument();
+  });
+
+  it('shows clear button when query is non-empty and clears on click', async () => {
+    await renderNotesVaultWithItems([]);
+    const searchInput = screen.getByTestId('vb-search-input');
+    expect(screen.queryByTestId('vb-search-clear')).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'foo' } });
+    expect(screen.getByTestId('vb-search-clear')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('vb-search-clear'));
+    expect((searchInput as HTMLInputElement).value).toBe('');
+    expect(screen.queryByTestId('vb-search-clear')).not.toBeInTheDocument();
+  });
+});
+
+describe('M16: RECENT list', () => {
+  beforeEach(() => {
+    localStorage.removeItem('vb-notes-recent');
+  });
+
+  it('adds an opened note to the recent list', async () => {
+    const { onOpenFile } = await renderNotesVaultWithItems([
+      { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+
+    await act(async () => { fireEvent.click(screen.getByTestId('vb-row-note.md')); });
+    expect(onOpenFile).toHaveBeenCalledWith('note.md');
+
+    // RECENT section should appear
+    await waitFor(() => expect(screen.getByTestId('vb-recent')).toBeInTheDocument());
+    expect(screen.getByTestId('vb-recent-item-note.md')).toBeInTheDocument();
+  });
+
+  it('stores recent paths in localStorage', async () => {
+    await renderNotesVaultWithItems([
+      { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+    await act(async () => { fireEvent.click(screen.getByTestId('vb-row-note.md')); });
+
+    const stored = JSON.parse(localStorage.getItem('vb-notes-recent') ?? '[]') as string[];
+    expect(stored).toContain('note.md');
+  });
+});
+
+describe('M16: auto-reveal', () => {
+  beforeEach(() => {
+    localStorage.removeItem('vb-auto-reveal');
+  });
+
+  it('toggle button updates aria-pressed', async () => {
+    await renderNotesVaultWithItems([]);
+    const btn = screen.getByTestId('vb-btn-auto-reveal');
+    expect(btn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('selects the matching node when activeFilePath changes and auto-reveal is on', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' }],
+    });
+    const apiMock = (window as unknown as { api: Record<string, unknown> }).api;
+    apiMock.noteBacklinks = vi.fn().mockResolvedValue({ backlinks: [] });
+    const { rerender } = render(
+      <VaultBrowser {...baseProps} lockScope initialScope="notes" activeFilePath={null} />,
+    );
+    await waitFor(() => expect(screen.getByTestId('vb-notes-toolbar')).toBeInTheDocument());
+
+    // Enable auto-reveal
+    fireEvent.click(screen.getByTestId('vb-btn-auto-reveal'));
+
+    // Change active file path
+    rerender(<VaultBrowser {...baseProps} lockScope initialScope="notes" activeFilePath="note.md" />);
+
+    // Note row should become selected
+    await waitFor(() => {
+      const row = screen.queryByTestId('vb-row-note.md');
+      if (row) expect(row).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+});
+

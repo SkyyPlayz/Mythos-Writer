@@ -291,6 +291,165 @@
   overflow: hidden;
 }
 
+/* M16: toolbar */
+.vb-notes-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.vb-toolbar-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  font-size: 0.8rem;
+  padding: 2px 5px;
+  border-radius: var(--radius-xs, 3px);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 80ms ease, background 80ms ease;
+}
+
+.vb-toolbar-btn:hover {
+  color: var(--text-header, #fff);
+  background: var(--glass-highlight, rgba(255,255,255,0.06));
+}
+
+.vb-toolbar-btn--active {
+  color: var(--accent, #00f0ff);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+/* M16: search */
+.vb-notes-search {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.vb-notes-search-input {
+  flex: 1;
+  background: var(--input-bg, rgba(255,255,255,0.06));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
+  border-radius: var(--radius-xs, 3px);
+  color: var(--text-primary, #fff);
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  outline: none;
+}
+
+.vb-notes-search-input::placeholder {
+  color: var(--text-muted, rgba(255,255,255,0.35));
+}
+
+.vb-notes-search-input:focus {
+  border-color: var(--accent, #00f0ff);
+}
+
+.vb-notes-search-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  font-size: 1rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.vb-notes-search-clear:hover {
+  color: var(--text-header, #fff);
+}
+
+/* M16: RECENT */
+.vb-recent {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+}
+
+.vb-recent-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.vb-recent-toggle:hover {
+  color: var(--text-header, #fff);
+}
+
+.vb-recent-chevron {
+  font-size: 0.6rem;
+}
+
+.vb-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px 0;
+}
+
+.vb-recent-item {
+  display: block;
+}
+
+.vb-recent-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary, rgba(255,255,255,0.7));
+  font-size: 0.75rem;
+  padding: 3px 8px 3px 20px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vb-recent-btn:hover {
+  background: var(--glass-highlight, rgba(255,255,255,0.05));
+  color: var(--text-header, #fff);
+}
+
+/* M16: vault switcher */
+.vb-vault-switcher {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+}
+
+.vb-vault-select {
+  width: 100%;
+  background: var(--input-bg, rgba(255,255,255,0.06));
+  border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
+  border-radius: var(--radius-xs, 3px);
+  color: var(--text-primary, #fff);
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.vb-vault-select:focus {
+  outline: 1px solid var(--accent, #00f0ff);
+}
+
 /* ─── Story vault empty state ─── */
 
 .vb-story-empty {
