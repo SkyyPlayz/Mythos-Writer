@@ -253,6 +253,11 @@ test.beforeAll(async () => {
   if ((await waPanelHeader.getAttribute('aria-expanded')) === 'false') {
     await waPanelHeader.click();
   }
+
+  // SKY-6228: right panel is now the agent hub — the Writing Assistant chat
+  // (heartbeat/scan-now) is behind the "Writing Assistant" agent row.
+  await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
+  await page.locator('[aria-label="Open Writing Assistant chat"]').click();
 });
 
 test.afterAll(async () => {
