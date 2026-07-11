@@ -1,0 +1,252 @@
+/* =========================================================================
+ * NewStoryWizard — Beta 4 M3 (prototype "New Story" modal, HTML 3639–3688).
+ * Rides the shared Dialog primitive; these classes style the wizard body.
+ * ========================================================================= */
+
+.nsw-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: #f0f3fc;
+  margin: 0;
+}
+
+.nsw-sub {
+  font-size: 11px;
+  color: #8e9db8;
+  margin: 3px 0 0;
+}
+
+.nsw-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* prototype 3651: uppercase section labels */
+.nsw-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: #7686a2;
+  margin-bottom: 6px;
+}
+
+.nsw-name {
+  width: 100%;
+  height: 32px;
+  background: rgba(255, 255, 255, .05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  border-radius: 10px;
+  color: #dbe4f5;
+  font-size: 12.5px;
+  padding: 0 11px;
+  margin-bottom: 14px;
+  font-family: inherit;
+}
+
+.nsw-name:focus {
+  outline: none;
+  border-color: var(--b1, rgba(0, 240, 255, .6));
+}
+
+.nsw-voice-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nsw-select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  background: rgba(255, 255, 255, .05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  border-radius: 9px;
+  color: #dbe4f5;
+  font-size: 11.5px;
+  padding: 0 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nsw-hint {
+  font-size: 11px;
+  color: #8e9db8;
+  line-height: 1.55;
+  margin: 0 0 9px;
+}
+
+.nsw-hint b {
+  color: #c3cee2;
+}
+
+/* prototype 3663: scrolling folder checklist */
+.nsw-folders {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.nsw-folders-empty {
+  font-size: 11px;
+  color: #7686a2;
+  padding: 8px 9px;
+}
+
+.nsw-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.nsw-folder:hover {
+  background: rgba(255, 255, 255, .05);
+}
+
+.nsw-folder:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* prototype nsLinkRows boxSt: 15px check square, neon when linked */
+.nsw-folder-check {
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  transition: all .15s ease;
+  border: 1px solid rgba(255, 255, 255, .28);
+  color: transparent;
+}
+
+.nsw-folder--on .nsw-folder-check {
+  background: var(--n1, #00f0ff);
+  color: #0b0d17;
+  border: 1px solid var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.nsw-folder-glyph {
+  display: flex;
+  flex: none;
+  color: #8e9db8;
+}
+
+.nsw-folder-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: #dbe4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nsw-folder-count {
+  font-size: 10px;
+  color: #7686a2;
+  flex: none;
+}
+
+/* prototype 3669: "Every story gets its own timeline" info card */
+.nsw-timeline-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--gs1, rgba(0, 240, 255, .06));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .3));
+  font-size: 10.5px;
+  color: #aebad0;
+  line-height: 1.5;
+}
+
+.nsw-timeline-card svg {
+  flex: none;
+  color: var(--n1, #00f0ff);
+}
+
+.nsw-timeline-card b {
+  color: #e6ecf9;
+}
+
+.nsw-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nsw-footnote {
+  flex: 1;
+  font-size: 10px;
+  color: #586a88;
+}
+
+.nsw-cancel {
+  padding: 6px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: transparent;
+  color: #aebad0;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nsw-cancel:hover {
+  color: #fff;
+}
+
+.nsw-create {
+  padding: 6px 18px;
+  border-radius: 9px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform .15s ease;
+}
+
+.nsw-create:hover {
+  transform: scale(1.03);
+}
+
+.nsw-cancel:focus-visible,
+.nsw-create:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nsw-create,
+  .nsw-folder-check {
+    transition: none;
+  }
+
+  .nsw-create:hover {
+    transform: none;
+  }
+}

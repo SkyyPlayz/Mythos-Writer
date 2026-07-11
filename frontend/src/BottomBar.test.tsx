@@ -1,7 +1,8 @@
 // SKY-2305: BottomBar daily goal chip unit tests
+// Beta 4 M2: + page-width hint, "Saved Xm ago" pulse, single-status-bar regression
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import BottomBar from './BottomBar';
+import BottomBar, { formatSavedAgo } from './BottomBar';
 import type { Scene, Chapter, Story } from './types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ async function renderBar(props: {
   selectedChapter?: Chapter | null;
   selectedStory?: Story | null;
   activeNotePath?: string | null;
+  pageWidthPx?: number | null;
 }) {
   const scene = props.selectedScene !== undefined ? props.selectedScene : makeScene();
   const chapter = props.selectedChapter !== undefined ? props.selectedChapter : makeChapter([scene ?? makeScene()]);
@@ -79,6 +81,7 @@ async function renderBar(props: {
         selectedStory={story}
         onNavigateScene={vi.fn()}
         activeNotePath={props.activeNotePath ?? null}
+        pageWidthPx={props.pageWidthPx ?? null}
       />,
     );
   });
@@ -258,5 +261,63 @@ describe('AC-DG-07 — chip hidden in Notes view', () => {
     await waitFor(() => {
       expect(screen.getByTestId('bottom-daily-goal')).toBeDefined();
     });
+  });
+});
+
+// ─── Beta 4 M2 — page-width hint (§4: "Page W px — drag page edge to resize") ─
+
+describe('Beta 4 M2 — page-width hint', () => {
+  it('renders the hint with the current page width when a scene is open', async () => {
+    await renderBar({ pageWidthPx: 1000 });
+    const hint = screen.getByTestId('bottom-page-hint');
+    expect(hint.textContent).toContain('Page 1,000 px');
+    expect(hint.textContent).toContain('drag page edge to resize');
+  });
+
+  it('omits the hint when no page width is supplied (non-editor surfaces)', async () => {
+    await renderBar({});
+    expect(screen.queryByTestId('bottom-page-hint')).toBeNull();
+  });
+});
+
+// ─── Beta 4 M2 — "Saved Xm ago" + pulse dot (§4, prototype 3630) ─────────────
+
+describe('Beta 4 M2 — Saved indicator', () => {
+  it('is hidden until the first scene:saved event', async () => {
+    await renderBar({});
+    expect(screen.queryByTestId('bottom-saved')).toBeNull();
+  });
+
+  it('appears with a pulse dot after scene:saved', async () => {
+    await renderBar({});
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('scene:saved'));
+    });
+    const saved = screen.getByTestId('bottom-saved');
+    expect(saved.textContent).toContain('Saved just now');
+    expect(saved.querySelector('.bottom-saved-dot')).not.toBeNull();
+  });
+
+  it('formatSavedAgo ramps just now → minutes → hours', () => {
+    const t0 = 1_000_000_000_000;
+    expect(formatSavedAgo(t0, t0 + 10_000)).toBe('Saved just now');
+    expect(formatSavedAgo(t0, t0 + 2 * 60_000)).toBe('Saved 2m ago');
+    expect(formatSavedAgo(t0, t0 + 3 * 3_600_000)).toBe('Saved 3h ago');
+  });
+});
+
+// ─── Beta 4 M2 regression — exactly ONE status bar in the DOM (§4 / GAP #10) ─
+
+describe('Beta 4 M2 — single status bar regression', () => {
+  it('renders exactly one .bottom-bar and owns the words/characters stats', async () => {
+    const { container } = await renderBar({ pageWidthPx: 1000 });
+    expect(container.querySelectorAll('.bottom-bar')).toHaveLength(1);
+    // The full §4 stat run lives here: nav · words · chars · read time · page hint.
+    const stats = screen.getByTestId('bottom-live-stats');
+    expect(stats.textContent).toMatch(/words/);
+    expect(stats.textContent).toMatch(/characters/);
+    expect(stats.textContent).toMatch(/min read/);
+    // The deleted in-editor duplicate must never come back.
+    expect(document.querySelector('.be-wordcount')).toBeNull();
   });
 });

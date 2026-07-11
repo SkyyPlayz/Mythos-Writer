@@ -165,7 +165,7 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
   try {
     const page = await firstWindow(app);
     await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
 
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'chromeless' }).first().click();
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });

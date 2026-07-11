@@ -19,7 +19,9 @@ interface Props {
 // SKY-320: parent folder of `<Mythos Vault>/Story Vault/` is the user-facing
 // vault name when the bundle layout is followed. Falling back to the Story
 // Vault basename keeps display sane for legacy single-folder vaults.
-function deriveDisplayName(p: ProjectEntry | { vaultRoot: string; notesVaultRoot?: string }): string {
+// Beta 4 M1: exported — the per-vault-theme toast (DesktopShell) and the
+// Mythos vaults settings cards name vaults the same way.
+export function deriveVaultDisplayName(p: { vaultRoot: string; notesVaultRoot?: string }): string {
   const split = (s: string) => s.split(/[/\\]/).filter(Boolean);
   const story = split(p.vaultRoot);
   if (p.notesVaultRoot) {
@@ -41,7 +43,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const activeName = activeVaultRoot
-    ? deriveDisplayName({ vaultRoot: activeVaultRoot, notesVaultRoot: activeNotesVaultRoot })
+    ? deriveVaultDisplayName({ vaultRoot: activeVaultRoot, notesVaultRoot: activeNotesVaultRoot })
     : 'No Project';
 
   const loadProjects = useCallback(async () => {
@@ -193,7 +195,7 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
             <>
               <span className="project-switcher-section-label">Mythos Vaults</span>
               {projects.map((p) => {
-                const displayName = deriveDisplayName(p) || p.name;
+                const displayName = deriveVaultDisplayName(p) || p.name;
                 const tooltip = p.notesVaultRoot
                   ? `${p.vaultRoot}\n${p.notesVaultRoot}`
                   : p.vaultRoot;

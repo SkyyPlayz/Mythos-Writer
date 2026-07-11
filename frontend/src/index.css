@@ -1,27 +1,6 @@
-html {
-  /* SKY-127: Neon window chrome border — three-color liquid glass treatment.
-     Applied as an outer glow around the window frame. Context attribute
-     [data-context] switches between default, folder (violet), and file (cyan).
-     High-contrast mode disables neon glow via --neon-intensity: 0 */
-  box-shadow: inset 0 0 0 1px var(--glass-rim),
-              inset var(--border-neon-default);
-}
-
-html[data-context="folder"] {
-  box-shadow: inset 0 0 0 1px var(--glass-rim),
-              inset var(--border-neon-context-folder);
-}
-
-html[data-context="file"] {
-  box-shadow: inset 0 0 0 1px var(--glass-rim),
-              inset var(--border-neon-context-file);
-}
-
-html:hover,
-html:focus-within {
-  box-shadow: inset 0 0 0 1px var(--glass-rim),
-              inset var(--border-neon-hover);
-}
+/* Beta 4 M1 (§3): no "neon window frame" ring around the app — panels only.
+   The SKY-127 html box-shadow rings ([data-context] variants included) that
+   lived here are deleted along with the rest of the W0.5 ring plumbing. */
 
 * {
   box-sizing: border-box;
@@ -29,23 +8,30 @@ html:focus-within {
   padding: 0;
 }
 
-html {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 0 32px 1px rgba(0, 240, 255, 0.15),
-              inset 0 0 24px 1px rgba(155, 95, 255, 0.12),
-              inset 0 0 16px 1px rgba(255, 77, 255, 0.1);
+/* Beta 4 M1 (GAP P2 #11): global styled scrollbars, app-wide — verbatim from
+   the prototype's head CSS (HTML 29–33): 9px, translucent slate thumb inset
+   by a 2px transparent border, transparent corner. Per-surface overrides
+   (e.g. the 4px workspace tab strip) still win on specificity. */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
 }
 
-html[data-context="folder"] {
-  box-shadow: inset 0 0 32px 1px rgba(155, 95, 255, 0.18),
-              inset 0 0 24px 1px rgba(255, 77, 255, 0.12),
-              inset 0 0 16px 1px rgba(155, 95, 255, 0.1);
+::-webkit-scrollbar-thumb {
+  background: rgba(158, 178, 214, .16);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-html[data-context="file"] {
-  box-shadow: inset 0 0 32px 1px rgba(0, 240, 255, 0.18),
-              inset 0 0 24px 1px rgba(155, 95, 255, 0.12),
-              inset 0 0 16px 1px rgba(0, 240, 255, 0.1);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(158, 178, 214, .3);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 body {

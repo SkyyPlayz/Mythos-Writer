@@ -17,8 +17,8 @@
   overflow-y: auto;
   will-change: scroll-position;
   outline: none;
-  scrollbar-color: var(--border-subtle) transparent;
-  scrollbar-width: thin;
+  /* Beta 4 M1 (GAP P2 #11): scrollbar-color/width removed — setting them makes
+     Chromium ignore the global ::-webkit-scrollbar styling (index.css). */
 }
 
 /* ─── Stat bar ─── */

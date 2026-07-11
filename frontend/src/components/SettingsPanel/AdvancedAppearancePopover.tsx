@@ -188,28 +188,11 @@ export default function AdvancedAppearancePopover({
             </div>
           </div>
 
-          {/* ── D1–D3: Extra sliders ── */}
+          {/* ── D1–D3: Extra sliders ──
+              Beta 4 M1: the "Neon frame" (window ring width) slider is deleted
+              with the frame ring itself (§3: no ring around the app). */}
           <div className="lg-popover-section">
             <h4 className="lg-popover-section-title">Detail</h4>
-
-            <div className="settings-field settings-field-inline">
-              <label className="settings-label lg-adv-label" htmlFor="adv-neon-frame">Neon frame</label>
-              <div className="lg-slider-labeled-row lg-adv-slider-row">
-                <span className="lg-axis-label">Thin</span>
-                <input
-                  id="adv-neon-frame"
-                  className="settings-slider"
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={lg.neonFrameWidth ?? 50}
-                  aria-label="Neon frame width thin to thick"
-                  onChange={(e) => setLgField('neonFrameWidth', Number(e.target.value))}
-                />
-                <span className="lg-axis-label lg-axis-right">Thick</span>
-              </div>
-            </div>
 
             <div className="settings-field settings-field-inline">
               <label className="settings-label lg-adv-label" htmlFor="adv-border">Border</label>

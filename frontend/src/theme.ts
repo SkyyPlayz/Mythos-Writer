@@ -127,7 +127,6 @@ export const LIQUID_NEON_DEFAULTS: LiquidNeonPrefs = {
   // Advanced defaults (MYT-716)
   advancedDecoupled: false,
   textContrast: 50,
-  neonFrameWidth: 50,
   borderStrength: 50,
   bgMode: 'color',
   bgFit: 'cover',
@@ -259,12 +258,9 @@ export function applyLiquidNeonTokens(
   // Solid outline colour composed over the gradient (matches pre-SKY-910 behaviour).
   root.style.setProperty('--border-neon-outline', slotA);
 
-  // Frame width: neonFrameWidth 0–100 → rest 0–2px, hover 1–4px
-  if (p.neonFrameWidth !== undefined) {
-    const t = p.neonFrameWidth / 100;
-    root.style.setProperty('--frame-width-rest',  `${lerp(0, 2, t).toFixed(1)}px`);
-    root.style.setProperty('--frame-width-hover', `${lerp(1, 4, t).toFixed(1)}px`);
-  }
+  // Beta 4 M1: the "Neon frame" slider (neonFrameWidth) is deleted with the
+  // window frame ring — --frame-width-rest/hover stay at their tokens.css
+  // defaults (they also size shared Button borders).
 
   // Border strength: 0–100 → alpha 0.06–0.24
   if (p.borderStrength !== undefined) {
@@ -505,7 +501,6 @@ export function resetLiquidNeonTokens(): void {
     '--bg-image-size', '--bg-image-repeat', '--bg-image-position',
     '--bg-scrim-alpha', '--bg-vignette-alpha',
     '--bg-base', '--bg-canvas', '--bg-app',
-    '--frame-width-rest', '--frame-width-hover',
     '--border-default', '--border-strong',
     '--neon-cyan', '--neon-violet', '--neon-magenta',
     // SKY-910 — three-stop configurable neon border gradient

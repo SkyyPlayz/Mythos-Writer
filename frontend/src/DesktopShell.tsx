@@ -6,7 +6,8 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import { applyLiquidNeonV2Tokens, vaultDefaultThemePatch, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import { deriveVaultDisplayName } from './ProjectSwitcher';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -34,8 +35,11 @@ import {
   PROVISIONAL_CREATED_TOAST,
   PROVISIONAL_DISCARDED_TOAST,
 } from './workspaceDocTabs';
-import { NAV_RAIL_DEFAULTS, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
+import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
+import NewStoryWizard from './NewStoryWizard';
+import { buildNewStoryPlanNote, dedupePlanRelPath, makeStoryFromDraft } from './newStoryFlow';
+import type { NewStoryDraft } from './newStoryFlow';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
@@ -840,10 +844,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityEntry | null>(null);
-  const [vaultContext, setVaultContext] = useState<'file' | 'folder' | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
+  // Beta 4 M1: set by the two project-switch paths right before loadVault so
+  // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
+  const pendingVaultThemeRootRef = useRef<string | null>(null);
   const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
@@ -872,6 +878,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // Beta 4 M2: query handed off from the title-bar "Search vault…" field.
+  const [globalSearchSeed, setGlobalSearchSeed] = useState('');
+  // Beta 4 M2: View → Toggle left panel (§4) — a real user toggle, ANDed into
+  // showLeftSidebar below (focus/distraction-free rules unchanged).
+  const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [viewDepth, setViewDepthRaw] = useState<ViewDepth>('scene');
   // SKY-6010: 'part' has no ViewDepth of its own (Parts don't exist in the
@@ -904,6 +915,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-3177: AppNavRail collapse state + account modal
   const [navRailCollapsed, setNavRailCollapsed] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
+  // Beta 4 M3: New Story wizard (rail stories switcher → "New Story…").
+  const [newStoryOpen, setNewStoryOpen] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
   const [topBarHidden, setTopBarHidden] = useState(false);
@@ -1275,7 +1288,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // early return per DesktopShell rules-of-hooks discipline.
   const agentsActive = useAgentsActive();
   useAgentActivity(betaReadLoading);
-  const { betaReadNote, continuityCheckNote } = useVaultAgentActions({ agentNames: appSettings?.agentNames });
+  // Beta 4 M2 (§4): bell rows deep-link to their source. The handlers below
+  // are consts declared later in the component — safe because these closures
+  // only run on notification click, long after render; the hook re-captures
+  // them every render via refs.
+  const { betaReadNote, continuityCheckNote } = useVaultAgentActions({
+    agentNames: appSettings?.agentNames,
+    onOpenNote: (path) => handleOpenContinuityEntityNote(path),
+    onOpenContinuity: () => handleGrsVisibilityChange(true),
+  });
   // Beta 3 M23: continuity flags surface as archive comments in the
   // manuscript gutter (live agent actions via suggestionId → archiveConfirm).
   useContinuityCommentsBridge(selectedStory, appSettings?.agentNames);
@@ -1446,6 +1467,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const loadVault = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // Beta 4 M1: consume the pending vault-switch marker synchronously so a
+    // second concurrent loadVault (main push + local handler) can't re-apply.
+    const switchedVaultRoot = pendingVaultThemeRootRef.current;
+    pendingVaultThemeRootRef.current = null;
     let cachedSettings: AppSettings | null = null;
     try {
       const [sFromIpc, rootResult, vaultPaths] = await Promise.all([
@@ -1627,9 +1652,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           applyLiquidNeonTokens(lg);
         }
-        // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
-        // v1 axis tokens so v2 values win where both define a property.
-        void applyLiquidNeonV2Theme(s.liquidNeonV2);
+        // Beta 4 M1: per-vault default theme — when this reload came from a
+        // vault switch and the target vault stores a default, apply it
+        // (setKey + slots + wp per prototype 7111), persist, and toast.
+        const vaultPatch = switchedVaultRoot
+          ? vaultDefaultThemePatch(s.vaultThemes, s.liquidNeonV2, switchedVaultRoot)
+          : null;
+        if (vaultPatch && switchedVaultRoot) {
+          const themed = { ...s, liquidNeonV2: vaultPatch.liquidNeonV2 } as AppSettings;
+          cachedSettings = themed;
+          setAppSettings(themed);
+          window.api.settingsSet(themed).catch(() => {});
+          void applyLiquidNeonV2Theme(vaultPatch.liquidNeonV2);
+          showLnToast(
+            'Switched Mythos vault — '
+            + deriveVaultDisplayName({ vaultRoot: switchedVaultRoot, notesVaultRoot: notesPath || undefined })
+            + ' · ' + vaultPatch.presetName + ' theme',
+          );
+        } else {
+          // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
+          // v1 axis tokens so v2 values win where both define a property.
+          void applyLiquidNeonV2Theme(s.liquidNeonV2);
+        }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
@@ -1743,6 +1787,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api?.onProjectSwitched) return;
     const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
       setActiveVaultRoot(data.vaultRoot);
       // Reset selection state and reload vault content
       setSelectedScene(null);
@@ -1757,6 +1802,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [loadVault]);
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
     setActiveVaultRoot(vaultRoot);
     setSelectedScene(null);
     setSelectedChapter(null);
@@ -2433,11 +2479,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         }
         return;
       }
+      // Beta 4 M2 (§1 keyboard map / CF-14): Ctrl/Cmd+K = the command palette
+      // fronting FTS5 search — the title-bar pill's "Ctrl K" hint must not lie
+      // (§1.2). The old story-tab Scene Crafter binding moved to the Insert
+      // menu ("Beat (Scene Crafter)") and the nav rail.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
-        if (tabShellRef.current.activeTab === 'story') {
-          e.preventDefault();
-          handleSetView('kanban');
-        }
+        e.preventDefault();
+        setGlobalSearchSeed('');
+        setGlobalSearchOpen(true);
         return;
       }
       if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
@@ -2585,7 +2634,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleSetView, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -2927,7 +2976,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(story);
     setSelectedEntity(null);
     setOpenedNotePath(null);
-    setVaultContext('file');
     editorApiRef.current?.focus();
     setTimeout(() => {
       if (document.activeElement?.classList.contains('vb-rename-input')) return;
@@ -3051,14 +3099,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
 
-  // SKY-127: Update window chrome neon border context based on selected vault item
-  useEffect(() => {
-    if (vaultContext) {
-      document.documentElement.setAttribute('data-context', vaultContext);
-    } else {
-      document.documentElement.removeAttribute('data-context');
-    }
-  }, [vaultContext]);
+  // Beta 4 M1: the SKY-127 data-context window-ring effect is deleted with the
+  // html frame ring (§3: no neon window frame ring around the app).
 
   // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
   useEffect(() => {
@@ -3691,7 +3733,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onCreateChapter={createChapter}
             onCreateScene={createScene}
             onOpenFile={handleOpenSceneByPath}
-            onContextChange={setVaultContext}
             onExport={(scope: ExportScope) => setExportScope(scope)}
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
             onBetaRead={betaReadNote}
@@ -3790,7 +3831,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleSelectScene, setViewDepth, createStory, createChapter, createScene,
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
-    handleOpenSceneByPath, handleOpenGraphScene, setVaultContext, setExportScope, appSettings,
+    handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
     view, handleJumpToText,
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
@@ -4055,8 +4096,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [storyDocTabs, notesDocTabs, handleWorkspaceTabClose]);
 
   // Beta 3 M7: Stories popover data for the nav rail (prototype 179-203).
+  // Beta 4 M3: subtitle = the wizard's voice preset (genre · voice · POV),
+  // falling back to a chapter count for pre-wizard stories.
   const navRailStories = useMemo(
-    () => stories.map((st) => ({ id: st.id, title: st.title, active: st.id === selectedStory?.id })),
+    () => stories.map((st) => ({
+      id: st.id,
+      title: st.title,
+      subtitle: [st.genre, st.voice, st.pov].filter(Boolean).join(' · ')
+        || `${st.chapters.length} chapter${st.chapters.length === 1 ? '' : 's'}`,
+      active: st.id === selectedStory?.id,
+    })),
     [stories, selectedStory],
   );
   const handleRailStorySelect = useCallback((id: string) => {
@@ -4065,6 +4114,96 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(st);
     handleNavSectionChange('story');
   }, [stories, handleNavSectionChange]);
+
+  // ── Beta 4 M3: six-module nav rail (FULL-SPEC §4; prototype navItems 5681) ──
+  // story/notes/brainstorm stay top-level tabs; crafter/timeline are Story
+  // sub-view surfaces and graph is the Notes graph surface. M4's document-tab
+  // model owns the strip (static pseudo-tab / hidden per view), so rail clicks
+  // switch section + sub-view directly instead of creating module tabs.
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    switch (moduleId) {
+      case 'crafter':
+        handleNavSectionChange('story');
+        handleSetView('kanban');
+        break;
+      case 'timeline':
+        handleNavSectionChange('story');
+        handleSetView('timeline');
+        break;
+      case 'graph':
+        handleNavSectionChange('notes');
+        handleNotesSubViewChange('graph');
+        break;
+      case 'story':
+        handleNavSectionChange('story');
+        // Scene Crafter and Timeline have their own rail items now, so a
+        // Story Writer click always lands on the editor sub-view (the other
+        // Story sub-tabs — structure/book — still restore normally).
+        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
+          handleSetView('editor');
+        }
+        break;
+      case 'notes':
+        handleNavSectionChange('notes');
+        // Vault Graph is its own rail item — a Notes Editor click shows notes.
+        if (tabShellRef.current.notesSubView === 'graph') handleNotesSubViewChange('editor');
+        break;
+      default:
+        handleNavSectionChange(moduleId);
+    }
+  }, [handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
+
+  // Which rail module is lit: derived from the actual displayed surface so
+  // the slot-glow pill follows crafter/timeline/graph sub-views too.
+  const activeNavModule: NavRailModuleId = tabShell.activeTab === 'story'
+    ? (view === 'kanban' ? 'crafter' : view === 'timeline' ? 'timeline' : 'story')
+    : tabShell.activeTab === 'notes'
+      ? (tabShell.notesSubView === 'graph' ? 'graph' : 'notes')
+      : 'brainstorm';
+
+  // Beta 4 M3: rail edit popover rows — the full merged module config
+  // (hidden items included) in user order; SKY-5903 merge semantics apply.
+  const railEditItems = useMemo(
+    () => mergeNavConfigItems(appSettings?.navConfig?.items, NAV_RAIL_DEFAULTS.items)
+      .sort((a, b) => a.order - b.order),
+    [appSettings?.navConfig?.items],
+  );
+
+  // Beta 4 M3: persist rail reorder/hide from the edit popover (survives
+  // restarts via the same settings file the Settings → Nav-bar card writes).
+  const persistNavRailConfigItems = useCallback((items: NavRailItemConfig[]) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const base = prev.navConfig ?? NAV_RAIL_DEFAULTS;
+      const updated: AppSettings = { ...prev, navConfig: { ...base, items } };
+      window.api.settingsSet(updated).catch(() => {});
+      return updated;
+    });
+  }, []);
+
+  // Beta 4 M3: New Story wizard create — the story AND its Story Plan note
+  // (import-flow convention: Notes Vault `Plans/Plan — <name>.md`, which
+  // Scene Crafter and the timeline auto-build already read).
+  const handleCreateStoryFromWizard = useCallback(async (draft: NewStoryDraft) => {
+    const story = makeStoryFromDraft(draft, { id: generateId(), createdAt: now() });
+    updateManifest([...stories, story]);
+    setSelectedStory(story);
+    setNewStoryOpen(false);
+    handleNavSectionChange('story');
+    let planWritten = false;
+    try {
+      const listing = await window.api.listNotesVault?.();
+      const taken = listing && !('error' in listing) ? listing.items.map((i) => i.path) : [];
+      const rel = dedupePlanRelPath(story.title, taken);
+      const res = await window.api.writeNotesVault?.(rel, buildNewStoryPlanNote(story, draft));
+      planWritten = !!res && !('error' in res);
+    } catch {
+      /* non-fatal — the toast reports it */
+    }
+    showLnToast(planWritten
+      ? `“${story.title}” created — plan note added; Brainstorm will fill the outline`
+      : `“${story.title}” created — the Story Plan note could not be written`);
+  }, [stories, updateManifest, handleNavSectionChange]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
@@ -4105,10 +4244,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     prevContinuityRef.current = continuityCount;
   }, [continuityCount, handleGrsVisibilityChange]);
 
-  // Beta 3 M5: prototype title-bar menus (menuDefs 4673-4678) mapped to the
-  // app's real handlers; prototype-only mocks keep their toast copy.
+  // Beta 3 M5 / Beta 4 M2: prototype title-bar menus (menuDefs, prototype 6810–
+  // 6816) mapped to the app's real handlers — every item acts or explains
+  // itself (§1.2, no silent no-ops).
   const titleBarMenus: WindowChromeMenu[] = useMemo(() => [
     { label: 'File', items: [
+      { label: 'New scene', run: () => {
+        if (selectedStory && selectedChapter) void createScene(selectedStory.id, selectedChapter.id);
+        else showLnToast('Open a chapter first — New scene appends to the current chapter');
+      } },
       { label: 'New story', run: () => { void createStory(); } },
       { label: 'New note…', run: () => handleNavSectionChange('notes') },
       { label: 'Import vault / story…', run: () => setSettingsOpen(true) },
@@ -4118,9 +4262,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { label: 'Edit', items: [
       { label: 'Undo', run: () => { document.execCommand('undo'); } },
       { label: 'Redo', run: () => { document.execCommand('redo'); } },
-      { label: 'Find everywhere…', run: () => setGlobalSearchOpen(true) },
+      { label: 'Find everywhere…', run: () => { setGlobalSearchSeed(''); setGlobalSearchOpen(true); } },
     ] },
     { label: 'View', items: [
+      { label: 'Toggle left panel', run: () => setLeftPanelHidden((h) => !h) },
       { label: 'Toggle right panel', run: () => handleGrsVisibilityChange(!(grsVisible ?? true)) },
       { label: 'Focus mode', run: () => toggleDistractionFree() },
       { label: 'Slim rail', run: () => persistNavRailCollapsed(!navRailCollapsed) },
@@ -4128,20 +4273,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
     ] },
     { label: 'Insert', items: [
+      { label: 'Beat (Scene Crafter)', run: () => { handleTabChange('story'); handleSetView('kanban'); } },
       { label: 'Comment', run: () => showLnToast('Select text in the manuscript, then hit Comment') },
       { label: 'Wiki link [[…]]', run: () => showLnToast('Type [[ in any note to link — Obsidian style') },
     ] },
     { label: 'Tools', items: [
       { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
-      { label: 'Rebuild search index', run: () => showLnToast('Search index rebuilds automatically as you write') },
+      // Prototype 6814: Beta Reader reads the open scene/chapter, reactions
+      // land as margin comments (BetaReadMargin next to the manuscript).
+      { label: 'Beta read this chapter', run: () => {
+        if (!selectedScene) { showLnToast('Open a scene first — the Beta Reader reads the open chapter'); return; }
+        const text = selectedScene.blocks.map((b) => b.content).join('\n\n');
+        if (!text.trim()) { showLnToast('This scene is empty — nothing to beta read'); return; }
+        void handleBetaReadRequest(text);
+        showLnToast('Beta Reader queued — reactions land as margin comments');
+      } },
+      { label: 'Rebuild search index', run: () => {
+        showLnToast('Rebuilding search index…');
+        void window.api.reindexVault?.()
+          .then((r) => showLnToast(`Index rebuilt — ${r.scanned} files scanned, ${r.updated} updated`))
+          .catch(() => showLnToast('Index rebuild failed — the index still updates as you write'));
+      } },
     ] },
     { label: 'Help', items: [
       { label: 'Welcome tour', run: () => setTourOpen(true) },
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
+      { label: 'Check for updates', run: () => {
+        showLnToast('Checking for updates…');
+        void window.api.checkForUpdate?.()
+          .then((r) => { if (!r?.queued) showLnToast(r?.reason ?? 'Updates are unavailable in this build'); })
+          .catch(() => showLnToast('Update check failed — try again later'));
+      } },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory]);
+  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, handleBetaReadRequest]);
 
   const navItems = useMemo<NavRailItem[]>(
     () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
@@ -4182,7 +4348,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ...layout.focusPrefs,
   };
   const inFocusOrDF = writingMode === 'focus' || distractionFree;
-  const showLeftSidebar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
+  // Beta 4 M2: View → Toggle left panel is a real user toggle (§4).
+  const showLeftSidebar = !distractionFree && !leftPanelHidden && (writingMode !== 'focus' || focusPrefs.showLeftSidebar);
   const showBottomBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showBottomBar);
 
   // SKY-3618: Compute clamped display widths so center column always gets >= CENTER_MIN_WIDTH pixels.
@@ -4261,7 +4428,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {showTitleBar && (
         <WindowChrome
           menus={titleBarMenus}
-          onOpenPalette={() => setGlobalSearchOpen(true)}
+          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
@@ -4279,8 +4446,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <div className="desktop-shell__body">
         {showTitleBar && (
           <AppNavRail
-            activeSection={tabShell.activeTab}
-            onSectionChange={handleNavSectionChange}
+            activeSection={activeNavModule}
+            onSectionChange={handleNavModuleChange}
             onOpenAccount={() => setAccountModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             navItems={navItems}
@@ -4291,7 +4458,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
             stories={navRailStories}
             onStorySelect={handleRailStorySelect}
-            onNewStory={() => { void createStory(); }}
+            onNewStory={() => setNewStoryOpen(true)}
+            editableItems={railEditItems}
+            onEditableItemsChange={persistNavRailConfigItems}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -4947,6 +5116,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             activeNoteWordCount={openedNoteWordCount}
             isVoiceActive={voiceActive}
             splitWordCounts={splitWordCounts}
+            pageWidthPx={selectedScene
+              ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+              : null}
           />
         )}
       </div>
@@ -5220,6 +5392,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <GlobalSearchPanel
         open={globalSearchOpen}
         commands={paletteCommands}
+        initialQuery={globalSearchSeed}
         defaultScope={tabShell.activeTab === 'story' ? 'story' : 'notes'}
         onNavigate={(result) => {
           handleSearchNavigate(result);
@@ -5252,6 +5425,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-3098 (v0.3): AccountModal — wired to nav rail brand glyph */}
       {accountModalOpen && (
         <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
+      )}
+      {/* Beta 4 M3: New Story wizard — rail stories switcher → "New Story…" */}
+      {newStoryOpen && (
+        <NewStoryWizard
+          open={newStoryOpen}
+          onClose={() => setNewStoryOpen(false)}
+          onCreate={(draft) => { void handleCreateStoryFromWizard(draft); }}
+        />
       )}
         </div>{/* end desktop-shell__main-col */}
         {/* GH #643 split panes v1: right-hand workspace pane */}

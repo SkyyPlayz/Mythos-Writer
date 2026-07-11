@@ -11,7 +11,9 @@
   border-radius: 15px;
   background: rgba(255, 255, 255, .03);
   border: 1px solid rgba(255, 255, 255, .08);
-  padding: 15px 17px;
+  /* Beta 4 M1: density-aware padding (tokens.css data-ln-density blocks) so
+     the Interface density segment visibly changes paddings live. */
+  padding: var(--ln-card-pad-y, 15px) var(--ln-card-pad-x, 17px);
 }
 
 .lnas-hover-lift:hover {
@@ -25,6 +27,11 @@
 
 .lnas-hover-border:hover {
   border-color: rgba(255, 255, 255, .25);
+}
+
+/* Beta 4 M1: Color-theme header pills (Export preset / Paste / Import…). */
+.lnas-hdr-btn:hover {
+  color: #fff;
 }
 
 .lnas-seg-idle:hover {

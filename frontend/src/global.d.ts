@@ -320,8 +320,6 @@ interface LiquidNeonPrefs {
   advancedDecoupled?: boolean;
   /** Text contrast boost 0–100; hard-clamped so body text stays ≥ 4.5:1. Default 50. */
   textContrast?: number;
-  /** Neon frame width 0–100 → 0–2px rest / 1–4px hover. Default 50. */
-  neonFrameWidth?: number;
   /** Border alpha strength 0–100 → 0.06–0.24. Default 50. */
   borderStrength?: number;
   /** Background mode: colour swatch or image wallpaper. Default 'color'. */
@@ -455,6 +453,9 @@ interface AppSettings {
   liquidNeon?: LiquidNeonPrefs;
   /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
   liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
+  /** Beta 4 M1: per-vault default theme — Story Vault root path → preset key.
+   *  Applied (setKey + slots + wp 'match') when switching to that vault. */
+  vaultThemes?: Record<string, string>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
@@ -596,16 +597,24 @@ interface AppTabShellState {
   notesSidebarCollapsed: boolean;
 }
 
+/**
+ * Beta 4 M3 (FULL-SPEC §4): the six nav-rail modules. story/notes/brainstorm
+ * are top-level AppTabs; crafter/timeline are Story sub-view surfaces and
+ * graph is the Notes graph surface — the rail routes them through the
+ * workspace-tab create-or-focus path.
+ */
+type NavRailModuleId = AppTab | 'crafter' | 'timeline' | 'graph';
+
 /** SKY-3096 (v0.3 AppNavRail): A single item in the persistent left nav rail. */
 interface NavRailItem {
-  id: AppTab;
+  id: NavRailModuleId;
   label: string;
   icon: string;
 }
 
 /** SKY-3218: Nav-rail item with user-configurable visibility and order. */
 interface NavRailItemConfig {
-  id: AppTab;
+  id: NavRailModuleId;
   enabled: boolean;
   label: string;
   icon: string;
@@ -1067,6 +1076,8 @@ interface Window {
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
     projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+    // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
+    projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
