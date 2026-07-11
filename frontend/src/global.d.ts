@@ -549,6 +549,8 @@ interface AppSettings {
   autoLinker?: {
     mode: 'off' | 'suggest' | 'auto';
   };
+  /** SKY-6225: Built-in Auto Note Linker settings. Absent = defaults. */
+  autoLinkerSettings?: AutoLinkerSettings;
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
   /** SKY-204: opt-in daily notes / journal mode. */
@@ -810,6 +812,18 @@ interface BrainstormExtractedEntity {
   name: string;
   type: 'character' | 'location' | 'item' | 'note';
   suggestionId: string;
+}
+
+// SKY-6225: Built-in Auto Note Linker settings
+interface AutoLinkerSettings {
+  formatOnSave: boolean;
+  includeAliases: boolean;
+  proximityPreference: boolean;
+  ignoreCase: boolean;
+  preventSelfLink: boolean;
+  ignoreDates: boolean;
+  formatDelay: number;
+  excludedFolders: string[];
 }
 
 // SKY-193: Tag Wrangler
@@ -1556,6 +1570,11 @@ interface Window {
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.
     isPackaged?: boolean;
 
+    // SKY-6225: Built-in Auto Note Linker (deterministic, trie-based)
+    autoLinkerGetSettings: () => Promise<AutoLinkerSettings>;
+    autoLinkerSetSettings: (settings: AutoLinkerSettings) => Promise<{ saved: boolean }>;
+    autoLinkerFormatVaultNow: () => Promise<{ processed: number; linked: number; skipped: number }>;
+    autoLinkerRebuildIndex: () => Promise<{ count: number }>;
 
   };
 
