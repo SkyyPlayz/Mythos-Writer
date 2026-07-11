@@ -134,7 +134,7 @@ function Row({
         gap: 7,
         paddingRight: 8,
         opacity: isBeingDragged ? 0.4 : 1,
-        outline: isDropTarget ? '1.5px dashed var(--b1, rgba(0, 240, 255, 0.6))' : undefined,
+        outline: isDropTarget ? '2px dashed var(--accent, #00f0ff)' : undefined,
         outlineOffset: isDropTarget ? '-1px' : undefined,
       }}
       className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${node.isDirectory && depth === 0 ? ' vb-root-dir' : ''}${isMd ? ' vb-md' : ''}`}
@@ -213,6 +213,8 @@ interface VirtualTreeProps {
   label?: string;
   iconMap?: Record<string, string>;
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
+  /** M16: when this path is present in `rows`, scroll it into view (auto-reveal). */
+  scrollToPath?: string | null;
 }
 
 export default function VirtualTree({
@@ -231,6 +233,7 @@ export default function VirtualTree({
   label,
   iconMap,
   onMove,
+  scrollToPath,
 }: VirtualTreeProps) {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<ListImperativeAPI | null>(null);
@@ -268,6 +271,17 @@ export default function VirtualTree({
       setFocusedIdx(rows.length - 1);
     }
   }, [rows.length, focusedIdx]);
+
+  // M16 auto-reveal: scroll the revealed path's row into view once its
+  // ancestor folders have expanded and it appears in the flattened rows.
+  useEffect(() => {
+    if (!scrollToPath) return;
+    const idx = rows.findIndex((r) => r.node.path === scrollToPath);
+    if (idx >= 0) {
+      setFocusedIdx(idx);
+      listRef.current?.scrollToRow({ index: idx, align: 'auto' });
+    }
+  }, [scrollToPath, rows]);
 
   if (rows.length === 0) return null;
   return (

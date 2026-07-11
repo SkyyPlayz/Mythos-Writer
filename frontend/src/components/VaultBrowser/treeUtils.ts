@@ -64,7 +64,9 @@ export interface FlatRow {
   isSelected: boolean;
 }
 
-export function buildTree(items: VaultListItem[]): TreeNode[] {
+export type TreeSortMode = 'manual' | 'az' | 'za';
+
+export function buildTree(items: VaultListItem[], sortMode: TreeSortMode = 'az'): TreeNode[] {
   const nodeMap = new Map<string, TreeNode>();
   for (const item of items) {
     nodeMap.set(item.path, {
@@ -85,16 +87,44 @@ export function buildTree(items: VaultListItem[]): TreeNode[] {
       roots.push(node);
     }
   }
-  sortNodes(roots);
+  sortNodes(roots, sortMode);
   return roots;
 }
 
-function sortNodes(nodes: TreeNode[]) {
+function sortNodes(nodes: TreeNode[], sortMode: TreeSortMode) {
+  if (sortMode === 'manual') return;
   nodes.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    const byName = a.name.localeCompare(b.name);
+    return sortMode === 'za' ? -byName : byName;
   });
-  for (const n of nodes) if (n.isDirectory) sortNodes(n.children);
+  for (const n of nodes) if (n.isDirectory) sortNodes(n.children, sortMode);
+}
+
+export function collectDirectoryPaths(nodes: TreeNode[]): string[] {
+  const paths: string[] = [];
+  for (const node of nodes) {
+    if (!node.isDirectory) continue;
+    paths.push(node.path);
+    paths.push(...collectDirectoryPaths(node.children));
+  }
+  return paths;
+}
+
+export function filterTree(nodes: TreeNode[], query: string): TreeNode[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return nodes;
+  const result: TreeNode[] = [];
+  for (const node of nodes) {
+    const children = filterTree(node.children, needle);
+    const matches =
+      node.name.toLowerCase().includes(needle) ||
+      node.path.toLowerCase().includes(needle);
+    if (matches || children.length > 0) {
+      result.push({ ...node, children });
+    }
+  }
+  return result;
 }
 
 export function flattenTree(

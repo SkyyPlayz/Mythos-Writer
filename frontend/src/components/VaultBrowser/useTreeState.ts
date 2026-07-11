@@ -48,7 +48,34 @@ export function useTreeState(storageKey: string) {
     [storageKey],
   );
 
+  const setExpandedPaths = useCallback(
+    (paths: Iterable<string>) => {
+      setExpanded(() => {
+        const next = new Set<string>(paths);
+        saveExpanded(storageKey, next);
+        return next;
+      });
+    },
+    [storageKey],
+  );
+
+  const reveal = useCallback(
+    (path: string) => {
+      setSelected(path);
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        const parts = path.split('/').filter(Boolean);
+        for (let i = 1; i < parts.length; i += 1) {
+          next.add(parts.slice(0, i).join('/'));
+        }
+        saveExpanded(storageKey, next);
+        return next;
+      });
+    },
+    [storageKey],
+  );
+
   const select = useCallback((path: string) => setSelected(path), []);
 
-  return { expanded, selected, toggle, initExpand, select };
+  return { expanded, selected, toggle, initExpand, setExpandedPaths, reveal, select };
 }

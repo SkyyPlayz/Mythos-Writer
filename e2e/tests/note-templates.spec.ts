@@ -145,8 +145,8 @@ test('TC-NT-01: clicking + in Notes Vault opens the template dialog', async () =
   await expect(notesBtn).toBeVisible({ timeout: 6_000 });
   await notesBtn.click();
 
-  // Click the "New Note" header button
-  const addBtn = pg.locator('[data-testid="vb-notes-vault"] .vb-section-add').first();
+  // Click the "New note" toolbar button
+  const addBtn = pg.locator('[data-testid="vb-btn-new-note"]').first();
   await expect(addBtn).toBeVisible({ timeout: 6_000 });
   await addBtn.click();
 
@@ -158,7 +158,7 @@ test('TC-NT-02: filling prompt fields and submitting creates a note on disk', as
   // Dialog is still open from TC-NT-01; if not, reopen it
   const templateSelect = pg.locator('[data-testid="ntd-template-select"]');
   if (!(await templateSelect.isVisible())) {
-    const addBtn = pg.locator('[data-testid="vb-notes-vault"] .vb-section-add').first();
+    const addBtn = pg.locator('[data-testid="vb-btn-new-note"]').first();
     await addBtn.click();
     await expect(templateSelect).toBeVisible({ timeout: 6_000 });
   }
@@ -198,7 +198,7 @@ test('TC-NT-02: filling prompt fields and submitting creates a note on disk', as
 
 test('TC-NT-03: blank note fallback creates a plain note', async () => {
   // Open the dialog again
-  const addBtn = pg.locator('[data-testid="vb-notes-vault"] .vb-section-add').first();
+  const addBtn = pg.locator('[data-testid="vb-btn-new-note"]').first();
   await addBtn.click();
   await expect(pg.locator('[data-testid="ntd-template-select"]')).toBeVisible({ timeout: 6_000 });
 
