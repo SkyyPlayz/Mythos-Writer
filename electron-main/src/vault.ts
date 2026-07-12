@@ -638,13 +638,132 @@ export function readEntityFile(vaultRoot: string, relativePath: string): EntityF
 }
 
 // ─── Manifest helpers ───
+//
+// SKY-6596 / GH #893: manifest.json is structure-only on disk (see
+// stripEmbeddedProseForPersist in manifest.ts) — every scene's prose lives in
+// its `.md` file. readManifest rehydrates `blocks[0].content` from disk on
+// every call so the in-memory/IPC manifest shape is unchanged for every
+// existing consumer; only the on-disk bytes shrank. A per-process cache keyed
+// by the scene's resolved absolute file path (not scene id — ids are only
+// unique *within* a vault, and a running app session can open more than one
+// vault) + the `.md` file's mtime/size avoids re-reading unchanged scenes
+// across the many `readManifest` calls in a session.
+
+interface SceneProseCacheEntry {
+  mtimeMs: number;
+  size: number;
+  content: string;
+}
+
+const sceneProseHydrationCache = new Map<string, SceneProseCacheEntry>();
+
+function hydrateSceneProse(vaultRoot: string, scene: SceneEntry): string {
+  let absPath: string;
+  let stat: fs.Stats;
+  try {
+    absPath = safePath(vaultRoot, scene.path);
+    stat = fs.statSync(absPath);
+  } catch {
+    // No `.md` file on disk — an orphaned manifest entry. Nothing to hydrate.
+    return '';
+  }
+  const cached = sceneProseHydrationCache.get(absPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return cached.content;
+  }
+  let content = '';
+  try {
+    content = readSceneFile(vaultRoot, scene.path).prose;
+  } catch {
+    // Unreadable/corrupt `.md` — treat as empty, same as every other
+    // `.md`-sourced read path in this codebase (export, search, SCENE_GET).
+  }
+  sceneProseHydrationCache.set(absPath, { mtimeMs: stat.mtimeMs, size: stat.size, content });
+  return content;
+}
+
+/** Set (or create) a scene's sole prose block content, in place. */
+function setSceneProse(scene: SceneEntry, content: string): void {
+  const proseBlock = scene.blocks?.find((b) => b.type === 'prose');
+  if (proseBlock) {
+    proseBlock.content = content;
+  } else {
+    scene.blocks = [
+      ...(scene.blocks ?? []),
+      { id: crypto.randomUUID(), type: 'prose', order: 0, content, updatedAt: scene.updatedAt },
+    ];
+  }
+}
+
+/**
+ * Visit every scene reachable from a manifest — both the nested
+ * `stories[].chapters[].scenes[]` structure and the flat legacy `scenes[]` /
+ * `chapters[].scenes[]` lists kept for backward compat. Some write paths
+ * share object references between the two; others don't. `fn` is idempotent
+ * for a given scene id (hydration/stripping both are), so visiting the same
+ * scene twice via different references is harmless.
+ */
+function forEachManifestScene(manifest: Manifest, fn: (scene: SceneEntry) => void): void {
+  for (const story of manifest.stories ?? []) {
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) fn(scene);
+    }
+  }
+  for (const chapter of manifest.chapters ?? []) {
+    for (const scene of chapter.scenes ?? []) fn(scene);
+  }
+  for (const scene of manifest.scenes ?? []) fn(scene);
+}
 
 export function readManifest(manifestPath: string): Manifest {
-  return JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+  const vaultRoot = path.dirname(manifestPath);
+  forEachManifestScene(manifest, (scene) => {
+    setSceneProse(scene, hydrateSceneProse(vaultRoot, scene));
+  });
+  return manifest;
 }
 
 export function writeManifest(manifestPath: string, manifest: Manifest): void {
   writeManifestAtomic(manifestPath, manifest);
+}
+
+/**
+ * SKY-6596 migration safety net. For every scene whose manifest entry still
+ * carries embedded prose (a pre-migration vault, or a hand-edited one) but
+ * has no readable `.md` file backing it, write that prose out to a `.md` file
+ * now — *before* the migration write-back (`beforeMigrationWrite` in
+ * manifest.ts's `openManifest`) unconditionally strips embedded prose from
+ * the manifest on write. Never lets prose be dropped without another home.
+ * Pure side effect — returns the manifest unchanged.
+ */
+export function ensureSceneFilesForManifestScenes(manifest: Manifest, vaultRoot: string): Manifest {
+  forEachManifestScene(manifest, (scene) => {
+    const proseBlock = scene.blocks?.find((b) => b.type === 'prose');
+    const embeddedProse = proseBlock?.content ?? '';
+    if (!embeddedProse) return;
+    try {
+      readSceneFile(vaultRoot, scene.path);
+      return; // `.md` already exists and parses — nothing to recover.
+    } catch {
+      // Missing or corrupt — recover it below.
+    }
+    try {
+      writeSceneFileAtomic(vaultRoot, scene.path, {
+        id: scene.id,
+        title: scene.title,
+        chapterId: scene.chapterId,
+        storyId: scene.storyId,
+        order: scene.order,
+        prose: embeddedProse,
+      });
+    } catch {
+      // Path is unsafe or unwritable — leave the embedded prose in the
+      // manifest object; the pre-migration backup written by openManifest
+      // just before this hook runs still has it either way.
+    }
+  });
+  return manifest;
 }
 
 export function defaultManifest(vaultRoot: string): Manifest {

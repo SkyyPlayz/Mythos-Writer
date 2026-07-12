@@ -25,6 +25,7 @@ import {
   defaultManifest,
   readManifest,
   writeManifest,
+  ensureSceneFilesForManifestScenes,
   toSlug,
   resolveSlugCollision,
   chapterVaultPath,
@@ -617,6 +618,128 @@ describe('Vault reindex', () => {
     const { manifest: after2 } = reindexVault(tmpDir, after1);
     const scene = after2.scenes.find((s) => s.id === id);
     expect(scene?.blocks[0]?.content).toBe('Updated prose.');
+  });
+});
+
+describe('Structure-only manifest — prose hydration + recovery (SKY-6596 / GH #893)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-hydrate-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function manifestWithScene(root: string, sceneId: string, relPath: string, embeddedContent = '') {
+    return {
+      ...defaultManifest(root),
+      scenes: [
+        {
+          id: sceneId,
+          title: 'Scene',
+          path: relPath,
+          order: 0,
+          blocks: [
+            { id: `b-${sceneId}`, type: 'prose' as const, order: 0, content: embeddedContent, updatedAt: new Date().toISOString() },
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    };
+  }
+
+  it('readManifest hydrates blocks[0].content from the .md file when the on-disk manifest carries no prose', () => {
+    writeSceneFile(tmpDir, 'scene-1.md', { id: 'sc-1', title: 'Scene One', prose: 'Hydrated prose.' });
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeFileAtomic(manifestPath, JSON.stringify(manifestWithScene(tmpDir, 'sc-1', 'scene-1.md', '')));
+
+    const read = readManifest(manifestPath);
+    expect(read.scenes[0].blocks[0].content).toBe('Hydrated prose.');
+  });
+
+  it('readManifest overwrites stale embedded content with the .md file\'s current prose (the .md always wins)', () => {
+    writeSceneFile(tmpDir, 'scene-2.md', { id: 'sc-2', title: 'Scene Two', prose: 'Current prose.' });
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    // Simulate a hand-edited / pre-migration manifest that still has stale embedded content.
+    writeFileAtomic(manifestPath, JSON.stringify(manifestWithScene(tmpDir, 'sc-2', 'scene-2.md', 'Stale, wrong prose.')));
+
+    const read = readManifest(manifestPath);
+    expect(read.scenes[0].blocks[0].content).toBe('Current prose.');
+  });
+
+  it('readManifest reflects an external .md edit on the next call (self-healing, no restart needed)', () => {
+    writeSceneFile(tmpDir, 'scene-3.md', { id: 'sc-3', title: 'Scene Three', prose: 'Version one.' });
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeManifest(manifestPath, manifestWithScene(tmpDir, 'sc-3', 'scene-3.md'));
+
+    const first = readManifest(manifestPath);
+    expect(first.scenes[0].blocks[0].content).toBe('Version one.');
+
+    const future = new Date(Date.now() + 5000);
+    writeSceneFile(tmpDir, 'scene-3.md', { id: 'sc-3', title: 'Scene Three', prose: 'Version two.' });
+    fs.utimesSync(path.join(tmpDir, 'scene-3.md'), future, future);
+
+    const second = readManifest(manifestPath);
+    expect(second.scenes[0].blocks[0].content).toBe('Version two.');
+  });
+
+  it('readManifest hydration cache avoids re-reading an unchanged scene .md file on repeated calls', () => {
+    writeSceneFile(tmpDir, 'scene-4.md', { id: 'sc-4', title: 'Scene Four', prose: 'Stable prose.' });
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeManifest(manifestPath, manifestWithScene(tmpDir, 'sc-4', 'scene-4.md'));
+
+    // Warm the cache once, then count reads of just this scene file across two more calls.
+    readManifest(manifestPath);
+    const scenePath = path.join(tmpDir, 'scene-4.md');
+    const readSpy = vi.spyOn(fs, 'readFileSync');
+    readManifest(manifestPath);
+    readManifest(manifestPath);
+    const sceneFileReads = readSpy.mock.calls.filter((c) => c[0] === scenePath).length;
+    readSpy.mockRestore();
+    expect(sceneFileReads).toBe(0);
+  });
+
+  it('writeManifest strips scene prose from the persisted bytes (structure-only on disk)', () => {
+    writeSceneFile(tmpDir, 'scene-5.md', { id: 'sc-5', title: 'Scene Five', prose: 'Never touch the disk.' });
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeManifest(manifestPath, manifestWithScene(tmpDir, 'sc-5', 'scene-5.md', 'Never touch the disk.'));
+
+    const rawOnDisk = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as { scenes: Array<{ blocks: Array<{ content: string }> }> };
+    expect(rawOnDisk.scenes[0].blocks[0].content).toBe('');
+
+    // But the in-memory/IPC shape stays hydrated for callers that keep using it directly.
+    const rehydrated = readManifest(manifestPath);
+    expect(rehydrated.scenes[0].blocks[0].content).toBe('Never touch the disk.');
+  });
+
+  it('ensureSceneFilesForManifestScenes recovers a missing .md file from embedded prose', () => {
+    const manifest = manifestWithScene(tmpDir, 'sc-6', 'recovered.md', 'Prose with no home yet.');
+    expect(fs.existsSync(path.join(tmpDir, 'recovered.md'))).toBe(false);
+
+    ensureSceneFilesForManifestScenes(manifest, tmpDir);
+
+    expect(fs.existsSync(path.join(tmpDir, 'recovered.md'))).toBe(true);
+    expect(readSceneFile(tmpDir, 'recovered.md').prose).toBe('Prose with no home yet.');
+  });
+
+  it('ensureSceneFilesForManifestScenes does not touch a scene that already has a valid .md file', () => {
+    writeSceneFile(tmpDir, 'scene-7.md', { id: 'sc-7', title: 'Scene Seven', prose: 'Already on disk.' });
+    const scenePath = path.join(tmpDir, 'scene-7.md');
+    const mtimeBefore = fs.statSync(scenePath).mtimeMs;
+    const manifest = manifestWithScene(tmpDir, 'sc-7', 'scene-7.md', 'Already on disk.');
+
+    ensureSceneFilesForManifestScenes(manifest, tmpDir);
+
+    expect(fs.statSync(scenePath).mtimeMs).toBe(mtimeBefore);
+  });
+
+  it('ensureSceneFilesForManifestScenes is a no-op when the scene has no embedded prose to recover', () => {
+    const manifest = manifestWithScene(tmpDir, 'sc-8', 'never-created.md', '');
+    ensureSceneFilesForManifestScenes(manifest, tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'never-created.md'))).toBe(false);
   });
 });
 

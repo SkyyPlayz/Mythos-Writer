@@ -1,11 +1,11 @@
-// Manifest v1 schema — migration framework and atomic I/O.
+// Manifest schema — migration framework and atomic I/O.
 // No Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import type { Manifest } from './ipc.js';
+import type { Manifest, SceneEntry, ChapterEntry } from './ipc.js';
 
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 type Raw = Record<string, unknown>;
 
@@ -16,6 +16,13 @@ interface Migration {
 
 // Each entry upgrades from (toVersion - 1) to toVersion.
 // The v0→v1 step covers any legacy file that lacks schemaVersion.
+// The v1→v2 step (SKY-6596 / GH #893) is a bookkeeping bump only: it does not
+// touch scene prose itself. Prose is dropped from disk generically by
+// `writeManifestAtomic` (see `stripEmbeddedProseForPersist`) regardless of
+// schema version — the migration step exists so that any vault still on v1
+// gets a guaranteed pre-write backup (via `openManifest`'s existing
+// backup-before-migrate path) before its manifest is ever rewritten under the
+// new write behavior.
 const migrations: Migration[] = [
   {
     toVersion: 1,
@@ -25,6 +32,13 @@ const migrations: Migration[] = [
       provenance: (m.provenance as Record<string, string>) ?? {},
       boardReferences: (m.boardReferences as string[]) ?? [],
       migratedAt: new Date().toISOString(),
+    }),
+  },
+  {
+    toVersion: 2,
+    migrate: (m) => ({
+      ...m,
+      schemaVersion: 2,
     }),
   },
 ];
@@ -70,6 +84,17 @@ export interface OpenManifestOptions {
     backupPath: string;
     createdAt: string;
   }) => void;
+  /**
+   * SKY-6596: called with the migrated manifest right before the one-shot
+   * migration write-back, so a caller with filesystem access to the vault's
+   * scene files can guarantee every scene's embedded prose has a durable
+   * `.md` home *before* `writeManifestAtomic` strips that prose from disk.
+   * This module has no vault-file-I/O dependency itself (kept fully testable
+   * in Node with no Electron/vault coupling), so the recovery write is
+   * injected by the caller (see `ensureSceneFilesForManifestScenes` in
+   * vault.ts) rather than performed here.
+   */
+  beforeMigrationWrite?: (manifest: Manifest, vaultRoot: string) => Manifest;
 }
 
 /** Write the raw manifest content to .mythos/backups/manifest-<timestamp>.json and return the backup path. */
@@ -96,6 +121,44 @@ export function migrateManifest(raw: Raw): Manifest {
   return current as unknown as Manifest;
 }
 
+function stripSceneProse(scene: SceneEntry): SceneEntry {
+  if (!scene.blocks || scene.blocks.length === 0) return scene;
+  let changed = false;
+  const blocks = scene.blocks.map((b) => {
+    if (b.content === '') return b;
+    changed = true;
+    return { ...b, content: '' };
+  });
+  return changed ? { ...scene, blocks } : scene;
+}
+
+function stripChapterProse(chapter: ChapterEntry): ChapterEntry {
+  return { ...chapter, scenes: (chapter.scenes ?? []).map(stripSceneProse) };
+}
+
+/**
+ * Structure-only persistence (SKY-6596 / GH #893). Scene prose lives in each
+ * scene's `.md` file — always written before, or as part of, any manifest
+ * write that carries fresh prose (`scene:save`, boot-migration recovery via
+ * `beforeMigrationWrite`). Stripping `blocks[].content` here — unconditionally,
+ * on every write, regardless of caller — keeps `manifest.json` O(structure)
+ * instead of O(vault): this is what makes `scene:save` stop re-serializing
+ * every scene's prose on every keystroke-flush. Returns a new object; never
+ * mutates the caller's manifest (`scene:save` keeps its own hydrated
+ * in-memory copy, with content intact, for its save-to-save cache).
+ */
+export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
+  return {
+    ...manifest,
+    stories: (manifest.stories ?? []).map((story) => ({
+      ...story,
+      chapters: (story.chapters ?? []).map(stripChapterProse),
+    })),
+    chapters: (manifest.chapters ?? []).map(stripChapterProse),
+    scenes: (manifest.scenes ?? []).map(stripSceneProse),
+  };
+}
+
 /**
  * Atomic write: serialise to a temp file then rename into place.
  * A process crash after writeFileSync but before renameSync leaves the
@@ -103,11 +166,14 @@ export function migrateManifest(raw: Raw): Manifest {
  */
 export function writeManifestAtomic(manifestPath: string, manifest: Manifest): void {
   const tmp = `${manifestPath}.tmp`;
-  // Compact serialization: the manifest embeds every scene's prose and is
-  // rewritten on each save, so it reaches many MB on real projects. Pretty
-  // printing roughly doubled the synchronous stringify+write cost on the
-  // main-process event loop (and the file size) for a machine-managed file.
-  fs.writeFileSync(tmp, JSON.stringify(manifest), 'utf-8');
+  // Compact, structure-only serialization (SKY-6596): scene prose is stripped
+  // (see stripEmbeddedProseForPersist) so this write is O(structure), not
+  // O(vault) — safe to run on every save. Compact (non-pretty) formatting is
+  // kept for the same reason pretty-printing was dropped originally: this is
+  // a machine-managed file, and pretty printing still costs real time on a
+  // large story count even without embedded prose.
+  const persisted = stripEmbeddedProseForPersist(manifest);
+  fs.writeFileSync(tmp, JSON.stringify(persisted), 'utf-8');
   fs.renameSync(tmp, manifestPath);
 }
 
@@ -146,7 +212,16 @@ export function openManifest(manifestPath: string, options?: OpenManifestOptions
   if (currentVersion < SCHEMA_VERSION) {
     const backupPath = writeBackup(vaultRoot, rawContent);
     try {
-      const migrated = migrateManifest(raw);
+      let migrated = migrateManifest(raw);
+      // SKY-6596: give the caller a chance to write a recovered `.md` for any
+      // scene whose embedded prose has no durable file backing yet, before
+      // the write below (via writeManifestAtomic) unconditionally strips
+      // that prose from the manifest. The pre-migration backup just written
+      // above still holds the original prose regardless, but this avoids
+      // ever relying on manual backup recovery for the common case.
+      if (options?.beforeMigrationWrite) {
+        migrated = options.beforeMigrationWrite(migrated, vaultRoot);
+      }
       writeManifestAtomic(manifestPath, migrated);
       if (options?.onMigrated) {
         options.onMigrated({
