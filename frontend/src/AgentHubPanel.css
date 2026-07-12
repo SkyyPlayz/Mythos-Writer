@@ -106,6 +106,12 @@
   border: 1px solid rgba(0, 240, 255, 0.3);
 }
 
+.ahp-badge--count {
+  background: rgba(255, 77, 255, 0.14);
+  color: #ff9dff;
+  border: 1px solid rgba(255, 77, 255, 0.35);
+}
+
 /* ── Agent rows ───────────────────────────────────── */
 
 .ahp-agent-rows {
@@ -204,6 +210,48 @@
   color: #8e9db8;
   margin: 0 0 8px;
   line-height: 1.4;
+}
+
+.ahp-suggestion-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.ahp-suggestion-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.ahp-suggestion-agent {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8e9db8;
+}
+
+.ahp-suggestion-rationale {
+  flex: 1;
+  color: #c8d3e7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ahp-suggestion-confidence {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: #00f0ff;
 }
 
 .ahp-see-all-btn {

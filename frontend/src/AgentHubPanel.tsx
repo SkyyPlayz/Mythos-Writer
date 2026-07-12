@@ -2,7 +2,7 @@
 // Tabs: Assistant · Scenes · Notes · References
 // Assistant tab: AGENTS card (compact rows → in-panel chat), Suggestions card, Scene Analysis card.
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Scene } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
@@ -10,7 +10,11 @@ import WritingAssistantPanel from './WritingAssistantPanel';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
+import { AGENT_LABELS, type UnifiedSuggestion } from './SuggestionDetailPane';
 import './AgentHubPanel.css';
+
+const SUGGESTION_POLL_MS = 30_000;
+const SUGGESTION_PREVIEW_LIMIT = 3;
 
 type HubTab = 'assistant' | 'scenes' | 'notes' | 'references';
 type ActiveAgent = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader' | null;
@@ -82,6 +86,7 @@ interface Props {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  onOpenSuggestionInbox?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -102,6 +107,7 @@ export default function AgentHubPanel({
   autoApplyCategories,
   onAutoApplyCategoriesChange,
   agentNames,
+  onOpenSuggestionInbox,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
@@ -174,6 +180,7 @@ export default function AgentHubPanel({
                 agentNames={agentNames}
                 onAgentClick={handleAgentClick}
                 scene={scene}
+                onOpenSuggestionInbox={onOpenSuggestionInbox}
               />
         )}
         {activeTab === 'scenes' && <ScenesTab scene={scene} />}
@@ -191,9 +198,10 @@ interface AgentHubViewProps {
   agentNames?: Partial<Record<NamedAgentId, string>>;
   onAgentClick: (id: ActiveAgent) => void;
   scene: Scene | null;
+  onOpenSuggestionInbox?: () => void;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, onAgentClick, onOpenSuggestionInbox }: AgentHubViewProps) {
   return (
     <div className="ahp-hub">
       {/* AGENTS card */}
@@ -214,7 +222,7 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick }: AgentHubViewProps
       </section>
 
       {/* Suggestions card — preview 3 rows + See All */}
-      <SuggestionPreviewCard />
+      <SuggestionPreviewCard onOpenSuggestionInbox={onOpenSuggestionInbox} />
 
       {/* Scene Analysis card — surface only (computation is M13) */}
       <SceneAnalysisCard />
@@ -269,20 +277,66 @@ function AgentIcon({ agentId }: { agentId: ActiveAgent }) {
 
 // ── Suggestions preview card ────────────────────────────────────────────────
 
-function SuggestionPreviewCard() {
+/** Polls the M13 unified suggestion feed for a top-N preview + live count. */
+function useSuggestionPreview(limit: number) {
+  const [items, setItems] = useState<UnifiedSuggestion[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.suggestionsUnifiedList !== 'function') return;
+    let cancelled = false;
+    const poll = () => {
+      (api.suggestionsUnifiedList({ status: 'proposed', limit }) as Promise<{ items?: UnifiedSuggestion[]; totalCount?: number }>)
+        .then((r) => {
+          if (cancelled) return;
+          setItems(r.items ?? []);
+          setTotalCount(r.totalCount ?? (r.items?.length ?? 0));
+        })
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, SUGGESTION_POLL_MS);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [limit]);
+
+  return { items, totalCount };
+}
+
+function SuggestionPreviewCard({ onOpenSuggestionInbox }: { onOpenSuggestionInbox?: () => void }) {
+  const { items, totalCount } = useSuggestionPreview(SUGGESTION_PREVIEW_LIMIT);
+
   return (
     <section className="ahp-card" aria-label="Suggestions">
       <header className="ahp-card-header">
         <span className="ahp-card-eyebrow">
           SUGGESTIONS
+          {totalCount > 0 && (
+            <span className="ahp-badge ahp-badge--count" aria-label={`${totalCount} pending`}>
+              {totalCount}
+            </span>
+          )}
           <span className="ahp-badge ahp-badge--coach">WRITING COACH</span>
         </span>
       </header>
-      <p className="ahp-suggestion-empty">No new suggestions — scan a scene to get feedback.</p>
+      {items.length === 0 ? (
+        <p className="ahp-suggestion-empty">No new suggestions — scan a scene to get feedback.</p>
+      ) : (
+        <ul className="ahp-suggestion-rows" role="list">
+          {items.map((s) => (
+            <li key={s.id} className="ahp-suggestion-row">
+              <span className="ahp-suggestion-agent">{AGENT_LABELS[s.sourceAgent] ?? s.sourceAgent}</span>
+              <span className="ahp-suggestion-rationale">{s.rationale}</span>
+              <span className="ahp-suggestion-confidence">{Math.round(s.confidence * 100)}%</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <button
         type="button"
         className="ahp-see-all-btn"
-        onClick={() => window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'suggestion-inbox' } }))}
+        onClick={() => onOpenSuggestionInbox?.()}
       >
         See All Suggestions
       </button>

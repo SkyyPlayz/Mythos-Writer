@@ -1880,6 +1880,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistGrsSettings({ panels });
   }, [persistGrsSettings]);
 
+  // SKY-6321: "See All Suggestions" (Agent Hub) opens/expands the Suggestion
+  // Review panel in the same (right) sidebar instead of navigating away.
+  const handleOpenSuggestionInbox = useCallback(() => {
+    setGrsPanels((prev) => {
+      const exists = prev.some((p) => p.id === 'review');
+      const next = exists
+        ? prev.map((p) => (p.id === 'review' ? { ...p, collapsed: false } : p))
+        : [...prev, { id: 'review' as SidebarPanelId, collapsed: false }];
+      persistGrsSettings({ panels: next });
+      return next;
+    });
+  }, [persistGrsSettings]);
+
   // SKY-1695: Unified drop handler for panel drag-and-drop across both sidebars.
   const handlePanelDrop = useCallback((
     panelId: SidebarPanelId,
@@ -3773,6 +3786,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             voiceEnabled={appSettings?.voice?.enabled ?? false}
             voicePrefs={appSettings?.voice}
             agentNames={appSettings?.agentNames}
+            onOpenSuggestionInbox={handleOpenSuggestionInbox}
           />
         );
       case 'archive-continuity':
@@ -3842,7 +3856,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
-    betaReadNote, continuityCheckNote,
+    betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
