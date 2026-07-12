@@ -46,17 +46,35 @@ export class ManifestMigrationError extends Error {
   }
 }
 
+// electron-main/src/manifest.ts (the legacy, pre-vault/manifest schema) also
+// stamps its migrated files with `schemaVersion: 1` — the same literal this
+// module uses for ManifestV1. A vault opened once under the legacy path
+// therefore has schemaVersion === SCHEMA_VERSION on disk while still being
+// legacy-shaped (provenance as a Record, boardReferences instead of boards,
+// no v1-only fields). Comparing schemaVersion alone makes that collision
+// look like "already migrated" and skips migrateV0ToV1's coercion entirely.
+// Detect the legacy shape structurally so it still gets coerced. See SKY-6629.
+function isLegacyShapedManifest(raw: Raw): boolean {
+  if (raw.provenance !== undefined && !Array.isArray(raw.provenance)) return true;
+  if (raw.boards === undefined && raw.boardReferences !== undefined) return true;
+  return false;
+}
+
 /**
  * Apply all pending forward migrations to `raw`.
  * Returns a raw object at SCHEMA_VERSION (caller should then validate the shape).
  * Throws ManifestVersionError when the on-disk version exceeds SCHEMA_VERSION.
  */
 export function runMigrations(raw: Raw): Raw {
-  const currentVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
+  const declaredVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
 
-  if (currentVersion > SCHEMA_VERSION) {
-    throw new ManifestVersionError(currentVersion);
+  if (declaredVersion > SCHEMA_VERSION) {
+    throw new ManifestVersionError(declaredVersion);
   }
+
+  // A legacy-shaped manifest that happens to declare schemaVersion 1 is
+  // treated as version 0 so the v0→v1 coercion still runs against it.
+  const currentVersion = isLegacyShapedManifest(raw) ? 0 : declaredVersion;
 
   if (currentVersion === SCHEMA_VERSION) return raw;
 
@@ -70,10 +88,12 @@ export function runMigrations(raw: Raw): Raw {
 }
 
 /**
- * Returns true when the raw object needs migration (schemaVersion missing or < current).
+ * Returns true when the raw object needs migration: schemaVersion is missing
+ * or below current, OR schemaVersion matches but the shape is actually the
+ * legacy pre-vault/manifest schema (see isLegacyShapedManifest above).
  */
 export function needsMigration(raw: Raw): boolean {
   const v = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
-  return v < SCHEMA_VERSION;
+  return v < SCHEMA_VERSION || isLegacyShapedManifest(raw);
 }
 

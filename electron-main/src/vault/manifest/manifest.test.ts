@@ -66,6 +66,47 @@ function v0WithData(vaultRoot: string) {
   };
 }
 
+// Mirrors what electron-main/src/manifest.ts's own v0→v1 migration actually
+// stamps onto a real vault's manifest.json: schemaVersion 1 (SKY-6629 legacy
+// namespace collision), but still the legacy shape — provenance as a Record,
+// board refs under `boardReferences`, no `boards` field.
+function legacyV1Manifest(vaultRoot: string) {
+  return {
+    schemaVersion: 1,
+    version: '1.5.0',
+    vaultRoot,
+    stories: [],
+    chapters: [],
+    scenes: [
+      {
+        id: 'sc-1',
+        title: 'Opening',
+        path: 'Manuscript/ch1/scene-1.md',
+        order: 0,
+        chapterId: 'ch-1',
+        blocks: [{ id: 'b1', type: 'prose', order: 0, content: 'Once upon a time…', updatedAt: '' }],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-02T00:00:00.000Z',
+      },
+    ],
+    entities: [
+      {
+        id: 'ent-1',
+        name: 'Alice',
+        type: 'character',
+        path: 'Characters/alice.md',
+        tags: ['protagonist'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ],
+    suggestions: [{ id: 'sug-1', status: 'accepted', targetPath: 'Manuscript/ch1/scene-1.md' }],
+    provenance: { 'sug-1': 'Manuscript/ch1/scene-1.md' },
+    boardReferences: ['Boards/main.json'],
+    migratedAt: '2024-01-03T00:00:00.000Z',
+  };
+}
+
 // ─── SCHEMA_VERSION ──────────────────────────────────────────────────────────
 
 describe('SCHEMA_VERSION', () => {
@@ -337,6 +378,41 @@ describe('needsMigration', () => {
   it('returns false when schemaVersion equals SCHEMA_VERSION', () => {
     expect(needsMigration({ schemaVersion: SCHEMA_VERSION })).toBe(false);
   });
+
+  // SKY-6629: the legacy electron-main/src/manifest.ts schema also stamps
+  // schemaVersion 1, so a numeric-only comparison misreads a legacy-shaped
+  // manifest as "already migrated" and skips coercion.
+  it('returns true for a legacy-shaped manifest despite schemaVersion === SCHEMA_VERSION', () => {
+    expect(needsMigration(legacyV1Manifest('/vault') as unknown as Record<string, unknown>)).toBe(true);
+  });
+});
+
+describe('needsMigration / runMigrations — SKY-6629 schemaVersion collision', () => {
+  it('coerces a legacy-shaped manifest (schemaVersion 1, Record provenance) into ManifestV1 shape', () => {
+    const raw = legacyV1Manifest('/vault');
+    const migrated = runMigrations(raw as unknown as Record<string, unknown>);
+
+    expect(Array.isArray(migrated.provenance)).toBe(true);
+    const prov = migrated.provenance as Array<Record<string, unknown>>;
+    expect(prov).toHaveLength(1);
+    expect(prov[0].vaultPath).toBe('Manuscript/ch1/scene-1.md');
+
+    expect(Array.isArray(migrated.boards)).toBe(true);
+    const boards = migrated.boards as Array<Record<string, unknown>>;
+    expect(boards).toHaveLength(1);
+    expect(boards[0].path).toBe('Boards/main.json');
+  });
+
+  it('the coerced result passes validateManifestV1 without throwing', () => {
+    const raw = legacyV1Manifest('/vault');
+    const migrated = runMigrations(raw as unknown as Record<string, unknown>);
+    expect(() => validateManifestV1(migrated)).not.toThrow();
+  });
+
+  it('validating the raw legacy-shaped manifest directly (pre-fix behavior) throws', () => {
+    const raw = legacyV1Manifest('/vault');
+    expect(() => validateManifestV1(raw)).toThrow(/provenance/);
+  });
 });
 
 // ─── writeManifestV1 ─────────────────────────────────────────────────────────
@@ -508,6 +584,37 @@ describe('openManifestV1', () => {
 
     openManifestV1(p, { vaultRoot: tmpDir });
     expect(fs.existsSync(`${p}.tmp`)).toBe(false);
+  });
+
+  // SKY-6629: real vaults previously opened by the legacy electron-main/src/manifest.ts
+  // path have schemaVersion 1 on disk but the legacy shape. Opening them through
+  // openManifestV1 must coerce, not throw ManifestValidationError.
+  it('coerces a real legacy-shaped vault manifest (schemaVersion 1 collision) instead of throwing', () => {
+    const p = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(p, JSON.stringify(legacyV1Manifest(tmpDir), null, 2), 'utf-8');
+
+    const m = openManifestV1(p, { vaultRoot: tmpDir });
+
+    expect(m.schemaVersion).toBe(1);
+    expect(Array.isArray(m.provenance)).toBe(true);
+    expect(m.provenance).toHaveLength(1);
+    expect(Array.isArray(m.boards)).toBe(true);
+    expect(m.boards).toHaveLength(1);
+
+    const onDisk = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    expect(Array.isArray(onDisk.provenance)).toBe(true);
+    expect(Array.isArray(onDisk.boards)).toBe(true);
+  });
+
+  it('backs up the original legacy-shaped manifest before coercing it', () => {
+    const p = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(p, JSON.stringify(legacyV1Manifest(tmpDir), null, 2), 'utf-8');
+
+    openManifestV1(p, { vaultRoot: tmpDir });
+
+    const backupDir = path.join(tmpDir, '.mythos', 'backups');
+    const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith('manifest-v1-'));
+    expect(backups.length).toBeGreaterThanOrEqual(1);
   });
 
   it('fully round-trips: migrate v0, re-open as v1 without re-migration', () => {
