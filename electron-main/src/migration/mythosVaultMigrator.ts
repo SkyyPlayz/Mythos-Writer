@@ -637,6 +637,8 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
         for (const s of ch.scenes) {
           type DraftSource = {
             savedAt: string;
+            /** Full version ts (includes monotonic seq) — tiebreaker when savedAt ties. */
+            _sortKey: string;
             content: string;
             intent: 'save' | 'auto' | 'agent-suggestion-applied' | 'pre-rollback' | 'migration';
             label?: string;
@@ -650,12 +652,15 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
             const savedAt = stampMatch
               ? `${stampMatch[1]}T${stampMatch[2]}:${stampMatch[3]}:${stampMatch[4]}.${stampMatch[5]}Z`
               : new Date(0).toISOString();
-            sources.push({ savedAt, content: v.content, intent: v.intent });
+            // v.ts includes the monotonic _seq suffix — use it as a tiebreaker so that
+            // two versions saved within the same millisecond stay in creation order.
+            sources.push({ savedAt, _sortKey: v.ts, content: v.content, intent: v.intent });
           }
           try {
             for (const snap of listSnapshots(opts.sourceStoryVault, s.scene.id)) {
               sources.push({
                 savedAt: snap.createdAt,
+                _sortKey: snap.createdAt,
                 content: snap.content,
                 intent: 'save',
                 ...(snap.label ? { label: snap.label } : {}),
@@ -666,14 +671,20 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           }
           for (const row of dbRows.sceneSnapshots) {
             if (row.scene_id !== s.scene.id) continue;
+            const rowSavedAt = new Date(row.created_at).toISOString();
             sources.push({
-              savedAt: new Date(row.created_at).toISOString(),
+              savedAt: rowSavedAt,
+              _sortKey: rowSavedAt,
               content: row.content,
               intent: 'save',
               ...(row.label ? { label: row.label } : {}),
             });
           }
-          sources.sort((a, b) => (a.savedAt < b.savedAt ? -1 : a.savedAt > b.savedAt ? 1 : 0));
+          sources.sort((a, b) => {
+            if (a.savedAt < b.savedAt) return -1;
+            if (a.savedAt > b.savedAt) return 1;
+            return a._sortKey < b._sortKey ? -1 : a._sortKey > b._sortKey ? 1 : 0;
+          });
           for (const src of sources) {
             saveDraftForScene(storyVaultPath, {
               sceneId: s.scene.id,
