@@ -331,8 +331,13 @@ PY
         --json >"$INFRA_CLOSE_TMP" 2>/dev/null || echo '[]' >"$INFRA_CLOSE_TMP"
 
       export INFRA_CLOSE_TMP
+      # Only close tickets whose title EXACTLY matches the pattern this script
+      # itself generates ("[ci-infra] main <stage desc> red — repo-wide"), not
+      # any CTO-assigned issue that merely starts with "[ci-infra]". A loose
+      # prefix match previously false-closed real delegated CTO work (e.g.
+      # SKY-6528) the moment main went green, without the work ever landing.
       INFRA_IDS_TO_CLOSE=$(python3 <<'PY' || true
-import json, os
+import json, os, re
 path = os.environ["INFRA_CLOSE_TMP"]
 try:
     with open(path, "r", encoding="utf-8") as fh:
@@ -341,7 +346,8 @@ try:
 except Exception:
     raise SystemExit(0)
 issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
-ids = [it.get("id") or "" for it in issues if (it.get("title") or "").startswith("[ci-infra]")]
+pattern = re.compile(r"^\[ci-infra\] main .+ red — repo-wide$")
+ids = [it.get("id") or "" for it in issues if pattern.match(it.get("title") or "")]
 print("\n".join(i for i in ids if i))
 PY
       )
