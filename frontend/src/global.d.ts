@@ -914,6 +914,9 @@ interface Window {
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
     agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
     onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
+    /** SKY-6663: M15 follow-up — Archive Agent in-panel chat. */
+    agentArchive: (prompt: string, context?: string) => Promise<{ text: string }>;
+    onArchiveChunk: (cb: (chunk: string) => void) => () => void;
     agentVaultIndex: () => Promise<{ entities: VaultIndexEntry[] }>;
     agentVaultCheck: (sceneContent: string) => Promise<{ text: string; inconsistencies: VaultCheckInconsistency[] }>;
     onVaultCheckChunk: (cb: (chunk: string) => void) => () => void;

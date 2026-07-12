@@ -69,6 +69,21 @@ async function writingAssistantHandlerWithSettings(
   return { text: 'response', requestId: 'r2' };
 }
 
+// SKY-6663: M15 follow-up — Archive Agent chat (registerArchiveHandler),
+// distinct from the archive *scan* handler below. Same enabled-gate shape as
+// Writing Assistant's chat handler.
+async function archiveChatHandlerWithSettings(
+  settings: ReturnType<typeof makeSettings>,
+  payload: { prompt: string; context?: string },
+): Promise<{ text: string; requestId: string }> {
+  if (!settings.agents.archive.enabled) {
+    throw new Error('Archive Agent is disabled in settings.');
+  }
+  const client = new Anthropic({ apiKey: settings.apiKey });
+  void client; // would stream here in real code
+  return { text: 'response', requestId: 'r3' };
+}
+
 function archiveScanHandlerWithSettings(
   settings: ReturnType<typeof makeSettings>,
   _payload: { sceneText: string; scenePath: string },
@@ -153,6 +168,35 @@ describe('Writing Assistant — disabled path', () => {
     vi.mocked(Anthropic).mockImplementation(function() { return {} as Anthropic; });
     const settings = makeSettings({ writingAssistantEnabled: true });
     const result = await writingAssistantHandlerWithSettings(settings, { prompt: 'test' });
+    expect(result.text).toBe('response');
+    expect(vi.mocked(Anthropic)).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Archive chat — disabled path', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('throws a disabled error before calling Anthropic', async () => {
+    const settings = makeSettings({ archiveEnabled: false });
+    await expect(
+      archiveChatHandlerWithSettings(settings, { prompt: 'Check continuity.' }),
+    ).rejects.toThrow('Archive Agent is disabled in settings.');
+    expect(vi.mocked(Anthropic)).not.toHaveBeenCalled();
+  });
+
+  it('error message includes "disabled"', async () => {
+    const settings = makeSettings({ archiveEnabled: false });
+    await expect(
+      archiveChatHandlerWithSettings(settings, { prompt: 'test' }),
+    ).rejects.toThrow(/disabled/i);
+  });
+
+  it('enabled=true calls Anthropic constructor (normal path)', async () => {
+    vi.mocked(Anthropic).mockImplementation(function() { return {} as Anthropic; });
+    const settings = makeSettings({ archiveEnabled: true });
+    const result = await archiveChatHandlerWithSettings(settings, { prompt: 'test' });
     expect(result.text).toBe('response');
     expect(vi.mocked(Anthropic)).toHaveBeenCalledOnce();
   });

@@ -1729,6 +1729,17 @@ export interface AgentWritingAssistantResponse {
   text: string;
 }
 
+// ─── Archive Agent chat types (SKY-6663 — M15 follow-up in-panel chat) ───
+
+export interface AgentArchivePayload {
+  prompt: string;
+  context?: string;
+}
+
+export interface AgentArchiveResponse {
+  text: string;
+}
+
 // ─── Vault Agent types (Epic 5 — MYT-110) ───
 
 export interface VaultIndexEntry {

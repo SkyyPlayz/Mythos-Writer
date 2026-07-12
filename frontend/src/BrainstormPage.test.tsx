@@ -2639,3 +2639,21 @@ describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
     expect(screen.queryByTestId('bsc-card-fact-a')).not.toBeInTheDocument();
   });
 });
+
+describe('BrainstormPage — sessionPicker slot (SKY-6663)', () => {
+  it('renders the native "New Session" button when no sessionPicker is supplied', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByRole('button', { name: /new session/i })).toBeInTheDocument();
+  });
+
+  it('renders the supplied sessionPicker in place of the native "New Session" button', () => {
+    render(
+      <BrainstormPage
+        onClose={() => {}}
+        sessionPicker={<div data-testid="hub-session-picker">Session pill</div>}
+      />,
+    );
+    expect(screen.getByTestId('hub-session-picker')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^new session$/i })).not.toBeInTheDocument();
+  });
+});

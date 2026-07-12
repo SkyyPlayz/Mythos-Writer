@@ -58,6 +58,7 @@ import {
   type EntityRelationshipsDeletePayload,
   type AgentWritingAssistantPayload,
   type AgentBrainstormPayload,
+  type AgentArchivePayload,
   type VaultCheckPayload,
   type VaultIndexEntry,
   type VaultCheckInconsistency,
@@ -7828,6 +7829,133 @@ function registerWritingAssistantHandler() {
   }));
 }
 
+// ─── Archive Agent chat handler (SKY-6663 — M15 follow-up) ───
+// Registered separately (like Writing Assistant / Brainstorm) so we can push
+// chunk events to the renderer mid-response. Archive's settings/budget/
+// provider/persona plumbing already existed (getProviderConfigForAgent,
+// buildAgentSystemPrompt, and agent:archive were reserved in ipc.ts) — this
+// was the one missing piece: no handler was ever registered on the channel.
+function registerArchiveHandler() {
+  ipcMain.handle(IPC_CHANNELS.AGENT_ARCHIVE, wrapIpcHandler(IPC_CHANNELS.AGENT_ARCHIVE, async (event, payload: AgentArchivePayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    // RISK-4: pre-flight payload size cap and field validation
+    if (!payload || Buffer.byteLength(JSON.stringify(payload)) > MAX_PAYLOAD_BYTES) {
+      throw new Error('Payload too large');
+    }
+    if (typeof payload.prompt !== 'string' || payload.prompt.length > MAX_AGENT_PROMPT_LENGTH) {
+      throw new Error('Prompt invalid or too long');
+    }
+    if (
+      payload.context !== undefined &&
+      (typeof payload.context !== 'string' || payload.context.length > MAX_AGENT_PROMPT_LENGTH)
+    ) {
+      throw new Error('Context invalid or too long');
+    }
+    const agentSettings = loadAppSettings().agents.archive;
+    if (!agentSettings.enabled) {
+      throw new Error('Archive Agent is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('archive', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'archive',
+          agentLabel: 'Archive Agent',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Archive Agent paused: ${capLabel} reached. Try again next window.`);
+    }
+    const providerConfig = getProviderConfigForAgent('archive');
+
+    // Cap scene context to prevent large manuscripts from blowing the context window.
+    // The user's typed prompt is always preserved; only the auto-injected context is trimmed.
+    let archiveTruncated = false;
+    let cappedContext = payload.context;
+    if (payload.context) {
+      const { text, truncated } = truncateContext(
+        payload.context,
+        WRITING_ASSISTANT_MAX_CONTEXT_CHARS,
+      );
+      cappedContext = text;
+      archiveTruncated = truncated;
+    }
+
+    // cappedContext is vault content — attacker-controlled. buildWritingAssistantUserContent
+    // wraps it in <scene_context> tags so the LLM treats it as data, not instructions (SEC-6).
+    const userContent = buildWritingAssistantUserContent(cappedContext, payload.prompt);
+
+    const archiveContextChars = userContent.length;
+
+    const requestId = crypto.randomUUID();
+    let fullText = '';
+    let genError: string | null = null;
+    const startedAt = Date.now();
+
+    const controller = new AbortController();
+    agentControllers.set(requestId, controller);
+    const onDestroyed = () => controller.abort();
+    event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:archive:stream-start', { requestId });
+    }
+
+    try {
+      // Thinking stays off here: the Archive chat's stall timer resets only on
+      // visible tokens, so a silent adaptive-thinking phase reads as a hung
+      // stream (same rationale as Writing Assistant / Brainstorm above).
+      for await (const token of streamFromProvider(providerConfig, {
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'archive'),
+        messages: [{ role: 'user', content: userContent }],
+        maxTokens: 1024,
+        signal: controller.signal,
+      })) {
+        fullText += token;
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:archive:chunk', { chunk: token });
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== 'AbortError') {
+        genError = (err as Error).message ?? 'unknown error';
+        const category = categorizeStreamError(err);
+        const userMessage = streamErrorUserMessage(category);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:archive:error', { requestId, category, message: userMessage });
+        }
+        throw new Error(userMessage);
+      }
+    } finally {
+      agentControllers.delete(requestId);
+      event.sender.off('destroyed', onDestroyed);
+      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
+        ? userContent
+        : crypto.createHash('sha256').update(userContent).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'archive',
+          model: providerConfig.model,
+          endpoint: 'messages.stream',
+          request_id: requestId,
+          tokens_in: null,
+          tokens_out: null,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: payloadDigest,
+          context_chars: archiveContextChars,
+          truncated: archiveTruncated,
+        });
+      } catch { /* non-fatal */ }
+    }
+
+    return { text: fullText, requestId };
+  }));
+}
+
 // ─── Vault Agent handlers ───
 function registerVaultAgentHandlers() {
   // agent:vault-index — builds in-memory index of all vault entities
@@ -8850,6 +8978,7 @@ app.whenReady().then(async () => {
   registerBrainstormHandler();
   registerBrainstormEnrichHandler();
   registerWritingAssistantHandler();
+  registerArchiveHandler();
   setupAgentPersonaIpc();
   registerVaultAgentHandlers();
   registerContinuityHandler();

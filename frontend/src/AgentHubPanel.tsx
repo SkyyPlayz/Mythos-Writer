@@ -7,6 +7,8 @@ import type { Scene } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import BrainstormPage from './BrainstormPage';
+import ArchiveChatView from './ArchiveChatView';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
@@ -87,6 +89,14 @@ interface Props {
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
   onOpenSuggestionInbox?: () => void;
+  /** SKY-6663: M15 follow-up — Brainstorm/Archive in-panel chat config, mirrors
+   *  the values DesktopShell already threads to the standalone 'brainstorm'
+   *  sidebar panel and to ContinuityPanel. */
+  brainstormEnabled?: boolean;
+  brainstormVoiceEnabled?: boolean;
+  archiveEnabled?: boolean;
+  archiveContinuityEnabled?: boolean;
+  activeStorySlug?: string | null;
 }
 
 export default function AgentHubPanel({
@@ -108,11 +118,25 @@ export default function AgentHubPanel({
   onAutoApplyCategoriesChange,
   agentNames,
   onOpenSuggestionInbox,
+  brainstormEnabled = true,
+  brainstormVoiceEnabled = false,
+  archiveEnabled = true,
+  archiveContinuityEnabled = true,
+  activeStorySlug = null,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
 
   const coachSessionStore = useAgentSessions('coach');
+  const brainstormSessionStore = useAgentSessions('brainstorm');
+  const archiveSessionStore = useAgentSessions('archive');
+
+  const sessionStoreForAgent: Record<Exclude<ActiveAgent, null>, ReturnType<typeof useAgentSessions>> = {
+    'writing-assistant': coachSessionStore,
+    brainstorm: brainstormSessionStore,
+    archive: archiveSessionStore,
+    'beta-reader': coachSessionStore, // unreachable — Beta Reader routes away before rendering AgentChatView
+  };
 
   const handleAgentClick = useCallback((id: ActiveAgent) => {
     if (id === 'beta-reader') {
@@ -156,7 +180,7 @@ export default function AgentHubPanel({
                 agentId={activeAgent}
                 agentDef={AGENT_DEFS.find((a) => a.id === activeAgent)!}
                 agentNames={agentNames}
-                coachSessionStore={coachSessionStore}
+                sessionStore={sessionStoreForAgent[activeAgent]}
                 onBack={handleBack}
                 scene={scene}
                 enabled={enabled}
@@ -174,6 +198,11 @@ export default function AgentHubPanel({
                 autoApply={autoApply}
                 autoApplyCategories={autoApplyCategories}
                 onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+                brainstormEnabled={brainstormEnabled}
+                brainstormVoiceEnabled={brainstormVoiceEnabled}
+                archiveEnabled={archiveEnabled}
+                archiveContinuityEnabled={archiveContinuityEnabled}
+                activeStorySlug={activeStorySlug}
               />
             : <AgentHubView
                 agentDefs={AGENT_DEFS}
@@ -365,7 +394,7 @@ interface AgentChatViewProps {
   agentId: ActiveAgent;
   agentDef: AgentDef;
   agentNames?: Partial<Record<NamedAgentId, string>>;
-  coachSessionStore: ReturnType<typeof useAgentSessions>;
+  sessionStore: ReturnType<typeof useAgentSessions>;
   onBack: () => void;
   scene: Scene | null;
   enabled: boolean;
@@ -383,13 +412,18 @@ interface AgentChatViewProps {
   autoApply: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  brainstormEnabled: boolean;
+  brainstormVoiceEnabled: boolean;
+  archiveEnabled: boolean;
+  archiveContinuityEnabled: boolean;
+  activeStorySlug: string | null;
 }
 
 function AgentChatView({
   agentId,
   agentDef,
   agentNames,
-  coachSessionStore,
+  sessionStore,
   onBack,
   scene,
   enabled,
@@ -407,30 +441,42 @@ function AgentChatView({
   autoApply,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
+  brainstormEnabled,
+  brainstormVoiceEnabled,
+  archiveEnabled,
+  archiveContinuityEnabled,
+  activeStorySlug,
 }: AgentChatViewProps) {
   const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
 
+  // Brainstorm supplies its own full header (Back button + title + Mute/Download
+  // + the session picker slot below) — a second "‹ Back" row here would be a
+  // confusing double-header, so the generic hub header is skipped for it.
+  const showHubHeader = agentId !== 'brainstorm';
+
   return (
     <div className="ahp-chat-view">
-      <div className="ahp-chat-header">
-        <button
-          type="button"
-          className="ahp-back-btn"
-          onClick={onBack}
-          aria-label="Back to agents"
-        >
-          ‹ Back
-        </button>
-        <span
-          className="ahp-chat-agent-tile"
-          style={{ '--agent-color': agentDef.color } as React.CSSProperties}
-          aria-hidden="true"
-        >
-          <AgentIcon agentId={agentId} />
-        </span>
-        <span className="ahp-chat-agent-name">{displayName}</span>
-        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" />
-      </div>
+      {showHubHeader && (
+        <div className="ahp-chat-header">
+          <button
+            type="button"
+            className="ahp-back-btn"
+            onClick={onBack}
+            aria-label="Back to agents"
+          >
+            ‹ Back
+          </button>
+          <span
+            className="ahp-chat-agent-tile"
+            style={{ '--agent-color': agentDef.color } as React.CSSProperties}
+            aria-hidden="true"
+          >
+            <AgentIcon agentId={agentId} />
+          </span>
+          <span className="ahp-chat-agent-name">{displayName}</span>
+          <AgentSessionPicker store={sessionStore} className="ahp-session-pill" />
+        </div>
+      )}
 
       {/* Writing Coach / Writing Assistant uses the existing panel */}
       {agentId === 'writing-assistant' && (
@@ -455,7 +501,36 @@ function AgentChatView({
         />
       )}
 
-      {agentId !== 'writing-assistant' && (
+      {agentId === 'brainstorm' && (
+        <BrainstormPage
+          // Remounting on session switch/new/duplicate clears the visible
+          // transcript — useAgentSessions has no "read session" IPC yet, so
+          // there's nothing to restore (see useAgentSessions.ts). This at
+          // least makes switching sessions visibly do something.
+          key={sessionStore.activeSessionId ?? 'bootstrap'}
+          onClose={onBack}
+          enabled={brainstormEnabled}
+          voiceEnabled={brainstormVoiceEnabled}
+          archiveContinuityEnabled={archiveContinuityEnabled}
+          activeScene={scene}
+          activeStorySlug={activeStorySlug}
+          ttsSettings={ttsSettings}
+          voicePrefs={voicePrefs}
+          compact
+          sessionPicker={<AgentSessionPicker store={sessionStore} className="ahp-session-pill" />}
+        />
+      )}
+
+      {agentId === 'archive' && (
+        <ArchiveChatView
+          scene={scene}
+          sessionStore={sessionStore}
+          displayName={displayName}
+          enabled={archiveEnabled}
+        />
+      )}
+
+      {agentId !== 'writing-assistant' && agentId !== 'brainstorm' && agentId !== 'archive' && (
         <div className="ahp-chat-placeholder">
           <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
         </div>

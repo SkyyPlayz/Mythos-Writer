@@ -239,3 +239,30 @@ describe('Writing Assistant — valid payloads (§9)', () => {
     ).not.toThrow();
   });
 });
+
+// ─── §10 Archive — payload validation (SKY-6663: same {prompt, context} shape
+//        as Writing Assistant — registerArchiveHandler in main.ts reuses this
+//        exact validation code) ──────────────────────────────────────────────
+
+describe('Archive — payload validation (§10)', () => {
+  it('rejects prompt longer than 32 000 chars', () => {
+    expect(() => validateWritingAssistantPayload({ prompt: 'a'.repeat(32_001) })).toThrow(
+      'Prompt invalid or too long',
+    );
+  });
+
+  it('rejects context longer than 32 000 chars', () => {
+    expect(() =>
+      validateWritingAssistantPayload({ prompt: 'check continuity', context: 'c'.repeat(32_001) }),
+    ).toThrow('Context invalid or too long');
+  });
+
+  it('passes a valid prompt + scene-context payload', () => {
+    expect(() =>
+      validateWritingAssistantPayload({
+        prompt: 'Does this scene contradict chapter one?',
+        context: 'Scene: "The Reveal"\n\nElara had always had green eyes.',
+      }),
+    ).not.toThrow();
+  });
+});

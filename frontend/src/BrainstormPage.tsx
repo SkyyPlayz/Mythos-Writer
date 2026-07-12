@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement, type ReactNode } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
@@ -330,6 +330,12 @@ interface Props {
   /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language).
    *  Field names match VoiceSettings — pass appSettings.voice straight through. */
   voicePrefs?: TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
+  /** SKY-6663: M15 follow-up — when embedded in AgentHubPanel's in-panel chat,
+   *  the hub's shared AgentSessionPicker (file-backed session store) renders
+   *  here in place of the native "New Session" button, so Brainstorm's picker
+   *  behaves like Coach/Archive's. Omitted everywhere else — no behavior
+   *  change for the standalone tab or the other two compact-sidebar call sites. */
+  sessionPicker?: ReactNode;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -343,7 +349,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, sessionPicker }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1758,14 +1764,16 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   Download
                 </button>
               )}
-              <button
-                className="brainstorm-new-session-btn"
-                onClick={handleNewSession}
-                aria-label="New session"
-                type="button"
-              >
-                New Session
-              </button>
+              {sessionPicker ?? (
+                <button
+                  className="brainstorm-new-session-btn"
+                  onClick={handleNewSession}
+                  aria-label="New session"
+                  type="button"
+                >
+                  New Session
+                </button>
+              )}
             </div>
           </>
         }

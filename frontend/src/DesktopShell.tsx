@@ -3787,6 +3787,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             voicePrefs={appSettings?.voice}
             agentNames={appSettings?.agentNames}
             onOpenSuggestionInbox={handleOpenSuggestionInbox}
+            brainstormEnabled={appSettings?.agents?.brainstorm?.enabled ?? true}
+            brainstormVoiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
+            archiveEnabled={appSettings?.agents?.archive?.enabled ?? true}
+            archiveContinuityEnabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+            activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
           />
         );
       case 'archive-continuity':

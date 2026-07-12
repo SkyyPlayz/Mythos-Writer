@@ -144,6 +144,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('agent:brainstorm:chunk', handler);
     return () => ipcRenderer.removeListener('agent:brainstorm:chunk', handler);
   },
+  agentArchive: (prompt: string, context?: string) =>
+    ipcRenderer.invoke('agent:archive', { prompt, context }),
+  onArchiveChunk: (cb: (chunk: string) => void) => {
+    const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
+    ipcRenderer.on('agent:archive:chunk', handler);
+    return () => ipcRenderer.removeListener('agent:archive:chunk', handler);
+  },
   agentVaultIndex: () =>
     ipcRenderer.invoke('agent:vault-index', {}),
   agentVaultCheck: (sceneContent: string) =>

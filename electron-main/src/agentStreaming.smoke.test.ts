@@ -226,6 +226,19 @@ const AGENT_CONFIGS: AgentConfig[] = [
     buildMessages: (p) => [{ role: 'user', content: `Scene to check:\n\n${String(p.sceneContent)}` }],
     makePayload: () => ({ sceneContent: 'Elara rode her horse through the dark forest.' }),
   },
+  {
+    // SKY-6663: M15 follow-up — Archive Agent chat handler (registerArchiveHandler
+    // in main.ts) follows the exact same stream/log/cancel shape as Writing
+    // Assistant, so it gets the same smoke coverage for free via describe.each.
+    agentLabel: 'archive',
+    dbAgentName: 'archive',
+    streamStartChannel: 'agent:archive:stream-start',
+    chunkChannel: 'agent:archive:chunk',
+    errorChannel: 'agent:archive:error',
+    systemPrompt: 'You are an Archive Agent — continuity guardian for fiction authors.',
+    buildMessages: (p) => [{ role: 'user', content: String(p.prompt) }],
+    makePayload: () => ({ prompt: 'Does chapter three contradict the eye color established in chapter one?' }),
+  },
 ];
 
 // ─── Smoke tests (parameterised over all three agents) ────────────────────────
