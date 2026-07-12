@@ -1814,3 +1814,99 @@ describe('watcher self-write suppression (perf audit)', () => {
     expect(isRecentSelfWrite(path.join(root, 'note.md'))).toBe(true);
   });
 });
+
+// GH#892 regression: chokidar v4+ requires ignored to be a function, not a
+// regex. The previous regex `/(^|[/\\])\../` caused a TypeError internally,
+// silently killing event delivery for files below the vault root.
+describe('startVaultWatcher — emits events for files below vault root (GH#892)', () => {
+  let vaultDir: string;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-watcher-gh892-'));
+  });
+
+  afterEach(async () => {
+    await stopVaultWatcher();
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  it('fires change events for .md files in nested subdirectories', async () => {
+    // Set up a nested structure: vault/Manuscript/story/chapter/scene.md
+    const nestedDir = path.join(vaultDir, 'Manuscript', 'story', 'chapter');
+    fs.mkdirSync(nestedDir, { recursive: true });
+    const nestedFile = path.join(nestedDir, 'scene.md');
+    fs.writeFileSync(nestedFile, 'initial');
+
+    const events: string[] = [];
+    await startVaultWatcher(vaultDir, (p) => events.push(p));
+
+    // Allow chokidar to finish its initial scan.
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Modify the nested file.
+    fs.writeFileSync(nestedFile, 'updated content');
+
+    // Wait past awaitWriteFinish (300ms) + slack.
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const matched = events.filter((p) => p.endsWith('scene.md'));
+    expect(matched.length).toBeGreaterThan(0);
+  }, 10_000);
+
+  it('does not emit events for dotfiles or dot-directories', async () => {
+    // Normal file to prove the watcher is alive.
+    const normalFile = path.join(vaultDir, 'scene.md');
+    fs.writeFileSync(normalFile, 'initial');
+
+    // Dotfile and dot-directory that should be ignored.
+    fs.writeFileSync(path.join(vaultDir, '.hidden.md'), 'secret');
+    const dotDir = path.join(vaultDir, '.git');
+    fs.mkdirSync(dotDir, { recursive: true });
+
+    const events: string[] = [];
+    await startVaultWatcher(vaultDir, (p) => events.push(p));
+    await new Promise((r) => setTimeout(r, 400));
+
+    fs.writeFileSync(path.join(vaultDir, '.hidden.md'), 'updated secret');
+    fs.writeFileSync(path.join(dotDir, 'COMMIT_EDITMSG'), 'abc');
+    fs.writeFileSync(normalFile, 'updated');
+
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const dotEvents = events.filter(
+      (p) => path.basename(p).startsWith('.') || p.includes(`${path.sep}.`),
+    );
+    expect(dotEvents).toEqual([]);
+
+    const normalEvents = events.filter((p) => p.endsWith('scene.md'));
+    expect(normalEvents.length).toBeGreaterThan(0);
+  }, 10_000);
+
+  it('does not emit events for the versions/ history dir', async () => {
+    // SKY-10/perf: every save writes versions/<id>/*.md snapshots; the
+    // watcher must not fire (and trigger a reindex) for that churn. This
+    // exclusion previously lived in a chokidar `ignored` array of regexes,
+    // which chokidar v5 silently never invoked (see GH#892) — so it never
+    // actually ran until the `ignored` function fix below.
+    const normalFile = path.join(vaultDir, 'scene.md');
+    fs.writeFileSync(normalFile, 'initial');
+
+    const versionsDir = path.join(vaultDir, 'versions', 'sc1');
+    fs.mkdirSync(versionsDir, { recursive: true });
+
+    const events: string[] = [];
+    await startVaultWatcher(vaultDir, (p) => events.push(p));
+    await new Promise((r) => setTimeout(r, 400));
+
+    fs.writeFileSync(path.join(versionsDir, '2026-01-01T00-00-00.md'), 'snapshot');
+    fs.writeFileSync(normalFile, 'updated');
+
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const versionsEvents = events.filter((p) => p.includes(`${path.sep}versions${path.sep}`));
+    expect(versionsEvents).toEqual([]);
+
+    const normalEvents = events.filter((p) => p.endsWith('scene.md'));
+    expect(normalEvents.length).toBeGreaterThan(0);
+  }, 10_000);
+});

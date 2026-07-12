@@ -995,13 +995,19 @@ export async function startVaultWatcher(
   if (activeWatcher) return;
 
   const { default: chokidar } = await import('chokidar');
+  // chokidar v4+ requires ignored to be a function (regex/glob support removed).
+  // GH#892: the previous regex was also syntactically wrong — `\\.` in a regex
+  // literal is "backslash + any char", not "literal dot" — so dotfiles were
+  // never actually ignored and the TypeError from calling a RegExp as a function
+  // silently killed event delivery for all paths below the vault root.
   activeWatcher = chokidar.watch(vaultRoot, {
-    // NOTE: this regex was previously over-escaped (/(^|[/\\\\])\\../) and
-    // matched nothing — dotdirs like .mythos (SQLite DB + WAL) and .snapshots
-    // were being watched, so the app's own DB/snapshot churn fed the watcher.
-    // Also ignore version-history dirs: every save writes versions/<id>/*.md,
-    // which made each save fire the watcher (and a full reindex) twice.
-    ignored: [/(^|[/\\])\../, /(^|[/\\])versions([/\\]|$)/],
+    // Ignore dotdirs (e.g. .mythos SQLite DB + WAL, .snapshots) and the
+    // version-history dir — every save writes versions/<id>/*.md, which
+    // would otherwise fire the watcher (and a full reindex) twice per save.
+    ignored: (filePath: string) => {
+      const base = path.basename(filePath);
+      return base.startsWith('.') || base === 'versions';
+    },
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
@@ -1193,8 +1199,9 @@ export async function startNotesVaultWatcher(
   if (activeNotesWatcher) return;
 
   const { default: chokidar } = await import('chokidar');
+  // Same fix as startVaultWatcher (GH#892): chokidar v4+ requires a function.
   activeNotesWatcher = chokidar.watch(vaultRoot, {
-    ignored: /(^|[/\\])\../, // was over-escaped and matched nothing (see startVaultWatcher)
+    ignored: (filePath: string) => path.basename(filePath).startsWith('.'),
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
