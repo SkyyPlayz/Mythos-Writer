@@ -336,11 +336,13 @@ test('VR-03 editor — focus mode', async () => {
 // ─── Brainstorm chat ──────────────────────────────────────────────────────────
 
 test('VR-04 brainstorm chat view', async () => {
-  const brainstormBtn = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
-  if (await brainstormBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await brainstormBtn.click();
-    await page.waitForTimeout(500);
-  }
+  // SKY-6496: '.app-menu-view-btn' is stale — the nav rail (Beta 4 M3) renders
+  // items as buttons with aria-label={item.label}, not that class. The old
+  // selector silently no-op'd here, so the screenshot captured the default
+  // Editor welcome screen instead of Brainstorm, producing a flaky diff ratio.
+  const brainstormBtn = page.getByRole('button', { name: 'Brainstorm', exact: true });
+  await brainstormBtn.click();
+  await page.waitForTimeout(500);
 
   const ratio = await assertMatchesBaseline(page, 'brainstorm-chat');
   expect(ratio, `brainstorm-chat diff ratio ${(ratio * 100).toFixed(3)}% exceeds ${(THRESHOLD * 100).toFixed(2)}% threshold`).toBeLessThanOrEqual(THRESHOLD);
