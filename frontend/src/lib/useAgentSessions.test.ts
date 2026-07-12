@@ -160,55 +160,10 @@ describe('useAgentSessions', () => {
   });
 });
 
-// CF-10 regression: dismissed suggestions must never resurface
-describe('CF-10: dismissed suggestions never resurface', () => {
-  const DISMISSED_KEY = 'mythos:dismissed-suggestions';
-
-  function getDismissed(): Set<string> {
-    try {
-      const raw = localStorage.getItem(DISMISSED_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch { return new Set(); }
-  }
-
-  function dismiss(id: string) {
-    const set = getDismissed();
-    set.add(id);
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set]));
-  }
-
-  function isDismissed(id: string): boolean {
-    return getDismissed().has(id);
-  }
-
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it('dismissed suggestion ID is not in the allowed set', () => {
-    dismiss('sug-001');
-    expect(isDismissed('sug-001')).toBe(true);
-    expect(isDismissed('sug-002')).toBe(false);
-  });
-
-  it('dismissed suggestions survive across storage reads', () => {
-    dismiss('sug-abc');
-    dismiss('sug-xyz');
-
-    // Simulate a new read cycle
-    const set = getDismissed();
-    expect(set.has('sug-abc')).toBe(true);
-    expect(set.has('sug-xyz')).toBe(true);
-    expect(set.has('sug-not-dismissed')).toBe(false);
-  });
-
-  it('filtering a suggestion list removes dismissed entries', () => {
-    dismiss('sug-2');
-    dismiss('sug-4');
-
-    const allSuggestions = ['sug-1', 'sug-2', 'sug-3', 'sug-4', 'sug-5'];
-    const visible = allSuggestions.filter((id) => !isDismissed(id));
-
-    expect(visible).toEqual(['sug-1', 'sug-3', 'sug-5']);
-  });
-});
+// CF-10 ("dismissed suggestions never resurface") is a Suggestion Inbox
+// behaviour, not a session-store one — its real regression coverage lives
+// against the actual production code path: SuggestionReview.test.tsx
+// ("reject button calls IPC and removes row from inbox") for the frontend,
+// and electron-main/src/suggestions.test.ts ("proposed → rejected" / listing
+// by status) for the DB-level terminal-status guarantee. See also
+// AgentHubPanel.test.tsx for the hub preview card's poll-level regression.
