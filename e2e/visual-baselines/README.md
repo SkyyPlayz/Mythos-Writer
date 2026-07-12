@@ -25,11 +25,11 @@ Baselines are committed to the repository so CI can compare against them on ever
 ## Running the suite
 
 ```bash
-# Compare against committed baselines (CI default — fails if diff > 0.5%)
+# Compare against committed baselines (CI default — fails if diff > 1.2%)
 xvfb-run --auto-servernum npm run test:e2e:visual-regression
 
-# Custom threshold (e.g. 1%)
-VR_THRESHOLD=0.01 xvfb-run --auto-servernum npm run test:e2e:visual-regression
+# Custom threshold (e.g. 2%)
+VR_THRESHOLD=0.02 xvfb-run --auto-servernum npm run test:e2e:visual-regression
 ```
 
 ## Refreshing baselines
@@ -59,7 +59,8 @@ git commit -m "chore: refresh visual-regression baselines"
 
 - Screenshots are captured at 1440×900 using headless Electron under Xvfb.
 - Pixelmatch compares each pixel with `threshold: 0.1` (per-pixel colour tolerance).
-- If the ratio of mismatched pixels exceeds `VR_THRESHOLD` (default **0.5%**), the test fails.
+- If the ratio of mismatched pixels exceeds `VR_THRESHOLD` (default **1.2%**), the test fails. Raised
+  from 0.5% (SKY-6531) — sub-1% AA/font-rendering noise flaked borderline diffs (0.63-0.69%) run-to-run.
 - Diff images are saved to `e2e-visual-artifacts/visual-regression/` and uploaded as CI artifacts.
 
 ## CI artifact upload
