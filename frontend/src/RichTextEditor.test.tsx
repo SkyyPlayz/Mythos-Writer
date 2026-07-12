@@ -381,3 +381,131 @@ describe('RichTextEditor debounced onChange', () => {
     expect(onChangeMarkdown.mock.calls[0][0]).toContain('Do not lose this.');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 6. Text-align mark support (SKY-5747)
+// ---------------------------------------------------------------------------
+
+describe('RichTextEditor text-align round-trip (SKY-5747)', () => {
+  // Each alignment value must survive a full serialize → parse → serialize cycle
+  // through the shared core's comment-marker codec.
+  const ALIGNMENTS = ['center', 'right', 'justify'] as const;
+
+  for (const align of ALIGNMENTS) {
+    it(`round-trips paragraph alignment "${align}" via setTextAlign command`, async () => {
+      const { editor, unmount } = await mountCore({ content: 'Aligned paragraph.\n' });
+
+      act(() => {
+        editor.commands.selectAll();
+        editor.commands.setTextAlign(align);
+      });
+
+      const md = getEditorMarkdown(editor);
+      expect(md).toContain(`<!-- align:${align} -->`);
+
+      // Re-parse the serialized markdown in a fresh editor and confirm alignment survived.
+      const { editor: editor2, unmount: unmount2 } = await mountCore({ content: md });
+      expect(editor2.isActive({ textAlign: align })).toBe(true);
+
+      unmount();
+      unmount2();
+    });
+  }
+
+  it('round-trips heading alignment (center) via setTextAlign command', async () => {
+    const { editor, unmount } = await mountCore({ content: '# Chapter Title\n' });
+
+    act(() => {
+      editor.commands.selectAll();
+      editor.commands.setTextAlign('center');
+    });
+
+    const md = getEditorMarkdown(editor);
+    expect(md).toContain('<!-- align:center -->');
+    expect(md).toContain('# Chapter Title');
+
+    const { editor: editor2, unmount: unmount2 } = await mountCore({ content: md });
+    expect(editor2.isActive({ textAlign: 'center' })).toBe(true);
+
+    unmount();
+    unmount2();
+  });
+
+  it('preserves inline marks (bold, italic) inside an aligned paragraph', async () => {
+    const { editor, unmount } = await mountCore({
+      content: 'Some **bold** and *italic* text.\n',
+    });
+
+    act(() => {
+      editor.commands.selectAll();
+      editor.commands.setTextAlign('right');
+    });
+
+    const md = getEditorMarkdown(editor);
+    expect(md).toContain('<!-- align:right -->');
+    expect(md).toContain('**bold**');
+    expect(md).toContain('*italic*');
+
+    // Reload and confirm inline marks survived the round-trip.
+    const { editor: editor2, unmount: unmount2 } = await mountCore({ content: md });
+    expect(getEditorMarkdown(editor2)).toContain('**bold**');
+    expect(getEditorMarkdown(editor2)).toContain('*italic*');
+    expect(editor2.isActive({ textAlign: 'right' })).toBe(true);
+
+    unmount();
+    unmount2();
+  });
+
+  it('old documents without alignment markers load unchanged (regression guard)', async () => {
+    const md =
+      '# Old Heading\n\n' +
+      'Old paragraph with **bold** text.\n\n' +
+      '- list item\n';
+
+    const { editor, unmount } = await mountCore({ content: md });
+
+    // No alignment attribute set — textAlign should be null / default.
+    expect(editor.isActive({ textAlign: 'center' })).toBe(false);
+    expect(editor.isActive({ textAlign: 'right' })).toBe(false);
+
+    // Serialization must not introduce any align comment markers.
+    const out = getEditorMarkdown(editor);
+    expect(out).not.toContain('<!-- align:');
+    expect(out).toContain('# Old Heading');
+    expect(out).toContain('**bold**');
+
+    unmount();
+  });
+
+  it('left alignment (default) produces no marker in serialized markdown', async () => {
+    const { editor, unmount } = await mountCore({ content: 'Text paragraph.\n' });
+
+    act(() => {
+      editor.commands.selectAll();
+      editor.commands.setTextAlign('left');
+    });
+
+    const md = getEditorMarkdown(editor);
+    expect(md).not.toContain('<!-- align:');
+
+    unmount();
+  });
+
+  it('TextAlign extension is mounted (textAlign command available)', async () => {
+    const { editor, unmount } = await mountCore();
+    expect(typeof editor.commands.setTextAlign).toBe('function');
+    expect(typeof editor.commands.unsetTextAlign).toBe('function');
+    unmount();
+  });
+
+  it('Story and Notes configs both support setTextAlign (no per-surface drift)', async () => {
+    const { editor: storyEd, unmount: unmountStory } = await mountCore({ extraExtensions: STORY_EXTRAS });
+    const { editor: notesEd, unmount: unmountNotes } = await mountCore();
+
+    expect(typeof storyEd.commands.setTextAlign).toBe('function');
+    expect(typeof notesEd.commands.setTextAlign).toBe('function');
+
+    unmountStory();
+    unmountNotes();
+  });
+});

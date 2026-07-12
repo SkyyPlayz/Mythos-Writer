@@ -29,11 +29,11 @@ export interface RichTextMarkDef {
  * Sourced from StarterKit (bold/italic/strike/underline/headings/lists/
  * blockquote/code/codeBlock) plus WikiLink, the app's custom inline node.
  *
- * NOT included: text alignment. There is no Markdown syntax for it and no
- * extension currently mounted — adding it requires overriding StarterKit's
- * bundled Heading/Paragraph nodes with custom markdown-serialize storage
- * (StarterKit doesn't expose per-attribute serialize hooks), which is
- * out of scope for this ticket. Tracked as a follow-up (see GH #642 thread).
+ * Text alignment is also included (SKY-5747). It has no native Markdown
+ * syntax and requires disabling StarterKit's bundled Heading/Paragraph,
+ * mounting alignment-aware replacements that serialize to an HTML comment
+ * marker (<!-- align:center --> etc.) immediately before the block, and
+ * restoring the attribute in the tiptap-markdown parse.updateDOM hook.
  */
 export const RICH_TEXT_SCHEMA: readonly RichTextMarkDef[] = [
   { name: 'bold', kind: 'mark', label: 'Bold', markdownSyntax: '**text**' },
