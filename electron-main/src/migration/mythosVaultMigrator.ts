@@ -638,6 +638,17 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           type DraftSource = {
             savedAt: string;
             sortKey: string;
+            /**
+             * versions.ts's in-memory `_seq` counter (see nextSeq()), when this
+             * source came from listVersions(). It is never derived from wall-clock
+             * time, so unlike `savedAt`/`sortKey` (both parsed from a stamp that
+             * *was* captured via `new Date()`), it stays correct even if the CI
+             * runner's system clock steps backward between two saveVersion() calls
+             * a few ms apart (observed on GitHub-hosted runners — SKY-6571: two
+             * saves land in creation order but the second gets an earlier-looking
+             * timestamp, so a savedAt/sortKey-only sort silently reorders them).
+             */
+            seq: number | null;
             content: string;
             intent: 'save' | 'auto' | 'agent-suggestion-applied' | 'pre-rollback' | 'migration';
             label?: string;
@@ -646,20 +657,22 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           for (const v of listVersions(opts.sourceStoryVault, s.scene.id, {
             chapterRelPath: ch.oldPath,
           })) {
-            // Filename stem starts with an ISO-ish stamp; recover a sortable time.
-            const stampMatch = v.ts.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/);
+            // Filename stem starts with an ISO-ish stamp, then `_<8-digit seq>-<hash8>`.
+            const stampMatch = v.ts.match(
+              /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_(\d{8})-/,
+            );
             const savedAt = stampMatch
               ? `${stampMatch[1]}T${stampMatch[2]}:${stampMatch[3]}:${stampMatch[4]}.${stampMatch[5]}Z`
               : new Date(0).toISOString();
-            // Use the full ts (includes _seq suffix) as a tie-breaker so same-millisecond
-            // saves sort in creation order rather than arbitrary filename order.
-            sources.push({ savedAt, sortKey: v.ts, content: v.content, intent: v.intent });
+            const seq = stampMatch ? Number(stampMatch[6]) : null;
+            sources.push({ savedAt, sortKey: v.ts, seq, content: v.content, intent: v.intent });
           }
           try {
             for (const snap of listSnapshots(opts.sourceStoryVault, s.scene.id)) {
               sources.push({
                 savedAt: snap.createdAt,
                 sortKey: snap.createdAt,
+                seq: null,
                 content: snap.content,
                 intent: 'save',
                 ...(snap.label ? { label: snap.label } : {}),
@@ -674,12 +687,16 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
             sources.push({
               savedAt: at,
               sortKey: at,
+              seq: null,
               content: row.content,
               intent: 'save',
               ...(row.label ? { label: row.label } : {}),
             });
           }
           sources.sort((a, b) => {
+            // Both from listVersions(): trust the monotonic seq counter over any
+            // wall-clock-derived field — it can't be affected by clock skew.
+            if (a.seq !== null && b.seq !== null) return a.seq - b.seq;
             if (a.savedAt < b.savedAt) return -1;
             if (a.savedAt > b.savedAt) return 1;
             return a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0;
