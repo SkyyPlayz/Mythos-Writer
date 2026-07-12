@@ -1,7 +1,14 @@
 // SKY-2463: Pure handler logic for timeline:list and timeline:upsert IPC channels.
 // Extracted from main.ts so these functions are unit-testable without Electron mocks.
+//
+// SKY-6632: reads/writes go through the live legacy Manifest (vault.ts), same as
+// every other IPC handler in main.ts. The sibling `vault/manifest/*` ManifestV1
+// module is a structure-only schema that is NOT shape-compatible with the real
+// on-disk manifest.json (object `provenance`, `boardReferences` instead of
+// `boards`) despite both declaring schemaVersion 1 — routing the timeline path
+// through it made `validateManifestV1` throw on every real vault.
 import type { ManifestTimelineEntry, StoryTimeOfDay } from './vault/manifest/types.js';
-import { openManifestV1, writeManifestV1 } from './vault/manifest/index.js';
+import { readManifest, writeManifest } from './vault.js';
 import type { TimelineListResponse, TimelineUpsertPayload, TimelineUpsertResponse } from './ipc.js';
 
 export const VALID_TIMELINE_TIMES: ReadonlyArray<StoryTimeOfDay> = [
@@ -13,7 +20,7 @@ export const VALID_TIMELINE_TIMES: ReadonlyArray<StoryTimeOfDay> = [
  * `maxDay` is the highest resolved day across user overrides and inferred days.
  */
 export function handleTimelineList(manifestPath: string): TimelineListResponse {
-  const manifest = openManifestV1(manifestPath);
+  const manifest = readManifest(manifestPath);
   const entries = manifest.timeline ?? [];
   const sceneCount = entries.length;
   const maxDay = entries.reduce((m, e) => {
@@ -44,7 +51,7 @@ export function handleTimelineUpsert(
     return { ok: false, error: 'invalid time' };
   }
 
-  const manifest = openManifestV1(manifestPath);
+  const manifest = readManifest(manifestPath);
 
   if (!manifest.scenes.some(s => s.id === sceneId)) {
     return { ok: false, error: 'scene not found' };
@@ -68,6 +75,6 @@ export function handleTimelineUpsert(
     updatedEntry,
   ];
 
-  writeManifestV1(manifestPath, { ...manifest, timeline });
+  writeManifest(manifestPath, { ...manifest, timeline });
   return { ok: true, entry: updatedEntry };
 }
