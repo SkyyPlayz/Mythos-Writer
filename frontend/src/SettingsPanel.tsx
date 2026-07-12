@@ -19,6 +19,7 @@ import MythosFormatSection from './components/SettingsPanel/sections/MythosForma
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
 import AgentsSection from './components/SettingsPanel/sections/AgentsSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
+import VaultAutoLinkerSection from './components/SettingsPanel/sections/VaultAutoLinkerSection';
 import JournalSection from './components/SettingsPanel/sections/JournalSection';
 import SceneFieldsSection from './components/SettingsPanel/sections/SceneFieldsSection';
 import SnapshotsSection from './components/SettingsPanel/sections/SnapshotsSection';
@@ -330,6 +331,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, []);
 
   useEffect(() => { refreshMicDevices(); }, [refreshMicDevices]);
+
+  // M6: cross-section navigation from the AI Agents callout → Vault & Files tab.
+  useEffect(() => {
+    function handleSettingsNavigate(e: Event) {
+      const detail = (e as CustomEvent<{ category: SettingsCategoryId }>).detail;
+      if (detail?.category) setSettingsCategory(detail.category);
+    }
+    window.addEventListener('settings:navigate', handleSettingsNavigate);
+    return () => window.removeEventListener('settings:navigate', handleSettingsNavigate);
+  }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
@@ -760,6 +771,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {settingsCategory === 'vaults' && (
             <>
+              {/* M6: Auto Note Linker — FIRST card per spec §12 */}
+              <VaultAutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+
               <AccountSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
 
               {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
