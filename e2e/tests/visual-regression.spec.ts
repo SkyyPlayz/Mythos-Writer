@@ -342,7 +342,13 @@ test('VR-04 brainstorm chat view', async () => {
   // Editor welcome screen instead of Brainstorm, producing a flaky diff ratio.
   const brainstormBtn = page.getByRole('button', { name: 'Brainstorm', exact: true });
   await brainstormBtn.click();
-  await page.waitForTimeout(500);
+  // SKY-6692: a fixed timeout races the section switch under CI load (seen
+  // intermittently taking >500ms), still capturing the previous Editor
+  // section and reproducing the same 33%-diff symptom SKY-6496 fixed the
+  // click for. Wait for the seeded (agent-disabled) Brainstorm content
+  // deterministically instead of guessing a delay.
+  await page.waitForSelector('.brainstorm-disabled-msg', { timeout: 5_000 });
+  await page.waitForTimeout(200);
 
   const ratio = await assertMatchesBaseline(page, 'brainstorm-chat');
   expect(ratio, `brainstorm-chat diff ratio ${(ratio * 100).toFixed(3)}% exceeds ${(THRESHOLD * 100).toFixed(2)}% threshold`).toBeLessThanOrEqual(THRESHOLD);
