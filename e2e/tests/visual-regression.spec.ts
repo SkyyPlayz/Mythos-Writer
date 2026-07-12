@@ -351,7 +351,8 @@ test('VR-04 brainstorm chat view', async () => {
 // ─── Settings panel ───────────────────────────────────────────────────────────
 
 test('VR-05 settings panel', async () => {
-  const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
+  // SKY-6522: use aria-label role selector (same fix as VR-04 / SKY-6496)
+  const editorBtn = page.getByRole('button', { name: 'Editor', exact: true });
   if (await editorBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await editorBtn.click();
   await page.waitForTimeout(200);
 
@@ -374,7 +375,8 @@ test('VR-05 settings panel', async () => {
 // ─── Vault browser sidebar ────────────────────────────────────────────────────
 
 test('VR-06 vault browser sidebar', async () => {
-  const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
+  // SKY-6522: use aria-label role selector (same fix as VR-04 / SKY-6496)
+  const editorBtn = page.getByRole('button', { name: 'Editor', exact: true });
   if (await editorBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await editorBtn.click();
   await page.waitForTimeout(300);
 
