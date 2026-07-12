@@ -2895,6 +2895,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
+  // SKY-6491: DocHeader's editable title was wired to a no-op that silently
+  // discarded edits — commit the new title into the scene like every other
+  // per-field scene mutation in this file (state + manifest + markdown).
+  const handleSceneTitleChange = useCallback((title: string) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === selectedScene.title) return;
+    const updatedScene: Scene = { ...selectedScene, title: trimmed, updatedAt: now() };
+    setSelectedScene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
 
 
@@ -4954,8 +4978,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <DocHeader
                   title={selectedScene.title ?? ''}
-                  onTitleChange={(_t) => { /* no-op: scene title editing not wired in this view */ }}
-                  wordCount={0}
+                  onTitleChange={handleSceneTitleChange}
+                  wordCount={focusWordCount}
                   breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
                   zoom={docZoom}
                   onZoomChange={setDocZoom}
