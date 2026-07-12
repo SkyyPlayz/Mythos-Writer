@@ -66,6 +66,49 @@ function v0WithData(vaultRoot: string) {
   };
 }
 
+// Real-vault shape: the legacy top-level manifest (electron-main/src/manifest.ts)
+// has already run its own v0→v1 migration and stamped `schemaVersion: 1` on this
+// same manifest.json — but that schema is structurally unrelated to ManifestV1
+// (Record provenance, `boardReferences` instead of `boards`). Regression fixture
+// for the SKY-6629 schemaVersion-collision bug.
+function legacyV1CollisionManifest(vaultRoot: string) {
+  return {
+    schemaVersion: 1,
+    version: '1.5.0',
+    vaultRoot,
+    scenes: [
+      {
+        id: 'sc-1',
+        title: 'Opening',
+        path: 'Manuscript/ch1/scene-1.md',
+        order: 0,
+        chapterId: 'ch-1',
+        blocks: [{ id: 'b1', type: 'prose', order: 0, content: 'Once upon a time…', updatedAt: '' }],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-02T00:00:00.000Z',
+      },
+    ],
+    entities: [
+      {
+        id: 'ent-1',
+        name: 'Alice',
+        type: 'character',
+        path: 'Characters/alice.md',
+        tags: ['protagonist'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      },
+    ],
+    suggestions: [
+      { id: 'sug-1', status: 'accepted', targetPath: 'Manuscript/ch1/scene-1.md' },
+    ],
+    provenance: { 'sug-1': 'Manuscript/ch1/scene-1.md' },
+    boardReferences: ['Boards/main.json'],
+    stories: [],
+    chapters: [],
+  };
+}
+
 // ─── SCHEMA_VERSION ──────────────────────────────────────────────────────────
 
 describe('SCHEMA_VERSION', () => {
@@ -334,8 +377,39 @@ describe('needsMigration', () => {
     expect(needsMigration({ schemaVersion: 0 })).toBe(true);
   });
 
-  it('returns false when schemaVersion equals SCHEMA_VERSION', () => {
-    expect(needsMigration({ schemaVersion: SCHEMA_VERSION })).toBe(false);
+  it('returns false for a real ManifestV1-shaped object at SCHEMA_VERSION', () => {
+    expect(needsMigration(emptyManifestV1('/vault') as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it('returns true for a legacy manifest that collides on schemaVersion 1 (SKY-6629)', () => {
+    const raw = legacyV1CollisionManifest('/vault') as Record<string, unknown>;
+    expect(needsMigration(raw)).toBe(true);
+  });
+});
+
+describe('runMigrations — schemaVersion collision (SKY-6629)', () => {
+  it('still coerces a legacy v1-stamped manifest into ManifestV1 shape', () => {
+    const raw = legacyV1CollisionManifest('/vault') as Record<string, unknown>;
+    const migrated = runMigrations(raw);
+
+    expect(Array.isArray(migrated.provenance)).toBe(true);
+    expect(Array.isArray(migrated.boards)).toBe(true);
+    expect(() => validateManifestV1(migrated)).not.toThrow();
+  });
+
+  it('preserves scene/entity/provenance/board data through the collision coercion', () => {
+    const raw = legacyV1CollisionManifest('/vault') as Record<string, unknown>;
+    const migrated = runMigrations(raw);
+
+    const scenes = migrated.scenes as Array<Record<string, unknown>>;
+    expect(scenes[0].id).toBe('sc-1');
+    expect(scenes[0].blocks).toBeUndefined();
+
+    const provenance = migrated.provenance as Array<Record<string, unknown>>;
+    expect(provenance[0].vaultPath).toBe('Manuscript/ch1/scene-1.md');
+
+    const boards = migrated.boards as Array<Record<string, unknown>>;
+    expect(boards[0].path).toBe('Boards/main.json');
   });
 });
 
@@ -508,6 +582,21 @@ describe('openManifestV1', () => {
 
     openManifestV1(p, { vaultRoot: tmpDir });
     expect(fs.existsSync(`${p}.tmp`)).toBe(false);
+  });
+
+  it('coerces a real-vault manifest whose schemaVersion collides with the legacy schema (SKY-6629)', () => {
+    const p = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(p, JSON.stringify(legacyV1CollisionManifest(tmpDir), null, 2), 'utf-8');
+
+    // Previously this threw ManifestValidationError: schemaVersion === 1 short-
+    // circuited straight to validateManifestV1 on the legacy (unconverted) shape.
+    const m = openManifestV1(p, { vaultRoot: tmpDir });
+    expect(m.schemaVersion).toBe(1);
+    expect(Array.isArray(m.boards)).toBe(true);
+    expect(m.boards[0].path).toBe('Boards/main.json');
+
+    const onDisk = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    expect(Array.isArray(onDisk.provenance)).toBe(true);
   });
 
   it('fully round-trips: migrate v0, re-open as v1 without re-migration', () => {

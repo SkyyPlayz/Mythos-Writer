@@ -47,17 +47,41 @@ export class ManifestMigrationError extends Error {
 }
 
 /**
+ * The legacy top-level manifest (electron-main/src/manifest.ts) stamps its own,
+ * structurally-unrelated schema with `schemaVersion: 1` too. Both pipelines can
+ * run against the same on-disk manifest.json, so a declared `schemaVersion === 1`
+ * does not by itself mean "already in ManifestV1 shape" — it may be the legacy
+ * shape (`provenance` as a Record, `boardReferences` instead of `boards`).
+ * Distinguish by checking the two fields whose shape actually differs between
+ * the schemas.
+ */
+function hasManifestV1Shape(raw: Raw): boolean {
+  return Array.isArray(raw.provenance) && Array.isArray(raw.boards);
+}
+
+/**
+ * The migration-relevant version: the declared schemaVersion, downgraded to 0
+ * when it collides with the legacy schema's own v1 (see hasManifestV1Shape).
+ */
+function effectiveVersion(raw: Raw): number {
+  const declared = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
+  if (declared === SCHEMA_VERSION && !hasManifestV1Shape(raw)) return 0;
+  return declared;
+}
+
+/**
  * Apply all pending forward migrations to `raw`.
  * Returns a raw object at SCHEMA_VERSION (caller should then validate the shape).
  * Throws ManifestVersionError when the on-disk version exceeds SCHEMA_VERSION.
  */
 export function runMigrations(raw: Raw): Raw {
-  const currentVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
+  const declaredVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
 
-  if (currentVersion > SCHEMA_VERSION) {
-    throw new ManifestVersionError(currentVersion);
+  if (declaredVersion > SCHEMA_VERSION) {
+    throw new ManifestVersionError(declaredVersion);
   }
 
+  const currentVersion = effectiveVersion(raw);
   if (currentVersion === SCHEMA_VERSION) return raw;
 
   let current = { ...raw };
@@ -70,10 +94,10 @@ export function runMigrations(raw: Raw): Raw {
 }
 
 /**
- * Returns true when the raw object needs migration (schemaVersion missing or < current).
+ * Returns true when the raw object needs migration: schemaVersion missing,
+ * below current, or colliding with the legacy schema's own v1 stamp.
  */
 export function needsMigration(raw: Raw): boolean {
-  const v = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
-  return v < SCHEMA_VERSION;
+  return effectiveVersion(raw) < SCHEMA_VERSION;
 }
 
