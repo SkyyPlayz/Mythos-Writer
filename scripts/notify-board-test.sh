@@ -12,6 +12,12 @@
 #   2. Dedup — existing [ci-infra] ticket → no second ticket created
 #   3. PR-specific failure (main green) → per-PR [auto-fix] fix-request created
 #   4. Root infra ticket auto-closes when CI success run detects main is green
+#
+# SKY-6531 additions:
+#   5. Dedup — existing [auto-fix] ticket → no second ticket created (comment only)
+#   6. Existing [auto-fix] ticket auto-closes when the PR's CI goes green
+#   7. Transient `paperclipai issue list` failures are retried and do not
+#      defeat dedup (list_issues_retry recovers within its 3 attempts)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,6 +80,12 @@ make_stubs() {
   local calllog="$bindir/calls.log"
   > "$calllog"
 
+  # Optional: simulate N transient failures of the [auto-fix] `issue list`
+  # call before it starts succeeding (SKY-6531 retry coverage).
+  if [[ -n "${PC_LIST_FIX_FLAKY_COUNT:-}" ]]; then
+    echo "$PC_LIST_FIX_FLAKY_COUNT" > "$bindir/fix_flaky_remaining"
+  fi
+
   # gh stub — matches subcommand by scanning $*
   cat > "$bindir/gh" <<GHEOF
 #!/usr/bin/env bash
@@ -93,6 +105,14 @@ ARGS="\$*"
 echo "paperclipai \$ARGS" >> "$calllog"
 case "\$1 \$2" in
   "issue list")
+    if echo "\$ARGS" | grep -q "auto-fix" && [[ -f "$bindir/fix_flaky_remaining" ]]; then
+      remaining=\$(cat "$bindir/fix_flaky_remaining")
+      if [[ "\$remaining" -gt 0 ]]; then
+        echo \$((remaining - 1)) > "$bindir/fix_flaky_remaining"
+        echo "stub: simulated transient list failure" >&2
+        exit 1
+      fi
+    fi
     if echo "\$ARGS" | grep -q "ci-infra"; then
       cat "$bindir/pc_infra.json"
     elif echo "\$ARGS" | grep -q "auto-fix"; then
@@ -242,17 +262,187 @@ else
 $(cat "$T4_LOG")"
 fi
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Test 5 (SKY-6531): Dedup — existing [auto-fix] ticket for the SAME (PR, stage)
+#   → comment on it instead of minting a second ticket
+# ═════════════════════════════════════════════════════════════════════════════
+T5=$(mktemp -d)
+CLEANUP_DIRS+=("$T5")
+
+export GH_RUN_LIST_JSON='[{"databaseId":6001,"conclusion":"success"}]'
+export GH_RUN_VIEW_JSON='{"jobs":[{"name":"lint","conclusion":"success"},{"name":"typecheck","conclusion":"success"},{"name":"unit","conclusion":"success"}]}'
+export PC_LIST_INFRA_JSON='[]'
+export PC_LIST_PING_JSON='[]'
+export PC_LIST_FIX_JSON='[{"id":"existing-fix-555","title":"[auto-fix] PR #42 — CI red (Stage 1 — lint/typecheck/unit)","status":"todo"}]'
+
+T5_LOG=$(make_stubs "$T5")
+
+run_notify "$T5" \
+  LINT_RESULT=failure \
+  CI_RESULT=failure \
+  BUILD_LINUX_RESULT=failure \
+  > /dev/null
+
+if grep "issue create" "$T5_LOG" | grep -q "auto-fix"; then
+  fail "T5: second [auto-fix] ticket created for a (PR, stage) that already has one open. Log:
+$(cat "$T5_LOG")"
+else
+  pass "T5: no duplicate [auto-fix] ticket created for the same (PR, stage) (dedup OK)"
+fi
+
+if grep "issue comment" "$T5_LOG" | grep -q "existing-fix-555"; then
+  pass "T5: retry comment posted on the existing (PR, stage) fix-request instead"
+else
+  fail "T5: expected a retry comment on existing-fix-555. Log:
+$(cat "$T5_LOG")"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Test 6 (SKY-6531): CI goes green → both the open [auto-fix] ticket AND the
+#   merge-gate ping ticket for this PR auto-close (no manual cleanup needed)
+# ═════════════════════════════════════════════════════════════════════════════
+T6=$(mktemp -d)
+CLEANUP_DIRS+=("$T6")
+
+export GH_RUN_LIST_JSON='[{"databaseId":6002,"conclusion":"success"}]'
+export GH_RUN_VIEW_JSON='{"jobs":[]}'
+export PC_LIST_INFRA_JSON='[]'
+export PC_LIST_PING_JSON='[{"id":"existing-ping-321","title":"PR #42 CI failure — merge gate (green = sign-off req, NOT merge)","status":"todo"}]'
+export PC_LIST_FIX_JSON='[{"id":"existing-fix-789","title":"[auto-fix] PR #42 — CI red (Stage 3 — E2E shards)","status":"todo"}]'
+
+T6_LOG=$(make_stubs "$T6")
+
+# All results green (success path) — BASE_ENV already has all=success
+run_notify "$T6" > /dev/null
+
+if grep "issue update" "$T6_LOG" | grep -q "existing-fix-789"; then
+  pass "T6: open [auto-fix] ticket closed when the PR's CI goes green"
+else
+  fail "T6: expected existing-fix-789 to be closed via issue update. Log:
+$(cat "$T6_LOG")"
+fi
+
+if grep "issue update" "$T6_LOG" | grep -q "existing-ping-321"; then
+  pass "T6: open merge-gate ping ticket closed when the PR's CI goes green"
+else
+  fail "T6: expected existing-ping-321 to be closed via issue update. Log:
+$(cat "$T6_LOG")"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Test 7 (SKY-6531): transient `paperclipai issue list` failures are retried
+#   (list_issues_retry) instead of silently defeating dedup on the first blip
+# ═════════════════════════════════════════════════════════════════════════════
+T7=$(mktemp -d)
+CLEANUP_DIRS+=("$T7")
+
+export GH_RUN_LIST_JSON='[{"databaseId":6003,"conclusion":"success"}]'
+export GH_RUN_VIEW_JSON='{"jobs":[{"name":"lint","conclusion":"success"},{"name":"typecheck","conclusion":"success"},{"name":"unit","conclusion":"success"}]}'
+export PC_LIST_INFRA_JSON='[]'
+export PC_LIST_PING_JSON='[]'
+export PC_LIST_FIX_JSON='[]'
+export PC_LIST_FIX_FLAKY_COUNT=2
+
+T7_LOG=$(make_stubs "$T7")
+
+run_notify "$T7" \
+  LINT_RESULT=failure \
+  CI_RESULT=failure \
+  BUILD_LINUX_RESULT=failure \
+  > /dev/null
+
+unset PC_LIST_FIX_FLAKY_COUNT
+
+FIX_LIST_ATTEMPTS=$(grep -c "issue list.*auto-fix" "$T7_LOG" || true)
+if [[ "$FIX_LIST_ATTEMPTS" -eq 3 ]]; then
+  pass "T7: list_issues_retry retried the flaky [auto-fix] list call (2 failures + 1 success)"
+else
+  fail "T7: expected exactly 3 [auto-fix] list attempts (2 flaky + 1 success), saw ${FIX_LIST_ATTEMPTS}. Log:
+$(cat "$T7_LOG")"
+fi
+
+if grep "issue create" "$T7_LOG" | grep -q "auto-fix"; then
+  pass "T7: fix-request still created correctly once the list call recovered"
+else
+  fail "T7: expected [auto-fix] ticket to be created after retry recovery. Log:
+$(cat "$T7_LOG")"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Test 8 (SKY-6528): a manually-titled CTO work ticket that happens to start
+#   with "[ci-infra]" (e.g. "[ci-infra] Root-cause fix: ...") must NOT be
+#   treated as an existing auto-generated repo-wide ticket on create-dedup —
+#   confirmed root cause of SKY-6531 self-closing mid-flight.
+# ═════════════════════════════════════════════════════════════════════════════
+T8=$(mktemp -d)
+CLEANUP_DIRS+=("$T8")
+
+export GH_RUN_LIST_JSON='[{"databaseId":7001,"conclusion":"failure"}]'
+export GH_RUN_VIEW_JSON='{"jobs":[{"name":"lint","conclusion":"failure"}]}'
+export PC_LIST_PING_JSON='[]'
+export PC_LIST_FIX_JSON='[]'
+export PC_LIST_INFRA_JSON='[{"id":"manual-work-ticket-999","title":"[ci-infra] Root-cause fix: refresh VR baselines + raise threshold, and dedupe/auto-close notify-board.sh","status":"in_progress"}]'
+
+T8_LOG=$(make_stubs "$T8")
+
+run_notify "$T8" \
+  LINT_RESULT=failure \
+  CI_RESULT=failure \
+  BUILD_LINUX_RESULT=failure \
+  > /dev/null
+
+if grep "issue create" "$T8_LOG" | grep -q "ci-infra"; then
+  pass "T8: new repo-wide [ci-infra] ticket created even though a manually-titled work ticket shares the bare prefix (no false dedup)"
+else
+  fail "T8: expected a new [ci-infra] ticket — the manually-titled work ticket must not have been mistaken for an existing repo-wide alert. Log:
+$(cat "$T8_LOG")"
+fi
+
+if grep "issue update" "$T8_LOG" | grep -q "manual-work-ticket-999"; then
+  fail "T8: the manually-titled work ticket was touched by create-dedup logic — it must be untouched. Log:
+$(cat "$T8_LOG")"
+else
+  pass "T8: manually-titled work ticket left untouched by create-dedup"
+fi
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Test 9 (SKY-6528): on CI green + main green, close-on-green must NOT sweep up
+#   a manually-titled CTO work ticket sharing the bare "[ci-infra]" prefix —
+#   this exact loose match auto-closed SKY-6531 (a live work ticket) mid-flight.
+# ═════════════════════════════════════════════════════════════════════════════
+T9=$(mktemp -d)
+CLEANUP_DIRS+=("$T9")
+
+export GH_RUN_LIST_JSON='[{"databaseId":7002,"conclusion":"success"}]'
+export GH_RUN_VIEW_JSON='{"jobs":[]}'
+export PC_LIST_PING_JSON='[]'
+export PC_LIST_FIX_JSON='[]'
+export PC_LIST_INFRA_JSON='[{"id":"manual-work-ticket-999","title":"[ci-infra] Fix notify-board.sh churn + regen VR baselines + raise threshold (owner-approved)","status":"in_progress"}]'
+
+T9_LOG=$(make_stubs "$T9")
+
+# All results green (success path) — BASE_ENV already has all=success
+run_notify "$T9" > /dev/null
+
+if grep "issue update" "$T9_LOG" | grep -q "manual-work-ticket-999"; then
+  fail "T9: manually-titled work ticket was auto-closed by the repo-wide close-on-green sweep — this is the exact bug that self-closed SKY-6531. Log:
+$(cat "$T9_LOG")"
+else
+  pass "T9: manually-titled work ticket sharing the bare [ci-infra] prefix survives close-on-green"
+fi
+
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 for d in "${CLEANUP_DIRS[@]}"; do
   rm -rf "$d"
 done
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+TOTAL_TESTS=9
 echo ""
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
-  echo "All $((4)) tests passed."
+  echo "All ${TOTAL_TESTS} tests passed."
   exit 0
 else
-  echo "${FAIL_COUNT}/4 test(s) FAILED." >&2
+  echo "${FAIL_COUNT} test(s) FAILED (out of ${TOTAL_TESTS})." >&2
   exit 1
 fi

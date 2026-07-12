@@ -23,6 +23,27 @@ set -euo pipefail
 
 ACTION=${ACTION:-}
 
+# Retry an `issue list` lookup to survive transient API/rate-limit blips
+# (SKY-6050 documented shared-PAT secondary-limit trips under fleet load).
+# Writes the JSON array to $1; all remaining args pass through to
+# `paperclipai issue list`. Falls back to '[]' only after 3 attempts, and
+# logs a visible warning first — a silent '[]' fallback is what let the
+# dedupe/auto-close checks below silently no-op and pile up duplicate
+# [auto-fix] tickets forever (SKY-6531).
+list_issues_retry() {
+  local out_file="$1"
+  shift
+  local attempt
+  for attempt in 1 2 3; do
+    if paperclipai issue list "$@" --json >"$out_file" 2>/dev/null; then
+      return 0
+    fi
+    sleep "$attempt"
+  done
+  echo "::warning::paperclipai issue list failed after 3 attempts ($*) — assuming no existing issues; dedupe/auto-close may miss this run" >&2
+  echo '[]' >"$out_file"
+}
+
 # ── Close-ping path ────────────────────────────────────────────────────────────
 # When a PR merges or closes, auto-resolve any open board ping or fix-request
 # issue for it so the GHM sweep does not re-evaluate already-resolved state
@@ -45,13 +66,14 @@ if [[ "$ACTION" == "closed" ]]; then
   FIX_LIST_FILE=$(mktemp)
   trap 'rm -f "$LIST_FILE" "$FIX_LIST_FILE"' EXIT
 
-  # Close GHM ping issues
-  paperclipai issue list \
+  # Close GHM ping issues. Deliberately NOT scoped by --assignee-agent-id: these
+  # tickets get reassigned (triage, audits) after creation, and an
+  # assignee-scoped search would silently miss a reassigned ticket and mint a
+  # duplicate instead of closing the original (SKY-6528 root cause).
+  list_issues_retry "$LIST_FILE" \
     -C "$PAPERCLIP_COMPANY_ID" \
     --status todo,in_progress,in_review,blocked \
-    --assignee-agent-id "$PAPERCLIP_ASSIGNEE" \
-    --match "$MATCH_PREFIX" \
-    --json >"$LIST_FILE" 2>/dev/null || echo '[]' >"$LIST_FILE"
+    --match "$MATCH_PREFIX"
 
   export MATCH_PREFIX LIST_FILE
   ISSUE_IDS=$(python3 <<'PY' || true
@@ -86,12 +108,12 @@ PY
   # Close any open fix-request issues for this PR (FoundingEngineer assignee)
   FE_AGENT_ID="${PAPERCLIP_FE_AGENT_ID:-}"
   if [[ -n "$FE_AGENT_ID" ]]; then
-    paperclipai issue list \
+    # Not scoped by --assignee-agent-id: fix-requests get reassigned (e.g. to
+    # CTO for audit) after creation, and a FE-only search would miss them.
+    list_issues_retry "$FIX_LIST_FILE" \
       -C "$PAPERCLIP_COMPANY_ID" \
       --status todo,in_progress,in_review,blocked \
-      --assignee-agent-id "$FE_AGENT_ID" \
-      --match "$FIX_MATCH_PREFIX" \
-      --json >"$FIX_LIST_FILE" 2>/dev/null || echo '[]' >"$FIX_LIST_FILE"
+      --match "$FIX_MATCH_PREFIX"
 
     export FIX_MATCH_PREFIX FIX_LIST_FILE
     FIX_IDS=$(python3 <<'PY' || true
@@ -190,12 +212,12 @@ EOF
 MATCH_PREFIX="PR #${PR_NUMBER} CI"
 export MATCH_PREFIX LIST_FILE
 
-paperclipai issue list \
+# Not scoped by --assignee-agent-id: a reassigned ping ticket must still be
+# found, or this mints a duplicate instead of reusing/closing it (SKY-6528).
+list_issues_retry "$LIST_FILE" \
   -C "$PAPERCLIP_COMPANY_ID" \
   --status todo,in_progress,in_review,blocked \
-  --assignee-agent-id "$PAPERCLIP_ASSIGNEE" \
-  --match "$MATCH_PREFIX" \
-  --json >"$LIST_FILE" 2>/dev/null || echo '[]' >"$LIST_FILE"
+  --match "$MATCH_PREFIX"
 
 EXISTING_ID=$(python3 <<'PY' || true
 import json, os
@@ -237,8 +259,9 @@ fi
 
 # ── Auto-fix trigger (SKY-3006) ───────────────────────────────────────────────
 # On failure: create a fix-request issue for FoundingEngineer so CI red is
-# addressed automatically. On success: close any open fix-request for this
-# branch (green CI means the fix landed).
+# addressed automatically (deduped per (PR, stage) — SKY-6528). On success:
+# close every open fix-request AND merge-gate ticket for this PR/branch (green
+# CI means the fix landed and the gate ticket's job is done).
 PAPERCLIP_FE_AGENT_ID="${PAPERCLIP_FE_AGENT_ID:-}"
 if [[ -z "$PAPERCLIP_FE_AGENT_ID" ]]; then
   echo "PAPERCLIP_FE_AGENT_ID not set — skipping auto-fix trigger"
@@ -249,15 +272,19 @@ FIX_TITLE_PREFIX="[auto-fix] PR #${PR_NUMBER}"
 FIX_LIST_FILE=$(mktemp)
 trap 'rm -f "$DESC_FILE" "$LIST_FILE" "$FIX_LIST_FILE"' EXIT
 
-paperclipai issue list \
+# Not scoped by --assignee-agent-id: fix-requests get reassigned (e.g. to CTO
+# for audit) after creation. An assignee-scoped search misses the reassigned
+# ticket and mints a duplicate instead of reusing/closing it (SKY-6528).
+list_issues_retry "$FIX_LIST_FILE" \
   -C "$PAPERCLIP_COMPANY_ID" \
   --status todo,in_progress,in_review,blocked \
-  --assignee-agent-id "$PAPERCLIP_FE_AGENT_ID" \
-  --match "$FIX_TITLE_PREFIX" \
-  --json >"$FIX_LIST_FILE" 2>/dev/null || echo '[]' >"$FIX_LIST_FILE"
+  --match "$FIX_TITLE_PREFIX"
 
+# Every currently-open [auto-fix] ticket for this PR, any stage, any assignee —
+# used to close ALL of them on green. (Dedupe-on-create for a specific stage
+# happens separately below, once FAILED_STAGE_DESC is known.)
 export FIX_TITLE_PREFIX FIX_LIST_FILE
-EXISTING_FIX=$(python3 <<'PY' || true
+EXISTING_FIX_IDS=$(python3 <<'PY' || true
 import json, os
 prefix = os.environ["FIX_TITLE_PREFIX"]
 path = os.environ["FIX_LIST_FILE"]
@@ -268,30 +295,41 @@ try:
 except Exception:
     raise SystemExit(0)
 issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
-for it in issues:
-    title = (it.get("title") or "")
-    if title.startswith(prefix):
-        print(it.get("id") or "")
-        break
+ids = [it.get("id") or "" for it in issues if (it.get("title") or "").startswith(prefix)]
+print("\n".join(i for i in ids if i))
 PY
 )
-EXISTING_FIX=${EXISTING_FIX:-}
 
 if [[ "$CONCLUSION" == "success" ]]; then
-  if [[ -n "$EXISTING_FIX" ]]; then
-    echo "CI green — closing fix-request ${EXISTING_FIX} for PR #${PR_NUMBER}"
-    paperclipai issue update "$EXISTING_FIX" \
-      --status done \
-      --comment "Branch \`${BRANCH:-?}\` is now green (run: ${RUN_URL}). Auto-fix complete." \
-      || echo "Warning: could not close fix-request ${EXISTING_FIX} (403 cross-agent boundary — FE agent will close via heartbeat)" >&2
+  if [[ -n "$EXISTING_FIX_IDS" ]]; then
+    while IFS= read -r FIX_ID; do
+      [[ -z "$FIX_ID" ]] && continue
+      echo "CI green — closing fix-request ${FIX_ID} for PR #${PR_NUMBER}"
+      paperclipai issue update "$FIX_ID" \
+        --status done \
+        --comment "Branch \`${BRANCH:-?}\` is now green (run: ${RUN_URL}). Auto-fix complete." \
+        || echo "Warning: could not close fix-request ${FIX_ID} (403 cross-agent boundary — owning agent will close via heartbeat)" >&2
+    done <<< "$EXISTING_FIX_IDS"
   else
     echo "CI green — no open fix-request for PR #${PR_NUMBER} (nothing to close)"
   fi
 
+  # Close this PR's merge-gate ping ticket too — its job (notify) is done, and
+  # a red-history "merge gate" ticket left open after green is exactly the
+  # churn SKY-6528 asked to stop. GHM's own separate merge-gate/sign-off
+  # ticket for this PR is untouched by this script.
+  if [[ -n "$EXISTING_ID" ]]; then
+    echo "CI green — closing merge-gate ping ${EXISTING_ID} for PR #${PR_NUMBER}"
+    paperclipai issue update "$EXISTING_ID" \
+      --status done \
+      --comment "PR #${PR_NUMBER} is green (run: ${RUN_URL}). Ping resolved — see GHM's live merge-gate ticket for sign-off." \
+      || echo "Warning: could not close ping ${EXISTING_ID} (403 cross-agent boundary)" >&2
+  fi
+
   # ── Close [ci-infra] root ticket if main is also green now (SKY-3907) ──────
   # When the report job sees a green PR run, check whether main's HEAD CI is
-  # also green. If yes, auto-close any open [ci-infra] repo-wide root tickets
-  # (the root cause that triggered them has been resolved).
+  # also green. If yes, auto-close any open auto-generated [ci-infra] repo-wide
+  # root tickets (the root cause that triggered them has been resolved).
   PAPERCLIP_CTO_AGENT_ID="${PAPERCLIP_CTO_AGENT_ID:-}"
   if [[ -n "$PAPERCLIP_CTO_AGENT_ID" ]]; then
     MAIN_GREEN_TMP=$(mktemp)
@@ -323,12 +361,17 @@ PY
 
     if [[ "$MAIN_IS_GREEN" == "true" ]]; then
       INFRA_CLOSE_TMP=$(mktemp)
-      paperclipai issue list \
+      # "[ci-infra] main " (note trailing space) is the exact prefix this
+      # script uses for its own auto-generated repo-wide alert tickets — see
+      # INFRA_TITLE below. Do NOT loosen this to bare "[ci-infra]": that
+      # prefix is also used by manually-titled CTO work tickets (e.g. this
+      # very SKY-6531 ticket), and a loose match here would auto-close one of
+      # those the moment main next goes green — a false-positive close of
+      # unrelated work, not just a missed dedup.
+      list_issues_retry "$INFRA_CLOSE_TMP" \
         -C "$PAPERCLIP_COMPANY_ID" \
         --status todo,in_progress,in_review,blocked \
-        --assignee-agent-id "$PAPERCLIP_CTO_AGENT_ID" \
-        --match "[ci-infra]" \
-        --json >"$INFRA_CLOSE_TMP" 2>/dev/null || echo '[]' >"$INFRA_CLOSE_TMP"
+        --match "[ci-infra] main "
 
       export INFRA_CLOSE_TMP
       INFRA_IDS_TO_CLOSE=$(python3 <<'PY' || true
@@ -341,7 +384,7 @@ try:
 except Exception:
     raise SystemExit(0)
 issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
-ids = [it.get("id") or "" for it in issues if (it.get("title") or "").startswith("[ci-infra]")]
+ids = [it.get("id") or "" for it in issues if (it.get("title") or "").startswith("[ci-infra] main ")]
 print("\n".join(i for i in ids if i))
 PY
       )
@@ -471,17 +514,19 @@ if [[ "$REPO_WIDE" == "true" ]]; then
   INFRA_LIST_TMP=$(mktemp)
   trap 'rm -f "$DESC_FILE" "$LIST_FILE" "$FIX_LIST_FILE" "$INFRA_LIST_TMP"' EXIT
 
-  paperclipai issue list \
+  # Match on the generic "[ci-infra] main " prefix (not the full stage-specific
+  # title): collapses repeat repo-wide failures on ANY stage into the single
+  # existing root ticket instead of minting a new one per stage (SKY-6528).
+  # Not scoped by --assignee-agent-id for the same reassignment-evasion reason
+  # as the auto-fix search above.
+  list_issues_retry "$INFRA_LIST_TMP" \
     -C "$PAPERCLIP_COMPANY_ID" \
     --status todo,in_progress,in_review,blocked \
-    --assignee-agent-id "$PAPERCLIP_CTO_AGENT_ID" \
-    --match "[ci-infra]" \
-    --json >"$INFRA_LIST_TMP" 2>/dev/null || echo '[]' >"$INFRA_LIST_TMP"
+    --match "[ci-infra] main "
 
-  export INFRA_LIST_TMP INFRA_TITLE
+  export INFRA_LIST_TMP
   EXISTING_INFRA=$(python3 <<'PY' || true
 import json, os
-title = os.environ["INFRA_TITLE"]
 path = os.environ["INFRA_LIST_TMP"]
 try:
     with open(path, "r", encoding="utf-8") as fh:
@@ -491,7 +536,7 @@ except Exception:
     raise SystemExit(0)
 issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
 for it in issues:
-    if (it.get("title") or "") == title:
+    if (it.get("title") or "").startswith("[ci-infra] main "):
         print(it.get("id") or "")
         break
 PY
@@ -500,7 +545,10 @@ PY
   rm -f "$INFRA_LIST_TMP"
 
   if [[ -n "$EXISTING_INFRA" ]]; then
-    echo "Root infra ticket ${EXISTING_INFRA} already open — skipping duplicate (dedup OK)"
+    echo "Root infra ticket ${EXISTING_INFRA} already open — commenting new stage instead of stacking duplicate"
+    paperclipai issue comment "$EXISTING_INFRA" \
+      --body "Repo-wide failure recurred (or a new stage went red): **${FAILED_STAGE_DESC}**. Run: ${RUN_URL} (main run: ${MAIN_RUN_ID:-unknown})." \
+      || echo "Warning: could not comment on root infra ticket ${EXISTING_INFRA}" >&2
   else
     echo "Creating root infra ticket: ${INFRA_TITLE}"
     INFRA_DESC_TMP=$(mktemp)
@@ -549,10 +597,35 @@ INFRADESC
 fi
 
 # ── Per-PR fix-request (main is green; failure is PR-branch-specific) ─────────
+# Dedupe key is (PR, stage): a specific stage prefix, checked against the
+# already-fetched company-wide EXISTING_FIX_IDS list (no extra API call, and
+# no assignee scoping — same reassignment-evasion fix as above, SKY-6528).
+FIX_STAGE_PREFIX="${FIX_TITLE_PREFIX} — CI red (${FAILED_STAGE_DESC}"
+export FIX_STAGE_PREFIX FIX_LIST_FILE
+EXISTING_FIX=$(python3 <<'PY' || true
+import json, os
+prefix = os.environ["FIX_STAGE_PREFIX"]
+path = os.environ["FIX_LIST_FILE"]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = fh.read().strip() or "[]"
+    data = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+issues = data if isinstance(data, list) else (data.get("issues") or data.get("data") or [])
+for it in issues:
+    if (it.get("title") or "").startswith(prefix):
+        print(it.get("id") or "")
+        break
+PY
+)
+EXISTING_FIX=${EXISTING_FIX:-}
+
 if [[ -n "$EXISTING_FIX" ]]; then
-  # A fix-request is already open — add a retry comment instead of a duplicate issue.
-  # The FE agent reads this comment to increment its retry_count.
-  echo "Found open fix-request ${EXISTING_FIX} — commenting retry trigger"
+  # A fix-request for this exact (PR, stage) is already open — add a retry
+  # comment instead of a duplicate issue. The owning agent reads this comment
+  # to increment its retry_count.
+  echo "Found open fix-request ${EXISTING_FIX} for this (PR, stage) — commenting retry trigger"
   paperclipai issue comment "$EXISTING_FIX" --body "New CI failure on \`${BRANCH:-?}\` after previous fix attempt.
 
 - **Stage:** ${FAILED_STAGE_DESC}
