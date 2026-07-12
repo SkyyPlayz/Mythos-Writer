@@ -16,6 +16,7 @@ import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
+import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import PageChromeToolbar from './PageChromeToolbar';
 import PageRuler from './PageRuler';
@@ -4266,8 +4267,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'Prompt history…', run: () => setHistoryOpen(true) },
     ] },
     { label: 'Edit', items: [
-      { label: 'Undo', run: () => { document.execCommand('undo'); } },
-      { label: 'Redo', run: () => { document.execCommand('redo'); } },
+      { label: 'Undo', run: () => { getActiveEditor()?.chain().focus().undo().run(); } },
+      { label: 'Redo', run: () => { getActiveEditor()?.chain().focus().redo().run(); } },
       { label: 'Find everywhere…', run: () => { setGlobalSearchSeed(''); setGlobalSearchOpen(true); } },
     ] },
     { label: 'View', items: [
