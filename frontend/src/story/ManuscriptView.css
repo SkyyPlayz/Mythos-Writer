@@ -531,6 +531,11 @@
   user-select: none;
 }
 
+/* M8: the dragged block dims to 38% (prototype isDragged pStX, line 4671). */
+.msv-para--dragging {
+  opacity: 0.38;
+}
+
 /* ── fold chevron (prototype chevSt 3344) ── */
 
 .msv-fold {
@@ -667,11 +672,36 @@
   color: var(--txB, #c8d3e7);
   outline: none;
   border-radius: 8px;
+  /* M8: an emptied paragraph keeps a caret-sized line box (prototype
+     min-height:1em on the editable span). */
+  min-height: 1em;
 }
 
 .msv-para-text:focus {
   background: var(--gs1, rgba(0, 240, 255, 0.06));
   box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+}
+
+/* ── M8: drop cap on a scene's first paragraph (prototype 1137: floated
+      3.55em first character) — pure CSS so the caret/segment offsets and
+      split/merge text math stay untouched. ── */
+
+.msv-para-text--dropcap::first-letter {
+  float: left;
+  font-size: 3.55em;
+  line-height: 0.82;
+  padding: 0.04em 0.12em 0 0;
+  color: #eef2fb;
+  font-weight: 500;
+}
+
+/* ── M8: inline-editable headings (prototype 1117/1128: outline none +
+      slot-A caret on the contentEditable titles) ── */
+
+.msv-h2-title[contenteditable='true'],
+.msv-h3-title[contenteditable='true'] {
+  outline: none;
+  caret-color: var(--n1, #00f0ff);
 }
 
 /* ── M13: moving TTS highlight (prototype reading pStX 3376–3377) ── */

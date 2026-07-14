@@ -14,7 +14,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cycleStatus, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, sceneStatus, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -34,6 +34,7 @@ import {
   upsertSceneTab,
   upsertNoteTab,
   reconcileSceneTabs,
+  renameCommitsProvisional,
   workspaceStripModeFor,
   provisionalSceneIsAway,
   PROVISIONAL_CREATED_TOAST,
@@ -3961,6 +3962,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setManuscriptPartZoom(cursor.zoom === 'part');
   }, [selectedStory, handleSelectScene, setViewDepth]);
 
+  // Beta 4 M8: shared follow-up for model-driven manuscript changes — the
+  // manuscript renders `selectedStory`, which updateManifest alone does NOT
+  // refresh, so the selection objects must follow the new story for the
+  // change to appear (and for the view's caret hand-off to find it).
+  const refreshManuscriptSelection = useCallback((nextStory: Story) => {
+    setSelectedStory(nextStory);
+    setSelectedChapter((prev) => (prev ? nextStory.chapters.find((ch) => ch.id === prev.id) ?? prev : prev));
+    setSelectedScene((prev) =>
+      prev
+        ? nextStory.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === prev.id) ?? prev
+        : prev
+    );
+  }, []);
+
   // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
   // SKY-3211 handlers assume selectedChapter, so these find the owner).
   const handleManuscriptEditParagraph = useCallback((sceneId: string, blockId: string, newText: string) => {
@@ -4000,7 +4015,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     );
     updateManifest(updatedStories);
-  }, [selectedStory, stories, updateManifest]);
+    // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
+    // dot actually recolors (updateManifest alone leaves it stale).
+    const cycledStory = updatedStories.find((st) => st.id === selectedStory.id);
+    if (cycledStory) refreshManuscriptSelection(cycledStory);
+    // Beta 4 M8 (§1.6): every dot click confirms — prototype cycleStatus toast.
+    showLnToast(`“${scene.title}” → ${next === 'done' ? 'Complete' : next === 'draft' ? 'Drafting' : 'Planned'}`);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 3 M10: paragraph grip drag — pure move via the model, then persist
   // every changed scene through the same per-scene markdown + snapshot path
@@ -4030,6 +4051,109 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     showLnToast('Block moved');
   }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
+  // Beta 4 M8: shared persistence for model-driven single-scene block edits
+  // (split/merge/empty-removal) — stamp the scene, write the manifest, then
+  // the scene's own markdown + snapshot (per-scene storage contract).
+  const applyManuscriptSceneChange = useCallback((nextStory: Story, sceneId: string) => {
+    const stamp = now();
+    const stamped: Story = {
+      ...nextStory,
+      chapters: nextStory.chapters.map((ch) =>
+        ch.scenes.some((sc) => sc.id === sceneId)
+          ? { ...ch, scenes: ch.scenes.map((sc) => (sc.id === sceneId ? { ...sc, updatedAt: stamp } : sc)) }
+          : ch
+      ),
+    };
+    updateManifest(stories.map((st) => (st.id === stamped.id ? stamped : st)));
+    refreshManuscriptSelection(stamped);
+    const scene = stamped.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (scene) {
+      persistSceneMarkdown(scene);
+      const content = [...scene.blocks].sort((a, b) => a.order - b.order).map((b) => b.content).join('\n\n');
+      window.api.snapshotSave?.(sceneId, content).catch(() => {});
+    }
+  }, [stories, updateManifest, persistSceneMarkdown, refreshManuscriptSelection]);
+
+  // Beta 4 M8: Enter splits the paragraph at the caret (prototype paraKey).
+  const handleManuscriptSplitParagraph = useCallback((sceneId: string, blockId: string, before: string, after: string): string | null => {
+    if (!selectedStory) return null;
+    const res = splitParagraph(selectedStory, { sceneId, blockId }, before, after, { makeId: generateId });
+    if (!res) return null;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return res.newBlockId;
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: Backspace at paragraph start merges into the previous block.
+  const handleManuscriptMergeParagraph = useCallback((sceneId: string, blockId: string, currentText: string): { mergedBlockId: string; mergedText: string } | null => {
+    if (!selectedStory) return null;
+    const res = mergeParagraphUp(selectedStory, { sceneId, blockId }, currentText);
+    if (!res) return null;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return { mergedBlockId: res.mergedBlockId, mergedText: res.mergedText };
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: a paragraph emptied on blur is removed (min 1 per scene —
+  // the model refuses the scene's last block and the view keeps it as ' ').
+  const handleManuscriptRemoveParagraph = useCallback((sceneId: string, blockId: string): boolean => {
+    if (!selectedStory) return false;
+    const res = removeEmptyParagraph(selectedStory, { sceneId, blockId });
+    if (!res) return false;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return true;
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: inline scene-heading rename. Renaming a provisional scene
+  // persists it (§1.5) — same commit path as the first real keystroke in
+  // handleBlocksChange: append to its chapter, un-provisional its tab.
+  const handleManuscriptRenameScene = useCallback((sceneId: string, title: string) => {
+    if (provisionalScene?.sceneId === sceneId) {
+      if (!renameCommitsProvisional(title)) return;
+      if (!selectedScene || selectedScene.id !== sceneId) return;
+      const updatedScene: Scene = { ...selectedScene, title, updatedAt: now() };
+      setSelectedScene(updatedScene);
+      const updatedStories = stories.map((story) =>
+        story.id !== provisionalScene.storyId ? story : {
+          ...story,
+          chapters: story.chapters.map((ch) =>
+            ch.id !== provisionalScene.chapterId ? ch : { ...ch, scenes: [...ch.scenes, updatedScene] }
+          ),
+        }
+      );
+      updateManifest(updatedStories);
+      persistSceneMarkdown(updatedScene);
+      const committedStory = updatedStories.find((st) => st.id === provisionalScene.storyId);
+      if (committedStory) {
+        setSelectedStory(committedStory);
+        const committedChapter = committedStory.chapters.find((ch) => ch.id === provisionalScene.chapterId);
+        if (committedChapter) setSelectedChapter(committedChapter);
+      }
+      const committedTabs = storyDocTabs.map((t) =>
+        t.id === provisionalScene.tabId ? { ...t, provisional: undefined, title } : t,
+      );
+      setStoryDocTabs(committedTabs);
+      persistDocTabs({ story: { tabs: committedTabs, activeId: provisionalScene.tabId } });
+      setProvisionalScene(null);
+      return;
+    }
+    if (!selectedStory) return;
+    const renamed = renameScene(selectedStory, sceneId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+    const scene = renamed.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (scene) persistSceneMarkdown(scene); // the title lives in the scene file's frontmatter
+  }, [provisionalScene, selectedScene, selectedStory, stories, updateManifest, persistSceneMarkdown, storyDocTabs, persistDocTabs, refreshManuscriptSelection]);
+
+  // Beta 4 M8: inline chapter-heading rename (manifest-only — chapter titles
+  // have no per-chapter file).
+  const handleManuscriptRenameChapter = useCallback((chapterId: string, title: string) => {
+    if (!selectedStory) return;
+    const renamed = renameChapter(selectedStory, chapterId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 3 M10: manuscript sheet width (prototype pageW) persisted app-wide.
   const handleManuscriptPageWidthChange = useCallback((px: number) => {
@@ -4900,6 +5024,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   onMoveParagraph={handleManuscriptMoveParagraph}
+                  onSplitParagraph={handleManuscriptSplitParagraph}
+                  onMergeParagraph={handleManuscriptMergeParagraph}
+                  onRemoveParagraph={handleManuscriptRemoveParagraph}
+                  onRenameScene={handleManuscriptRenameScene}
+                  onRenameChapter={handleManuscriptRenameChapter}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
@@ -4931,6 +5060,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   onMoveParagraph={handleManuscriptMoveParagraph}
+                  onSplitParagraph={handleManuscriptSplitParagraph}
+                  onMergeParagraph={handleManuscriptMergeParagraph}
+                  onRemoveParagraph={handleManuscriptRemoveParagraph}
+                  onRenameScene={handleManuscriptRenameScene}
+                  onRenameChapter={handleManuscriptRenameChapter}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}

@@ -79,6 +79,8 @@ export interface ParaBlock {
   chapterId: string;
   blockId: string;
   content: string;
+  /** M8: true for the first paragraph of its scene (drop-cap candidate). */
+  first: boolean;
 }
 
 export type ManuscriptBlock = H2Block | H3Block | ParaBlock;
@@ -226,7 +228,7 @@ export function buildBlocks(
         childCount: paras.length,
       });
       if (sFolded) return;
-      paras.forEach((b) => {
+      paras.forEach((b, bi) => {
         blocks.push({
           kind: 'para',
           id: `p-${b.id}`,
@@ -234,6 +236,7 @@ export function buildBlocks(
           chapterId: c.id,
           blockId: b.id,
           content: b.content,
+          first: bi === 0,
         });
       });
     });
@@ -312,6 +315,211 @@ export function moveParagraph(
     ),
   };
   return { story: updated, changedSceneIds: [...nextBlocks.keys()] };
+}
+
+// ─── M8: split / merge / empty-removal / inline renames ──────────────────────
+// Prototype references (v2 "Mythos Writer - Liquid Neon.dc.html"):
+//   paraKey 5107–5133 (Enter split + Backspace-at-start merge),
+//   editPara 5095–5106 (empty paragraph removed on blur, min 1 per scene),
+//   editTitle 5134–5146 (inline heading renames; provisional commit).
+
+/** Find a scene by id (order-agnostic). */
+function findScene(story: Story, sceneId: string): Scene | undefined {
+  for (const ch of story.chapters) {
+    for (const sc of ch.scenes) {
+      if (sc.id === sceneId) return sc;
+    }
+  }
+  return undefined;
+}
+
+/** Immutably replace one scene's block list (orders renumbered 0..n-1). */
+function withSceneBlocks(story: Story, sceneId: string, blocks: Block[]): Story {
+  const renumbered = blocks.map((b, i) => (b.order === i ? b : { ...b, order: i }));
+  return {
+    ...story,
+    chapters: story.chapters.map((ch) =>
+      ch.scenes.some((sc) => sc.id === sceneId)
+        ? {
+            ...ch,
+            scenes: ch.scenes.map((sc) => (sc.id === sceneId ? { ...sc, blocks: renumbered } : sc)),
+          }
+        : ch
+    ),
+  };
+}
+
+/**
+ * Prototype paraKey Enter (5111–5115): both halves of a caret split are
+ * trimmed; an empty half becomes a single space so the paragraph keeps a
+ * line box (the prototype's `|| ' '`).
+ */
+export function splitParagraphText(
+  text: string,
+  offset: number
+): { before: string; after: string } {
+  const at = Math.max(0, Math.min(offset, text.length));
+  return {
+    before: text.slice(0, at).trim() || ' ',
+    after: text.slice(at).trim() || ' ',
+  };
+}
+
+/** Prototype paraKey Backspace (5126): join with a space, collapse runs, trim. */
+export function mergeParagraphText(previous: string, current: string): string {
+  return `${previous} ${current}`.replace(/\s+/g, ' ').trim();
+}
+
+/** Prototype editTitle (5136): inline renames collapse newlines and trim. */
+export function normalizeInlineTitle(raw: string): string {
+  return raw.replace(/\n+/g, ' ').trim();
+}
+
+export interface SplitParagraphResult {
+  story: Story;
+  sceneId: string;
+  /** Id of the block created to hold the text after the caret. */
+  newBlockId: string;
+}
+
+/**
+ * Enter at the caret: the source block keeps `before`, a new block holding
+ * `after` lands immediately after it (same block type). Pass the halves
+ * through splitParagraphText first — this function stores them verbatim.
+ */
+export function splitParagraph(
+  story: Story,
+  at: ParagraphRef,
+  before: string,
+  after: string,
+  opts?: { makeId?: () => string; now?: string }
+): SplitParagraphResult | null {
+  const scene = findScene(story, at.sceneId);
+  if (!scene) return null;
+  const blocks = orderedBlocks(scene);
+  const idx = blocks.findIndex((b) => b.id === at.blockId);
+  if (idx === -1) return null;
+  const newBlock: Block = {
+    id: (opts?.makeId ?? (() => crypto.randomUUID()))(),
+    type: blocks[idx].type,
+    content: after,
+    order: idx + 1,
+    updatedAt: opts?.now ?? new Date().toISOString(),
+  };
+  const next = [
+    ...blocks.slice(0, idx),
+    { ...blocks[idx], content: before },
+    newBlock,
+    ...blocks.slice(idx + 1),
+  ];
+  return { story: withSceneBlocks(story, scene.id, next), sceneId: scene.id, newBlockId: newBlock.id };
+}
+
+export interface MergeParagraphResult {
+  story: Story;
+  sceneId: string;
+  /** The previous sibling that received the merged text. */
+  mergedBlockId: string;
+  mergedText: string;
+}
+
+/**
+ * Backspace at paragraph start: merge the block's (possibly uncommitted)
+ * text into its previous sibling and remove it. The first block of a scene
+ * never merges — the prototype does not cross scene boundaries (ti > 0).
+ */
+export function mergeParagraphUp(
+  story: Story,
+  at: ParagraphRef,
+  currentText: string
+): MergeParagraphResult | null {
+  const scene = findScene(story, at.sceneId);
+  if (!scene) return null;
+  const blocks = orderedBlocks(scene);
+  const idx = blocks.findIndex((b) => b.id === at.blockId);
+  if (idx <= 0) return null;
+  const prev = blocks[idx - 1];
+  const mergedText = mergeParagraphText(prev.content, currentText);
+  const next = blocks
+    .filter((_b, i) => i !== idx)
+    .map((b) => (b.id === prev.id ? { ...b, content: mergedText } : b));
+  return {
+    story: withSceneBlocks(story, scene.id, next),
+    sceneId: scene.id,
+    mergedBlockId: prev.id,
+    mergedText,
+  };
+}
+
+export interface RemoveParagraphResult {
+  story: Story;
+  sceneId: string;
+}
+
+/**
+ * A paragraph emptied on blur is removed — unless it is the scene's only
+ * block (min 1 per scene, prototype editPara `paras.length > 1`).
+ */
+export function removeEmptyParagraph(story: Story, at: ParagraphRef): RemoveParagraphResult | null {
+  const scene = findScene(story, at.sceneId);
+  if (!scene) return null;
+  const blocks = orderedBlocks(scene);
+  if (blocks.length <= 1) return null;
+  const idx = blocks.findIndex((b) => b.id === at.blockId);
+  if (idx === -1) return null;
+  return {
+    story: withSceneBlocks(story, scene.id, blocks.filter((_b, i) => i !== idx)),
+    sceneId: scene.id,
+  };
+}
+
+/**
+ * Inline scene-heading rename (prototype editTitle). Returns null when the
+ * scene is unknown or the normalized title is empty/unchanged — callers
+ * revert the heading instead of persisting. `now` stamps scene.updatedAt.
+ */
+export function renameScene(
+  story: Story,
+  sceneId: string,
+  title: string,
+  now?: string
+): Story | null {
+  const t = normalizeInlineTitle(title);
+  if (!t) return null;
+  const scene = findScene(story, sceneId);
+  if (!scene || scene.title === t) return null;
+  return {
+    ...story,
+    chapters: story.chapters.map((ch) =>
+      ch.scenes.some((sc) => sc.id === sceneId)
+        ? {
+            ...ch,
+            scenes: ch.scenes.map((sc) =>
+              sc.id === sceneId ? { ...sc, title: t, updatedAt: now ?? sc.updatedAt } : sc
+            ),
+          }
+        : ch
+    ),
+  };
+}
+
+/** Inline chapter-heading rename — same normalize/revert contract as renameScene. */
+export function renameChapter(
+  story: Story,
+  chapterId: string,
+  title: string,
+  now?: string
+): Story | null {
+  const t = normalizeInlineTitle(title);
+  if (!t) return null;
+  const chapter = story.chapters.find((ch) => ch.id === chapterId);
+  if (!chapter || chapter.title === t) return null;
+  return {
+    ...story,
+    chapters: story.chapters.map((ch) =>
+      ch.id === chapterId ? { ...ch, title: t, updatedAt: now ?? ch.updatedAt } : ch
+    ),
+  };
 }
 
 // ─── breadcrumbs (prototype crumbData 4101–4105) ─────────────────────────────

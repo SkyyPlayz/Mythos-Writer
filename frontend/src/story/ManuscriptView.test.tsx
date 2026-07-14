@@ -3,10 +3,10 @@
 // arrow keys), and the lazy virtualization window (GH#843).
 
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { Block, Chapter, DraftState, Scene, Story } from '../types';
 import ManuscriptView from './ManuscriptView';
-import type { ManuscriptCursor } from './manuscriptModel';
+import { mergeParagraphUp, splitParagraph, type ManuscriptCursor } from './manuscriptModel';
 
 const NOW = '2026-07-05T00:00:00.000Z';
 
@@ -184,7 +184,8 @@ describe('paragraph editing', () => {
     expect(props.onEditParagraph).toHaveBeenCalledWith('s1', 's1-b0', 'Mira counted nine bells.');
   });
 
-  it('commits on Enter without a duplicate blur commit', () => {
+  it('commits on Enter without a duplicate blur commit (legacy: no split handler)', () => {
+    // Without onSplitParagraph (M8), Enter falls back to commit-and-blur.
     const { props } = renderView({ cursor: cur('scene', 0, 0) });
     const para = screen.getByTestId('msv-para-s1-b1');
     para.textContent = 'The lanterns went dark.';
@@ -516,6 +517,301 @@ describe('paragraph grip drag (M10, prototype paraDown/Over/Drop 3705–3719)', 
     fireEvent.mouseEnter(row);
     expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
     fireEvent.mouseUp(row);
+    expect(onMoveParagraph).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Beta 4 M8 — editing model hardening (FULL-SPEC §14.1/§14.2) ─────────────
+
+/** Place a collapsed caret at a plain-text offset inside a contentEditable. */
+function setCaret(el: HTMLElement, offset: number) {
+  const node = el.firstChild ?? el;
+  const range = document.createRange();
+  range.setStart(node, offset);
+  range.collapse(true);
+  const sel = window.getSelection()!;
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+describe('M8 — Enter splits at the caret', () => {
+  it('hands trimmed halves to onSplitParagraph; the released blur does not re-commit', () => {
+    const onSplitParagraph = vi.fn(() => 'nb-1');
+    const { props } = renderView({ cursor: cur('scene', 0, 0), onSplitParagraph });
+    const para = screen.getByTestId('msv-para-s1-b0'); // 'Mira counted the bells.'
+    act(() => para.focus());
+    setCaret(para, 12);
+    fireEvent.keyDown(para, { key: 'Enter' });
+
+    expect(onSplitParagraph).toHaveBeenCalledTimes(1);
+    expect(onSplitParagraph).toHaveBeenCalledWith('s1', 's1-b0', 'Mira counted', 'the bells.');
+    // The row was blur-released so the split can re-render it through React —
+    // and the split itself persisted both halves, so no blur commit fired.
+    expect(document.activeElement).not.toBe(para);
+    expect(props.onEditParagraph).not.toHaveBeenCalled();
+  });
+
+  it('splits at the end (empty trailing half → single space) without a usable selection', () => {
+    const onSplitParagraph = vi.fn(() => 'nb-1');
+    renderView({ cursor: cur('scene', 0, 0), onSplitParagraph });
+    const para = screen.getByTestId('msv-para-s1-b0');
+    window.getSelection()?.removeAllRanges();
+    fireEvent.keyDown(para, { key: 'Enter' });
+    expect(onSplitParagraph).toHaveBeenCalledWith('s1', 's1-b0', 'Mira counted the bells.', ' ');
+  });
+
+  it('moves the caret into the new paragraph once the split story renders', () => {
+    const onSplitParagraph = vi.fn(() => 'nb-1');
+    const { rerender, props } = renderView({ cursor: cur('scene', 0, 0), onSplitParagraph });
+    const para = screen.getByTestId('msv-para-s1-b0');
+    act(() => para.focus());
+    setCaret(para, 12);
+    fireEvent.keyDown(para, { key: 'Enter' });
+
+    // The caller's split lands in state → the view re-renders with it.
+    const split = splitParagraph(
+      props.story,
+      { sceneId: 's1', blockId: 's1-b0' },
+      'Mira counted',
+      'the bells.',
+      { makeId: () => 'nb-1' }
+    )!;
+    rerender(<ManuscriptView {...props} onSplitParagraph={onSplitParagraph} story={split.story} />);
+
+    const fresh = screen.getByTestId('msv-para-nb-1');
+    expect(fresh).toHaveTextContent('the bells.');
+    expect(document.activeElement).toBe(fresh);
+    // The (unfocused) source row re-synced to the before-half through React.
+    expect(screen.getByTestId('msv-para-s1-b0').textContent).toBe('Mira counted');
+    // The new paragraph's text is already committed — blur is a no-op.
+    fireEvent.blur(fresh);
+    expect(props.onEditParagraph).not.toHaveBeenCalled();
+  });
+});
+
+describe('M8 — Backspace at start merges up', () => {
+  it('merges into the previous paragraph and consumes the keystroke', () => {
+    const onMergeParagraph = vi.fn(() => ({
+      mergedBlockId: 's1-b0',
+      mergedText: 'Mira counted the bells. The lanterns guttered.',
+    }));
+    renderView({ cursor: cur('scene', 0, 0), onMergeParagraph });
+    const para = screen.getByTestId('msv-para-s1-b1'); // 'The lanterns guttered.'
+    act(() => para.focus());
+    setCaret(para, 0);
+    const notCancelled = fireEvent.keyDown(para, { key: 'Backspace' });
+    expect(onMergeParagraph).toHaveBeenCalledWith('s1', 's1-b1', 'The lanterns guttered.');
+    expect(notCancelled).toBe(false); // preventDefault — the merge ate the keystroke
+  });
+
+  it('leaves the keystroke alone mid-paragraph and when the merge is refused', () => {
+    const onMergeParagraph = vi.fn(() => null);
+    renderView({ cursor: cur('scene', 0, 0), onMergeParagraph });
+    const para = screen.getByTestId('msv-para-s1-b1');
+    act(() => para.focus());
+
+    setCaret(para, 3);
+    fireEvent.keyDown(para, { key: 'Backspace' });
+    expect(onMergeParagraph).not.toHaveBeenCalled();
+
+    // First block of a scene: the caller returns null (no cross-scene merge).
+    setCaret(para, 0);
+    const notCancelled = fireEvent.keyDown(para, { key: 'Backspace' });
+    expect(onMergeParagraph).toHaveBeenCalledTimes(1);
+    expect(notCancelled).toBe(true);
+  });
+
+  it('focuses the merged paragraph (caret at its end) once the merged story renders', () => {
+    const merged = mergeParagraphUp(
+      mkStory(),
+      { sceneId: 's1', blockId: 's1-b1' },
+      'The lanterns guttered.'
+    )!;
+    const onMergeParagraph = vi.fn(() => ({
+      mergedBlockId: merged.mergedBlockId,
+      mergedText: merged.mergedText,
+    }));
+    const { rerender, props } = renderView({ cursor: cur('scene', 0, 0), onMergeParagraph });
+    const para = screen.getByTestId('msv-para-s1-b1');
+    act(() => para.focus());
+    setCaret(para, 0);
+    fireEvent.keyDown(para, { key: 'Backspace' });
+
+    rerender(
+      <ManuscriptView {...props} onMergeParagraph={onMergeParagraph} story={merged.story} />
+    );
+    const survivor = screen.getByTestId('msv-para-s1-b0');
+    expect(survivor).toHaveTextContent('Mira counted the bells. The lanterns guttered.');
+    expect(document.activeElement).toBe(survivor);
+    expect(screen.queryByTestId('msv-para-s1-b1')).not.toBeInTheDocument();
+    // The merged text is pre-committed — blur must not re-commit it.
+    fireEvent.blur(survivor);
+    expect(props.onEditParagraph).not.toHaveBeenCalled();
+  });
+});
+
+describe('M8 — empty paragraph removal on blur (min 1 per scene)', () => {
+  it('removes an emptied paragraph instead of committing it', () => {
+    const onRemoveParagraph = vi.fn(() => true);
+    const { props } = renderView({ cursor: cur('scene', 0, 0), onRemoveParagraph });
+    const para = screen.getByTestId('msv-para-s1-b1');
+    para.textContent = '   ';
+    fireEvent.blur(para);
+    expect(onRemoveParagraph).toHaveBeenCalledWith('s1', 's1-b1');
+    expect(props.onEditParagraph).not.toHaveBeenCalled();
+  });
+
+  it("commits the scene's kept last paragraph as a single space when removal is refused", () => {
+    const onRemoveParagraph = vi.fn(() => false);
+    const { props } = renderView({ cursor: cur('scene', 0, 1), onRemoveParagraph });
+    const para = screen.getByTestId('msv-para-s2-b0');
+    para.textContent = '';
+    fireEvent.blur(para);
+    expect(onRemoveParagraph).toHaveBeenCalledWith('s2', 's2-b0');
+    expect(props.onEditParagraph).toHaveBeenCalledWith('s2', 's2-b0', ' ');
+  });
+});
+
+describe('M8 — inline heading renames', () => {
+  it('headings are editable only when rename handlers exist', () => {
+    const { unmount } = renderView();
+    expect(screen.getByTestId('msv-scene-title-s1')).toHaveAttribute('contenteditable', 'false');
+    expect(screen.getByTestId('msv-chapter-title-ch1')).toHaveAttribute('contenteditable', 'false');
+    unmount();
+
+    renderView({ onRenameScene: vi.fn(), onRenameChapter: vi.fn() });
+    expect(screen.getByTestId('msv-scene-title-s1')).toHaveAttribute('contenteditable', 'true');
+    expect(screen.getByTestId('msv-chapter-title-ch1')).toHaveAttribute('contenteditable', 'true');
+  });
+
+  it('commits a normalized scene title on blur and writes it back to the heading', () => {
+    const onRenameScene = vi.fn();
+    renderView({ onRenameScene });
+    const title = screen.getByTestId('msv-scene-title-s1');
+    title.textContent = '  Dawn\nWatch ';
+    fireEvent.blur(title);
+    expect(onRenameScene).toHaveBeenCalledWith('s1', 'Dawn Watch');
+    expect(title.textContent).toBe('Dawn Watch');
+  });
+
+  it('Enter commits a heading rename (§1: Enter commits inline renames)', () => {
+    const onRenameChapter = vi.fn();
+    renderView({ onRenameChapter });
+    const title = screen.getByTestId('msv-chapter-title-ch1');
+    act(() => title.focus());
+    title.textContent = 'The Quiet Storm';
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(onRenameChapter).toHaveBeenCalledWith('ch1', 'The Quiet Storm');
+  });
+
+  it('reverts empty renames without calling the handler', () => {
+    const onRenameScene = vi.fn();
+    renderView({ onRenameScene });
+    const title = screen.getByTestId('msv-scene-title-s1');
+    title.textContent = '  \n ';
+    fireEvent.blur(title);
+    expect(onRenameScene).not.toHaveBeenCalled();
+    expect(title.textContent).toBe("The Watcher's Call");
+  });
+
+  it('unchanged titles do not fire the handler', () => {
+    const onRenameScene = vi.fn();
+    renderView({ onRenameScene });
+    const title = screen.getByTestId('msv-scene-title-s1');
+    fireEvent.blur(title);
+    expect(onRenameScene).not.toHaveBeenCalled();
+  });
+});
+
+describe('M8 — drop cap on the first scene paragraph', () => {
+  it('marks only the first paragraph of a scene at scene/chapter zoom', () => {
+    const { rerender, props } = renderView({ cursor: cur('scene', 0, 0) });
+    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--dropcap');
+    expect(screen.getByTestId('msv-para-s1-b1').className).not.toContain(
+      'msv-para-text--dropcap'
+    );
+
+    rerender(<ManuscriptView {...props} cursor={cur('chapter', 0)} />);
+    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--dropcap');
+    expect(screen.getByTestId('msv-para-s2-b0').className).toContain('msv-para-text--dropcap');
+
+    // Prototype: no drop caps at book zoom.
+    rerender(<ManuscriptView {...props} cursor={cur('book')} />);
+    expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
+      'msv-para-text--dropcap'
+    );
+  });
+});
+
+describe('M8 — Alt+←/→ hops scenes (chapters at chapter zoom)', () => {
+  it('hops even while the caret is inside a paragraph', () => {
+    const { props } = renderView({ cursor: cur('scene', 0, 0) });
+    const para = screen.getByTestId('msv-para-s1-b0');
+    act(() => para.focus());
+    fireEvent.keyDown(para, { key: 'ArrowRight', altKey: true });
+    expect(props.onCursorChange).toHaveBeenLastCalledWith(cur('scene', 0, 1));
+    // The in-flight edit was blur-committed before the hop, not lost.
+    expect(document.activeElement).not.toBe(para);
+  });
+
+  it('hops chapters at chapter zoom and stays put at book zoom', () => {
+    // The fixture has two chapters — both hops wrap between them.
+    const { rerender, props } = renderView({ cursor: cur('chapter', 0) });
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+    expect(props.onCursorChange).toHaveBeenLastCalledWith(cur('chapter', 1));
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+    expect(props.onCursorChange).toHaveBeenLastCalledWith(cur('chapter', 1)); // 0 → wrap
+    expect(props.onCursorChange).toHaveBeenCalledTimes(2);
+
+    rerender(<ManuscriptView {...props} cursor={cur('book')} />);
+    fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+    expect(props.onCursorChange).toHaveBeenCalledTimes(2); // book zoom ignored the hop
+  });
+});
+
+describe('M8 — grip drag hardening (§14.2: drag state can’t get stuck)', () => {
+  it('dims the dragged block to 38% and restores it after the drop', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    const draggedRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    expect(draggedRow.className).toContain('msv-para--dragging');
+    // Only the dragged row dims.
+    expect(
+      (screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement).className
+    ).not.toContain('msv-para--dragging');
+
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseUp(targetRow);
+    expect(draggedRow.className).not.toContain('msv-para--dragging');
+  });
+
+  it('Escape cancels the drag: no move fires and all drag state clears', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    expect(screen.getByTestId('msv-dropline')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+    expect(
+      (screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement).className
+    ).not.toContain('msv-para--dragging');
+    fireEvent.mouseUp(targetRow);
+    expect(onMoveParagraph).not.toHaveBeenCalled();
+  });
+
+  it('losing window focus mid-drag clears the drag state too', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    fireEvent.blur(window);
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+    fireEvent.mouseUp(targetRow);
     expect(onMoveParagraph).not.toHaveBeenCalled();
   });
 });
