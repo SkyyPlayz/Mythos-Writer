@@ -1,15 +1,17 @@
-// Beta 3 M13 — TTS reader integration in ManuscriptView: reader chip +
-// audiobook bar, moving per-paragraph highlight synced to utterance
-// boundaries, skip/seek/speed/voice controls, selection-bar Read, and the
-// muted/unavailable fallbacks. Playback runs on the OS speechSynthesis path
-// of the existing useTtsPlayer stack, mocked the same way as its unit tests
-// (utterances captured; boundaries simulated by firing onend/onerror).
+// Beta 4 M11 — TTS reader integration in ManuscriptView: the toolbar Read
+// button + right-gutter Reader card (docks above comments, centers when
+// they're hidden), the sentence-level moving highlight, ±10s/scene/speed/
+// voice controls, selection-bar Read, and the muted/unavailable fallbacks.
+// Playback runs on the OS speechSynthesis path of the existing useTtsPlayer
+// stack, mocked the same way as its unit tests (utterances captured;
+// boundaries simulated by firing onend/onerror).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Block, Chapter, DraftState, Scene, Story } from '../types';
 import ManuscriptView from './ManuscriptView';
 import { commentsStore } from '../comments';
+import { READING_HIGHLIGHT_NAME } from './readerHighlight';
 import type { ManuscriptCursor } from './manuscriptModel';
 
 const NOW = '2026-07-07T00:00:00.000Z';
@@ -54,8 +56,14 @@ function mkStory(): Story {
   };
 }
 
-// Flow at book zoom:
-//   0 heading ch1/s1 · 1 para s1-b0 · 2 para s1-b1 · 3 heading s2 · 4 para s2-b0
+// M11 sentence-level flow at book zoom:
+//   0 heading ch1/s1
+//   1 "Mira counted the bells."                              (s1-b0, 0–23)
+//   2 "The lantern cast a trembling circle of light."        (s1-b0, 24–70)
+//   3 "Getting out would be another story."                  (s1-b1)
+//   4 heading s2
+//   5 "By morning the rumor had teeth."                      (s2-b0)
+const FLOW_LEN = 6;
 const BOOK: ManuscriptCursor = { zoom: 'book', part: 0, chapter: 0, scene: 0 };
 
 /** Minimal SpeechSynthesisUtterance stub (same shape as useTtsPlayer tests). */
@@ -85,6 +93,31 @@ function stubSpeech() {
   (globalThis as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = MockUtterance;
 }
 
+/** jsdom has no CSS Custom Highlight API — stub a registry for M11 asserts. */
+class FakeHighlight {
+  ranges: Range[];
+  constructor(...ranges: Range[]) { this.ranges = ranges; }
+}
+
+function stubHighlightApi() {
+  const store = new Map<string, FakeHighlight>();
+  const g = globalThis as { CSS?: unknown; Highlight?: unknown };
+  g.CSS = {
+    highlights: {
+      set: (name: string, hl: FakeHighlight) => store.set(name, hl),
+      delete: (name: string) => store.delete(name),
+    },
+  };
+  g.Highlight = FakeHighlight;
+  return store;
+}
+
+function unstubHighlightApi() {
+  const g = globalThis as { CSS?: unknown; Highlight?: unknown };
+  delete g.CSS;
+  delete g.Highlight;
+}
+
 function renderView(over: Partial<Parameters<typeof ManuscriptView>[0]> = {}) {
   const props = {
     story: mkStory(),
@@ -98,10 +131,10 @@ function renderView(over: Partial<Parameters<typeof ManuscriptView>[0]> = {}) {
 }
 
 // W0.4: the single Read button lives on the format toolbar (msv-tb-read);
-// the old zoombar reader chip was the duplicated instance and is gone.
-function openBar() {
+// M11 docks the Reader as a card in the right gutter.
+function openCard() {
   fireEvent.click(screen.getByTestId('msv-tb-read'));
-  return screen.getByTestId('msv-reader-bar');
+  return screen.getByTestId('msv-reader-card');
 }
 
 /** Finish the most recent utterance (the boundary the highlight follows). */
@@ -119,70 +152,84 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   commentsStore.reset();
+  unstubHighlightApi();
   delete (window as { api?: unknown }).api;
   delete (window as { speechSynthesis?: unknown }).speechSynthesis;
   document.querySelectorAll('[data-testid="ln-toast"]').forEach((el) => el.remove());
   vi.restoreAllMocks();
 });
 
-describe('toolbar Read button + audiobook bar', () => {
-  it('the Read button opens the bar (Ready) and close hides it again', () => {
+describe('toolbar Read button + gutter Reader card', () => {
+  it('the Read button opens the card in the gutter (Ready) and close hides it', () => {
     renderView();
-    expect(screen.queryByTestId('msv-reader-bar')).toBeNull();
+    expect(screen.queryByTestId('msv-reader-card')).toBeNull();
+    expect(screen.queryByTestId('msv-gutter')).toBeNull();
     const read = screen.getByTestId('msv-tb-read');
     expect(read).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(read);
-    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+    const card = screen.getByTestId('msv-reader-card');
+    expect(screen.getByTestId('msv-gutter')).toContainElement(card);
     expect(read).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Ready');
     fireEvent.click(screen.getByTestId('msv-reader-close'));
-    expect(screen.queryByTestId('msv-reader-bar')).toBeNull();
+    expect(screen.queryByTestId('msv-reader-card')).toBeNull();
+    expect(screen.queryByTestId('msv-gutter')).toBeNull();
+  });
+
+  it('centers the card when no comments are visible (prototype gutterSt)', () => {
+    renderView();
+    openCard();
+    expect(screen.getByTestId('msv-gutter').className).toContain('msv-gutter--center');
+    expect(screen.queryByText('COMMENTS')).toBeNull();
+  });
+
+  it('docks the card above the comment cards when comments are visible', () => {
+    renderView();
+    // Create a user comment through the selection bar.
+    const spy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue({ toString: () => 'rumor had teeth' } as unknown as Selection);
+    fireEvent.mouseUp(screen.getByTestId('msv-page'));
+    spy.mockRestore();
+    fireEvent.change(screen.getByTestId('msv-selbar-input'), { target: { value: 'note' } });
+    fireEvent.click(screen.getByTestId('msv-selbar-save'));
+
+    openCard();
+    const gutter = screen.getByTestId('msv-gutter');
+    expect(gutter.className).not.toContain('msv-gutter--center');
+    // DOM order: Reader card first, then the COMMENTS section (prototype 1154).
+    const card = screen.getByTestId('msv-reader-card');
+    const title = screen.getByText('COMMENTS');
+    expect(card.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('play at book zoom reads from the start: chapter heading first', () => {
     renderView();
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(speakMock).toHaveBeenCalledTimes(1);
     expect(spoken[0].text).toBe("Chapter 1. The Quiet Before. The Watcher's Call.");
-    expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Reading 1 of 5');
+    expect(screen.getByTestId('msv-reader-status')).toHaveTextContent(`Reading 1 of ${FLOW_LEN}`);
     // Headings have no paragraph to highlight.
     expect(document.querySelectorAll('.msv-para-text--reading')).toHaveLength(0);
   });
 
-  it('the moving highlight follows utterance boundaries paragraph by paragraph', async () => {
-    renderView();
-    openBar();
-    fireEvent.click(screen.getByTestId('msv-reader-play'));
-
-    await endUtterance(); // heading done → first paragraph
-    expect(spoken[1].text).toBe(
-      'Mira counted the bells. The lantern cast a trembling circle of light.'
-    );
-    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--reading');
-    expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Reading 2 of 5');
-
-    await endUtterance(); // → second paragraph, highlight moves
-    expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain('msv-para-text--reading');
-    expect(screen.getByTestId('msv-para-s1-b1').className).toContain('msv-para-text--reading');
-  });
-
   it('reaching the end of the flow stops playback and clears the highlight', async () => {
     renderView();
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play'));
-    for (let i = 0; i < 5; i++) await endUtterance();
-    expect(speakMock).toHaveBeenCalledTimes(5);
+    for (let i = 0; i < FLOW_LEN; i++) await endUtterance();
+    expect(speakMock).toHaveBeenCalledTimes(FLOW_LEN);
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Paused');
     expect(document.querySelectorAll('.msv-para-text--reading')).toHaveLength(0);
   });
 
   it('pause cancels speech and resume replays the current utterance', async () => {
     renderView();
-    openBar();
+    openCard();
     const play = screen.getByTestId('msv-reader-play');
     fireEvent.click(play);
-    await endUtterance(); // now reading paragraph 1 (idx 1)
+    await endUtterance(); // now reading sentence 1 (idx 1)
 
     fireEvent.click(play); // pause
     expect(cancelMock).toHaveBeenCalled();
@@ -195,15 +242,68 @@ describe('toolbar Read button + audiobook bar', () => {
   });
 });
 
-describe('skips, position and scene jumps', () => {
-  it('±10s buttons move one utterance either way', async () => {
+describe('sentence highlight (M11 §5.1)', () => {
+  it('utterances advance sentence by sentence; the block wash follows the block', async () => {
     renderView();
-    openBar();
-    fireEvent.click(screen.getByTestId('msv-reader-play')); // idx 0
-    fireEvent.click(screen.getByTestId('msv-reader-fwd'));
-    expect(spoken[spoken.length - 1].text).toBe(
-      'Mira counted the bells. The lantern cast a trembling circle of light.'
+    openCard();
+    fireEvent.click(screen.getByTestId('msv-reader-play'));
+
+    await endUtterance(); // heading done → first sentence of s1-b0
+    expect(spoken[1].text).toBe('Mira counted the bells.');
+    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--reading');
+    expect(screen.getByTestId('msv-reader-status')).toHaveTextContent(`Reading 2 of ${FLOW_LEN}`);
+
+    await endUtterance(); // second sentence — SAME paragraph stays washed
+    expect(spoken[2].text).toBe('The lantern cast a trembling circle of light.');
+    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--reading');
+
+    await endUtterance(); // next paragraph — wash moves
+    expect(spoken[3].text).toBe('Getting out would be another story.');
+    expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain('msv-para-text--reading');
+    expect(screen.getByTestId('msv-para-s1-b1').className).toContain('msv-para-text--reading');
+  });
+
+  it('paints the exact sentence via the CSS Custom Highlight API', async () => {
+    const store = stubHighlightApi();
+    renderView();
+    openCard();
+    fireEvent.click(screen.getByTestId('msv-reader-play'));
+    expect(store.has(READING_HIGHLIGHT_NAME)).toBe(false); // heading — nothing to paint
+
+    await endUtterance(); // → "Mira counted the bells." (offsets 0–23 in s1-b0)
+    const first = store.get(READING_HIGHLIGHT_NAME);
+    expect(first).toBeInstanceOf(FakeHighlight);
+    expect(first!.ranges[0].toString()).toBe('Mira counted the bells.');
+
+    await endUtterance(); // → second sentence of the same block
+    const second = store.get(READING_HIGHLIGHT_NAME);
+    expect(second!.ranges[0].toString()).toBe(
+      'The lantern cast a trembling circle of light.'
     );
+  });
+
+  it('clears the sentence highlight when playback pauses', async () => {
+    const store = stubHighlightApi();
+    renderView();
+    openCard();
+    const play = screen.getByTestId('msv-reader-play');
+    fireEvent.click(play);
+    await endUtterance();
+    expect(store.has(READING_HIGHLIGHT_NAME)).toBe(true);
+    fireEvent.click(play); // pause
+    expect(store.has(READING_HIGHLIGHT_NAME)).toBe(false);
+  });
+});
+
+describe('skips and scene jumps', () => {
+  it('±10s buttons skip by estimated speech time across sentences', () => {
+    renderView();
+    openCard();
+    fireEvent.click(screen.getByTestId('msv-reader-play')); // idx 0
+    // ~10s forward at 3.2 w/s crosses the whole first scene (≈9.4s) and lands
+    // on the last sentence.
+    fireEvent.click(screen.getByTestId('msv-reader-fwd'));
+    expect(spoken[spoken.length - 1].text).toBe('By morning the rumor had teeth.');
     fireEvent.click(screen.getByTestId('msv-reader-back'));
     expect(spoken[spoken.length - 1].text).toBe(
       "Chapter 1. The Quiet Before. The Watcher's Call."
@@ -212,7 +312,7 @@ describe('skips, position and scene jumps', () => {
 
   it('scene skips jump to the adjacent scene heading', () => {
     renderView();
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play')); // idx 0 (scene 0)
     fireEvent.click(screen.getByTestId('msv-reader-next-scene'));
     expect(spoken[spoken.length - 1].text).toBe('A City in Shadows.');
@@ -222,20 +322,9 @@ describe('skips, position and scene jumps', () => {
     );
   });
 
-  it('the position scrubber seeks to an utterance index', () => {
-    renderView();
-    openBar();
-    fireEvent.click(screen.getByTestId('msv-reader-play'));
-    const pos = screen.getByTestId('msv-reader-pos');
-    expect(pos).toHaveAttribute('max', '4');
-    fireEvent.change(pos, { target: { value: '4' } });
-    expect(spoken[spoken.length - 1].text).toBe('By morning the rumor had teeth.');
-    expect(screen.getByTestId('msv-para-s2-b0').className).toContain('msv-para-text--reading');
-  });
-
   it('From cursor starts at the cursor scene; From start rebuilds from the top', () => {
     renderView({ cursor: { zoom: 'chapter', part: 0, chapter: 0, scene: 1 } });
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-from-cursor'));
     expect(spoken[0].text).toBe('By morning the rumor had teeth.');
     fireEvent.click(screen.getByTestId('msv-reader-from-start'));
@@ -248,7 +337,7 @@ describe('skips, position and scene jumps', () => {
 describe('speed + voice controls', () => {
   it('seeds speed from voice prefs and applies slider changes to the next utterance', () => {
     renderView({ voicePrefs: { ttsRate: 1.2 } });
-    openBar();
+    openCard();
     expect(screen.getByTestId('msv-reader-rate-readout')).toHaveTextContent('120%');
     fireEvent.change(screen.getByTestId('msv-reader-rate'), { target: { value: '150' } });
     expect(screen.getByTestId('msv-reader-rate-readout')).toHaveTextContent('150%');
@@ -256,20 +345,44 @@ describe('speed + voice controls', () => {
     expect(spoken[0].rate).toBe(1.5);
   });
 
-  it('lists Default + English system voices and applies the selection', () => {
+  it('lists Default + OS voices (naturals labeled) + offline catalog entries', () => {
     renderView();
-    openBar();
+    openCard();
     const select = screen.getByTestId('msv-reader-voice');
     const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
-    expect(labels).toEqual(['Default voice', 'Aria — system']);
-    fireEvent.change(select, { target: { value: 'Aria (Natural)' } });
+    expect(labels[0]).toBe('Default voice');
+    expect(labels[1]).toBe('Aria — Edge natural'); // 'Aria (Natural)' detected
+    expect(labels).toContain('Amy — Piper (offline)');
+    expect(labels).toContain('Nicole — Kokoro (offline)');
+  });
+
+  it('applies a real OS voice selection to the next utterance', () => {
+    renderView();
+    openCard();
+    fireEvent.change(screen.getByTestId('msv-reader-voice'), {
+      target: { value: 'Aria (Natural)' },
+    });
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(spoken[0].voice).toBe(ariaVoice);
   });
 
+  it('catalog picks explain themselves and fall back to the default voice (§1.2)', () => {
+    renderView();
+    openCard();
+    const select = screen.getByTestId('msv-reader-voice') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'piper:amy' } });
+    expect(select.value).toBe('piper:amy'); // pick sticks — not dead
+    expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
+      'Settings → Voice'
+    );
+    fireEvent.click(screen.getByTestId('msv-reader-play'));
+    expect(speakMock).toHaveBeenCalledTimes(1); // still reads…
+    expect(spoken[0].voice).toBeNull(); // …with the default voice
+  });
+
   it('seeds the voice from stored prefs and keeps it selectable', () => {
     renderView({ voicePrefs: { ttsVoiceId: 'en_US/vctk_low' } });
-    openBar();
+    openCard();
     const select = screen.getByTestId('msv-reader-voice') as HTMLSelectElement;
     expect(select.value).toBe('en_US/vctk_low');
     expect(
@@ -297,7 +410,7 @@ describe('selection-bar Read action', () => {
     fireEvent.click(read);
 
     expect(screen.queryByTestId('msv-selbar')).toBeNull(); // bar dismissed
-    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument(); // reader opened
+    expect(screen.getByTestId('msv-reader-card')).toBeInTheDocument(); // reader opened
     expect(speakMock).toHaveBeenCalledTimes(1);
     expect(spoken[0].text).toBe('rumor had teeth');
 
@@ -322,7 +435,7 @@ describe('selection-bar Read action', () => {
 describe('failure + teardown behavior', () => {
   it('a persistent utterance error streak stops playback instead of racing through', async () => {
     renderView();
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     // Every utterance fails: 1 initial + 2 error-advances, then the reader halts.
     await act(async () => { spoken[0].onerror?.(new Event('error')); });
@@ -334,7 +447,7 @@ describe('failure + teardown behavior', () => {
 
   it('a muted voice session toasts instead of pretending to play', () => {
     renderView({ voicePrefs: { persistentMute: true } });
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(speakMock).not.toHaveBeenCalled();
     expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
@@ -344,7 +457,7 @@ describe('failure + teardown behavior', () => {
 
   it('unmounting mid-read cancels the OS utterance', async () => {
     const { unmount } = renderView();
-    openBar();
+    openCard();
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     await endUtterance();
     cancelMock.mockClear();

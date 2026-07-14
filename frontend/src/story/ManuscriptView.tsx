@@ -54,8 +54,12 @@ import {
   wikiLinkFor,
   type EntityMatch,
 } from './autoLinkText';
-import ReaderBar from './ReaderBar';
+import { ReaderCard } from './ReaderBar';
 import { useManuscriptReader } from './useManuscriptReader';
+import {
+  clearReadingSentenceHighlight,
+  setReadingSentenceHighlight,
+} from './readerHighlight';
 import { showLnToast } from '../theme/lnToast';
 import type { TtsEngineSettings, TtsVoicePrefs } from '../hooks/useTtsPlayer';
 import type { Story } from '../types';
@@ -425,6 +429,20 @@ export default function ManuscriptView({
     setWinStart(Math.max(0, bi - Math.floor(WINDOW / 3)));
     container.scrollTop = bi * EST_BLOCK_H;
   }, [readerKey, blocks]);
+
+  // M11: paint the sentence being read inside the block wash (§5.1). Uses the
+  // CSS Custom Highlight API so the contentEditable DOM is never touched;
+  // degrades to the block-level wash where the API is unavailable (jsdom).
+  const readerRange = reader.curRange;
+  useEffect(() => {
+    if (!readerKey || !readerRange) {
+      clearReadingSentenceHighlight();
+      return;
+    }
+    const el = scrollRef.current?.querySelector(`[data-testid="msv-para-${readerKey}"]`);
+    setReadingSentenceHighlight(el, readerRange.start, readerRange.end);
+    return () => clearReadingSentenceHighlight();
+  }, [readerKey, readerRange, blocks]);
 
   // M13: selection-bar Read — speak just the highlighted passage.
   const handleReadSelection = useCallback(() => {
@@ -1105,21 +1123,24 @@ export default function ManuscriptView({
             </div>
           </div>
         </div>
-        {/* M11: margin gutter dock (prototype 911–963) */}
-        {commentsVisible && (
+        {/* M11: margin gutter dock (v2 prototype gutterOpen 6775): comments
+            when visible, plus the Reader card while the reader is open —
+            docked above the comments, centered when they're hidden. */}
+        {((commentsVisible && comments.length > 0) || reader.open) && (
           <CommentsGutter
-            comments={comments}
+            comments={commentsVisible ? comments : NO_COMMENTS}
             openId={openCommentId}
             onToggleOpen={handleToggleOpenComment}
             onResolve={handleResolveComment}
             onAgentAction={handleAgentAction}
             commentsInFocus={commentsInFocus}
             onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
+            readerSlot={
+              reader.open ? <ReaderCard reader={reader} ttsSettings={ttsSettings} /> : null
+            }
           />
         )}
       </div>
-      {/* M13: audiobook bar (prototype Book-preview bar 641–658) */}
-      {reader.open && <ReaderBar reader={reader} ttsSettings={ttsSettings} />}
     </div>
   );
 }
