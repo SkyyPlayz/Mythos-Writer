@@ -158,7 +158,14 @@ test('TC-WM-01: default mode is Normal — N button active, sidebars visible, no
   await expect(page.locator('[data-testid="writing-mode-edit"]')).toHaveCount(1);
 
   // The two-tab shell opens on the Story tab by default, so sidebars are rendered.
-  await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]')).toHaveAttribute('aria-current', 'page', { timeout: 4_000 });
+  const appSectionsTablist = page.getByRole('tablist', { name: 'App sections' });
+  const legacyNavigationButton = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story"]');
+
+  if (await appSectionsTablist.count() > 0) {
+    await expect(appSectionsTablist.getByRole('tab', { name: 'Story' })).toHaveAttribute('aria-selected', 'true', { timeout: 4_000 });
+  } else {
+    await expect(legacyNavigationButton).toHaveAttribute('aria-current', 'page', { timeout: 4_000 });
+  }
 
   // SKY-3177: .shell-right removed; GlobalRightSidebar (GRS) is always-mounted
   // and independent of writing mode. Only the left sidebar responds to mode changes.

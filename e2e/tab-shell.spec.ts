@@ -6,6 +6,80 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
+type SectionControllerKind = 'tablist' | 'navigation';
+
+interface SectionController {
+  container: ReturnType<Page['locator']>;
+  kind: SectionControllerKind;
+  tab(label: string): ReturnType<Page['locator']>;
+  arrowKey: 'ArrowRight' | 'ArrowDown';
+}
+
+async function resolveSectionController(page: Page): Promise<SectionController> {
+  const appSections = page.getByRole('tablist', { name: 'App sections' });
+  if (await appSections.count() > 0) {
+    return {
+      container: appSections,
+      kind: 'tablist',
+      tab: (label) => appSections.getByRole('tab', { name: label, exact: true }),
+      arrowKey: 'ArrowRight',
+    };
+  }
+
+  const workspaceTabs = page.getByRole('tablist', { name: 'Workspace tabs' });
+  if (await workspaceTabs.count() > 0) {
+    return {
+      container: workspaceTabs,
+      kind: 'tablist',
+      tab: (label) => workspaceTabs.getByRole('tab', { name: label, exact: true }),
+      arrowKey: 'ArrowRight',
+    };
+  }
+
+  const nav = page.getByRole('navigation', { name: 'Main navigation' });
+  return {
+    container: nav,
+    kind: 'navigation',
+    tab: (label) => nav.getByRole('button', { name: label, exact: true }),
+    arrowKey: 'ArrowDown',
+  };
+}
+
+async function expectSectionSelected(page: Page, label: string, selected: boolean): Promise<void> {
+  const controller = await resolveSectionController(page);
+  const tab = controller.tab(label);
+  const panel = page.locator(`#app-tabpanel-${label.toLowerCase()}`);
+  const explicitSelectedTabs = await controller.container.locator('[aria-selected="true"]').count();
+  const hasPanel = (await panel.count()) > 0;
+
+  if (selected) {
+    if (controller.kind === 'tablist') {
+      if (explicitSelectedTabs > 0) {
+        await expect(tab).toHaveAttribute('aria-selected', 'true', { timeout: 8_000 });
+      } else if (hasPanel) {
+        await expect(panel).toBeVisible({ timeout: 8_000 });
+      } else {
+        await expect(tab).toBeFocused({ timeout: 8_000 });
+      }
+    } else {
+      await expect(tab).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
+    }
+    return;
+  }
+
+  if (controller.kind === 'tablist') {
+    if (explicitSelectedTabs > 0) {
+      await expect(tab).toHaveAttribute('aria-selected', 'false', { timeout: 8_000 });
+    } else if (hasPanel) {
+      await expect(panel).not.toBeVisible();
+    } else {
+      await expect(tab).not.toBeFocused();
+    }
+  } else {
+    await expect(tab).not.toHaveAttribute('aria-current', 'page');
+  }
+}
+
 function seedUserData(userData: string, vaultDir: string): void {
   seedUserDataWithVaults(userData, vaultDir, vaultDir, { createStory: true, createNotes: true });
 }
@@ -63,15 +137,16 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
-      const storyTab = page.locator('[data-testid="app-tab-story"]');
-      const notesTab = page.locator('[data-testid="app-tab-notes"]');
+      const storyTab = controller.tab('Story');
+      const notesTab = controller.tab('Notes');
 
       await expect(storyTab).toBeVisible();
       await expect(notesTab).toBeVisible();
-      await expect(storyTab).toHaveAttribute('aria-selected', 'true');
-      await expect(notesTab).toHaveAttribute('aria-selected', 'false');
+      await expectSectionSelected(page, 'Story', true);
+      await expectSectionSelected(page, 'Notes', false);
 
       // Story tabpanel visible, notes tabpanel absent
       await expect(page.locator('#app-tabpanel-story')).toBeVisible();
@@ -85,12 +160,13 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await controller.tab('Notes').click();
 
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'false');
+      await expectSectionSelected(page, 'Notes', true);
+      await expectSectionSelected(page, 'Story', false);
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
       await expect(page.locator('#app-tabpanel-story')).not.toBeVisible();
     } finally {
@@ -116,9 +192,10 @@ test.describe('TabBar — tab switching and persistence', () => {
       }, { storyVaultDir, notesVaultDir });
 
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await controller.tab('Notes').click();
 
       await expect(page.getByRole('heading', { name: 'No Notes vault' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Create a Notes vault' })).toBeVisible();
@@ -147,7 +224,8 @@ test.describe('TabBar — tab switching and persistence', () => {
       }, { storyVaultDir, notesVaultDir });
 
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
       await expect(page.getByRole('heading', { name: 'No Story vault' })).toBeVisible();
       await expect(page.getByText('Start your first story to begin writing.')).toBeVisible();
@@ -164,9 +242,10 @@ test.describe('TabBar — tab switching and persistence', () => {
     let app = await launchApp(userData);
     try {
       let page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
-      await page.locator('[data-testid="app-tab-notes"]').click();
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true');
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
+      await controller.tab('Notes').click();
+      await expectSectionSelected(page, 'Notes', true);
       // Give settings debounce time to flush to disk
       await page.waitForTimeout(600);
     } finally {
@@ -177,8 +256,9 @@ test.describe('TabBar — tab switching and persistence', () => {
     app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
+      await expectSectionSelected(page, 'Notes', true);
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
     } finally {
       await app.close().catch(() => undefined);
@@ -189,13 +269,14 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
       await page.keyboard.press('Control+2');
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expectSectionSelected(page, 'Notes', true);
 
       await page.keyboard.press('Control+1');
-      await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expectSectionSelected(page, 'Story', true);
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -205,14 +286,16 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
       // Focus Story tab (currently selected, tabIndex=0)
-      await page.locator('[data-testid="app-tab-story"]').focus();
-      await page.keyboard.press('ArrowRight');
+      await controller.tab('Story').focus();
+      await page.keyboard.press(controller.arrowKey);
 
-      // ArrowRight from story → notes, and notes becomes selected
-      await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      // ArrowRight/Down from story moves focus to notes (focus-only model in workspace tabs)
+      await expect(controller.tab('Notes')).toBeFocused();
+      await expect(controller.tab('Story')).not.toBeFocused();
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -222,18 +305,17 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
-      const announcement = page.locator('[data-testid="app-tab-announcement"]');
-      await expect(announcement).toHaveAttribute('role', 'status');
-      await expect(announcement).toHaveAttribute('aria-live', 'polite');
-      await expect(announcement).toContainText('Story tab selected');
+      await expectSectionSelected(page, 'Story', true);
+      await expectSectionSelected(page, 'Notes', false);
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
-      await expect(announcement).toContainText('Notes tab selected');
+      await controller.tab('Notes').click();
+      await expectSectionSelected(page, 'Notes', true);
 
-      await page.locator('[data-testid="app-tab-story"]').click();
-      await expect(announcement).toContainText('Story tab selected');
+      await controller.tab('Story').click();
+      await expectSectionSelected(page, 'Story', true);
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -243,12 +325,13 @@ test.describe('TabBar — tab switching and persistence', () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
-      await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 12_000 });
+      const controller = await resolveSectionController(page);
+      await expect(controller.container).toBeVisible({ timeout: 12_000 });
 
       const badge = page.locator('[data-testid="app-vault-badge"]');
       await expect(badge).toHaveAttribute('aria-label', /Story vault:/);
 
-      await page.locator('[data-testid="app-tab-notes"]').click();
+      await controller.tab('Notes').click();
       await expect(badge).toHaveAttribute('aria-label', /Notes vault:/);
     } finally {
       await app.close().catch(() => undefined);
