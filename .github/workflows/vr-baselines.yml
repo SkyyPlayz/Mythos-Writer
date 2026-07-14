@@ -61,6 +61,7 @@ jobs:
         run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
 
       - name: Upload baselines artifact
+        continue-on-error: true  # storage quota may be exhausted; the commit below is the real output
         uses: actions/upload-artifact@v4
         with:
           name: vr-baselines
