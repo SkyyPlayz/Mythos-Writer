@@ -6,7 +6,13 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens, vaultDefaultThemePatch, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import {
+  applyLiquidNeonV2Tokens,
+  normalizeLiquidNeonV2,
+  vaultDefaultThemePatch,
+  type LiquidNeonPageCfg,
+  type LiquidNeonV2Settings,
+} from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName } from './ProjectSwitcher';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
@@ -4041,6 +4047,45 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+  // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
+  // same live-apply + persist shape as the width handler above, scoped to
+  // liquidNeonV2.pageCfg instead of going through the Settings panel's draft
+  // Save flow (this is a one-click swap, not a form).
+  const patchManuscriptPageCfg = useCallback((patch: Partial<LiquidNeonPageCfg>) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const liquidNeonV2 = normalizeLiquidNeonV2(prev.liquidNeonV2);
+      const updated: AppSettings = {
+        ...prev,
+        liquidNeonV2: { ...liquidNeonV2, pageCfg: { ...liquidNeonV2.pageCfg, ...patch } },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      void applyLiquidNeonV2Theme(updated.liquidNeonV2);
+      return updated;
+    });
+  }, []);
+
+  const handleManuscriptPageStyleChange = useCallback(
+    (mode: LiquidNeonPageCfg['mode']) => patchManuscriptPageCfg({ mode }),
+    [patchManuscriptPageCfg]
+  );
+
+  const handlePickPageTexture = useCallback(() => {
+    window.api?.pickBgImage?.()
+      .then(async (res) => {
+        if (!res?.filePath) return;
+        // Same resolution as the wallpaper's customWp (M4): a raw filesystem
+        // path doesn't load via CSS url() in the renderer, so it's converted
+        // to a data URL once here rather than on every paint.
+        let dataUrl: string | null | undefined;
+        try {
+          dataUrl = (await window.api?.loadBgImage?.(res.filePath))?.dataUrl;
+        } catch { /* fall back to the raw path */ }
+        patchManuscriptPageCfg({ mode: 'custom', textureUrl: dataUrl ?? res.filePath });
+      })
+      .catch(() => {});
+  }, [patchManuscriptPageCfg]);
+
   // Beta 3 M10 toolbar actions (prototype 766-777). Read is scripted until the
   // M13 TTS Reader lands; Dictate reuses the existing voice pipeline; Assist
   // surfaces the Writing Assistant panel in the left sidebar (GH #633 home).
@@ -4903,6 +4948,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -4934,6 +4981,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}

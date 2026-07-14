@@ -34,7 +34,9 @@ import {
   type ZoomLevel,
 } from './manuscriptModel';
 import { pageModeChrome, PageModeRunes } from './pageMode';
-import type { LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
+import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
+import MarginRuler from './MarginRuler';
+import PageChrome from './PageChrome';
 import {
   AGENT_ACTION_SUCCESS_TOAST,
   findAnchorSceneId,
@@ -77,6 +79,13 @@ export interface ManuscriptViewProps {
   onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
   /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
   liquidNeon?: Partial<LiquidNeonV2Settings> | null;
+  /**
+   * M7 (§5.1): page-style quick-switch inside the Page setup popover. Omit to
+   * hide the switch entirely (style stays Settings-only, as it is today).
+   */
+  onPageStyleChange?: (mode: LiquidNeonPageCfg['mode']) => void;
+  /** M7: "Choose image…" trigger for the Custom texture page style. */
+  onPickPageTexture?: () => void;
   /**
    * M10 toolbar actions (prototype 766–777). Dictate/Assist hide when their
    * handler is absent. Read is built in (W0.4): the toolbar's single Read
@@ -126,6 +135,9 @@ const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quot
 const FONT_OPTIONS = ['Lora', 'Georgia', 'Palatino Linotype', 'Inter'];
 const FSIZE_MIN = 9;
 const FSIZE_MAX = 18;
+// Spec order (§5.1): 1.85 is the toolbar default.
+const LINE_SPACING_OPTIONS = ['1.15', '1.3', '1.5', '1.85', '2', '2.5', '3', '3.5', '4', '5', '6'];
+const LINE_SPACING_DEFAULT = '1.85';
 
 type FmtKey = 'b' | 'i' | 'u' | 's';
 type AlignKey = 'left' | 'center' | 'right' | 'justify';
@@ -246,6 +258,8 @@ export default function ManuscriptView({
   onPageWidthChange,
   onMoveParagraph,
   liquidNeon,
+  onPageStyleChange,
+  onPickPageTexture,
   onDictate,
   dictating = false,
   onAssist,
@@ -267,8 +281,14 @@ export default function ManuscriptView({
   const [styleSel, setStyleSel] = useState('Body Text');
   const [font, setFont] = useState('Lora');
   const [fsize, setFsize] = useState(12);
+  const [lineSpacing, setLineSpacing] = useState(LINE_SPACING_DEFAULT);
   const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
   const [align, setAlign] = useState<AlignKey>('left');
+
+  // M7: "Page setup" popover (width + page style) — replaces the always-open
+  // width strip so the control surface matches §5.1's "compact popover, not
+  // a strip".
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
 
   // M10 page-edge drag + paragraph grip drag state.
   const [edgeDragging, setEdgeDragging] = useState(false);
@@ -328,6 +348,8 @@ export default function ManuscriptView({
 
   // M10: page-mode sheet chrome from M4's persisted settings (pageCfg).
   const pageChrome = useMemo(() => pageModeChrome(liquidNeon), [liquidNeon]);
+  // M7: display name for the Page setup popover's custom-texture row.
+  const textureFileName = liquidNeon?.pageCfg?.textureUrl?.split(/[\\/]/).pop();
 
   // Follow persisted width when it changes elsewhere (settings load after mount).
   useEffect(() => {
@@ -616,6 +638,7 @@ export default function ManuscriptView({
     width: `${pageW}px`,
     fontFamily: fontStack(font),
     fontSize: `${(fsize * 1.42).toFixed(1)}px`,
+    lineHeight: lineSpacing,
   };
   // Memoized so its identity only changes with the toolbar state — it is
   // shallow-compared by every ParagraphRow's memo gate.
@@ -825,29 +848,43 @@ export default function ManuscriptView({
           </svg>
           {comments.length}
         </button>
-        <div className="msv-width-ctl" title="Page width — also drag the page edges">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#8e9db8"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
+        {/* M7 (§5.1): page-setup is a compact popover, not an always-open strip. */}
+        <div className="msv-page-setup-anchor">
+          <button
+            type="button"
+            className={`msv-page-setup-btn${pageSetupOpen ? ' msv-page-setup-btn--on' : ''}`}
+            data-testid="msv-page-setup-btn"
+            title="Page setup — width and page style"
+            aria-label="Page setup"
+            aria-pressed={pageSetupOpen}
+            onClick={() => setPageSetupOpen((v) => !v)}
           >
-            <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
-          </svg>
-          <input
-            type="range"
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
+            </svg>
+            <span className="msv-page-setup-readout">{pageW}px</span>
+          </button>
+          <PageChrome
+            open={pageSetupOpen}
+            onClose={() => setPageSetupOpen(false)}
+            pageWidth={pageW}
             min={PAGE_W_MIN}
             max={PAGE_W_MAX}
-            value={pageW}
-            data-testid="msv-width-slider"
-            aria-label="Page width"
-            onChange={(e) => commitPageWidth(Number(e.target.value))}
+            onPageWidthChange={commitPageWidth}
+            pageStyleMode={onPageStyleChange ? pageChrome.mode : undefined}
+            onPageStyleChange={onPageStyleChange}
+            textureFileName={textureFileName}
+            onPickPageTexture={onPickPageTexture}
           />
-          <span className="msv-width-readout">{pageW}px</span>
         </div>
       </div>
 
@@ -898,6 +935,19 @@ export default function ManuscriptView({
             +
           </button>
         </div>
+        <select
+          className="msv-tb-select msv-tb-line-spacing"
+          data-testid="msv-line-spacing-select"
+          aria-label="Line spacing"
+          value={lineSpacing}
+          onChange={(e) => setLineSpacing(e.target.value)}
+        >
+          {LINE_SPACING_OPTIONS.map((ls) => (
+            <option key={ls} value={ls}>
+              {ls}
+            </option>
+          ))}
+        </select>
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
         {FMT_KEYS.map(({ k, label }) => (
           <button
@@ -1011,6 +1061,17 @@ export default function ManuscriptView({
           </button>
         )}
       </div>
+
+      {/* M7 (§5.1): margin ruler — ticks, end stops, glowing page-width span,
+          diamond resize handles, live px readout while dragging. */}
+      <MarginRuler
+        pageWidth={pageW}
+        min={PAGE_W_MIN}
+        max={PAGE_W_MAX}
+        gutterOpen={commentsVisible}
+        onChange={setPageW}
+        onCommit={commitPageWidth}
+      />
 
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
       <div className="msv-body">
