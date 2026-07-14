@@ -1,13 +1,15 @@
 name: VR Baselines
 
-# Regenerates the visual-regression baselines (e2e/visual-baselines/) in the
-# GitHub-hosted runner environment and commits them back to the branch the
-# workflow ran on (also uploads them as the `vr-baselines` artifact). Needed
-# whenever the UI changes intentionally (e.g. the Liquid Neon redesign) or the
-# CI rendering environment changes (fonts and viewport metrics differ between
-# runner images, so baselines captured on one environment fail pixelmatch on
-# another). Note: the GITHUB_TOKEN push does not re-trigger PR workflows —
-# push any follow-up commit (even empty) to re-run checks.
+# Regenerates the visual-regression baselines (e2e/visual-baselines/) on the
+# same self-hosted runner environment (SKY-3300/SKY-6742) that e2e-shard-3 in
+# ci.yml uses to run test:e2e:visual-regression, and commits them back to the
+# branch the workflow ran on (also uploads them as the `vr-baselines`
+# artifact). Needed whenever the UI changes intentionally (e.g. the Liquid
+# Neon redesign) or the CI rendering environment changes (fonts and viewport
+# metrics differ between runner images, so baselines captured on one
+# environment fail pixelmatch on another). Note: the GITHUB_TOKEN push does
+# not re-trigger PR workflows — push any follow-up commit (even empty) to
+# re-run checks.
 
 on:
   workflow_dispatch:
@@ -24,7 +26,7 @@ permissions:
 
 jobs:
   regenerate:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
