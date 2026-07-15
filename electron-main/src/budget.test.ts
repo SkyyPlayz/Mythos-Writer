@@ -238,6 +238,63 @@ describe('evaluateAutoApply', () => {
     expect(result.shouldAutoApply).toBe(false);
   });
 
+  // ─── Beta 4 M28 (B4-8) — per-category certainty thresholds ───
+
+  it('B4-8: uses the per-category threshold when set (below → stays proposed)', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS, // confidenceThreshold 0.8
+      autoApplyThresholds: { grammar: 0.95 },
+    };
+    // 0.9 clears the agent-wide 0.8 but not grammar's 0.95 → inbox.
+    const below = evaluateAutoApply(0.9, 'writing-assistant', settings, db, 'grammar');
+    expect(below.shouldAutoApply).toBe(false);
+    expect(below.budgetExceeded).toBe(false);
+    // At/above the per-category threshold → auto-apply.
+    const at = evaluateAutoApply(0.95, 'writing-assistant', settings, db, 'grammar');
+    expect(at.shouldAutoApply).toBe(true);
+  });
+
+  it('B4-8: a lower per-category threshold can admit what the global would block', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS, // confidenceThreshold 0.8
+      autoApplyThresholds: { spelling: 0.5 },
+    };
+    const result = evaluateAutoApply(0.6, 'writing-assistant', settings, db, 'spelling');
+    expect(result.shouldAutoApply).toBe(true);
+  });
+
+  it('B4-8: categories without an explicit threshold fall back to confidenceThreshold', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyThresholds: { grammar: 0.95 },
+    };
+    // 'style-tone' has no explicit threshold → global 0.8 applies.
+    expect(evaluateAutoApply(0.85, 'writing-assistant', settings, db, 'style-tone').shouldAutoApply).toBe(true);
+    expect(evaluateAutoApply(0.75, 'writing-assistant', settings, db, 'style-tone').shouldAutoApply).toBe(false);
+  });
+
+  it('B4-8: null/unknown categories coerce to "other" for threshold lookup', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyThresholds: { other: 0.99 },
+    };
+    expect(evaluateAutoApply(0.9, 'writing-assistant', settings, db, null).shouldAutoApply).toBe(false);
+    expect(evaluateAutoApply(0.99, 'writing-assistant', settings, db, null).shouldAutoApply).toBe(true);
+  });
+
+  it('B4-8: a disabled category toggle still blocks regardless of thresholds', () => {
+    const settings: AgentBudgetSettings = {
+      ...BASE_SETTINGS,
+      autoApplyCategories: {
+        punctuation: true, spelling: false, grammar: true,
+        'sentence-structure': true, 'style-tone': true, other: true,
+      },
+      autoApplyThresholds: { spelling: 0 },
+    };
+    const result = evaluateAutoApply(1.0, 'writing-assistant', settings, db, 'spelling');
+    expect(result.shouldAutoApply).toBe(false);
+  });
+
   // ─── [BUILD-GATE] scene_crafter_card hard-exclusion ───
 
   it('[BUILD-GATE] scene_crafter_card never auto-applies at confidence 1.0 with unlimited budget', () => {

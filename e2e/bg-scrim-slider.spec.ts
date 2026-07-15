@@ -111,7 +111,8 @@ test('SKY-3220: bg scrim slider updates --bg-scrim-alpha in image mode', async (
   await expect(dialog).toBeVisible({ timeout: 5_000 });
 
   // SKY-2973 (#768) split Settings into category pages and the dialog opens on
-  // the Agents category — select Appearance first. The Advanced… popover (and
+  // the Agents category — select Appearance first. M28 turned the category
+  // strip into the settings workspace's left rail; the Advanced… popover (and
   // the scrim slider inside it) still lives on the Appearance page.
   const appearanceTab = dialog.locator('.settings-cat-nav [role="tab"]', { hasText: 'Appearance' });
   await expect(appearanceTab).toBeVisible({ timeout: 3_000 });

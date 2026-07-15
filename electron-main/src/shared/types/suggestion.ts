@@ -36,8 +36,18 @@ export interface AutoApplyPolicy {
   maxSuggestionsPerHour: number;
   maxTokensPerHour: number;
   maxTokensPerDay: number;
-  /** SKY-908: per-category allow-list; absent key → enabled. */
+  /**
+   * SKY-908: per-category allow-list; absent key → enabled (legacy
+   * back-compat). Beta 4 defaults write an explicit all-false map (B4-8).
+   */
   autoApplyCategories?: Partial<Record<string, boolean>>;
+  /**
+   * Beta 4 M28 (B4-8): per-category certainty threshold. Suggestions at/above
+   * the threshold auto-apply (snapshot-first, undoable); below it they stay
+   * proposed and land in the suggestion inbox. Absent key → falls back to
+   * confidenceThreshold.
+   */
+  autoApplyThresholds?: Partial<Record<string, number>>;
 }
 
 /** Observed rolling-window budget counters for an agent. */
