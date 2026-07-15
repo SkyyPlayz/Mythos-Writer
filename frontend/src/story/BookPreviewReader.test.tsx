@@ -2,12 +2,16 @@
 // 849–867): persistent transport under the compiled pages, book-scoped flow,
 // paragraph wash + sentence highlight while reading. Playback runs on the OS
 // speechSynthesis path, mocked like the useTtsPlayer unit tests.
+//
+// M14 (#939) moved the Book view from DesktopShell's FullBookPreviewView into
+// story/BookPreview.tsx; this suite (formerly FullBookPreview.test.tsx) keeps
+// every M11 behavioral assertion (#938) retargeted onto BookPreview.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Block, Chapter, Scene, Story } from './types';
-import { FullBookPreviewView } from './DesktopShell';
-import { READING_HIGHLIGHT_NAME } from './story/readerHighlight';
+import type { Block, Chapter, Scene, Story } from '../types';
+import BookPreview from './BookPreview';
+import { READING_HIGHLIGHT_NAME } from './readerHighlight';
 
 const NOW = '2026-07-07T00:00:00.000Z';
 
@@ -44,6 +48,10 @@ function mkStory(): Story {
     createdAt: NOW,
     updatedAt: NOW,
   };
+}
+
+function renderPreview(story: Story | null) {
+  return render(<BookPreview story={story} pageWidth={1000} onExport={() => {}} />);
 }
 
 class MockUtterance {
@@ -96,6 +104,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document.querySelector('[data-testid="ln-toast"]')?.remove();
   const g = globalThis as { CSS?: unknown; Highlight?: unknown };
   delete g.CSS;
   delete g.Highlight;
@@ -103,9 +112,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('FullBookPreviewView audiobook bar (M11)', () => {
+describe('BookPreview audiobook bar (M11)', () => {
   it('shows the persistent bar with transport, speed, voice and From start', () => {
-    render(<FullBookPreviewView story={mkStory()} />);
+    renderPreview(mkStory());
     const bar = screen.getByTestId('msv-reader-bar');
     expect(bar).toBeInTheDocument();
     expect(screen.getByTestId('msv-reader-play')).toBeInTheDocument();
@@ -119,14 +128,33 @@ describe('FullBookPreviewView audiobook bar (M11)', () => {
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Ready');
   });
 
+  it('coexists with the M14 compiled header (READ-ONLY chip + Export…)', () => {
+    renderPreview(mkStory());
+    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+    expect(screen.getByText('READ-ONLY')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /export…/i })).toBeInTheDocument();
+  });
+
   it('renders no bar without a story (empty state)', () => {
-    render(<FullBookPreviewView story={null} />);
+    renderPreview(null);
     expect(screen.queryByTestId('msv-reader-bar')).toBeNull();
+  });
+
+  it('keeps the bar on a book with nothing to read — play is a guarded no-op with a toast', () => {
+    const story = mkStory();
+    story.chapters = [mkChapter('ch1', 'The Quiet Before', 0, [])];
+    renderPreview(story);
+    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('msv-reader-play'));
+    expect(speakMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('ln-toast')).toBeInTheDocument();
+    expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Ready');
   });
 
   it('play reads the whole book from the top and highlights the sentence', async () => {
     const store = stubHighlightApi();
-    render(<FullBookPreviewView story={mkStory()} />);
+    renderPreview(mkStory());
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(spoken[0].text).toBe("Chapter 1. The Quiet Before. The Watcher's Call.");
 
@@ -134,7 +162,7 @@ describe('FullBookPreviewView audiobook bar (M11)', () => {
     expect(spoken[1].text).toBe('Mira counted the bells.');
     // Paragraph wash on the preview block…
     const block = document.querySelector('[data-fbp-block="s1-b0"]');
-    expect(block?.className).toContain('full-book-preview__block--reading');
+    expect(block?.className).toContain('book-preview__para--reading');
     // …and the exact sentence painted through the Highlight API.
     const hl = store.get(READING_HIGHLIGHT_NAME);
     expect(hl).toBeInstanceOf(FakeHighlight);
@@ -143,7 +171,7 @@ describe('FullBookPreviewView audiobook bar (M11)', () => {
 
   it('pause clears the wash and the sentence highlight', async () => {
     const store = stubHighlightApi();
-    render(<FullBookPreviewView story={mkStory()} />);
+    renderPreview(mkStory());
     const play = screen.getByTestId('msv-reader-play');
     fireEvent.click(play);
     await act(async () => { spoken[0].onend?.(new Event('end')); });
@@ -153,7 +181,7 @@ describe('FullBookPreviewView audiobook bar (M11)', () => {
     expect(cancelMock).toHaveBeenCalled();
     expect(store.has(READING_HIGHLIGHT_NAME)).toBe(false);
     expect(
-      document.querySelector('.full-book-preview__block--reading')
+      document.querySelector('.book-preview__para--reading')
     ).toBeNull();
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Paused');
   });

@@ -5,8 +5,14 @@ import { ViewToggle } from './components/ManuscriptStructure/ViewToggle';
 import type { ManuscriptViewMode } from './components/ManuscriptStructure/ViewToggle';
 import { SceneGrid } from './components/ManuscriptStructure/SceneGrid';
 import { ListView } from './components/ManuscriptStructure/ListView';
-import { BeatSheetSidebar } from './components/ManuscriptStructure/BeatSheetSidebar';
+import {
+  BeatSheetSidebar,
+  loadAssignments,
+  loadTemplateId,
+  saveTemplateId,
+} from './components/ManuscriptStructure/BeatSheetSidebar';
 import type { BeatAssignments } from './components/ManuscriptStructure/BeatSheetSidebar';
+import { getBeatTemplate, type BeatTemplateId } from './components/ManuscriptStructure/BEAT_STRUCTURE';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import './ManuscriptStructureView.css';
 
@@ -49,9 +55,28 @@ export default function ManuscriptStructureView({
   vaultRoot,
 }: ManuscriptStructureViewProps): ReactElement {
   const [viewMode, setViewMode] = useState<ManuscriptViewMode>(loadViewMode);
-  const [beatAssignments, setBeatAssignments] = useState<BeatAssignments>({});
+  // M14: assignments + template live here — single source of truth for the
+  // grid, the list AND the beat panel (Beta 3 kept a second copy inside the
+  // sidebar, so context-menu assigns never updated the mapped counts).
+  const [beatAssignments, setBeatAssignments] = useState<BeatAssignments>(() => loadAssignments(vaultRoot));
+  const [beatTemplateId, setBeatTemplateId] = useState<BeatTemplateId>(() => loadTemplateId(vaultRoot));
   const [focusedBeatId, setFocusedBeatId] = useState<string | null>(null);
   const { announce, liveText } = useLiveAnnounce();
+
+  // Reload persisted beat state when the vault changes (project switch)
+  useEffect(() => {
+    setBeatAssignments(loadAssignments(vaultRoot));
+    setBeatTemplateId(loadTemplateId(vaultRoot));
+    setFocusedBeatId(null);
+  }, [vaultRoot]);
+
+  const handleTemplateChange = useCallback((id: BeatTemplateId) => {
+    setBeatTemplateId(id);
+    saveTemplateId(vaultRoot, id);
+    setFocusedBeatId(null);
+  }, [vaultRoot]);
+
+  const beatTemplate = getBeatTemplate(beatTemplateId);
 
   // ── Drag-and-drop undo (Ctrl+Z, 1+ levels) ──
   type UndoEntry =
@@ -250,10 +275,12 @@ export default function ManuscriptStructureView({
           <div className="msv__beats-placeholder">
             <BeatSheetSidebar
               scenes={[]}
-              vaultKey={vaultRoot}
+              assignments={beatAssignments}
+              templateId={beatTemplateId}
+              onTemplateChange={handleTemplateChange}
               focusedBeatId={focusedBeatId}
               onBeatFocus={setFocusedBeatId}
-              onAssignmentsChange={setBeatAssignments}
+              onAssignScene={handleBeatAssign}
             />
           </div>
         </div>
@@ -265,6 +292,7 @@ export default function ManuscriptStructureView({
               <SceneGrid
                 story={story}
                 beatAssignments={beatAssignments}
+                template={beatTemplate}
                 focusedBeatId={focusedBeatId}
                 onSelectScene={onSelectScene}
                 onReorderScenes={handleReorderScenes}
@@ -280,19 +308,22 @@ export default function ManuscriptStructureView({
                 focusedBeatId={focusedBeatId}
                 onSelectScene={onSelectScene}
                 onReorderScenes={handleReorderScenes}
+                onMoveScene={handleMoveScene}
                 onCreateScene={onCreateScene}
                 announce={announce}
               />
             )}
           </div>
 
-          {/* ── Beat sheet sidebar ── */}
+          {/* ── Beat sheet right panel (M14: templates + drag-to-map) ── */}
           <BeatSheetSidebar
             scenes={story.chapters.flatMap((ch) => ch.scenes)}
-            vaultKey={vaultRoot}
+            assignments={beatAssignments}
+            templateId={beatTemplateId}
+            onTemplateChange={handleTemplateChange}
             focusedBeatId={focusedBeatId}
             onBeatFocus={setFocusedBeatId}
-            onAssignmentsChange={setBeatAssignments}
+            onAssignScene={handleBeatAssign}
           />
         </div>
       )}

@@ -15,12 +15,6 @@ import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
-// Beta 4 M11: the Book preview's audiobook bar + sentence highlight.
-import ReaderBar from './story/ReaderBar';
-import { useManuscriptReader } from './story/useManuscriptReader';
-import { clearReadingSentenceHighlight, setReadingSentenceHighlight } from './story/readerHighlight';
-import type { ReaderTtsSettings } from './story/readerVoices';
-import type { TtsVoicePrefs } from './hooks/useTtsPlayer';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -58,6 +52,7 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
+import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
@@ -628,245 +623,6 @@ export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onS
         )}
       </div>
     </div>
-  );
-}
-
-// ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
-// Preview-only because C5 (virtualization) has not yet landed.
-// Beta 4 M11: hosts the persistent audiobook bar (prototype Book-preview bar
-// 849–867) with a book-scoped reader + sentence highlight over the pages.
-
-interface FullBookPreviewViewProps {
-  story: Story | null;
-  ttsSettings?: ReaderTtsSettings;
-  voicePrefs?: TtsVoicePrefs;
-}
-
-/** Stable book-zoom cursor for the preview's reader flow. */
-const BOOK_PREVIEW_CURSOR: ManuscriptCursor = { zoom: 'book', part: 0, chapter: 0, scene: 0 };
-
-/** Hook-order-safe placeholder while no story is selected (empty flow). */
-const EMPTY_PREVIEW_STORY: Story = {
-  id: '__book-preview-empty',
-  title: '',
-  path: '',
-  chapters: [],
-  createdAt: '1970-01-01T00:00:00.000Z',
-  updatedAt: '1970-01-01T00:00:00.000Z',
-};
-
-export function FullBookPreviewView({ story, ttsSettings, voicePrefs }: FullBookPreviewViewProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const headerRef = useRef<HTMLHeadingElement | null>(null);
-
-  useEffect(() => {
-    headerRef.current?.focus({ preventScroll: true });
-  }, [story?.id]);
-
-  // M11: the audiobook reader — same stack as the editor's gutter card,
-  // scoped to the whole book (prototype buildFlow storySub === 'book').
-  const reader = useManuscriptReader(
-    story ?? EMPTY_PREVIEW_STORY,
-    BOOK_PREVIEW_CURSOR,
-    ttsSettings,
-    voicePrefs
-  );
-
-  // Keep the sentence being read visible and painted (§5.1).
-  const readingKey = reader.curKey;
-  const readingRange = reader.curRange;
-  useEffect(() => {
-    if (!readingKey) return;
-    const el = scrollRef.current?.querySelector<HTMLElement>(`[data-fbp-block="${readingKey}"]`);
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
-    }
-  }, [readingKey]);
-  useEffect(() => {
-    if (!readingKey || !readingRange) {
-      clearReadingSentenceHighlight();
-      return;
-    }
-    const el = scrollRef.current?.querySelector(`[data-fbp-block="${readingKey}"]`);
-    setReadingSentenceHighlight(el, readingRange.start, readingRange.end);
-    return () => clearReadingSentenceHighlight();
-  }, [readingKey, readingRange]);
-
-  const chapters = useMemo(
-    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
-    [story],
-  );
-
-  const chapterSections = useMemo(
-    () =>
-      chapters.map((ch) => ({
-        chapter: ch,
-        scenes: [...ch.scenes]
-          .sort((a, b) => a.order - b.order)
-          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
-      })),
-    [chapters],
-  );
-
-  const totalChapters = chapterSections.length;
-
-  const scrollToChapter = useCallback(
-    (idx: number) => {
-      if (!scrollRef.current || totalChapters === 0) return;
-      const wrapped = ((idx % totalChapters) + totalChapters) % totalChapters;
-      const el = scrollRef.current.querySelector<HTMLElement>(
-        `[data-chapter-idx="${wrapped}"]`,
-      );
-      el?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
-      el?.focus({ preventScroll: true });
-    },
-    [totalChapters],
-  );
-
-  if (!story) {
-    return (
-      <div className="full-book-preview-empty" role="status" aria-live="polite">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">No story selected</p>
-        <p className="full-book-preview-empty__hint">Select a story from the Editor view to read the full book.</p>
-      </div>
-    );
-  }
-
-  if (chapters.length === 0) {
-    return (
-      <div className="full-book-preview-empty" role="status">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">{story.title}</p>
-        <p className="full-book-preview-empty__hint">No chapters yet. Add chapters and scenes in the Editor view.</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-    <div
-      ref={scrollRef}
-      className="full-book-preview-wrap"
-      role="document"
-      aria-label={`Full book preview: ${story.title}`}
-    >
-      <div className="full-book-preview">
-        <header className="full-book-preview__book-header">
-          <h1
-            ref={headerRef}
-            className="full-book-preview__story-title"
-            tabIndex={-1}
-          >
-            {story.title}
-          </h1>
-          <span className="full-book-preview__readonly-badge" role="note">
-            Preview — read only
-          </span>
-          {story.synopsis && (
-            <p className="full-book-preview__synopsis">{story.synopsis}</p>
-          )}
-        </header>
-
-        {chapterSections.map(({ chapter, scenes }, idx) => (
-          <section
-            key={chapter.id}
-            className="full-book-preview__chapter"
-            aria-labelledby={`fbp-ch-${chapter.id}`}
-            tabIndex={-1}
-            data-chapter-idx={idx}
-          >
-            <h2
-              className="full-book-preview__chapter-title"
-              id={`fbp-ch-${chapter.id}`}
-            >
-              {chapter.title}
-            </h2>
-            {scenes.length === 0 ? (
-              <p className="full-book-preview__no-content">
-                — no written scenes in this chapter —
-              </p>
-            ) : (
-              scenes.map((scene, si) => {
-                const sortedBlocks = [...scene.blocks]
-                  .sort((a, b) => a.order - b.order)
-                  .filter((b) => b.content.trim());
-                return (
-                  <article
-                    key={scene.id}
-                    className="full-book-preview__scene"
-                    aria-labelledby={`fbp-sc-${scene.id}`}
-                  >
-                    <h3
-                      className="full-book-preview__scene-title"
-                      id={`fbp-sc-${scene.id}`}
-                    >
-                      {scene.title}
-                    </h3>
-                    <div className="full-book-preview__scene-body">
-                      {sortedBlocks.map((block) => (
-                        <p
-                          key={block.id}
-                          data-fbp-block={block.id}
-                          className={`full-book-preview__block full-book-preview__block--${block.type}${
-                            readingKey === block.id ? ' full-book-preview__block--reading' : ''
-                          }`}
-                        >
-                          {block.content}
-                        </p>
-                      ))}
-                    </div>
-                    {si < scenes.length - 1 && (
-                      <div
-                        className="full-book-preview__scene-sep"
-                        aria-hidden="true"
-                      >
-                        ✦ ✦ ✦
-                      </div>
-                    )}
-                  </article>
-                );
-              })
-            )}
-            <nav
-              className="full-book-preview__chapter-nav"
-              aria-label={`Navigate chapters (${idx + 1} of ${totalChapters})`}
-            >
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx - 1)}
-                aria-label="Previous chapter (wraps to last)"
-              >
-                ← Prev
-              </button>
-              <span className="full-book-preview__nav-pos" aria-hidden="true">
-                {idx + 1} / {totalChapters}
-              </span>
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx + 1)}
-                aria-label="Next chapter (wraps to first)"
-              >
-                Next →
-              </button>
-            </nav>
-          </section>
-        ))}
-
-        <footer className="full-book-preview__footer">
-          <button
-            className="full-book-preview__back-top"
-            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() })}
-            aria-label="Back to top of book"
-          >
-            ↑ Back to top
-          </button>
-        </footer>
-      </div>
-    </div>
-    {/* M11: persistent audiobook bar (prototype Book-preview bar 849–867) */}
-    <ReaderBar reader={reader} ttsSettings={ttsSettings} />
-    </>
   );
 }
 
@@ -4300,7 +4056,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const paletteCommands = useMemo(() => [
     { t: 'Toggle focus mode', sub: 'Hide chrome · just the page', run: () => toggleDistractionFree() },
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
-    { t: 'Export…', sub: 'DOCX · EPUB · Markdown', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
+    { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
     { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
@@ -4646,7 +4402,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {tourOpen && (
         <TourModal onClose={() => setTourOpen(false)} />
       )}
-      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
       {templatePickerOpen && (
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
@@ -4743,8 +4499,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'book' && (
         <div className="shell-book">
-          <FullBookPreviewView
+          {/* Beta 4 M14: compiled read-only book (page width follows the editor).
+              M11 carry-over (#938 → #939): the persistent audiobook bar moved
+              with the view into BookPreview — the tts/voice settings ride along. */}
+          <BookPreview
             story={selectedStory ?? null}
+            pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+            onExport={() => {
+              if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
+            }}
+            onOpenScene={handleOpenSceneById}
             ttsSettings={appSettings?.tts}
             voicePrefs={appSettings?.voice}
           />

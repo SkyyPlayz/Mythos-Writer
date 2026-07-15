@@ -26,6 +26,13 @@ export interface EpubInput {
   author?: string;
   language?: string;
   chapters: EpubChapter[];
+  /** Beta 4 M14 — synopsis text for the optional synopsis page. */
+  synopsis?: string;
+  /** Beta 4 M14 — compile options (both default to false = pre-M14 output). */
+  options?: {
+    includeSynopsis?: boolean;
+    sceneSeparators?: boolean;
+  };
 }
 
 // ─── HTML helpers ───
@@ -48,7 +55,15 @@ function proseToHtml(prose: string): string {
   return paragraphs.map((p) => `<p>${escapedHtml(p.replace(/\n/g, ' '))}</p>`).join('\n');
 }
 
-function sceneXhtml(sceneTitle: string, chapterTitle: string, prose: string): string {
+function sceneXhtml(
+  sceneTitle: string,
+  chapterTitle: string,
+  prose: string,
+  withSeparator = false,
+): string {
+  // Beta 4 M14 — "◆ ◆ ◆" continuation marker on scenes that follow another
+  // scene in the same chapter (export modal "Scene separators" toggle).
+  const separator = withSeparator ? '\n    <div class="scene-sep">◆ ◆ ◆</div>' : '';
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
@@ -60,8 +75,27 @@ function sceneXhtml(sceneTitle: string, chapterTitle: string, prose: string): st
 <body>
   <section epub:type="chapter">
     <h2>${escapedHtml(chapterTitle)}</h2>
-    <h3>${escapedHtml(sceneTitle)}</h3>
+    <h3>${escapedHtml(sceneTitle)}</h3>${separator}
     ${proseToHtml(prose)}
+  </section>
+</body>
+</html>`;
+}
+
+/** Beta 4 M14 — optional synopsis page (export modal "Include synopsis page"). */
+function synopsisXhtml(bookTitle: string, synopsis: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Synopsis — ${escapedHtml(bookTitle)}</title>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+  <section epub:type="preamble">
+    <h2>Synopsis</h2>
+    ${proseToHtml(synopsis)}
   </section>
 </body>
 </html>`;
@@ -156,7 +190,9 @@ ${tocItems}
 // ─── Main export ───
 
 export async function buildEpub(input: EpubInput): Promise<Buffer> {
-  const { title, author = 'Unknown', language = 'en', chapters } = input;
+  const { title, author = 'Unknown', language = 'en', chapters, synopsis, options } = input;
+  const includeSynopsis = options?.includeSynopsis === true;
+  const sceneSeparators = options?.sceneSeparators === true;
   const uid = `urn:uuid:${generateUUID()}`;
 
   const zip = new JSZip();
@@ -180,7 +216,8 @@ export async function buildEpub(input: EpubInput): Promise<Buffer> {
 h2 { font-size: 1.4em; margin-top: 2em; }
 h3 { font-size: 1.1em; font-style: italic; margin-top: 0.5em; }
 p { margin: 0.8em 0; text-indent: 1.5em; }
-p:first-of-type { text-indent: 0; }`;
+p:first-of-type { text-indent: 0; }
+.scene-sep { text-align: center; letter-spacing: .6em; margin: 1.4em 0; }`;
   zip.file('OEBPS/style.css', css);
 
   // 4. Per-scene XHTML + collect manifest / spine items
@@ -191,16 +228,26 @@ p:first-of-type { text-indent: 0; }`;
   const spineItems: SpineItem[] = [];
   const sceneFileMap = new Map<string, string>(); // sceneId → href
 
+  // Beta 4 M14 — optional synopsis page before the first scene
+  if (includeSynopsis && synopsis && synopsis.trim()) {
+    zip.file('OEBPS/synopsis.xhtml', synopsisXhtml(title, synopsis.trim()));
+    manifestItems.push({ id: 'synopsis', href: 'synopsis.xhtml', mediaType: 'application/xhtml+xml' });
+    spineItems.push({ idref: 'synopsis' });
+  }
+
   let sceneIndex = 0;
   for (const chapter of chapters) {
+    let sceneInChapter = 0;
     for (const scene of chapter.scenes) {
       const fileId = `scene-${sceneIndex}`;
       const href = `scene-${sceneIndex}.xhtml`;
       sceneFileMap.set(scene.id, href);
-      zip.file(`OEBPS/${href}`, sceneXhtml(scene.title, chapter.title, scene.prose));
+      const withSeparator = sceneSeparators && sceneInChapter > 0;
+      zip.file(`OEBPS/${href}`, sceneXhtml(scene.title, chapter.title, scene.prose, withSeparator));
       manifestItems.push({ id: fileId, href, mediaType: 'application/xhtml+xml' });
       spineItems.push({ idref: fileId });
       sceneIndex++;
+      sceneInChapter++;
     }
   }
 
