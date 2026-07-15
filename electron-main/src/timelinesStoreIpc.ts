@@ -61,7 +61,7 @@ export function handleTimelinesUpsert(
     return { ok: true, id: payload.id, store: readTimelinesStore(vaultRoot) };
   }
 
-  // Create new timeline
+  // Create new timeline (user action → source 'manual'; see TimelineItemSource)
   const id = randomUUID();
   const calendar = {
     ...DEFAULT_TIMELINE_CALENDAR,
@@ -75,6 +75,7 @@ export function handleTimelinesUpsert(
     calendar,
     createdAt: now,
     updatedAt: now,
+    source: 'manual',
   });
   writeTimelinesStore(vaultRoot, store);
   return { ok: true, id, store: readTimelinesStore(vaultRoot) };

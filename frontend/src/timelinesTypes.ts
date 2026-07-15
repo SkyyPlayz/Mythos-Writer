@@ -6,6 +6,14 @@ export type TimelineKind = 'story' | 'world' | 'universe' | 'custom';
 export type TimelineAxis = 'calendar' | 'relative';
 export type CalendarPreset = 'standard' | 'aeon-13' | 'custom';
 
+/**
+ * Provenance marker mirrored from model.ts. `'seed'` is the canonical DEMO
+ * marker (owner ruling on PR #914) — the picker renders a "Demo" badge for
+ * timelines carrying it so demo content is always distinguishable from the
+ * user's own work.
+ */
+export type TimelineItemSource = 'migration' | 'seed' | 'manual';
+
 export interface TimelineCalendar {
   preset: CalendarPreset;
   monthsPerYear: number;
@@ -21,6 +29,7 @@ export interface TimelineDefinition {
   calendar: TimelineCalendar;
   createdAt: string;
   updatedAt: string;
+  source?: TimelineItemSource;
 }
 
 export interface TimelineEvent {
@@ -30,7 +39,9 @@ export interface TimelineEvent {
   when: number;
   rowId?: string;
   sceneId?: string;
-  source?: 'migration' | 'seed' | 'manual';
+  source?: TimelineItemSource;
+  /** Legacy per-scene manifest.timeline entry carried through migration (opaque here). */
+  legacy?: unknown;
 }
 
 // M22: era / span / row item shapes (mirrors model.ts — kept `unknown[]`
@@ -42,6 +53,7 @@ export interface TimelineEra {
   startWhen: number;
   endWhen: number;
   color?: string;
+  source?: TimelineItemSource;
 }
 
 export interface TimelineSpan {
@@ -53,6 +65,7 @@ export interface TimelineSpan {
   rowId?: string;
   color?: string;
   opensTimelineId?: string;
+  source?: TimelineItemSource;
 }
 
 export interface TimelineRow {
@@ -60,6 +73,7 @@ export interface TimelineRow {
   timelineId: string;
   name: string;
   kind: 'custom' | 'arc' | 'entity';
+  source?: TimelineItemSource;
 }
 
 export interface TimelinesStore {

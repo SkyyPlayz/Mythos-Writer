@@ -48,13 +48,19 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
+/** M17: mode switching moved into the gear "View options" popover. */
+async function switchNoteMode(page: Page, mode: 'rich' | 'markdown' | 'source'): Promise<void> {
+  await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+  await expect(page.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+  await page.locator(`[data-testid="note-gear-mode-${mode}"]`).click();
+}
+
 async function openNoteInRichMode(page: Page, noteBaseName: string): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await page.locator('[data-testid^="vb-row-"]', { hasText: noteBaseName }).first().click();
-  await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
-  await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
-  await expect(page.locator('button.note-viewer-mode', { hasText: 'Rich' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+  await switchNoteMode(page, 'rich');
   await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
 }
 
@@ -103,8 +109,8 @@ test('NP-01: Notes rich mode has the shared format toolbar with a working Underl
     expect(fs.readFileSync(notePath, 'utf-8')).toContain('<u>underlined</u>');
 
     // Reopening rich mode must NOT trip the fidelity guard on our own <u> output.
-    await page.locator('button.note-viewer-mode', { hasText: 'Source' }).click();
-    await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
+    await switchNoteMode(page, 'source');
+    await switchNoteMode(page, 'rich');
     await expect(page.locator('.note-fidelity-overlay')).toHaveCount(0);
     await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
   } finally {
@@ -177,13 +183,13 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
     await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'lossless-guard' }).first().click();
-    await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
 
     // Rich is opt-in: switching onto lossy content must raise the fidelity guard.
     // W0.2 (Beta 4): YAML frontmatter is no longer flagged — it is held aside
     // verbatim and never fed to (or rendered by) the Rich editor. The table in
     // the display body still triggers the guard.
-    await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
+    await switchNoteMode(page, 'rich');
     const guard = page.locator('.note-fidelity-overlay[role="dialog"]');
     await expect(guard).toBeVisible();
     await expect(guard).not.toContainText('YAML frontmatter');
@@ -191,9 +197,126 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
 
     // Choosing the safe path keeps source mode active and the file untouched.
     await guard.locator('button', { hasText: 'Edit in Source (safe)' }).click();
-    await expect(page.locator('button.note-viewer-mode', { hasText: 'Source' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('textarea.note-viewer-editor')).toBeVisible();
+    await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(page.locator('[data-testid="note-gear-mode-source"]')).toHaveAttribute('aria-checked', 'true');
+    await page.locator('.note-gear-backdrop').click();
     expect(fs.readFileSync(notePath, 'utf-8')).toBe(lossyBody);
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M17 (Beta 4 "Refine") — note body parity
+// ---------------------------------------------------------------------------
+
+const GATE_NOTE = [
+  '---',
+  'title: The Sunken Gate',
+  'tags: [location, ruins]',
+  '---',
+  'An ancient floodgate built by a lost civilization.',
+  '',
+  '> [!legend]',
+  '> Sailors speak of a hum that rises from the depths on still nights.',
+  '',
+  '## Architecture',
+  '',
+  '- Massive stone arches encrusted with coral',
+  '',
+  '## Linked Notes',
+  '',
+  '[[Drownlight]] · [[Tide Mechanics]]',
+].join('\n');
+
+test('NP-05 (M17): header title/tags + gear menu + callout card + links block', async () => {
+  fs.writeFileSync(path.join(notesDir, 'The Sunken Gate.md'), `${GATE_NOTE}\n`);
+
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openNoteInRichMode(page, 'The Sunken Gate');
+
+    // Editable Lora title (frontmatter-backed) + tag chips with add input.
+    const title = page.locator('.note-viewer [data-testid="note-title"]');
+    await expect(title).toHaveText('The Sunken Gate');
+    await expect(page.locator('[data-testid="note-header-tag-location"]')).toBeVisible();
+    await expect(page.locator('[data-testid="note-header-tag-ruins"]')).toBeVisible();
+    const tagInput = page.locator('.note-viewer [data-testid="note-add-tag-input"]').first();
+    await tagInput.fill('ancient');
+    await tagInput.press('Enter');
+    await expect(page.locator('[data-testid="note-header-tag-ancient"]')).toBeVisible();
+    await expect
+      .poll(() => fs.readFileSync(path.join(notesDir, 'The Sunken Gate.md'), 'utf-8'))
+      .toContain('tags: [location, ruins, ancient]');
+
+    // The simple callout renders as a purple card — no fidelity guard fired.
+    await expect(page.locator('.note-fidelity-overlay')).toHaveCount(0);
+    const callout = page.locator('.note-rich-editor [data-note-callout]');
+    await expect(callout).toBeVisible();
+    await expect(callout).toHaveAttribute('data-callout-title', 'legend');
+    await expect(callout).toContainText('Sailors speak of a hum');
+
+    // Links-only paragraph is chip-styled; frontmatter never shows in Rich.
+    await expect(page.locator('.note-rich-editor p.note-links-block')).toBeVisible();
+    await expect(page.locator('.note-rich-editor .ProseMirror')).not.toContainText('title:');
+    await expect(page.locator('.note-rich-editor .ProseMirror')).not.toContainText('tags:');
+
+    // Gear menu: Markdown view shows the raw file (frontmatter included).
+    await switchNoteMode(page, 'markdown');
+    await expect(page.locator('[data-testid="note-mode-banner-markdown"]')).toBeVisible();
+    await expect(page.locator('textarea.note-viewer-editor--markdown')).toHaveValue(/title: The Sunken Gate/);
+
+    // Editing the title writes the frontmatter field through the W0.2 engine.
+    await title.click();
+    await title.press('Control+a');
+    await title.pressSequentially('The Risen Gate');
+    await title.press('Enter');
+    await expect
+      .poll(() => fs.readFileSync(path.join(notesDir, 'The Sunken Gate.md'), 'utf-8'))
+      .toContain('title: The Risen Gate');
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the note on click', async () => {
+  fs.writeFileSync(path.join(notesDir, 'Drownlight.md'), '# Drownlight\n\nA cold blue glow beneath the waves.\n');
+  fs.writeFileSync(
+    path.join(notesDir, 'Hub.md'),
+    'Resolved: [[Drownlight]]. Unresolved: [[Lost Civilization]].\n',
+  );
+
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openNoteInRichMode(page, 'Hub');
+
+    // Resolved link is styled resolved; hovering raises the preview card.
+    const resolved = page.locator('.note-viewer [data-wiki-link="Drownlight"]');
+    await expect(resolved).toBeVisible();
+    await expect(resolved).not.toHaveClass(/wiki-link-unresolved/);
+    await resolved.hover();
+    const card = page.locator('[data-testid="wiki-link-hover-preview"]');
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    await expect(card).toContainText('Drownlight');
+    await expect(card).toContainText('cold blue glow');
+    await page.mouse.move(0, 0);
+    await expect(card).toHaveCount(0);
+
+    // Unresolved link renders dashed and offers creation.
+    const unresolved = page.locator('.note-viewer [data-wiki-link="Lost Civilization"]');
+    await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
+    await unresolved.hover();
+    await expect(page.locator('[data-testid="wiki-link-hover-unresolved"]')).toBeVisible({ timeout: 5_000 });
+    await page.mouse.move(0, 0);
+
+    // Create-on-click: the note is written to the vault and opened.
+    await unresolved.click();
+    await expect(page.locator('.note-viewer-filename', { hasText: 'Lost Civilization.md' })).toBeVisible({ timeout: 8_000 });
+    expect(fs.existsSync(path.join(notesDir, 'Lost Civilization.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(notesDir, 'Lost Civilization.md'), 'utf-8')).toContain('# Lost Civilization');
   } finally {
     await app.close().catch(() => undefined);
   }

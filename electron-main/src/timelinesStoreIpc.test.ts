@@ -9,7 +9,7 @@ import {
   handleTimelinesUpsertItem,
   handleTimelinesDeleteItem,
 } from './timelinesStoreIpc.js';
-import { readTimelinesStore } from './timelines/store.js';
+import { readTimelinesStore, TIMELINES_FILENAME } from './timelines/store.js';
 import type { TimelineEra, TimelineEvent, TimelineRow, TimelineSpan } from './timelines/model.js';
 
 function makeTmp(): string {
@@ -17,11 +17,19 @@ function makeTmp(): string {
 }
 
 describe('handleTimelinesGetStore', () => {
-  it('returns seed store for a fresh vault', () => {
+  it('returns the labelled demo seed store for a fresh vault', () => {
     const dir = makeTmp();
     const res = handleTimelinesGetStore(dir, {});
     expect(res.store.schemaVersion).toBe(1);
     expect(res.store.timelines.length).toBeGreaterThan(0);
+    // Demo marker (owner ruling PR #914): every seeded timeline is labelled.
+    expect(res.store.timelines.every((t) => t.source === 'seed')).toBe(true);
+  });
+
+  it('does not persist anything to disk on a pure read', () => {
+    const dir = makeTmp();
+    handleTimelinesGetStore(dir, {});
+    expect(fs.existsSync(path.join(dir, TIMELINES_FILENAME))).toBe(false);
   });
 });
 
@@ -51,8 +59,14 @@ describe('handleTimelinesUpsert', () => {
 
   it('persists the new timeline to disk', () => {
     handleTimelinesUpsert(dir, { name: 'Persisted', kind: 'universe' });
+    expect(fs.existsSync(path.join(dir, TIMELINES_FILENAME))).toBe(true);
     const onDisk = readTimelinesStore(dir);
     expect(onDisk.timelines.some((t) => t.name === 'Persisted')).toBe(true);
+  });
+
+  it('labels user-created timelines source "manual" (distinct from the demo seed)', () => {
+    const res = handleTimelinesUpsert(dir, { name: 'Mine', kind: 'custom' });
+    expect(res.store.timelines.find((t) => t.id === res.id)?.source).toBe('manual');
   });
 });
 

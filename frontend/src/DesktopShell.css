@@ -393,51 +393,8 @@
 
 /* ─── Full Book preview (SKY-3213 C4) ─── */
 .shell-book { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-/* Beta 3 M14 restyle — prototype 602–639 (book scroll + page) with bookWrapSt
-   (renderVals 4866) and bookPSt (3887). CSS-only port: the markup lives in
-   FullBookPreviewView above. Compiled page = centered Lora-serif glass sheet;
-   chapter heads are centered slot-1 eyebrow blocks; paragraphs 15px/1.9 justified. */
-/* Beta 4 M1 (GAP P2 #11): scrollbar-color removed so the global styled scrollbar (index.css) applies. */
-.full-book-preview-wrap { flex: 1; overflow-y: auto; background: transparent; padding: 18px 26px 60px; }
-.full-book-preview { max-width: 760px; margin: 0 auto; font-family: 'Lora', Georgia, serif; color: var(--txB, #c8d3e7); background: rgba(9, 11, 20, .66); border: 1px solid rgba(255, 255, 255, .06); border-radius: 12px; box-shadow: 0 18px 60px rgba(2, 4, 10, .55); padding: 70px 76px 90px; }
-@media (max-width: 900px) { .full-book-preview { padding: 48px 32px 64px; } }
-/* Title block (prototype 617–620): centered title over a gradient divider */
-.full-book-preview__book-header { margin-bottom: 40px; padding: 40px 0 0; border-bottom: none; text-align: center; }
-.full-book-preview__story-title { font-size: 34px; font-weight: 600; color: var(--txH, #f0f3fc); margin: 0; line-height: 1.25; }
-.full-book-preview__story-title::after { content: ''; display: block; width: 130px; height: 2px; margin: 20px auto; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); opacity: .7; border-radius: 2px; }
-.full-book-preview__story-title:focus { outline: none; }
-/* READ-ONLY chip (prototype 606) */
-.full-book-preview__readonly-badge { display: inline-block; font-family: 'Inter', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 7px; background: transparent; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); color: #8e9db8; margin-bottom: 0; }
-.full-book-preview__synopsis { font-size: 14px; color: #8e9db8; font-style: italic; margin: 14px auto 0; line-height: 1.7; max-width: 480px; }
-/* W0.5 (PERFORMANCE §5): the read-only Full Book preview mounts every
-   chapter; content-visibility lets offscreen chapters skip layout+paint
-   (scrollIntoView still renders them on navigation). */
-.full-book-preview__chapter { margin-bottom: 56px; content-visibility: auto; contain-intrinsic-size: auto 1400px; }
-/* Chapter heading (prototype 629–633): centered 21px/600 under a slot-1 eyebrow */
-.full-book-preview__chapter-title { text-align: center; font-size: 21px; font-weight: 600; color: var(--txH, #eef2fb); margin: 44px 0 26px; padding-bottom: 0; border-bottom: none; line-height: 1.3; }
-.full-book-preview__chapter-title::before { content: 'Chapter'; display: block; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .26em; text-transform: uppercase; color: var(--n1, #00f0ff); margin-bottom: 6px; }
-.full-book-preview__scene { margin-bottom: 0; }
-.full-book-preview__scene-title { text-align: center; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .26em; text-transform: uppercase; color: #8e9db8; margin: 26px 0 16px; opacity: 1; }
-.full-book-preview__scene-body { display: flex; flex-direction: column; gap: 0; }
-/* Body paragraphs (bookPSt 3887): 15px/1.9 justified, 1em paragraph gap */
-.full-book-preview__block { font-family: 'Lora', Georgia, serif; font-size: 15px; line-height: 1.9; text-align: justify; color: var(--txB, #c8d3e7); margin: 0 0 1em; }
-/* Scene separator (prototype 635) */
-.full-book-preview__scene-sep { text-align: center; color: #586a88; margin: 1.8em 0; letter-spacing: 0.6em; font-size: 11px; }
-.full-book-preview__no-content { color: #7686a2; font-style: italic; font-size: 12.5px; text-align: center; }
-.full-book-preview__chapter-nav { display: flex; align-items: center; gap: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .06); font-family: 'Inter', sans-serif; }
-.full-book-preview__nav-btn { background: transparent; border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4)); color: var(--n1, #00f0ff); padding: 4px 11px; border-radius: 9px; cursor: pointer; font-size: 10.5px; font-weight: 600; transition: background 0.15s, color 0.15s; }
-.full-book-preview__nav-btn:hover { background: var(--gs1, rgba(0, 240, 255, .12)); }
-.full-book-preview__nav-btn:focus-visible { outline: 2px solid var(--n1, var(--neon-cyan)); outline-offset: 2px; }
-.full-book-preview__nav-pos { color: #8e9db8; font-size: 10.5px; flex: 1; text-align: center; }
-/* End-of-draft footer (prototype 637) */
-.full-book-preview__footer { text-align: center; margin-top: 56px; padding-top: 24px; border-top: none; font-family: 'Inter', sans-serif; }
-.full-book-preview__back-top { background: transparent; border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4)); color: var(--n1, #00f0ff); padding: 6px 16px; border-radius: 9px; cursor: pointer; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; transition: background 0.15s, color 0.15s; }
-.full-book-preview__back-top:hover { background: var(--gs1, rgba(0, 240, 255, .12)); }
-.full-book-preview__back-top:focus-visible { outline: 2px solid var(--n1, var(--neon-cyan)); outline-offset: 2px; }
-.full-book-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 64px 32px; color: var(--text-muted); }
-.full-book-preview-empty__icon { font-size: 3rem; line-height: 1; }
-.full-book-preview-empty__title { font-size: 1.1rem; font-weight: 600; color: var(--text-body); margin: 0; }
-.full-book-preview-empty__hint { font-size: 0.9rem; color: var(--text-muted); margin: 0; text-align: center; max-width: 360px; }
+/* Beta 4 M14: the compiled Book view moved to story/BookPreview.tsx (+ BookPreview.css);
+   the M11 audiobook bar (#938) moved with it — its styles live in ReaderBar.css. */
 
 .shell-entries {
   flex: 1;
@@ -1455,4 +1412,89 @@
 /* When top bar is hidden, let the content column fill the full height */
 .desktop-shell--topbar-hidden .shell-center-column {
   height: 100%;
+}
+
+/* ═══ Beta 4 M10 — Drafts v2 host chrome ═══════════════════════════════════
+   Entry points in the scene snapshot toolbar, the compare-split row wrapper
+   around the page area, and the full-diff cover. The pane/diff/popover
+   internals live in src/drafts/*.css. */
+
+.scene-drafts-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.scene-drafts-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  background: transparent;
+  color: var(--n1, #00f0ff);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-drafts-pill:hover {
+  background: var(--gs1, rgba(0, 240, 255, .12));
+  box-shadow: 0 0 14px -3px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.scene-drafts-compare-btn {
+  padding: 4px 12px;
+  background: var(--bg-control, #313244);
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-drafts-compare-btn:hover {
+  background: var(--bg-control-hover, #45475a);
+}
+
+.scene-drafts-compare-btn.is-active {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  color: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, .4));
+}
+
+/* Wrapper around the page area: transparent column normally, flex row when
+   the compare split is open (editor keeps the left, split takes the right). */
+.shell-drafts-splitrow {
+  position: relative; /* anchors .shell-drafts-diff-cover to the page area */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell-drafts-splitrow--open {
+  flex-direction: row;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* In row mode the page-mode wrap centers horizontally via margin (its
+   align-self: center would center it VERTICALLY in a row container). */
+.shell-drafts-splitrow--open > .shell-editor-beta-wrap--page-mode {
+  align-self: stretch;
+  margin: 0 auto;
+}
+
+/* Full diff cover — absolutely fills the splitrow (the page region),
+   leaving the doc header + toolbars above it usable. */
+.shell-drafts-diff-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app, #0b0d17);
 }

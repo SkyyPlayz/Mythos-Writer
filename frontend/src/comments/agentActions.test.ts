@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   AGENT_ACTIONS,
+  GUTTER_AGENT_ACTIONS,
   AGENT_ACTION_SUCCESS_TOAST,
   agentActionAvailability,
   runAgentAction,
@@ -57,9 +58,20 @@ describe('metadata', () => {
     ]);
   });
 
+  it('exposes the compact v2 gutter row: the two archive verbs, short labels', () => {
+    expect(GUTTER_AGENT_ACTIONS.map((a) => a.action)).toEqual([
+      'match_archive',
+      'suggest_story_change',
+    ]);
+    expect(GUTTER_AGENT_ACTIONS.map((a) => a.label)).toEqual(['Edit notes', 'Suggest change']);
+  });
+
   it('has toast copy for the two visible actions and silence for ignore', () => {
     expect(AGENT_ACTION_SUCCESS_TOAST.match_archive).toBeTruthy();
-    expect(AGENT_ACTION_SUCCESS_TOAST.suggest_story_change).toBeTruthy();
+    // Beta 4 M9 (v2 prototype 6772): the agent is the Writing Coach now.
+    expect(AGENT_ACTION_SUCCESS_TOAST.suggest_story_change).toBe(
+      'Suggested edit drafted — see Writing Coach'
+    );
     expect(AGENT_ACTION_SUCCESS_TOAST.ignore).toBeNull();
   });
 });
@@ -101,7 +113,7 @@ describe('runAgentAction', () => {
   it('fails without a suggestionId and does not touch the IPC', async () => {
     const res = await runAgentAction(mkComment(), 'ignore');
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/M23/);
+    expect(res.error).toMatch(/No linked suggestion/);
     expect(archiveConfirm).not.toHaveBeenCalled();
   });
 

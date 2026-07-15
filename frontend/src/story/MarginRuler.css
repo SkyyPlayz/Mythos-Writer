@@ -1,0 +1,82 @@
+/* Beta 4 M7 — Margin ruler (§5.1): ticks, end stops, glowing page-width span,
+   diamond resize handles, live px readout. */
+
+.mgr-root {
+  flex: none;
+  padding: 0 18px;
+  height: 15px;
+}
+
+.mgr-track {
+  position: relative;
+  height: 100%;
+  overflow: visible;
+}
+
+.mgr-ticks {
+  position: absolute;
+  inset: 4px 0;
+  pointer-events: none;
+}
+
+.mgr-endstop {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.32);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.mgr-span {
+  position: absolute;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 10px -1px var(--g1, rgba(0, 240, 255, 0.65));
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.mgr-handle {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--n2, #9b5fff);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 9px -1px var(--g2, rgba(155, 95, 255, 0.75));
+  cursor: ew-resize;
+  border-radius: 2px;
+}
+
+.mgr-handle:hover,
+.mgr-handle:focus-visible {
+  box-shadow: 0 0 14px -1px var(--g2, rgba(155, 95, 255, 0.9));
+}
+
+.mgr-handle:focus-visible {
+  outline: 2px solid var(--n2, #9b5fff);
+  outline-offset: 3px;
+}
+
+.mgr-readout {
+  position: absolute;
+  top: -24px;
+  transform: translateX(-100%);
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(15, 19, 33, 0.97);
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 6px 18px rgba(3, 5, 12, 0.5);
+  color: var(--n1, #00f0ff);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}

@@ -102,6 +102,34 @@ describe('NaN-guard — malformed / out-of-range when values', () => {
   });
 });
 
+describe('tick-alignment tolerance — PR #914 (raw Number.EPSILON gate was fragile)', () => {
+  it('accepts a tick value that picked up float noise from arithmetic (0.1 + 0.2)', () => {
+    // 0.1 + 0.2 === 0.30000000000000004 — off a codec multiple by ~1 ULP.
+    // The old EPSILON-relative gate rejected exactly this kind of value.
+    expect(() => decodeWhen(0.1 + 0.2, STANDARD)).not.toThrow();
+    expect(decodeWhen(0.1 + 0.2, STANDARD)).toEqual(decodeWhen(0.3, STANDARD));
+  });
+
+  it('accepts accumulated float noise from repeated addition', () => {
+    let when = 0;
+    for (let i = 0; i < 1000; i++) when += 0.1; // ≈ 100 with accumulated error
+    expect(() => decodeWhen(when, STANDARD)).not.toThrow();
+    expect(decodeWhen(when, STANDARD)).toEqual(decodeWhen(100, STANDARD));
+  });
+
+  it('accepts noisy values at large magnitudes (relative tolerance)', () => {
+    const base = 123_456_789.7;
+    const noisy = base * (1 + Number.EPSILON * 4);
+    expect(() => decodeWhen(noisy, STANDARD)).not.toThrow();
+  });
+
+  it('still rejects values meaningfully off the 0.1 grid', () => {
+    expect(() => decodeWhen(2.45, STANDARD)).toThrow(/precision/i);
+    expect(() => decodeWhen(0.05, STANDARD)).toThrow(/precision/i);
+    expect(() => decodeWhen(1.234567, STANDARD)).toThrow(/precision/i);
+  });
+});
+
 describe('encodeWhen — calendar boundary validation', () => {
   it('rejects month 0', () => {
     expect(() => encodeWhen({ year: 0, month: 0, day: 1, hour: 0 }, AEON)).toThrow(/month/i);

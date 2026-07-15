@@ -26,6 +26,13 @@ export interface DocxInput {
   title: string;
   author?: string;
   chapters: DocxChapter[];
+  /** Beta 4 M14 — synopsis text for the optional synopsis page. */
+  synopsis?: string;
+  /** Beta 4 M14 — compile options (both default to false = pre-M14 output). */
+  options?: {
+    includeSynopsis?: boolean;
+    sceneSeparators?: boolean;
+  };
 }
 
 // ─── Prose → Paragraph list ───
@@ -71,7 +78,9 @@ function proseToParagraphs(prose: string): Paragraph[] {
 // ─── Main export ───
 
 export async function buildDocx(input: DocxInput): Promise<Buffer> {
-  const { title, author = 'Unknown', chapters } = input;
+  const { title, author = 'Unknown', chapters, synopsis, options } = input;
+  const includeSynopsis = options?.includeSynopsis === true;
+  const sceneSeparators = options?.sceneSeparators === true;
 
   const children: Paragraph[] = [];
 
@@ -94,6 +103,24 @@ export async function buildDocx(input: DocxInput): Promise<Buffer> {
     );
   }
 
+  // Beta 4 M14 — optional synopsis page (export modal "Include synopsis page")
+  if (includeSynopsis && synopsis && synopsis.trim()) {
+    children.push(
+      new Paragraph({
+        text: 'Synopsis',
+        heading: HeadingLevel.HEADING_1,
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 400, after: 240 },
+      }),
+    );
+    children.push(
+      new Paragraph({
+        children: [new TextRun({ text: synopsis.trim(), italics: true })],
+        spacing: { after: 480 },
+      }),
+    );
+  }
+
   if (chapters.length === 0) {
     children.push(new Paragraph({ text: '(empty manuscript)', spacing: { after: 160 } }));
   }
@@ -108,7 +135,18 @@ export async function buildDocx(input: DocxInput): Promise<Buffer> {
       }),
     );
 
-    for (const scene of chapter.scenes) {
+    chapter.scenes.forEach((scene, si) => {
+      // Beta 4 M14 — optional "◆ ◆ ◆" separator between scenes in a chapter
+      if (si > 0 && sceneSeparators) {
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: '◆ ◆ ◆' })],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 240, after: 240 },
+          }),
+        );
+      }
+
       // Scene heading (Heading 2)
       children.push(
         new Paragraph({
@@ -120,7 +158,7 @@ export async function buildDocx(input: DocxInput): Promise<Buffer> {
 
       const paragraphs = proseToParagraphs(scene.prose);
       children.push(...paragraphs);
-    }
+    });
   }
 
   const doc = new Document({

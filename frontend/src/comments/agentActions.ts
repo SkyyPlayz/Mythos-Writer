@@ -22,7 +22,7 @@ export type AgentAction = 'match_archive' | 'suggest_story_change' | 'ignore';
 
 export interface AgentActionDef {
   action: AgentAction;
-  /** Button copy, verbatim from the prototype (825–850). */
+  /** Button copy, verbatim from the v2 prototype open card (1073–1075). */
   label: string;
 }
 
@@ -32,10 +32,20 @@ export const AGENT_ACTIONS: readonly AgentActionDef[] = [
   { action: 'ignore', label: 'Ignore' },
 ];
 
-/** Post-action toast copy (prototype actEdit/actStory toasts; ignore is silent). */
+/**
+ * Beta 4 M9 — the GUTTER card's compact action row (v2 prototype 1195–1198):
+ * only the two archive verbs, short labels; Resolve renders separately and
+ * "Ignore" lives on the open comment card only.
+ */
+export const GUTTER_AGENT_ACTIONS: readonly AgentActionDef[] = [
+  { action: 'match_archive', label: 'Edit notes' },
+  { action: 'suggest_story_change', label: 'Suggest change' },
+];
+
+/** Post-action toast copy (v2 prototype actEdit/actStory 6771–6773; ignore is silent). */
 export const AGENT_ACTION_SUCCESS_TOAST: Record<AgentAction, string | null> = {
   match_archive: 'Note updated to match the story',
-  suggest_story_change: 'Suggested edit drafted — see Writing Assistant',
+  suggest_story_change: 'Suggested edit drafted — see Writing Coach',
   ignore: null,
 };
 
@@ -61,7 +71,7 @@ export async function runAgentAction(
   action: AgentAction
 ): Promise<AgentActionResult> {
   if (!comment.suggestionId) {
-    return { ok: false, error: 'No linked suggestion — agent actions go live with M23.' };
+    return { ok: false, error: 'No linked suggestion — run a continuity scan to link one.' };
   }
   const api = window.api;
   if (typeof api?.archiveConfirm !== 'function') {
