@@ -21,6 +21,21 @@ const KIND_LABELS: Record<TimelineKind, string> = {
   custom: 'Custom',
 };
 
+/** Demo marker (owner ruling on PR #914): timelines seeded as demo content
+ *  carry `source: 'seed'` and must be visibly labelled so a user always knows
+ *  what is the demo and what is their own work. */
+function isDemo(tl: TimelineDefinition | undefined): boolean {
+  return tl?.source === 'seed';
+}
+
+function DemoBadge({ testId }: { testId: string }) {
+  return (
+    <span className="tlpicker__demo-badge" data-testid={testId} title="Demo content — replaced by your own timelines as you work">
+      Demo
+    </span>
+  );
+}
+
 export interface TimelinePickerProps {
   store: TimelinesStore;
   onSelect: (timelineId: string) => void;
@@ -81,14 +96,17 @@ export default function TimelinePicker({
         className="tlpicker__card"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`Active timeline: ${active?.name ?? 'None'}`}
+        aria-label={`Active timeline: ${active?.name ?? 'None'}${isDemo(active) ? ' (demo)' : ''}`}
         onClick={toggle}
       >
         <span className="tlpicker__icon" aria-hidden="true">
           <BarChart2 size={16} />
         </span>
         <span className="tlpicker__info">
-          <span className="tlpicker__name">{active?.name ?? 'Select timeline'}</span>
+          <span className="tlpicker__name">
+            {active?.name ?? 'Select timeline'}
+            {isDemo(active) && <DemoBadge testId="timeline-demo-badge-active" />}
+          </span>
           {active && (
             <span className="tlpicker__kind">{KIND_LABELS[active.kind]} timeline</span>
           )}
@@ -120,6 +138,7 @@ export default function TimelinePicker({
                 {KIND_ICONS[tl.kind]}
               </span>
               <span className="tlpicker__item-label">{tl.name}</span>
+              {isDemo(tl) && <DemoBadge testId={`timeline-demo-badge-${tl.id}`} />}
               {tl.id === store.activeTimelineId && (
                 <span className="tlpicker__active-dot" aria-hidden="true" />
               )}

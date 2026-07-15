@@ -158,3 +158,22 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   margin-top: 2px;
 }
+
+/* ── Demo marker (owner ruling, PR #914) ──
+   Timelines seeded as demo content (source: 'seed') carry a visible badge so
+   demo data is never mistaken for the user's own work. */
+.tlpicker__demo-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border-radius: 7px;
+  color: var(--color-warning, #e8b74a);
+  border: 1px solid currentColor;
+  background: rgba(232, 183, 74, 0.12);
+}
