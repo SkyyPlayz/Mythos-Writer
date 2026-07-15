@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import WindowChrome from './WindowChrome';
+import userEvent from '@testing-library/user-event';
+import WindowChrome, { type WindowChromeMenu } from './WindowChrome';
 
 const WC_CSS = readFileSync(resolve(process.cwd(), 'src/components/ui/WindowChrome.css'), 'utf-8');
 
@@ -254,5 +255,80 @@ describe('WindowChrome — search field', () => {
     stubApi('linux');
     await act(async () => { render(<WindowChrome onOpenPalette={() => {}} />); });
     expect(screen.getByText('Ctrl K')).toBeInTheDocument();
+  });
+});
+
+// SKY-6011/SKY-6059 — every interactive surface PR #853 added is keyboard
+// operable: Tab reaches it, Enter/Space activates it, Escape dismisses any
+// open popover and returns focus to its trigger.
+describe('WindowChrome — keyboard a11y (SKY-6059)', () => {
+  const editRun = vi.fn();
+  const menus: WindowChromeMenu[] = [
+    { label: 'Edit', items: [{ label: 'Undo', run: editRun }] },
+  ];
+
+  beforeEach(() => {
+    editRun.mockClear();
+  });
+
+  it('Tab reaches the Edit menu trigger', async () => {
+    stubApi('linux');
+    const user = userEvent.setup();
+    await act(async () => { render(<WindowChrome menus={menus} />); });
+
+    const trigger = screen.getByTestId('wc-menu-edit');
+    await act(async () => { await user.tab(); });
+    while (document.activeElement !== trigger && document.activeElement !== document.body) {
+      await act(async () => { await user.tab(); });
+    }
+    expect(trigger).toHaveFocus();
+  });
+
+  it('Enter on a focused menu trigger opens the menu', async () => {
+    stubApi('linux');
+    const user = userEvent.setup();
+    await act(async () => { render(<WindowChrome menus={menus} />); });
+
+    const trigger = screen.getByTestId('wc-menu-edit');
+    trigger.focus();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await act(async () => { await user.keyboard('{Enter}'); });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('Enter on a focused menu item activates it', async () => {
+    stubApi('linux');
+    const user = userEvent.setup();
+    await act(async () => { render(<WindowChrome menus={menus} />); });
+
+    fireEvent.click(screen.getByTestId('wc-menu-edit'));
+    const item = screen.getByRole('menuitem', { name: 'Undo' });
+    item.focus();
+    await act(async () => { await user.keyboard('{Enter}'); });
+    expect(editRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('Escape closes an open popover and returns focus to its trigger', async () => {
+    stubApi('linux');
+    const user = userEvent.setup();
+    await act(async () => { render(<WindowChrome menus={menus} />); });
+
+    const trigger = screen.getByTestId('wc-menu-edit');
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await act(async () => { await user.keyboard('{Escape}'); });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('project trigger, settings gear, and account avatar are real focusable buttons', async () => {
+    stubApi('linux');
+    await act(async () => {
+      render(<WindowChrome onOpenSettings={vi.fn()} onOpenAccount={vi.fn()} />);
+    });
+    expect(screen.getByTestId('wc-project-trigger').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('wc-settings').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('wc-avatar').tagName).toBe('BUTTON');
   });
 });
