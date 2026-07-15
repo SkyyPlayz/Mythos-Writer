@@ -31,6 +31,17 @@ export interface TimelineEvent {
   rowId?: string;
   sceneId?: string;
   source?: 'migration' | 'seed' | 'manual';
+  // ── Beta 4 M23 (§8.4) — optional story-lane fields ──
+  /** 1-based narrative chapter (plotline cards + key-event "Ch. N" line). */
+  chapter?: number;
+  /** Template beat card (dashed until replaced with a real scene). */
+  beat?: boolean;
+  /** Progress-mode written/planned split; undefined = unknown. */
+  written?: boolean;
+  /** Two-line card description (key events / plotline cards). */
+  summary?: string;
+  /** Key-event icon glyph (prototype tlEvents icons). */
+  icon?: string;
 }
 
 // M22: era / span / row item shapes (mirrors model.ts — kept `unknown[]`
@@ -59,7 +70,10 @@ export interface TimelineRow {
   id: string;
   timelineId: string;
   name: string;
-  kind: 'custom' | 'arc' | 'entity';
+  /** Beta 4 M23: 'plotline' rows are the §8.4 PLOTLINES lanes. */
+  kind: 'custom' | 'arc' | 'entity' | 'plotline';
+  /** M23: plotline dot/chip color (prototype tlPal). */
+  color?: string;
 }
 
 export interface TimelinesStore {

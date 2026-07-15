@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
-import AxisView from './AxisView';
+import AxisView, { type AxisChapterCell } from './AxisView';
 import type { TimelinesStore } from '../timelinesTypes';
 import { safeEncodeWhen } from './axis/calendarCodec';
+import { ARC_LANE, CHARACTER_LANE, THEME_LANE, WORLD_LANE } from './axis/storyLanes';
 
 const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
 
@@ -406,5 +407,302 @@ describe('AxisView — exact-time picker (§14.4 step 7)', () => {
     fireEvent.click(screen.getByTestId('ax-insp-exact'));
     expect(screen.getByTestId('etm-start-year')).toBeInTheDocument();
     expect(screen.getByTestId('etm-end-year')).toBeInTheDocument();
+  });
+});
+
+// ═══ Beta 4 M23 — lane rows + Progress/Structure (§8.4) ═══
+
+/** Story-lane fixture: arcs / characters / world / themes / one plotline with
+ *  a beat card, plus a flashback pair on the KEY EVENTS row. */
+function makeStoryLanesStore(): TimelinesStore {
+  const base = makeStore({
+    spans: [
+      { id: 'book-1', timelineId: 'tl-story', name: 'Book One', startWhen: 0, endWhen: 432 },
+      { id: 'book-2', timelineId: 'tl-story', name: 'Book Two', startWhen: 432, endWhen: 864 },
+      { id: 'arc-1', timelineId: 'tl-story', name: 'I. The Call', startWhen: 0, endWhen: 400, rowId: ARC_LANE },
+      { id: 'char-1', timelineId: 'tl-story', name: 'Mira', startWhen: 0, endWhen: 800, rowId: CHARACTER_LANE },
+      { id: 'char-2', timelineId: 'tl-story', name: 'Kael', startWhen: 100, endWhen: 864, rowId: CHARACTER_LANE },
+    ],
+    rows: [
+      { id: 'pl-1', timelineId: 'tl-story', name: 'Main Plot', kind: 'plotline', color: '#00f0ff' },
+    ],
+    events: [
+      { id: 'ev-early', timelineId: 'tl-story', name: 'Early', when: 100, chapter: 1 },
+      { id: 'ev-flash', timelineId: 'tl-story', name: 'The Crown of Ash', when: 50, chapter: 31, summary: 'The truth of the royal line.' },
+      { id: 'ev-late', timelineId: 'tl-story', name: 'Late', when: 800, chapter: 40 },
+      { id: 'ev-world', timelineId: 'tl-story', name: 'Festival of Lanterns', when: 300, rowId: WORLD_LANE },
+      { id: 'ev-theme', timelineId: 'tl-story', name: 'Trust & Betrayal', when: 0, rowId: THEME_LANE },
+      { id: 'card-1', timelineId: 'tl-story', name: 'Opening Image', when: 40, rowId: 'pl-1', chapter: 1, beat: true },
+    ],
+  });
+  return base;
+}
+
+const CHAPTERS: AxisChapterCell[] = Array.from({ length: 4 }, (_, i) => ({
+  id: `ch-${i + 1}`,
+  label: `Chapter ${i + 1}`,
+  written: i < 2,
+  isHere: i === 1,
+}));
+
+describe('AxisView — M23 story rows render from timelines.json', () => {
+  let store: TimelinesStore;
+  beforeEach(() => {
+    store = makeStoryLanesStore();
+    setupApi(store);
+  });
+
+  it('renders ARCS, CHARACTERS, WORLD, THEMES and PLOTLINES rows on a story timeline', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    expect(screen.getByTestId('ax-arc-arc-1')).toHaveTextContent('I. The Call');
+    expect(screen.getByTestId('ax-char-char-1')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-world-ev-world')).toHaveTextContent('Festival of Lanterns');
+    expect(screen.getByTestId('ax-theme-ev-theme')).toHaveTextContent('Trust & Betrayal');
+    expect(screen.getByTestId('ax-plotlane-pl-1')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-plotcard-card-1')).toHaveTextContent('Opening Image');
+    // row labels + sublabels
+    expect(screen.getByText('ARCS')).toBeInTheDocument();
+    expect(screen.getByText('CHAPTERS')).toBeInTheDocument();
+    expect(screen.getByText('PLOTLINES')).toBeInTheDocument();
+    expect(screen.getByText('TOGGLE IN LEFT PANEL')).toBeInTheDocument();
+    expect(screen.getByText('CHARACTERS')).toBeInTheDocument();
+    expect(screen.getByText('LIFESPANS · APPEARANCES')).toBeInTheDocument();
+    expect(screen.getByText('WORLD')).toBeInTheDocument();
+    expect(screen.getByText('THEMES')).toBeInTheDocument();
+  });
+
+  it('story-lane items never leak into the KEY EVENTS row', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    expect(screen.getByTestId('ax-event-ev-early')).toBeInTheDocument();
+    expect(screen.queryByTestId('ax-event-ev-world')).toBeNull();
+    expect(screen.queryByTestId('ax-event-ev-theme')).toBeNull();
+    expect(screen.queryByTestId('ax-event-card-1')).toBeNull();
+  });
+
+  it('world / universe timelines keep only the M22 rows (prototype tlIsStoryTl)', () => {
+    const worldStore = { ...store, activeTimelineId: 'tl-world' };
+    setupApi(worldStore);
+    render(<AxisView store={worldStore} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    expect(screen.getByText('SPANS & STORIES')).toBeInTheDocument();
+    expect(screen.queryByText('ARCS')).toBeNull();
+    expect(screen.queryByText('CHAPTERS')).toBeNull();
+    expect(screen.queryByText('PLOTLINES')).toBeNull();
+    expect(screen.queryByText('THEMES')).toBeNull();
+  });
+
+  it('characters get one lane each — never stacked together (§8.3)', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    const row = screen.getByTestId('ax-chars-row');
+    expect(row.getAttribute('data-lane-count')).toBe('2');
+    expect(row.style.height).toBe(`${2 * 20 + 2}px`);
+    expect(screen.getByTestId('ax-char-char-1').getAttribute('data-lane')).toBe('0');
+    expect(screen.getByTestId('ax-char-char-2').getAttribute('data-lane')).toBe('1');
+  });
+
+  it('chapter minis plot by date with tooltips; beat chips render dashed', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    const minis = screen.getAllByTestId('ax-chapter');
+    expect(minis).toHaveLength(4);
+    expect(minis[0].getAttribute('title')).toMatch(/^Chapter 1 · Y/);
+    const chip = screen.getByTestId('ax-plotcard-card-1');
+    expect(chip.getAttribute('data-beat')).toBe('true');
+    expect(chip.style.border).toContain('dashed');
+  });
+
+  it('computes the FLASHBACK badge from chronology ≠ narrative', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    expect(screen.getByTestId('ax-flash-ev-flash')).toHaveTextContent('FLASHBACK');
+    expect(screen.queryByTestId('ax-flash-ev-early')).toBeNull();
+    expect(screen.queryByTestId('ax-flash-ev-late')).toBeNull();
+  });
+
+  it('hiddenPlotlines removes the plotline lane live', () => {
+    const { rerender } = render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />,
+    );
+    expect(screen.getByTestId('ax-plotlane-pl-1')).toBeInTheDocument();
+    rerender(
+      <AxisView
+        store={store}
+        onStoreChange={() => {}}
+        chapters={CHAPTERS}
+        hiddenPlotlines={new Set(['pl-1'])}
+      />,
+    );
+    expect(screen.queryByTestId('ax-plotlane-pl-1')).toBeNull();
+  });
+
+  it('clicking a plotline chip selects it into the inspector as a Plotline card', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    fireEvent.click(screen.getByTestId('ax-plotcard-card-1'));
+    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+    expect(screen.getByText('Plotline card')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-insp-title')).toHaveValue('Opening Image');
+  });
+});
+
+describe('AxisView — M23 Show filter + book focus (filters regroup live)', () => {
+  let store: TimelinesStore;
+  beforeEach(() => {
+    store = makeStoryLanesStore();
+    setupApi(store);
+  });
+
+  it('Written Only / Planned Only split the KEY EVENTS row on the current position', () => {
+    const { rerender } = render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} showFilter="Written Only" />,
+    );
+    // here = end of Chapter 2 of 4 → mid-axis; early events written, late planned.
+    expect(screen.getByTestId('ax-event-ev-early')).toBeInTheDocument();
+    expect(screen.queryByTestId('ax-event-ev-late')).toBeNull();
+    rerender(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} showFilter="Planned Only" />,
+    );
+    expect(screen.queryByTestId('ax-event-ev-early')).toBeNull();
+    expect(screen.getByTestId('ax-event-ev-late')).toBeInTheDocument();
+  });
+
+  it('book focus hides events outside the focused book and dims the other books', () => {
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} bookFocus="book-1" />,
+    );
+    expect(screen.getByTestId('ax-event-ev-early')).toBeInTheDocument();
+    expect(screen.queryByTestId('ax-event-ev-late')).toBeNull(); // when 800 > book-1 end
+    expect(screen.getByTestId('ax-span-book-2').style.opacity).toBe('0.28');
+    expect(screen.getByTestId('ax-span-book-1').style.opacity).not.toBe('0.28');
+  });
+});
+
+describe('AxisView — M23 Progress mode extras', () => {
+  let store: TimelinesStore;
+  beforeEach(() => {
+    store = makeStoryLanesStore();
+    setupApi(store);
+  });
+
+  it('progress mode greys planned items with the exact prototype filter', () => {
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" />,
+    );
+    // Unwritten chapter 3 greys; written chapter 1 does not.
+    const minis = screen.getAllByTestId('ax-chapter');
+    expect(minis[2].style.filter).toBe('grayscale(.92) brightness(.82)');
+    expect(minis[2].style.opacity).toBe('0.55');
+    expect(minis[0].style.filter).toBe('');
+    // The planned late event greys too.
+    expect(screen.getByTestId('ax-event-ev-late').style.filter).toContain('grayscale');
+    expect(screen.getByTestId('ax-event-ev-early').style.filter).toBe('');
+  });
+
+  it('structure mode never greys (identical minus progress styling)', () => {
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="structure" />,
+    );
+    for (const mini of screen.getAllByTestId('ax-chapter')) {
+      expect(mini.style.filter).toBe('');
+    }
+    expect(screen.queryByTestId('ax-chapter-here')).toBeNull();
+  });
+
+  it('shows the you-are-here ring only in progress mode', () => {
+    const { rerender } = render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" />,
+    );
+    const here = screen.getAllByTestId('ax-chapter')[1];
+    expect(here.getAttribute('data-here')).toBe('true');
+    expect(here.getAttribute('title')).toMatch(/^You are here — Chapter 2/);
+    rerender(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="structure" />,
+    );
+    expect(screen.getAllByTestId('ax-chapter')[1].getAttribute('data-here')).toBeNull();
+  });
+
+  it('Today selects the event nearest the current position and toasts', async () => {
+    const { rerender } = render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={0} />,
+    );
+    rerender(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={1} />,
+    );
+    await flush();
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Jumped to today — Chapter 2');
+    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+  });
+
+  it('Today explains itself when nothing is written yet', async () => {
+    const { rerender } = render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={[]} mode="progress" todaySignal={0} />,
+    );
+    rerender(
+      <AxisView store={store} onStoreChange={() => {}} chapters={[]} mode="progress" todaySignal={1} />,
+    );
+    await flush();
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Nothing written yet');
+  });
+});
+
+describe('AxisView — M23 story-lane adds persist to the store', () => {
+  let store: TimelinesStore;
+  let api: ReturnType<typeof setupApi>;
+  beforeEach(() => {
+    store = makeStoryLanesStore();
+    api = setupApi(store);
+  });
+
+  it('the ARCS + plots an arc span on the arc lane', async () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    fireEvent.click(screen.getByTestId('ax-add-arc'));
+    await flush();
+    const call = api.timelinesUpsertItem.mock.calls[0][0];
+    expect(call.type).toBe('span');
+    expect(call.item.rowId).toBe(ARC_LANE);
+    expect(call.item.name).toBe('New Arc');
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Added — edit it in the inspector');
+  });
+
+  it('the CHARACTERS + plots a lifespan on the character lane', async () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    fireEvent.click(screen.getByTestId('ax-add-char'));
+    await flush();
+    const call = api.timelinesUpsertItem.mock.calls[0][0];
+    expect(call.type).toBe('span');
+    expect(call.item.rowId).toBe(CHARACTER_LANE);
+  });
+
+  it('the WORLD + adds a dated world event; THEMES + adds a theme', async () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    fireEvent.click(screen.getByTestId('ax-add-world'));
+    await flush();
+    expect(api.timelinesUpsertItem.mock.calls[0][0].item.rowId).toBe(WORLD_LANE);
+    fireEvent.click(screen.getByTestId('ax-add-theme'));
+    await flush();
+    expect(api.timelinesUpsertItem.mock.calls.at(-1)?.[0].item.rowId).toBe(THEME_LANE);
+  });
+
+  it('world chips drag-move only (rough placement toast)', async () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    mockRowRect('ax-world-row');
+    fireEvent.mouseDown(screen.getByTestId('ax-world-ev-world'), { button: 0, clientX: 100 });
+    fireEvent.mouseMove(window, { clientX: 300 });
+    fireEvent.mouseUp(window);
+    await flush();
+    const call = api.timelinesUpsertItem.mock.calls[0][0];
+    expect(call.type).toBe('event');
+    expect(call.item.id).toBe('ev-world');
+    expect(call.item.when).toBeGreaterThan(300);
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Rough time set');
+  });
+
+  it('arc edges resize like every span-like (universal manipulation)', async () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    mockRowRect('ax-arcs-row');
+    fireEvent.mouseDown(screen.getByTestId('ax-rz-r-arc-1'), { button: 0, clientX: 400 });
+    fireEvent.mouseMove(window, { clientX: 500 });
+    fireEvent.mouseUp(window);
+    await flush();
+    const call = api.timelinesUpsertItem.mock.calls[0][0];
+    expect(call.item.id).toBe('arc-1');
+    expect(call.item.startWhen).toBe(0);
+    expect(call.item.endWhen).toBeGreaterThan(400);
   });
 });

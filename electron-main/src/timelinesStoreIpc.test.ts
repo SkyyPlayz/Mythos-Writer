@@ -181,3 +181,70 @@ describe('handleTimelinesDeleteItem', () => {
     expect(detached?.rowId).toBeUndefined();
   });
 });
+
+// ─── Beta 4 M23: plotline rows + story-lane event fields ───
+
+describe('M23 — plotline rows and story-lane event fields', () => {
+  let dir: string;
+  let timelineId: string;
+  beforeEach(() => {
+    dir = makeTmp();
+    timelineId = readTimelinesStore(dir).activeTimelineId;
+  });
+
+  it('upserts a plotline row with a color', () => {
+    const row: TimelineRow = { id: 'row:pl', timelineId, name: 'Main Plot', kind: 'plotline', color: '#00f0ff' };
+    const res = handleTimelinesUpsertItem(dir, { type: 'row', item: row });
+    expect(res.ok).toBe(true);
+    const onDisk = readTimelinesStore(dir).rows.find((r) => r.id === 'row:pl');
+    expect(onDisk?.kind).toBe('plotline');
+    expect(onDisk?.color).toBe('#00f0ff');
+  });
+
+  it('persists plotline cards (chapter/beat/summary/icon) round-trip', () => {
+    const row: TimelineRow = { id: 'row:pl2', timelineId, name: 'Save the Cat', kind: 'plotline' };
+    handleTimelinesUpsertItem(dir, { type: 'row', item: row });
+    const card: TimelineEvent = {
+      id: 'ev:beat', timelineId, name: 'Opening Image', when: 2.4,
+      rowId: 'row:pl2', chapter: 1, beat: true, written: false,
+      summary: 'Save the Cat beat — replace with your scene.', icon: '✦',
+      source: 'manual',
+    };
+    const res = handleTimelinesUpsertItem(dir, { type: 'event', item: card });
+    expect(res.ok).toBe(true);
+    const onDisk = readTimelinesStore(dir).events.find((e) => e.id === 'ev:beat');
+    expect(onDisk).toMatchObject({
+      chapter: 1, beat: true, written: false, icon: '✦',
+      summary: 'Save the Cat beat — replace with your scene.',
+    });
+  });
+
+  it('rejects malformed story-lane fields (NaN chapter, non-bool beat)', () => {
+    const bad1 = { id: 'ev:badch', timelineId, name: 'X', when: 1, chapter: NaN } as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad1 }).ok).toBe(false);
+    const bad2 = { id: 'ev:badch2', timelineId, name: 'X', when: 1, chapter: 0 } as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad2 }).ok).toBe(false);
+    const bad3 = { id: 'ev:badbeat', timelineId, name: 'X', when: 1, beat: 'yes' } as unknown as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad3 }).ok).toBe(false);
+    expect(readTimelinesStore(dir).events.some((e) => e.id.startsWith('ev:bad'))).toBe(false);
+  });
+
+  it('deleting a plotline row deletes its cards outright', () => {
+    const row: TimelineRow = { id: 'row:pl3', timelineId, name: 'Main Plot', kind: 'plotline' };
+    handleTimelinesUpsertItem(dir, { type: 'row', item: row });
+    const card: TimelineEvent = { id: 'ev:card', timelineId, name: 'Beat', when: 5, rowId: 'row:pl3', beat: true };
+    handleTimelinesUpsertItem(dir, { type: 'event', item: card });
+
+    const res = handleTimelinesDeleteItem(dir, { type: 'row', id: 'row:pl3' });
+    expect(res.ok).toBe(true);
+    const onDisk = readTimelinesStore(dir);
+    expect(onDisk.rows.some((r) => r.id === 'row:pl3')).toBe(false);
+    // Cards are deleted, not orphaned into the KEY EVENTS row.
+    expect(onDisk.events.some((e) => e.id === 'ev:card')).toBe(false);
+  });
+
+  it('still rejects unknown row kinds', () => {
+    const row = { id: 'row:bad', timelineId, name: 'X', kind: 'nonsense' } as unknown as TimelineRow;
+    expect(handleTimelinesUpsertItem(dir, { type: 'row', item: row }).ok).toBe(false);
+  });
+});
