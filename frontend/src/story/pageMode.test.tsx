@@ -59,6 +59,19 @@ describe('pageModeChrome', () => {
     expect(c.sheetStyle.padding).toBe('76px 96px 96px');
   });
 
+  it("renders the 'custom' texture branch cover-fit when a textureUrl is set (M7 §5.1)", () => {
+    const c = pageModeChrome(cfg({ mode: 'custom', textureUrl: 'file:///tmp/parchment.png' }));
+    expect(c.mode).toBe('custom');
+    expect(c.sheetStyle.background).toBe("url('file:///tmp/parchment.png') center / cover no-repeat");
+    expect(c.sheetStyle.backdropFilter).toBe('none');
+    expect(c.sheetStyle.padding).toBe('64px 84px 90px');
+  });
+
+  it("falls back to the flat page background when 'custom' has no textureUrl yet", () => {
+    const c = pageModeChrome(cfg({ mode: 'custom', op: 50 }));
+    expect(c.sheetStyle.background).toBe('rgba(10,13,24,0.500)');
+  });
+
   it('omits the per-mode padding when includePadding is false (scene page keeps its own)', () => {
     const c = pageModeChrome(cfg({ mode: 'scroll' }), { includePadding: false });
     expect(c.sheetStyle.padding).toBeUndefined();
