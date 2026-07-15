@@ -24,13 +24,11 @@ paths) was fixed inside #953. `e2e/mythos-migration.spec.ts` and
 
 | PR | What | State | Action for pickup |
 |----|------|-------|-------------------|
-| #914 | M21 timeline model | Ivy's hold **fixed** on-branch (4 commits thru `68e1c51`: real-manifest reads, wired migration + SKY-6626 note, atomic writes+backup, one-store reroute, labelled Demo seed w/ visible badge, VR baselines net-zero vs main) | Await Ivy re-review; she was pinged. Merge FIRST in the timeline chain |
-| #951 | M22 axis engine (base m21) | **Updated**: fixed m21 merged in + validated (tip `0a78843`) | Merge after #914 |
-| #957 | M23 lane rows (base m22) | ⚠️ **NEEDS the m22 merge-up** (see Unfinished work) | Merge after #951; watch its shard-4 |
-| #917 | M15 agent hub | Ivy's hold **fixed** (`96de6a1`: findSessionFile lookup kills the wrong-file delete; 17 handler tests incl. the B1 regression pair; ci.yml hunk dropped; dead effect removed). Ivy pinged | Merge first in the coach chain |
+| #951 | M22 axis engine | **Deduped vs main post-#914** (tip `0866dc2`, diff M22-only, timeline e2e 14/14); Ivy pinged | Merge next (her stated order) |
+| #957 | M23 lane rows (base m22) | **Merged up** (tip `be38d93`, diff = 17 M23 files, e2e 15/15; toast locators hardened) | Merge after #951 |
 | #952 | M12 Coach page (base m15) | Fix cascaded in (`692120b`, incl. `agentSession:read` moved to `agentSessionsIpc.ts`); fully validated | Merge after #917 |
 | #956 | M13 scene analysis (base m12) | Fix cascaded in (`cde920b`); validated | Merge after #952 |
-| #955 | M26 vault graph | 🔴 **Ivy HOLD** (13:0xZ comment): the correct click-contract change breaks 3 tests in `e2e/wiki-links.spec.ts` (dead in CI) + swap `deriveNodeBlurb` onto `stripHiddenBlocks` | Apply her prescription (4 name queries `Open→Select`, single-click at :249 → new contract, blurb one-engine swap), run wiki-links e2e, push, ping her |
+| #955 | M26 vault graph | Hold **fixed** (`a8ac329`: wiki-links spec on the new contract, blurb via stripHiddenBlocks + kanban-leak test); **all checks green**; Ivy pinged | Merge on her re-review |
 | #943 | SKY-3223 auto-update e2e salvage | Green, unwired spec + docs only | Merge any time |
 | #958 | M20 brainstorm unification (base m15) | Built on the FIXED m15 tip; B4-4 migration test-first | Merge after #917; then run the `brainstorm-chat` VR baseline loop (its PR predicts the trip) |
 | #959 | M28 settings workspace | B4-6/8/10 compliant; `settings-panel` VR trip predicted | Review, run the VR baseline loop on its branch, merge; unblocks M29 |
@@ -40,22 +38,13 @@ force-push (three PRs hang off these branches). When a base PR squash-merges
 to main and its branch is deleted, GitHub retargets the child PR to main —
 then merge main in once to deduplicate the diff.
 
-## Unfinished work (session limit hit ~13:10Z; resets 15:30 UTC)
+## Session-limit gap: resolved
 
-The agent fleet died at the session token limit. Two items were cut short:
-
-1. **m22 → m23 merge-up (#957)**: merge `origin/claude/beta4-m22` (`0a78843`,
-   which now contains the fixed m21 + main) into `claude/beta4-m23`, resolve
-   (expect touch-ups in M23's hand-built fixtures for the stricter validation:
-   rows need `timelineId`, closed `source` vocabulary, duplicate-id checks in
-   every kind; `timelinesTypes.ts` overlaps), validate fully, push (merge, NO
-   force). Steps 0–1 of this cascade are done and pushed (m21 `16a4988`
-   mergeable vs main; m22 `0a78843` validated).
-2. **#955 hold fix**: the M26 fix agent died mid-work (worktree `wt-m26`,
-   nothing pushed). Ivy's hold comment on #955 has the exact prescription;
-   note its last observation — in its harness re-run "neither click reached
-   the node", so start by rebuilding the harness overlay with a FRESH build
-   before trusting any e2e result (see stale-harness warning below).
+Both items cut short by the earlier session limit are now DONE: the m22→m23
+merge-ups landed validated (tips `0866dc2`/`be38d93`), and #955's hold fix is
+pushed and green (`a8ac329`). Merged since the first edition of this map:
+#914 (M21, with Ivy's SKY-6626 sign-off) and #917 (M15). In flight: the
+main-dedupe merges for #952/#956/#958 (coach/brainstorm chains).
 
 All five milestone builders delivered (#955 #956 #957 #958 #959).
 

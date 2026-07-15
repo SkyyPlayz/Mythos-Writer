@@ -552,13 +552,13 @@ Accept: every §14 item checked off in the PR description with evidence.
 | M12 | Coach page | 3 | M5, M15 | 🔀 in PR (stacked on #917) | #952 |
 | M13 | Scene Analysis | 3 | M12 | 🔀 in PR (stacked on #952) | #956 |
 | M14 | Structure & Book/Export | 3 | M7 | ✅ merged | #939 |
-| M15 | Agent hub + sessions | 3 | M5 | 🔀 in PR | #917 |
+| M15 | Agent hub + sessions | 3 | M5 | ✅ merged | #917 |
 | M16 | Notes explorer parity | 4 | M5 | ✅ merged | #920 |
 | M17 | Note body + wiki links | 4 | M6, M16 | ✅ merged | #940 |
 | M18 | Notes right panel | 4 | M15, M16 | ⏳ | |
 | M19 | Scene Crafter refresh | 5 | M5, M12 | ⏳ | |
 | M20 | Brainstorm unification | 5 | M5, M15 | 🔀 in PR (stacked on #917) | #958 |
-| M21 | Timeline model + calendars | 6 | M5 | 🔀 in PR | #914 |
+| M21 | Timeline model + calendars | 6 | M5 | ✅ merged | #914 |
 | M22 | Axis engine | 6 | M21 | 🔀 in PR (stacked on #914) | #951 |
 | M23 | Lane rows + Progress | 6 | M22 | 🔀 in PR (stacked on #951) | #957 |
 | M24 | Remaining modes | 6 | M23 | ⏳ | |
