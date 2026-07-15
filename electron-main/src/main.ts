@@ -1730,13 +1730,17 @@ const handlers: IpcHandlers = {
   },
 
   // ─── Timeline (SKY-2463) ───
+  // SKY-6306 unification: these legacy channels are compatibility views over
+  // the M21 TimelinesStore (timelines.json) — see timelineIpc.ts. They take
+  // the vault root; the manifest path is resolved internally for the scene
+  // lookup only.
   [IPC_CHANNELS.TIMELINE_LIST]: (_payload: TimelineListPayload) => {
     ensureVaultDir();
-    return handleTimelineList(getManifestPath());
+    return handleTimelineList(getVaultRoot());
   },
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => {
     ensureVaultDir();
-    return handleTimelineUpsert(getManifestPath(), payload);
+    return handleTimelineUpsert(getVaultRoot(), payload);
   },
 
   // MYT-319 — Archive Agent infers scene chronology without LLM calls
