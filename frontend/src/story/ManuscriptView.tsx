@@ -53,6 +53,7 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+import CommentOpenCard from './CommentOpenCard';
 import ParagraphRow from './ParagraphRow';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
@@ -800,9 +801,22 @@ export default function ManuscriptView({
   }, []);
 
   // Anchored underlines open (not toggle) their card — stable for ParagraphRow.
-  const handleOpenComment = useCallback((id: string | null) => {
-    setOpenCommentId(id);
-  }, []);
+  // M9 (v2 prototype seg pick 4664): opening a comment dismisses a pending
+  // selection composer ({ cOpen: sg.cid, cSel: null }).
+  const handleOpenComment = useCallback(
+    (id: string | null) => {
+      setOpenCommentId(id);
+      clearSelectionBar();
+    },
+    [clearSelectionBar]
+  );
+
+  // M9: the open comment card (v2 prototype cOpenData 6502) — the open id
+  // resolved against the live list, so resolving/removing closes the card.
+  const openComment = useMemo(
+    () => (openCommentId ? comments.find((c) => c.id === openCommentId) ?? null : null),
+    [openCommentId, comments]
+  );
 
   // M23: click an auto-link hint → replace the mention with its [[wiki link]].
   const handleApplyAutoLink = useCallback(
@@ -1348,6 +1362,17 @@ export default function ManuscriptView({
               onRead={handleReadSelection}
             />
           )}
+          {/* M9: open comment card (v2 prototype cOpenData 1063–1085) */}
+          {openComment && (
+            <CommentOpenCard
+              comment={openComment}
+              onClose={() => setOpenCommentId(null)}
+              onResolve={handleResolveComment}
+              onAgentAction={handleAgentAction}
+              commentsInFocus={commentsInFocus}
+              onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
+            />
+          )}
           <div className="msv-sheet-wrap" style={sheetWrapStyle}>
             <div
               className="msv-sheet"
@@ -1408,8 +1433,6 @@ export default function ManuscriptView({
             onToggleOpen={handleToggleOpenComment}
             onResolve={handleResolveComment}
             onAgentAction={handleAgentAction}
-            commentsInFocus={commentsInFocus}
-            onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
             readerSlot={
               reader.open ? <ReaderCard reader={reader} ttsSettings={ttsSettings} /> : null
             }
