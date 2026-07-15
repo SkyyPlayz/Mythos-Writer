@@ -1,7 +1,8 @@
-// Beta 3 M11 — comments integration in ManuscriptView: selection bar flow,
-// anchored underlines, gutter dock, comments chip, focus-mode override, and
-// the agent-action IPC dispatch. (Core M9 behavior is covered in
-// ManuscriptView.test.tsx; this file only exercises the comments layer.)
+// Beta 4 M9 — comments integration in ManuscriptView: selection bar flow,
+// anchored underlines, gutter dock, the open comment card (v2 prototype
+// cOpenData), comments chip, focus-mode override, and the agent-action IPC
+// dispatch. (Core editing behavior is covered in ManuscriptView.test.tsx;
+// this file only exercises the comments layer.)
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -201,13 +202,42 @@ describe('gutter dock + anchored underlines', () => {
     expect(cards[1]).toHaveAttribute('data-testid', `msv-cmt-${late!.id}`);
   });
 
-  it('clicking an anchored underline expands its gutter card', () => {
+  it('clicking an anchored underline expands its gutter card and opens the comment card', () => {
     renderView();
     const created = addComment('another story', 'strong closer');
     const card = screen.getByTestId(`msv-cmt-${created!.id}`);
     expect(card).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('msv-copen')).toBeNull();
     fireEvent.click(screen.getByTestId(`msv-anchor-${created!.id}`));
     expect(card).toHaveAttribute('aria-expanded', 'true');
+    // M9: the v2 open comment card appears over the page (cOpenData 1063).
+    const open = screen.getByTestId('msv-copen');
+    expect(open).toHaveTextContent('strong closer');
+    expect(open).toHaveTextContent('on “another story”');
+    fireEvent.click(screen.getByTestId('msv-copen-close'));
+    expect(screen.queryByTestId('msv-copen')).toBeNull();
+    expect(card).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('opening a comment from its anchor dismisses a pending selection composer', () => {
+    renderView();
+    const created = addComment('another story', 'strong closer');
+    mockSelection('counted the bells');
+    fireEvent.mouseUp(screen.getByTestId('msv-page'));
+    expect(screen.getByTestId('msv-selbar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(`msv-anchor-${created!.id}`));
+    expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    expect(screen.getByTestId('msv-copen')).toBeInTheDocument();
+  });
+
+  it('Resolve on the open card removes the comment and closes the card', () => {
+    renderView();
+    const created = addComment('another story', 'strong closer');
+    fireEvent.click(screen.getByTestId(`msv-anchor-${created!.id}`));
+    fireEvent.click(screen.getByTestId('msv-copen-resolve'));
+    expect(commentsStore.list('story-1')).toHaveLength(0);
+    expect(screen.queryByTestId('msv-copen')).toBeNull();
+    expect(screen.queryByTestId('msv-gutter')).toBeNull();
   });
 
   it('Resolve removes the comment, its card and its underline', () => {
@@ -237,6 +267,22 @@ describe('gutter dock + anchored underlines', () => {
     expect(card?.className).toContain('msv-cmt--archive');
     const anchor = screen.getByTestId(`msv-anchor-${commentsStore.list('story-1')[0].id}`);
     expect(anchor.className).toContain('msv-anchor--archive');
+  });
+
+  it('writing-kind comments default to the Writing Coach author (v2 kMeta2)', () => {
+    renderView();
+    act(() => {
+      commentsStore.create({
+        storyId: 'story-1',
+        sceneId: 's1',
+        anchor: 'Getting out would be another story.',
+        text: 'Strong closer — consider landing it even harder.',
+        kind: 'writing',
+      });
+    });
+    const card = screen.getByTestId('msv-gutter').querySelector('.msv-cmt');
+    expect(card).toHaveTextContent('Writing Coach');
+    expect(card?.className).toContain('msv-cmt--writing');
   });
 });
 
@@ -271,6 +317,38 @@ describe('agent actions from the gutter', () => {
     );
   });
 
+  it('dispatches from the open card too (full v2 labels incl. Ignore)', async () => {
+    const archiveConfirm = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, 'api', {
+      value: { archiveConfirm },
+      writable: true,
+      configurable: true,
+    });
+    renderView();
+    let id = '';
+    act(() => {
+      id = commentsStore.create({
+        storyId: 'story-1',
+        sceneId: 's1',
+        anchor: 'trembling circle',
+        text: 'Continuity flag',
+        kind: 'archive',
+        suggestionId: 'sug-9',
+      }).id;
+    });
+    fireEvent.click(screen.getByTestId(`msv-anchor-${id}`));
+    const suggest = screen.getByTestId('msv-copen-act-suggest_story_change');
+    expect(suggest).toHaveTextContent('Suggest story change');
+    await act(async () => {
+      fireEvent.click(suggest);
+    });
+    expect(archiveConfirm).toHaveBeenCalledWith('sug-9', 'suggest_story_change');
+    expect(commentsStore.list('story-1')).toHaveLength(0);
+    expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
+      'Suggested edit drafted — see Writing Coach'
+    );
+  });
+
   it('keeps the comment and toasts the error when the IPC fails', async () => {
     const archiveConfirm = vi.fn().mockResolvedValue({ error: 'already resolved' });
     Object.defineProperty(window, 'api', {
@@ -290,9 +368,9 @@ describe('agent actions from the gutter', () => {
         suggestionId: 'sug-9',
       }).id;
     });
-    fireEvent.click(screen.getByTestId(`msv-cmt-${id}`));
+    fireEvent.click(screen.getByTestId(`msv-anchor-${id}`));
     await act(async () => {
-      fireEvent.click(screen.getByTestId(`msv-cmt-act-ignore-${id}`));
+      fireEvent.click(screen.getByTestId('msv-copen-act-ignore'));
     });
     expect(commentsStore.list('story-1')).toHaveLength(1);
     expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
@@ -333,7 +411,7 @@ describe('comments chip + focus mode', () => {
     expect(document.querySelectorAll('.msv-anchor')).toHaveLength(1);
   });
 
-  it('the expanded card carries the Show-in-focus override toggle', () => {
+  it('the open comment card carries the Show-in-focus override toggle', () => {
     renderView();
     const created = addComment('rumor had teeth', 'keep');
     fireEvent.click(screen.getByTestId(`msv-cmt-${created!.id}`));
