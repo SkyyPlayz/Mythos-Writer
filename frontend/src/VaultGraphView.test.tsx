@@ -1073,6 +1073,35 @@ describe('deriveNodeBlurb (M26)', () => {
     expect(deriveNodeBlurb('')).toBeNull();
     expect(deriveNodeBlurb('# Heading only\n\n- list\n')).toBeNull();
   });
+
+  it('kanban notes: the trailing %% kanban:settings %% block never leaks into the blurb', () => {
+    // Shape written by the Obsidian-Kanban plugin: frontmatter + headings +
+    // `- [ ]` cards + a trailing settings block. Every visible line is
+    // markup, so without stripHiddenBlocks (W0.2) the first surviving line
+    // would be `%% kanban:settings`.
+    const kanbanNote = [
+      '---',
+      'kanban-plugin: board',
+      '---',
+      '',
+      '## To do',
+      '',
+      '- [ ] Interrogate the Broker',
+      '- [ ] Map the Undercity',
+      '',
+      '## Done',
+      '',
+      '- [x] Meet Kael at the docks',
+      '',
+      '%% kanban:settings',
+      '```',
+      '{"kanban-plugin":"board"}',
+      '```',
+      '%%',
+    ].join('\n');
+    expect(deriveNodeBlurb(kanbanNote)).toBeNull(); // → card shows FALLBACK_BLURB
+    expect(deriveNodeBlurb(kanbanNote) ?? FALLBACK_BLURB).not.toContain('%%');
+  });
 });
 
 // ─── Contrast floor test at Liquid Neon token values ─────────────────────────

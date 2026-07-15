@@ -11,6 +11,7 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from 'react';
+import { stripHiddenBlocks } from './lib/frontmatter';
 import './VaultGraphView.css';
 
 // M21: canvas matches the prototype sim space (Liquid Neon prototype 1615, 3835).
@@ -258,21 +259,21 @@ export const FALLBACK_BLURB = 'Linked entity in the vault.';
 const BLURB_MAX_CHARS = 180;
 
 /**
- * Derive a short blurb from raw note markdown: skip frontmatter, headings,
- * fences, list/quote/table markup, unwrap wiki links and inline markup, and
- * return the first prose line clamped to 180 chars. Null when no prose exists.
+ * Derive a short blurb from raw note markdown: strip the hidden blocks every
+ * preview surface strips (W0.2 `stripHiddenBlocks`: YAML frontmatter + the
+ * trailing `%% kanban:settings %%` block), then skip headings, fences,
+ * list/quote/table markup, unwrap wiki links and inline markup, and return
+ * the first prose line clamped to 180 chars. Null when no prose exists.
  */
 export function deriveNodeBlurb(content: string): string | null {
   if (!content) return null;
-  let body = content;
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/.exec(body);
-  if (frontmatter) body = body.slice(frontmatter[0].length);
+  const body = stripHiddenBlocks(content);
   let inFence = false;
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line.startsWith('```') || line.startsWith('~~~')) { inFence = !inFence; continue; }
     if (inFence || !line) continue;
-    if (/^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||!\[|<)/.test(line)) continue;
+    if (/^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||!\[|<|%%)/.test(line)) continue;
     const text = line
       .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).trim())
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
