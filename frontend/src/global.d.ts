@@ -1,5 +1,38 @@
 /// <reference types="vite/client" />
 
+// SKY-6228: M15 — agent chat session types (mirrors electron-main/mythosFormat/agentSessions.ts)
+interface AgentSessionTurn {
+  role: 'user' | 'agent';
+  text: string;
+  at: string;
+}
+interface AgentSessionFile {
+  id: string;
+  agent: string;
+  title?: string;
+  startedAt: string;
+  updatedAt: string;
+  turns: AgentSessionTurn[];
+}
+interface AgentSessionSummary {
+  id: string;
+  agent: string;
+  title?: string;
+  startedAt: string;
+  updatedAt: string;
+  turnCount: number;
+  relPath: string;
+}
+interface AgentSessionCreateResult {
+  session: AgentSessionFile;
+  relPath: string;
+}
+interface AgentSessionDeleteResult {
+  ok: boolean;
+  replacement?: AgentSessionFile;
+  replacementRelPath?: string;
+}
+
 interface SceneCrafterCard {
   wikilink: string;
   title: string;
@@ -1580,6 +1613,15 @@ interface Window {
     timelinesGetStore?: () => Promise<{ store: import('./timelinesTypes').TimelinesStore }>;
     timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
     timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
+    // SKY-6228: M15 — agent chat sessions
+    agentSessions?: {
+      list: (agent?: string) => Promise<{ sessions: AgentSessionSummary[] }>;
+      create: (agent: string, title?: string, greeting?: string) => Promise<AgentSessionCreateResult>;
+      rename: (sessionId: string, title: string) => Promise<{ ok: boolean }>;
+      duplicate: (sessionId: string) => Promise<AgentSessionCreateResult>;
+      delete: (sessionId: string) => Promise<AgentSessionDeleteResult>;
+      appendTurns: (sessionId: string, turns: AgentSessionTurn[]) => Promise<{ session: AgentSessionFile | null }>;
+    };
 
     // SKY-3189 (G3): true when running in a packaged Electron build.
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.

@@ -992,6 +992,21 @@ contextBridge.exposeInMainWorld('api', {
   timelinesSetActive: (timelineId: string) =>
     ipcRenderer.invoke('timelines:setActive', { timelineId }),
 
+  // SKY-6228: M15 — agent chat sessions
+  agentSessions: {
+    list: (agent?: string) => ipcRenderer.invoke('agentSession:list', { agent }),
+    create: (agent: string, title?: string, greeting?: string) =>
+      ipcRenderer.invoke('agentSession:create', { agent, title, greeting }),
+    rename: (sessionId: string, title: string) =>
+      ipcRenderer.invoke('agentSession:rename', { sessionId, title }),
+    duplicate: (sessionId: string) =>
+      ipcRenderer.invoke('agentSession:duplicate', { sessionId }),
+    delete: (sessionId: string) =>
+      ipcRenderer.invoke('agentSession:delete', { sessionId }),
+    appendTurns: (sessionId: string, turns: Array<{ role: 'user' | 'agent'; text: string; at: string }>) =>
+      ipcRenderer.invoke('agentSession:appendTurns', { sessionId, turns }),
+  },
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',

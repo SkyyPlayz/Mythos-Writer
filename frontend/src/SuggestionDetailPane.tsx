@@ -44,7 +44,7 @@ interface Props {
   onRollback: (id: string) => void;
 }
 
-const AGENT_LABELS: Record<SuggestionSourceAgent, string> = {
+export const AGENT_LABELS: Record<SuggestionSourceAgent, string> = {
   'writing-assistant': 'Writing Assistant',
   brainstorm: 'Brainstorm',
   archive: 'Archive',

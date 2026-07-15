@@ -1,0 +1,196 @@
+/* SKY-6228: M15 — AgentSessionPicker */
+
+.asp-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.asp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 10px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 77, 255, 0.35);
+  background: rgba(255, 77, 255, 0.08);
+  color: #c8d3e7;
+  font-size: 11px;
+  font-family: Inter, sans-serif;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.asp-pill:hover,
+.asp-pill:focus-visible {
+  border-color: rgba(255, 77, 255, 0.65);
+  background: rgba(255, 77, 255, 0.16);
+  outline: none;
+}
+
+.asp-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asp-pill-chevron {
+  font-size: 9px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* Full-screen backdrop (§1.3 — never reopens the button) */
+.asp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  cursor: default;
+}
+
+.asp-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 280px;
+  background: rgba(13, 16, 28, 0.96);
+  border: 1px solid rgba(255, 77, 255, 0.3);
+  border-radius: 12px;
+  backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px -8px rgba(255, 77, 255, 0.3);
+  padding: 6px 0;
+  overflow: hidden;
+}
+
+.asp-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 6px 2px 10px;
+  gap: 4px;
+}
+
+.asp-row--active {
+  background: rgba(255, 77, 255, 0.08);
+}
+
+.asp-row-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #c8d3e7;
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+  min-width: 0;
+}
+
+.asp-row-label:hover {
+  color: #f0f3fc;
+}
+
+.asp-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.asp-status-dot--active {
+  background: #ff4dff;
+  box-shadow: 0 0 6px rgba(255, 77, 255, 0.8);
+}
+
+.asp-row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asp-row-count {
+  font-size: 10px;
+  color: #8e9db8;
+  flex-shrink: 0;
+}
+
+.asp-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.asp-row:hover .asp-row-actions {
+  opacity: 1;
+}
+
+.asp-action-btn {
+  background: none;
+  border: none;
+  color: #8e9db8;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.1s, background 0.1s;
+}
+
+.asp-action-btn:hover {
+  color: #f0f3fc;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.asp-action-btn--danger:hover {
+  color: #ff5f8f;
+  background: rgba(255, 95, 143, 0.12);
+}
+
+.asp-rename-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 77, 255, 0.4);
+  border-radius: 6px;
+  color: #f0f3fc;
+  font-size: 11.5px;
+  padding: 3px 7px;
+  outline: none;
+  font-family: Inter, sans-serif;
+}
+
+.asp-rename-input:focus {
+  border-color: rgba(255, 77, 255, 0.8);
+}
+
+.asp-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: 4px 10px;
+}
+
+.asp-new-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #ff4dff;
+  font-size: 11.5px;
+  font-family: Inter, sans-serif;
+  cursor: pointer;
+  padding: 6px 14px;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.asp-new-btn:hover {
+  background: rgba(255, 77, 255, 0.08);
+}
