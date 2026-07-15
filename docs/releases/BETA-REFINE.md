@@ -538,34 +538,34 @@ Accept: every §14 item checked off in the PR description with evidence.
 | W0.4 | Editor chrome dedup | 0 | — | ✅ merged | #902 |
 | W0.5 | Performance to targets | 0 | — | ✅ merged | #905 |
 | W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | ✅ PASSED — Skyy sign-off 2026-07-11 on v0.5.0-beta.0 ("not really lagging at all") | |
-| M1 | Theme engine refresh | 1 | W0.6 | 🔨 in progress (claude/beta4-m01) | |
-| M2 | Title/status bar parity | 1 | W0.6 | 🔨 in progress (claude/beta4-m02) | |
-| M3 | Nav rail + stories switcher | 1 | W0.6 | 🔨 in progress (claude/beta4-m03) | |
-| M4 | Tabs = documents + splits | 1 | W0.6 | 🔨 in progress (claude/beta4-m04) | |
-| M5 | MythosVault + migration | 2 | W0.6 | 🔨 in progress (claude/beta4-m05) | |
-| M6 | Auto Note Linker | 2 | M5 | ⏳ | |
-| M7 | Editor chrome & page | 3 | W0.4, M1 | ⏳ | |
-| M8 | Editing model hardening | 3 | M7 | ⏳ | |
-| M9 | Comments v2 | 3 | M5, M7 | ⏳ | |
-| M10 | Drafts v2 | 3 | M5, M7 | ⏳ | |
-| M11 | Reader refinements | 3 | M7 | ⏳ | |
-| M12 | Coach page | 3 | M5, M15 | ⏳ | |
-| M13 | Scene Analysis | 3 | M12 | ⏳ | |
-| M14 | Structure & Book/Export | 3 | M7 | ⏳ | |
-| M15 | Agent hub + sessions | 3 | M5 | ⏳ | |
-| M16 | Notes explorer parity | 4 | M5 | ⏳ | |
-| M17 | Note body + wiki links | 4 | M6, M16 | ⏳ | |
+| M1 | Theme engine refresh | 1 | W0.6 | ✅ merged | #909 |
+| M2 | Title/status bar parity | 1 | W0.6 | ✅ merged | #908 |
+| M3 | Nav rail + stories switcher | 1 | W0.6 | ✅ merged | #911 |
+| M4 | Tabs = documents + splits | 1 | W0.6 | ✅ merged | #910 |
+| M5 | MythosVault + migration | 2 | W0.6 | ✅ merged | #912 |
+| M6 | Auto Note Linker | 2 | M5 | ✅ merged | #916 |
+| M7 | Editor chrome & page | 3 | W0.4, M1 | ✅ merged (incl. M7.PE polish #937) | #915, #937 |
+| M8 | Editing model hardening | 3 | M7 | ✅ merged | #941 |
+| M9 | Comments v2 | 3 | M5, M7 | ✅ merged | #953 |
+| M10 | Drafts v2 | 3 | M5, M7 | ✅ merged | #945 |
+| M11 | Reader refinements | 3 | M7 | ✅ merged | #938 |
+| M12 | Coach page | 3 | M5, M15 | 🔀 in PR (stacked on #917) | #952 |
+| M13 | Scene Analysis | 3 | M12 | 🔀 in PR (stacked on #952) | #956 |
+| M14 | Structure & Book/Export | 3 | M7 | ✅ merged | #939 |
+| M15 | Agent hub + sessions | 3 | M5 | 🔀 in PR | #917 |
+| M16 | Notes explorer parity | 4 | M5 | ✅ merged | #920 |
+| M17 | Note body + wiki links | 4 | M6, M16 | ✅ merged | #940 |
 | M18 | Notes right panel | 4 | M15, M16 | ⏳ | |
 | M19 | Scene Crafter refresh | 5 | M5, M12 | ⏳ | |
-| M20 | Brainstorm unification | 5 | M5, M15 | ⏳ | |
-| M21 | Timeline model + calendars | 6 | M5 | ⏳ | |
-| M22 | Axis engine | 6 | M21 | ⏳ | |
-| M23 | Lane rows + Progress | 6 | M22 | ⏳ | |
+| M20 | Brainstorm unification | 5 | M5, M15 | 🔀 in PR (stacked on #917) | #958 |
+| M21 | Timeline model + calendars | 6 | M5 | 🔀 in PR | #914 |
+| M22 | Axis engine | 6 | M21 | 🔀 in PR (stacked on #914) | #951 |
+| M23 | Lane rows + Progress | 6 | M22 | 🔀 in PR (stacked on #951) | #957 |
 | M24 | Remaining modes | 6 | M23 | ⏳ | |
 | M25 | Timeline panel + Archive | 6 | M23, M15 | ⏳ | |
-| M26 | Vault Graph refinements | 7 | M5 | ⏳ | |
+| M26 | Vault Graph refinements | 7 | M5 | 🔀 in PR (all checks green) | #955 |
 | M27 | Beta Reader view | 7 | M9, M15 | ⏳ | |
-| M28 | Settings workspace | 7 | M1, M5, M6 | ⏳ | |
+| M28 | Settings workspace | 7 | M1, M5, M6 | 🔀 in PR | #959 |
 | M29 | Welcome wizard | 7 | M5, M28 | ⏳ | |
 | M30 | Release prep + acceptance | 7 | all | ⏳ | |
 

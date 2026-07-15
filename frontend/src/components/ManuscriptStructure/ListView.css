@@ -39,6 +39,21 @@
   background: var(--bg-inset);
 }
 
+/* M14: cross-chapter drop hint (append) — dashed slot-1 rim like the grid */
+.list-chapter__header--drop {
+  outline: 1.5px dashed var(--b1, rgba(0, 240, 255, .6));
+  outline-offset: -1px;
+}
+
+/* Prototype 778: purple part/chapter kicker before the title */
+.list-chapter__eyebrow {
+  color: var(--n2, #9b5fff);
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .14em;
+}
+
 .list-chapter__toggle {
   background: none;
   border: none;
@@ -123,12 +138,13 @@
   background: rgba(255, 255, 255, .025);
   border: 1px solid rgba(255, 255, 255, .07);
   border-radius: 10px;
-  cursor: pointer;
+  cursor: grab; /* M14: whole row drags (grid parity) */
   display: flex;
   gap: 11px;
   margin-bottom: 5px;
   padding: 8px 12px;
   transition: border-color 0.12s, box-shadow 0.12s, background 0.1s;
+  user-select: none;
 }
 
 .list-scene:hover {
@@ -156,17 +172,15 @@
   border-color: var(--b1, rgba(0, 240, 255, .5));
 }
 
-.list-scene__drag-handle {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  font-size: 12px;
-  cursor: grab;
-  opacity: 0;
-  transition: opacity 0.1s;
+/* M14 drag states (grid parity) */
+.list-scene--dragging {
+  cursor: grabbing;
+  opacity: 0.6;
 }
 
-.list-scene:hover .list-scene__drag-handle {
-  opacity: 1;
+.list-scene--drop-before {
+  border: 1.5px dashed var(--b1, rgba(0, 240, 255, .6)) !important;
+  box-shadow: 0 0 14px -6px var(--g1, rgba(0, 240, 255, .4));
 }
 
 .list-scene__title {
@@ -179,7 +193,14 @@
   white-space: nowrap;
 }
 
-/* Prototype 592: 10px, right-aligned fixed column */
+/* Prototype 800: POV column */
+.list-scene__pov {
+  color: #7686a2;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+/* Prototype 801: 10px, right-aligned 74px column */
 .list-scene__wordcount {
   color: #7686a2;
   flex-shrink: 0;
@@ -231,8 +252,7 @@
 @media (prefers-reduced-motion: reduce) {
   .list-chapter__header,
   .list-scene,
-  .list-chapter__add,
-  .list-scene__drag-handle {
+  .list-chapter__add {
     transition: none;
   }
 }

@@ -1,0 +1,250 @@
+/* =========================================================================
+ * DraftsCompareSplit — Beta 4 M10 drafts compare split pane (v2 prototype
+ * splitIsDrafts header 1221–1245 + sheet 1247–1260). Docked beside the
+ * editor: header row (scope chip · select · highlight toggle · full diff ·
+ * load draft · undo · close) over a read-only Lora compare sheet.
+ * ========================================================================= */
+
+.ln-drafts-split {
+  flex: 0 1 44%;
+  min-width: 300px;
+  max-width: 560px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', sans-serif;
+  border-left: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .25));
+  padding: 10px 14px 14px;
+  overflow: hidden;
+}
+
+/* ── Header bar (prototype 1222–1245) ──────────────────────────────── */
+
+.ln-drafts-split-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.ln-drafts-split-scope {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ln-drafts-split-select {
+  height: 26px;
+  background: rgba(255, 255, 255, .05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  border-radius: 8px;
+  color: #dbe4f5;
+  font-size: 11px;
+  padding: 0 7px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ln-drafts-split-hl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ln-drafts-split-hl-label {
+  font-size: 9.5px;
+  color: #8e9db8;
+}
+
+.ln-drafts-split-toggle {
+  width: 30px;
+  height: 16px;
+  border-radius: 99px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  background: rgba(255, 255, 255, .06);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background .15s ease;
+}
+
+.ln-drafts-split-toggle.is-on {
+  background: var(--gs1, rgba(0, 240, 255, .18));
+  border-color: var(--b1, rgba(0, 240, 255, .6));
+}
+
+.ln-drafts-split-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #8e9db8;
+  transition: transform .15s ease, background .15s ease;
+}
+
+.ln-drafts-split-toggle.is-on .ln-drafts-split-toggle-knob {
+  transform: translateX(14px);
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 7px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.ln-drafts-split-fulldiff {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid rgba(74, 222, 128, .5);
+  color: #b7f5cd;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  font-family: inherit;
+}
+
+.ln-drafts-split-fulldiff:hover:not(:disabled) {
+  background: rgba(74, 222, 128, .1);
+}
+
+.ln-drafts-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.ln-drafts-dot-green { background: #4ade80; }
+.ln-drafts-dot-red { background: #ff5f8f; }
+
+.ln-drafts-split-load {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ln-drafts-split-load:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+.ln-drafts-split-fulldiff:disabled,
+.ln-drafts-split-load:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+/* Yellow undo chip (prototype 1238–1241) */
+.ln-drafts-split-undo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid rgba(255, 211, 25, .55);
+  color: #ffe680;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  font-family: inherit;
+  animation: lnFadeUp .15s ease;
+}
+
+.ln-drafts-split-undo:hover {
+  background: rgba(255, 211, 25, .1);
+}
+
+.ln-drafts-split-spacer {
+  flex: 1;
+}
+
+.ln-drafts-split-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .3));
+  background: transparent;
+  padding: 0;
+}
+
+.ln-drafts-split-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
+}
+
+.ln-drafts-split-error {
+  font-size: 10.5px;
+  color: #ff9db4;
+  margin-bottom: 8px;
+}
+
+/* ── Read-only compare sheet ───────────────────────────────────────── */
+
+.ln-drafts-split-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border-radius: 12px;
+  background: rgba(9, 11, 20, .5);
+  border: 1px solid rgba(255, 255, 255, .06);
+  padding: 18px 22px;
+}
+
+.ln-drafts-split-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--txH, #f0f3fc);
+  margin-bottom: 12px;
+}
+
+.ln-drafts-split-meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: #8e9db8;
+}
+
+.ln-drafts-split-plain {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 14.5px;
+  text-align: justify;
+}
+
+.ln-drafts-split-plain .ln-diff-para {
+  margin: 0 0 1em;
+  line-height: 1.8;
+  color: var(--txB, #c8d3e7);
+}
+
+.ln-drafts-split-empty {
+  font-size: 11px;
+  color: #8e9db8;
+  padding: 8px 2px;
+}

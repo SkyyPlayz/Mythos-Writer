@@ -32,9 +32,15 @@ export default function DocHeader({
   const titleRef = useRef<HTMLSpanElement>(null);
 
   const handleTitleBlur = useCallback(() => {
-    const text = titleRef.current?.textContent ?? '';
-    onTitleChange(text);
-  }, [onTitleChange]);
+    const text = (titleRef.current?.textContent ?? '').trim();
+    if (!text) {
+      // Reject a blank commit — restore the last known title instead of
+      // leaving the field visually empty while state still holds the old value.
+      if (titleRef.current) titleRef.current.textContent = title;
+      return;
+    }
+    if (text !== title) onTitleChange(text);
+  }, [onTitleChange, title]);
 
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {

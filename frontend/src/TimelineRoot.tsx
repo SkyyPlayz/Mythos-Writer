@@ -12,6 +12,8 @@
 // 'track') migrate to their successors on read.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Story } from './types';
+import type { TimelinesStore } from './timelinesTypes';
+import TimelinePicker from './TimelinePicker';
 import {
   type TimelineGroupBy,
   VALID_TIMELINE_GROUP_BYS,
@@ -124,6 +126,11 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   // Bumped by the "Today" jump; TimelineLanes scrolls the here-chapter into view.
   const [todaySignal, setTodaySignal] = useState(0);
 
+  // ── M21: multi-timeline store ──
+  const [timelinesStore, setTimelinesStore] = useState<TimelinesStore | null>(null);
+  const [showNewTimelineModal, setShowNewTimelineModal] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+
   // ── Shared Aeon data (progress / structure / relations / subway) ──
   const [aeonData, setAeonData] = useState<AeonTimelineData>(EMPTY_AEON_DATA);
   const [aeonLoading, setAeonLoading] = useState(false);
@@ -132,6 +139,29 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   const [skippedFlags, setSkippedFlags] = useState<SkippedPlanFlag[]>([]);
 
   const api = window.api;
+
+  // Load M21 timelines store on mount (vault-scoped, independent of story).
+  useEffect(() => {
+    if (typeof api.timelinesGetStore !== 'function') return;
+    api.timelinesGetStore().then((res: { store: TimelinesStore }) => {
+      setTimelinesStore(res.store);
+    }).catch(() => { /* non-fatal: picker hidden */ });
+  }, [api]);
+
+  const handleTimelineSelect = useCallback((timelineId: string) => {
+    if (typeof api.timelinesSetActive !== 'function') return;
+    api.timelinesSetActive(timelineId).then((res: { ok: boolean; store: TimelinesStore }) => {
+      if (res.ok) setTimelinesStore(res.store);
+    }).catch(() => {});
+  }, [api]);
+
+  const handleNewTimeline = useCallback(() => {
+    setShowNewTimelineModal(true);
+  }, []);
+
+  const handleEditCalendar = useCallback(() => {
+    setShowCalendarModal(true);
+  }, []);
 
   useEffect(() => {
     if (!story) {
@@ -253,6 +283,18 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
   return (
     <div className="tlr-root" data-testid="timeline-root">
+      {/* ── M21: Timeline picker (left panel top) ── */}
+      {timelinesStore && (
+        <div className="tlr-picker-wrap" data-testid="tlr-picker-wrap">
+          <TimelinePicker
+            store={timelinesStore}
+            onSelect={handleTimelineSelect}
+            onNewTimeline={handleNewTimeline}
+            onEditCalendar={handleEditCalendar}
+          />
+        </div>
+      )}
+
       {/* ── Header: mode segment + legend + group + zoom + Today (1446–1466) ── */}
       <div
         className="tlr-header"
@@ -336,6 +378,38 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
           Today
         </button>
       </div>
+
+      {/* M21: modal stubs — implementations added in M22+ */}
+      {showNewTimelineModal && (
+        <div
+          className="tlr-modal-stub"
+          role="dialog"
+          aria-modal="true"
+          aria-label="New timeline"
+          data-testid="new-timeline-modal"
+          onClick={() => setShowNewTimelineModal(false)}
+        >
+          <div className="tlr-modal-stub__inner" onClick={(e) => e.stopPropagation()}>
+            <p>New timeline — full editor coming in M22.</p>
+            <button onClick={() => setShowNewTimelineModal(false)}>Close</button>
+          </div>
+        </div>
+      )}
+      {showCalendarModal && (
+        <div
+          className="tlr-modal-stub"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit calendar"
+          data-testid="edit-calendar-modal"
+          onClick={() => setShowCalendarModal(false)}
+        >
+          <div className="tlr-modal-stub__inner" onClick={(e) => e.stopPropagation()}>
+            <p>Calendar editor — coming in M22.</p>
+            <button onClick={() => setShowCalendarModal(false)}>Close</button>
+          </div>
+        </div>
+      )}
 
       <div className="tlr-body">
         {viewMode === 'spreadsheet' && (

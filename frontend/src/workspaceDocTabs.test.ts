@@ -11,8 +11,10 @@ import {
   reconcileSceneTabs,
   workspaceStripModeFor,
   provisionalSceneIsAway,
+  renameCommitsProvisional,
   PROVISIONAL_CREATED_TOAST,
   PROVISIONAL_DISCARDED_TOAST,
+  PROVISIONAL_SCENE_TITLE,
 } from './workspaceDocTabs';
 import type { Scene, Story } from './types';
 
@@ -213,5 +215,21 @@ describe('provisional toast copy (§1.5 verbatim)', () => {
     expect(PROVISIONAL_CREATED_TOAST).toBe(
       'New scene — it saves the moment you type. Close it untouched and it vanishes.',
     );
+  });
+});
+
+// ─── M8: inline heading renames commit provisional scenes (§1.5) ────────────
+
+describe('renameCommitsProvisional (M8)', () => {
+  it('a real title commits the provisional scene', () => {
+    expect(renameCommitsProvisional('The Sunken Gate')).toBe(true);
+    expect(renameCommitsProvisional('  Dawn Watch  ')).toBe(true);
+  });
+
+  it('empty or placeholder titles leave the scene provisional', () => {
+    expect(renameCommitsProvisional('')).toBe(false);
+    expect(renameCommitsProvisional('   ')).toBe(false);
+    expect(renameCommitsProvisional(PROVISIONAL_SCENE_TITLE)).toBe(false);
+    expect(renameCommitsProvisional('  Untitled Scene  ')).toBe(false);
   });
 });

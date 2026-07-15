@@ -301,6 +301,8 @@ export function toSceneVersion(entry: DraftFileEntry): SceneVersion {
     content: entry.content,
     intent: entry.intent,
     contentHash: entry.contentHash,
+    // Beta 4 M10: the drafts UI shows "N words · age" meta lines.
+    savedAt: entry.savedAt,
   };
 }
 

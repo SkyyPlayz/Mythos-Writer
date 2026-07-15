@@ -8,8 +8,12 @@
 import type { Session, WebPreferences } from 'electron';
 
 export interface SecureWebPreferencesInput {
-  /** Absolute path to the compiled preload bundle. */
-  preloadPath: string;
+  /**
+   * Absolute path to the compiled preload bundle. Omit for windows that must
+   * not expose ANY IPC surface (e.g. the hidden Beta 4 M14 PDF print window,
+   * which only renders static compiled HTML).
+   */
+  preloadPath?: string;
 }
 
 /**
@@ -22,7 +26,7 @@ export function secureWebPreferences(
   { preloadPath }: SecureWebPreferencesInput,
 ): WebPreferences {
   return {
-    preload: preloadPath,
+    ...(preloadPath ? { preload: preloadPath } : {}),
     contextIsolation: true,
     nodeIntegration: false,
     sandbox: true,

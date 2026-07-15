@@ -25,7 +25,8 @@
 /* ── Format cards (prototype 2733–2737 + exFmtCards st 4426) ── */
 .export-dialog-formats { border: none; padding: 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 8px; }
 .export-dialog-formats-legend { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #8e9db8; padding: 0; position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.export-fmt-card { position: relative; flex: 1; min-width: 104px; padding: 11px; border-radius: 12px; cursor: pointer; text-align: center; background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .09); transition: all .16s ease; display: flex; flex-direction: column; align-items: center; color: #8e9db8; }
+/* min-width 88px: five cards (DOCX·PDF·EPUB·MD·TXT) fit the 540px modal on one row */
+.export-fmt-card { position: relative; flex: 1; min-width: 88px; padding: 11px; border-radius: 12px; cursor: pointer; text-align: center; background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .09); transition: all .16s ease; display: flex; flex-direction: column; align-items: center; color: #8e9db8; }
 .export-fmt-card:hover { border-color: rgba(255, 255, 255, .25); }
 /* Selected: slot-1 rim + glow (exFmtCards 4426–4427) */
 .export-fmt-card--selected { border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); box-shadow: 0 0 16px -5px var(--g1, rgba(0, 240, 255, .4)); color: var(--n1, #00f0ff); }
@@ -41,11 +42,19 @@
 .export-fmt-card__desc { font-size: 9.5px; color: #8e9db8; margin-top: 1px; }
 .export-fmt-card__note { font-size: 9px; color: #7686a2; margin-top: 3px; }
 
-/* ── Scope row (prototype 2738–2743, active segment pill from segMk 4221) ── */
+/* ── Scope row (prototype 3839–3844, seg pill from segMk) ── */
 .export-dialog-scope { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; padding: 0; background: none; border-radius: 0; }
 .export-dialog-scope-key { font-size: 11.5px; color: #aebad0; width: 52px; flex: none; }
 .export-dialog-scope-label { font-size: 11.5px; font-weight: 600; color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); border-radius: 8px; padding: 4px 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .export-dialog-stats { font-size: 10.5px; color: #7686a2; flex-shrink: 0; margin-left: auto; }
+
+/* Beta 4 M14 — Full book / Current part / Current chapter segmented control */
+.export-scope-seg { display: flex; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .05); border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, .2)); gap: 2px; }
+.export-scope-seg__btn { border: none; background: none; color: #94a3bd; font-size: 11px; font-weight: 400; padding: 4px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: color .12s ease, background .12s ease; }
+.export-scope-seg__btn:hover:not(:disabled):not(.export-scope-seg__btn--active) { color: #fff; }
+.export-scope-seg__btn--active { color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); font-weight: 600; box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); }
+.export-scope-seg__btn:disabled { opacity: .45; cursor: not-allowed; }
+.export-scope-seg__btn:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
 
 /* ── Compile-option toggles (prototype 2744–2751, mkToggle 4180) ── */
 .export-dialog-toggle-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
@@ -57,27 +66,37 @@
 .export-toggle__knob { position: absolute; top: 2.5px; left: 3px; width: 13px; height: 13px; border-radius: 50%; transition: all .2s ease; background: #8e9db8; }
 .export-toggle--on .export-toggle__knob { transform: translateX(16px); background: var(--n1, #00f0ff); box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4)); }
 
-/* ── Actions (gradient run button per prototype 2752) ── */
-.export-dialog-actions { display: flex; gap: 8px; align-items: center; }
-.export-dialog-cancel { padding: 8px 14px; border-radius: 9px; border: var(--bw, 1px) solid rgba(255, 255, 255, .14); background: none; color: #aebad0; font-size: 11.5px; cursor: pointer; flex: none; }
-.export-dialog-cancel:hover { border-color: rgba(255, 255, 255, .3); color: #fff; }
-.export-dialog-cancel:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
-.export-dialog-run { flex: 1; text-align: center; padding: 9px; border-radius: 11px; border: none; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); color: #0b0d17; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, .4)); transition: transform .12s ease; }
+/* ── Run button (gradient, full width per prototype 3852) ── */
+.export-dialog-run { display: block; width: 100%; text-align: center; padding: 9px; border-radius: 11px; border: none; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); color: #0b0d17; font-size: 12.5px; font-weight: 700; cursor: pointer; box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, .4)); transition: transform .12s ease; }
 .export-dialog-run:hover:not(:disabled) { transform: scale(1.015); }
 .export-dialog-run:disabled { opacity: .5; cursor: not-allowed; }
 .export-dialog-run:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 2px; }
-.export-dialog-cancel:disabled { opacity: .5; cursor: not-allowed; }
 
-/* ── Busy step (prototype 2754–2759) ── */
+/* ── Busy step (prototype 3854–3859) ── */
 .export-dialog-busy { padding: 26px 6px 16px; text-align: center; }
 .export-dialog-busy-track { height: 7px; border-radius: 5px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-bottom: 14px; }
 .export-dialog-busy-fill { width: 60%; height: 100%; border-radius: 5px; background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff)); animation: lnPulse 1s ease-in-out infinite; }
 .export-dialog-busy-text { font-size: 12px; color: #aebad0; }
 
+/* ── Done step (Beta 4 M14, prototype 3860–3876) ── */
+.export-dialog-done { padding: 18px 6px 6px; text-align: center; }
+.export-dialog-done-title { font-size: 13px; font-weight: 600; color: #eef2fb; margin-top: 9px; }
+.export-dialog-file-chip { display: flex; align-items: center; gap: 9px; margin: 13px auto 0; max-width: 360px; padding: 9px 12px; border-radius: 11px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .1); color: var(--n1, #00f0ff); }
+.export-dialog-file-name { flex: 1; text-align: left; font-size: 11.5px; color: #dbe4f5; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.export-dialog-file-size { font-size: 10px; color: #7686a2; }
+.export-dialog-done-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+.export-dialog-reveal { padding: 6px 14px; border-radius: 9px; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); background: none; color: #c3cee2; font-size: 11.5px; cursor: pointer; }
+.export-dialog-reveal:hover { border-color: var(--b1, rgba(0, 240, 255, .5)); color: #fff; }
+.export-dialog-reveal:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
+.export-dialog-done-btn { padding: 6px 16px; border-radius: 9px; border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5)); background: none; color: var(--n1, #00f0ff); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.export-dialog-done-btn:hover { background: var(--gs1, rgba(0, 240, 255, .12)); }
+.export-dialog-done-btn:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 1px; }
+
 @media (prefers-reduced-motion: reduce) {
   .export-fmt-card,
   .export-toggle,
   .export-toggle__knob,
+  .export-scope-seg__btn,
   .export-dialog-run { transition: none; }
   .export-dialog-busy-fill { animation: none; }
 }

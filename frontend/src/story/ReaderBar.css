@@ -1,23 +1,9 @@
-/* Beta 3 M13 — audiobook bar, ported from the Liquid Neon prototype's
-   Book-preview reader bar (design-handoff/prototype/"Mythos Writer - Liquid
-   Neon.dc.html" 641–658; gradient play disc + jump pills shared with the
-   gutter dock 913–943). No bare hex: rgb() literals carry the prototype hex
-   in a comment; token fallbacks live inside var(). */
+/* Beta 4 M11 — Reader surfaces, ported from the Liquid Neon v2 prototype:
+   the right-gutter Reader card (1155–1183) and the Book-preview audiobook
+   bar (849–867). No bare hex: rgb() literals carry the prototype hex in a
+   comment; token fallbacks live inside var(). */
 
-.msv-reader-bar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 14px;
-  margin: 0 22px 12px;
-  border-radius: 14px;
-  background: rgba(15, 19, 33, 0.94); /* prototype #0f1321 @ .94 */
-  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
-  box-shadow:
-    0 10px 30px rgba(3, 5, 12, 0.5),
-    0 0 var(--gr, 26px) -8px var(--g1, rgba(0, 240, 255, 0.4));
-}
+/* ── shared transport / controls ── */
 
 .msv-reader-nav {
   width: 28px;
@@ -77,17 +63,6 @@
   margin-left: 4px;
   white-space: nowrap;
   flex: none;
-}
-
-.msv-reader-pos {
-  width: 110px;
-  min-width: 0;
-  flex: none;
-  accent-color: var(--n1, #00f0ff);
-}
-
-.msv-reader-pos:disabled {
-  opacity: 0.4;
 }
 
 .msv-reader-spacer {
@@ -151,9 +126,9 @@
 }
 
 .msv-reader-close {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,5 +142,129 @@
 
 .msv-reader-close:hover {
   color: rgb(255, 255, 255);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── the Book-preview audiobook bar (prototype 849–867) ── */
+
+.msv-reader-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  margin: 0 22px 12px;
+  border-radius: 14px;
+  background: rgba(15, 19, 33, 0.94); /* prototype #0f1321 @ .94 */
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  box-shadow:
+    0 10px 30px rgba(3, 5, 12, 0.5),
+    0 0 var(--gr, 26px) -8px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+/* ── the right-gutter Reader card (prototype 1155–1183) ── */
+
+.msv-reader-card {
+  flex: none;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: rgba(15, 19, 33, 0.92); /* prototype #0f1321 @ .92 */
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  box-shadow: 0 0 var(--gr, 26px) -9px var(--g1, rgba(0, 240, 255, 0.4));
+  font-family: 'Inter', sans-serif;
+}
+
+.msv-reader-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.msv-reader-card-icon {
+  display: flex;
+  color: var(--n1, #00f0ff);
+}
+
+.msv-reader-card-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgb(238, 242, 251); /* prototype #eef2fb */
+}
+
+.msv-reader-card-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+/* Card transport is a size down from the bar (prototype 24/28/32px). */
+.msv-reader-card .msv-reader-nav {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+.msv-reader-card .msv-reader-nav--wide {
+  width: 28px;
+  font-size: 7.5px;
+}
+
+.msv-reader-card .msv-reader-play {
+  width: 32px;
+  height: 32px;
+  box-shadow: none;
+}
+
+.msv-reader-card-jumps {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.msv-reader-card .msv-reader-jump {
+  flex: 1;
+  text-align: center;
+  padding: 5px;
+  border-radius: 8px;
+  font-size: 9.5px;
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.msv-reader-card .msv-reader-jump--dim {
+  border-color: var(--b1, rgba(0, 240, 255, 0.3));
+}
+
+.msv-reader-card .msv-reader-rate {
+  width: 100%;
+}
+
+.msv-reader-card-voicerow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.msv-reader-card .msv-reader-voice {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 9.5px;
+  padding: 0 5px;
+}
+
+.msv-reader-card .msv-reader-rate-readout {
+  font-size: 9px;
+}
+
+.msv-reader-card-status {
+  font-size: 8.5px;
+  color: rgb(118, 134, 162); /* prototype #7686a2 */
+  margin-top: 6px;
 }
