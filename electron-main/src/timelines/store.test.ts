@@ -11,6 +11,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultManifest, readManifest, writeManifest } from '../vault.js';
+import { SCHEMA_VERSION } from '../manifest.js';
 import type { ArcEntry, Manifest, SceneEntry } from '../ipc.js';
 import type { ManifestTimelineEntry } from '../vault/manifest/types.js';
 import {
@@ -108,7 +109,8 @@ describe('migrateLegacyTimeline — real on-disk manifest shape', () => {
     expect(typeof onDisk.provenance).toBe('object');
     expect(Array.isArray(onDisk.boardReferences)).toBe(true);
     expect('boards' in onDisk).toBe(false);
-    expect(onDisk.schemaVersion).toBe(1);
+    // Tracks whatever the real writer stamps (v1 pre-SKY-6596, v2 after).
+    expect(onDisk.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('does not throw on a real vault manifest (SKY-6632 regression — openManifestV1 threw here)', () => {
