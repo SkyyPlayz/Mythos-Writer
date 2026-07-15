@@ -421,6 +421,8 @@
 .full-book-preview__scene-body { display: flex; flex-direction: column; gap: 0; }
 /* Body paragraphs (bookPSt 3887): 15px/1.9 justified, 1em paragraph gap */
 .full-book-preview__block { font-family: 'Lora', Georgia, serif; font-size: 15px; line-height: 1.9; text-align: justify; color: var(--txB, #c8d3e7); margin: 0 0 1em; }
+/* M11: paragraph wash while the audiobook reader speaks it (prototype bookPSt reading 5553); the exact sentence is painted by ::highlight(msv-reading-sentence). */
+.full-book-preview__block--reading { background: var(--gs1, rgba(0, 240, 255, 0.14)); border-radius: 8px; box-shadow: inset 3px 0 0 var(--n1, #00f0ff); transition: background 0.25s ease; }
 /* Scene separator (prototype 635) */
 .full-book-preview__scene-sep { text-align: center; color: #586a88; margin: 1.8em 0; letter-spacing: 0.6em; font-size: 11px; }
 .full-book-preview__no-content { color: #7686a2; font-style: italic; font-size: 12.5px; text-align: center; }
