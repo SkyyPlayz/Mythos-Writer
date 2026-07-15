@@ -1,11 +1,14 @@
 // SKY-2463: Unit tests for timeline:list and timeline:upsert handler logic.
+// SKY-6632: fixtures use the real legacy Manifest shape (vault.ts's
+// defaultManifest/readManifest/writeManifest) — the shape every actual vault's
+// manifest.json is written in — not the incompatible ManifestV1 structural schema.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { emptyManifestV1 } from './vault/manifest/schema.js';
-import { writeManifestV1 } from './vault/manifest/writer.js';
-import type { ManifestSceneEntry, ManifestTimelineEntry } from './vault/manifest/types.js';
+import { defaultManifest, readManifest, writeManifest } from './vault.js';
+import type { Manifest, SceneEntry, BlockEntry } from './ipc.js';
+import type { ManifestTimelineEntry } from './vault/manifest/types.js';
 import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
 
 function makeTmpDir(): string {
@@ -16,12 +19,13 @@ function cleanDir(dir: string) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function makeScene(id: string): ManifestSceneEntry {
+function makeScene(id: string): SceneEntry {
   return {
     id,
     path: `scenes/${id}.md`,
     title: `Scene ${id}`,
     order: 0,
+    blocks: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   };
@@ -40,11 +44,30 @@ describe('handleTimelineList', () => {
   afterEach(() => { cleanDir(tmpDir); });
 
   it('returns empty entries and zero aggregates for a fresh vault', () => {
-    writeManifestV1(manifestPath, emptyManifestV1(tmpDir));
+    writeManifest(manifestPath, defaultManifest(tmpDir));
     const result = handleTimelineList(manifestPath);
     expect(result.entries).toEqual([]);
     expect(result.sceneCount).toBe(0);
     expect(result.maxDay).toBe(0);
+  });
+
+  // SKY-6632 regression: a real vault's manifest.json has `provenance` as an
+  // OBJECT (Record<string,string>) and `boardReferences` (not `boards`), while
+  // still self-declaring schemaVersion 1. Routing this through the ManifestV1
+  // structural validator (which requires an array `provenance` + `boards`)
+  // threw ManifestValidationError on every real vault. Assert it no longer does.
+  it('does not throw on a real vault manifest shape (object provenance, boardReferences, no boards field)', () => {
+    const manifest: Manifest = {
+      ...defaultManifest(tmpDir),
+      provenance: { 'sug-1': 'scenes/scene-1.md' },
+      boardReferences: ['boards/board-1.json'],
+    };
+    expect('boards' in manifest).toBe(false);
+    writeManifest(manifestPath, manifest);
+
+    expect(() => handleTimelineList(manifestPath)).not.toThrow();
+    const result = handleTimelineList(manifestPath);
+    expect(result.entries).toEqual([]);
   });
 
   it('returns all timeline entries from the manifest', () => {
@@ -55,8 +78,8 @@ describe('handleTimelineList', () => {
       confidence: 0.8,
       rawCue: 'Day 3',
     };
-    const manifest = { ...emptyManifestV1(tmpDir), timeline: [entry] };
-    writeManifestV1(manifestPath, manifest);
+    const manifest = { ...defaultManifest(tmpDir), timeline: [entry] };
+    writeManifest(manifestPath, manifest);
 
     const result = handleTimelineList(manifestPath);
     expect(result.entries).toHaveLength(1);
@@ -70,7 +93,7 @@ describe('handleTimelineList', () => {
       { sceneId: 's2', inferredDay: 5, inferredTime: 'noon', confidence: 0.6, rawCue: '' },
       { sceneId: 's3', inferredDay: 1, inferredTime: 'dusk', confidence: 0.5, rawCue: '' },
     ];
-    writeManifestV1(manifestPath, { ...emptyManifestV1(tmpDir), timeline: entries });
+    writeManifest(manifestPath, { ...defaultManifest(tmpDir), timeline: entries });
 
     const result = handleTimelineList(manifestPath);
     expect(result.maxDay).toBe(5);
@@ -80,7 +103,7 @@ describe('handleTimelineList', () => {
     const entries: ManifestTimelineEntry[] = [
       { sceneId: 's1', inferredDay: 2, inferredTime: 'morning', confidence: 0.7, rawCue: '', userOverride: { day: 10, time: 'night', setAt: '2026-01-01T00:00:00.000Z' } },
     ];
-    writeManifestV1(manifestPath, { ...emptyManifestV1(tmpDir), timeline: entries });
+    writeManifest(manifestPath, { ...defaultManifest(tmpDir), timeline: entries });
 
     const result = handleTimelineList(manifestPath);
     expect(result.maxDay).toBe(10);
@@ -96,8 +119,8 @@ describe('handleTimelineUpsert', () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     manifestPath = path.join(tmpDir, 'manifest.json');
-    const manifest = { ...emptyManifestV1(tmpDir), scenes: [makeScene('scene-1'), makeScene('scene-2')] };
-    writeManifestV1(manifestPath, manifest);
+    const manifest = { ...defaultManifest(tmpDir), scenes: [makeScene('scene-1'), makeScene('scene-2')] };
+    writeManifest(manifestPath, manifest);
   });
   afterEach(() => { cleanDir(tmpDir); });
 
@@ -114,6 +137,26 @@ describe('handleTimelineUpsert', () => {
     expect(listed.entries[0].userOverride?.day).toBe(3);
   });
 
+  // SKY-6632 regression: writing a timeline upsert must preserve the rest of
+  // the real manifest shape (object provenance, blocks, etc.) rather than
+  // reshaping the file into the incompatible ManifestV1 structure.
+  it('preserves legacy manifest fields (object provenance, scene blocks) after a write', () => {
+    const block: BlockEntry = { id: 'b1', type: 'prose', order: 0, content: 'hello', updatedAt: '2026-01-01T00:00:00.000Z' };
+    const manifest: Manifest = {
+      ...defaultManifest(tmpDir),
+      scenes: [{ ...makeScene('scene-1'), blocks: [block] }],
+      provenance: { 'sug-1': 'scenes/scene-1.md' },
+    };
+    writeManifest(manifestPath, manifest);
+
+    const result = handleTimelineUpsert(manifestPath, { sceneId: 'scene-1', day: 1, time: 'dawn' });
+    expect(result.ok).toBe(true);
+
+    const onDisk = readManifest(manifestPath);
+    expect(onDisk.provenance).toEqual({ 'sug-1': 'scenes/scene-1.md' });
+    expect(onDisk.scenes[0].blocks).toEqual([block]);
+  });
+
   it('preserves existing inferredDay/inferredTime when updating a scene that already has an entry', () => {
     const existing: ManifestTimelineEntry = {
       sceneId: 'scene-1',
@@ -123,11 +166,11 @@ describe('handleTimelineUpsert', () => {
       rawCue: 'Day 7',
     };
     const manifest = {
-      ...emptyManifestV1(tmpDir),
+      ...defaultManifest(tmpDir),
       scenes: [makeScene('scene-1')],
       timeline: [existing],
     };
-    writeManifestV1(manifestPath, manifest);
+    writeManifest(manifestPath, manifest);
 
     const result = handleTimelineUpsert(manifestPath, { sceneId: 'scene-1', day: 2, time: 'dusk' });
     expect(result.ok).toBe(true);
