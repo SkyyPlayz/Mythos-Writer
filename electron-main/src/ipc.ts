@@ -1112,6 +1112,8 @@ export interface Manifest {
   smartFolders?: SmartFolderEntry[];
   /** Entity-to-entity relationships (SKY-232). */
   relationships?: EntityRelationship[];
+  /** SKY-2463: Per-scene timeline inference results. Absent on pre-timeline vaults. */
+  timeline?: ManifestTimelineEntry[];
 }
 
 export interface StoryEntry {
