@@ -1,10 +1,11 @@
-// Beta 3 M11 — the margin comments gutter (prototype gutter dock 944–963,
-// gutterCards/gutterSt 4633–4645, kind colors kMeta 4515/4633).
+// Beta 4 M9 — the margin comments gutter (v2 prototype gutter dock 1185–1204,
+// gutterCards/gutterSt 6765–6776, kind colors kMeta2 6765).
 //
 // A 236px column docked to the right of the manuscript page. Cards are
 // document-ordered (aligned to where their anchors appear); clicking a card
-// expands it in place with the agent-action row (archive comments), Resolve,
-// and the "Show in focus" override toggle. Presentational — all mutations go
+// opens it (prototype cOpen) — the card grows a compact action row (archive:
+// "Edit notes" / "Suggest change", always "Resolve") and ManuscriptView shows
+// the full CommentOpenCard over the page. Presentational — all mutations go
 // through the callbacks so ManuscriptView owns store wiring + toasts.
 //
 // Beta 4 M11: the gutter also hosts the Reader card (readerSlot) above the
@@ -14,7 +15,7 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import {
-  AGENT_ACTIONS,
+  GUTTER_AGENT_ACTIONS,
   agentActionAvailability,
   clipAnchor,
   type AgentAction,
@@ -30,9 +31,6 @@ export interface CommentsGutterProps {
   onToggleOpen: (id: string) => void;
   onResolve: (comment: StoryComment) => void;
   onAgentAction: (comment: StoryComment, action: AgentAction) => void;
-  /** Focus-mode override state + toggle ("Show in focus"). */
-  commentsInFocus: boolean;
-  onToggleCommentsInFocus: () => void;
   /** M11: the Reader card, docked above the comment cards (prototype 1154). */
   readerSlot?: ReactNode;
 }
@@ -43,16 +41,12 @@ function CommentCard({
   onToggleOpen,
   onResolve,
   onAgentAction,
-  commentsInFocus,
-  onToggleCommentsInFocus,
 }: {
   comment: StoryComment;
   open: boolean;
   onToggleOpen: (id: string) => void;
   onResolve: (comment: StoryComment) => void;
   onAgentAction: (comment: StoryComment, action: AgentAction) => void;
-  commentsInFocus: boolean;
-  onToggleCommentsInFocus: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -88,61 +82,40 @@ function CommentCard({
       <div className="msv-cmt-anchor">on &ldquo;{clipAnchor(comment.anchor, 34)}&rdquo;</div>
       <div className="msv-cmt-text">{comment.text}</div>
       {open && (
-        <>
-          <div className="msv-cmt-actions">
-            {availability !== 'none' &&
-              AGENT_ACTIONS.map(({ action, label }) => (
-                <button
-                  key={action}
-                  type="button"
-                  className={`msv-cmt-act msv-cmt-act--${action}`}
-                  data-testid={`msv-cmt-act-${action}-${comment.id}`}
-                  disabled={availability !== 'live'}
-                  title={
-                    availability === 'live'
-                      ? label
-                      : 'Wired when the Archive Agent links a suggestion (arrives with M23)'
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAgentAction(comment, action);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            <button
-              type="button"
-              className="msv-cmt-resolve"
-              data-testid={`msv-cmt-resolve-${comment.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onResolve(comment);
-              }}
-            >
-              Resolve
-            </button>
-          </div>
-          <div
-            className="msv-cmt-focusrow"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            role="presentation"
+        <div className="msv-cmt-actions">
+          {availability !== 'none' &&
+            GUTTER_AGENT_ACTIONS.map(({ action, label }) => (
+              <button
+                key={action}
+                type="button"
+                className={`msv-cmt-act msv-cmt-act--${action}`}
+                data-testid={`msv-cmt-act-${action}-${comment.id}`}
+                disabled={availability !== 'live'}
+                title={
+                  availability === 'live'
+                    ? label
+                    : 'Wired when the Archive Agent links a suggestion (continuity scan)'
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAgentAction(comment, action);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          <button
+            type="button"
+            className="msv-cmt-resolve"
+            data-testid={`msv-cmt-resolve-${comment.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onResolve(comment);
+            }}
           >
-            <span className="msv-cmt-focuslabel">Show in focus</span>
-            <button
-              type="button"
-              className={`msv-cmt-pill${commentsInFocus ? ' msv-cmt-pill--on' : ''}`}
-              data-testid="msv-cmt-focus-toggle"
-              role="switch"
-              aria-checked={commentsInFocus}
-              aria-label="Show comments in Focus mode"
-              onClick={onToggleCommentsInFocus}
-            >
-              <span className="msv-cmt-pill-knob" />
-            </button>
-          </div>
-        </>
+            Resolve
+          </button>
+        </div>
       )}
     </div>
   );
@@ -154,8 +127,6 @@ export default function CommentsGutter({
   onToggleOpen,
   onResolve,
   onAgentAction,
-  commentsInFocus,
-  onToggleCommentsInFocus,
   readerSlot,
 }: CommentsGutterProps) {
   if (comments.length === 0 && !readerSlot) return null;
@@ -177,8 +148,6 @@ export default function CommentsGutter({
               onToggleOpen={onToggleOpen}
               onResolve={onResolve}
               onAgentAction={onAgentAction}
-              commentsInFocus={commentsInFocus}
-              onToggleCommentsInFocus={onToggleCommentsInFocus}
             />
           ))}
           <div className="msv-gutter-hint">

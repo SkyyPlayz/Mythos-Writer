@@ -1,6 +1,6 @@
-/* Beta 3 M11 — comments: selection bar (prototype 811–824), gutter dock
-   (944–963, gutterSt 4633–4645), kind colors (kMeta 4515 / kMeta2 4633 /
-   segment underline 3373–3374).
+/* Beta 4 M9 — comments: selection bar (v2 prototype 1047–1058), gutter dock
+   (1185–1204, gutterSt 6776), open comment card (cOpenData 1063–1085), kind
+   colors (kMeta 6503 / kMeta2 6765 / segment underline 4664).
 
    Kind palette (rgb per the tokensAudit ratchet — no bare hex):
      user    rgb(255, 211, 25)   prototype #ffd319
@@ -12,30 +12,38 @@
 
 .msv-cmt--user,
 .msv-cmt-dot--user,
-.msv-anchor--user {
+.msv-anchor--user,
+.msv-copen--user {
   --cmt-kind: rgb(255, 211, 25); /* prototype #ffd319 */
   --cmt-kind-soft: rgba(255, 211, 25, 0.13);
+  --cmt-kind-border: rgba(255, 211, 25, 0.5);
 }
 
 .msv-cmt--writing,
 .msv-cmt-dot--writing,
-.msv-anchor--writing {
+.msv-anchor--writing,
+.msv-copen--writing {
   --cmt-kind: var(--n1, rgb(0, 240, 255)); /* prototype #00f0ff */
   --cmt-kind-soft: var(--gs1, rgba(0, 240, 255, 0.12));
+  --cmt-kind-border: var(--b1, rgba(0, 240, 255, 0.5));
 }
 
 .msv-cmt--archive,
 .msv-cmt-dot--archive,
-.msv-anchor--archive {
+.msv-anchor--archive,
+.msv-copen--archive {
   --cmt-kind: rgb(255, 95, 143); /* prototype #ff5f8f */
   --cmt-kind-soft: rgba(255, 95, 143, 0.13);
+  --cmt-kind-border: rgba(255, 95, 143, 0.5);
 }
 
 .msv-cmt--beta,
 .msv-cmt-dot--beta,
-.msv-anchor--beta {
+.msv-anchor--beta,
+.msv-copen--beta {
   --cmt-kind: var(--n3, rgb(255, 77, 255)); /* prototype #ff4dff */
   --cmt-kind-soft: var(--gs3, rgba(255, 77, 255, 0.12));
+  --cmt-kind-border: rgba(255, 77, 255, 0.5);
 }
 
 /* ── anchored-text underline (prototype seg style 3373–3374) ── */
@@ -248,7 +256,7 @@
   margin-top: 4px;
 }
 
-/* ── expanded actions (prototype 953–956 / card actions 836–843) ── */
+/* ── expanded actions (v2 prototype gutter 1193–1200 / open card 1071–1076) ── */
 
 .msv-cmt-actions {
   display: flex;
@@ -312,23 +320,130 @@
   color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
 }
 
-/* ── "Show in focus" row (prototype 845–848, cifToggle 4522) ── */
+/* ── open comment card (v2 prototype cOpenData 1063–1085) ── */
 
-.msv-cmt-focusrow {
+.msv-copen-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 21;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 6px 10px;
+  font-family: 'Inter', sans-serif;
+}
+
+.msv-copen {
+  width: 290px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: rgba(15, 19, 33, 0.97);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow:
+    0 12px 36px rgba(3, 5, 12, 0.65),
+    0 0 20px -6px var(--g2, rgba(155, 95, 255, 0.4));
+  animation: lnFadeUp 0.16s ease;
+}
+
+.msv-copen-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+.msv-copen-chip {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 99px;
+  color: var(--cmt-kind);
+  border: 1px solid var(--cmt-kind-border);
+  margin-right: auto;
+}
+
+.msv-copen-close {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.msv-copen-close:hover {
+  color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.msv-copen-anchor {
+  font-size: 10px;
+  color: #7686a2;
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.msv-copen-text {
+  font-size: 11.5px;
+  color: #cdd8ea;
+  line-height: 1.55;
+}
+
+.msv-copen-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+/* Open-card agent actions upsize the shared .msv-cmt-act base (prototype
+   1073–1075: padding 4px 9px, 10px). */
+.msv-copen-act {
+  padding: 4px 9px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+.msv-copen-foot {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
   padding-top: 9px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
-  cursor: default;
 }
 
-.msv-cmt-focuslabel {
+.msv-copen-resolve {
+  padding: 4px 11px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  color: #c3cee2;
+  font-size: 10.5px;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+}
+
+.msv-copen-resolve:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--txH, rgb(255, 255, 255)); /* prototype #fff */
+}
+
+.msv-copen-spacer {
   flex: 1;
+}
+
+.msv-copen-focuslabel {
   font-size: 9.5px;
   color: #7686a2;
 }
+
+/* ── "Show in focus" pill (v2 prototype cifToggle 6510 / mkToggle) ── */
 
 .msv-cmt-pill {
   width: 30px;

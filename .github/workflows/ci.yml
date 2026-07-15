@@ -357,6 +357,9 @@ jobs:
       - name: "E2E — MythosVault migration wizard TC-MV-01..03 (Beta 4 M5, #912)"
         run: xvfb-run --auto-servernum npm run test:e2e:mythos-migration
 
+      - name: E2E — Comments v2 gutter + vault-copy round-trip (Beta 4 M9)
+        run: xvfb-run --auto-servernum npm run test:e2e:comments
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true

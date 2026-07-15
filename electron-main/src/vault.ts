@@ -847,7 +847,17 @@ function forEachManifestScene(manifest: Manifest, fn: (scene: SceneEntry) => voi
 
 export function readManifest(manifestPath: string): Manifest {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
-  const vaultRoot = path.dirname(manifestPath);
+  const manifestDir = path.dirname(manifestPath);
+  // Beta 4 M9 (found by the comments vault-copy round-trip): a MythosVault v2
+  // manifest is the regenerable cache at `<Story Vault>/.mythos/manifest-cache.json`
+  // (MYTHOS_MACHINE_DIRNAME in mythosFormat/mythosJson.ts — not imported here
+  // to keep vault.ts free of a module cycle). Scene `path`s are relative to
+  // the STORY VAULT root, so hydrating against `.mythos/` resolved every
+  // scene body to a missing file and served empty block content for all v2
+  // vaults. v0.4 manifests live at `<Story Vault>/manifest.json`, where the
+  // dirname IS the vault root.
+  const vaultRoot =
+    path.basename(manifestDir) === '.mythos' ? path.dirname(manifestDir) : manifestDir;
   // De-duplicate by object identity: hydration consumes the one-shot
   // `bodySegLen` metadata, so a scene object shared between the nested and
   // flat lists must be hydrated exactly once. (JSON.parse never produces

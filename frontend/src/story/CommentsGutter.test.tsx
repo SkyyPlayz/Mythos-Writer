@@ -1,5 +1,7 @@
-// Beta 3 M11 — CommentsGutter component: card rendering, expand/collapse,
-// agent-action availability tiers, resolve, and the Show-in-focus toggle.
+// Beta 4 M9 — CommentsGutter component: card rendering, expand/collapse,
+// the v2 compact action row (archive "Edit notes" / "Suggest change" +
+// Resolve — prototype 1193–1200), and agent-action availability tiers.
+// The full-label actions + Show-in-focus toggle live on CommentOpenCard.
 
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -29,8 +31,6 @@ function makeProps(comments: StoryComment[], over: Record<string, unknown> = {})
     onToggleOpen: vi.fn(),
     onResolve: vi.fn(),
     onAgentAction: vi.fn(),
-    commentsInFocus: false,
-    onToggleCommentsInFocus: vi.fn(),
     ...over,
   };
 }
@@ -85,29 +85,30 @@ describe('CommentsGutter', () => {
     expect(screen.queryByTestId('msv-cmt-act-match_archive-c1')).toBeNull();
   });
 
-  it('archive comments with a suggestion expose the 3 live actions', () => {
+  it('archive comments with a suggestion expose the 2 live compact actions (v2 labels)', () => {
     const comment = mkComment('c1', { kind: 'archive', suggestionId: 'sug-1' });
     const props = makeProps([comment], { openId: 'c1' });
     render(<CommentsGutter {...props} />);
     const edit = screen.getByTestId('msv-cmt-act-match_archive-c1');
     const suggest = screen.getByTestId('msv-cmt-act-suggest_story_change-c1');
-    const ignore = screen.getByTestId('msv-cmt-act-ignore-c1');
     expect(edit).toBeEnabled();
-    expect(edit).toHaveTextContent('Edit notes to match');
+    expect(edit).toHaveTextContent('Edit notes');
     expect(suggest).toBeEnabled();
-    expect(suggest).toHaveTextContent('Suggest story change');
-    expect(ignore).toBeEnabled();
+    expect(suggest).toHaveTextContent('Suggest change');
+    // v2 prototype gutter (1193–1198): no Ignore in the compact row — it lives
+    // on the open comment card only.
+    expect(screen.queryByTestId('msv-cmt-act-ignore-c1')).toBeNull();
     fireEvent.click(suggest);
     expect(props.onAgentAction).toHaveBeenCalledWith(comment, 'suggest_story_change');
     expect(props.onToggleOpen).not.toHaveBeenCalled(); // stopPropagation
   });
 
-  it('archive comments without a suggestion render the actions as disabled M23 affordances', () => {
+  it('archive comments without a suggestion render the actions as disabled affordances', () => {
     const props = makeProps([mkComment('c1', { kind: 'archive' })], { openId: 'c1' });
     render(<CommentsGutter {...props} />);
     const edit = screen.getByTestId('msv-cmt-act-match_archive-c1');
     expect(edit).toBeDisabled();
-    expect(edit).toHaveAttribute('title', expect.stringContaining('M23'));
+    expect(edit).toHaveAttribute('title', expect.stringContaining('links a suggestion'));
     fireEvent.click(edit);
     expect(props.onAgentAction).not.toHaveBeenCalled();
   });
@@ -118,16 +119,6 @@ describe('CommentsGutter', () => {
     render(<CommentsGutter {...props} />);
     fireEvent.click(screen.getByTestId('msv-cmt-resolve-c1'));
     expect(props.onResolve).toHaveBeenCalledWith(comment);
-    expect(props.onToggleOpen).not.toHaveBeenCalled();
-  });
-
-  it('the Show-in-focus switch reflects state and fires the toggle', () => {
-    const props = makeProps([mkComment('c1')], { openId: 'c1', commentsInFocus: true });
-    render(<CommentsGutter {...props} />);
-    const toggle = screen.getByTestId('msv-cmt-focus-toggle');
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(toggle);
-    expect(props.onToggleCommentsInFocus).toHaveBeenCalledTimes(1);
     expect(props.onToggleOpen).not.toHaveBeenCalled();
   });
 });
