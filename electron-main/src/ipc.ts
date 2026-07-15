@@ -222,6 +222,13 @@ export const IPC_CHANNELS = {
   // Multi-scope plain text export (SKY-153)
   EXPORT_PLAINTEXT: 'export:plaintext',
 
+  // Beta 4 M14 — PDF export via Chromium printToPDF (FULL-SPEC §5.5)
+  EXPORT_PDF: 'export:pdf',
+
+  // Beta 4 M14 — reveal the last exported file in the OS file manager.
+  // Path state lives in the main process only (never renderer-supplied).
+  EXPORT_REVEAL_LAST: 'export:reveal-last',
+
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
   VAULT_OBSIDIAN_REGISTER: 'vault:obsidian-register',
@@ -737,6 +744,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
+  [IPC_CHANNELS.EXPORT_PDF]: (payload: ExportPdfPayload) => Promise<ExportPdfResponse>;
+  [IPC_CHANNELS.EXPORT_REVEAL_LAST]: (payload: never) => Promise<ExportRevealLastResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   // Beta 3 M24 — settings vault/story import
@@ -1164,6 +1173,16 @@ export interface BlockEntry {
   order: number;
   content: string;
   updatedAt: string;
+  /**
+   * SKY-6596 (PR #932): length of this block's serialized segment within the
+   * scene's `.md` body, recorded by `stripEmbeddedProseForPersist`
+   * (manifest.ts) when `content` is blanked for the structure-only on-disk
+   * manifest. Present only in the persisted manifest.json, and only for
+   * blocks whose content serializes to a non-empty segment (see
+   * sceneBody.ts). `readManifest` (vault.ts) consumes and deletes it during
+   * block-aware hydration, so it never rides on IPC payloads.
+   */
+  bodySegLen?: number;
 }
 
 export interface SceneCard {
@@ -3064,6 +3083,19 @@ export interface BetaReadScanResponse {
 
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
+/**
+ * Beta 4 M14 — compile options shared by the DOCX / PDF / EPUB exporters
+ * (prototype export modal toggles 3846–3851: "Include synopsis page" +
+ * "Scene separators (◆ ◆ ◆)"). Omitted options preserve the pre-M14
+ * behavior (no synopsis page, no separators).
+ */
+export interface ExportOptions {
+  /** Insert a synopsis page after the title page (default false). */
+  includeSynopsis?: boolean;
+  /** Insert "◆ ◆ ◆" separators between scenes in a chapter (default false). */
+  sceneSeparators?: boolean;
+}
+
 export interface ExportEpubMetadata {
   title?: string;
   author?: string;
@@ -3080,11 +3112,15 @@ export interface ExportEpubPayload {
    * paths, `../` traversal, and symlink escapes are rejected.
    */
   targetPath?: string;
+  /** Beta 4 M14 — synopsis / separator compile options. */
+  options?: ExportOptions;
 }
 
 export interface ExportEpubResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 // ─── DOCX export (MYT-252) ───
@@ -3094,11 +3130,32 @@ export interface ExportDocxPayload {
   storyId?: string;
   // SKY-153: full scope control; takes precedence over storyId when present.
   scope?: ExportScope;
+  /** Beta 4 M14 — synopsis / separator compile options. */
+  options?: ExportOptions;
 }
 
 export interface ExportDocxResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
+}
+
+// ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) ───
+
+export interface ExportPdfPayload {
+  scope: ExportScope;
+  options?: ExportOptions;
+}
+
+export interface ExportPdfResponse {
+  path: string | null;
+  cancelled: boolean;
+  bytes?: number;
+}
+
+export interface ExportRevealLastResponse {
+  opened: boolean;
 }
 
 // ─── Multi-scope export (SKY-153) ───
@@ -3117,6 +3174,8 @@ export interface ExportMarkdownPayload {
 export interface ExportMarkdownResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 export interface ExportPlaintextPayload {
@@ -3126,6 +3185,8 @@ export interface ExportPlaintextPayload {
 export interface ExportPlaintextResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 // ─── Budget enforcement push event (MYT-207) ───

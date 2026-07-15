@@ -269,11 +269,12 @@ describe('zoom navigation', () => {
 });
 
 describe('page width', () => {
-  it('defaults the sheet to 1000px and follows the slider (520–3000)', () => {
+  it('defaults the sheet to 1000px and follows the Page setup popover slider (520–3000)', () => {
     renderView();
     const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
     expect(wrap.style.width).toBe('1000px');
-    const slider = screen.getByTestId('msv-width-slider') as HTMLInputElement;
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
+    const slider = screen.getByTestId('page-chrome-width-slider') as HTMLInputElement;
     expect(slider.min).toBe('520');
     expect(slider.max).toBe('3000');
     fireEvent.change(slider, { target: { value: '1400' } });
@@ -284,6 +285,40 @@ describe('page width', () => {
   it('honors the pageWidth prop as the initial width', () => {
     renderView({ pageWidth: 760 });
     expect((document.querySelector('.msv-sheet-wrap') as HTMLElement).style.width).toBe('760px');
+  });
+
+  it('the margin ruler resizes the sheet by dragging a diamond handle (M7 §5.1)', () => {
+    const onPageWidthChange = vi.fn();
+    renderView({ onPageWidthChange });
+    const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
+    const handle = screen.getByTestId('margin-ruler-handle-r');
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 550 });
+    expect(wrap.style.width).toBe('1100px'); // +50 delta * side(1) * 2
+    fireEvent.mouseUp(window, { clientX: 550 });
+    expect(onPageWidthChange).toHaveBeenCalledWith(1100);
+  });
+
+  it('the margin ruler reserves the comments-gutter width while the gutter is open (open by default) and drops it once closed', () => {
+    renderView();
+    expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('236px');
+    fireEvent.click(screen.getByTestId('msv-comments-chip')); // closes the gutter
+    expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('');
+  });
+
+  it('the Page setup popover shows the page-style quick-switch only when wired', () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
+    expect(screen.queryByTestId('page-chrome-style-neon')).not.toBeInTheDocument();
+  });
+
+  it('picking a page style in the Page setup popover calls onPageStyleChange', () => {
+    const onPageStyleChange = vi.fn();
+    renderView({ onPageStyleChange, liquidNeon: { pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 } } });
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
+    expect(screen.getByTestId('page-chrome-style-neon').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('page-chrome-style-scroll'));
+    expect(onPageStyleChange).toHaveBeenCalledWith('scroll');
   });
 });
 
@@ -337,6 +372,16 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
     expect(wrap.style.fontSize).toBe('18.5px'); // 13 × 1.42 = 18.46 → 18.5
   });
 
+  it('renders a line-spacing dropdown (§5.1) defaulting to 1.85 and applies it to the sheet', () => {
+    renderView();
+    const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
+    expect(screen.getByTestId('msv-line-spacing-select')).toHaveValue('1.85');
+    expect(wrap.style.lineHeight).toBe('1.85');
+
+    fireEvent.change(screen.getByTestId('msv-line-spacing-select'), { target: { value: '2.5' } });
+    expect(wrap.style.lineHeight).toBe('2.5');
+  });
+
   it('clamps font size to the prototype 9–18 range', () => {
     renderView();
     const down = screen.getByTestId('msv-size-down');
@@ -386,8 +431,8 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
   });
 
   // W0.4 (GAP P0#4): exactly ONE Read button — on the format toolbar, always
-  // present, toggling the built-in M13 reader dock (the old zoombar reader
-  // chip was the duplicate and is gone).
+  // present, toggling the built-in reader dock (M11: the right-gutter Reader
+  // card; the old zoombar reader chip was the duplicate and is gone).
   it('renders a single always-on Read button that toggles the reader dock', () => {
     renderView();
     expect(screen.queryByTestId('msv-reader-chip')).not.toBeInTheDocument();
@@ -397,13 +442,13 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
 
     const read = screen.getByTestId('msv-tb-read');
     expect(read).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-reader-card')).not.toBeInTheDocument();
     fireEvent.click(read);
     expect(read).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('msv-reader-card')).toBeInTheDocument();
     fireEvent.click(read);
     expect(read).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-reader-card')).not.toBeInTheDocument();
   });
 });
 
@@ -472,7 +517,8 @@ describe('page-edge drag (M10, prototype startDrag 3392–3400)', () => {
   it('slider changes commit through onPageWidthChange too', () => {
     const onPageWidthChange = vi.fn();
     renderView({ onPageWidthChange });
-    fireEvent.change(screen.getByTestId('msv-width-slider'), { target: { value: '2000' } });
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
+    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '2000' } });
     expect(onPageWidthChange).toHaveBeenCalledWith(2000);
   });
 });

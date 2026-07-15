@@ -356,6 +356,26 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     } catch { /* dialog cancelled or unavailable */ }
   };
 
+  /**
+   * M7 (§5.1): the manuscript page's own "Custom texture" upload — reuses the
+   * same generic image picker as the wallpaper upload above, scoped to pageCfg.
+   * Unlike the wallpaper (whose raw path is resolved to a data URL later, at
+   * theme-apply time), the page texture is rendered directly from this state
+   * via a plain CSS url() in pageMode.tsx with no such resolution step — so
+   * it's resolved to a data URL here, once, at pick time.
+   */
+  const pickPageTexture = async () => {
+    try {
+      const res = await window.api?.pickBgImage?.();
+      if (!res?.filePath) return;
+      let dataUrl: string | null | undefined;
+      try {
+        dataUrl = (await window.api?.loadBgImage?.(res.filePath))?.dataUrl;
+      } catch { /* fall back to the raw path */ }
+      setPc({ mode: 'custom', textureUrl: dataUrl ?? res.filePath });
+    } catch { /* dialog cancelled or unavailable */ }
+  };
+
   // Frame animation speed slider (prototype 4629–4631): 0.25s quantized, 1–30s.
   const fsQ = Math.max(1, Math.round(S.frameSpeed * 4));
   const fsPct = ((fsQ - 1) / 119 * 100).toFixed(1);
@@ -658,14 +678,36 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
-      <Card title="Manuscript page" sub="The box your words live in — glass, neon, ancient scroll, or nothing at all.">
+      <Card title="Manuscript page" sub="The box your words live in — glass, neon, ancient scroll, a texture of your own, or nothing at all.">
         <NeonSeg
-          options={[['neon', 'Neon'], ['default', 'No glow'], ['scroll', 'Scroll'], ['off', 'Off']]}
+          options={[['neon', 'Neon'], ['default', 'No glow'], ['scroll', 'Scroll'], ['custom', 'Custom texture'], ['off', 'Off']]}
           current={pc.mode}
           onPick={(k) => setPc({ mode: k })}
           testIdPrefix="lnas-page"
         />
-        {pc.mode !== 'off' && pc.mode !== 'scroll' && (
+        {pc.mode === 'custom' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 4px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Page texture image</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1, wordBreak: 'break-all' }}>
+                {pc.textureUrl ? pc.textureUrl.split(/[\\/]/).pop() : 'No image chosen — cover-fit over the page'}
+              </div>
+            </div>
+            <div
+              role="button"
+              tabIndex={0}
+              data-testid="lnas-page-texture-upload"
+              title="Choose a page texture image"
+              onClick={() => { void pickPageTexture(); }}
+              onKeyDown={onActivateKey(() => { void pickPageTexture(); })}
+              className="lnas-hdr-btn"
+              style={hdrBtnSt('--b2')}
+            >
+              Choose image…
+            </div>
+          </div>
+        )}
+        {pc.mode !== 'off' && pc.mode !== 'scroll' && pc.mode !== 'custom' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 6px' }}>
               <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Background color</span>

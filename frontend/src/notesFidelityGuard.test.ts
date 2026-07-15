@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectLossyFeatures } from './notesFidelityGuard';
+import { detectLossyFeatures, supportedCalloutLineCount } from './notesFidelityGuard';
 
 describe('detectLossyFeatures — LC-2 fidelity guard', () => {
   it('returns empty array for plain prose', () => {
@@ -39,10 +39,31 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures(md).map((f) => f.key)).toContain('rawHtml');
   });
 
-  it('detects Obsidian callout blocks', () => {
+  it('does NOT flag the simple callout shape — M17 renders it as a lossless card', () => {
+    // NoteCalloutExtension round-trips `> [!Title]` + one body line byte-
+    // identically, so the guard must not warn for it anymore.
     const md = '> [!NOTE]\n> This is a callout.';
-    const features = detectLossyFeatures(md);
-    expect(features.map((f) => f.key)).toContain('callouts');
+    expect(detectLossyFeatures(md).map((f) => f.key)).not.toContain('callouts');
+  });
+
+  it('still flags callout shapes the M17 card cannot round-trip', () => {
+    const unsupported = [
+      '> [!NOTE]\n> line one\n> line two', // multi-line body
+      '> [!NOTE]- folded\n> body', // fold marker
+      '> [!a]\n> [!b]', // back-to-back without a blank line
+      '> [!NOTE]\n> body\nlazy continuation line', // lazy continuation
+      '  > [!NOTE]\n> body', // indented marker would be re-written
+    ];
+    for (const md of unsupported) {
+      expect(detectLossyFeatures(md).map((f) => f.key), md).toContain('callouts');
+    }
+  });
+
+  it('supportedCalloutLineCount reports the span of supported shapes', () => {
+    expect(supportedCalloutLineCount(['> [!legend]', '> body', ''], 0)).toBe(2);
+    expect(supportedCalloutLineCount(['> [!legend]'], 0)).toBe(1);
+    expect(supportedCalloutLineCount(['> [!legend]', '> a', '> b'], 0)).toBe(0);
+    expect(supportedCalloutLineCount(['> plain quote'], 0)).toBe(0);
   });
 
   it('detects multiple lossy features at once', () => {

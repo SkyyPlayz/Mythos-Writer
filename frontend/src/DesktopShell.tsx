@@ -6,7 +6,13 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens, vaultDefaultThemePatch, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import {
+  applyLiquidNeonV2Tokens,
+  normalizeLiquidNeonV2,
+  vaultDefaultThemePatch,
+  type LiquidNeonPageCfg,
+  type LiquidNeonV2Settings,
+} from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName } from './ProjectSwitcher';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
@@ -53,6 +59,7 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
+import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
@@ -621,192 +628,6 @@ export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onS
             );
           })
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
-// Preview-only because C5 (virtualization) has not yet landed.
-
-interface FullBookPreviewViewProps {
-  story: Story | null;
-}
-
-function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const headerRef = useRef<HTMLHeadingElement | null>(null);
-
-  useEffect(() => {
-    headerRef.current?.focus({ preventScroll: true });
-  }, [story?.id]);
-
-  const chapters = useMemo(
-    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
-    [story],
-  );
-
-  const chapterSections = useMemo(
-    () =>
-      chapters.map((ch) => ({
-        chapter: ch,
-        scenes: [...ch.scenes]
-          .sort((a, b) => a.order - b.order)
-          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
-      })),
-    [chapters],
-  );
-
-  const totalChapters = chapterSections.length;
-
-  const scrollToChapter = useCallback(
-    (idx: number) => {
-      if (!scrollRef.current || totalChapters === 0) return;
-      const wrapped = ((idx % totalChapters) + totalChapters) % totalChapters;
-      const el = scrollRef.current.querySelector<HTMLElement>(
-        `[data-chapter-idx="${wrapped}"]`,
-      );
-      el?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
-      el?.focus({ preventScroll: true });
-    },
-    [totalChapters],
-  );
-
-  if (!story) {
-    return (
-      <div className="full-book-preview-empty" role="status" aria-live="polite">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">No story selected</p>
-        <p className="full-book-preview-empty__hint">Select a story from the Editor view to read the full book.</p>
-      </div>
-    );
-  }
-
-  if (chapters.length === 0) {
-    return (
-      <div className="full-book-preview-empty" role="status">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">{story.title}</p>
-        <p className="full-book-preview-empty__hint">No chapters yet. Add chapters and scenes in the Editor view.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={scrollRef}
-      className="full-book-preview-wrap"
-      role="document"
-      aria-label={`Full book preview: ${story.title}`}
-    >
-      <div className="full-book-preview">
-        <header className="full-book-preview__book-header">
-          <h1
-            ref={headerRef}
-            className="full-book-preview__story-title"
-            tabIndex={-1}
-          >
-            {story.title}
-          </h1>
-          <span className="full-book-preview__readonly-badge" role="note">
-            Preview — read only
-          </span>
-          {story.synopsis && (
-            <p className="full-book-preview__synopsis">{story.synopsis}</p>
-          )}
-        </header>
-
-        {chapterSections.map(({ chapter, scenes }, idx) => (
-          <section
-            key={chapter.id}
-            className="full-book-preview__chapter"
-            aria-labelledby={`fbp-ch-${chapter.id}`}
-            tabIndex={-1}
-            data-chapter-idx={idx}
-          >
-            <h2
-              className="full-book-preview__chapter-title"
-              id={`fbp-ch-${chapter.id}`}
-            >
-              {chapter.title}
-            </h2>
-            {scenes.length === 0 ? (
-              <p className="full-book-preview__no-content">
-                — no written scenes in this chapter —
-              </p>
-            ) : (
-              scenes.map((scene, si) => {
-                const sortedBlocks = [...scene.blocks]
-                  .sort((a, b) => a.order - b.order)
-                  .filter((b) => b.content.trim());
-                return (
-                  <article
-                    key={scene.id}
-                    className="full-book-preview__scene"
-                    aria-labelledby={`fbp-sc-${scene.id}`}
-                  >
-                    <h3
-                      className="full-book-preview__scene-title"
-                      id={`fbp-sc-${scene.id}`}
-                    >
-                      {scene.title}
-                    </h3>
-                    <div className="full-book-preview__scene-body">
-                      {sortedBlocks.map((block) => (
-                        <p
-                          key={block.id}
-                          className={`full-book-preview__block full-book-preview__block--${block.type}`}
-                        >
-                          {block.content}
-                        </p>
-                      ))}
-                    </div>
-                    {si < scenes.length - 1 && (
-                      <div
-                        className="full-book-preview__scene-sep"
-                        aria-hidden="true"
-                      >
-                        ✦ ✦ ✦
-                      </div>
-                    )}
-                  </article>
-                );
-              })
-            )}
-            <nav
-              className="full-book-preview__chapter-nav"
-              aria-label={`Navigate chapters (${idx + 1} of ${totalChapters})`}
-            >
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx - 1)}
-                aria-label="Previous chapter (wraps to last)"
-              >
-                ← Prev
-              </button>
-              <span className="full-book-preview__nav-pos" aria-hidden="true">
-                {idx + 1} / {totalChapters}
-              </span>
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx + 1)}
-                aria-label="Next chapter (wraps to first)"
-              >
-                Next →
-              </button>
-            </nav>
-          </section>
-        ))}
-
-        <footer className="full-book-preview__footer">
-          <button
-            className="full-book-preview__back-top"
-            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() })}
-            aria-label="Back to top of book"
-          >
-            ↑ Back to top
-          </button>
-        </footer>
       </div>
     </div>
   );
@@ -2897,6 +2718,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
+  // SKY-6491: DocHeader's editable title was wired to a no-op that silently
+  // discarded edits — commit the new title into the scene like every other
+  // per-field scene mutation in this file (state + manifest + markdown).
+  const handleSceneTitleChange = useCallback((title: string) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === selectedScene.title) return;
+    const updatedScene: Scene = { ...selectedScene, title: trimmed, updatedAt: now() };
+    setSelectedScene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
 
 
@@ -4165,6 +4010,45 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
+  // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
+  // same live-apply + persist shape as the width handler above, scoped to
+  // liquidNeonV2.pageCfg instead of going through the Settings panel's draft
+  // Save flow (this is a one-click swap, not a form).
+  const patchManuscriptPageCfg = useCallback((patch: Partial<LiquidNeonPageCfg>) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const liquidNeonV2 = normalizeLiquidNeonV2(prev.liquidNeonV2);
+      const updated: AppSettings = {
+        ...prev,
+        liquidNeonV2: { ...liquidNeonV2, pageCfg: { ...liquidNeonV2.pageCfg, ...patch } },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      void applyLiquidNeonV2Theme(updated.liquidNeonV2);
+      return updated;
+    });
+  }, []);
+
+  const handleManuscriptPageStyleChange = useCallback(
+    (mode: LiquidNeonPageCfg['mode']) => patchManuscriptPageCfg({ mode }),
+    [patchManuscriptPageCfg]
+  );
+
+  const handlePickPageTexture = useCallback(() => {
+    window.api?.pickBgImage?.()
+      .then(async (res) => {
+        if (!res?.filePath) return;
+        // Same resolution as the wallpaper's customWp (M4): a raw filesystem
+        // path doesn't load via CSS url() in the renderer, so it's converted
+        // to a data URL once here rather than on every paint.
+        let dataUrl: string | null | undefined;
+        try {
+          dataUrl = (await window.api?.loadBgImage?.(res.filePath))?.dataUrl;
+        } catch { /* fall back to the raw path */ }
+        patchManuscriptPageCfg({ mode: 'custom', textureUrl: dataUrl ?? res.filePath });
+      })
+      .catch(() => {});
+  }, [patchManuscriptPageCfg]);
+
   // Beta 3 M10 toolbar actions (prototype 766-777). Read is scripted until the
   // M13 TTS Reader lands; Dictate reuses the existing voice pipeline; Assist
   // surfaces the Writing Assistant panel in the left sidebar (GH #633 home).
@@ -4341,7 +4225,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const paletteCommands = useMemo(() => [
     { t: 'Toggle focus mode', sub: 'Hide chrome · just the page', run: () => toggleDistractionFree() },
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
-    { t: 'Export…', sub: 'DOCX · EPUB · Markdown', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
+    { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
     { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
@@ -4687,7 +4571,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {tourOpen && (
         <TourModal onClose={() => setTourOpen(false)} />
       )}
-      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
       {templatePickerOpen && (
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
@@ -4784,7 +4668,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'book' && (
         <div className="shell-book">
-          <FullBookPreviewView story={selectedStory ?? null} />
+          {/* Beta 4 M14: compiled read-only book (page width follows the editor).
+              M11 carry-over (#938 → #939): the persistent audiobook bar moved
+              with the view into BookPreview — the tts/voice settings ride along. */}
+          <BookPreview
+            story={selectedStory ?? null}
+            pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+            onExport={() => {
+              if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
+            }}
+            onOpenScene={handleOpenSceneById}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
+          />
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
@@ -5032,6 +4928,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -5068,6 +4966,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -5089,8 +4989,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <DocHeader
                   title={selectedScene.title ?? ''}
-                  onTitleChange={(_t) => { /* no-op: scene title editing not wired in this view */ }}
-                  wordCount={0}
+                  onTitleChange={handleSceneTitleChange}
+                  wordCount={focusWordCount}
                   breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
                   zoom={docZoom}
                   onZoomChange={setDocZoom}

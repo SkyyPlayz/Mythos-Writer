@@ -552,8 +552,12 @@ jobs:
 
   build-macos:
     # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
-    # On-demand ONLY — never on PRs or auto on main. Trigger via 'Run workflow' when fixing the mac build. (Skyy 2026-06-23)
-    if: github.event_name == 'workflow_dispatch'
+    # DISABLED 2026-07-14 (Skyy): "pause/disable the macos ci for now" — the Actions
+    # budget is reserved for releases only. macos-latest bills at 10x Linux.
+    # To re-enable when the mac build is back on the roadmap, restore:
+    #   if: github.event_name == 'workflow_dispatch'
+    # The `ci` aggregator does not depend on this job, so disabling cannot block a PR.
+    if: false
     # macOS build: GitHub-hosted runner (required for macOS; no self-hosted macOS available).
     # Validates macOS Electron build and runs core E2E tests on native macOS.
     # Unsigned DMG is acceptable for PR CI (signing only needed for release builds).

@@ -69,6 +69,19 @@ export function pageModeChrome(
       boxShadow: '0 18px 60px rgba(2,4,10,.55), inset 0 0 80px rgba(0,0,0,.5), inset 0 0 12px rgba(90,64,20,.35)',
       ...(includePadding ? { padding: '76px 96px 96px' } : {}),
     };
+  } else if (pc.mode === 'custom') {
+    // M7 (§5.1): user-uploaded texture image, cover-fit. Falls back to the
+    // 'No glow' flat background until an image is chosen.
+    sheetStyle = {
+      position: 'relative',
+      background: pc.textureUrl ? "url('" + pc.textureUrl + "') center / cover no-repeat" : pcBg,
+      backdropFilter: 'none',
+      WebkitBackdropFilter: 'none',
+      border: '1px solid rgba(255,255,255,.08)',
+      borderRadius: '12px',
+      boxShadow: '0 18px 60px rgba(2,4,10,.55),inset 0 1px 0 rgba(255,255,255,.04)',
+      ...(includePadding ? { padding: '64px 84px 90px' } : {}),
+    };
   } else if (pc.mode === 'neon') {
     sheetStyle = {
       position: 'relative',
