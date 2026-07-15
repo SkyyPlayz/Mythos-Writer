@@ -1,7 +1,7 @@
 // Beta 4 M14 — buildManuscriptHtml unit tests (PDF print pipeline input).
 
 import { describe, it, expect } from 'vitest';
-import { buildManuscriptHtml, escapeHtml } from './pdfExport';
+import { buildManuscriptHtml, escapeHtml } from './pdfExport.js';
 
 const CHAPTERS = [
   {
