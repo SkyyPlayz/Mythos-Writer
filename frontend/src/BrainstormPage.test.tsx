@@ -1,11 +1,5 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
-import {
-  buildIdeaGroups,
-  buildMapLayout,
-  mapHubPosition,
-  mapNodePosition,
-} from './brainstormCenter';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -2264,12 +2258,13 @@ describe('BrainstormPage — TTS voice controls', () => {
 
 // ─── M19: Brainstorm center — mode segment + Board / Map / Clusters ──────────
 
-describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
+describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
   type SeedFact = {
     id: string;
     type: 'character' | 'location' | 'item' | 'note';
     name: string;
     content: string;
+    savedStatus?: string;
   };
 
   /** Seed session ideas through the draft-restore path the page already owns. */
@@ -2279,7 +2274,7 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
       savedAt: new Date().toISOString(),
       prompt: '',
       messages: [],
-      facts: facts.map((f, i) => ({ ...f, savedStatus: 'saved', createdAt: 1000 + i })),
+      facts: facts.map((f, i) => ({ savedStatus: 'saved', ...f, createdAt: 1000 + i })),
     }));
   }
 
@@ -2289,139 +2284,147 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
     { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern' },
   ];
 
-  it('mode segment switches between chat, board, map, and clusters views', () => {
+  it('page segment switches between Agent Chat (default) and the ONE Board', () => {
     seedFacts(THREE_IDEAS);
     render(<BrainstormPage onClose={() => {}} />);
 
-    // Chat is the default mode — composer and facts panel are live.
+    // Agent Chat is the default page — composer and facts panel are live.
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
     expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('bsc-mode-chat')).toHaveTextContent('Agent Chat');
 
-    // Board: slot-tinted columns of vault ideas, one card per fact.
+    // B4-4: the Map and Clusters pages are gone — ONE board remains.
+    expect(screen.queryByTestId('bsc-mode-map')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-mode-clusters')).not.toBeInTheDocument();
+
+    // Board: one free-form canvas with floating category region labels.
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
     expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
     expect(screen.queryByLabelText(/brainstorm prompt/i)).not.toBeInTheDocument();
-    expect(screen.getByText('CHARACTERS')).toBeInTheDocument();
-    expect(screen.getByText('LOOSE IDEAS')).toBeInTheDocument();
+    expect(screen.getByText('STORY BEATS')).toBeInTheDocument();
+    expect(screen.getByText('CHARACTER RELATIONSHIPS')).toBeInTheDocument();
+    expect(screen.getByText('TROPES')).toBeInTheDocument();
     expect(screen.getByTestId('bsc-card-fact-a')).toHaveTextContent('Aria Voss');
     expect(screen.getByTestId('bsc-card-fact-c')).toHaveTextContent('Dark Cave');
-
-    // Map: one hub per non-empty group, one node per idea, one line per node.
-    fireEvent.click(screen.getByTestId('bsc-mode-map'));
-    const map = screen.getByTestId('bsc-map');
-    expect(screen.getByTestId('bsc-hub-character')).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-hub-location')).toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-hub-item')).not.toBeInTheDocument();
-    expect(screen.getByTestId('bsc-map-node-fact-b')).toHaveTextContent('Kael Thorne');
-    expect(map.querySelectorAll('line')).toHaveLength(3);
-
-    // Clusters: gravity bubbles per group.
-    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
-    expect(screen.getByTestId('bsc-clusters')).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-cluster-character')).toBeInTheDocument();
 
     // Back to chat — the composer returns.
     fireEvent.click(screen.getByTestId('bsc-mode-chat'));
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
   });
 
-  it('map nodes are positioned by the exact prototype ring math', () => {
+  it('B4-4 migration places legacy draft facts on the prototype home grid', () => {
     seedFacts(THREE_IDEAS);
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-map'));
-
-    // First node: i=0 of 3 → ang 0, rad 26 → (76%, 48%).
-    const first = screen.getByTestId('bsc-map-node-fact-a');
-    expect(first.style.left).toBe('76%');
-    expect(first.style.top).toBe('48%');
-  });
-
-  it('ring math: hub positions for i=0..2 of 4 (13% × 10% ellipse around 50,48)', () => {
-    const h0 = mapHubPosition(0, 4); // ang 0
-    expect(h0.x).toBeCloseTo(63, 10);
-    expect(h0.y).toBeCloseTo(48, 10);
-    const h1 = mapHubPosition(1, 4); // ang π/2
-    expect(h1.x).toBeCloseTo(50, 10);
-    expect(h1.y).toBeCloseTo(58, 10);
-    const h2 = mapHubPosition(2, 4); // ang π
-    expect(h2.x).toBeCloseTo(37, 10);
-    expect(h2.y).toBeCloseTo(48, 10);
-  });
-
-  it('ring math: node positions for i=0..2 of 8 (rad 26 + (i%3)·11, y squashed ×0.72)', () => {
-    const n0 = mapNodePosition(0, 8); // ang 0, rad 26
-    expect(n0.x).toBeCloseTo(76, 10);
-    expect(n0.y).toBeCloseTo(48, 10);
-    const n1 = mapNodePosition(1, 8); // ang π/4, rad 37
-    expect(n1.x).toBeCloseTo(76.16295090390226, 5);
-    expect(n1.y).toBeCloseTo(66.83732465080963, 5);
-    const n2 = mapNodePosition(2, 8); // ang π/2, rad 48
-    expect(n2.x).toBeCloseTo(50, 10);
-    expect(n2.y).toBeCloseTo(82.56, 5);
-  });
-
-  it('buildMapLayout links every node back to its hub coordinates', () => {
-    const groups = buildIdeaGroups([
-      { id: 'i1', title: 'One', body: '', type: 'character' },
-      { id: 'i2', title: 'Two', body: '', type: 'note' },
-    ]);
-    const { hubs, nodes, lines } = buildMapLayout(groups);
-    expect(hubs).toHaveLength(2);
-    expect(nodes).toHaveLength(2);
-    expect(lines).toHaveLength(2);
-    for (const [i, line] of lines.entries()) {
-      expect(line.x1).toBe(nodes[i].x);
-      expect(line.y1).toBe(nodes[i].y);
-      expect(line.x2).toBe(hubs[nodes[i].hub].x);
-      expect(line.y2).toBe(hubs[nodes[i].hub].y);
-    }
-  });
-
-  it('clusters mode renders gravity bubbles with one chip per idea', () => {
-    seedFacts(THREE_IDEAS);
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
-
-    const charCluster = within(screen.getByTestId('bsc-cluster-character'));
-    expect(charCluster.getByText('CHARACTERS')).toBeInTheDocument();
-    expect(charCluster.getByText('2 ideas')).toBeInTheDocument();
-    expect(charCluster.getByRole('button', { name: 'Aria Voss' })).toBeInTheDocument();
-    expect(charCluster.getByRole('button', { name: 'Kael Thorne' })).toBeInTheDocument();
-
-    const locCluster = within(screen.getByTestId('bsc-cluster-location'));
-    expect(locCluster.getByText('1 ideas')).toBeInTheDocument();
-    expect(locCluster.getByRole('button', { name: 'Dark Cave' })).toBeInTheDocument();
-
-    // Empty groups are dropped from the cluster view.
-    expect(screen.queryByTestId('bsc-cluster-item')).not.toBeInTheDocument();
-
-    // Status bar reflects real counts.
-    expect(screen.getByText('3 ideas')).toBeInTheDocument();
-    expect(screen.getByText('2 clusters')).toBeInTheDocument();
-  });
-
-  it('degrades gracefully to a single group when the session has no ideas', () => {
-    expect(buildIdeaGroups([])).toEqual([
-      { key: 'note', title: 'LOOSE IDEAS', color: 3, ideas: [] },
-    ]);
-
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
-    const fallbackCluster = screen.getByTestId('bsc-cluster-note');
-    expect(within(fallbackCluster).getByText('LOOSE IDEAS')).toBeInTheDocument();
-    expect(within(fallbackCluster).getByText('0 ideas')).toBeInTheDocument();
-  });
-
-  it('board add-idea row captures a new idea into the column with a toast', () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    fireEvent.click(screen.getByTestId('bsc-add-note'));
+    // characters → CHARACTER RELATIONSHIPS home [880, 150]; slot math
+    // x = h[0] + (i%2)·240, y = h[1] + ⌊i/2⌋·158 + (i%2)·28 (prototype bsPosOf).
+    const cardA = screen.getByTestId('bsc-card-fact-a');
+    expect(cardA.style.left).toBe('880px');
+    expect(cardA.style.top).toBe('150px');
+    const cardB = screen.getByTestId('bsc-card-fact-b');
+    expect(cardB.style.left).toBe('1120px');
+    expect(cardB.style.top).toBe('178px');
+    // location → WORLDBUILDING CLUSTERS home [1480, 200].
+    const cardC = screen.getByTestId('bsc-card-fact-c');
+    expect(cardC.style.left).toBe('1480px');
+    expect(cardC.style.top).toBe('200px');
+  });
 
-    const noteCol = within(screen.getByTestId('bsc-col-note'));
-    expect(noteCol.getByText('New idea')).toBeInTheDocument();
-    expect(noteCol.getByText('Captured to loose ideas — expand me later.')).toBeInTheDocument();
-    expect(screen.getByText('Idea captured')).toBeInTheDocument();
+  it('cards drag anywhere and keep the dropped position', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    const card = screen.getByTestId('bsc-card-fact-a');
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { clientX: 60, clientY: 40 });
+    fireEvent.mouseUp(window);
+
+    expect(screen.getByTestId('bsc-card-fact-a').style.left).toBe('930px');
+    expect(screen.getByTestId('bsc-card-fact-a').style.top).toBe('180px');
+
+    // The position sticks across a page round-trip (board state, not layout).
+    fireEvent.click(screen.getByTestId('bsc-mode-chat'));
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    expect(screen.getByTestId('bsc-card-fact-a').style.left).toBe('930px');
+  });
+
+  it('Connect tool links two cards with a purple line and updates the status line', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('0 connections');
+
+    fireEvent.click(screen.getByTestId('bsc-tool-connect'));
+    fireEvent.mouseDown(screen.getByTestId('bsc-card-fact-a'), { button: 0 });
+    expect(screen.getByText('Now click the idea to connect it to')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId('bsc-card-fact-c'), { button: 0 });
+    expect(screen.getByText('Ideas connected')).toBeInTheDocument();
+
+    expect(document.querySelectorAll('[data-testid="bsc-link"]')).toHaveLength(1);
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('1 connections');
+  });
+
+  it('double-click opens inline edit; Done commits title and description', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.doubleClick(screen.getByTestId('bsc-card-fact-a'));
+    fireEvent.change(screen.getByTestId('bsc-edit-title-fact-a'), {
+      target: { value: 'Aria, Reforged' },
+    });
+    fireEvent.change(screen.getByTestId('bsc-edit-desc-fact-a'), {
+      target: { value: 'Now with a plan.' },
+    });
+    fireEvent.click(screen.getByTestId('bsc-edit-done-fact-a'));
+
+    const card = screen.getByTestId('bsc-card-fact-a');
+    expect(card).toHaveTextContent('Aria, Reforged');
+    expect(card).toHaveTextContent('Now with a plan.');
+  });
+
+  it('Enter commits the inline title edit (prototype editKey)', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.doubleClick(screen.getByTestId('bsc-card-fact-a'));
+    fireEvent.change(screen.getByTestId('bsc-edit-title-fact-a'), {
+      target: { value: 'Renamed by Enter' },
+    });
+    fireEvent.keyDown(screen.getByTestId('bsc-edit-title-fact-a'), { key: 'Enter' });
+    expect(screen.getByTestId('bsc-card-fact-a')).toHaveTextContent('Renamed by Enter');
+  });
+
+  it('vault-note card titles are underlined and open the note', async () => {
+    seedFacts(THREE_IDEAS);
+    mockEntityList.mockResolvedValue({
+      entities: [{ id: 'ent-aria', name: 'Aria Voss', type: 'character' }],
+    });
+    const onNavigateToEntity = vi.fn();
+    render(<BrainstormPage onClose={() => {}} onNavigateToEntity={onNavigateToEntity} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    const titleBtn = await screen.findByTestId('bsc-card-title-fact-a');
+    expect(titleBtn).toHaveAttribute('title', 'Linked note — click to open it in your vault');
+    fireEvent.click(titleBtn);
+    expect(onNavigateToEntity).toHaveBeenCalledWith('ent-aria');
+    // Cards without a matching note stay plain text.
+    expect(screen.queryByTestId('bsc-card-title-fact-c')).not.toBeInTheDocument();
+  });
+
+  it('`+ Idea` captures a New idea card near Loose Ideas with a toast', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.click(screen.getByTestId('bsc-add-idea'));
+
+    const board = within(screen.getByTestId('bsc-board'));
+    expect(board.getByText('New idea')).toBeInTheDocument();
+    expect(board.getByText('Drag me anywhere — expand me with the Agent chat.')).toBeInTheDocument();
+    expect(screen.getByText('Idea captured — landed near Loose Ideas')).toBeInTheDocument();
   });
 
   it('chat still renders and sends after a board round-trip', async () => {
@@ -2442,9 +2445,62 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
     expect(mockStreamStart).toHaveBeenCalledTimes(1);
   });
 
+  it('Board toggle stacks the canvas under the chat with a drag-bar', () => {
+    seedFacts(THREE_IDEAS);
+    render(<BrainstormPage onClose={() => {}} />);
+
+    expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bs-chat-board-toggle'));
+
+    // The canvas appears WITHOUT leaving the chat page.
+    expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
+    expect(screen.getByTestId('bs-board-resize')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bs-chat-board-toggle'));
+    expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
+  });
+
+  it('persists dragged positions to the vault board file (debounced save)', async () => {
+    seedFacts(THREE_IDEAS);
+    const mockReadNotesVault = vi.fn().mockResolvedValue({ error: 'ENOENT' });
+    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'Boards/brainstorm.board.json', bytes: 1 });
+    (window as unknown as { api: unknown }).api = buildApi({
+      readNotesVault: mockReadNotesVault,
+      writeNotesVault: mockWriteNotesVault,
+    });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    // The B4-4 migration itself writes the freshly-migrated board once.
+    await waitFor(() => expect(mockWriteNotesVault).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    const card = screen.getByTestId('bsc-card-fact-a');
+    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { clientX: 130, clientY: 90 });
+    fireEvent.mouseUp(window);
+
+    // The debounced save writes the moved position to the vault file.
+    await waitFor(
+      () => expect(mockWriteNotesVault).toHaveBeenCalledTimes(2),
+      { timeout: 3_000 },
+    );
+    const [savedPath, savedJson] = mockWriteNotesVault.mock.calls[1];
+    expect(savedPath).toBe('Boards/brainstorm.board.json');
+    const saved = JSON.parse(savedJson as string);
+    const savedCard = saved.cards.find((c: { factId?: string }) => c.factId === 'fact-a');
+    expect(savedCard).toMatchObject({ x: 1000, y: 230 });
+    expect(saved.version).toBe(1);
+    expect(saved.draftMigrated).toBe(true);
+  });
+
   it('mode segment is hidden in compact sidebar contexts', () => {
     render(<BrainstormPage onClose={() => {}} compact />);
     expect(screen.queryByTestId('bsc-mode-board')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bs-collections')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
     // W0.3 (GAP P0#3): compact contexts get the prototype right-panel spacing
     // (12px padding / 8px gaps) so ← Back never collides with the preset chip.
@@ -2455,6 +2511,315 @@ describe('BrainstormPage — Brainstorm center modes (Beta3/M19)', () => {
     render(<BrainstormPage onClose={() => {}} />);
     expect(document.querySelector('.brainstorm-header--compact')).not.toBeInTheDocument();
     expect(document.querySelector('.brainstorm-header')).toBeInTheDocument();
+  });
+});
+
+// ─── M20: left IDEA COLLECTIONS panel + starter library ──────────────────────
+
+describe('BrainstormPage — M20 idea collections and starter library', () => {
+  it('shows the collection groups with the preloaded starter library', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const panel = within(screen.getByTestId('bs-collections'));
+    expect(panel.getByText('IDEA COLLECTIONS')).toBeInTheDocument();
+    for (const label of ['All Ideas', 'Story Beats', 'Characters', 'World & Lore', 'Themes', 'Tropes', 'Loose Ideas']) {
+      expect(panel.getByText(label)).toBeInTheDocument();
+    }
+
+    // Starter library counts: 3 structure beats, 12 tropes, 6 themes, 4 sparks.
+    expect(within(screen.getByTestId('bs-coll-toggle-beats')).getByText('3')).toBeInTheDocument();
+    expect(within(screen.getByTestId('bs-coll-toggle-trope')).getByText('12')).toBeInTheDocument();
+    expect(within(screen.getByTestId('bs-coll-toggle-theme')).getByText('6')).toBeInTheDocument();
+    expect(within(screen.getByTestId('bs-coll-toggle-loose')).getByText('4')).toBeInTheDocument();
+
+    // Groups start collapsed; expanding Tropes reveals the starter rows
+    // carrying the Starter chip.
+    expect(panel.queryByText('The Chosen One')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
+    expect(panel.getByText('The Chosen One')).toBeInTheDocument();
+    expect(panel.getByText('The Heist Gone Wrong')).toBeInTheDocument();
+    expect(panel.getAllByText('Starter').length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('search filters rows and auto-expands matching groups', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.change(screen.getByTestId('bs-coll-search'), { target: { value: 'ticking' } });
+
+    // No manual expand needed — every group with a match opened itself
+    // (the row shows in both All Ideas and Story Beats).
+    const panel = within(screen.getByTestId('bs-collections'));
+    expect(panel.getAllByText('The Ticking Clock')).toHaveLength(2);
+    expect(panel.queryByText('The Chosen One')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('bs-coll-toggle-beats')).getByText('1')).toBeInTheDocument();
+    expect(within(screen.getByTestId('bs-coll-toggle-trope')).getByText('0')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('bs-coll-search'), { target: { value: '' } });
+    expect(panel.queryByText('The Ticking Clock')).not.toBeInTheDocument();
+  });
+
+  it('`+` places an idea on the board, jumps to Board, and the row turns ✓', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the board' }));
+
+    // Jumped to the Board page with the card placed.
+    expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(screen.getByTestId('bsc-board')).getByText('The Chosen One')).toBeInTheDocument();
+    expect(screen.getByText('“The Chosen One” added to the board')).toBeInTheDocument();
+
+    // The collections row is now a dimmed ✓ and re-clicking only toasts.
+    fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
+    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the board' });
+    fireEvent.click(placedRow);
+    expect(screen.getByText('“The Chosen One” is already on the board')).toBeInTheDocument();
+    // Still exactly one card on the canvas.
+    expect(within(screen.getByTestId('bsc-board')).getAllByText('The Chosen One')).toHaveLength(1);
+  });
+
+  it('agent-filed facts appear in their collection with a ✓ once migrated to the board', () => {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [{ id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 }],
+    }));
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.click(screen.getByTestId('bs-coll-toggle-rel'));
+    // The migrated fact is already on the board, so its row reads ✓.
+    expect(screen.getByRole('button', { name: 'Aria Voss — already on the board' })).toBeInTheDocument();
+  });
+});
+
+// ─── M20: right panel — questions, needs-work, board-page agent panel ────────
+
+describe('BrainstormPage — M20 right panel sections', () => {
+  it('QUESTIONS FOR YOU lists agent questions; clicking sends one to the chat', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.queryByTestId('bs-questions-section')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'Tell me about the gate' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream(['The gate is sealed. Does Kael know Mira took the map? It matters later.']);
+
+    const question = await screen.findByTestId('bs-question-row');
+    expect(question).toHaveTextContent('Does Kael know Mira took the map?');
+
+    await act(async () => {
+      fireEvent.click(question);
+    });
+    const apiMessages = mockStreamStart.mock.calls[1][0].messages;
+    expect(apiMessages[apiMessages.length - 1]).toEqual({
+      role: 'user',
+      content: 'Does Kael know Mira took the map?',
+    });
+  });
+
+  it('NOTES THAT NEED WORK flags MISSING and NEEDS WORK with chips', () => {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [
+        { id: 'fact-x', type: 'location', name: 'Ward Violet', content: 'District of favors', savedStatus: 'error', createdAt: 1000 },
+        { id: 'fact-y', type: 'character', name: 'The Lamplighter', content: 'A rival', savedStatus: 'saved', createdAt: 1001 },
+      ],
+    }));
+    render(<BrainstormPage onClose={() => {}} />);
+
+    const section = within(screen.getByTestId('bs-needs-section'));
+    expect(section.getByText('NOTES THAT NEED WORK')).toBeInTheDocument();
+    const missingRow = within(screen.getByTestId('bs-needs-row-fact-x'));
+    expect(missingRow.getByText('Ward Violet')).toBeInTheDocument();
+    expect(missingRow.getByText('MISSING')).toBeInTheDocument();
+    const workRow = within(screen.getByTestId('bs-needs-row-fact-y'));
+    expect(workRow.getByText('NEEDS WORK')).toBeInTheDocument();
+  });
+
+  it('clicking a needs-work row sends a drafting prompt into the chat', async () => {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [],
+      facts: [{ id: 'fact-x', type: 'location', name: 'Ward Violet', content: 'District', savedStatus: 'error', createdAt: 1000 }],
+    }));
+    render(<BrainstormPage onClose={() => {}} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bs-needs-row-fact-x'));
+    });
+    const apiMessages = mockStreamStart.mock.calls[0][0].messages;
+    expect(apiMessages[apiMessages.length - 1].content).toContain('Ward Violet');
+  });
+
+  it('board-page right panel: explore buttons and quick generate run through the chat', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    const side = within(screen.getByTestId('bs-board-side'));
+    expect(side.getByText('WHAT WOULD YOU LIKE TO EXPLORE?')).toBeInTheDocument();
+    expect(side.getByText('QUICK GENERATE')).toBeInTheDocument();
+    expect(side.getAllByTestId('bs-explore-btn')).toHaveLength(6);
+    // No prompts sent yet → saved prompts shows its hint.
+    expect(side.getByText('Prompts you send in the chat reappear here.')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(side.getByRole('button', { name: 'Generate Story Beats' }));
+    });
+    // Explore jumps back to the chat and sends the real prompt.
+    expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('aria-pressed', 'true');
+    const apiMessages = mockStreamStart.mock.calls[0][0].messages;
+    expect(apiMessages[apiMessages.length - 1]).toEqual({
+      role: 'user',
+      content: 'Give me 3 story beat ideas for the next chapter.',
+    });
+    await simulateStream(['Beat one. Beat two. Beat three.']);
+
+    // The sent prompt now appears under SAVED PROMPTS on the board page.
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    expect(screen.getByTestId('bs-saved-prompt')).toHaveTextContent('Give me 3 story beat ideas for the next chapter.');
+
+    // QUICK GENERATE sends its textarea through the same path.
+    fireEvent.change(screen.getByTestId('bs-quick-gen-input'), {
+      target: { value: 'Name three rival factions.' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bs-quick-gen-send'));
+    });
+    expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('aria-pressed', 'true');
+    const apiMessages2 = mockStreamStart.mock.calls[1][0].messages;
+    expect(apiMessages2[apiMessages2.length - 1].content).toBe('Name three rival factions.');
+  });
+});
+
+// ─── M20 (SKY-6663): chat wired onto the shared agent-session store ──────────
+
+describe('BrainstormPage — M20 shared session store', () => {
+  function makeSessionApi(initial: { id: string; turns: AgentSessionTurn[] }) {
+    const session = {
+      id: initial.id,
+      agent: 'brainstorm',
+      title: 'Session 1',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      turns: [...initial.turns],
+    };
+    return {
+      session,
+      list: vi.fn().mockResolvedValue({
+        sessions: [{
+          id: session.id, agent: 'brainstorm', title: session.title,
+          startedAt: session.startedAt, updatedAt: session.updatedAt,
+          turnCount: session.turns.length, relPath: 'Sessions/s.md',
+        }],
+      }),
+      read: vi.fn().mockImplementation(async () => ({ session: { ...session, turns: [...session.turns] } })),
+      create: vi.fn(),
+      rename: vi.fn().mockResolvedValue({ ok: true }),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn().mockImplementation(async (_id: string, turns: AgentSessionTurn[]) => {
+        session.turns.push(...turns);
+        return { session: { ...session, turns: [...session.turns] } };
+      }),
+    };
+  }
+
+  it('renders the session pill and hydrates the greeting on a fresh mount', async () => {
+    const sessionApi = makeSessionApi({
+      id: 's1',
+      turns: [{ role: 'agent', text: 'Hello! Share any idea.', at: '2026-01-01T00:00:00.000Z' }],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+
+    // Session dropdown pill (AgentSessionPicker) is in the header.
+    const pill = await screen.findByRole('button', { name: /session: session 1/i });
+    expect(pill).toBeInTheDocument();
+
+    // With no local draft, the feed hydrates from the session's turns.
+    await waitFor(() =>
+      expect(screen.getByText('Hello! Share any idea.')).toBeInTheDocument(),
+    );
+  });
+
+  it('appends the completed exchange to the session store when a stream ends', async () => {
+    const sessionApi = makeSessionApi({ id: 's1', turns: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A market where memories are traded' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream(['What do the traders take in exchange?']);
+
+    await waitFor(() => expect(sessionApi.appendTurns).toHaveBeenCalledTimes(1));
+    const [, turns] = sessionApi.appendTurns.mock.calls[0];
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toMatchObject({ role: 'user', text: 'A market where memories are traded' });
+    expect(turns[1]).toMatchObject({ role: 'agent', text: 'What do the traders take in exchange?' });
+  });
+
+  it('migrates a restored draft transcript into the session store exactly once', async () => {
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'user', text: 'Remember the drowned coast?' },
+        { role: 'assistant', text: 'Yes — the tide opens the inner passage.' },
+      ],
+      facts: [],
+    }));
+    const sessionApi = makeSessionApi({
+      id: 's1',
+      turns: [{ role: 'agent', text: 'Hello!', at: '2026-01-01T00:00:00.000Z' }],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(<BrainstormPage onClose={() => {}} />);
+    });
+    const { unmount } = view;
+
+    // Draft messages stay on screen (draft wins) AND land in the store once.
+    expect(screen.getByText('Remember the drowned coast?')).toBeInTheDocument();
+    await waitFor(() => expect(sessionApi.appendTurns).toHaveBeenCalledTimes(1));
+    const [, turns] = sessionApi.appendTurns.mock.calls[0];
+    expect(turns).toMatchObject([
+      { role: 'user', text: 'Remember the drowned coast?' },
+      { role: 'agent', text: 'Yes — the tide opens the inner passage.' },
+    ]);
+    expect(localStorage.getItem('brainstorm:session-migrated')).toBe('1');
+
+    // A remount must NOT migrate again (one-shot flag).
+    unmount();
+    sessionApi.appendTurns.mockClear();
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalled());
+    expect(sessionApi.appendTurns).not.toHaveBeenCalled();
   });
 });
 
@@ -2521,9 +2886,10 @@ describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
 
     const feed = screen.getByTestId('bs-activity-feed');
     expect(feed).toHaveTextContent('Agent actions land here');
+    // M20: prototype stats row Notes / Links / Props with real counters.
     expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('0');
-    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('0');
-    expect(screen.getByTestId('bs-stat-queued')).toHaveTextContent('0');
+    expect(screen.getByTestId('bs-stat-links')).toHaveTextContent('0');
+    expect(screen.getByTestId('bs-stat-props')).toHaveTextContent('0');
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'A rogue named Zara' },
@@ -2539,16 +2905,15 @@ describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
       expect(feed).toHaveTextContent('Created note — “Zara” (Character)');
     });
     expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('1');
-    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('1');
 
     // New Session clears the feed and the derived counters.
     fireEvent.click(screen.getByRole('button', { name: /new session/i }));
     expect(screen.getByTestId('bs-activity-feed')).toHaveTextContent('Agent actions land here');
-    expect(screen.getByTestId('bs-stat-ideas')).toHaveTextContent('0');
+    expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('0');
   });
 });
 
-describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
+describe('BrainstormPage — M20 board tools, zoom, and idea search', () => {
   function seedThreeIdeas() {
     localStorage.setItem('brainstorm:draft', JSON.stringify({
       v: 2,
@@ -2563,7 +2928,7 @@ describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
     }));
   }
 
-  it('renders the prototype tool palette with select active; other tools toast as staged', () => {
+  it('renders the dock with Select active; Frame/Text toast as staged, Connect arms for real', () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
@@ -2573,13 +2938,21 @@ describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
       expect(screen.getByTestId(`bsc-tool-${key}`)).toHaveAttribute('aria-pressed', 'false');
     }
 
+    // Frame stays a staged tool (prototype mocks it too).
+    fireEvent.click(screen.getByTestId('bsc-tool-frame'));
+    expect(screen.getByText('Frame tool — coming soon')).toBeInTheDocument();
+
+    // Connect is REAL in M20 — no staged toast; the canvas hint arms instead.
     fireEvent.click(screen.getByTestId('bsc-tool-connect'));
     expect(screen.getByTestId('bsc-tool-connect')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByText('Connect ideas tool — coming soon')).toBeInTheDocument();
+    expect(screen.queryByText('Connect ideas tool — coming soon')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bsc-canvas-hint')).toHaveTextContent(
+      'Connect tool — click two ideas to link them',
+    );
   });
 
-  it('zoom steps ±25 between 50% and 200% and scales the board columns', () => {
+  it('zoom steps ±25 between 50% and 200% and scales the canvas world', () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
@@ -2588,8 +2961,8 @@ describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
 
     fireEvent.click(screen.getByTestId('bsc-zoom-in'));
     expect(pct).toHaveTextContent('125%');
-    const cols = screen.getByTestId('bsc-board').querySelector('.bsc-board-cols') as HTMLElement;
-    expect(cols.style.transform).toBe('scale(1.25)');
+    const world = screen.getByTestId('bsc-world');
+    expect(world.style.transform).toContain('scale(1.25)');
 
     // Clamp at 200%…
     for (let i = 0; i < 5; i++) fireEvent.click(screen.getByTestId('bsc-zoom-in'));
@@ -2599,34 +2972,35 @@ describe('BrainstormPage — M19 board tools, zoom, and idea search', () => {
     expect(pct).toHaveTextContent('50%');
   });
 
-  it('idea search filters Board, Map, and Clusters and updates the status bar', () => {
+  it('wheel zoom follows the prototype ×1.08 / ×0.93 curve', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+
+    fireEvent.wheel(screen.getByTestId('bsc-board'), { deltaY: -1 });
+    expect(screen.getByTestId('bsc-zoom-pct')).toHaveTextContent('108%');
+    fireEvent.wheel(screen.getByTestId('bsc-board'), { deltaY: 1 });
+    expect(screen.getByTestId('bsc-zoom-pct')).toHaveTextContent('100%');
+  });
+
+  it('idea search filters the canvas and updates the status line', () => {
     seedThreeIdeas();
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    // Search is hidden in chat mode, visible in the visual modes.
-    const search = screen.getByTestId('bsc-search-input');
-    fireEvent.change(search, { target: { value: 'aria' } });
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('3 ideas');
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('2 clusters');
+
+    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: 'aria' } });
 
     expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
     expect(screen.queryByTestId('bsc-card-fact-b')).not.toBeInTheDocument();
     expect(screen.queryByTestId('bsc-card-fact-c')).not.toBeInTheDocument();
-    expect(screen.getByText('1 of 3 ideas')).toBeInTheDocument();
-
-    // The query carries into Map (hubs collapse to matching groups)…
-    fireEvent.click(screen.getByTestId('bsc-mode-map'));
-    expect(screen.getByTestId('bsc-hub-character')).toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-hub-location')).not.toBeInTheDocument();
-
-    // …and Clusters.
-    fireEvent.click(screen.getByTestId('bsc-mode-clusters'));
-    expect(screen.getByTestId('bsc-cluster-character')).toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-cluster-location')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('1 of 3 ideas');
 
     // Clearing the query restores everything.
     fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: '' } });
-    expect(screen.getByTestId('bsc-cluster-location')).toBeInTheDocument();
-    expect(screen.getByText('3 ideas')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-card-fact-b')).toBeInTheDocument();
+    expect(screen.getByTestId('bsc-status')).toHaveTextContent('3 ideas');
   });
 
   it('search matches idea bodies as well as titles', () => {

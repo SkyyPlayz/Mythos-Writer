@@ -35,6 +35,9 @@ function setupMockApi(sessions: AgentSessionFile[]) {
 
   const mockApi = {
     list: vi.fn().mockResolvedValue({ sessions: summaries }),
+    read: vi.fn().mockImplementation(async (sessionId: string) => ({
+      session: sessions.find((s) => s.id === sessionId) ?? null,
+    })),
     create: vi.fn().mockImplementation(async (agent: string, title?: string, greeting?: string) => {
       const s = makeMockSession({
         id: 'new-session-' + Date.now(),
@@ -77,6 +80,7 @@ describe('useAgentSessions', () => {
   it('auto-creates a session when none exist', async () => {
     const emptyApi = {
       list: vi.fn().mockResolvedValue({ sessions: [] }),
+      read: vi.fn().mockResolvedValue({ session: null }),
       create: vi.fn().mockResolvedValue({
         session: makeMockSession({ id: 'auto-1' }),
         relPath: 'Sessions/auto-1.md',
@@ -157,6 +161,32 @@ describe('useAgentSessions', () => {
 
     expect(result.current.activeSession?.turns).toHaveLength(1);
     expect(result.current.activeSession?.turns[0].text).toBe('Hello');
+  });
+
+  // M20: switching sessions hydrates the full turn history via agentSession:read
+  it('hydrates turns from the read IPC when switching to an existing session', async () => {
+    const s1 = makeMockSession({ id: 's1' });
+    const s2 = makeMockSession({
+      id: 's2',
+      title: 'Older chat',
+      turns: [
+        { role: 'agent', text: 'Hello again!', at: '2026-01-01T00:00:00.000Z' },
+        { role: 'user', text: 'Continue where we left off', at: '2026-01-01T00:01:00.000Z' },
+      ],
+    });
+    const mockApi = setupMockApi([s1, s2]);
+    const { result } = renderHook(() => useAgentSessions('brainstorm'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    await act(async () => {
+      await result.current.switchSession('s2');
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect(mockApi.read).toHaveBeenCalledWith('s2');
+    expect(result.current.activeSession?.id).toBe('s2');
+    expect(result.current.activeSession?.turns).toHaveLength(2);
+    expect(result.current.activeSession?.turns[1].text).toBe('Continue where we left off');
   });
 });
 

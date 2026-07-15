@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   handleAgentSessionList,
+  handleAgentSessionRead,
   handleAgentSessionCreate,
   handleAgentSessionRename,
   handleAgentSessionDuplicate,
@@ -102,6 +103,34 @@ describe('handleAgentSessionList', () => {
     createSession(notesRoot, { agent: 'coach', id: B_ID });
     const { sessions } = handleAgentSessionList(notesRoot, { agent: 'coach' });
     expect(sessions.map((s) => s.id)).toEqual([B_ID]);
+  });
+});
+
+// ─── agentSession:read (M20 / SKY-6663) ──────────────────────────────────────
+
+describe('handleAgentSessionRead', () => {
+  it('returns the full session with its turn history', () => {
+    createSession(notesRoot, {
+      agent: 'brainstorm', id: A_ID, startedAt: '2026-07-01T10:00:00.000Z',
+      turns: [turn('user', 'A market where memories are traded'), turn('agent', 'What do the traders take?')],
+    });
+    const { session } = handleAgentSessionRead(notesRoot, { sessionId: A_ID });
+    expect(session?.id).toBe(A_ID);
+    expect(session?.turns.map((t) => t.text)).toEqual([
+      'A market where memories are traded',
+      'What do the traders take?',
+    ]);
+  });
+
+  it('returns null for an unknown session id', () => {
+    expect(handleAgentSessionRead(notesRoot, { sessionId: B_ID })).toEqual({ session: null });
+  });
+
+  it('B1 contract: resolves by parsed id, not by transcripts that mention the id', () => {
+    makePoisonedVault(notesRoot);
+    const { session } = handleAgentSessionRead(notesRoot, { sessionId: B_ID });
+    expect(session?.title).toBe('Target session');
+    expect(session?.turns[0].text).toBe('Target session body.');
   });
 });
 

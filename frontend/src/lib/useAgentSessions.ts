@@ -74,6 +74,26 @@ export function useAgentSessions(agent: string): UseAgentSessionsResult {
     void initSession();
   }, [initSession]);
 
+  // M20: hydrate the full session file when the active session changes.
+  // Skips the round-trip when the current activeSession already matches (e.g.
+  // right after create/duplicate/appendTurns, whose responses carry the file).
+  const activeSessionRef = useRef<AgentSessionFile | null>(null);
+  useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+  useEffect(() => {
+    if (!activeSessionId || !api || typeof api.read !== 'function') return;
+    if (activeSessionRef.current?.id === activeSessionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { session } = await api.read(activeSessionId);
+        if (!cancelled && session && session.id === activeSessionId) {
+          setActiveSession(session);
+        }
+      } catch { /* vault unavailable — keep whatever we have */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeSessionId, api]);
+
   const switchSession = useCallback(async (id: string) => {
     setActiveSessionId(id);
   }, []);

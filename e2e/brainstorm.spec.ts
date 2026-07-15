@@ -5,6 +5,13 @@
  *   TC-BST-01  Streaming      — send message → streaming cursor visible → tokens accumulate
  *   TC-BST-02  Fact detection — FACT tags in response → "Detected Facts" panel populated
  *   TC-BST-03  Vault save     — "Save to Vault" → entity .md file with correct frontmatter
+ *   TC-BST-04  Preset chip    — genre preset select in the header changes label
+ *   TC-BST-05  Refinement     — refinement chip triggers a new generation
+ *   TC-BST-06  Sort/filter    — Detected Facts sort + filter operate in-memory
+ *   TC-M20-01  Unified board  — ONE canvas; starter library places ideas (B4-4)
+ *   TC-M20-02  Persistence    — dragged card positions persist to the vault board file
+ *   TC-M20-03  Board toggle   — chat page stacks the canvas under the chat
+ *   TC-M20-04  Sessions       — chat exchanges persist to the shared session store
  *
  * The real Anthropic SDK is bypassed by replacing the stream:start IPC handler in the
  * main process (via app.evaluate) with a mock that emits a fixed token sequence.
@@ -405,7 +412,8 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
   expect(content).toContain(MOCK_FACT_DESC);
 });
 
-// ─── TC-BST-04: Sort + filter controls (Wave 3.2) ────────────────────────────
+// ─── TC-BST-06: Sort + filter controls (Wave 3.2) ────────────────────────────
+// (Renamed from a duplicate "TC-BST-04" title during the M20 rework.)
 //
 // Verify the sort dropdown and filter dropdown appear in the Detected Facts panel
 // when multiple fact types exist, and that:
@@ -414,7 +422,7 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
 //   - Filtering back to "All types" restores all groups
 //   - Changing sort order does NOT trigger any disk save (sort is in-memory)
 
-test('TC-BST-04: sort/filter controls appear and filter operates in-memory', async () => {
+test('TC-BST-06: sort/filter controls appear and filter operates in-memory', async () => {
   // Re-inject mock with three fact types so groups are populated.
   const multiTypeMockTokens = [
     'Here are some story elements.\n\n',
@@ -503,4 +511,129 @@ test('TC-BST-04: sort/filter controls appear and filter operates in-memory', asy
   await expect(page.locator('[data-testid^="idea-card-"]').first()).not.toBeVisible({ timeout: 3_000 });
   await page.locator('[data-testid="bs-expand-all"]').click();
   await expect(page.locator('[data-testid="bs-group-toggle-character"]')).toBeVisible({ timeout: 3_000 });
+});
+
+// ─── TC-M20-01: ONE unified board + starter library (§7.2; B4-4) ─────────────
+//
+// The old Board/Map/Clusters modes are gone. The page segment has exactly
+// Agent Chat | Board; the left IDEA COLLECTIONS panel ships the preloaded
+// starter library (3 beats / 12 tropes / 6 themes / 4 sparks) and `+` places
+// an idea onto the one free-form canvas.
+
+test('TC-M20-01: Board page shows one canvas; starter library places ideas', async () => {
+  await openBrainstormPanel();
+
+  // B4-4: Map / Clusters pages no longer exist.
+  await expect(page.locator('[data-testid="bsc-mode-chat"]')).toBeVisible();
+  await expect(page.locator('[data-testid="bsc-mode-board"]')).toBeVisible();
+  expect(await page.locator('[data-testid="bsc-mode-map"]').count()).toBe(0);
+  expect(await page.locator('[data-testid="bsc-mode-clusters"]').count()).toBe(0);
+
+  // Left IDEA COLLECTIONS panel with the starter library counts.
+  const collections = page.locator('[data-testid="bs-collections"]');
+  await expect(collections).toBeVisible();
+  await expect(page.locator('[data-testid="bs-coll-toggle-trope"]')).toContainText('12');
+  await expect(page.locator('[data-testid="bs-coll-toggle-theme"]')).toContainText('6');
+
+  // Expand Story Beats and place a starter idea (chips `Starter`).
+  await page.locator('[data-testid="bs-coll-toggle-beats"]').click();
+  const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the board' });
+  await expect(starterRow).toBeVisible();
+  await expect(starterRow.locator('.bs-coll-starter-chip')).toBeVisible();
+  await starterRow.click();
+
+  // Placing jumps to the Board page with the card on the ONE canvas.
+  await expect(page.locator('[data-testid="bsc-mode-board"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-testid="bsc-board"]')).toBeVisible();
+  const card = page.locator('.bsb-card', { hasText: 'Midpoint Reversal' });
+  await expect(card).toBeVisible();
+
+  // Status line reflects the placement.
+  await expect(page.locator('[data-testid="bsc-status"]')).toContainText('1 ideas');
+});
+
+// ─── TC-M20-02: positions persist to the vault board file ────────────────────
+//
+// Drag the placed card and verify the new position lands in
+// `Boards/brainstorm.board.json` inside the Notes Vault (M5 files-first
+// storage) — this is what makes positions survive an app restart.
+
+test('TC-M20-02: dragged card position persists to Boards/brainstorm.board.json', async () => {
+  const card = page.locator('.bsb-card', { hasText: 'Midpoint Reversal' });
+  const box = await card.boundingBox();
+  expect(box).toBeTruthy();
+
+  // Drag the card ~(+120, +80) with the Select tool (default).
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + 12 + 80, { steps: 6 });
+  await page.mouse.up();
+
+  // The debounced save writes the board file with the moved position.
+  const boardPath = path.join(vaultDir, 'Boards', 'brainstorm.board.json');
+  const moved = await waitUntil(() => {
+    try {
+      const data = JSON.parse(fs.readFileSync(boardPath, 'utf-8'));
+      const entry = (data.cards ?? []).find(
+        (c: { title?: string }) => c.title === 'Midpoint Reversal',
+      );
+      // Default beats slot 0 is x=240; the drag moved it well past 300.
+      return !!entry && typeof entry.x === 'number' && entry.x > 300;
+    } catch {
+      return false;
+    }
+  }, 10_000);
+  expect(moved).toBe(true);
+
+  const boardData = JSON.parse(fs.readFileSync(boardPath, 'utf-8'));
+  expect(boardData.version).toBe(1);
+  expect(boardData.draftMigrated).toBe(true);
+
+  // The status line settles back to Synced once the write lands.
+  await expect(page.locator('[data-testid="bsc-status"]')).toContainText('Synced', { timeout: 5_000 });
+});
+
+// ─── TC-M20-03: chat-page Board toggle ────────────────────────────────────────
+//
+// The Agent Chat page has a Board toggle that stacks the canvas under the chat
+// (with a drag-bar) without leaving the chat.
+
+test('TC-M20-03: chat-page Board toggle stacks the canvas under the chat', async () => {
+  await page.locator('[data-testid="bsc-mode-chat"]').click();
+  await expect(page.locator('.brainstorm-input')).toBeVisible();
+  expect(await page.locator('[data-testid="bsc-board"]').count()).toBe(0);
+
+  await page.locator('[data-testid="bs-chat-board-toggle"]').click();
+  await expect(page.locator('[data-testid="bsc-board"]')).toBeVisible();
+  await expect(page.locator('[data-testid="bs-board-resize"]')).toBeVisible();
+  // Still on the chat page — the composer stays live.
+  await expect(page.locator('.brainstorm-input')).toBeVisible();
+  // The card placed in TC-M20-01 shows on the stacked canvas too (one board).
+  await expect(page.locator('.bsb-card', { hasText: 'Midpoint Reversal' })).toBeVisible();
+
+  // Toggle back off for any subsequent chat assertions.
+  await page.locator('[data-testid="bs-chat-board-toggle"]').click();
+  expect(await page.locator('[data-testid="bsc-board"]').count()).toBe(0);
+});
+
+// ─── TC-M20-04: chat persists to the shared agent-session store (SKY-6663) ───
+//
+// Brainstorm chat now lives on the M15 session store: every completed exchange
+// is appended to a session file under `Sessions/` in the Notes Vault.
+
+test('TC-M20-04: chat exchanges persist to the shared session store', async () => {
+  const sessionsDir = path.join(vaultDir, 'Sessions');
+  const persisted = await waitUntil(() => {
+    try {
+      if (!fs.existsSync(sessionsDir)) return false;
+      return fs.readdirSync(sessionsDir).some((name) => {
+        if (!name.endsWith('.md')) return false;
+        const raw = fs.readFileSync(path.join(sessionsDir, name), 'utf-8');
+        return raw.includes('mythosSession') && raw.includes('Tell me about my main character');
+      });
+    } catch {
+      return false;
+    }
+  }, 10_000);
+  expect(persisted).toBe(true);
 });
