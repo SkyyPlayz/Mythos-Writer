@@ -24,7 +24,7 @@ jobs:
   # WSL2 serialization; hosted runners are ephemeral, so downstream jobs restore
   # the shared cache instead of relying on a warm local ~/.npm.)
   setup:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
@@ -41,7 +41,7 @@ jobs:
 
   lint:
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
@@ -75,7 +75,7 @@ jobs:
 
   typecheck:
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
@@ -101,7 +101,7 @@ jobs:
 
   unit:
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
 
     steps:
@@ -141,7 +141,7 @@ jobs:
     # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
     # via fuzz.yml (runs on every PR as a separate non-blocking check).
     needs: [lint, typecheck, unit]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
@@ -208,7 +208,7 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y
     needs: [build-electron]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
@@ -297,7 +297,7 @@ jobs:
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo
     needs: [build-electron]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
@@ -366,7 +366,7 @@ jobs:
   e2e-shard-3:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete
     needs: [build-electron]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
@@ -453,7 +453,7 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     needs: [build-electron]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:
@@ -537,7 +537,7 @@ jobs:
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: always()
     timeout-minutes: 5
 
@@ -615,7 +615,7 @@ jobs:
     # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
     # with `success` and push/workflow_dispatch does the full packaging.
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 40
     concurrency:
       group: build-linux-${{ github.ref }}
@@ -774,10 +774,10 @@ jobs:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
     # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
     # steps are gated at step level instead.
-    # Native windows-latest build (repo is public — hosted minutes are free); replaces
-    # the self-hosted wine cross-compile used while hosted Actions budget was unavailable.
+    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
+    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
     needs: [setup]
-    runs-on: windows-latest
+    runs-on: self-hosted
     timeout-minutes: 40
     continue-on-error: true
     defaults:
