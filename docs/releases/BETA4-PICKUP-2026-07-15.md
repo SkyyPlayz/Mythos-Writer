@@ -25,13 +25,12 @@ paths) was fixed inside #953. `e2e/mythos-migration.spec.ts` and
 | PR | What | State | Action for pickup |
 |----|------|-------|-------------------|
 | #914 | M21 timeline model | Ivy's hold **fixed** on-branch (4 commits thru `68e1c51`: real-manifest reads, wired migration + SKY-6626 note, atomic writes+backup, one-store reroute, labelled Demo seed w/ visible badge, VR baselines net-zero vs main) | Await Ivy re-review; she was pinged. Merge FIRST in the timeline chain |
-| #951 | M22 axis engine (base m21) | Cascade agent merging fixed m21 in | Merge after #914 |
-| #957 | M23 lane rows (base m22) | Built on pre-fix m22; cascade agent updates it after #951 | Merge after #951; watch its shard-4 (local e2e couldn't run — sandbox blocks electron downloads) |
+| #951 | M22 axis engine (base m21) | **Updated**: fixed m21 merged in + validated (tip `0a78843`) | Merge after #914 |
+| #957 | M23 lane rows (base m22) | ⚠️ **NEEDS the m22 merge-up** (see Unfinished work) | Merge after #951; watch its shard-4 |
 | #917 | M15 agent hub | Ivy's hold **fixed** (`96de6a1`: findSessionFile lookup kills the wrong-file delete; 17 handler tests incl. the B1 regression pair; ci.yml hunk dropped; dead effect removed). Ivy pinged | Merge first in the coach chain |
 | #952 | M12 Coach page (base m15) | Fix cascaded in (`692120b`, incl. `agentSession:read` moved to `agentSessionsIpc.ts`); fully validated | Merge after #917 |
 | #956 | M13 scene analysis (base m12) | Fix cascaded in (`cde920b`); validated | Merge after #952 |
-| #955 | M26 vault graph | **All required checks green** | Merge any time |
-| #954 | Docs (status table + this file) | Re-kicked twice (first fail = main's own bug, second = setup-job 10-min timeout under runner saturation — both understood) | Merge on green |
+| #955 | M26 vault graph | 🔴 **Ivy HOLD** (13:0xZ comment): the correct click-contract change breaks 3 tests in `e2e/wiki-links.spec.ts` (dead in CI) + swap `deriveNodeBlurb` onto `stripHiddenBlocks` | Apply her prescription (4 name queries `Open→Select`, single-click at :249 → new contract, blurb one-engine swap), run wiki-links e2e, push, ping her |
 | #943 | SKY-3223 auto-update e2e salvage | Green, unwired spec + docs only | Merge any time |
 | #958 | M20 brainstorm unification (base m15) | Built on the FIXED m15 tip; B4-4 migration test-first | Merge after #917; then run the `brainstorm-chat` VR baseline loop (its PR predicts the trip) |
 | #959 | M28 settings workspace | B4-6/8/10 compliant; `settings-panel` VR trip predicted | Review, run the VR baseline loop on its branch, merge; unblocks M29 |
@@ -41,13 +40,28 @@ force-push (three PRs hang off these branches). When a base PR squash-merges
 to main and its branch is deleted, GitHub retargets the child PR to main —
 then merge main in once to deduplicate the diff.
 
-## Agents still working at handoff
+## Unfinished work (session limit hit ~13:10Z; resets 15:30 UTC)
 
-- **Cascade agent** finishing main→m21, then m21→m22 (#951), then m22→m23
-  (#957) merge-ups with full validation (#914 went `dirty` vs main after
-  tonight's ten merges; the cascade resolves it bottom-up).
+The agent fleet died at the session token limit. Two items were cut short:
 
-All five milestone builders have delivered (#955 #956 #957 #958 #959).
+1. **m22 → m23 merge-up (#957)**: merge `origin/claude/beta4-m22` (`0a78843`,
+   which now contains the fixed m21 + main) into `claude/beta4-m23`, resolve
+   (expect touch-ups in M23's hand-built fixtures for the stricter validation:
+   rows need `timelineId`, closed `source` vocabulary, duplicate-id checks in
+   every kind; `timelinesTypes.ts` overlaps), validate fully, push (merge, NO
+   force). Steps 0–1 of this cascade are done and pushed (m21 `16a4988`
+   mergeable vs main; m22 `0a78843` validated).
+2. **#955 hold fix**: the M26 fix agent died mid-work (worktree `wt-m26`,
+   nothing pushed). Ivy's hold comment on #955 has the exact prescription;
+   note its last observation — in its harness re-run "neither click reached
+   the node", so start by rebuilding the harness overlay with a FRESH build
+   before trusting any e2e result (see stale-harness warning below).
+
+All five milestone builders delivered (#955 #956 #957 #958 #959).
+
+**⚠️ Stale-harness warning:** the shared `scratchpad/squashfs-root` harness's
+baked `resources/app/out` is a stale Jul-11 build — e2e against it directly is
+meaningless. Always copy it privately and overlay your branch's fresh `out/`.
 
 ## Known cross-PR collision (resolve at merge time)
 
