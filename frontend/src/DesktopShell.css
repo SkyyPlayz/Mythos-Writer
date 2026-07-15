@@ -1413,3 +1413,88 @@
 .desktop-shell--topbar-hidden .shell-center-column {
   height: 100%;
 }
+
+/* ═══ Beta 4 M10 — Drafts v2 host chrome ═══════════════════════════════════
+   Entry points in the scene snapshot toolbar, the compare-split row wrapper
+   around the page area, and the full-diff cover. The pane/diff/popover
+   internals live in src/drafts/*.css. */
+
+.scene-drafts-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.scene-drafts-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  background: transparent;
+  color: var(--n1, #00f0ff);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-drafts-pill:hover {
+  background: var(--gs1, rgba(0, 240, 255, .12));
+  box-shadow: 0 0 14px -3px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.scene-drafts-compare-btn {
+  padding: 4px 12px;
+  background: var(--bg-control, #313244);
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary, #cdd6f4);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scene-drafts-compare-btn:hover {
+  background: var(--bg-control-hover, #45475a);
+}
+
+.scene-drafts-compare-btn.is-active {
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+  color: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, .4));
+}
+
+/* Wrapper around the page area: transparent column normally, flex row when
+   the compare split is open (editor keeps the left, split takes the right). */
+.shell-drafts-splitrow {
+  position: relative; /* anchors .shell-drafts-diff-cover to the page area */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell-drafts-splitrow--open {
+  flex-direction: row;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* In row mode the page-mode wrap centers horizontally via margin (its
+   align-self: center would center it VERTICALLY in a row container). */
+.shell-drafts-splitrow--open > .shell-editor-beta-wrap--page-mode {
+  align-self: stretch;
+  margin: 0 auto;
+}
+
+/* Full diff cover — absolutely fills the splitrow (the page region),
+   leaving the doc header + toolbars above it usable. */
+.shell-drafts-diff-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app, #0b0d17);
+}

@@ -64,6 +64,12 @@ import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import SceneHistory from './SceneHistory';
+// Beta 4 M10 — Drafts v2: compare split, full diff, popover on the M5 store.
+import DraftsCompareSplit from './drafts/DraftsCompareSplit';
+import DraftDiffView from './drafts/DraftDiffView';
+import DraftsPopover from './drafts/DraftsPopover';
+import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
+import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
@@ -723,6 +729,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
+  // Beta 4 M10 — Drafts v2 surfaces (compare split · full diff · popover) +
+  // the exact-undo state for Load draft (CF-4). Undo survives split close.
+  const [draftsSplitOpen, setDraftsSplitOpen] = useState(false);
+  const [draftsDiffOpen, setDraftsDiffOpen] = useState(false);
+  const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
+  const [draftsSelectedTs, setDraftsSelectedTs] = useState<string | null>(null);
+  const [draftsUndo, setDraftsUndo] = useState<DraftUndoState | null>(null);
+  const draftsPillRef = useRef<HTMLButtonElement | null>(null);
   /** SKY-204: currently open vault note path (relative to notes vault root). */
   const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
   /** SKY-204: word count of the currently open vault note, updated live. */
@@ -1006,6 +1020,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePagePrefsChange, pagePrefs]);
 
+  // Beta 4 M10 — numbered drafts (M5 file store) for the open scene, shared
+  // by the popover, the compare split, and the full diff.
+  const sceneDrafts = useSceneDrafts(selectedScene?.id ?? null);
+  const refreshSceneDrafts = sceneDrafts.refresh;
+
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
     const content = editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n');
@@ -1021,9 +1040,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     } catch {
       // non-fatal
     }
+    // Beta 4 M10: also snapshot into the SKY-10/M5 store — numbered draft
+    // files on v2 vaults — so the Drafts v2 surfaces list this save.
+    try {
+      await window.api.versionSave?.(selectedScene.id, content, 'save');
+      void refreshSceneDrafts();
+    } catch {
+      // non-fatal
+    }
     // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
     window.dispatchEvent(new CustomEvent('scene:saved'));
-  }, [selectedScene]);
+  }, [selectedScene, refreshSceneDrafts]);
 
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
@@ -2698,6 +2725,72 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem, provisionalScene, storyDocTabs, persistDocTabs]);
+
+  // ─── Beta 4 M10: Drafts v2 — load draft with exact undo (CF-4) ─────────────
+
+  /** Apply draft text to the open scene through the normal save pipeline
+   *  (manifest + markdown persist), then remount the editor to show it. */
+  const applyDraftContent = useCallback((content: string) => {
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    handleBlocksChange([restoredBlock]);
+    setRestoreKey(k => k + 1);
+  }, [handleBlocksChange]);
+
+  /** Prototype loadDraftH: snapshot-first store rollback, apply, arm Undo. */
+  const handleLoadDraft = useCallback(async (draft: SceneDraftEntry) => {
+    if (!selectedScene) return;
+    if (!draft.content.trim()) {
+      showLnToast('Nothing to load from this draft');
+      return;
+    }
+    try {
+      const undoState = await loadDraft(
+        {
+          getCurrentContent: () =>
+            editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
+          applyContent: applyDraftContent,
+          rollback: (ts) => window.api.versionRollback(selectedScene.id, ts),
+        },
+        selectedScene.id,
+        draft,
+      );
+      setDraftsUndo(undoState);
+      void refreshSceneDrafts(); // the pre-rollback snapshot is a new row
+      showLnToast(`${draft.label} loaded into “${selectedScene.title}” — Undo is in the drafts bar`);
+    } catch (err) {
+      showLnToast(`Couldn't load this draft: ${(err as Error).message}`);
+    }
+  }, [selectedScene, applyDraftContent, refreshSceneDrafts]);
+
+  /** Prototype draftUndoH: put the exact pre-load text back. */
+  const handleDraftUndo = useCallback(() => {
+    if (!draftsUndo || draftsUndo.sceneId !== selectedScene?.id) return;
+    undoLoadDraft({ applyContent: applyDraftContent }, draftsUndo);
+    setDraftsUndo(null);
+    showLnToast('Undone — your current draft is back');
+  }, [draftsUndo, selectedScene, applyDraftContent]);
+
+  /** Popover "Compare" → full diff against that draft (prototype 6426). */
+  const handleDraftCompare = useCallback((draft: SceneDraftEntry) => {
+    setDraftsSelectedTs(draft.ts);
+    setDraftsPopoverOpen(false);
+    setDraftsDiffOpen(true);
+  }, []);
+
+  // Scene switches leave every drafts surface + selection behind; the undo
+  // chip is per-scene by construction (sceneId check in handleDraftUndo).
+  useEffect(() => {
+    setDraftsSplitOpen(false);
+    setDraftsDiffOpen(false);
+    setDraftsPopoverOpen(false);
+    setDraftsSelectedTs(null);
+  }, [selectedScene?.id]);
 
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
@@ -4889,6 +4982,44 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   <span className="scene-autosave" aria-live="polite">
                     {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
                   </span>
+                  {/* Beta 4 M10 — Drafts v2 entry points: "Draft N ▾" pill
+                      (popover w/ snapshot settings) + "Drafts" (compare split). */}
+                  <span className="scene-drafts-anchor">
+                    <button
+                      ref={draftsPillRef}
+                      className="scene-drafts-pill"
+                      onClick={() => setDraftsPopoverOpen(o => !o)}
+                      aria-haspopup="dialog"
+                      aria-expanded={draftsPopoverOpen}
+                      data-testid="scene-drafts-pill"
+                    >
+                      {sceneDrafts.currentLabel} ▾
+                    </button>
+                    {draftsPopoverOpen && (
+                      <DraftsPopover
+                        documentLabel={selectedScene.title ?? 'Scene'}
+                        drafts={sceneDrafts.drafts}
+                        currentLabel={sceneDrafts.currentLabel}
+                        currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                        onCompare={handleDraftCompare}
+                        onRestore={(draft) => {
+                          setDraftsPopoverOpen(false);
+                          void handleLoadDraft(draft);
+                        }}
+                        onClose={() => setDraftsPopoverOpen(false)}
+                        anchorRef={draftsPillRef}
+                      />
+                    )}
+                  </span>
+                  <button
+                    className={`scene-drafts-compare-btn${draftsSplitOpen ? ' is-active' : ''}`}
+                    onClick={() => { setDraftsSplitOpen(o => !o); setDraftsDiffOpen(false); }}
+                    aria-pressed={draftsSplitOpen}
+                    title="Drafts — compare previous drafts side-by-side"
+                    data-testid="scene-drafts-compare-btn"
+                  >
+                    Drafts
+                  </button>
                   <button
                     className="btn-history"
                     onClick={() => setShowSceneHistory(true)}
@@ -4906,6 +5037,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 {!inFocusOrDF && !topBarHidden && (
                   <PageRuler prefs={pagePrefs} onPrefsChange={handlePagePrefsChange} />
                 )}
+                {/* Beta 4 M10: row wrapper — column layout normally; becomes a
+                    flex row hosting the drafts compare split when it's open. */}
+                <div className={`shell-drafts-splitrow${draftsSplitOpen ? ' shell-drafts-splitrow--open' : ''}`}>
                 <div
                   ref={pageWrapRef}
                   className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
@@ -4976,6 +5110,46 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                       else if (e.key === 'ArrowLeft') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.max(320, cur - 10) });
                     }}
                   />
+                </div>
+                {/* Beta 4 M10: drafts compare split (scope = the open scene). */}
+                {draftsSplitOpen && (
+                  <DraftsCompareSplit
+                    scopeLabel={selectedScene.title ?? 'Scene'}
+                    drafts={sceneDrafts.drafts}
+                    currentLabel={sceneDrafts.currentLabel}
+                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                    selectedTs={draftsSelectedTs}
+                    onSelectTs={setDraftsSelectedTs}
+                    onFullDiff={() => setDraftsDiffOpen(true)}
+                    onLoadDraft={(draft) => { void handleLoadDraft(draft); }}
+                    undoLabel={draftsUndo && draftsUndo.sceneId === selectedScene.id ? draftsUndo.loadedLabel : null}
+                    onUndo={handleDraftUndo}
+                    onClose={() => setDraftsSplitOpen(false)}
+                    error={sceneDrafts.error}
+                  />
+                )}
+                {/* Beta 4 M10: full side-by-side diff — covers the page area
+                    (doc header + toolbars stay usable); current draft ALWAYS
+                    the left/green column. */}
+                {draftsDiffOpen && (() => {
+                  const diffDraft =
+                    sceneDrafts.drafts.find(d => d.ts === draftsSelectedTs) ?? sceneDrafts.drafts[0] ?? null;
+                  return diffDraft ? (
+                    <div className="shell-drafts-diff-cover" data-testid="shell-drafts-diff-cover">
+                      <DraftDiffView
+                        documentLabel={selectedScene.title ?? 'Scene'}
+                        currentLabel={sceneDrafts.currentLabel}
+                        previousLabel={diffDraft.label}
+                        currentText={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                        previousText={diffDraft.content}
+                        previousOptions={sceneDrafts.drafts.map(d => ({ id: d.ts, label: d.label }))}
+                        selectedPreviousId={diffDraft.ts}
+                        onSelectPrevious={setDraftsSelectedTs}
+                        onClose={() => setDraftsDiffOpen(false)}
+                      />
+                    </div>
+                  ) : null;
+                })()}
                 </div>
                 {showSceneHistory && (
                   <SceneHistory

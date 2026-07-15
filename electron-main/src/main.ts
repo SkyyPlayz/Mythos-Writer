@@ -93,6 +93,7 @@ import {
   type VersionListPayload,
   type VersionGetPayload,
   type VersionRollbackPayload,
+  type VersionSavePayload,
   type SearchQueryPayload,
   type WritingScanPayload,
   type BetaReadScanPayload,
@@ -2060,6 +2061,22 @@ const handlers: IpcHandlers = {
       version: getVersion(getVaultRoot(), payload.sceneId, payload.ts, { chapterRelPath }),
     };
   },
+  // Beta 4 M10: explicit renderer-initiated snapshot into the SKY-10/M5 store
+  // (numbered draft files on v2 vaults, per-chapter versions/ tree on legacy
+  // vaults). Used by "Save snapshot now" and the drafts compare surfaces.
+  [IPC_CHANNELS.VERSION_SAVE]: (payload: VersionSavePayload) => {
+    ensureVaultDir();
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) throw new Error(`Scene not found: ${payload.sceneId}`);
+    const retention = loadAppSettings().versions;
+    return {
+      version: saveVersion(getVaultRoot(), payload.sceneId, payload.content, {
+        chapterRelPath,
+        intent: payload.intent ?? 'save',
+        retention,
+      }),
+    };
+  },
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
     ensureVaultDir();
     // Locate scene in manifest to get its vault path and current metadata
@@ -2075,7 +2092,13 @@ const handlers: IpcHandlers = {
     if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
 
     safePath(getVaultRoot(), found.path);
-    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
+    // Beta 4 M10: resolve the versions dir the same way version:list/get/save
+    // do (nested scenes → chapter.path, flat scenes → the scene file's dir).
+    // Rollback previously always used dirname(scene.path), which never matched
+    // the store for nested manifests whose scenes live under `…/scenes/`.
+    const chapterRelPath =
+      resolveSceneChapterDir(payload.sceneId) ??
+      path.posix.dirname(found.path.split(path.sep).join('/'));
 
     let currentProse = '';
     try {

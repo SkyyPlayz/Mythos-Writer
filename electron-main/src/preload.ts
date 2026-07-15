@@ -196,6 +196,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('version:get', { sceneId, ts }),
   versionRollback: (sceneId: string, ts: string) =>
     ipcRenderer.invoke('version:rollback', { sceneId, ts }),
+  // Beta 4 M10: explicit snapshot into the SKY-10/M5 store
+  versionSave: (sceneId: string, content: string, intent?: string) =>
+    ipcRenderer.invoke('version:save', { sceneId, content, intent }),
 
   // SKY-10 — Legacy single-file-per-chapter migration
   migrationDryRun: (storyPath?: string) =>
