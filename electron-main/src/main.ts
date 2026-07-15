@@ -190,6 +190,7 @@ import {
   type OutlineSavePayload,
   type OutlineSaveResponse,
   type AgentSessionListPayload,
+  type AgentSessionReadPayload,
   type AgentSessionCreatePayload,
   type AgentSessionRenamePayload,
   type AgentSessionDuplicatePayload,
@@ -200,6 +201,7 @@ import {
 import { loadOutline, saveOutline } from './outline.js';
 import {
   handleAgentSessionList,
+  handleAgentSessionRead,
   handleAgentSessionCreate,
   handleAgentSessionRename,
   handleAgentSessionDuplicate,
@@ -6662,6 +6664,9 @@ const handlers: IpcHandlers = {
   // (PR #917 review, B1/B2).
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
     handleAgentSessionList(getNotesVaultRoot(), payload),
+  // M20: hydrate one session’s full turn history (Brainstorm session switch)
+  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
+    handleAgentSessionRead(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
     handleAgentSessionCreate(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
