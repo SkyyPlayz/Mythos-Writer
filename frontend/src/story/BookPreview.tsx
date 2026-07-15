@@ -218,7 +218,11 @@ export default function BookPreview({
                     .sort((a, b) => a.order - b.order)
                     .filter((b) => b.content.trim());
                   return (
-                    <article key={scene.id} className="book-preview__scene">
+                    <article
+                      key={scene.id}
+                      className="book-preview__scene"
+                      aria-label={`Scene ${si + 1} of ${chapter.title}`}
+                    >
                       {si > 0 && (
                         <div className="book-preview__scene-sep" aria-hidden="true">◆ ◆ ◆</div>
                       )}

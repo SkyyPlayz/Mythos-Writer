@@ -124,9 +124,11 @@ function useReaderControls(reader: ManuscriptReader, ttsSettings?: ReaderTtsSett
 
   const explainSilence = () => {
     showLnToast(
-      reader.muted
-        ? 'Voice is muted — unmute it to listen'
-        : 'Voice unavailable — configure a TTS engine in Settings'
+      !reader.hasContent()
+        ? 'Nothing to read yet — this book has no scenes with prose'
+        : reader.muted
+          ? 'Voice is muted — unmute it to listen'
+          : 'Voice unavailable — configure a TTS engine in Settings'
     );
   };
 

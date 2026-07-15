@@ -13,8 +13,8 @@
  *   TC-MV-03  A fresh (seed-only) v0.4 vault shows NO prompt — fresh-vault
  *             fixtures render unchanged (visual-regression safety).
  *
- * Not wired into a CI shard yet (M5 lands the flow; wiring is a Wave-2
- * follow-up) — run locally with:
+ * Runs in CI e2e-shard-2 (`npm run test:e2e:mythos-migration` — the M5
+ * Wave-2 wiring follow-up). Run locally with:
  *   npx playwright test e2e/mythos-migration.spec.ts --reporter=list
  */
 

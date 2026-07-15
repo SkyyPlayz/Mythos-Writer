@@ -68,6 +68,7 @@
     "test:e2e:editor-page-chrome": "playwright test e2e/editor-page-chrome.spec.ts --reporter=list",
     "test:e2e:notes-parity": "playwright test e2e/notes-parity.spec.ts --reporter=list",
     "test:e2e:wiki-link-autocomplete": "playwright test e2e/tests/wiki-link-autocomplete.spec.ts --reporter=list",
+    "test:e2e:mythos-migration": "playwright test e2e/mythos-migration.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh"
   },
