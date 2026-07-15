@@ -189,8 +189,22 @@ import {
   type OutlineLoadPayload,
   type OutlineSavePayload,
   type OutlineSaveResponse,
+  type AgentSessionListPayload,
+  type AgentSessionCreatePayload,
+  type AgentSessionRenamePayload,
+  type AgentSessionDuplicatePayload,
+  type AgentSessionDeletePayload,
+  type AgentSessionAppendTurnsPayload,
 } from './ipc.js';
 import { loadOutline, saveOutline } from './outline.js';
+import {
+  handleAgentSessionList,
+  handleAgentSessionCreate,
+  handleAgentSessionRename,
+  handleAgentSessionDuplicate,
+  handleAgentSessionDelete,
+  handleAgentSessionAppendTurns,
+} from './agentSessionsIpc.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
 // Beta 3 M24 — Settings → Vault & Files import flows
@@ -6636,6 +6650,21 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     return handleTimelinesDeleteItem(getVaultRoot(), payload);
   },
+  // SKY-6228: M15 — agent chat sessions. Handler logic lives in
+  // agentSessionsIpc.ts so it is unit-testable against a real temp-dir vault
+  // (PR #917 review, B1/B2).
+  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
+    handleAgentSessionList(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
+    handleAgentSessionCreate(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
+    handleAgentSessionRename(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) =>
+    handleAgentSessionDuplicate(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) =>
+    handleAgentSessionDelete(getNotesVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
+    handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───
