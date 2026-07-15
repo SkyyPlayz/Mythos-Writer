@@ -1173,6 +1173,16 @@ export interface BlockEntry {
   order: number;
   content: string;
   updatedAt: string;
+  /**
+   * SKY-6596 (PR #932): length of this block's serialized segment within the
+   * scene's `.md` body, recorded by `stripEmbeddedProseForPersist`
+   * (manifest.ts) when `content` is blanked for the structure-only on-disk
+   * manifest. Present only in the persisted manifest.json, and only for
+   * blocks whose content serializes to a non-empty segment (see
+   * sceneBody.ts). `readManifest` (vault.ts) consumes and deletes it during
+   * block-aware hydration, so it never rides on IPC payloads.
+   */
+  bodySegLen?: number;
 }
 
 export interface SceneCard {

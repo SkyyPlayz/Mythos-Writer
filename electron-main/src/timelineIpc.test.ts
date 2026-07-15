@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { defaultManifest, readManifest, writeManifest } from './vault.js';
+import { defaultManifest, readManifest, writeManifest, writeSceneFile } from './vault.js';
 import type { Manifest, SceneEntry, BlockEntry } from './ipc.js';
 import type { ManifestTimelineEntry } from './vault/manifest/types.js';
 import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
@@ -142,6 +142,10 @@ describe('handleTimelineUpsert', () => {
   // reshaping the file into the incompatible ManifestV1 structure.
   it('preserves legacy manifest fields (object provenance, scene blocks) after a write', () => {
     const block: BlockEntry = { id: 'b1', type: 'prose', order: 0, content: 'hello', updatedAt: '2026-01-01T00:00:00.000Z' };
+    // SKY-6596: prose is durable in the scene's .md, not the manifest — the
+    // write strips blocks[].content and readManifest rehydrates it from disk,
+    // so the fixture needs its file backing for the round-trip to hold.
+    writeSceneFile(tmpDir, 'scenes/scene-1.md', { id: 'scene-1', title: 'Scene scene-1', prose: 'hello' });
     const manifest: Manifest = {
       ...defaultManifest(tmpDir),
       scenes: [{ ...makeScene('scene-1'), blocks: [block] }],

@@ -335,6 +335,7 @@ import {
   readManifest,
   writeManifest as writeManifestRaw,
   defaultManifest,
+  ensureSceneFilesForManifestScenes,
   reindexVault,
   loadVaultIndexCache,
   saveVaultIndexCache,
@@ -831,6 +832,10 @@ function ensureVaultDir() {
             created_at: entry.createdAt,
           });
         },
+        // SKY-6596: before the migration write strips embedded scene prose
+        // from the manifest, make sure every scene that still only carries
+        // prose in the manifest (not in a `.md` file) gets one written now.
+        beforeMigrationWrite: (manifest, root) => ensureSceneFilesForManifestScenes(manifest, root),
       });
     } catch (err) {
       if (err instanceof ManifestMigrationError) {
