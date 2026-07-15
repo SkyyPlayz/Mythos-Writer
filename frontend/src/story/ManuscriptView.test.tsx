@@ -385,8 +385,8 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
   });
 
   // W0.4 (GAP P0#4): exactly ONE Read button — on the format toolbar, always
-  // present, toggling the built-in M13 reader dock (the old zoombar reader
-  // chip was the duplicate and is gone).
+  // present, toggling the built-in reader dock (M11: the right-gutter Reader
+  // card; the old zoombar reader chip was the duplicate and is gone).
   it('renders a single always-on Read button that toggles the reader dock', () => {
     renderView();
     expect(screen.queryByTestId('msv-reader-chip')).not.toBeInTheDocument();
@@ -396,13 +396,13 @@ describe('toolbar v2 (M10, prototype 742–777)', () => {
 
     const read = screen.getByTestId('msv-tb-read');
     expect(read).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-reader-card')).not.toBeInTheDocument();
     fireEvent.click(read);
     expect(read).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('msv-reader-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('msv-reader-card')).toBeInTheDocument();
     fireEvent.click(read);
     expect(read).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByTestId('msv-reader-bar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msv-reader-card')).not.toBeInTheDocument();
   });
 });
 
