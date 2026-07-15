@@ -546,7 +546,7 @@ Accept: every §14 item checked off in the PR description with evidence.
 | M6 | Auto Note Linker | 2 | M5 | ✅ merged | #916 |
 | M7 | Editor chrome & page | 3 | W0.4, M1 | ✅ merged (incl. M7.PE polish #937) | #915, #937 |
 | M8 | Editing model hardening | 3 | M7 | ✅ merged | #941 |
-| M9 | Comments v2 | 3 | M5, M7 | 🔀 in PR | #953 |
+| M9 | Comments v2 | 3 | M5, M7 | ✅ merged | #953 |
 | M10 | Drafts v2 | 3 | M5, M7 | ✅ merged | #945 |
 | M11 | Reader refinements | 3 | M7 | ✅ merged | #938 |
 | M12 | Coach page | 3 | M5, M15 | 🔀 in PR (stacked on #917) | #952 |
