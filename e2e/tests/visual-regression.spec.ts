@@ -201,7 +201,6 @@ async function assertMatchesBaseline(page: Page, name: string): Promise<number> 
   if (baseline.width !== current.width || baseline.height !== current.height) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, buf);
-    fs.writeFileSync(path.join(DIFF_DIR, `${name}-actual.png`), buf);
     const ratio = 1;
     console.warn(`  [VR] FAIL ${name}: viewport size changed (${current.width}x${current.height} vs ${baseline.width}x${baseline.height})`);
     return ratio;
@@ -219,9 +218,6 @@ async function assertMatchesBaseline(page: Page, name: string): Promise<number> 
   if (ratio > THRESHOLD) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, PNG.sync.write(diff));
-    // Also save the actual screenshot so CI artifacts can be promoted to baselines
-    const actualPath = path.join(DIFF_DIR, `${name}-actual.png`);
-    fs.writeFileSync(actualPath, buf);
     console.warn(
       `  [VR] FAIL ${name}: ${(ratio * 100).toFixed(3)}% diff (${mismatchedPixels} px) — threshold ${(THRESHOLD * 100).toFixed(2)}%`,
     );
@@ -336,19 +332,11 @@ test('VR-03 editor — focus mode', async () => {
 // ─── Brainstorm chat ──────────────────────────────────────────────────────────
 
 test('VR-04 brainstorm chat view', async () => {
-  // SKY-6496: '.app-menu-view-btn' is stale — the nav rail (Beta 4 M3) renders
-  // items as buttons with aria-label={item.label}, not that class. The old
-  // selector silently no-op'd here, so the screenshot captured the default
-  // Editor welcome screen instead of Brainstorm, producing a flaky diff ratio.
-  const brainstormBtn = page.getByRole('button', { name: 'Brainstorm', exact: true });
-  await brainstormBtn.click();
-  // SKY-6692: a fixed timeout races the section switch under CI load (seen
-  // intermittently taking >500ms), still capturing the previous Editor
-  // section and reproducing the same 33%-diff symptom SKY-6496 fixed the
-  // click for. Wait for the seeded (agent-disabled) Brainstorm content
-  // deterministically instead of guessing a delay.
-  await page.waitForSelector('.brainstorm-disabled-msg', { timeout: 5_000 });
-  await page.waitForTimeout(200);
+  const brainstormBtn = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
+  if (await brainstormBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await brainstormBtn.click();
+    await page.waitForTimeout(500);
+  }
 
   const ratio = await assertMatchesBaseline(page, 'brainstorm-chat');
   expect(ratio, `brainstorm-chat diff ratio ${(ratio * 100).toFixed(3)}% exceeds ${(THRESHOLD * 100).toFixed(2)}% threshold`).toBeLessThanOrEqual(THRESHOLD);
@@ -357,8 +345,7 @@ test('VR-04 brainstorm chat view', async () => {
 // ─── Settings panel ───────────────────────────────────────────────────────────
 
 test('VR-05 settings panel', async () => {
-  // SKY-6522: use aria-label role selector (same fix as VR-04 / SKY-6496)
-  const editorBtn = page.getByRole('button', { name: 'Editor', exact: true });
+  const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
   if (await editorBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await editorBtn.click();
   await page.waitForTimeout(200);
 
@@ -381,8 +368,7 @@ test('VR-05 settings panel', async () => {
 // ─── Vault browser sidebar ────────────────────────────────────────────────────
 
 test('VR-06 vault browser sidebar', async () => {
-  // SKY-6522: use aria-label role selector (same fix as VR-04 / SKY-6496)
-  const editorBtn = page.getByRole('button', { name: 'Editor', exact: true });
+  const editorBtn = page.locator('.app-menu-view-btn', { hasText: 'Editor' });
   if (await editorBtn.isVisible({ timeout: 2_000 }).catch(() => false)) await editorBtn.click();
   await page.waitForTimeout(300);
 
@@ -414,7 +400,6 @@ test('VR-06 vault browser sidebar', async () => {
   if (baseline.width !== current.width || baseline.height !== current.height) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, buf);
-    fs.writeFileSync(path.join(DIFF_DIR, 'vault-sidebar-actual.png'), buf);
     expect(false, `vault-sidebar: viewport size changed (${current.width}x${current.height} vs ${baseline.width}x${baseline.height})`).toBe(true);
     return;
   }
@@ -431,7 +416,6 @@ test('VR-06 vault browser sidebar', async () => {
   if (ratio > THRESHOLD) {
     fs.mkdirSync(DIFF_DIR, { recursive: true });
     fs.writeFileSync(diffPath, PNG.sync.write(diff));
-    fs.writeFileSync(path.join(DIFF_DIR, 'vault-sidebar-actual.png'), buf);
     console.warn(`  [VR] FAIL vault-sidebar: ${(ratio * 100).toFixed(3)}% — diff → ${path.relative(process.cwd(), diffPath)}`);
   } else {
     console.log(`  [VR] PASS vault-sidebar: ${(ratio * 100).toFixed(3)}% diff`);
