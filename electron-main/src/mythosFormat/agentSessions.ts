@@ -171,7 +171,13 @@ export function appendTurns(
   return session;
 }
 
-function findSessionFile(
+/**
+ * Locate a session file by its PARSED frontmatter id (`session.id === sessionId`).
+ * This is the only safe lookup: transcripts are serialized verbatim, so a raw
+ * substring scan for `id: <uuid>` can match another session whose chat text
+ * merely mentions that id (PR #917 review, B1).
+ */
+export function findSessionFile(
   notesVaultRoot: string,
   sessionId: string,
 ): { session: AgentSessionFile; relPath: string } | null {
