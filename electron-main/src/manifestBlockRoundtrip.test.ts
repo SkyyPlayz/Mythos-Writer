@@ -299,4 +299,29 @@ describe('multi-block scene round-trip (PR #932 review blocker)', () => {
     expect(got.map((b) => b.id)).toEqual(['b-h', 'b-p', 'b-d']);
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  it('M9 regression: a v2 manifest cache under .mythos/ hydrates against the Story Vault root, not the machine dir', () => {
+    // MythosVault v2 keeps the manifest as a regenerable cache at
+    // `<Story Vault>/.mythos/manifest-cache.json`; scene paths stay relative
+    // to the Story Vault root. Hydrating against dirname(manifestPath) (the
+    // `.mythos/` dir) resolved every scene body to a missing file — every v2
+    // manifest consumer (the heading-zoom manuscript, comment anchoring) saw
+    // empty block content. Found by the M9 comments vault-copy round-trip.
+    const sc = scene('sc-v2', 'The Deep/Part 1/Chapter 01/Scene 01.md', [
+      block('b-p', 'prose', 0, 'The lantern cast a trembling circle of light.'),
+    ]);
+    writeSceneFile(tmpDir, sc.path, {
+      id: sc.id,
+      title: sc.title,
+      prose: blocksToMarkdownBody(sc.blocks),
+    });
+    const machineDir = path.join(tmpDir, '.mythos');
+    fs.mkdirSync(machineDir, { recursive: true });
+    const cachePath = path.join(machineDir, 'manifest-cache.json');
+    writeManifest(cachePath, { ...defaultManifest(tmpDir), scenes: [sc] });
+
+    const got = readManifest(cachePath).scenes[0].blocks;
+    expect(got[0].content).toBe('The lantern cast a trembling circle of light.');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
 });
