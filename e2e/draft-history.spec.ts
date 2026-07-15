@@ -1,5 +1,5 @@
 /**
- * draft-history.spec.ts — SKY-2212
+ * draft-history.spec.ts — SKY-2212 + Beta 4 M10 (Drafts v2)
  *
  * E2E coverage for the draft version history feature:
  *   AC-DH-1  Snapshot on save        — saving creates a history entry in the panel
@@ -9,6 +9,13 @@
  *   AC-DH-5  Pre-restore backup      — restore creates a new snapshot first
  *   AC-DH-6  Newest-first order      — list is sorted newest → oldest
  *   AC-DH-7  Accessible restore btn  — restore button has a descriptive aria-label
+ *
+ * Beta 4 M10 — Drafts v2 (compare split · load draft + exact undo · full diff
+ * · popover settings), built on the SKY-10/M5 store:
+ *   AC-M10-1 Compare split opens with "Highlight changes" default ON
+ *   AC-M10-2 Load draft applies + yellow Undo chip restores the EXACT pre-load state
+ *   AC-M10-3 Full diff: current draft always the LEFT column, labels on both sides
+ *   AC-M10-4 Drafts popover exposes snapshot frequency + keep-count settings
  *
  * Run:
  *   npx playwright test e2e/draft-history.spec.ts --reporter=list
@@ -389,4 +396,121 @@ test('AC-DH-7: the restore button has a descriptive aria-label', async () => {
   expect(label!.length).toBeGreaterThan('Restore'.length);
 
   await panel.locator('[aria-label="Close draft history"]').click();
+});
+
+// ═══ Beta 4 M10 — Drafts v2 ═══════════════════════════════════════════════════
+
+const M10_PROSE_OLD = 'M10 first pass: the gate stood silent under rain.';
+const M10_PROSE_NEW = 'M10 second pass: thunder rolled while the gate held.';
+
+// ─── AC-M10-1: Compare split opens, Highlight changes default ON ──────────────
+
+test('AC-M10-1: Drafts button opens the compare split with Highlight changes ON', async () => {
+  // Seed one M5 draft (versionSave rides on "Save snapshot now"), then move on.
+  await replaceEditorContent(page, M10_PROSE_OLD);
+  await page.locator('.scene-snapshot-save').click();
+  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await replaceEditorContent(page, M10_PROSE_NEW);
+
+  await page.locator('[data-testid="scene-drafts-compare-btn"]').click();
+  const split = page.locator('[data-testid="ln-drafts-split"]');
+  await expect(split).toBeVisible({ timeout: 5_000 });
+  await expect(split.locator('.ln-drafts-split-scope')).toContainText('DRAFTS —');
+
+  // "Highlight changes" defaults ON.
+  await expect(split.locator('[data-testid="ln-drafts-hl-toggle"]')).toHaveAttribute('aria-checked', 'true');
+
+  // The compare side is the stored (old) draft, newest first.
+  await expect(split.locator('.ln-drafts-split-body')).toContainText('the gate stood silent', { timeout: 5_000 });
+});
+
+// ─── AC-M10-2: Load draft + yellow Undo chip restores exactly ──────────────────
+
+test('AC-M10-2: Load draft applies the draft; Undo restores the exact pre-load state', async () => {
+  const editor = page.locator('.ProseMirror');
+  const split = page.locator('[data-testid="ln-drafts-split"]');
+  await expect(split).toBeVisible();
+
+  // Capture the exact pre-load editor text (AC: undo restores EXACTLY).
+  await expect(editor).toContainText(M10_PROSE_NEW);
+  const preLoadText = await editor.innerText();
+
+  // No undo chip before a load.
+  await expect(split.locator('[data-testid="ln-drafts-undo-chip"]')).not.toBeVisible();
+
+  const draftOptions = split.locator('.ln-drafts-split-select option');
+  const optionsBefore = await draftOptions.count();
+
+  await split.getByText('Load draft').click();
+
+  // The stored draft replaced the editor content…
+  await expect(editor).toContainText('the gate stood silent', { timeout: 8_000 });
+  await expect(editor).not.toContainText('thunder rolled');
+  // …and the yellow Undo chip appeared in the drafts bar.
+  const undoChip = split.locator('[data-testid="ln-drafts-undo-chip"]');
+  await expect(undoChip).toBeVisible({ timeout: 5_000 });
+
+  // CF-4: the pre-load state was snapshotted FIRST — the store gained a row.
+  await expect(draftOptions).toHaveCount(optionsBefore + 1, { timeout: 5_000 });
+
+  // Undo → byte-exact pre-load restore.
+  await undoChip.click();
+  await expect(editor).toContainText('thunder rolled', { timeout: 8_000 });
+  const restoredText = await editor.innerText();
+  expect(restoredText, 'undo must restore the exact pre-load editor text').toBe(preLoadText);
+  // Chip disappears once consumed.
+  await expect(undoChip).not.toBeVisible({ timeout: 3_000 });
+});
+
+// ─── AC-M10-3: Full diff — current draft always LEFT, labels on both sides ────
+
+test('AC-M10-3: Full diff shows the current draft as the left/green labeled column', async () => {
+  const split = page.locator('[data-testid="ln-drafts-split"]');
+  await expect(split).toBeVisible();
+  await split.getByText('Full diff').click();
+
+  const cover = page.locator('[data-testid="shell-drafts-diff-cover"]');
+  await expect(cover).toBeVisible({ timeout: 5_000 });
+
+  const labelCurrent = cover.locator('[data-testid="ln-diff-label-current"]');
+  const labelPrevious = cover.locator('[data-testid="ln-diff-label-previous"]');
+  await expect(labelCurrent).toContainText('— current');
+  await expect(labelPrevious).toContainText('— previous');
+
+  // Geometric check: the current column sits LEFT of the previous column.
+  const currentBox = await cover.locator('[data-testid="ln-diff-col-current"]').boundingBox();
+  const previousBox = await cover.locator('[data-testid="ln-diff-col-previous"]').boundingBox();
+  expect(currentBox && previousBox && currentBox.x < previousBox.x,
+    'current draft column must render left of the previous draft column').toBeTruthy();
+
+  await cover.locator('[aria-label="Close compare view"]').click();
+  await expect(cover).not.toBeVisible({ timeout: 3_000 });
+
+  // Close the split for the next test.
+  await split.locator('[aria-label="Close drafts compare"]').click();
+  await expect(split).not.toBeVisible({ timeout: 3_000 });
+});
+
+// ─── AC-M10-4: popover snapshot frequency + keep-count settings ────────────────
+
+test('AC-M10-4: Drafts popover exposes snapshot frequency and keep-count steppers', async () => {
+  await page.locator('[data-testid="scene-drafts-pill"]').click();
+  const popover = page.locator('[data-testid="ln-drafts-popover"]');
+  await expect(popover).toBeVisible({ timeout: 5_000 });
+
+  // Both M10 settings are present and interactive.
+  const freq = popover.locator('[data-testid="ln-drafts-freq-s"]');
+  const keep = popover.locator('[data-testid="ln-drafts-keep-n"]');
+  await expect(freq).toBeVisible();
+  await expect(keep).toBeVisible();
+
+  const keepBefore = Number(await keep.innerText());
+  await popover.locator('[aria-label="Keep more snapshots"]').click();
+  await expect(keep).toHaveText(String(keepBefore + 1));
+  // Put it back so reruns stay stable.
+  await popover.locator('[aria-label="Keep fewer snapshots"]').click();
+  await expect(keep).toHaveText(String(keepBefore));
+
+  await page.keyboard.press('Escape');
+  await expect(popover).not.toBeVisible({ timeout: 3_000 });
 });

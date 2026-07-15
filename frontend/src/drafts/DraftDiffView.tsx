@@ -1,12 +1,16 @@
-// Beta 3 "Liquid Neon" M12 — the drafts diff renderer (prototype 779–804,
-// dSeg 4512, splitParas2 4713–4714). Two variants:
-//   · 'full'      — the full compare mode: header (draft selector → current
-//                   pill · legend · close) over two Lora serif columns, old
-//                   (red border, 'd' segments struck) and new (green border,
-//                   'a' segments highlighted).
-//   · 'highlight' — the split-pane "Highlight changes" ON body: a single
-//                   Lora column of the OLD draft's segments (prototype uses
-//                   diffData.old), for hosts that wrap it in their own sheet.
+// Beta 4 M10 — the drafts diff renderer, refreshed from Beta 3 M12 to the v2
+// prototype (Liquid Neon.dc.html 1002–1030, dSeg 6500, diffRows 6501).
+// Two variants:
+//   · 'full'      — full compare mode: header (title · GREEN "current" pill ·
+//                   "vs" · RED previous-draft select · legend · close) over a
+//                   labels row and two Lora serif columns. The CURRENT draft
+//                   is ALWAYS the left/green column ('a' segments highlighted)
+//                   and the previous draft the right/red column ('d' struck),
+//                   each labeled "<DRAFT> — CURRENT" / "<DRAFT> — PREVIOUS".
+//   · 'highlight' — the split-pane "Highlight changes" ON body: a single Lora
+//                   column of the PREVIOUS draft's segments (prototype
+//                   splitParas2 → diffData old side), for hosts that wrap it
+//                   in their own sheet.
 // Diffing is local via diffSegments — no IPC, no dependencies.
 import { useMemo } from 'react';
 import { diffSegments, sideParagraphs, type DiffSegment } from './diffSegments';
@@ -18,24 +22,24 @@ export interface DraftDiffOption {
 }
 
 export interface DraftDiffViewProps {
-  /** Document label for the header, e.g. "Scene 4". */
+  /** Compare scope for the header — always the OPEN scene/chapter. */
   documentLabel: string;
-  /** Label of the older draft, e.g. "Draft 6". */
-  oldLabel: string;
-  /** Label of the newer draft; rendered as "{newLabel} · current". */
-  newLabel: string;
-  /** Full text of the older draft. */
-  oldText: string;
-  /** Full text of the newer (usually live) draft. */
-  newText: string;
+  /** Label of the current (live) draft, e.g. "Draft 7". */
+  currentLabel: string;
+  /** Label of the previous draft being compared, e.g. "Draft 6". */
+  previousLabel: string;
+  /** Full text of the current (live) draft. */
+  currentText: string;
+  /** Full text of the previous draft. */
+  previousText: string;
   /** 'full' two-column compare (default) or single-pane 'highlight' body. */
   variant?: 'full' | 'highlight';
-  /** Full variant: other drafts selectable as the old side. Omit for a static pill. */
-  oldOptions?: DraftDiffOption[];
-  /** Full variant: id of the currently selected old draft (with oldOptions). */
-  selectedOldId?: string;
-  /** Full variant: user picked a different old draft. */
-  onSelectOld?: (id: string) => void;
+  /** Full variant: other drafts selectable as the previous side. Omit for a static pill. */
+  previousOptions?: DraftDiffOption[];
+  /** Full variant: id of the currently selected previous draft (with previousOptions). */
+  selectedPreviousId?: string;
+  /** Full variant: user picked a different previous draft. */
+  onSelectPrevious?: (id: string) => void;
   /** Full variant: close button. */
   onClose?: () => void;
 }
@@ -62,30 +66,32 @@ function DiffParagraphs({ paragraphs }: { paragraphs: DiffSegment[][] }) {
 
 export default function DraftDiffView({
   documentLabel,
-  oldLabel,
-  newLabel,
-  oldText,
-  newText,
+  currentLabel,
+  previousLabel,
+  currentText,
+  previousText,
   variant = 'full',
-  oldOptions,
-  selectedOldId,
-  onSelectOld,
+  previousOptions,
+  selectedPreviousId,
+  onSelectPrevious,
   onClose,
 }: DraftDiffViewProps) {
-  const segments = useMemo(() => diffSegments(oldText, newText), [oldText, newText]);
-  const oldParas = useMemo(() => sideParagraphs(segments, 'old'), [segments]);
-  const newParas = useMemo(() => sideParagraphs(segments, 'new'), [segments]);
+  // diffSegments(old, new): 'd' = only in the previous draft, 'a' = only in
+  // the current draft. sideParagraphs keeps s+d for 'old', s+a for 'new'.
+  const segments = useMemo(() => diffSegments(previousText, currentText), [previousText, currentText]);
+  const previousParas = useMemo(() => sideParagraphs(segments, 'old'), [segments]);
+  const currentParas = useMemo(() => sideParagraphs(segments, 'new'), [segments]);
 
   if (variant === 'highlight') {
-    // Split-pane "Highlight changes" ON: the old draft with its removed
-    // segments struck (prototype splitParas2 → diffData.old via dSeg).
+    // Split-pane "Highlight changes" ON: the previous draft with the segments
+    // that differ from the current draft struck red (prototype splitParas2).
     return (
       <div
         className="ln-diff-highlight"
-        aria-label={`${oldLabel} with changes highlighted`}
+        aria-label={`${previousLabel} with changes highlighted`}
         data-testid="ln-diff-highlight"
       >
-        <DiffParagraphs paragraphs={oldParas} />
+        <DiffParagraphs paragraphs={previousParas} />
       </div>
     );
   }
@@ -99,35 +105,24 @@ export default function DraftDiffView({
     >
       <div className="ln-diff-header">
         <span className="ln-diff-title">Compare drafts — {documentLabel}</span>
-        {oldOptions && oldOptions.length > 0 ? (
+        <span className="ln-diff-current-pill" data-testid="ln-diff-current-pill">
+          {currentLabel} · current
+        </span>
+        <span className="ln-diff-vs">vs</span>
+        {previousOptions && previousOptions.length > 0 ? (
           <select
-            className="ln-diff-old-select"
-            value={selectedOldId}
-            onChange={(e) => onSelectOld?.(e.target.value)}
+            className="ln-diff-previous-select"
+            value={selectedPreviousId}
+            onChange={(e) => onSelectPrevious?.(e.target.value)}
             aria-label="Draft to compare against"
           >
-            {oldOptions.map((opt) => (
+            {previousOptions.map((opt) => (
               <option value={opt.id} key={opt.id}>{opt.label}</option>
             ))}
           </select>
         ) : (
-          <span className="ln-diff-old-pill">{oldLabel}</span>
+          <span className="ln-diff-previous-pill">{previousLabel}</span>
         )}
-        <svg
-          className="ln-diff-arrow"
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#8e9db8"
-          strokeWidth="2"
-          strokeLinecap="round"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M4 12h16M14 6l6 6-6 6" />
-        </svg>
-        <span className="ln-diff-new-pill">{newLabel} · current</span>
         <div className="ln-diff-spacer" />
         <span className="ln-diff-legend">
           <span className="ln-diff-legend-added">green = added</span>
@@ -142,12 +137,21 @@ export default function DraftDiffView({
           </button>
         )}
       </div>
+      {/* Column labels (prototype 1012–1015): current ALWAYS left/green. */}
+      <div className="ln-diff-col-labels">
+        <span className="ln-diff-col-label ln-diff-col-label-current" data-testid="ln-diff-label-current">
+          {currentLabel} — current
+        </span>
+        <span className="ln-diff-col-label ln-diff-col-label-previous" data-testid="ln-diff-label-previous">
+          {previousLabel} — previous
+        </span>
+      </div>
       <div className="ln-diff-columns">
-        <div className="ln-diff-col ln-diff-col-old" data-testid="ln-diff-col-old">
-          <DiffParagraphs paragraphs={oldParas} />
+        <div className="ln-diff-col ln-diff-col-current" data-testid="ln-diff-col-current">
+          <DiffParagraphs paragraphs={currentParas} />
         </div>
-        <div className="ln-diff-col ln-diff-col-new" data-testid="ln-diff-col-new">
-          <DiffParagraphs paragraphs={newParas} />
+        <div className="ln-diff-col ln-diff-col-previous" data-testid="ln-diff-col-previous">
+          <DiffParagraphs paragraphs={previousParas} />
         </div>
       </div>
     </div>

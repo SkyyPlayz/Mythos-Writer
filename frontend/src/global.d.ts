@@ -45,6 +45,8 @@ interface SceneVersion {
   content: string;
   intent: VersionIntent;
   contentHash: string;
+  /** Beta 4 M10: ISO save time when the store records one (v2 draft files / legacy stamps). */
+  savedAt?: string;
 }
 
 // SKY-1611 — SQLite-backed versioned draft snapshots
@@ -908,6 +910,8 @@ interface Window {
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
     versionGet: (sceneId: string, ts: string) => Promise<{ version: SceneVersion | null }>;
     versionRollback: (sceneId: string, ts: string) => Promise<{ restoredVersion: SceneVersion; preRollbackVersion: SceneVersion }>;
+    /** Beta 4 M10: explicit snapshot into the SKY-10/M5 store (numbered draft files on v2 vaults). */
+    versionSave: (sceneId: string, content: string, intent?: VersionIntent) => Promise<{ version: SceneVersion }>;
 
     // SKY-10 — Legacy single-file-per-chapter migration
     migrationDryRun: (storyPath?: string) => Promise<{ plans: MigrationPlan[] }>;

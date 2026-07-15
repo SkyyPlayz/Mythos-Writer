@@ -104,6 +104,8 @@ export const IPC_CHANNELS = {
   VERSION_LIST: 'version:list',
   VERSION_GET: 'version:get',
   VERSION_ROLLBACK: 'version:rollback',
+  // Beta 4 M10 — explicit snapshot into the SKY-10/M5 store
+  VERSION_SAVE: 'version:save',
 
   // SKY-10 — Legacy single-file-per-chapter migration
   MIGRATION_DRY_RUN: 'migration:dryRun',
@@ -671,6 +673,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
+  [IPC_CHANNELS.VERSION_SAVE]: (payload: VersionSavePayload) => VersionSaveResponse;
   [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
   [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
   [IPC_CHANNELS.MYTHOS_MIGRATION_STATUS]: (payload: never) => MythosMigrationStatusResponse;
@@ -1428,10 +1431,25 @@ export interface SceneVersion {
   intent: VersionIntent;
   /** Full sha256(content) hex. */
   contentHash: string;
+  /** Beta 4 M10: ISO save time when the store records one (v2 draft files). */
+  savedAt?: string;
 }
 
 export interface VersionListPayload {
   sceneId: string;
+}
+
+// Beta 4 M10 — renderer-initiated snapshot into the SKY-10/M5 store (numbered
+// draft files on v2 vaults, per-chapter versions/ tree on legacy vaults).
+export interface VersionSavePayload {
+  sceneId: string;
+  content: string;
+  /** Defaults to 'save'. */
+  intent?: VersionIntent;
+}
+
+export interface VersionSaveResponse {
+  version: SceneVersion;
 }
 
 export interface VersionListResponse {

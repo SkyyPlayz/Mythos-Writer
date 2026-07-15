@@ -1,8 +1,8 @@
 /* =========================================================================
- * DraftsPopover — Liquid Neon doc-header drafts list (Beta 3 M12,
- * prototype HTML 673–694). Anchored under the header "Draft ▾" chip:
- * version rows (label · delta · meta + Compare/Restore) over a footer with
- * the snapshot-cadence label and the keep-N stepper.
+ * DraftsPopover — Liquid Neon doc-header drafts list (Beta 4 M10 refresh of
+ * Beta 3 M12; v2 prototype HTML 882–905). Anchored under the "Draft N ▾"
+ * pill: version rows (label · delta · meta + Compare/Restore) over a footer
+ * with the M10 settings — snapshot-frequency stepper + keep-N stepper.
  * ========================================================================= */
 
 .ln-drafts-popover {
@@ -29,7 +29,21 @@
   font-weight: 700;
   letter-spacing: .12em;
   color: #7686a2;
-  padding: 4px 10px 7px;
+  padding: 4px 10px 2px;
+}
+
+/* Scope line (v2 prototype 885): "<scope> — drafts of what's open…" */
+.ln-drafts-scope {
+  font-size: 10.5px;
+  color: #aebad0;
+  padding: 0 10px 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ln-drafts-scope-hint {
+  color: #586a88;
 }
 
 .ln-drafts-error {
@@ -133,6 +147,7 @@
 .ln-drafts-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 7px 10px 3px;
   border-top: 1px solid rgba(255, 255, 255, .07);
@@ -140,10 +155,13 @@
   font-weight: 400;
 }
 
+.ln-drafts-footer .ln-drafts-footer-keep {
+  margin-left: auto;
+}
+
 .ln-drafts-footer-label {
   font-size: 10px;
   color: #8e9db8;
-  flex: 1;
 }
 
 .ln-drafts-footer-keep {
@@ -181,7 +199,8 @@
 }
 
 .ln-drafts-step-value {
-  width: 24px;
+  min-width: 24px;
+  padding: 0 2px;
   text-align: center;
   font-size: 10px;
   color: #dbe4f5;
