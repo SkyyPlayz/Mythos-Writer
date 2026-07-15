@@ -60,6 +60,16 @@ function seedUserDataForUpdate(userData: string, vaultDir: string): void {
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify(appSettings, null, 2));
 }
 
+// Environmental prerequisites (see header): MYTHOS_AUTO_UPDATE=1, a packaged
+// build, and two published beta releases on the update feed. None exist in CI
+// or a default dev checkout — skip loudly instead of failing noisily when a
+// broad `playwright test` collects this file. Un-skip by exporting
+// MYTHOS_AUTO_UPDATE_E2E=1 once auto-update is un-deferred and the feed exists.
+test.skip(
+  process.env.MYTHOS_AUTO_UPDATE_E2E !== '1',
+  'auto-update e2e requires MYTHOS_AUTO_UPDATE_E2E=1 plus a packaged build and a live beta update feed (deferred feature)',
+);
+
 test.describe('auto-update on beta channel', () => {
   let app: ElectronApplication;
   let userData: string;
