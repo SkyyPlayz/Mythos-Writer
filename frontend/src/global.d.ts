@@ -1609,6 +1609,10 @@ interface Window {
     windowMaximize?: () => Promise<void>;
     windowClose?: () => Promise<void>;
 
+    // SKY-6306 M21: Multi-timeline store
+    timelinesGetStore?: () => Promise<{ store: import('./timelinesTypes').TimelinesStore }>;
+    timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
+    timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
     // SKY-6228: M15 — agent chat sessions
     agentSessions?: {
       list: (agent?: string) => Promise<{ sessions: AgentSessionSummary[] }>;

@@ -438,6 +438,11 @@ import {
 } from './timelineProposals.js';
 import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
 import {
+  handleTimelinesGetStore,
+  handleTimelinesUpsert,
+  handleTimelinesSetActive,
+} from './timelinesStoreIpc.js';
+import {
   buildArchiveIndex,
   getArchiveIndex,
   getArchiveStatus,
@@ -1858,13 +1863,17 @@ const handlers: IpcHandlers = {
   },
 
   // ─── Timeline (SKY-2463) ───
+  // SKY-6306 unification: these legacy channels are compatibility views over
+  // the M21 TimelinesStore (timelines.json) — see timelineIpc.ts. They take
+  // the vault root; the manifest path is resolved internally for the scene
+  // lookup only.
   [IPC_CHANNELS.TIMELINE_LIST]: (_payload: TimelineListPayload) => {
     ensureVaultDir();
-    return handleTimelineList(getManifestPath());
+    return handleTimelineList(getVaultRoot());
   },
   [IPC_CHANNELS.TIMELINE_UPSERT]: (payload: TimelineUpsertPayload) => {
     ensureVaultDir();
-    return handleTimelineUpsert(getManifestPath(), payload);
+    return handleTimelineUpsert(getVaultRoot(), payload);
   },
 
   // MYT-319 — Archive Agent infers scene chronology without LLM calls
@@ -6617,6 +6626,19 @@ const handlers: IpcHandlers = {
     return { count: index.length };
   },
 
+  // SKY-6306 M21: Multi-timeline store
+  [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesGetStore(getVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.TIMELINES_UPSERT]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesUpsert(getVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesSetActive(getVaultRoot(), payload);
+  },
   // SKY-6228: M15 — agent chat sessions. Handler logic lives in
   // agentSessionsIpc.ts so it is unit-testable against a real temp-dir vault
   // (PR #917 review, B1/B2).

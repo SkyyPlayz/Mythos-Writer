@@ -985,6 +985,12 @@ contextBridge.exposeInMainWorld('api', {
   autoLinkerSetSettings: (settings: unknown) => ipcRenderer.invoke('auto-linker:set-settings', settings),
   autoLinkerFormatVaultNow: () => ipcRenderer.invoke('auto-linker:format-vault-now', undefined),
   autoLinkerRebuildIndex: () => ipcRenderer.invoke('auto-linker:rebuild-index', undefined),
+  // SKY-6306 M21: Multi-timeline store
+  timelinesGetStore: () => ipcRenderer.invoke('timelines:getStore', {}),
+  timelinesUpsert: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('timelines:upsert', payload),
+  timelinesSetActive: (timelineId: string) =>
+    ipcRenderer.invoke('timelines:setActive', { timelineId }),
 
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {
