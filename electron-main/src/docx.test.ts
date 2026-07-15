@@ -224,4 +224,51 @@ describe('buildDocx', () => {
     expect(docXml).toContain('underscore-italic');
     expect(docXml).not.toContain('>undefined<');
   });
+
+  // ─── Beta 4 M14 — compile options (synopsis page + scene separators) ───
+
+  const TWO_SCENE_INPUT: DocxInput = {
+    title: 'Novel',
+    synopsis: 'A city sinks; a smuggler rises.',
+    chapters: [
+      {
+        id: 'ch1',
+        title: 'Chapter One',
+        scenes: [
+          { id: 'sc1', title: 'First', prose: 'Alpha.' },
+          { id: 'sc2', title: 'Second', prose: 'Beta.' },
+        ],
+      },
+    ],
+  };
+
+  it('omits synopsis and separators when options are absent (pre-M14 output)', async () => {
+    const buf = await buildDocx(TWO_SCENE_INPUT);
+    const docXml = await (await loadDocxZip(buf)).file('word/document.xml')!.async('string');
+    expect(docXml).not.toContain('Synopsis');
+    expect(docXml).not.toContain('◆ ◆ ◆');
+  });
+
+  it('includeSynopsis renders a synopsis page with the story synopsis', async () => {
+    const buf = await buildDocx({ ...TWO_SCENE_INPUT, options: { includeSynopsis: true } });
+    const docXml = await (await loadDocxZip(buf)).file('word/document.xml')!.async('string');
+    expect(docXml).toContain('Synopsis');
+    expect(docXml).toContain('A city sinks; a smuggler rises.');
+  });
+
+  it('includeSynopsis without synopsis text renders no synopsis page', async () => {
+    const buf = await buildDocx({
+      ...TWO_SCENE_INPUT,
+      synopsis: undefined,
+      options: { includeSynopsis: true },
+    });
+    const docXml = await (await loadDocxZip(buf)).file('word/document.xml')!.async('string');
+    expect(docXml).not.toContain('Synopsis');
+  });
+
+  it('sceneSeparators inserts ◆ ◆ ◆ between scenes but not before the first', async () => {
+    const buf = await buildDocx({ ...TWO_SCENE_INPUT, options: { sceneSeparators: true } });
+    const docXml = await (await loadDocxZip(buf)).file('word/document.xml')!.async('string');
+    expect(docXml.match(/◆ ◆ ◆/g)).toHaveLength(1);
+  });
 });

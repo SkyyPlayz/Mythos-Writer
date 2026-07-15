@@ -9,10 +9,11 @@ import {
   ManifestMigrationError,
   migrateManifest,
   writeManifestAtomic,
+  stripEmbeddedProseForPersist,
   openManifest,
   pruneOrphanScenes,
 } from './manifest.js';
-import { defaultManifest } from './vault.js';
+import { defaultManifest, ensureSceneFilesForManifestScenes, readSceneFile } from './vault.js';
 import type { Manifest, SceneEntry, ChapterEntry } from './ipc.js';
 
 // Minimal legacy manifest (no schemaVersion, no provenance/boardReferences)
@@ -41,25 +42,25 @@ function makeScene(id: string, filePath: string): SceneEntry {
 }
 
 describe('SCHEMA_VERSION', () => {
-  it('is 1', () => {
-    expect(SCHEMA_VERSION).toBe(1);
+  it('is 2 (SKY-6596: structure-only manifest bump)', () => {
+    expect(SCHEMA_VERSION).toBe(2);
   });
 });
 
 describe('defaultManifest', () => {
-  it('produces a v1 manifest with all required index fields', () => {
+  it('produces a manifest at the current schema version with all required index fields', () => {
     const m = defaultManifest('/tmp/vault');
-    expect(m.schemaVersion).toBe(1);
+    expect(m.schemaVersion).toBe(SCHEMA_VERSION);
     expect(m.provenance).toEqual({});
     expect(m.boardReferences).toEqual([]);
   });
 });
 
 describe('migrateManifest', () => {
-  it('upgrades a legacy manifest (no schemaVersion) to v1', () => {
+  it('upgrades a legacy manifest (no schemaVersion) to the current schema version', () => {
     const raw = legacyManifest('/tmp/vault');
     const migrated = migrateManifest(raw as Record<string, unknown>);
-    expect(migrated.schemaVersion).toBe(1);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.provenance).toEqual({});
     expect(migrated.boardReferences).toEqual([]);
   });
@@ -87,10 +88,10 @@ describe('migrateManifest', () => {
     expect(migrated.boardReferences).toEqual(['board/scene.md']);
   });
 
-  it('is idempotent when schemaVersion is already 1', () => {
+  it('is idempotent when schemaVersion is already current', () => {
     const already = defaultManifest('/tmp/vault');
     const migrated = migrateManifest(already as unknown as Record<string, unknown>);
-    expect(migrated.schemaVersion).toBe(1);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('preserves all legacy fields after migration', () => {
@@ -120,7 +121,7 @@ describe('writeManifestAtomic', () => {
     writeManifestAtomic(manifestPath, m);
     expect(fs.existsSync(manifestPath)).toBe(true);
     const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
   it('does not leave a .tmp file behind after a successful write', () => {
@@ -166,7 +167,7 @@ describe('writeManifestAtomic', () => {
 
     const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
     expect(parsed.version).toBe('writer-b');
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(SCHEMA_VERSION);
   });
 });
 
@@ -181,7 +182,7 @@ describe('openManifest', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('cold start: writes a v1 manifest when no file exists yet', () => {
+  it('cold start: writes a manifest at the current schema version when no file exists yet', () => {
     // openManifest requires the file to exist; cold-start means the caller
     // creates it first via defaultManifest + writeManifestAtomic, then opens it.
     const manifestPath = path.join(tmpDir, 'manifest.json');
@@ -189,29 +190,29 @@ describe('openManifest', () => {
     writeManifestAtomic(manifestPath, fresh);
 
     const opened = openManifest(manifestPath);
-    expect(opened.schemaVersion).toBe(1);
+    expect(opened.schemaVersion).toBe(SCHEMA_VERSION);
     // .tmp must not linger
     expect(fs.existsSync(`${manifestPath}.tmp`)).toBe(false);
   });
 
-  it('reads a v1 manifest and returns it unchanged', () => {
+  it('reads a current-schema manifest and returns it unchanged', () => {
     const manifestPath = path.join(tmpDir, 'manifest.json');
     const m = defaultManifest(tmpDir);
     writeManifestAtomic(manifestPath, m);
     const opened = openManifest(manifestPath);
-    expect(opened.schemaVersion).toBe(1);
+    expect(opened.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it('migrates a legacy manifest (no schemaVersion) and writes back v1', () => {
+  it('migrates a legacy manifest (no schemaVersion) and writes back the current schema version', () => {
     const manifestPath = path.join(tmpDir, 'manifest.json');
     const legacy = legacyManifest(tmpDir);
     fs.writeFileSync(manifestPath, JSON.stringify(legacy, null, 2), 'utf-8');
 
     const opened = openManifest(manifestPath);
-    expect(opened.schemaVersion).toBe(1);
+    expect(opened.schemaVersion).toBe(SCHEMA_VERSION);
 
     const onDisk = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-    expect(onDisk.schemaVersion).toBe(1);
+    expect(onDisk.schemaVersion).toBe(SCHEMA_VERSION);
     expect(onDisk.provenance).toEqual({});
     expect(onDisk.boardReferences).toEqual([]);
   });
@@ -233,7 +234,7 @@ describe('openManifest', () => {
     const opened = openManifest(manifestPath);
     const statAfter = fs.statSync(manifestPath).mtimeMs;
 
-    expect(opened.schemaVersion).toBe(1);
+    expect(opened.schemaVersion).toBe(SCHEMA_VERSION);
     expect(statAfter).toBe(statBefore);
   });
 
@@ -415,5 +416,198 @@ describe('pruneOrphanScenes', () => {
     const { manifest, pruned } = pruneOrphanScenes(m, tmpDir);
     expect(manifest.scenes).toHaveLength(0);
     expect(pruned).toHaveLength(0);
+  });
+});
+
+// ─── SKY-6596 / GH #893: structure-only manifest ───
+
+function makeSceneWithProse(id: string, filePath: string, content: string): SceneEntry {
+  return {
+    ...makeScene(id, filePath),
+    blocks: [{ id: `b-${id}`, type: 'prose', order: 0, content, updatedAt: new Date().toISOString() }],
+  };
+}
+
+describe('stripEmbeddedProseForPersist', () => {
+  const vaultRoot = '/tmp/vault';
+
+  it('strips content from the flat legacy scenes[] list', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'Some prose.')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].blocks[0].content).toBe('');
+  });
+
+  it('strips content from chapters[].scenes[] (legacy nested)', () => {
+    const chapter: ChapterEntry = {
+      id: 'ch1', title: 'Chapter 1', path: 'ch1.md', order: 0,
+      scenes: [makeSceneWithProse('s1', 'a.md', 'Some prose.')],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    const m: Manifest = { ...defaultManifest(vaultRoot), chapters: [chapter] };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.chapters[0].scenes[0].blocks[0].content).toBe('');
+  });
+
+  it('strips content from stories[].chapters[].scenes[] (current nested shape)', () => {
+    const chapter: ChapterEntry = {
+      id: 'ch1', title: 'Chapter 1', path: 'ch1.md', order: 0,
+      scenes: [makeSceneWithProse('s1', 'a.md', 'Deep prose.')],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      stories: [{ id: 'story1', title: 'Story', path: 'story1', chapters: [chapter], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.stories[0].chapters[0].scenes[0].blocks[0].content).toBe('');
+  });
+
+  it('does not mutate the input manifest', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'Untouched.')],
+    };
+    stripEmbeddedProseForPersist(m);
+    expect(m.scenes[0].blocks[0].content).toBe('Untouched.');
+  });
+
+  it('leaves non-prose fields (title, order, path, ids) untouched', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'Prose.')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].id).toBe('s1');
+    expect(persisted.scenes[0].title).toBe('Scene s1');
+    expect(persisted.scenes[0].path).toBe('a.md');
+    expect(persisted.scenes[0].blocks[0].type).toBe('prose');
+  });
+});
+
+describe('writeManifestAtomic — structure-only persistence (SKY-6596)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-strip-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes a manifest.json with every scene\'s embedded prose stripped, regardless of caller', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const m: Manifest = {
+      ...defaultManifest(tmpDir),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'x'.repeat(50_000))],
+    };
+    writeManifestAtomic(manifestPath, m);
+
+    const onDisk = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+    expect(onDisk.scenes[0].blocks[0].content).toBe('');
+    // The on-disk file must not grow with prose size — the whole point of SKY-6596.
+    expect(fs.statSync(manifestPath).size).toBeLessThan(2_000);
+  });
+});
+
+describe('openManifest — beforeMigrationWrite recovery hook (SKY-6596)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-recover-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('is called with the migrated manifest and vaultRoot before the migration write-back', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify(legacyManifest(tmpDir)), 'utf-8');
+
+    let calledWith: { manifest: Manifest; vaultRoot: string } | null = null;
+    openManifest(manifestPath, {
+      vaultRoot: tmpDir,
+      beforeMigrationWrite: (manifest, vaultRoot) => {
+        calledWith = { manifest, vaultRoot };
+        return manifest;
+      },
+    });
+
+    expect(calledWith).not.toBeNull();
+    expect(calledWith!.vaultRoot).toBe(tmpDir);
+    expect(calledWith!.manifest.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it('is NOT called when the manifest is already at the current schema version (no migration needed)', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    writeManifestAtomic(manifestPath, defaultManifest(tmpDir));
+
+    const hook = vi.fn((m: Manifest) => m);
+    openManifest(manifestPath, { vaultRoot: tmpDir, beforeMigrationWrite: hook });
+
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it('end-to-end: a pre-SKY-6596 vault whose scene prose lives ONLY in the manifest survives migration losslessly', () => {
+    // Simulates the highest-risk real-world case: a scene with embedded
+    // prose and no `.md` file backing it (e.g. a very old vault, or one
+    // hand-edited before this app version ever wrote scene files for it).
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const legacy = {
+      ...legacyManifest(tmpDir),
+      schemaVersion: 1,
+      provenance: {},
+      boardReferences: [],
+      scenes: [makeSceneWithProse('orphan-1', 'orphan.md', 'This prose has no .md home yet.')],
+    };
+    fs.writeFileSync(manifestPath, JSON.stringify(legacy), 'utf-8');
+    expect(fs.existsSync(path.join(tmpDir, 'orphan.md'))).toBe(false);
+
+    openManifest(manifestPath, {
+      vaultRoot: tmpDir,
+      beforeMigrationWrite: (manifest, vaultRoot) => ensureSceneFilesForManifestScenes(manifest, vaultRoot),
+    });
+
+    // 1. The prose now has a durable, source-of-truth home on disk.
+    expect(fs.existsSync(path.join(tmpDir, 'orphan.md'))).toBe(true);
+    expect(readSceneFile(tmpDir, 'orphan.md').prose).toBe('This prose has no .md home yet.');
+
+    // 2. The migrated manifest.json itself no longer embeds that prose.
+    const onDisk = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+    expect(onDisk.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(onDisk.scenes[0].blocks[0].content).toBe('');
+
+    // 3. The pre-migration backup still has the original, untouched, as a last resort.
+    const backupDir = path.join(tmpDir, '.mythos', 'backups');
+    const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith('manifest-'));
+    expect(backups.length).toBeGreaterThan(0);
+    const backupContent = JSON.parse(fs.readFileSync(path.join(backupDir, backups[0]), 'utf-8')) as Manifest;
+    expect(backupContent.scenes[0].blocks[0].content).toBe('This prose has no .md home yet.');
+  });
+
+  it('without the hook, a scene with no .md backing loses its prose from disk (documents why the hook is non-negotiable)', () => {
+    // This is intentionally the "what if we forgot the hook" regression guard —
+    // it proves the recovery hook is load-bearing, not decorative.
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const legacy = {
+      ...legacyManifest(tmpDir),
+      schemaVersion: 1,
+      provenance: {},
+      boardReferences: [],
+      scenes: [makeSceneWithProse('orphan-2', 'orphan2.md', 'Would be lost without recovery.')],
+    };
+    fs.writeFileSync(manifestPath, JSON.stringify(legacy), 'utf-8');
+
+    openManifest(manifestPath); // no beforeMigrationWrite
+
+    expect(fs.existsSync(path.join(tmpDir, 'orphan2.md'))).toBe(false);
+    const onDisk = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+    expect(onDisk.scenes[0].blocks[0].content).toBe('');
+    // The backup is the only remaining copy — this is exactly why main.ts always
+    // wires the hook at the real boot call site (see main.ts ensureVaultDir).
   });
 });

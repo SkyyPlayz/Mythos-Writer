@@ -415,6 +415,10 @@ export default function NotesTabPanel({
               sceneWikiLinkTitles={sceneWikiLinkTitles}
               wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
+              // M17: backlinks footer in the note body (FULL-SPEC §6).
+              stories={stories}
+              onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+              onOpenBacklinkScene={onSelectScene}
             />
           )}
           {/* M16: note split — active note + a second note side by side. */}
@@ -432,6 +436,11 @@ export default function NotesTabPanel({
                   sceneWikiLinkTitles={sceneWikiLinkTitles}
                   wikiLinkCandidates={wikiLinkCandidates}
                   onClose={onCloseActiveNote}
+                  // M17: backlinks footer follows the primary pane only —
+                  // the split pane stays compact (prototype split excerpt).
+                  stories={stories}
+                  onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+                  onOpenBacklinkScene={onSelectScene}
                 />
               </div>
               <div

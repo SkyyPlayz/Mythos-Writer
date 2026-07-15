@@ -104,7 +104,14 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     }
   });
 
-  // Acceptance criterion from spec: open Notes tab → switch to Graph → switch tabs → switch back → Graph still selected.
+  // Acceptance criterion from spec (SKY-2096, updated for Beta 4 M3 #911):
+  // open Notes tab → pick a sub-view → switch tabs → switch back → the
+  // selection survives. Since the six-module nav rail gave Vault Graph its
+  // own rail item (prototype navItems, "Liquid Neon.dc.html" 5680–5687), a
+  // "Notes Editor" rail click intentionally lands on the editor sub-view —
+  // so the preserved-selection contract is exercised with Entities, and the
+  // graph surface is asserted through its own Vault Graph rail route plus
+  // the intentional graph→editor reset on a Notes Editor click.
   test('Notes sub-view selection is preserved when switching tabs and back', async () => {
     const app = await launchApp(userData);
     try {
@@ -115,18 +122,35 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
 
-      // Switch to Graph sub-view
-      await page.locator('[data-testid="notes-subview-graph"]').click();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
+      // Switch to Entities sub-view
+      await page.locator('[data-testid="notes-subview-entities"]').click();
+      await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveAttribute('aria-selected', 'true');
 
       // Switch to Story tab
       await clickStoryNav(page);
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
 
-      // Switch back to Notes tab — Graph must still be selected
+      // Switch back to Notes tab — Entities must still be selected
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+
+      // Beta 4 M3: the graph is a dedicated rail module. Select Graph, leave
+      // for Story, and return through the "Vault Graph" rail item — the graph
+      // surface is shown and selected.
+      await page.locator('[data-testid="notes-subview-graph"]').click();
+      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
+      await clickStoryNav(page);
+      await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
       await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
+
+      // …while a "Notes Editor" rail click intentionally resets graph → editor
+      // (DesktopShell handleNavModuleChange: "Vault Graph is its own rail item
+      // — a Notes Editor click shows notes").
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(page.locator('[data-testid="notes-graph-view"]')).not.toBeVisible();
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -154,8 +178,12 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      // Notes tab should still be active
-      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      // Notes tab should still be active…
+      await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
+      // …and with the Beta 4 M3 six-module rail (#911), the lit rail module
+      // for the restored Notes → Graph surface is "Vault Graph" (the graph
+      // has its own rail item now), not "Notes Editor".
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       // Graph sub-view should still be selected
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     } finally {
