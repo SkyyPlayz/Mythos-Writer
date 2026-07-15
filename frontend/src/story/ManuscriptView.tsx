@@ -10,7 +10,9 @@
 //
 // Self-contained: pure UI + local fold/width/toolbar state. Persistence stays
 // with the caller via onEditParagraph / onCycleStatus / onCursorChange /
-// onMoveParagraph / onPageWidthChange.
+// onMoveParagraph / onPageWidthChange, plus the M8 editing-model callbacks
+// (onSplitParagraph / onMergeParagraph / onRemoveParagraph / onRenameScene /
+// onRenameChapter — prototype paraKey/editPara/editTitle 5095–5146).
 
 import {
   useCallback,
@@ -19,6 +21,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
@@ -26,6 +29,8 @@ import {
 import {
   breadcrumbs,
   buildBlocks,
+  normalizeInlineTitle,
+  splitParagraphText,
   zoomStep,
   type ManuscriptBlock,
   type ManuscriptCursor,
@@ -81,6 +86,37 @@ export interface ManuscriptViewProps {
   onPageWidthChange?: (px: number) => void;
   /** M10: grip drag dropped one paragraph onto another (lands before target). */
   onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
+  /**
+   * M8: Enter splits the focused paragraph at the caret. The handler applies
+   * the split to the story and returns the id of the block created for the
+   * text after the caret (null = not applied). The caret then lands at the
+   * start of that new paragraph. Absent → Enter commits-and-blurs (legacy).
+   */
+  onSplitParagraph?: (
+    sceneId: string,
+    blockId: string,
+    before: string,
+    after: string
+  ) => string | null;
+  /**
+   * M8: Backspace at paragraph start merges into the previous paragraph.
+   * Returns the surviving block + merged text (null = first block of the
+   * scene / not applied). The caret lands at the end of the merged block.
+   */
+  onMergeParagraph?: (
+    sceneId: string,
+    blockId: string,
+    currentText: string
+  ) => { mergedBlockId: string; mergedText: string } | null;
+  /**
+   * M8: a paragraph emptied on blur is removed. Returns false when the
+   * paragraph was kept (min 1 per scene) — it then commits as ' '.
+   */
+  onRemoveParagraph?: (sceneId: string, blockId: string) => boolean;
+  /** M8: inline scene-heading rename (renaming a provisional scene persists it). */
+  onRenameScene?: (sceneId: string, title: string) => void;
+  /** M8: inline chapter-heading rename. */
+  onRenameChapter?: (chapterId: string, title: string) => void;
   /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
   liquidNeon?: Partial<LiquidNeonV2Settings> | null;
   /**
@@ -261,6 +297,11 @@ export default function ManuscriptView({
   pageWidth = 1000,
   onPageWidthChange,
   onMoveParagraph,
+  onSplitParagraph,
+  onMergeParagraph,
+  onRemoveParagraph,
+  onRenameScene,
+  onRenameChapter,
   liquidNeon,
   onPageStyleChange,
   onPickPageTexture,
@@ -383,6 +424,9 @@ export default function ManuscriptView({
   }, [scopeKey]);
 
   // ←/→ hop same-level siblings (prototype 3919–3922), except while typing.
+  // M8 (§1 keyboard map): Alt+←/→ hops scenes (chapters at chapter zoom) even
+  // FROM inside a paragraph — plain arrows stay in the text. Any in-flight
+  // contentEditable edit is blur-committed before the scope swaps it out.
   // W0.4: Ctrl/Cmd+Alt+↑/↓ steps the zoom level here too — the shell's
   // DepthSlider (which owned that shortcut) no longer mounts while the
   // manuscript's own doc header is the single zoom bar.
@@ -400,6 +444,15 @@ export default function ManuscriptView({
       }
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       if (cursor.zoom === 'book') return;
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.closest?.('[contenteditable="true"]')) {
+          active.blur();
+        }
+        step(e.key === 'ArrowRight' ? 1 : -1);
+        return;
+      }
       const target = e.target as HTMLElement | null;
       const tag = (target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -412,15 +465,25 @@ export default function ManuscriptView({
     return () => window.removeEventListener('keydown', onKey);
   }, [cursor, onCursorChange, step]);
 
-  // Abandoned grip drags (mouseup outside any paragraph) clear the drag state.
+  // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
+  // outside any paragraph), Escape, and losing window focus all clear it.
   useEffect(() => {
     if (!dragPara) return;
     const clear = () => {
       updateDragPara(null);
       setDropKey(null);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clear();
+    };
     window.addEventListener('mouseup', clear);
-    return () => window.removeEventListener('mouseup', clear);
+    window.addEventListener('blur', clear);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mouseup', clear);
+      window.removeEventListener('blur', clear);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [dragPara, updateDragPara]);
 
   const handleScroll = useCallback(
@@ -484,6 +547,16 @@ export default function ManuscriptView({
   const commitParagraph = useCallback(
     (sceneId: string, blockId: string, original: string, el: HTMLElement) => {
       let text = el.textContent ?? '';
+      // M8 (prototype editPara): a paragraph emptied on blur is removed;
+      // the model keeps a minimum of one per scene — a kept survivor
+      // commits as the prototype's single-space placeholder instead.
+      if (onRemoveParagraph && text.trim() === '') {
+        if (onRemoveParagraph(sceneId, blockId)) {
+          committedRef.current.delete(blockId);
+          return;
+        }
+        text = ' ';
+      }
       // M23 'auto' mode: link entity mentions on commit (the plain-text
       // analog of BlockEditor's auto-on-save apply path).
       if (autoLinkMode === 'auto' && autoLinkTerms.length > 0) {
@@ -494,8 +567,101 @@ export default function ManuscriptView({
       committedRef.current.set(blockId, text);
       onEditParagraph(sceneId, blockId, text);
     },
-    [onEditParagraph, autoLinkMode, autoLinkTerms]
+    [onEditParagraph, onRemoveParagraph, autoLinkMode, autoLinkTerms]
   );
+
+  // ── M8: Enter split / Backspace merge + caret hand-off ──
+  // The follow-up caret target renders on the NEXT story pass (the split /
+  // merge lands in the caller's state first), so it is parked in a ref and
+  // claimed by the effect below once its paragraph exists in the DOM.
+  const pendingCaretRef = useRef<{ blockId: string; place: 'start' | 'end' } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingCaretRef.current;
+    if (!pending) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-testid="msv-para-${pending.blockId}"]`
+    );
+    if (!el) return;
+    pendingCaretRef.current = null;
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(pending.place === 'start');
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch {
+      // jsdom's Selection API is partial — focus alone is enough there.
+    }
+  }, [blocks]);
+
+  const handleRowSplit = useCallback(
+    (sceneId: string, blockId: string, text: string, offset: number, el: HTMLElement) => {
+      if (!onSplitParagraph) return;
+      const { before, after } = splitParagraphText(text, offset);
+      // Blur first, with the commit suppressed (the split itself persists
+      // both halves): once unfocused, the row's memo gate lets the content
+      // change re-render through React — never mutate its DOM by hand, the
+      // children may be React-managed comment/hint spans.
+      committedRef.current.set(blockId, text);
+      el.blur();
+      const newBlockId = onSplitParagraph(sceneId, blockId, before, after);
+      if (!newBlockId) {
+        committedRef.current.delete(blockId); // split refused — restore the baseline
+        return;
+      }
+      committedRef.current.set(blockId, before);
+      committedRef.current.set(newBlockId, after);
+      pendingCaretRef.current = { blockId: newBlockId, place: 'start' };
+    },
+    [onSplitParagraph]
+  );
+
+  const handleRowMergeUp = useCallback(
+    (sceneId: string, blockId: string, currentText: string): boolean => {
+      if (!onMergeParagraph) return false;
+      const res = onMergeParagraph(sceneId, blockId, currentText);
+      if (!res) return false;
+      committedRef.current.set(res.mergedBlockId, res.mergedText);
+      // The merged-away row unmounts — a stray blur must not re-commit it.
+      committedRef.current.set(blockId, currentText);
+      pendingCaretRef.current = { blockId: res.mergedBlockId, place: 'end' };
+      return true;
+    },
+    [onMergeParagraph]
+  );
+
+  // ── M8: inline heading renames (prototype editTitle) ──
+  // Empty renames revert; normalization differences are written back so the
+  // heading never displays text the story does not hold. Renaming a
+  // provisional scene persists it (§1.5) — the shell's handler owns that.
+  const commitHeadingRename = useCallback(
+    (kind: 'chapter' | 'scene', id: string, originalTitle: string, el: HTMLElement) => {
+      const raw = el.textContent ?? '';
+      const title = normalizeInlineTitle(raw);
+      if (!title) {
+        el.textContent = originalTitle;
+        return;
+      }
+      if (title !== raw) el.textContent = title;
+      if (title === originalTitle) return;
+      if (kind === 'chapter') onRenameChapter?.(id, title);
+      else onRenameScene?.(id, title);
+    },
+    [onRenameChapter, onRenameScene]
+  );
+
+  // §1: Enter commits inline renames (blur runs the commit handler).
+  const headingKeyDown = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+  }, []);
 
   const commitPageWidth = useCallback(
     (w: number) => {
@@ -550,6 +716,11 @@ export default function ManuscriptView({
     (sceneId: string, blockId: string, e: ReactMouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      // Prototype paraDown: drop any live text selection so the drag never
+      // extends it (user-select is suppressed for the drag's duration too).
+      if (typeof window.getSelection === 'function') {
+        window.getSelection()?.removeAllRanges();
+      }
       updateDragPara({ sceneId, blockId });
     },
     [updateDragPara]
@@ -701,7 +872,25 @@ export default function ManuscriptView({
                 {CHEVRON_RIGHT(13)}
               </button>
               <div className="msv-h2-label">{b.label}</div>
-              <div className="msv-h2-title">{b.title}</div>
+              {/* M8: chapter titles are inline-editable (prototype editTitle). */}
+              <div
+                className="msv-h2-title"
+                data-testid={`msv-chapter-title-${b.chapterId}`}
+                contentEditable={!!onRenameChapter}
+                suppressContentEditableWarning
+                spellCheck={false}
+                {...(onRenameChapter
+                  ? {
+                      role: 'textbox' as const,
+                      'aria-label': 'Chapter title — Enter commits',
+                      onBlur: (e: ReactFocusEvent<HTMLElement>) =>
+                        commitHeadingRename('chapter', b.chapterId, b.title, e.currentTarget),
+                      onKeyDown: headingKeyDown,
+                    }
+                  : {})}
+              >
+                {b.title}
+              </div>
             </div>
             {b.folded &&
               renderFoldPill(
@@ -724,7 +913,26 @@ export default function ManuscriptView({
               >
                 {CHEVRON_RIGHT(13)}
               </button>
-              <span className="msv-h3-title">{b.title}</span>
+              {/* M8: scene titles are inline-editable; renaming a provisional
+                  scene persists it (§1.5 — the shell's rename handler). */}
+              <span
+                className="msv-h3-title"
+                data-testid={`msv-scene-title-${b.sceneId}`}
+                contentEditable={!!onRenameScene}
+                suppressContentEditableWarning
+                spellCheck={false}
+                {...(onRenameScene
+                  ? {
+                      role: 'textbox' as const,
+                      'aria-label': 'Scene title — Enter commits',
+                      onBlur: (e: ReactFocusEvent<HTMLElement>) =>
+                        commitHeadingRename('scene', b.sceneId, b.title, e.currentTarget),
+                      onKeyDown: headingKeyDown,
+                    }
+                  : {})}
+              >
+                {b.title}
+              </span>
               <button
                 type="button"
                 className={`msv-dot msv-dot--${b.status}`}
@@ -758,8 +966,14 @@ export default function ManuscriptView({
             autoLinkTerms={autoLinkTerms}
             reading={readerKey === b.blockId}
             showDropLine={!!dragPara && dropKey === b.blockId}
+            dragging={
+              !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
+            }
+            dropCap={b.first && (cursor.zoom === 'scene' || cursor.zoom === 'chapter')}
             paraStyle={paraStyle}
             onCommit={commitParagraph}
+            onSplit={onSplitParagraph ? handleRowSplit : undefined}
+            onMergeUp={onMergeParagraph ? handleRowMergeUp : undefined}
             onGripDown={handleGripDown}
             onParaOver={handleParaOver}
             onParaDrop={handleParaDrop}

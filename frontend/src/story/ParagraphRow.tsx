@@ -66,14 +66,67 @@ export interface ParagraphRowProps {
   reading: boolean;
   /** M10 grip drag — true while this row is the hovered drop target. */
   showDropLine: boolean;
+  /** M8 grip drag — true while THIS row is the block being dragged (dims to 38%). */
+  dragging: boolean;
+  /**
+   * M8 — first paragraph of a scene at chapter/scene zoom gets a drop cap
+   * (suppressed while comment anchors segment the text, like the prototype).
+   */
+  dropCap: boolean;
   /** Toolbar-driven paragraph style (memoized by the parent). */
   paraStyle: CSSProperties;
   onCommit: (sceneId: string, blockId: string, original: string, el: HTMLElement) => void;
+  /**
+   * M8 — Enter splits at the caret: raw live text + plain-text caret offset.
+   * When absent, Enter falls back to commit-and-blur (legacy callers).
+   */
+  onSplit?: (
+    sceneId: string,
+    blockId: string,
+    text: string,
+    offset: number,
+    el: HTMLElement
+  ) => void;
+  /**
+   * M8 — Backspace with the caret at offset 0 merges into the previous
+   * paragraph. Returns true when handled (the keystroke is then consumed).
+   */
+  onMergeUp?: (sceneId: string, blockId: string, currentText: string) => boolean;
   onGripDown: (sceneId: string, blockId: string, e: ReactMouseEvent) => void;
   onParaOver: (blockId: string) => void;
   onParaDrop: (sceneId: string, blockId: string) => void;
   onOpenComment: (id: string | null) => void;
   onApplyAutoLink: (sceneId: string, blockId: string, content: string, hint: EntityMatch) => void;
+}
+
+/**
+ * Prototype _caretOffset (5032–5038): map the selection anchor to a
+ * plain-text offset inside `root` by walking its text nodes. Falls back to
+ * `fallback` (typically the text length) when there is no usable selection.
+ */
+function caretOffsetIn(root: HTMLElement, fallback: number): number {
+  const sel =
+    typeof window !== 'undefined' && typeof window.getSelection === 'function'
+      ? window.getSelection()
+      : null;
+  if (!sel || !sel.anchorNode || !root.contains(sel.anchorNode)) return fallback;
+  let total = 0;
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let cur: Node | null;
+  while ((cur = walk.nextNode())) {
+    if (cur === sel.anchorNode) return total + sel.anchorOffset;
+    total += cur.textContent?.length ?? 0;
+  }
+  return total;
+}
+
+/** True when the selection is a caret (no range) — merges never eat a selection. */
+function selectionCollapsed(): boolean {
+  const sel =
+    typeof window !== 'undefined' && typeof window.getSelection === 'function'
+      ? window.getSelection()
+      : null;
+  return !sel || sel.isCollapsed;
 }
 
 function sameCommentList(a: readonly StoryComment[], b: readonly StoryComment[]): boolean {
@@ -116,9 +169,13 @@ export function paragraphRowPropsEqual(
     prev.blockId !== next.blockId ||
     prev.reading !== next.reading ||
     prev.showDropLine !== next.showDropLine ||
+    prev.dragging !== next.dragging ||
+    prev.dropCap !== next.dropCap ||
     prev.paraStyle !== next.paraStyle ||
     prev.autoLinkTerms !== next.autoLinkTerms ||
     prev.onCommit !== next.onCommit ||
+    prev.onSplit !== next.onSplit ||
+    prev.onMergeUp !== next.onMergeUp ||
     prev.onGripDown !== next.onGripDown ||
     prev.onParaOver !== next.onParaOver ||
     prev.onParaDrop !== next.onParaDrop ||
@@ -141,8 +198,12 @@ export function ParagraphRowBase({
   autoLinkTerms,
   reading,
   showDropLine,
+  dragging,
+  dropCap,
   paraStyle,
   onCommit,
+  onSplit,
+  onMergeUp,
   onGripDown,
   onParaOver,
   onParaDrop,
@@ -216,11 +277,15 @@ export function ParagraphRowBase({
     return content;
   }, [segs, hints, content, sceneId, blockId, onOpenComment, onApplyAutoLink]);
 
+  const textClass = `msv-para-text${reading ? ' msv-para-text--reading' : ''}${
+    dropCap && !segs ? ' msv-para-text--dropcap' : ''
+  }`;
+
   return (
     <div>
       {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
       <div
-        className="msv-para"
+        className={`msv-para${dragging ? ' msv-para--dragging' : ''}`}
         onMouseEnter={() => onParaOver(blockId)}
         onMouseUp={() => onParaDrop(sceneId, blockId)}
       >
@@ -234,7 +299,7 @@ export function ParagraphRowBase({
           {GRIP_ICON}
         </span>
         <div
-          className={`msv-para-text${reading ? ' msv-para-text--reading' : ''}`}
+          className={textClass}
           style={paraStyle}
           data-testid={`msv-para-${blockId}`}
           contentEditable
@@ -244,9 +309,24 @@ export function ParagraphRowBase({
           onBlur={(e) => onCommit(sceneId, blockId, content, e.currentTarget)}
           onKeyDown={(e: ReactKeyboardEvent<HTMLDivElement>) => {
             if (e.key === 'Enter') {
+              // M8 (prototype paraKey Enter): split at the caret. Callers
+              // without a split handler keep the legacy commit-and-blur.
               e.preventDefault();
-              onCommit(sceneId, blockId, content, e.currentTarget);
-              e.currentTarget.blur();
+              const el = e.currentTarget;
+              if (onSplit) {
+                const text = el.textContent ?? '';
+                onSplit(sceneId, blockId, text, caretOffsetIn(el, text.length), el);
+              } else {
+                onCommit(sceneId, blockId, content, el);
+                el.blur();
+              }
+            } else if (e.key === 'Backspace' && onMergeUp && selectionCollapsed()) {
+              // M8 (prototype paraKey Backspace): caret at offset 0 merges
+              // this paragraph into the previous one.
+              const el = e.currentTarget;
+              const text = el.textContent ?? '';
+              if (caretOffsetIn(el, text.length) !== 0) return;
+              if (onMergeUp(sceneId, blockId, text)) e.preventDefault();
             }
           }}
         >
