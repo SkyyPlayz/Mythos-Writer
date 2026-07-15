@@ -1065,15 +1065,21 @@ interface Window {
     // Search (MYT-251)
     searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<{ results: Array<{ docId: string; vault: 'story' | 'notes'; kind: string; title: string; snippet: string; rank: number }> }>;
 
-    // EPUB export (MYT-342)
-    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
+    // EPUB export (MYT-342; options Beta 4 M14)
+    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
 
-    // DOCX export (MYT-252)
-    exportDocx: (storyId?: string, scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+    // DOCX export (MYT-252; options Beta 4 M14)
+    exportDocx: (storyId?: string, scope?: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+
+    // PDF export (Beta 4 M14, FULL-SPEC §5.5)
+    exportPdf: (scope: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+
+    // Reveal the last exported file in the OS file manager (Beta 4 M14)
+    exportRevealLast: () => Promise<{ opened: boolean }>;
 
     // Markdown / plaintext export
-    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
-    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
 
     // Scene Crafter Kanban board (SKY-1758/SKY-1763)
     sceneCrafterGetBoard: (storyId: string, storySlug: string) => Promise<SceneCrafterBoard | null>;

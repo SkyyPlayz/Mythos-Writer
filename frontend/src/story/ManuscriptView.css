@@ -131,25 +131,40 @@
   flex: 1;
 }
 
-.msv-width-ctl {
+/* ── page setup (M7 §5.1: compact popover, not a strip) ── */
+
+.msv-page-setup-anchor {
+  position: relative;
+  flex: none;
+}
+
+.msv-page-setup-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 190px;
-  flex: none;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 8px;
+  color: #8e9db8;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: inherit;
 }
 
-.msv-width-ctl input[type='range'] {
-  flex: 1;
-  min-width: 0;
-  accent-color: var(--n1, #00f0ff);
+.msv-page-setup-btn:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.msv-width-readout {
-  font-size: 10px;
+.msv-page-setup-btn--on {
   color: var(--n1, #00f0ff);
-  width: 44px;
-  flex: none;
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.msv-page-setup-readout {
+  font-size: 10px;
 }
 
 /* ── toolbar v2 (prototype 742–777, tbBase 4111, dictBtnSt 4815) ── */
@@ -188,6 +203,10 @@
 
 .msv-tb-font {
   width: 92px;
+}
+
+.msv-tb-line-spacing {
+  width: 56px;
 }
 
 .msv-tb-size {
@@ -681,6 +700,16 @@
   border-radius: 8px;
   box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
   transition: background 0.25s ease;
+}
+
+/* ── M11: sentence-level highlight over the block wash (§5.1 "highlights the
+   sentence being read"). Painted via the CSS Custom Highlight API — see
+   readerHighlight.ts. Also styles the Book-preview reading sentence. ── */
+
+::highlight(msv-reading-sentence) {
+  /* slot-A neon at ~32% — reads over the 14% block wash on any theme */
+  background-color: color-mix(in srgb, var(--n1, rgb(0, 240, 255)) 32%, transparent);
+  color: var(--txH, rgb(240, 243, 252)); /* prototype #f0f3fc */
 }
 
 /* ── fold pill (prototype 901–905) ── */

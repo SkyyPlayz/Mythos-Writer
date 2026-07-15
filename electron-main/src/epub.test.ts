@@ -123,4 +123,56 @@ describe('buildEpub', () => {
     const opf = await zip.file('OEBPS/content.opf')!.async('string');
     expect(opf).toContain('<dc:language>fr</dc:language>');
   });
+
+  // ─── Beta 4 M14 — compile options (synopsis page + scene separators) ───
+
+  const TWO_SCENE_INPUT: EpubInput = {
+    title: 'Novel',
+    synopsis: 'A city sinks; a smuggler rises.',
+    chapters: [
+      {
+        id: 'ch1',
+        title: 'Chapter One',
+        scenes: [
+          { id: 'sc1', title: 'First', prose: 'Alpha.' },
+          { id: 'sc2', title: 'Second', prose: 'Beta.' },
+        ],
+      },
+    ],
+  };
+
+  it('omits synopsis page and separators when options are absent (pre-M14 output)', async () => {
+    const zip = await loadZip(await buildEpub(TWO_SCENE_INPUT));
+    expect(zip.file('OEBPS/synopsis.xhtml')).toBeNull();
+    const scene1 = await zip.file('OEBPS/scene-1.xhtml')!.async('string');
+    expect(scene1).not.toContain('◆ ◆ ◆');
+  });
+
+  it('includeSynopsis adds synopsis.xhtml to the package and spine', async () => {
+    const zip = await loadZip(
+      await buildEpub({ ...TWO_SCENE_INPUT, options: { includeSynopsis: true } }),
+    );
+    const syn = await zip.file('OEBPS/synopsis.xhtml')!.async('string');
+    expect(syn).toContain('A city sinks; a smuggler rises.');
+    const opf = await zip.file('OEBPS/content.opf')!.async('string');
+    expect(opf).toContain('synopsis.xhtml');
+    expect(opf).toContain('<itemref idref="synopsis"/>');
+  });
+
+  it('includeSynopsis without synopsis text adds no synopsis page', async () => {
+    const zip = await loadZip(
+      await buildEpub({ ...TWO_SCENE_INPUT, synopsis: '  ', options: { includeSynopsis: true } }),
+    );
+    expect(zip.file('OEBPS/synopsis.xhtml')).toBeNull();
+  });
+
+  it('sceneSeparators marks follow-on scenes but not chapter openers', async () => {
+    const zip = await loadZip(
+      await buildEpub({ ...TWO_SCENE_INPUT, options: { sceneSeparators: true } }),
+    );
+    const scene0 = await zip.file('OEBPS/scene-0.xhtml')!.async('string');
+    const scene1 = await zip.file('OEBPS/scene-1.xhtml')!.async('string');
+    expect(scene0).not.toContain('◆ ◆ ◆');
+    expect(scene1).toContain('◆ ◆ ◆');
+  });
 });
