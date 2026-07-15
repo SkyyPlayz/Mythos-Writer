@@ -1570,6 +1570,19 @@ interface Window {
     timelinesGetStore?: () => Promise<{ store: import('./timelinesTypes').TimelinesStore }>;
     timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
     timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
+    // Beta 4 M22: Axis engine — era/span/event/row item persistence
+    timelinesUpsertItem?: (payload: {
+      type: 'era' | 'span' | 'event' | 'row';
+      item:
+        | import('./timelinesTypes').TimelineEra
+        | import('./timelinesTypes').TimelineSpan
+        | import('./timelinesTypes').TimelineEvent
+        | import('./timelinesTypes').TimelineRow;
+    }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
+    timelinesDeleteItem?: (payload: {
+      type: 'era' | 'span' | 'event' | 'row';
+      id: string;
+    }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
 
     // SKY-3189 (G3): true when running in a packaged Electron build.
     // Web Speech API (webkitSpeechRecognition) does not function in packaged builds.

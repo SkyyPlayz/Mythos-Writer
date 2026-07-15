@@ -425,6 +425,8 @@ import {
   handleTimelinesGetStore,
   handleTimelinesUpsert,
   handleTimelinesSetActive,
+  handleTimelinesUpsertItem,
+  handleTimelinesDeleteItem,
 } from './timelinesStoreIpc.js';
 import {
   buildArchiveIndex,
@@ -6490,6 +6492,15 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload) => {
     ensureVaultDir();
     return handleTimelinesSetActive(getVaultRoot(), payload);
+  },
+  // Beta 4 M22: Axis engine — era/span/event/row item persistence
+  [IPC_CHANNELS.TIMELINES_UPSERT_ITEM]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesUpsertItem(getVaultRoot(), payload);
+  },
+  [IPC_CHANNELS.TIMELINES_DELETE_ITEM]: (payload) => {
+    ensureVaultDir();
+    return handleTimelinesDeleteItem(getVaultRoot(), payload);
   },
 };
 

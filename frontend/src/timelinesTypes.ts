@@ -33,12 +33,41 @@ export interface TimelineEvent {
   source?: 'migration' | 'seed' | 'manual';
 }
 
+// M22: era / span / row item shapes (mirrors model.ts — kept `unknown[]`
+// until the axis engine needed them).
+export interface TimelineEra {
+  id: string;
+  timelineId: string;
+  name: string;
+  startWhen: number;
+  endWhen: number;
+  color?: string;
+}
+
+export interface TimelineSpan {
+  id: string;
+  timelineId: string;
+  name: string;
+  startWhen: number;
+  endWhen: number;
+  rowId?: string;
+  color?: string;
+  opensTimelineId?: string;
+}
+
+export interface TimelineRow {
+  id: string;
+  timelineId: string;
+  name: string;
+  kind: 'custom' | 'arc' | 'entity';
+}
+
 export interface TimelinesStore {
   schemaVersion: 1;
   activeTimelineId: string;
   timelines: TimelineDefinition[];
-  eras: unknown[];
-  spans: unknown[];
-  rows: unknown[];
+  eras: TimelineEra[];
+  spans: TimelineSpan[];
+  rows: TimelineRow[];
   events: TimelineEvent[];
 }
