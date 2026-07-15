@@ -74,14 +74,6 @@ export function useAgentSessions(agent: string): UseAgentSessionsResult {
     void initSession();
   }, [initSession]);
 
-  // Load the full session file when activeSessionId changes
-  useEffect(() => {
-    if (!activeSessionId || !api) return;
-    // We don't have a dedicated "read session" IPC, so use appendTurns with [] to
-    // get the session back, OR keep a local copy from creation. For now we track
-    // session data from IPC responses and refresh the list on changes.
-  }, [activeSessionId, api]);
-
   const switchSession = useCallback(async (id: string) => {
     setActiveSessionId(id);
   }, []);
