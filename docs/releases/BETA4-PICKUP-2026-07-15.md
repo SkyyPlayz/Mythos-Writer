@@ -33,22 +33,28 @@ paths) was fixed inside #953. `e2e/mythos-migration.spec.ts` and
 | #955 | M26 vault graph | **All required checks green** | Merge any time |
 | #954 | Docs (status table + this file) | Re-kicked twice (first fail = main's own bug, second = setup-job 10-min timeout under runner saturation — both understood) | Merge on green |
 | #943 | SKY-3223 auto-update e2e salvage | Green, unwired spec + docs only | Merge any time |
+| #958 | M20 brainstorm unification (base m15) | Built on the FIXED m15 tip; B4-4 migration test-first | Merge after #917; then run the `brainstorm-chat` VR baseline loop (its PR predicts the trip) |
+| #959 | M28 settings workspace | B4-6/8/10 compliant; `settings-panel` VR trip predicted | Review, run the VR baseline loop on its branch, merge; unblocks M29 |
 
 **Stacked-PR mechanics:** bases are updated by MERGE commits, never rebase or
 force-push (three PRs hang off these branches). When a base PR squash-merges
 to main and its branch is deleted, GitHub retargets the child PR to main —
 then merge main in once to deduplicate the diff.
 
-## Agents still building at handoff
+## Agents still working at handoff
 
-- **M28 settings workspace** (`claude/beta4-m28`, from main). Expect its PR to
-  flag a `settings-panel` VR baseline trip — that is predicted and needs a
-  baseline regen on its branch (see VR loop below), not a code fix.
-- **M20 brainstorm unification** (`claude/beta4-m20`, stacked on #917).
-  Carries the B4-4 migration duty (one board; existing user cards/positions
-  must survive). Its base moved (`96de6a1`) — it was told to rebase-by-merge
-  before pushing.
-- **Cascade agent** finishing m21→m22→m23 merge-ups with full validation.
+- **Cascade agent** finishing main→m21, then m21→m22 (#951), then m22→m23
+  (#957) merge-ups with full validation (#914 went `dirty` vs main after
+  tonight's ten merges; the cascade resolves it bottom-up).
+
+All five milestone builders have delivered (#955 #956 #957 #958 #959).
+
+## Known cross-PR collision (resolve at merge time)
+
+**#952 and #958 both independently added the `agentSession:read` IPC**
+(`handleAgentSessionRead` in `agentSessionsIpc.ts` + the channel plumbing) on
+top of m15. Whichever merges second will conflict there — resolution is
+"keep one copy" (they are functionally identical parsed-lookup handlers).
 
 If any of these dies silently, its worktree is under
 `/tmp/claude-0/-home-user-Mythos-Writer/*/scratchpad/wt-*` and the branch
