@@ -148,7 +148,10 @@ describe('BookPreview audiobook bar (M11)', () => {
 
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(speakMock).not.toHaveBeenCalled();
-    expect(screen.getByTestId('ln-toast')).toBeInTheDocument();
+    // GH#946: the refusal names the real cause (empty book), not the voice.
+    expect(screen.getByTestId('ln-toast')).toHaveTextContent(
+      'Nothing to read yet — this book has no scenes with prose'
+    );
     expect(screen.getByTestId('msv-reader-status')).toHaveTextContent('Ready');
   });
 

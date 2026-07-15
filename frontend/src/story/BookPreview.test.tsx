@@ -117,6 +117,15 @@ describe('BookPreview', () => {
     expect(screen.getByText('— END OF DRAFT —')).toBeInTheDocument();
   });
 
+  it('names each compiled scene article for assistive tech (GH#946, CF-7)', () => {
+    render(<BookPreview story={makeStory()} pageWidth={1000} onExport={() => {}} />);
+
+    // The compiled book shows no per-scene titles (v2 prototype), so the
+    // <article> landmarks carry positional aria-labels instead.
+    expect(screen.getByRole('article', { name: 'Scene 1 of The Descent' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Scene 2 of The Descent' })).toBeInTheDocument();
+  });
+
   it('underlines comment anchors and opens a read-only comment card on click', () => {
     const story = makeStory();
     const created = commentsStore.create({
