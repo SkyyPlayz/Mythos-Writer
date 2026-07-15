@@ -53,17 +53,31 @@ export function assertValidWhen(when: number): void {
   parseWhenTicks(when);
 }
 
+/**
+ * Relative tolerance for the tenth-precision gate below. A `when` produced by
+ * `encodeWhen` (integer ticks / 10) can drift from an exact multiple of 0.1 by
+ * a few ULPs once it has been through arithmetic or a JSON round-trip, so a
+ * raw `Number.EPSILON` comparison is too fragile: it rejects legitimately
+ * codec-aligned values after harmless float noise. 1e-9 (relative) is many
+ * orders of magnitude wider than accumulated ULP error at every supported
+ * magnitude, while still rejecting anything meaningfully off-grid (the nearest
+ * off-grid value is 0.05 away in tick space — 5e7 times the tolerance at 1.0).
+ */
+const TICK_ALIGNMENT_TOLERANCE = 1e-9;
+
 function parseWhenTicks(when: number): number {
-  if (!Number.isFinite(when) || Number.isNaN(when)) {
+  if (!Number.isFinite(when)) {
     throw new RangeError('when must be a finite number');
   }
 
-  const absoluteHours = Math.round(when * 10);
+  const scaledTicks = when * 10;
+  const absoluteHours = Math.round(scaledTicks);
   if (!Number.isSafeInteger(absoluteHours) || Math.abs(absoluteHours) > MAX_ABSOLUTE_TICKS) {
     throw new RangeError('when is outside the supported range');
   }
 
-  if (Math.abs(absoluteHours / 10 - when) > Number.EPSILON * Math.max(1, Math.abs(when))) {
+  const tolerance = TICK_ALIGNMENT_TOLERANCE * Math.max(1, Math.abs(scaledTicks));
+  if (Math.abs(scaledTicks - absoluteHours) > tolerance) {
     throw new RangeError('when must use the year-times-ten codec precision');
   }
 

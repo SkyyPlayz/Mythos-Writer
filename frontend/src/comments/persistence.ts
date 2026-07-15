@@ -38,6 +38,11 @@ function sanitizeComment(raw: unknown): StoryComment | null {
     return null;
   }
   const kind = isCommentKind(r.kind) ? r.kind : 'user';
+  const rawAuthor = typeof r.author === 'string' && r.author ? r.author : 'You';
+  // Beta 4 M9 read-through rename (v2 kMeta2 6765): comments written before
+  // the Writing Assistant → Writing Coach rename keep their sidecar bytes but
+  // never surface the stale agent name.
+  const author = kind === 'writing' && rawAuthor === 'Writing Assistant' ? 'Writing Coach' : rawAuthor;
   return {
     id: r.id,
     storyId: r.storyId,
@@ -45,7 +50,7 @@ function sanitizeComment(raw: unknown): StoryComment | null {
     anchor: r.anchor,
     text: r.text,
     kind,
-    author: typeof r.author === 'string' && r.author ? r.author : 'You',
+    author,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date(0).toISOString(),
     ...(typeof r.suggestionId === 'string' && r.suggestionId
       ? { suggestionId: r.suggestionId }

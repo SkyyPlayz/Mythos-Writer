@@ -105,6 +105,48 @@ describe('LiquidNeonAppearanceSection', () => {
     expect(screen.queryByTestId('lnas-pageop')).not.toBeInTheDocument();
   });
 
+  it('picking Custom texture in the segmented control patches pageCfg.mode', async () => {
+    const { onChange } = await setup({ pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 } });
+    fireEvent.click(screen.getByTestId('lnas-page-custom'));
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).pageCfg.mode).toBe('custom');
+  });
+
+  it('custom texture mode shows the upload row and hides the flat bg controls (M7 §5.1)', async () => {
+    await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
+    expect(screen.getByTestId('lnas-page-texture-upload')).toBeInTheDocument();
+    expect(screen.queryByTestId('lnas-pageop')).not.toBeInTheDocument();
+    expect(screen.getByText('No image chosen — cover-fit over the page')).toBeInTheDocument();
+  });
+
+  it('choosing a texture image patches pageCfg.textureUrl via the shared image picker', async () => {
+    const pickBgImage = vi.fn().mockResolvedValue({ filePath: '/tmp/parchment.png', cancelled: false });
+    (window as unknown as { api: Record<string, unknown> }).api = { pickBgImage };
+    const { onChange } = await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('lnas-page-texture-upload'));
+    });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+    expect(next.pageCfg.mode).toBe('custom');
+    expect(next.pageCfg.textureUrl).toBe('/tmp/parchment.png');
+    delete (window as unknown as { api?: unknown }).api;
+  });
+
+  it('resolves the chosen texture to a data URL when loadBgImage is available (raw fs paths do not load via CSS url())', async () => {
+    const pickBgImage = vi.fn().mockResolvedValue({ filePath: '/tmp/parchment.png', cancelled: false });
+    const loadBgImage = vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,AAAA' });
+    (window as unknown as { api: Record<string, unknown> }).api = { pickBgImage, loadBgImage };
+    const { onChange } = await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('lnas-page-texture-upload'));
+    });
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+    expect(loadBgImage).toHaveBeenCalledWith('/tmp/parchment.png');
+    expect(next.pageCfg.textureUrl).toBe('data:image/png;base64,AAAA');
+    delete (window as unknown as { api?: unknown }).api;
+  });
+
   it('wallpaper card pick patches wp; no custom card without customWp', async () => {
     const { onChange } = await setup();
     expect(screen.queryByTestId('lnas-wp-custom')).not.toBeInTheDocument();

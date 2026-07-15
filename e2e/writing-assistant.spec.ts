@@ -422,6 +422,20 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
  * Collapses and re-expands the GRS panel to force a remount, clearing any
  * in-memory tip-suppression state from prior tests.
  */
+/**
+ * SKY-6228: the right panel is now the agent hub — the Writing Assistant
+ * chat (heartbeat/scan-now/prompt) is behind the "Writing Assistant" agent
+ * row. Click into it if the hub's list view (not the chat view) is showing.
+ */
+async function openWritingAssistantAgentRow(page: Page): Promise<void> {
+  const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
+  await expect(hubPanel).toBeVisible({ timeout: 4_000 });
+  const agentRow = page.locator('[aria-label="Open Writing Assistant chat"]');
+  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await agentRow.click();
+  }
+}
+
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
   await openScene(page, 'Lighthouse Scene');
 
@@ -432,6 +446,7 @@ async function openWritingAssistantWithScene(page: Page): Promise<void> {
     await waHeader.click(); // collapse → unmount content
   }
   await waHeader.click(); // expand → remount content
+  await openWritingAssistantAgentRow(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
@@ -443,6 +458,7 @@ async function openAssistantTab(page: Page): Promise<void> {
   if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
     await waHeader.click();
   }
+  await openWritingAssistantAgentRow(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
@@ -1079,6 +1095,7 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
       await waHeader.click();
     }
+    await openWritingAssistantAgentRow(disabledPage);
 
     // Panel renders in disabled state.
     const disabledPanel = disabledPage.locator('.writing-assistant-disabled');

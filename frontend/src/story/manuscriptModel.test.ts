@@ -10,11 +10,20 @@ import {
   chapterStatus,
   cycleStatus,
   flatUnits,
+  mergeParagraphText,
+  mergeParagraphUp,
   moveParagraph,
+  normalizeInlineTitle,
+  removeEmptyParagraph,
+  renameChapter,
+  renameScene,
   sceneStatus,
+  splitParagraph,
+  splitParagraphText,
   zoomStep,
   type H3Block,
   type ManuscriptCursor,
+  type ParaBlock,
   type SceneStatus,
 } from './manuscriptModel';
 
@@ -281,6 +290,7 @@ describe('buildBlocks', () => {
       chapterId: 'ch1',
       blockId: 's1-b0',
       content: 'Mira counted the bells.',
+      first: true, // M8: drop-cap candidate
     });
   });
 
@@ -435,5 +445,181 @@ describe('moveParagraph', () => {
     moveParagraph(story, { sceneId: 's4', blockId: 's4-b0' }, { sceneId: 's4', blockId: 's4-b2' });
     moveParagraph(story, { sceneId: 's1', blockId: 's1-b1' }, { sceneId: 's3', blockId: 's3-b0' });
     expect(JSON.stringify(story)).toBe(before);
+  });
+});
+
+// ─── M8 — editing model hardening (prototype paraKey/editPara/editTitle) ─────
+
+describe('splitParagraphText / mergeParagraphText / normalizeInlineTitle', () => {
+  it('trims both halves of a caret split; an empty half becomes a single space', () => {
+    expect(splitParagraphText('Hello world', 5)).toEqual({ before: 'Hello', after: 'world' });
+    expect(splitParagraphText('Hello world', 6)).toEqual({ before: 'Hello', after: 'world' });
+    expect(splitParagraphText('Hello world', 0)).toEqual({ before: ' ', after: 'Hello world' });
+    expect(splitParagraphText('Hello world', 11)).toEqual({ before: 'Hello world', after: ' ' });
+    // Offsets are clamped to the text bounds.
+    expect(splitParagraphText('ab', 99)).toEqual({ before: 'ab', after: ' ' });
+    expect(splitParagraphText('ab', -1)).toEqual({ before: ' ', after: 'ab' });
+  });
+
+  it('merges with a single-space join, collapsing whitespace runs', () => {
+    expect(mergeParagraphText('One.', 'Two.')).toBe('One. Two.');
+    expect(mergeParagraphText('One.  ', '  Two.')).toBe('One. Two.');
+    expect(mergeParagraphText(' ', 'Two.')).toBe('Two.');
+    expect(mergeParagraphText('One.', ' ')).toBe('One.');
+  });
+
+  it('collapses newlines and trims inline titles', () => {
+    expect(normalizeInlineTitle('  A City\n\nin Shadows ')).toBe('A City in Shadows');
+    expect(normalizeInlineTitle(' \n ')).toBe('');
+  });
+});
+
+describe('splitParagraph', () => {
+  const story = mkStory();
+  const blocksOf = (s: Story, sceneId: string) => {
+    for (const ch of s.chapters) {
+      const sc = ch.scenes.find((x) => x.id === sceneId);
+      if (sc) return [...sc.blocks].sort((a, b) => a.order - b.order);
+    }
+    return [];
+  };
+
+  it('keeps `before` in the source block and inserts a new block with `after` right after it', () => {
+    const res = splitParagraph(
+      story,
+      { sceneId: 's4', blockId: 's4-b1' },
+      'Kael tightened',
+      'his hood.',
+      { makeId: () => 'nb-1', now: NOW }
+    );
+    expect(res).not.toBeNull();
+    expect(res!.sceneId).toBe('s4');
+    expect(res!.newBlockId).toBe('nb-1');
+    const blocks = blocksOf(res!.story, 's4');
+    expect(blocks.map((b) => b.id)).toEqual(['s4-b0', 's4-b1', 'nb-1', 's4-b2']);
+    expect(blocks.map((b) => b.content)).toEqual([
+      'The stairwell yawned.',
+      'Kael tightened',
+      'his hood.',
+      'Stay close.',
+    ]);
+    expect(blocks.map((b) => b.order)).toEqual([0, 1, 2, 3]);
+    // The new block inherits the source block's type.
+    expect(blocks[2].type).toBe(blocks[1].type);
+  });
+
+  it('returns null for unknown scenes or blocks', () => {
+    expect(splitParagraph(story, { sceneId: 'nope', blockId: 's4-b1' }, 'a', 'b')).toBeNull();
+    expect(splitParagraph(story, { sceneId: 's4', blockId: 'ghost' }, 'a', 'b')).toBeNull();
+  });
+
+  it('never mutates the input story', () => {
+    const before = JSON.stringify(story);
+    splitParagraph(story, { sceneId: 's4', blockId: 's4-b1' }, 'a', 'b', { makeId: () => 'x' });
+    expect(JSON.stringify(story)).toBe(before);
+  });
+});
+
+describe('mergeParagraphUp', () => {
+  const story = mkStory();
+  const blocksOf = (s: Story, sceneId: string) => {
+    for (const ch of s.chapters) {
+      const sc = ch.scenes.find((x) => x.id === sceneId);
+      if (sc) return [...sc.blocks].sort((a, b) => a.order - b.order);
+    }
+    return [];
+  };
+
+  it('folds the block (with its live text) into the previous sibling and removes it', () => {
+    const res = mergeParagraphUp(story, { sceneId: 's4', blockId: 's4-b1' }, 'Kael  tightened his hood. ');
+    expect(res).not.toBeNull();
+    expect(res!.mergedBlockId).toBe('s4-b0');
+    expect(res!.mergedText).toBe('The stairwell yawned. Kael tightened his hood.');
+    const blocks = blocksOf(res!.story, 's4');
+    expect(blocks.map((b) => b.id)).toEqual(['s4-b0', 's4-b2']);
+    expect(blocks[0].content).toBe('The stairwell yawned. Kael tightened his hood.');
+    expect(blocks.map((b) => b.order)).toEqual([0, 1]);
+  });
+
+  it('never merges the first block of a scene (no cross-scene merges, prototype ti > 0)', () => {
+    expect(mergeParagraphUp(story, { sceneId: 's4', blockId: 's4-b0' }, 'text')).toBeNull();
+    expect(mergeParagraphUp(story, { sceneId: 's3', blockId: 's3-b0' }, 'text')).toBeNull();
+  });
+
+  it('returns null for unknown scenes or blocks and never mutates the input', () => {
+    const before = JSON.stringify(story);
+    expect(mergeParagraphUp(story, { sceneId: 'nope', blockId: 'x' }, 't')).toBeNull();
+    expect(mergeParagraphUp(story, { sceneId: 's4', blockId: 'ghost' }, 't')).toBeNull();
+    mergeParagraphUp(story, { sceneId: 's4', blockId: 's4-b1' }, 'live');
+    expect(JSON.stringify(story)).toBe(before);
+  });
+});
+
+describe('removeEmptyParagraph', () => {
+  const story = mkStory();
+
+  it('removes the block and renumbers the survivors', () => {
+    const res = removeEmptyParagraph(story, { sceneId: 's4', blockId: 's4-b1' });
+    expect(res).not.toBeNull();
+    const s4 = res!.story.chapters[1].scenes[1];
+    expect([...s4.blocks].sort((a, b) => a.order - b.order).map((b) => b.id)).toEqual([
+      's4-b0',
+      's4-b2',
+    ]);
+    expect([...s4.blocks].sort((a, b) => a.order - b.order).map((b) => b.order)).toEqual([0, 1]);
+  });
+
+  it('refuses to remove the scene’s only block (min 1 per scene)', () => {
+    expect(removeEmptyParagraph(story, { sceneId: 's3', blockId: 's3-b0' })).toBeNull();
+  });
+
+  it('returns null for unknown scenes or blocks', () => {
+    expect(removeEmptyParagraph(story, { sceneId: 'nope', blockId: 'x' })).toBeNull();
+    expect(removeEmptyParagraph(story, { sceneId: 's4', blockId: 'ghost' })).toBeNull();
+  });
+});
+
+describe('renameScene / renameChapter', () => {
+  const story = mkStory();
+
+  it('renames a scene with normalized text and stamps updatedAt when given', () => {
+    const res = renameScene(story, 's1', '  The Watcher\nReturns ', '2026-07-14T00:00:00.000Z');
+    expect(res).not.toBeNull();
+    const s1 = res!.chapters[0].scenes[0];
+    expect(s1.title).toBe('The Watcher Returns');
+    expect(s1.updatedAt).toBe('2026-07-14T00:00:00.000Z');
+    // Sibling scenes untouched.
+    expect(res!.chapters[0].scenes[1].title).toBe('A City in Shadows');
+  });
+
+  it('renames a chapter', () => {
+    const res = renameChapter(story, 'ch2', 'Fault Lines');
+    expect(res!.chapters[1].title).toBe('Fault Lines');
+  });
+
+  it('returns null for empty titles, unchanged titles, and unknown ids', () => {
+    expect(renameScene(story, 's1', '   ')).toBeNull();
+    expect(renameScene(story, 's1', "The Watcher's Call")).toBeNull();
+    expect(renameScene(story, 'ghost', 'X')).toBeNull();
+    expect(renameChapter(story, 'ch2', ' \n ')).toBeNull();
+    expect(renameChapter(story, 'ch2', 'Fractures')).toBeNull();
+    expect(renameChapter(story, 'ghost', 'X')).toBeNull();
+  });
+
+  it('never mutates the input story', () => {
+    const before = JSON.stringify(story);
+    renameScene(story, 's1', 'New Title', NOW);
+    renameChapter(story, 'ch2', 'New Chapter', NOW);
+    expect(JSON.stringify(story)).toBe(before);
+  });
+});
+
+describe('buildBlocks drop-cap flag (M8)', () => {
+  it('marks only the first paragraph of each scene as `first`', () => {
+    const blocks = buildBlocks(mkStory(), cur('chapter', 1), new Set());
+    const paras = blocks.filter((b): b is ParaBlock => b.kind === 'para');
+    const firsts = paras.filter((p) => p.first).map((p) => p.blockId);
+    expect(firsts).toEqual(['s3-b0', 's4-b0', 's5-b0']);
+    expect(paras.find((p) => p.blockId === 's4-b1')!.first).toBe(false);
   });
 });

@@ -1,0 +1,134 @@
+/* Beta 4 M7 — Page setup popover: compact glass panel, matches the
+   WindowChrome popover language (rgba(15,19,33,.97) + slot-A border/glow). */
+
+.pgc-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  z-index: 20;
+  width: 236px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 19, 33, 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6), 0 0 22px -6px var(--g1, rgba(0, 240, 255, 0.4));
+  cursor: default;
+  text-align: left;
+}
+
+.pgc-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e6ecf9;
+  margin-bottom: 9px;
+}
+
+.pgc-title--sub {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pgc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pgc-width-slider {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--n1, #00f0ff);
+}
+
+.pgc-width-input {
+  width: 44px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #dbe4f5;
+  font-size: 11px;
+  padding: 3px 4px;
+  text-align: center;
+  font-family: inherit;
+}
+
+.pgc-width-input:focus {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  outline: none;
+}
+
+.pgc-unit {
+  font-size: 10px;
+  color: #7686a2;
+  flex: none;
+}
+
+.pgc-styles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pgc-style-opt {
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  cursor: pointer;
+  color: #94a3bd;
+  font-weight: 500;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: inherit;
+}
+
+.pgc-style-opt:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.pgc-style-opt--active,
+.pgc-style-opt--active:hover {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, 0.4));
+  font-weight: 600;
+}
+
+.pgc-row--texture {
+  margin-top: 9px;
+}
+
+.pgc-texture-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #7686a2;
+}
+
+.pgc-texture-btn {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #aebad0;
+  background: rgba(255, 255, 255, 0.04);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  font-family: inherit;
+}
+
+.pgc-texture-btn:hover {
+  color: #fff;
+}

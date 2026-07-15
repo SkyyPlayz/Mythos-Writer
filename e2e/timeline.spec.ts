@@ -867,8 +867,13 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await m23Page.locator('[data-testid="tl-template-save-the-cat"]').click();
 
     // Toast confirms; the PLOTLINES row gains a lane of 8 dashed beat chips.
-    await expect(m23Page.locator('[data-testid="app-toast"]'))
-      .toContainText('“Save the Cat” laid onto the timeline as a plotline', { timeout: 8_000 });
+    // Filtered by text: several app-toasts can coexist (the global
+    // notes-migration notice merged from main, plus other timeline toasts),
+    // so a bare [data-testid="app-toast"] locator trips Playwright's strict
+    // mode. Same pattern as wiki-links.spec.ts.
+    await expect(m23Page.locator('[data-testid="app-toast"]')
+      .filter({ hasText: '“Save the Cat” laid onto the timeline as a plotline' }))
+      .toBeVisible({ timeout: 8_000 });
     await expect(m23Page.locator('.ax-plotcard[data-beat="true"]')).toHaveCount(8, { timeout: 8_000 });
     await expect(m23Page.locator('.ax-plotcard').first()).toHaveCSS('border-style', 'dashed');
     // The left panel lists the new plotline with its card count.
@@ -892,7 +897,11 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
 
   test('TC-TL-M23-06: Today explains itself while nothing is written; modes route their surfaces', async () => {
     await m23Page.locator('[data-testid="tl-today-btn"]').click();
-    await expect(m23Page.locator('[data-testid="app-toast"]')).toContainText('Nothing written yet');
+    // Filtered by text (see TC-TL-M23-04): concurrent app-toasts must not
+    // make this locator ambiguous under Playwright's strict mode.
+    await expect(m23Page.locator('[data-testid="app-toast"]')
+      .filter({ hasText: 'Nothing written yet' }))
+      .toBeVisible();
 
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await modeBar.getByRole('button', { name: 'Plotlines', exact: true }).click();
