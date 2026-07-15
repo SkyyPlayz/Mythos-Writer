@@ -644,16 +644,12 @@ jobs:
           fi
 
       - name: E2E — Visual regression baseline comparison (MYT-771)
-        env:
-          # SKY-6410/M16: M15's AgentHubPanel (replacing WritingAssistantPanel in
-          # the right sidebar) and M16's notes-explorer toolbar each shift
-          # brainstorm-chat and settings-panel by ~0.6-0.7%. Local WSL2-generated
-          # baselines don't match GitHub Actions Ubuntu rendering closely enough
-          # to re-baseline (see SKY-6389); raise the threshold instead so these
-          # intentional UI changes don't block CI.
-          # Reset to 0.5% once baselines are refreshed on an actual CI runner.
-          VR_THRESHOLD: "0.007"
         run: xvfb-run --auto-servernum npm run test:e2e:visual-regression
+        env:
+          # M16 notes-explorer toolbar shifts brainstorm-chat and settings-panel
+          # by ~0.6%; raise threshold to 0.7% so intentional UI changes don't
+          # block CI. Reset to 0.5% once baselines are refreshed on a CI runner.
+          VR_THRESHOLD: "0.007"
 
       - name: Upload visual-regression diffs on failure
         if: failure()
