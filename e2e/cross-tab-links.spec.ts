@@ -100,8 +100,10 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
-      await page.getByRole('button', { name: 'Preview' }).click();
-      await page.getByRole('button', { name: '[[Scene: Chapter One/Opening Scene]]' }).click();
+      // M17: the mode seg moved into the gear popover; rendered links live in Rich.
+      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('[data-testid="note-gear-mode-rich"]').click();
+      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
 
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.locator('.scene-name', { hasText: 'Opening Scene' })).toBeVisible();

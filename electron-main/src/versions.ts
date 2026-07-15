@@ -60,6 +60,11 @@ export interface SceneVersion {
   intent: VersionIntent;
   /** sha256(content) full hex — header field; filename uses first 8 chars. */
   contentHash: string;
+  /**
+   * Beta 4 M10: ISO save time when the store records one. v2 draft files carry
+   * it in their frontmatter; legacy snapshots derive it from the filename stamp.
+   */
+  savedAt?: string;
 }
 
 export interface VersionRetention {
@@ -354,12 +359,14 @@ export function listVersions(
         const content = parsed ? parsed.content : raw;
         const intent = parsed ? parsed.intent : meta.intent;
         const contentHash = parsed ? parsed.contentHash : meta.contentHash;
+        const savedDate = parseTsFromFilename(meta.filename);
         return {
           sceneId,
           ts: meta.ts,
           content,
           intent,
           contentHash,
+          ...(savedDate ? { savedAt: savedDate.toISOString() } : {}),
         } satisfies SceneVersion;
       } catch {
         return null;

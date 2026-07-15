@@ -163,6 +163,19 @@ export function workspaceStripModeFor(
   return { kind: 'docs', strip: 'notes' };
 }
 
+/** The placeholder title a provisional scene is born with (prototype addProvScene). */
+export const PROVISIONAL_SCENE_TITLE = 'Untitled Scene';
+
+/**
+ * M8 (§1.5): does renaming a provisional scene commit (persist) it?
+ * Prototype editTitle ~5142: only a real title does — an empty rename or the
+ * default placeholder leaves the scene provisional.
+ */
+export function renameCommitsProvisional(title: string): boolean {
+  const t = title.trim();
+  return t.length > 0 && t !== PROVISIONAL_SCENE_TITLE;
+}
+
 /**
  * §1.5 discard rule: a provisional scene is "navigated away from" (→ silently
  * discarded with a toast) when the shell leaves the Story editor at scene

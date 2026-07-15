@@ -42,6 +42,14 @@ describe('secureWebPreferences — BrowserWindow security flags', () => {
     const p = '/abs/path/to/preload.js';
     expect(secureWebPreferences({ preloadPath: p }).preload).toBe(p);
   });
+  it('omitting preloadPath yields NO preload key (Beta 4 M14 PDF print window)', () => {
+    const prefs = secureWebPreferences({});
+    expect('preload' in prefs).toBe(false);
+    // The hardened flags still apply to preload-less windows.
+    expect(prefs.contextIsolation).toBe(true);
+    expect(prefs.sandbox).toBe(true);
+    expect(prefs.nodeIntegration).toBe(false);
+  });
 });
 
 describe('createWindowOpenHandler — deny by default', () => {
@@ -81,12 +89,15 @@ describe('main.ts wiring — secureWebPreferences is the source of truth for all
   // Guards against drift: if someone adds a BrowserWindow that hand-rolls
   // webPreferences without secureWebPreferences(), this test flips red.
   // SKY-1686 added a second BrowserWindow for panel popout windows.
-  // SKY-1697 added a third for free-floating panel windows. All must use secureWebPreferences().
+  // SKY-1697 added a third for free-floating panel windows.
+  // Beta 4 M14 added a fourth: the hidden, preload-less PDF print window
+  // (secureWebPreferences({}) — no IPC surface). All must use secureWebPreferences().
   it('all BrowserWindow constructors in main.ts use secureWebPreferences()', () => {
     const mainSrc = fs.readFileSync(path.join(ELECTRON_MAIN_DIR, 'src/main.ts'), 'utf-8');
     const ctorMatches = mainSrc.match(/new BrowserWindow\s*\(/g) ?? [];
-    // Count must equal the number of intentional windows (3: main + panel popout + floating panel).
-    expect(ctorMatches.length).toBe(3);
+    // Count must equal the number of intentional windows
+    // (4: main + panel popout + floating panel + hidden PDF print window).
+    expect(ctorMatches.length).toBe(4);
     // Count secureWebPreferences usages — must match BrowserWindow count.
     const secureMatches = mainSrc.match(/webPreferences:\s*secureWebPreferences\(/g) ?? [];
     expect(secureMatches.length).toBe(ctorMatches.length);

@@ -44,6 +44,7 @@ import {
   parseDraftTs,
   saveDraftForScene,
   serializeDraftFile,
+  toSceneVersion,
 } from './draftFiles.js';
 import {
   appendTurns,
@@ -367,6 +368,20 @@ describe('draft files', () => {
     expect(parseDraftTs('draft-6')).toBe(6);
     expect(parseDraftTs('draft-0')).toBeNull();
     expect(parseDraftTs('2026-01-01T00-00-00-000Z_00000001-abcd1234')).toBeNull();
+  });
+
+  it('toSceneVersion exposes the draft number as ts and carries savedAt (M10 meta lines)', () => {
+    scaffoldScene(tmp);
+    const entry = saveDraftForScene(tmp, {
+      sceneId: 'scene-1',
+      chapterRelPath: chapterRel,
+      content: 'draft body',
+      savedAt: '2026-07-01T10:00:00.000Z',
+    });
+    const version = toSceneVersion(entry);
+    expect(version.ts).toBe('draft-1');
+    expect(version.content).toBe('draft body');
+    expect(version.savedAt).toBe('2026-07-01T10:00:00.000Z');
   });
 
   it('rejects chapter paths that escape the vault', () => {

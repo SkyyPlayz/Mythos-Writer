@@ -1,5 +1,5 @@
-// Beta 3 M13 — reader flow model unit tests (prototype buildFlow 3633–3656,
-// fromCursor 3681–3684, readerScene 3697–3702 semantics).
+// Beta 3 M13 / Beta 4 M11 — reader flow model unit tests (prototype buildFlow,
+// fromCursor + readerScene semantics; M11 sentence splitting + ±10s skips).
 
 import { describe, it, expect } from 'vitest';
 import type { Block, Chapter, Scene, Story } from '../types';
@@ -9,6 +9,9 @@ import {
   flowScopeKey,
   flowStartIndex,
   sceneSkipIndex,
+  splitSentences,
+  timeSkipIndex,
+  type ReaderFlowItem,
 } from './readerFlow';
 
 const NOW = '2026-07-07T00:00:00.000Z';
@@ -105,6 +108,115 @@ describe('buildReaderFlow', () => {
     story.chapters[0].scenes[0].blocks.push(mkBlock('s1-b2', '   ', 2));
     const flow = buildReaderFlow(story, at('book'));
     expect(flow.some((f) => f.key === 's1-b2')).toBe(false);
+  });
+
+  it('M11: multi-sentence paragraphs emit one item per sentence with offsets', () => {
+    const story = mkStory();
+    const text = 'Mira counted the bells. The lantern trembled!';
+    story.chapters[0].scenes[0].blocks[0] = mkBlock('s1-b0', text, 0);
+    const flow = buildReaderFlow(story, at('scene', 0, 0));
+    const items = flow.filter((f) => f.key === 's1-b0');
+    expect(items.map((f) => f.text)).toEqual([
+      'Mira counted the bells.',
+      'The lantern trembled!',
+    ]);
+    // Offsets index the block's content exactly (the highlight contract).
+    for (const item of items) {
+      expect(text.slice(item.start, item.end)).toBe(item.text);
+    }
+    // Sentences of one paragraph share the block key + scene ordinal.
+    expect(new Set(items.map((f) => f.sceneOrdinal)).size).toBe(1);
+  });
+
+  it('M11: headings carry an empty offset range', () => {
+    const flow = buildReaderFlow(mkStory(), at('book'));
+    expect(flow[0].key).toBeNull();
+    expect(flow[0].start).toBe(0);
+    expect(flow[0].end).toBe(0);
+  });
+});
+
+describe('splitSentences (M11)', () => {
+  it('splits on terminators and keeps exact source offsets', () => {
+    const text = 'One here. Two there! Three?';
+    const spans = splitSentences(text);
+    expect(spans.map((s) => s.text)).toEqual(['One here.', 'Two there!', 'Three?']);
+    for (const s of spans) expect(text.slice(s.start, s.end)).toBe(s.text);
+  });
+
+  it('treats terminator runs and attached closing quotes as one boundary', () => {
+    const spans = splitSentences('“Run!” she said. Then silence…');
+    expect(spans.map((s) => s.text)).toEqual(['“Run!”', 'she said.', 'Then silence…']);
+  });
+
+  it('does not split after initials or common abbreviations', () => {
+    expect(splitSentences('Mr. Thorne waited. J. K. spoke.').map((s) => s.text)).toEqual([
+      'Mr. Thorne waited.',
+      'J. K. spoke.',
+    ]);
+  });
+
+  it('returns the whole text as one span when there is no terminator', () => {
+    const spans = splitSentences('  a fragment without an end  ');
+    expect(spans).toEqual([
+      { text: 'a fragment without an end', start: 2, end: 27 },
+    ]);
+  });
+
+  it('returns no spans for empty/whitespace text', () => {
+    expect(splitSentences('')).toEqual([]);
+    expect(splitSentences('   ')).toEqual([]);
+  });
+
+  it('never splits mid-word on decimal points', () => {
+    expect(splitSentences('It was 3.5 meters tall. Nobody moved.').map((s) => s.text)).toEqual([
+      'It was 3.5 meters tall.',
+      'Nobody moved.',
+    ]);
+  });
+});
+
+describe('timeSkipIndex (M11 ±10s)', () => {
+  // 16 words ≈ 5s at the 3.2 words/s pacing estimate.
+  const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
+  const mkFlow = (texts: string[]): ReaderFlowItem[] =>
+    texts.map((text, i) => ({
+      text,
+      key: `b${i}`,
+      sceneId: 's',
+      sceneOrdinal: 0,
+      start: 0,
+      end: text.length,
+    }));
+
+  it('walks forward until ~10s of estimated speech is covered', () => {
+    const flow = mkFlow([words(16), words(16), words(16), words(16)]);
+    // 16 + 16 words = 10s → lands two items ahead.
+    expect(timeSkipIndex(flow, 0, 1, 10, 1)).toBe(2);
+  });
+
+  it('walks backward symmetrically', () => {
+    const flow = mkFlow([words(16), words(16), words(16), words(16)]);
+    expect(timeSkipIndex(flow, 3, -1, 10, 1)).toBe(1);
+  });
+
+  it('scales with the playback rate', () => {
+    const flow = mkFlow([words(16), words(16), words(16), words(16)]);
+    // At 2× speed each item is ~2.5s → four items ≈ 10s, clamped to the end.
+    expect(timeSkipIndex(flow, 0, 1, 10, 2)).toBe(3);
+  });
+
+  it('always moves at least one item when not at an edge', () => {
+    const flow = mkFlow([words(200), words(200)]);
+    expect(timeSkipIndex(flow, 0, 1, 10, 1)).toBe(1);
+    expect(timeSkipIndex(flow, 1, -1, 10, 1)).toBe(0);
+  });
+
+  it('clamps at the flow edges and handles empty flows', () => {
+    const flow = mkFlow([words(4), words(4)]);
+    expect(timeSkipIndex(flow, 0, -1, 10, 1)).toBe(0);
+    expect(timeSkipIndex(flow, 1, 1, 10, 1)).toBe(1);
+    expect(timeSkipIndex([], 0, 1, 10, 1)).toBe(-1);
   });
 });
 

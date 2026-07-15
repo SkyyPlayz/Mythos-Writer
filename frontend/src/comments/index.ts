@@ -43,6 +43,7 @@ export type { AnchorSegment } from './model';
 
 export {
   AGENT_ACTIONS,
+  GUTTER_AGENT_ACTIONS,
   AGENT_ACTION_SUCCESS_TOAST,
   agentActionAvailability,
   runAgentAction,

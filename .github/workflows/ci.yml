@@ -295,7 +295,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -353,6 +353,12 @@ jobs:
 
       - name: E2E — Title bar Edit -> Undo/Redo wired to focused editor (SKY-6059)
         run: xvfb-run --auto-servernum npm run test:e2e:title-bar-undo-redo
+
+      - name: "E2E — MythosVault migration wizard TC-MV-01..03 (Beta 4 M5, #912)"
+        run: xvfb-run --auto-servernum npm run test:e2e:mythos-migration
+
+      - name: E2E — Comments v2 gutter + vault-copy round-trip (Beta 4 M9)
+        run: xvfb-run --auto-servernum npm run test:e2e:comments
 
       - name: Upload E2E report on failure
         if: failure()
@@ -552,8 +558,12 @@ jobs:
 
   build-macos:
     # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
-    # On-demand ONLY — never on PRs or auto on main. Trigger via 'Run workflow' when fixing the mac build. (Skyy 2026-06-23)
-    if: github.event_name == 'workflow_dispatch'
+    # DISABLED 2026-07-14 (Skyy): "pause/disable the macos ci for now" — the Actions
+    # budget is reserved for releases only. macos-latest bills at 10x Linux.
+    # To re-enable when the mac build is back on the roadmap, restore:
+    #   if: github.event_name == 'workflow_dispatch'
+    # The `ci` aggregator does not depend on this job, so disabling cannot block a PR.
+    if: false
     # macOS build: GitHub-hosted runner (required for macOS; no self-hosted macOS available).
     # Validates macOS Electron build and runs core E2E tests on native macOS.
     # Unsigned DMG is acceptable for PR CI (signing only needed for release builds).

@@ -145,6 +145,18 @@ describe('listVersions', () => {
     expect(items[0].intent).toBe('save');
     expect(items[0].contentHash).toBe(_internal.sha256Hex('two'));
   });
+
+  it('derives savedAt from the filename stamp on legacy snapshots (M10 meta lines)', () => {
+    const before = Date.now();
+    saveVersion(vaultRoot, 'scene-sa', 'body', { chapterRelPath, intent: 'save' });
+    const after = Date.now();
+    const [item] = listVersions(vaultRoot, 'scene-sa', { chapterRelPath });
+    expect(item.savedAt).toBeDefined();
+    const t = Date.parse(item.savedAt as string);
+    // Filename stamps are millisecond ISO — savedAt lands inside the save window.
+    expect(t).toBeGreaterThanOrEqual(before - 1000);
+    expect(t).toBeLessThanOrEqual(after + 1000);
+  });
 });
 
 describe('rollbackVersion', () => {

@@ -1,8 +1,10 @@
 /* =========================================================================
- * DraftDiffView — Liquid Neon drafts diff (Beta 3 M12, prototype HTML
- * 779–804 + dSeg 4512). Full mode: header row over two Lora serif columns,
- * old bordered red / new bordered green. Highlight mode: a single Lora
- * column of the old draft's segments for the split pane.
+ * DraftDiffView — Liquid Neon drafts diff (Beta 4 M10, v2 prototype HTML
+ * 1002–1030 + dSeg 6500). Full mode: header row (green current pill · "vs" ·
+ * red previous select · legend) over a labels row and two Lora serif
+ * columns — the CURRENT draft is ALWAYS the left/green column, the previous
+ * draft the right/red column. Highlight mode: a single Lora column of the
+ * previous draft's segments for the split pane.
  * ========================================================================= */
 
 .ln-diff-view {
@@ -13,7 +15,7 @@
   padding: 14px 20px 18px;
 }
 
-/* ── Header (prototype 781–789) ────────────────────────────────────── */
+/* ── Header (prototype 1004–1010) ──────────────────────────────────── */
 
 .ln-diff-header {
   display: flex;
@@ -29,7 +31,21 @@
   color: #eef2fb;
 }
 
-.ln-diff-old-select {
+.ln-diff-current-pill {
+  font-size: 10.5px;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  background: rgba(74, 222, 128, .12);
+  color: #b7f5cd;
+  border: 1px solid rgba(74, 222, 128, .4);
+}
+
+.ln-diff-vs {
+  font-size: 10px;
+  color: #8e9db8;
+}
+
+.ln-diff-previous-select {
   height: 25px;
   background: rgba(255, 80, 110, .1);
   border: 1px solid rgba(255, 80, 110, .4);
@@ -41,26 +57,13 @@
   font-family: inherit;
 }
 
-.ln-diff-old-pill {
+.ln-diff-previous-pill {
   font-size: 10.5px;
   padding: 2.5px 9px;
   border-radius: 99px;
   background: rgba(255, 80, 110, .1);
   color: #ff9db4;
   border: 1px solid rgba(255, 80, 110, .4);
-}
-
-.ln-diff-arrow {
-  flex: none;
-}
-
-.ln-diff-new-pill {
-  font-size: 10.5px;
-  padding: 2.5px 9px;
-  border-radius: 99px;
-  background: rgba(74, 222, 128, .12);
-  color: #b7f5cd;
-  border: 1px solid rgba(74, 222, 128, .4);
 }
 
 .ln-diff-spacer {
@@ -99,7 +102,32 @@
   background: rgba(255, 255, 255, .08);
 }
 
-/* ── Columns (prototype 790–803) ───────────────────────────────────── */
+/* ── Column labels (prototype 1012–1015): current left/green ───────── */
+
+.ln-diff-col-labels {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 7px;
+  font-family: 'Inter', sans-serif;
+}
+
+.ln-diff-col-label {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.ln-diff-col-label-current {
+  color: #b7f5cd;
+}
+
+.ln-diff-col-label-previous {
+  color: #ff9db4;
+}
+
+/* ── Columns (prototype 1017–1028) ─────────────────────────────────── */
 
 .ln-diff-columns {
   flex: 1;
@@ -120,19 +148,19 @@
   color: #c8d3e7;
 }
 
-.ln-diff-col-old {
-  border: 1px solid rgba(255, 80, 110, .3);
+.ln-diff-col-current {
+  border: 1px solid rgba(74, 222, 128, .3);
 }
 
-.ln-diff-col-new {
-  border: 1px solid rgba(74, 222, 128, .3);
+.ln-diff-col-previous {
+  border: 1px solid rgba(255, 80, 110, .3);
 }
 
 .ln-diff-para {
   margin: 0 0 1em;
 }
 
-/* ── Segment kinds (prototype dSeg 4512) ───────────────────────────── */
+/* ── Segment kinds (prototype dSeg 6500) ───────────────────────────── */
 
 .ln-diff-seg-d {
   background: rgba(255, 80, 110, .16);
@@ -147,7 +175,7 @@
   border-radius: 3px;
 }
 
-/* ── Single-pane "Highlight changes" body (prototype 4713–4714) ────── */
+/* ── Single-pane "Highlight changes" body (prototype 6877) ─────────── */
 
 .ln-diff-highlight {
   font-family: 'Lora', Georgia, serif;

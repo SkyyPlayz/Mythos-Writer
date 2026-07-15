@@ -141,12 +141,17 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   page.on('console', (m) => console.log('[renderer:' + m.type() + ']', m.text()));
   page.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.locator('[data-testid="app-tab-bar"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 15_000 });
   return page;
 }
 
 async function openScene(page: Page): Promise<void> {
-  await page.locator('[data-testid="app-tab-story"]').click();
+  // Clicking "Story Writer" while it is already the current section opens the
+  // stories flyout (backdrop swallows clicks) — only navigate when elsewhere.
+  const storyBtn = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
+  if ((await storyBtn.getAttribute('aria-current')) !== 'page') {
+    await storyBtn.click();
+  }
   const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
@@ -154,29 +159,37 @@ async function openScene(page: Page): Promise<void> {
 }
 
 async function openSceneLinksNote(page: Page): Promise<void> {
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
   await page.getByText('Scene Links', { exact: true }).click();
   await expect(page.locator('.note-viewer-filename', { hasText: 'Scene Links.md' })).toBeVisible({ timeout: 8_000 });
-  await page.getByRole('button', { name: 'Preview' }).click();
-  await expect(page.locator('[data-testid="note-viewer-preview"]')).toBeVisible({ timeout: 8_000 });
+  // M17: the mode seg moved into the gear popover; rendered links live in Rich.
+  await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+  await page.locator('[data-testid="note-gear-mode-rich"]').click();
+  await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible({ timeout: 8_000 });
 }
 
 async function openGraph(page: Page): Promise<void> {
-  await page.locator('[data-testid="app-tab-notes"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await page.locator('[data-testid="notes-subview-graph"]').click();
   await expect(page.locator('[data-testid="vault-graph-view"]')).toBeVisible({ timeout: 15_000 });
 }
 
 async function expectElaraNoteOpen(page: Page): Promise<void> {
-  await expect(page.locator('[data-testid="app-tab-notes"]')).toHaveAttribute('aria-selected', 'true', { timeout: 8_000 });
+  await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
   await expect(page.locator('.note-viewer-filename', { hasText: 'Elara.md' })).toBeVisible({ timeout: 8_000 });
   await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
 }
 
 async function clickStoryWikiLink(page: Page, target: string): Promise<void> {
   await openScene(page);
-  const wikiLink = page.locator(`[data-wiki-link="${target}"]`).first();
+  // [[Target|Alias]] parses into data-wiki-link="Target" + alias attr and
+  // displays [[Alias]] — address it by both attrs, not by raw text.
+  const pipe = target.indexOf('|');
+  const selector = pipe >= 0
+    ? `[data-wiki-link="${target.slice(0, pipe)}"][data-wiki-link-alias="${target.slice(pipe + 1)}"]`
+    : `[data-wiki-link="${target}"]`;
+  const wikiLink = page.locator(selector).first();
   if (await wikiLink.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await wikiLink.click();
     return;
@@ -216,8 +229,8 @@ test.describe('wiki-links and multi-vault graph', () => {
 
   test('[[Scene One]] in a notes file opens the story scene editor', async () => {
     await openSceneLinksNote(page);
-    await page.getByRole('button', { name: '[[Scene One]]' }).click();
-    await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 8_000 });
+    await page.locator('.note-viewer [data-wiki-link="Scene One"]').click();
+    await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
     await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
@@ -234,7 +247,7 @@ test.describe('wiki-links and multi-vault graph', () => {
     const sceneNode = page.getByRole('button', { name: /Open scene Scene One/i });
     await expect(sceneNode).toBeVisible({ timeout: 10_000 });
     await sceneNode.locator('[data-testid="vault-graph-node-circle"]').click();
-    await expect(page.locator('[data-testid="app-tab-story"]')).toHaveAttribute('aria-selected', 'true', { timeout: 8_000 });
+    await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
     await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
