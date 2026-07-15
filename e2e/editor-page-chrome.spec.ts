@@ -258,6 +258,39 @@ test('PC-06: doc-header renders above editor with breadcrumb and zoom controls',
   }
 });
 
+// SKY-6491: DocHeader shipped with wordCount hardcoded to 0 and its title
+// editor wired to a no-op — this net pins that both are real and load-bearing.
+test('PC-08: doc-header word count reflects real content and title edits persist (SKY-6491)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    const wordCount = page.locator('.doc-header-wordcount');
+    await expect(wordCount).toHaveText('0 words');
+
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await page.keyboard.type('one two three four five');
+    await expect(wordCount).toHaveText('5 words');
+
+    const titleEl = page.locator('.doc-header-title');
+    await expect(titleEl).toHaveText('Scene One');
+    await titleEl.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('Renamed Scene');
+    await titleEl.blur();
+
+    // The header itself reflects the commit immediately...
+    await expect(titleEl).toHaveText('Renamed Scene');
+    // ...and it wasn't a DOM-only edit: the scene tree (driven by the
+    // same manifest state) picks up the renamed title too.
+    await expect(page.locator('.nav-scene-row', { hasText: 'Renamed Scene' })).toBeVisible();
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
 test('PC-07: margin ruler renders above editor with correct range', async () => {
   const app = await launchApp(userData);
   try {
