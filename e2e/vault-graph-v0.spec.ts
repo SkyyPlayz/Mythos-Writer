@@ -346,9 +346,10 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   });
 
   // ── TC-GV-05 ─────────────────────────────────────────────────────────────────
-  // AC-GV-05: Clicking a node opens the corresponding vault note in the Notes editor.
+  // AC-GV-05 (M26): Clicking a node surfaces the node card; the card's
+  // `Open note` button opens the corresponding vault note in the Notes editor.
 
-  test('TC-GV-05: clicking a node opens the matching note in the Notes editor', async () => {
+  test('TC-GV-05: node click opens the card; card Open note opens it in the Notes editor', async () => {
     await navigateToGraph(page);
 
     const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
@@ -362,6 +363,15 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
       (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
       `[data-testid="vault-node-${ARYA_ID}"]`,
     );
+
+    // M26: the click selects and surfaces the node card (inspector)
+    const inspector = page.locator('[data-testid="vault-graph-inspector"]');
+    await expect(inspector).toBeVisible({ timeout: 3_000 });
+    await expect(page.locator('[data-testid="vault-graph-inspector-title"]')).toContainText('Arya', { timeout: 3_000 });
+    await expect(page.locator('[data-testid="vault-graph-inspector-blurb"]')).not.toBeEmpty({ timeout: 3_000 });
+
+    // The card's Open note button deep-links into the Notes editor
+    await page.locator('[data-testid="vault-graph-inspector-open"]').click();
     await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     await expect(page.locator('.note-viewer-filename')).toContainText('Arya.md', { timeout: 5_000 });
   });
@@ -398,17 +408,18 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   });
 
   // ── TC-GV-07 ─────────────────────────────────────────────────────────────────
-  // AC-GV-07: Clicking a graph node opens the corresponding note in the Notes editor.
+  // AC-GV-07 (M26): Double-clicking a graph node opens the corresponding note
+  // in the Notes editor (single click only selects).
 
-  test('TC-GV-07: clicking ChainA opens the matching note in the Notes editor', async () => {
+  test('TC-GV-07: double-clicking ChainA opens the matching note in the Notes editor', async () => {
     await navigateToGraph(page);
 
     const chainANode = page.locator(`[data-testid="vault-node-${CHAIN_A_ID}"]`);
     await expect(chainANode).toBeVisible({ timeout: 10_000 });
 
-    // page.evaluate() with bubbles:true ensures React's root listener sees the click
+    // page.evaluate() with bubbles:true ensures React's root listener sees the dblclick
     await page.evaluate(
-      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })),
       `[data-testid="vault-node-${CHAIN_A_ID}"]`,
     );
 
@@ -471,7 +482,11 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     await svg.press('Shift+Tab');
     await expect(page.locator('.vgv-graph-node--keyboard-focused')).toHaveCount(1);
 
-    // Enter on focused node → opens the focused note in the Notes editor.
+    // M26: first Enter selects the focused node (node card appears)…
+    await svg.press('Enter');
+    await expect(page.locator('[data-testid="vault-graph-inspector"]')).toBeVisible({ timeout: 3_000 });
+
+    // …and a second Enter opens the selected note in the Notes editor.
     await svg.press('Enter');
     await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     await expect(page.locator('.note-viewer-filename')).toBeVisible({ timeout: 5_000 });
@@ -513,6 +528,41 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
       expect(text).toContain('Arya');
       expect(text).toMatch(/connection/);
     }).toPass({ timeout: 3_000 });
+  });
+
+  // ── TC-GV-13 (M26) ───────────────────────────────────────────────────────────
+  // M26 acceptance: all left-panel controls affect the sim live — eye toggle
+  // hides the category, the physics slider re-settles node positions.
+
+  test('TC-GV-13 (M26): left-panel eye toggle and physics slider affect the live sim', async () => {
+    await navigateToGraph(page);
+
+    const panel = page.locator('[data-testid="vault-graph-left-panel"]');
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+
+    // Eye toggle hides Characters nodes live, second click restores them
+    const eye = page.locator('[data-testid="vault-graph-eye-characters"]');
+    const aryaNode = page.locator(`[data-testid="vault-node-${ARYA_ID}"]`);
+    await expect(aryaNode).toBeVisible({ timeout: 10_000 });
+    await eye.click();
+    await expect(aryaNode).not.toBeVisible({ timeout: 5_000 });
+    await eye.click();
+    await expect(aryaNode).toBeVisible({ timeout: 5_000 });
+
+    // Physics slider (link distance 120 → 240) wakes the sim and moves nodes
+    const before = await aryaNode.getAttribute('transform');
+    await page.locator('[data-testid="vault-graph-physics-linkDistance"]').evaluate((el) => {
+      const input = el as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, '240');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('[data-testid="vault-graph-physics-linkDistance-value"]')).toHaveText('240', { timeout: 3_000 });
+    await expect(async () => {
+      const after = await aryaNode.getAttribute('transform');
+      expect(after).not.toBe(before);
+    }).toPass({ timeout: 8_000 });
   });
 });
 

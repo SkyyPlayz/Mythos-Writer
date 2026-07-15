@@ -725,50 +725,156 @@
   color: var(--text-body);
 }
 
-/* ─── M21: colors/filters popover (prototype left panel 413–443) ────────────── */
+/* ─── M26: left panel (prototype ln-left-graph, 421–445) ────────────────────── */
 
-.vgv-filters-wrap {
-  position: relative;
+.vgv-body {
   display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.vgv-left-panel {
+  width: 232px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-default);
   background: var(--glass-fill);
+  font-family: var(--font-sans);
 }
 
-.vgv-filters-wrap > button {
-  min-width: 28px;
-  height: 28px;
-  padding: 0 8px;
+/* M26: toolbar collapse toggle for the left panel */
+.vgv-panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-xs);
-  background: var(--bg-inset);
-  color: var(--text-body);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
   cursor: pointer;
-  font-size: 12px;
+  white-space: nowrap;
+  transition: border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
-.vgv-filters-wrap > button:hover,
-.vgv-filters-wrap > button:focus-visible {
+.vgv-panel-toggle[aria-expanded='true'] {
   border-color: var(--ln-graph-border-highlight);
+  color: var(--text-header);
+}
+
+.vgv-panel-toggle:hover,
+.vgv-panel-toggle:focus-visible {
+  border-color: var(--ln-graph-border-highlight);
+  color: var(--text-header);
+  box-shadow: 0 0 12px -3px var(--ln-graph-border-highlight);
   outline: none;
 }
 
-.vgv-filters-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  min-width: 232px;
-  display: grid;
-  gap: 5px;
-  padding: 12px;
+/* Prototype eye toggle per category row */
+.vgv-filter-eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.vgv-filter-eye:hover {
+  color: var(--text-header);
+  background: color-mix(in srgb, currentcolor 12%, transparent);
+}
+
+.vgv-filter-eye:focus-visible {
+  outline: 2px solid var(--ln-graph-border-highlight);
+  outline-offset: 1px;
+}
+
+/* Gold story-cluster card (prototype 429–432) */
+.vgv-story-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--ln-graph-node-scenes, #ffd319) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ln-graph-node-scenes, #ffd319) 30%, transparent);
+}
+
+.vgv-story-card-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.vgv-story-card-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #ffe680; /* prototype 430 */
+}
+
+.vgv-story-card-sub {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* FORCES sliders (prototype gSliders rows, 442–446) */
+.vgv-physics-row {
+  margin: 2px 0 4px;
+}
+
+.vgv-physics-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.vgv-physics-label {
+  font-size: 11px;
+  color: var(--text-body);
+}
+
+.vgv-physics-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ln-graph-node-characters, #00f0ff);
+}
+
+.vgv-physics-slider {
+  width: 100%;
+  accent-color: var(--ln-graph-border-highlight);
+  cursor: pointer;
+}
+
+.vgv-physics-slider:focus-visible {
+  outline: 2px solid var(--ln-graph-border-highlight);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Prototype hint card (447) */
+.vgv-panel-hint {
+  margin-top: 8px;
+  padding: 11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, currentcolor 4%, transparent);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--bg-inset);
-  box-shadow: var(--shadow-panel, 0 8px 24px rgb(0 0 0 / 35%));
-  font-family: var(--font-sans);
-  z-index: 3;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .vgv-filters-heading {
@@ -905,6 +1011,14 @@
   border: 1px solid var(--border-default);
   padding: 13px;
   flex: none;
+}
+
+/* M26: node-card blurb (prototype 3540: 11.5px / 1.55) */
+.vgv-inspector-blurb {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-body);
+  line-height: 1.55;
 }
 
 .vgv-inspector-head {
