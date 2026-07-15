@@ -182,6 +182,13 @@ test.beforeAll(async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
 
+  // Pin the repo-standard desktop viewport (visual-capture / VR use the same
+  // 1440×900). At the 1200×800 default window the Board page's canvas strip is
+  // so narrow that a placed card sits mostly underneath the opaque right rail:
+  // TC-M20-02's drag then grabs the rail instead of the card, and the stray
+  // gesture wrecks the shared-app state for every later test in the file.
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // Wait for DesktopShell to be fully rendered before injecting the mock handler.
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
