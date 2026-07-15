@@ -1,29 +1,164 @@
+/* ── Beta 4 M28 (§13; GAP #8): Settings is a full workspace view, not a modal
+   card. The overlay fills the shell's main column (absolute, so the nav rail
+   stays visible/clickable); the panel fills the overlay with a three-column
+   body: left category rail · page content · live theme preview. The dialog
+   role/aria-modal contract, focus trap, and Esc-to-close are unchanged. */
 .settings-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  background: var(--scrim);
+  background: var(--bg-canvas);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   z-index: 1000;
 }
 
 .settings-panel {
   background: var(--glass-fill-fallback);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  width: 520px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 80px);
+  border-radius: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--elev-3), inset 0 1px 0 var(--glass-highlight);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
     background: var(--glass-fill);
   }
+}
+
+/* Workspace row: rail · content · preview */
+.settings-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Page header (prototype settingsMeta title + subtitle) */
+.settings-page-header {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.settings-page-header__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-header);
+}
+
+.settings-page-header__sub {
+  margin: 2px 0 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Right rail: live theme preview + reset (M28 §13) */
+.settings-preview-rail {
+  width: 230px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-default);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+@media (max-width: 980px) {
+  .settings-preview-rail {
+    display: none;
+  }
+}
+
+.settings-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+}
+
+.settings-preview-card__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-preview-card__bar {
+  height: 7px;
+  border-radius: 6px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+}
+
+.settings-preview-card__panel {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--glass, rgba(13, 16, 28, 0.6));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 14px -6px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.settings-preview-card__panel--alt {
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 14px -6px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.settings-preview-card__head {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--txH, #f0f3fc);
+}
+
+.settings-preview-card__body {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--txB, #c8d3e7);
+}
+
+.settings-preview-card__wiki {
+  color: var(--wiki-c, var(--n2, #9b5fff));
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
+.settings-preview-card__note-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--txNH, #f0f3fc);
+}
+
+.settings-preview-card__note-body {
+  margin: 3px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--txNB, #c8d3e7);
+}
+
+.settings-preview-card__btn {
+  border: none;
+  border-radius: 9px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: default;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: var(--btn-text, #0b0d17);
+}
+
+.settings-preview-reset {
+  align-self: stretch;
+  text-align: center;
 }
 
 .settings-header {
@@ -1543,44 +1678,145 @@
   background: rgba(255,255,255,0.08);
 }
 
-/* ── SKY-2973: Settings category navigation ── */
+/* ── SKY-2973 → Beta 4 M28: settings category navigation. The tab strip
+   became the workspace's LEFT RAIL (§13) — a vertical tablist; role/tabkey/
+   testid contracts are unchanged. ── */
 .settings-cat-nav {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 190px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border-default, rgba(255,255,255,0.1));
+  padding: 12px 10px;
+  border-right: 1px solid var(--border-default, rgba(255,255,255,0.1));
   background: var(--bg-panel, rgba(18,18,28,0.95));
+  overflow-y: auto;
 }
 
 .settings-cat-nav__tab {
-  flex: 1;
   padding: 8px 12px;
   background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
   color: var(--text-muted, rgba(255,255,255,0.45));
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  transition: color 120ms ease, border-color 120ms ease;
-  margin-bottom: -1px;
+  letter-spacing: 0.02em;
+  text-align: left;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
 .settings-cat-nav__tab:hover {
   color: var(--text-body, rgba(255,255,255,0.85));
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .settings-cat-nav__tab--active,
 .settings-cat-nav__tab[aria-selected="true"] {
-  color: var(--accent, #7c6fd0);
-  border-bottom-color: var(--accent, #7c6fd0);
+  color: var(--n2, var(--accent, #7c6fd0));
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 12px -4px var(--g2, rgba(155, 95, 255, 0.4));
 }
 
 .settings-cat-nav__tab:focus-visible {
   outline: 2px solid var(--accent, #7c6fd0);
   outline-offset: -2px;
-  border-radius: 2px;
+  border-radius: 9px;
+}
+
+@media (max-width: 720px) {
+  .settings-cat-nav {
+    width: 130px;
+  }
+}
+
+/* ── Beta 4 M28 (B4-6/B4-10): OAuth connect-later buttons ── */
+.settings-oauth-row {
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-oauth-btn {
+  border: none;
+  border-radius: 9px;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+}
+
+.settings-oauth-btn:hover {
+  filter: brightness(1.08);
+}
+
+.settings-oauth-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-oauth-local-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--state-success, #4ade80);
+}
+
+.settings-oauth-local-note::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state-success, #4ade80);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+}
+
+.settings-oauth-explainer {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-inset);
+  line-height: 1.5;
+}
+
+/* ── Beta 4 M28 (§11): agent duties chips ── */
+.settings-agent-duties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px 0 4px;
+}
+
+.settings-agent-duty-chip {
+  font-size: 9.5px;
+  padding: 2.5px 8px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #aebad0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+/* ── Beta 4 M28 (B4-8): autonomy rows — toggle + certainty slider ── */
+.settings-category-toggles-hint {
+  padding: 0 6px 4px;
+  line-height: 1.5;
+}
+
+.settings-category-toggle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+.settings-category-threshold-row {
+  padding-left: 42px;
 }
 
 /* ── M6: VaultAutoLinkerSection + AgentsSection callout ─────────────────── */

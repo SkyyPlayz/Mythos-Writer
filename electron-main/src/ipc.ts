@@ -1989,7 +1989,7 @@ export interface TtsSettings {
 
 // ─── Provider settings (MYT-324) ───
 // Mirrors provider.ts ProviderConfig — kept in sync manually.
-export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'llamacpp' | 'custom';
 
 export interface ProviderSettings {
   kind: ProviderKind;

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import {
   PROVIDER_OPTIONS,
   LISTABLE_PROVIDERS,
+  OAUTH_PROVIDERS,
   type ProviderKind,
   type TestConnectionStatus,
   type ModelListStatus,
@@ -63,6 +65,10 @@ export default function ProviderSection({
   setModelListStatus,
   setModelListError,
 }: ProviderSectionProps) {
+  // Beta 4 M28 (B4-6 / B4-10): OAuth login buttons ship in connect-later
+  // state — clicking explains what account linking will do when it lands and
+  // stores no credentials. Tracks which provider's explainer is open.
+  const [oauthExplainerFor, setOauthExplainerFor] = useState<ProviderKind | null>(null);
   return (
     <section className="settings-section provider-settings-section" aria-labelledby="section-providers" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
@@ -103,8 +109,36 @@ export default function ProviderSection({
       </div>
       {(() => {
         const def = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+        const oauth = OAUTH_PROVIDERS[providerKind];
         return (
           <>
+            {oauth && (
+              <div className="settings-field settings-oauth-field">
+                <div className="settings-input-row settings-oauth-row">
+                  <button
+                    type="button"
+                    className="settings-oauth-btn"
+                    data-testid={`oauth-login-${providerKind}`}
+                    aria-label={oauth.buttonLabel}
+                    onClick={() =>
+                      setOauthExplainerFor((prev) => (prev === providerKind ? null : providerKind))
+                    }
+                  >
+                    {oauth.buttonLabel}
+                  </button>
+                  <span className="settings-hint settings-oauth-local-note">Key stored locally</span>
+                </div>
+                {oauthExplainerFor === providerKind && (
+                  <p
+                    className="settings-hint settings-oauth-explainer"
+                    role="status"
+                    data-testid={`oauth-explainer-${providerKind}`}
+                  >
+                    {oauth.explainer}
+                  </p>
+                )}
+              </div>
+            )}
             {def.needsKey && (
               <div className="settings-field">
                 <label className="settings-label" htmlFor="provider-api-key">API Key</label>

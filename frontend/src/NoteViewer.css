@@ -505,7 +505,8 @@
   border: 0;
   border-radius: 4px;
   background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype rgba(155,95,255,.12) */
-  color: var(--n2, #9b5fff);
+  /* M28 (§13): Settings → Editor wiki-link color override wins when set. */
+  color: var(--wiki-c, var(--n2, #9b5fff));
   cursor: pointer;
   font: inherit;
   padding: 0 3px;
@@ -520,7 +521,7 @@
 /* Rich-mode [[links]] inside the notes editor pick up the same slot-B purple;
    scene-gold and unresolved-dashed variants keep their global styling. */
 .note-tiptap-content [data-wiki-link]:not(.wiki-link-scene):not(.wiki-link-unresolved) {
-  color: var(--n2, #9b5fff);
+  color: var(--wiki-c, var(--n2, #9b5fff));
   background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype rgba(155,95,255,.12) */
 }
 

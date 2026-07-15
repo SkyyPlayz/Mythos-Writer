@@ -277,8 +277,10 @@ interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
-  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled. */
+  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled (legacy back-compat; Beta 4 defaults write an explicit all-false map per B4-8). */
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  /** Beta 4 M28 (B4-8) — per-category certainty threshold. Missing key ⇒ falls back to confidenceThreshold. */
+  autoApplyThresholds?: Partial<Record<SuggestionCategory, number>>;
 }
 
 interface AgentVoiceSettings {
@@ -441,7 +443,7 @@ interface LiquidNeonPrefs {
 
 /** Provider configuration shared by global and per-agent overrides (SKY-683). */
 interface ProviderConfig {
-  kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+  kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'llamacpp' | 'custom';
   apiKey?: string;
   baseUrl?: string;
   model: string;
