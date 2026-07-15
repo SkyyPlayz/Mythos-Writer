@@ -175,6 +175,32 @@ beforeAll(() => {
   });
   saveSnapshot(storyVault, 'scene-a1', 'snapshot content', undefined, 'Before big edit');
 
+  // SKY-6571 regression: on some CI runners the system clock has stepped
+  // backward by a few ms between two saveVersion() calls that ran a moment
+  // apart, so the *earlier* save (lower in-memory `_seq`) ends up on disk
+  // with a *later*-looking filename stamp than the save right after it.
+  // Simulate that here by giving the v1 draft's on-disk file a stamp 1s
+  // ahead of v2's — its `_seq` suffix (and therefore creation order) is
+  // untouched. If the migrator ever regresses to trusting the wall-clock
+  // stamp over `_seq`, draftsA1 below comes back v2-before-v1.
+  {
+    const versionsDir = path.join(
+      storyVault, 'Manuscript', 'story-one', '01 - opening', 'versions', 'scene-a1',
+    );
+    const files = fs.readdirSync(versionsDir).filter((f) => f.endsWith('.md')).sort();
+    const [olderFile, newerFile] = files; // ascending filename sort = creation order here
+    const newerStampIso = newerFile
+      .match(/^(\d{4}-\d{2}-\d{2}T[\d-]+Z)/)![1]
+      .replace(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, '$1T$2:$3:$4.$5Z');
+    const laterStamp = new Date(new Date(newerStampIso).getTime() + 1000)
+      .toISOString().replace(/[:.]/g, '-');
+    const olderSuffix = olderFile.slice(olderFile.indexOf('_'));
+    fs.renameSync(
+      path.join(versionsDir, olderFile),
+      path.join(versionsDir, `${laterStamp}${olderSuffix}`),
+    );
+  }
+
   // ── SQLite: beta comments + legacy scene_snapshots rows ──
   const dbDir = path.join(storyVault, '.mythos');
   fs.mkdirSync(dbDir, { recursive: true });

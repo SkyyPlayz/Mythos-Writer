@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { useEditor } from '@tiptap/react';
 import type { AnyExtension, Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { registerActiveEditor, unregisterActiveEditor } from './activeEditorRegistry';
 import TextAlign from '@tiptap/extension-text-align';
 import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from '../WikiLinkExtension';
@@ -33,6 +35,9 @@ export interface UseRichEditorOptions {
   onUpdate?: ({ editor }: { editor: Editor }) => void;
   /** Called on every selection change. */
   onSelectionUpdate?: ({ editor }: { editor: Editor }) => void;
+  /** Focus/blur callbacks (forwarded straight to useEditor). */
+  onFocus?: ({ editor }: { editor: Editor }) => void;
+  onBlur?: ({ editor }: { editor: Editor }) => void;
 }
 
 /**
@@ -54,8 +59,10 @@ export function useRichEditor({
   autofocus,
   onUpdate,
   onSelectionUpdate,
+  onFocus,
+  onBlur,
 }: UseRichEditorOptions): Editor | null {
-  return useEditor({
+  const editor = useEditor({
     extensions: [
       StarterKit.configure({ paragraph: false, heading: false }),
       AlignedParagraph,
@@ -71,5 +78,24 @@ export function useRichEditor({
     autofocus,
     onUpdate,
     onSelectionUpdate,
+    onFocus({ editor }) {
+      registerActiveEditor(editor);
+      onFocus?.({ editor });
+    },
+    // Title-bar Edit menu commands blur the editor before their click fires
+    // (focus moves to the menu button) — the registry must keep tracking the
+    // last-focused editor through that blur, not clear on it (SKY-6059).
+    onBlur({ editor }) {
+      onBlur?.({ editor });
+    },
   });
+
+  // Only clear the registry when this editor instance is actually destroyed,
+  // so a stale/unmounted editor can never be dispatched to.
+  useEffect(() => {
+    if (!editor) return;
+    return () => { unregisterActiveEditor(editor); };
+  }, [editor]);
+
+  return editor;
 }

@@ -439,6 +439,12 @@ import {
 } from './archiveContinuityEngine.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
+import {
+  buildIndex as autoLinkerBuildIndex,
+  formatVaultNow as autoLinkerFormatVaultNow,
+  DEFAULT_AUTO_LINKER_SETTINGS,
+  type AutoLinkerSettings,
+} from './autoLinker/index.js';
 import { registerVoiceHandlers } from './voice.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
@@ -6442,6 +6448,30 @@ const handlers: IpcHandlers = {
     else mainWindow?.maximize();
   },
   [IPC_CHANNELS.WINDOW_CLOSE]: () => { mainWindow?.close(); },
+
+  // SKY-6225: Built-in Auto Note Linker (deterministic, trie-based)
+  [IPC_CHANNELS.AUTO_LINKER_GET_SETTINGS]: async () => {
+    const settings = loadAppSettings();
+    return settings.autoLinkerSettings ?? DEFAULT_AUTO_LINKER_SETTINGS;
+  },
+  [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: async (payload: AutoLinkerSettings) => {
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, autoLinkerSettings: payload });
+    return { saved: true };
+  },
+  [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: async () => {
+    const settings = loadAppSettings();
+    const opts = settings.autoLinkerSettings ?? DEFAULT_AUTO_LINKER_SETTINGS;
+    const vaultRoot = getNotesVaultRoot() || getVaultRoot();
+    return autoLinkerFormatVaultNow(vaultRoot, opts);
+  },
+  [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: async () => {
+    const settings = loadAppSettings();
+    const opts = settings.autoLinkerSettings ?? DEFAULT_AUTO_LINKER_SETTINGS;
+    const vaultRoot = getNotesVaultRoot() || getVaultRoot();
+    const index = autoLinkerBuildIndex(vaultRoot, opts);
+    return { count: index.length };
+  },
 };
 
 // ─── Panel popout windows (SKY-1686) ───

@@ -969,6 +969,12 @@ contextBridge.exposeInMainWorld('api', {
   windowMaximize: () => ipcRenderer.invoke('window:maximize', undefined),
   windowClose: () => ipcRenderer.invoke('window:close', undefined),
 
+  // SKY-6225: Built-in Auto Note Linker
+  autoLinkerGetSettings: () => ipcRenderer.invoke('auto-linker:get-settings', undefined),
+  autoLinkerSetSettings: (settings: unknown) => ipcRenderer.invoke('auto-linker:set-settings', settings),
+  autoLinkerFormatVaultNow: () => ipcRenderer.invoke('auto-linker:format-vault-now', undefined),
+  autoLinkerRebuildIndex: () => ipcRenderer.invoke('auto-linker:rebuild-index', undefined),
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',

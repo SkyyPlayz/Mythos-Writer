@@ -4,6 +4,10 @@
 // the account avatar popover, and the min/max/close controls, finished with
 // a 1px --grad hairline. All slots are optional props so the bar still
 // renders standalone (SKY-3033 behavior preserved).
+//
+// SKY-6011/SKY-6059 a11y fix: all interactive surfaces are now real <button>
+// elements (natively keyboard-operable) with aria-haspopup/aria-expanded on
+// triggers, role="menu"/role="menuitem" on popovers, and Escape to dismiss.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import logoUrl from '../../assets/logo.png';
@@ -147,6 +151,10 @@ export default function WindowChrome({
   // Beta 4 M2: vault stats keyed by vaultRoot (loaded when the popover opens).
   const [projStats, setProjStats] = useState<Record<string, ProjectStats>>({});
   const barRef = useRef<HTMLDivElement>(null);
+  // Trigger refs so Escape can return focus to the opener.
+  const projTriggerRef = useRef<HTMLButtonElement>(null);
+  const acctTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuTriggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     window.api?.getAppInfo?.()
@@ -154,18 +162,40 @@ export default function WindowChrome({
       .catch(() => {});
   }, []);
 
-  // Any open popover closes on outside click (prototype's fixed scrim, 78).
+  const closeAll = useCallback(() => {
+    setOpenMenu(null);
+    setProjOpen(false);
+    setAcctOpen(false);
+  }, []);
+
+  // Outside click closes any open popover.
   useEffect(() => {
     if (!openMenu && !projOpen && !acctOpen) return;
     const onDown = (e: MouseEvent) => {
       if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
-        setProjOpen(false);
-        setAcctOpen(false);
+        closeAll();
       }
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [openMenu, projOpen, acctOpen, closeAll]);
+
+  // Escape closes any open popover and returns focus to the trigger.
+  useEffect(() => {
+    if (!openMenu && !projOpen && !acctOpen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      if (projOpen) { setProjOpen(false); projTriggerRef.current?.focus(); }
+      else if (acctOpen) { setAcctOpen(false); acctTriggerRef.current?.focus(); }
+      else if (openMenu) {
+        const ref = menuTriggerRefs.current.get(openMenu);
+        setOpenMenu(null);
+        ref?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [openMenu, projOpen, acctOpen]);
 
   const loadProjects = useCallback(() => {
@@ -223,51 +253,72 @@ export default function WindowChrome({
         {/* Project menu — logo · name · chevron (prototype 61–75) */}
         {/* `project-switcher-btn` / `project-switcher-item` are E2E-compat anchors:
             sky-906 drives vault create/switch through these legacy selectors. */}
-        <div
-          className="wc-project project-switcher-btn"
-          onClick={() => { setProjOpen((o) => { if (!o) loadProjects(); return !o; }); setOpenMenu(null); setAcctOpen(false); }}
-          data-testid="wc-project-trigger"
-        >
+        <div className="wc-project-wrap">
+          <button
+            type="button"
+            ref={projTriggerRef}
+            className="wc-project project-switcher-btn"
+            onClick={() => { setProjOpen((o) => { if (!o) loadProjects(); return !o; }); setOpenMenu(null); setAcctOpen(false); }}
+            aria-haspopup="menu"
+            aria-expanded={projOpen}
+            aria-label="Project menu"
+            data-testid="wc-project-trigger"
+          >
+            <img src={logoUrl} alt="" className="wc-logo" />
+            <span className="wc-title" aria-hidden="true">Mythos Writer</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
           {projOpen && (
-            <div className="wc-popover wc-popover-project" onClick={(e) => e.stopPropagation()} data-testid="wc-project-menu">
+            <div className="wc-popover wc-popover-project" role="menu" onClick={(e) => e.stopPropagation()} data-testid="wc-project-menu">
               {projItems.map((p) => (
-                <div key={p.t + p.sub} className="wc-pop-row project-switcher-item" data-testid={p.testId} onClick={p.pick}>
+                <button
+                  type="button"
+                  key={p.t + p.sub}
+                  className="wc-pop-row project-switcher-item"
+                  data-testid={p.testId}
+                  role="menuitem"
+                  onClick={p.pick}
+                >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="wc-pop-row-title">{p.t}</div>
                     <div className="wc-pop-row-sub" title={p.sub}>{p.sub}</div>
                     {p.stats && <div className="wc-pop-row-stats" data-testid="wc-vault-stats">{p.stats}</div>}
                   </div>
                   {p.on && <span className="wc-active-dot" />}
-                </div>
+                </button>
               ))}
             </div>
           )}
-          <img src={logoUrl} alt="" className="wc-logo" />
-          <span className="wc-title" aria-hidden="true">Mythos Writer</span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
         </div>
 
         {/* File…Help menus (prototype 79–87) */}
         {menus && menus.length > 0 && (
           <div className="wc-menus" data-testid="wc-menus">
             {menus.map((m) => (
-              <div
-                key={m.label}
-                className={`wc-menu${openMenu === m.label ? ' wc-menu--open' : ''}`}
-                onClick={(e) => { e.stopPropagation(); setOpenMenu((cur) => (cur === m.label ? null : m.label)); setProjOpen(false); setAcctOpen(false); }}
-                data-testid={`wc-menu-${m.label.toLowerCase()}`}
-              >
-                {m.label}
+              <div key={m.label} className="wc-menu-wrap">
+                <button
+                  type="button"
+                  ref={(el) => { if (el) menuTriggerRefs.current.set(m.label, el); else menuTriggerRefs.current.delete(m.label); }}
+                  className={`wc-menu${openMenu === m.label ? ' wc-menu--open' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setOpenMenu((cur) => (cur === m.label ? null : m.label)); setProjOpen(false); setAcctOpen(false); }}
+                  aria-haspopup="menu"
+                  aria-expanded={openMenu === m.label}
+                  data-testid={`wc-menu-${m.label.toLowerCase()}`}
+                >
+                  {m.label}
+                </button>
                 {openMenu === m.label && (
-                  <div className="wc-popover wc-popover-menu">
+                  <div className="wc-popover wc-popover-menu" role="menu">
                     {m.items.map((i) => (
-                      <div
+                      <button
+                        type="button"
                         key={i.label}
                         className="wc-menu-item"
+                        role="menuitem"
                         onClick={(e) => { e.stopPropagation(); setOpenMenu(null); i.run(); }}
                       >
                         {i.label}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -310,21 +361,32 @@ export default function WindowChrome({
         <div className="wc-icons">
           {notificationCenter}
           {onOpenSettings && (
-            <div className="wc-icon-btn app-menu-gear-btn" onClick={onOpenSettings} role="button" aria-label="Settings" data-testid="wc-settings">
+            <button
+              type="button"
+              className="wc-icon-btn app-menu-gear-btn"
+              onClick={onOpenSettings}
+              aria-label="Settings"
+              data-testid="wc-settings"
+            >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4.5 7.5h15M4.5 16.5h15" /><circle cx="9.5" cy="7.5" r="2.4" /><circle cx="14.5" cy="16.5" r="2.4" /></svg>
-            </div>
+            </button>
           )}
           {onOpenAccount && (
-            <div
-              className="wc-avatar"
-              onClick={() => { setAcctOpen((o) => !o); setOpenMenu(null); setProjOpen(false); }}
-              role="button"
-              aria-label="Account"
-              data-testid="wc-avatar"
-            >
-              M
+            <div className="wc-avatar-wrap">
+              <button
+                type="button"
+                ref={acctTriggerRef}
+                className="wc-avatar"
+                onClick={() => { setAcctOpen((o) => !o); setOpenMenu(null); setProjOpen(false); }}
+                aria-haspopup="menu"
+                aria-expanded={acctOpen}
+                aria-label="Account"
+                data-testid="wc-avatar"
+              >
+                M
+              </button>
               {acctOpen && (
-                <div className="wc-popover wc-popover-account" onClick={(e) => e.stopPropagation()} data-testid="wc-account-menu">
+                <div className="wc-popover wc-popover-account" role="menu" onClick={(e) => e.stopPropagation()} data-testid="wc-account-menu">
                   <div className="wc-acct-head">
                     <div className="wc-avatar wc-avatar--lg" aria-hidden="true">M</div>
                     <div style={{ flex: 1 }}>
@@ -332,8 +394,22 @@ export default function WindowChrome({
                       <div className="wc-acct-plan">Beta plan · local-first</div>
                     </div>
                   </div>
-                  <div className="wc-menu-item" onClick={() => { setAcctOpen(false); onOpenAccount(); }}>Account &amp; profile</div>
-                  <div className="wc-menu-item" onClick={() => { setAcctOpen(false); onOpenAccount(); }}>Manage devices</div>
+                  <button
+                    type="button"
+                    className="wc-menu-item"
+                    role="menuitem"
+                    onClick={() => { setAcctOpen(false); onOpenAccount(); }}
+                  >
+                    Account &amp; profile
+                  </button>
+                  <button
+                    type="button"
+                    className="wc-menu-item"
+                    role="menuitem"
+                    onClick={() => { setAcctOpen(false); onOpenAccount(); }}
+                  >
+                    Manage devices
+                  </button>
                 </div>
               )}
             </div>

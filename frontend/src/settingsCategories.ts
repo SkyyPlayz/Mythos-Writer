@@ -37,6 +37,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'vaults',
     label: 'Vaults',
     sectionIds: [
+      'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
       'section-account',
       'section-mythos-vaults', // Beta 4 M1: per-vault default theme cards
       'section-vault-paths',

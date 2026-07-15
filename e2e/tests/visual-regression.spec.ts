@@ -12,7 +12,9 @@
  *
  * First run (no baselines): screenshots are saved as baselines; all tests pass.
  * Subsequent runs: screenshots are diffed against baselines via pixelmatch.
- *   Fail if pixel-diff ratio > VR_THRESHOLD (default 0.005 = 0.5%).
+ *   Fail if pixel-diff ratio > VR_THRESHOLD (default 0.012 = 1.2%). Raised
+ *   from 0.5% (SKY-6531) — sub-1% AA/font-rendering noise was flaking
+ *   borderline diffs (0.63-0.69%) on every beta4 chrome/panel PR.
  *
  * To regenerate all baselines:
  *   VR_UPDATE_BASELINES=1 xvfb-run --auto-servernum npm run test:e2e:visual-regression
@@ -41,7 +43,7 @@ const PLATFORM = os.platform(); // 'linux' | 'darwin' | 'win32'
 const VIEWPORT = { width: 1440, height: 900 };
 const VP_LABEL = `${VIEWPORT.width}x${VIEWPORT.height}`;
 
-const THRESHOLD = parseFloat(process.env['VR_THRESHOLD'] ?? '0.005');
+const THRESHOLD = parseFloat(process.env['VR_THRESHOLD'] ?? '0.012');
 const UPDATE_BASELINES = process.env['VR_UPDATE_BASELINES'] === '1';
 
 const BASELINE_DIR = path.resolve(

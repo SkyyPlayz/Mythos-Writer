@@ -37,6 +37,7 @@
     "test:e2e:writing-modes": "playwright test e2e/writing-modes.spec.ts --reporter=list",
     "test:e2e:depth-slider": "playwright test e2e/depth-slider.spec.ts --reporter=list",
     "test:e2e:writing-assistant-tips": "playwright test e2e/tests/writing-assistant-tips.spec.ts --reporter=list",
+    "test:e2e:title-bar-undo-redo": "playwright test e2e/title-bar-undo-redo.spec.ts --reporter=list",
     "test:e2e:two-vault": "playwright test e2e/tests/two-vault-crud.spec.ts --reporter=list",
     "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list",
     "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list",

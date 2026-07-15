@@ -555,6 +555,12 @@ export const IPC_CHANNELS = {
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
+
+  // SKY-6225: Built-in Auto Note Linker (deterministic, trie-based)
+  AUTO_LINKER_GET_SETTINGS: 'auto-linker:get-settings',
+  AUTO_LINKER_SET_SETTINGS: 'auto-linker:set-settings',
+  AUTO_LINKER_FORMAT_VAULT_NOW: 'auto-linker:format-vault-now',
+  AUTO_LINKER_REBUILD_INDEX: 'auto-linker:rebuild-index',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -955,6 +961,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.WINDOW_MINIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_MAXIMIZE]: (payload: never) => void;
   [IPC_CHANNELS.WINDOW_CLOSE]: (payload: never) => void;
+
+  // SKY-6225: Built-in Auto Note Linker
+  [IPC_CHANNELS.AUTO_LINKER_GET_SETTINGS]: (payload: never) => Promise<import('./autoLinker/index.js').AutoLinkerSettings>;
+  [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
+  [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
+  [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
 }
 
 // ─── Payload / Response types ───
@@ -1100,6 +1112,8 @@ export interface Manifest {
   smartFolders?: SmartFolderEntry[];
   /** Entity-to-entity relationships (SKY-232). */
   relationships?: EntityRelationship[];
+  /** SKY-2463: Per-scene timeline inference results. Absent on pre-timeline vaults. */
+  timeline?: ManifestTimelineEntry[];
 }
 
 export interface StoryEntry {
@@ -2096,6 +2110,9 @@ export interface AppSettings {
   rightSidebarVisible?: boolean;
   rightSidebarWidth?: number;
   rightSidebarPanels?: RightSidebarPanel[];
+
+  // SKY-6225: Built-in Auto Note Linker settings (separate from legacy autoLinker.mode)
+  autoLinkerSettings?: import('./autoLinker/index.js').AutoLinkerSettings;
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */
