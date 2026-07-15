@@ -131,3 +131,30 @@ describe('CommentsGutter', () => {
     expect(props.onToggleOpen).not.toHaveBeenCalled();
   });
 });
+
+describe('CommentsGutter — M11 reader slot', () => {
+  const readerSlot = <div data-testid="fake-reader-card">reader</div>;
+
+  it('renders the gutter for a reader slot alone, centered, without COMMENTS chrome', () => {
+    render(<CommentsGutter {...makeProps([])} readerSlot={readerSlot} />);
+    const gutter = screen.getByTestId('msv-gutter');
+    expect(gutter.className).toContain('msv-gutter--center');
+    expect(screen.getByTestId('fake-reader-card')).toBeInTheDocument();
+    expect(screen.queryByText('COMMENTS')).toBeNull();
+  });
+
+  it('docks the reader slot above the comment cards (prototype 1154 order)', () => {
+    render(<CommentsGutter {...makeProps([mkComment('c1')])} readerSlot={readerSlot} />);
+    const gutter = screen.getByTestId('msv-gutter');
+    expect(gutter.className).not.toContain('msv-gutter--center');
+    const card = screen.getByTestId('fake-reader-card');
+    const title = screen.getByText('COMMENTS');
+    expect(card.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('msv-cmt-c1')).toBeInTheDocument();
+  });
+
+  it('still renders nothing with neither comments nor a reader slot', () => {
+    render(<CommentsGutter {...makeProps([])} readerSlot={null} />);
+    expect(screen.queryByTestId('msv-gutter')).toBeNull();
+  });
+});

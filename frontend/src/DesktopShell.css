@@ -393,7 +393,8 @@
 
 /* ─── Full Book preview (SKY-3213 C4) ─── */
 .shell-book { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-/* Beta 4 M14: the compiled Book view moved to story/BookPreview.tsx (+ BookPreview.css). */
+/* Beta 4 M14: the compiled Book view moved to story/BookPreview.tsx (+ BookPreview.css);
+   the M11 audiobook bar (#938) moved with it — its styles live in ReaderBar.css. */
 
 .shell-entries {
   flex: 1;

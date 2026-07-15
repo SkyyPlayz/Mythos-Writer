@@ -626,7 +626,6 @@ export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onS
   );
 }
 
-
 // ─────────────────────────────────────
 
 /** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
@@ -4476,7 +4475,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'book' && (
         <div className="shell-book">
-          {/* Beta 4 M14: compiled read-only book (page width follows the editor). */}
+          {/* Beta 4 M14: compiled read-only book (page width follows the editor).
+              M11 carry-over (#938 → #939): the persistent audiobook bar moved
+              with the view into BookPreview — the tts/voice settings ride along. */}
           <BookPreview
             story={selectedStory ?? null}
             pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
@@ -4484,6 +4485,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
             }}
             onOpenScene={handleOpenSceneById}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
           />
         </div>
       )}

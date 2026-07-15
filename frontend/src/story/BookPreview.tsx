@@ -9,11 +9,25 @@
 // count/read time · Export…), the editor page-width binding, comment
 // underlines with a read-only comment card, ◆ ◆ ◆ separators and the
 // END OF DRAFT footer.
+//
+// Beta 4 M11 carry-over (#938 → #939): the persistent audiobook bar
+// (prototype 849–867) moved here with the view — ReaderBar under the
+// compiled pages, a book-scoped useManuscriptReader flow, the paragraph
+// wash + sentence highlight (readerHighlight.ts) and auto-scroll to the
+// block being read. Play on a book with nothing to read is a guarded
+// no-op (ReaderBar toasts instead of dying, §1.2).
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Story } from '../types';
 import { segmentsFor, useStoryComments, type StoryComment } from '../comments';
 import { countWords } from '../wordStats';
+import ReaderBar from './ReaderBar';
+import { useManuscriptReader } from './useManuscriptReader';
+import { clearReadingSentenceHighlight, setReadingSentenceHighlight } from './readerHighlight';
+import type { ReaderTtsSettings } from './readerVoices';
+import type { TtsVoicePrefs } from '../hooks/useTtsPlayer';
+import type { ManuscriptCursor } from './manuscriptModel';
+import { scrollBehavior } from '../lib/reducedMotion';
 import './BookPreview.css';
 
 export interface BookPreviewProps {
@@ -24,7 +38,24 @@ export interface BookPreviewProps {
   onExport: () => void;
   /** Jump to a scene in the editor (comment card "Open in editor"). */
   onOpenScene?: (sceneId: string) => void;
+  /** M11: TTS engine settings for the audiobook bar (Settings → tts). */
+  ttsSettings?: ReaderTtsSettings;
+  /** M11: voice prefs seeding the reader's session speed/voice (Settings → voice). */
+  voicePrefs?: TtsVoicePrefs;
 }
+
+/** M11: stable book-zoom cursor for the preview's reader flow. */
+const BOOK_PREVIEW_CURSOR: ManuscriptCursor = { zoom: 'book', part: 0, chapter: 0, scene: 0 };
+
+/** M11: hook-order-safe placeholder while no story is selected (empty flow). */
+const EMPTY_PREVIEW_STORY: Story = {
+  id: '__book-preview-empty',
+  title: '',
+  path: '',
+  chapters: [],
+  createdAt: '1970-01-01T00:00:00.000Z',
+  updatedAt: '1970-01-01T00:00:00.000Z',
+};
 
 /** "102,451 words · ~6.5 hr read" (238 wpm, same engine as wordStats). */
 export function formatBookMeta(words: number): string {
@@ -51,7 +82,14 @@ const KIND_AUTHOR_FALLBACK: Record<string, string> = {
   beta: 'Beta Reader',
 };
 
-export default function BookPreview({ story, pageWidth, onExport, onOpenScene }: BookPreviewProps): ReactElement {
+export default function BookPreview({
+  story,
+  pageWidth,
+  onExport,
+  onOpenScene,
+  ttsSettings,
+  voicePrefs,
+}: BookPreviewProps): ReactElement {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLHeadingElement | null>(null);
   const [card, setCard] = useState<CommentCardState | null>(null);
@@ -62,6 +100,35 @@ export default function BookPreview({ story, pageWidth, onExport, onOpenScene }:
     headerRef.current?.focus({ preventScroll: true });
     setCard(null);
   }, [story?.id]);
+
+  // M11: the audiobook reader — same stack as the editor's gutter card,
+  // scoped to the whole book (prototype buildFlow storySub === 'book').
+  const reader = useManuscriptReader(
+    story ?? EMPTY_PREVIEW_STORY,
+    BOOK_PREVIEW_CURSOR,
+    ttsSettings,
+    voicePrefs,
+  );
+
+  // Keep the sentence being read visible and painted (§5.1).
+  const readingKey = reader.curKey;
+  const readingRange = reader.curRange;
+  useEffect(() => {
+    if (!readingKey) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(`[data-fbp-block="${readingKey}"]`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    }
+  }, [readingKey]);
+  useEffect(() => {
+    if (!readingKey || !readingRange) {
+      clearReadingSentenceHighlight();
+      return;
+    }
+    const el = scrollRef.current?.querySelector(`[data-fbp-block="${readingKey}"]`);
+    setReadingSentenceHighlight(el, readingRange.start, readingRange.end);
+    return () => clearReadingSentenceHighlight();
+  }, [readingKey, readingRange]);
 
   const chapters = useMemo(
     () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
@@ -158,7 +225,13 @@ export default function BookPreview({ story, pageWidth, onExport, onOpenScene }:
                       {sortedBlocks.map((block) => {
                         const segs = sceneComments.length > 0 ? segmentsFor(block.content, sceneComments) : null;
                         return (
-                          <p key={block.id} className="book-preview__para">
+                          <p
+                            key={block.id}
+                            data-fbp-block={block.id}
+                            className={`book-preview__para${
+                              readingKey === block.id ? ' book-preview__para--reading' : ''
+                            }`}
+                          >
                             {segs
                               ? segs.map((s, i) =>
                                   s.comment ? (
@@ -195,6 +268,10 @@ export default function BookPreview({ story, pageWidth, onExport, onOpenScene }:
           <div className="book-preview__end" aria-hidden="true">— END OF DRAFT —</div>
         </div>
       </div>
+
+      {/* M11 carry-over (#938): persistent audiobook bar under the compiled
+          pages (prototype Book-preview bar 849–867). */}
+      <ReaderBar reader={reader} ttsSettings={ttsSettings} />
 
       {/* ── Read-only comment card (prototype: seg click opens the comment) ── */}
       {card && (

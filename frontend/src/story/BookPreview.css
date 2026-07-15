@@ -151,6 +151,16 @@
   margin: 0 0 1em;
 }
 
+/* M11 carry-over (#938): paragraph wash while the audiobook reader speaks it
+   (prototype bookPSt reading 5553); the exact sentence is painted by
+   ::highlight(msv-reading-sentence) in ManuscriptView.css. */
+.book-preview__para--reading {
+  background: var(--gs1, rgba(0, 240, 255, 0.14));
+  border-radius: 8px;
+  box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+  transition: background 0.25s ease;
+}
+
 /* Prototype 843: ◆ ◆ ◆ between scenes */
 .book-preview__scene-sep {
   text-align: center;
