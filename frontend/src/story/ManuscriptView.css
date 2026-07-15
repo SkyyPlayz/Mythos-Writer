@@ -702,6 +702,16 @@
   transition: background 0.25s ease;
 }
 
+/* ── M11: sentence-level highlight over the block wash (§5.1 "highlights the
+   sentence being read"). Painted via the CSS Custom Highlight API — see
+   readerHighlight.ts. Also styles the Book-preview reading sentence. ── */
+
+::highlight(msv-reading-sentence) {
+  /* slot-A neon at ~32% — reads over the 14% block wash on any theme */
+  background-color: color-mix(in srgb, var(--n1, rgb(0, 240, 255)) 32%, transparent);
+  color: var(--txH, rgb(240, 243, 252)); /* prototype #f0f3fc */
+}
+
 /* ── fold pill (prototype 901–905) ── */
 
 .msv-fold-pill {

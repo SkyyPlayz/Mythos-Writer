@@ -21,6 +21,12 @@ import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+// Beta 4 M11: the Book preview's audiobook bar + sentence highlight.
+import ReaderBar from './story/ReaderBar';
+import { useManuscriptReader } from './story/useManuscriptReader';
+import { clearReadingSentenceHighlight, setReadingSentenceHighlight } from './story/readerHighlight';
+import type { ReaderTtsSettings } from './story/readerVoices';
+import type { TtsVoicePrefs } from './hooks/useTtsPlayer';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -633,18 +639,64 @@ export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onS
 
 // ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
 // Preview-only because C5 (virtualization) has not yet landed.
+// Beta 4 M11: hosts the persistent audiobook bar (prototype Book-preview bar
+// 849–867) with a book-scoped reader + sentence highlight over the pages.
 
 interface FullBookPreviewViewProps {
   story: Story | null;
+  ttsSettings?: ReaderTtsSettings;
+  voicePrefs?: TtsVoicePrefs;
 }
 
-function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
+/** Stable book-zoom cursor for the preview's reader flow. */
+const BOOK_PREVIEW_CURSOR: ManuscriptCursor = { zoom: 'book', part: 0, chapter: 0, scene: 0 };
+
+/** Hook-order-safe placeholder while no story is selected (empty flow). */
+const EMPTY_PREVIEW_STORY: Story = {
+  id: '__book-preview-empty',
+  title: '',
+  path: '',
+  chapters: [],
+  createdAt: '1970-01-01T00:00:00.000Z',
+  updatedAt: '1970-01-01T00:00:00.000Z',
+};
+
+export function FullBookPreviewView({ story, ttsSettings, voicePrefs }: FullBookPreviewViewProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLHeadingElement | null>(null);
 
   useEffect(() => {
     headerRef.current?.focus({ preventScroll: true });
   }, [story?.id]);
+
+  // M11: the audiobook reader — same stack as the editor's gutter card,
+  // scoped to the whole book (prototype buildFlow storySub === 'book').
+  const reader = useManuscriptReader(
+    story ?? EMPTY_PREVIEW_STORY,
+    BOOK_PREVIEW_CURSOR,
+    ttsSettings,
+    voicePrefs
+  );
+
+  // Keep the sentence being read visible and painted (§5.1).
+  const readingKey = reader.curKey;
+  const readingRange = reader.curRange;
+  useEffect(() => {
+    if (!readingKey) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(`[data-fbp-block="${readingKey}"]`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    }
+  }, [readingKey]);
+  useEffect(() => {
+    if (!readingKey || !readingRange) {
+      clearReadingSentenceHighlight();
+      return;
+    }
+    const el = scrollRef.current?.querySelector(`[data-fbp-block="${readingKey}"]`);
+    setReadingSentenceHighlight(el, readingRange.start, readingRange.end);
+    return () => clearReadingSentenceHighlight();
+  }, [readingKey, readingRange]);
 
   const chapters = useMemo(
     () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
@@ -698,6 +750,7 @@ function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
   }
 
   return (
+    <>
     <div
       ref={scrollRef}
       className="full-book-preview-wrap"
@@ -760,7 +813,10 @@ function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
                       {sortedBlocks.map((block) => (
                         <p
                           key={block.id}
-                          className={`full-book-preview__block full-book-preview__block--${block.type}`}
+                          data-fbp-block={block.id}
+                          className={`full-book-preview__block full-book-preview__block--${block.type}${
+                            readingKey === block.id ? ' full-book-preview__block--reading' : ''
+                          }`}
                         >
                           {block.content}
                         </p>
@@ -814,6 +870,9 @@ function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
         </footer>
       </div>
     </div>
+    {/* M11: persistent audiobook bar (prototype Book-preview bar 849–867) */}
+    <ReaderBar reader={reader} ttsSettings={ttsSettings} />
+    </>
   );
 }
 
@@ -2902,6 +2961,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
 
+  // SKY-6491: DocHeader's editable title was wired to a no-op that silently
+  // discarded edits — commit the new title into the scene like every other
+  // per-field scene mutation in this file (state + manifest + markdown).
+  const handleSceneTitleChange = useCallback((title: string) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === selectedScene.title) return;
+    const updatedScene: Scene = { ...selectedScene, title: trimmed, updatedAt: now() };
+    setSelectedScene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
+
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
 
 
@@ -4705,7 +4788,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'book' && (
         <div className="shell-book">
-          <FullBookPreviewView story={selectedStory ?? null} />
+          <FullBookPreviewView
+            story={selectedStory ?? null}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
+          />
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
@@ -5004,8 +5091,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <DocHeader
                   title={selectedScene.title ?? ''}
-                  onTitleChange={(_t) => { /* no-op: scene title editing not wired in this view */ }}
-                  wordCount={0}
+                  onTitleChange={handleSceneTitleChange}
+                  wordCount={focusWordCount}
                   breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
                   zoom={docZoom}
                   onZoomChange={setDocZoom}

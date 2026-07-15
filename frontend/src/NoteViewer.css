@@ -78,14 +78,163 @@
   outline-offset: 1px;
 }
 
-/* ── Mode buttons ──────────────────────────────────────────────────────── */
+/* ── M17: gear menu (prototype "View options" popover) ─────────────────── */
+
+.note-gear-wrap {
+  position: relative;
+}
+
+.note-gear-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3bd; /* prototype gear idle */
+  cursor: pointer;
+  background: none;
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.2));
+}
+
+.note-gear-btn:hover,
+.note-gear-btn--open {
+  border-color: var(--b1, rgb(0 240 255 / 0.5));
+  color: var(--n1, #00f0ff);
+  box-shadow: 0 0 12px -3px var(--g1, rgb(0 240 255 / 0.4));
+}
+
+.note-gear-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40; /* prototype gear backdrop */
+}
+
+.note-gear-menu {
+  position: absolute;
+  right: 0;
+  top: 33px;
+  width: 248px; /* prototype popover width */
+  z-index: 50;
+  padding: 9px;
+  border-radius: 14px;
+  background: rgb(15 19 33 / 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5));
+  box-shadow: 0 14px 40px rgb(3 5 12 / 0.6), 0 0 22px -6px var(--g1, rgb(0 240 255 / 0.4));
+}
+
+.note-gear-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7686a2; /* prototype VIEW AS heading */
+  padding: 3px 10px 7px;
+}
 
 .note-mode-group {
   display: flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.note-viewer-mode,
+.note-viewer-mode {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #c3cee2; /* prototype gear item idle */
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+
+.note-viewer-mode:hover {
+  background: rgb(255 255 255 / 0.07);
+}
+
+.note-viewer-mode.active {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+.note-gear-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: rgb(255 255 255 / 0.18);
+}
+
+.note-viewer-mode.active .note-gear-dot {
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 7px var(--g1, rgb(0 240 255 / 0.4));
+}
+
+.note-gear-divider {
+  height: 1px;
+  background: rgb(255 255 255 / 0.08);
+  margin: 8px 4px;
+}
+
+.note-gear-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px 4px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.note-gear-toggle-label {
+  flex: 1;
+  font-size: 11px;
+  color: #aebad0;
+  line-height: 1.4;
+}
+
+.note-gear-pill {
+  width: 37px;
+  height: 21px;
+  border-radius: 99px;
+  position: relative;
+  flex: none;
+  transition: all 0.2s ease;
+  background: rgb(255 255 255 / 0.04);
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.3));
+}
+
+.note-gear-pill.on {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--b1, rgb(0 240 255 / 0.5));
+  box-shadow: 0 0 10px -2px var(--g1, rgb(0 240 255 / 0.4));
+}
+
+.note-gear-knob {
+  position: absolute;
+  top: 2.5px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  background: #8e9db8;
+}
+
+.note-gear-pill.on .note-gear-knob {
+  transform: translateX(16px);
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgb(0 240 255 / 0.4));
+}
+
 .note-viewer-close {
   background: none;
   border: none;
@@ -98,24 +247,133 @@
   transition: color 0.15s, background 0.15s;
 }
 
-.note-viewer-mode.active,
-.note-viewer-mode:hover,
 .note-viewer-close:hover {
   color: var(--text-primary, #e0e0e0);
   background: var(--bg-hover, #2a2a2a);
 }
 
-.note-viewer-mode.active {
-  color: var(--neon-cyan, #00e5ff);
-  background: rgba(0, 229, 255, 0.08);
+/* ── M17: note header — editable Lora title + tag chips ────────────────── */
+
+.note-header {
+  padding: 10px 20px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
 }
 
-/* ── Source mode (textarea) ────────────────────────────────────────────── */
+.note-header-row {
+  display: flex;
+  align-items: center;
+  gap: 11px; /* prototype title row gap */
+}
+
+.note-header-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  flex: none;
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5));
+  box-shadow: 0 0 14px -4px var(--g1, rgb(0 240 255 / 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 25px; /* prototype note title */
+  font-weight: 600;
+  color: #f0f3fc;
+  outline: none;
+  caret-color: var(--n1, #00f0ff);
+  min-width: 40px;
+}
+
+.note-tags-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 9px;
+  flex-wrap: wrap;
+}
+
+.note-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px; /* prototype tag chip */
+  padding: 3px 11px;
+  border-radius: 99px;
+  border: 1px solid;
+}
+
+.note-tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.note-tag-remove:hover {
+  opacity: 1;
+}
+
+.note-add-tag-input {
+  width: 110px;
+  height: 22px;
+  background: rgb(255 255 255 / 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.4)); /* prototype Add tag… input */
+  border-radius: 8px;
+  color: #dbe4f5;
+  font-size: 11px;
+  padding: 0 9px;
+}
+
+.note-add-tag-input::placeholder {
+  color: #7686a2;
+}
+
+/* ── Source / Markdown modes (raw textarea) ────────────────────────────── */
+
+.note-viewer-editor-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.note-mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #8e9db8; /* prototype mode banner */
+  padding: 10px 24px 0;
+  flex-shrink: 0;
+}
+
+.note-mode-banner-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.note-mode-banner--markdown .note-mode-banner-dot {
+  background: var(--n1, #00f0ff); /* prototype markdown dot */
+}
+
+.note-mode-banner--source .note-mode-banner-dot {
+  background: var(--n3, #ff4dff); /* prototype source dot */
+}
 
 .note-viewer-editor {
   flex: 1;
   width: 100%;
-  padding: 20px 24px;
+  padding: 14px 24px 20px;
   background: transparent;
   border: none;
   outline: none;
@@ -125,6 +383,14 @@
   font-size: 14px;
   line-height: 1.7;
   box-sizing: border-box;
+}
+
+.note-viewer-editor--markdown {
+  color: #b9c7de; /* prototype markdown raw text */
+}
+
+.note-viewer-editor--source {
+  color: #9fb0c8; /* prototype source raw text */
 }
 
 .note-viewer-editor::placeholder {
@@ -263,6 +529,35 @@
   box-shadow: 0 0 12px -3px var(--g2, rgb(155 95 255 / 0.4)); /* prototype glow */
 }
 
+/* M17: preview-mode buttons share the rich-mode class contract — scene links
+   go gold, unresolved links dash (prototype mkLink branches). */
+.note-wiki-link.wiki-link-scene {
+  color: #ffd319; /* prototype scene link gold */
+  background: rgb(255 211 25 / 0.08);
+  outline: 1px solid rgb(255 211 25 / 0.45);
+}
+
+.note-wiki-link.wiki-link-scene:hover,
+.note-wiki-link.wiki-link-scene:focus-visible {
+  color: #ffe680;
+  box-shadow: 0 0 12px -3px rgb(255 211 25 / 0.5);
+}
+
+.note-wiki-link.wiki-link-unresolved {
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+  background: rgb(255 255 255 / 0.04);
+  border-bottom: 1px dashed rgb(255 255 255 / 0.22);
+  border-radius: 4px 4px 0 0;
+}
+
+.note-wiki-link.wiki-link-unresolved:hover,
+.note-wiki-link.wiki-link-unresolved:focus-visible {
+  color: rgb(195 206 226); /* prototype #c3cee2 */
+  background: rgb(255 255 255 / 0.08);
+  border-bottom-color: rgb(255 255 255 / 0.4);
+  outline: none;
+}
+
 /* Unresolved links in notes: dashed grey "would create" affordance
    (prototype mkLink unresolved branch). */
 .note-tiptap-content [data-wiki-link].wiki-link-unresolved {
@@ -353,4 +648,83 @@
 
 .note-fidelity-btn:hover {
   opacity: 0.85;
+}
+
+/* ── M17: purple callout card (prototype note callout block) ───────────── */
+
+.note-tiptap-content .note-callout {
+  display: flex;
+  gap: 11px;
+  margin: 1.2em 0;
+  padding: 14px 16px;
+  border-radius: 13px;
+  background: var(--gs2, rgb(155 95 255 / 0.12)); /* prototype callout bg */
+  border: var(--bw, 1px) solid var(--b2, rgb(155 95 255 / 0.5));
+  box-shadow: 0 0 18px -8px var(--g2, rgb(155 95 255 / 0.4));
+}
+
+.note-callout-icon {
+  flex: none;
+  margin-top: 2px;
+  line-height: 0;
+}
+
+.note-callout-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-callout-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--n2, #9b5fff); /* prototype callout title */
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+  outline: none;
+  caret-color: var(--n2, #9b5fff);
+  text-transform: capitalize;
+}
+
+.note-tiptap-content .note-callout-body,
+.note-tiptap-content .note-callout-body p {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: #cdd8ea; /* prototype callout body */
+  font-style: italic;
+  margin: 0;
+}
+
+/* ── M17: links block — a paragraph of only [[wiki links]] renders chips ── */
+
+.note-tiptap-content .note-links-block {
+  line-height: 2.4; /* room for the chip padding when the row wraps */
+  color: #586a88;   /* the `·` separators between chips */
+}
+
+.note-tiptap-content .note-links-block [data-wiki-link] {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; /* prototype mkLink chip */
+  padding: 4px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--b2, rgb(155 95 255 / 0.5));
+  margin: 0 2px;
+}
+
+.note-tiptap-content .note-links-block [data-wiki-link].wiki-link-scene {
+  border-color: rgb(255 211 25 / 0.45); /* prototype scene chip */
+}
+
+.note-tiptap-content .note-links-block [data-wiki-link].wiki-link-unresolved {
+  border: 1px dashed rgb(255 255 255 / 0.22); /* prototype unresolved chip */
+}
+
+/* ── M17: backlinks footer (note body, not the right panel) ────────────── */
+
+.note-backlinks-footer {
+  flex-shrink: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid rgb(255 255 255 / 0.06); /* prototype footer divider */
+  padding: 10px 20px 14px;
 }
