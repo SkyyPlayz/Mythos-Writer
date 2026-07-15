@@ -73,7 +73,7 @@ export interface CreateCommentInput {
 /** Display metadata per kind (prototype kMeta 4515 / kMeta2 4633). */
 export const COMMENT_KIND_META: Record<CommentKind, { label: string; defaultAuthor: string }> = {
   user: { label: 'Comment', defaultAuthor: 'You' },
-  writing: { label: 'Writing Assistant', defaultAuthor: 'Writing Assistant' },
+  writing: { label: 'Writing Coach', defaultAuthor: 'Writing Coach' },
   archive: { label: 'Archive Agent — continuity', defaultAuthor: 'Archive Agent' },
   beta: { label: 'Beta Reader', defaultAuthor: 'Beta Reader' },
 };

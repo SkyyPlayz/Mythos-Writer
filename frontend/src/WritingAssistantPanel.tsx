@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
+import type { UseAgentSessionsResult } from './lib/useAgentSessions';
+import { decodeCoachTurns, collapseCoachMessage } from './coach/coachMessages';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { SuggestionCard } from './SuggestionCard';
@@ -50,6 +52,10 @@ interface Message {
   text: string;
   streaming?: boolean;
   suggestion?: WritingAssistantSuggestion;
+  /** M12: lesson/analysis cards collapse to `title — text` in the mini (panel) view. */
+  mini?: { title: string; text: string };
+  /** M12: session-turn timestamp for store-derived messages (decoration key). */
+  turnAt?: string;
 }
 
 const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
@@ -95,6 +101,13 @@ interface Props {
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
   displayName?: string;
+  /**
+   * Beta 4 M12 (§5.2/§5.6): the SHARED `coach` session store. When present, the
+   * chat feed renders the persisted conversation (one store shared with the
+   * Coach page) and completed exchanges are appended to it. Lesson/analysis
+   * card messages collapse to `title — text` in this mini view.
+   */
+  sessionStore?: UseAgentSessionsResult;
 }
 
 function isBetaReadRequest(prompt: string) {
@@ -168,10 +181,14 @@ export default function WritingAssistantPanel({
   autoApply = false,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
-  displayName = 'Writing Assistant',
+  displayName = 'Writing Coach',
+  sessionStore,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  // M12: suggestion-card decorations for store-derived messages, keyed by the
+  // agent turn's timestamp. Exchanges sent from THIS panel keep their cards.
+  const [turnSuggestions, setTurnSuggestions] = useState<Record<string, WritingAssistantSuggestion>>({});
   const [loading, setLoading] = useState(false);
   const [stalled, setStalled] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,6 +227,30 @@ export default function WritingAssistantPanel({
   const { announce, liveText } = useLiveAnnounce();
 
   const tts = useTtsPlayer(ttsSettings, voicePrefs);
+
+  // ── M12: ONE conversation store shared with the Coach page (§5.2/§5.6) ────
+  // Persisted turns render first; the local `messages` buffer only carries the
+  // in-flight exchange (it is flushed into the store on completion). Lesson &
+  // analysis cards collapse to `title — text` in this mini view.
+  const storeTurns = sessionStore?.activeSession?.turns;
+  const storeMessages = useMemo<Message[]>(() => {
+    if (!storeTurns) return [];
+    return decodeCoachTurns(storeTurns).map((m): Message => {
+      if (m.kind === 'user') return { role: 'user', text: m.text, turnAt: m.at };
+      if (m.kind === 'coach') {
+        return { role: 'assistant', text: m.text, turnAt: m.at, suggestion: turnSuggestions[m.at] };
+      }
+      const text = m.kind === 'lesson' ? m.text : m.takeaway;
+      return {
+        role: 'assistant',
+        text: collapseCoachMessage(m),
+        mini: { title: m.title, text },
+        turnAt: m.at,
+      };
+    });
+  }, [storeTurns, turnSuggestions]);
+
+  const renderedMessages = sessionStore ? [...storeMessages, ...messages] : messages;
 
   const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
@@ -403,6 +444,7 @@ export default function WritingAssistantPanel({
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
     lastPromptRef.current = trimmed;
+    const userAt = new Date().toISOString();
 
     setLoading(true);
     setStalled(false);
@@ -467,6 +509,22 @@ export default function WritingAssistantPanel({
         return updated;
       });
       announce('Response ready.');
+
+      // M12: flush the completed exchange into the shared coach session store
+      // (one conversation with the Coach page). The suggestion-card decoration
+      // stays attached to the persisted agent turn via its timestamp.
+      if (sessionStore) {
+        try {
+          setTurnSuggestions((prev) => ({ ...prev, [suggestion.timestamp]: suggestion }));
+          await sessionStore.appendTurns([
+            { role: 'user', text: trimmed, at: userAt },
+            { role: 'agent', text: response.text, at: suggestion.timestamp },
+          ]);
+          if (requestIdRef.current === requestId) setMessages([]);
+        } catch {
+          // Vault unavailable — keep the local bubbles as a fallback.
+        }
+      }
     } catch (err) {
       if (requestIdRef.current !== requestId) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -481,7 +539,7 @@ export default function WritingAssistantPanel({
         setStalled(false);
       }
     }
-  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, runBetaReadScan, scene, scheduleStallTimers]);
+  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, runBetaReadScan, scene, scheduleStallTimers, sessionStore]);
 
   const retryGeneration = useCallback(() => {
     const retryPrompt = lastPromptRef.current;
@@ -530,6 +588,12 @@ export default function WritingAssistantPanel({
           : m,
       ),
     );
+    // M12: store-derived messages carry their card via turnSuggestions.
+    setTurnSuggestions((prev) => {
+      const entry = Object.entries(prev).find(([, s]) => s.id === id);
+      if (!entry) return prev;
+      return { ...prev, [entry[0]]: { ...entry[1], status, decidedAt } };
+    });
   };
 
   const handleCadenceChange = useCallback(async (value: CadenceValue) => {
@@ -538,10 +602,10 @@ export default function WritingAssistantPanel({
     const waScanInterval = value === 'on-save' || value === 'manual' ? value : Number(value);
     try {
       await window.api.writingAssistantCadenceChange({ waScanInterval });
-      announce('Writing Assistant cadence updated.');
+      announce('Writing Coach cadence updated.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || 'Could not update Writing Assistant cadence.');
+      setError(msg || 'Could not update Writing Coach cadence.');
     }
   }, [announce]);
 
@@ -631,7 +695,7 @@ export default function WritingAssistantPanel({
   if (!enabled) {
     return (
       <div className="writing-assistant-panel writing-assistant-disabled">
-        <p className="writing-assistant-disabled-msg">Writing Assistant is disabled. Enable it in Settings.</p>
+        <p className="writing-assistant-disabled-msg">Writing Coach is disabled. Enable it in Settings.</p>
       </div>
     );
   }
@@ -660,7 +724,7 @@ export default function WritingAssistantPanel({
             type="button"
             className="wa-collapsed-btn"
             onClick={() => setOverlayOpen(true)}
-            aria-label={`Open Writing Assistant${pendingCount > 0 ? `, ${pendingCount} pending suggestions` : ''}`}
+            aria-label={`Open Writing Coach${pendingCount > 0 ? `, ${pendingCount} pending suggestions` : ''}`}
           >
             <span aria-hidden="true">✨</span>
             {pendingCount > 0 && (
@@ -681,7 +745,7 @@ export default function WritingAssistantPanel({
           aria-hidden="true"
         />
       )}
-      <div className={`writing-assistant-panel${overlayOpen ? ' writing-assistant-panel--overlay' : ''}`} role="complementary" aria-label="Writing Assistant">
+      <div className={`writing-assistant-panel${overlayOpen ? ' writing-assistant-panel--overlay' : ''}`} role="complementary" aria-label="Writing Coach">
       <span
         role="status"
         aria-live="polite"
@@ -909,19 +973,26 @@ export default function WritingAssistantPanel({
         ref={messagesRef}
         onKeyDown={handleMessagesKeyDown}
       >
-        {messages.map((msg, i) => (
+        {renderedMessages.map((msg, i) => (
           <div
-            key={i}
+            key={msg.turnAt ?? `local-${i}`}
             className={`wa-message wa-message-${msg.role}`}
             role="listitem"
           >
             {msg.role === 'user' ? (
               <div className="wa-user-bubble">{msg.text}</div>
+            ) : msg.mini ? (
+              /* M12 (§5.6): lesson/analysis cards collapse to `title — text` in the mini view */
+              <div className="wa-assistant-bubble wa-lesson-mini" data-testid="wa-lesson-mini">
+                <span className="wa-lesson-mini-title">{msg.mini.title}</span>
+                {' — '}
+                <span className="wa-lesson-mini-text">{msg.mini.text}</span>
+              </div>
             ) : (
               <div className="wa-assistant-bubble">
                 <div
                   className={`wa-assistant-text${msg.streaming ? ' wa-streaming' : ''}`}
-                  aria-label="Writing assistant response"
+                  aria-label="Writing coach response"
                 >
                   {msg.text}
                   {msg.streaming && <span className="wa-cursor" aria-hidden="true">&#x258c;</span>}
@@ -971,7 +1042,7 @@ export default function WritingAssistantPanel({
 
       </div>
 
-      {messages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
+      {renderedMessages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
         <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
           <span className="wa-tip-icon" aria-hidden="true">💡</span>
           <span className="wa-tip-body">
@@ -987,7 +1058,7 @@ export default function WritingAssistantPanel({
           </button>
         </div>
       )}
-      {messages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
+      {renderedMessages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
         <div className="writing-assistant-empty">
           Ask for writing advice — pacing, voice, clarity, what to try next.
         </div>
@@ -1032,7 +1103,7 @@ export default function WritingAssistantPanel({
           placeholder="How can I make this scene more tense?"
           rows={3}
           disabled={loading}
-          aria-label="Writing assistant prompt"
+          aria-label="Writing coach prompt"
         />
         <div className="wa-input-actions">
           {/* AC-WA-25: microphone button — only shown when voice is enabled in Settings */}

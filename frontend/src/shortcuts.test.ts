@@ -45,7 +45,7 @@ describe('buildShortcutGroups', () => {
     expect(labels).toContain('Editor — Text (Tiptap)');
     expect(labels).toContain('Story Navigator');
     expect(labels).toContain('Suggestion Review');
-    expect(labels).toContain('Brainstorm & Writing Assistant');
+    expect(labels).toContain('Brainstorm & Writing Coach');
     expect(labels).toContain('Search Bar');
     expect(labels).toContain('Sidebars');
   });

@@ -1,8 +1,12 @@
 // SKY-6228: M15 — agent chat session store hook.
 // Per §11: every chat surface has a session dropdown with rename/duplicate/delete-last behaviour.
-// Coach page ↔ Coach panel chat share one store keyed on agent='coach'.
+//
+// M12 — the store is a module-level singleton per agent key so every surface
+// mounting `useAgentSessions('coach')` (Coach page feed AND the right-panel
+// Coach chat) shares ONE conversation: same session list, same active session,
+// same turns. Mutations made on one surface render on the other immediately.
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export interface UseAgentSessionsResult {
   sessions: AgentSessionSummary[];
@@ -25,141 +29,217 @@ export interface UseAgentSessionsResult {
   refresh: () => Promise<AgentSessionSummary[] | undefined>;
 }
 
-export function useAgentSessions(agent: string): UseAgentSessionsResult {
-  const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [activeSession, setActiveSession] = useState<AgentSessionFile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const initialised = useRef(false);
+interface AgentSessionStoreState {
+  sessions: AgentSessionSummary[];
+  activeSessionId: string | null;
+  activeSession: AgentSessionFile | null;
+  loading: boolean;
+}
 
-  const api = window.api?.agentSessions;
+interface AgentSessionStore {
+  state: AgentSessionStoreState;
+  listeners: Set<() => void>;
+  initialised: boolean;
+  subscribe: (fn: () => void) => () => void;
+  getSnapshot: () => AgentSessionStoreState;
+  actions: Omit<UseAgentSessionsResult, keyof AgentSessionStoreState>;
+}
 
-  const refresh = useCallback(async () => {
-    if (!api) return;
+type AgentSessionsApi = NonNullable<Window['api']['agentSessions']>;
+
+const stores = new Map<string, AgentSessionStore>();
+
+/** Test hook: drop all shared stores so each test starts from a clean init. */
+export function __resetAgentSessionStores(): void {
+  stores.clear();
+}
+
+function getApi(): AgentSessionsApi | undefined {
+  return window.api?.agentSessions;
+}
+
+function createStore(agent: string): AgentSessionStore {
+  const store: AgentSessionStore = {
+    state: { sessions: [], activeSessionId: null, activeSession: null, loading: true },
+    listeners: new Set(),
+    initialised: false,
+    subscribe(fn) {
+      store.listeners.add(fn);
+      return () => { store.listeners.delete(fn); };
+    },
+    getSnapshot() {
+      return store.state;
+    },
+    actions: null as unknown as AgentSessionStore['actions'],
+  };
+
+  const set = (patch: Partial<AgentSessionStoreState>) => {
+    store.state = { ...store.state, ...patch };
+    for (const fn of [...store.listeners]) fn();
+  };
+
+  /** Load the full session file (turns included) for the active id. */
+  const hydrateActive = async (id: string | null) => {
+    const api = getApi();
+    if (!id || !api) return;
+    if (store.state.activeSession?.id === id) return;
+    // Older preloads may not expose `read`; degrade to summaries-only.
+    if (typeof api.read !== 'function') return;
+    try {
+      const { session } = await api.read(id);
+      // Only apply if the user hasn't switched away while we were reading.
+      if (session && store.state.activeSessionId === id) {
+        set({ activeSession: session });
+      }
+    } catch {
+      /* degrade silently — feed shows what it has */
+    }
+  };
+
+  const refresh = async () => {
+    const api = getApi();
+    if (!api) return undefined;
     try {
       const { sessions: list } = await api.list(agent);
-      setSessions(list);
+      set({ sessions: list });
       return list;
     } catch {
       return [];
     }
-  }, [agent, api]);
+  };
 
-  const initSession = useCallback(async () => {
-    if (!api) { setLoading(false); return; }
-    setLoading(true);
+  const initSession = async () => {
+    const api = getApi();
+    if (!api) { set({ loading: false }); return; }
+    set({ loading: true });
     try {
       const { sessions: list } = await api.list(agent);
-      setSessions(list);
+      set({ sessions: list });
       if (list.length > 0) {
-        setActiveSessionId(list[0].id);
+        set({ activeSessionId: list[0].id });
+        await hydrateActive(list[0].id);
       } else {
         // Auto-create the first session for this agent
         const greeting = AGENT_GREETINGS[agent] ?? null;
         const res = await api.create(agent, undefined, greeting ?? undefined);
-        setSessions([toSummary(res.session, res.relPath)]);
-        setActiveSession(res.session);
-        setActiveSessionId(res.session.id);
+        set({
+          sessions: [toSummary(res.session, res.relPath)],
+          activeSession: res.session,
+          activeSessionId: res.session.id,
+        });
       }
     } catch {
       // no vault; degrade silently — UI shows empty state
     } finally {
-      setLoading(false);
+      set({ loading: false });
     }
-  }, [agent, api]);
+  };
 
-  useEffect(() => {
-    if (initialised.current) return;
-    initialised.current = true;
+  const ensureInit = () => {
+    if (store.initialised) return;
+    store.initialised = true;
     void initSession();
-  }, [initSession]);
+  };
 
-  // Load the full session file when activeSessionId changes
-  useEffect(() => {
-    if (!activeSessionId || !api) return;
-    // We don't have a dedicated "read session" IPC, so use appendTurns with [] to
-    // get the session back, OR keep a local copy from creation. For now we track
-    // session data from IPC responses and refresh the list on changes.
-  }, [activeSessionId, api]);
-
-  const switchSession = useCallback(async (id: string) => {
-    setActiveSessionId(id);
-  }, []);
-
-  const newSession = useCallback(async (greeting?: string) => {
-    if (!api) return;
-    const effectiveGreeting = greeting ?? AGENT_GREETINGS[agent] ?? undefined;
-    const res = await api.create(agent, undefined, effectiveGreeting);
-    const summary = toSummary(res.session, res.relPath);
-    setSessions((prev) => [summary, ...prev]);
-    setActiveSession(res.session);
-    setActiveSessionId(res.session.id);
-  }, [agent, api]);
-
-  const renameSession = useCallback(async (id: string, title: string) => {
-    if (!api) return;
-    await api.rename(id, title);
-    setSessions((prev) =>
-      prev.map((s) => s.id === id ? { ...s, title } : s),
-    );
-  }, [api]);
-
-  const duplicateSession = useCallback(async (id: string) => {
-    if (!api) return;
-    const res = await api.duplicate(id);
-    const summary = toSummary(res.session, res.relPath);
-    setSessions((prev) => [summary, ...prev]);
-    setActiveSession(res.session);
-    setActiveSessionId(res.session.id);
-  }, [api]);
-
-  const deleteSession = useCallback(async (id: string) => {
-    if (!api) return;
-    const res = await api.delete(id);
-    if (res.ok) {
-      setSessions((prev) => {
-        const remaining = prev.filter((s) => s.id !== id);
-        if (res.replacement) {
-          const rSum = toSummary(res.replacement, res.replacementRelPath ?? '');
-          return [rSum, ...remaining];
-        }
-        return remaining;
+  store.actions = {
+    switchSession: async (id: string) => {
+      set({ activeSessionId: id });
+      await hydrateActive(id);
+    },
+    newSession: async (greeting?: string) => {
+      const api = getApi();
+      if (!api) return;
+      const effectiveGreeting = greeting ?? AGENT_GREETINGS[agent] ?? undefined;
+      const res = await api.create(agent, undefined, effectiveGreeting);
+      const summary = toSummary(res.session, res.relPath);
+      set({
+        sessions: [summary, ...store.state.sessions],
+        activeSession: res.session,
+        activeSessionId: res.session.id,
       });
-      if (activeSessionId === id) {
-        const nextId = res.replacement?.id ?? sessions.find((s) => s.id !== id)?.id ?? null;
-        if (res.replacement) setActiveSession(res.replacement);
-        setActiveSessionId(nextId);
+    },
+    renameSession: async (id: string, title: string) => {
+      const api = getApi();
+      if (!api) return;
+      await api.rename(id, title);
+      set({
+        sessions: store.state.sessions.map((s) => (s.id === id ? { ...s, title } : s)),
+      });
+    },
+    duplicateSession: async (id: string) => {
+      const api = getApi();
+      if (!api) return;
+      const res = await api.duplicate(id);
+      const summary = toSummary(res.session, res.relPath);
+      set({
+        sessions: [summary, ...store.state.sessions],
+        activeSession: res.session,
+        activeSessionId: res.session.id,
+      });
+    },
+    deleteSession: async (id: string) => {
+      const api = getApi();
+      if (!api) return;
+      const res = await api.delete(id);
+      if (!res.ok) return;
+      const remaining = store.state.sessions.filter((s) => s.id !== id);
+      const next = res.replacement
+        ? [toSummary(res.replacement, res.replacementRelPath ?? ''), ...remaining]
+        : remaining;
+      const patch: Partial<AgentSessionStoreState> = { sessions: next };
+      if (store.state.activeSessionId === id) {
+        const nextId = res.replacement?.id ?? remaining[0]?.id ?? null;
+        patch.activeSessionId = nextId;
+        patch.activeSession = res.replacement ?? null;
+        set(patch);
+        if (!res.replacement) await hydrateActive(nextId);
+        return;
       }
-    }
-  }, [activeSessionId, sessions, api]);
-
-  const appendTurns = useCallback(async (turns: AgentSessionTurn[]) => {
-    if (!api || !activeSessionId) return;
-    const res = await api.appendTurns(activeSessionId, turns);
-    if (res.session) {
-      setActiveSession(res.session);
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === res.session!.id
-            ? { ...s, turnCount: res.session!.turns.length, updatedAt: res.session!.updatedAt }
-            : s,
-        ),
-      );
-    }
-  }, [activeSessionId, api]);
-
-  return {
-    sessions,
-    activeSession,
-    activeSessionId,
-    loading,
-    switchSession,
-    newSession,
-    renameSession,
-    duplicateSession,
-    deleteSession,
-    appendTurns,
+      set(patch);
+    },
+    appendTurns: async (turns: AgentSessionTurn[]) => {
+      const api = getApi();
+      const id = store.state.activeSessionId;
+      if (!api || !id) return;
+      const res = await api.appendTurns(id, turns);
+      if (res.session) {
+        const s = res.session;
+        set({
+          activeSession: s,
+          sessions: store.state.sessions.map((x) =>
+            x.id === s.id ? { ...x, turnCount: s.turns.length, updatedAt: s.updatedAt } : x,
+          ),
+        });
+      }
+    },
     refresh,
+  };
+
+  // Kick off init lazily on first use.
+  ensureInit();
+  return store;
+}
+
+/** Get (or create) the shared session store for one agent key. */
+export function getAgentSessionStore(agent: string): AgentSessionStore {
+  let store = stores.get(agent);
+  if (!store) {
+    store = createStore(agent);
+    stores.set(agent, store);
+  }
+  return store;
+}
+
+export function useAgentSessions(agent: string): UseAgentSessionsResult {
+  const store = getAgentSessionStore(agent);
+  const subscribe = useCallback(
+    (fn: () => void) => store.subscribe(fn),
+    [store],
+  );
+  const state = useSyncExternalStore(subscribe, store.getSnapshot);
+  return {
+    ...state,
+    ...store.actions,
   };
 }
 

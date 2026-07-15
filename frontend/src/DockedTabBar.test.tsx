@@ -60,8 +60,9 @@ beforeEach(() => {
 
 describe('DockedTabBar label display (AC-T-02)', () => {
   it('shows truncated first-panel label when name is long', () => {
-    // 'writing-assistant' → 'Writing Assistant' (17 chars) → truncated to 16 chars + '…'
-    const tab = makeTab('t1', ['writing-assistant']);
+    // M12: 'writing-assistant' is now 'Writing Coach' (13 chars — no longer
+    // truncated); use 'review' → 'Suggestion Review' (17 chars) → 16 + '…'.
+    const tab = makeTab('t1', ['review']);
     render(
       <DockedTabBar
         {...defaultProps}
@@ -69,8 +70,8 @@ describe('DockedTabBar label display (AC-T-02)', () => {
         activeDockedTabId={null}
       />,
     );
-    // truncated: "Writing Assistan…" (16 chars + ellipsis)
-    expect(screen.getByText('Writing Assistan…')).toBeTruthy();
+    // truncated: "Suggestion Revie…" (16 chars + ellipsis)
+    expect(screen.getByText('Suggestion Revie…')).toBeTruthy();
   });
 
   it('shows full label when name is short enough', () => {

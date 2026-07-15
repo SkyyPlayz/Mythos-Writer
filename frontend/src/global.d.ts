@@ -667,7 +667,7 @@ interface AppSettings {
 type AppTab = 'story' | 'notes' | 'brainstorm';
 
 /** SKY-2094: Sub-view within the Story tab. */
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
+type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 /** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
 type NotesSubView = 'editor' | 'graph' | 'entities';
@@ -1607,6 +1607,8 @@ interface Window {
       duplicate: (sessionId: string) => Promise<AgentSessionCreateResult>;
       delete: (sessionId: string) => Promise<AgentSessionDeleteResult>;
       appendTurns: (sessionId: string, turns: AgentSessionTurn[]) => Promise<{ session: AgentSessionFile | null }>;
+      /** M12 — hydrate a full session (turns included); optional for older preloads. */
+      read?: (sessionId: string) => Promise<{ session: AgentSessionFile | null }>;
     };
 
     // SKY-3189 (G3): true when running in a packaged Electron build.

@@ -17,7 +17,7 @@ const PANEL_LABELS: Record<string, string> = {
   'scene-notes': 'Scene Notes',
   'scene-properties': 'Scene Properties',
   'scene-outline': 'Outline',
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
   brainstorm: 'Brainstorm',

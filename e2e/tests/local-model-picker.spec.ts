@@ -169,7 +169,7 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
 }
 
-function agentCard(page: Page, name: 'Writing Assistant' | 'Brainstorm Agent' | 'Archive Agent'): Locator {
+function agentCard(page: Page, name: 'Writing Coach' | 'Brainstorm Agent' | 'Archive Agent'): Locator {
   return page.locator('.settings-agent-card').filter({ hasText: name });
 }
 
@@ -211,14 +211,14 @@ test('TC-LMP-01 / AC-8: fresh install defaults all agents to the global Anthropi
 
   await expect(page.getByLabel('AI provider')).toHaveValue('anthropic');
   for (const [cardName, modelLabel] of [
-    ['Writing Assistant', 'Writing Assistant model'],
+    ['Writing Coach', 'Writing Coach model'],
     ['Brainstorm Agent', 'Brainstorm Agent model'],
     ['Archive Agent', 'Archive Agent model'],
   ] as const) {
     const card = agentCard(page, cardName);
     await expect(card).toContainText('Using global provider (Anthropic (Claude))');
     await expect(card.getByLabel(modelLabel)).toHaveValue('claude-sonnet-4-6');
-    await expect(card.getByLabel(`Enable ${cardName === 'Writing Assistant' ? 'writingAssistant' : cardName === 'Brainstorm Agent' ? 'brainstorm' : 'archive'} provider override`)).not.toBeChecked();
+    await expect(card.getByLabel(`Enable ${cardName === 'Writing Coach' ? 'writingAssistant' : cardName === 'Brainstorm Agent' ? 'brainstorm' : 'archive'} provider override`)).not.toBeChecked();
   }
 });
 
@@ -240,7 +240,7 @@ test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes onl
   await brainstorm.getByLabel('Provider for brainstorm').selectOption('openai');
   await expect(brainstorm.getByRole('button', { name: 'Refresh models for brainstorm' })).toBeVisible();
 
-  const writing = agentCard(page, 'Writing Assistant');
+  const writing = agentCard(page, 'Writing Coach');
   const archive = agentCard(page, 'Archive Agent');
   await expect(writing).toContainText('Using global provider (Anthropic (Claude))');
   await expect(archive).toContainText('Using global provider (Anthropic (Claude))');
@@ -261,7 +261,7 @@ test('TC-LMP-03 / AC-3: Ollama-not-running shows an inline user-friendly hint', 
 
   await openSettings(page);
 
-  const writing = agentCard(page, 'Writing Assistant');
+  const writing = agentCard(page, 'Writing Coach');
   await enableAgentOverride(writing, 'writingAssistant');
   await writing.getByLabel('Provider for writingAssistant').selectOption('ollama');
 
@@ -371,5 +371,5 @@ test('TC-LMP-07 / AC-10: per-agent test-connection results are independent', asy
   await expect(archive.getByRole('alert')).toHaveText('Mock Ollama connection failed');
 
   await expect(brainstorm.getByRole('status')).toHaveText('Connection successful');
-  await expect(agentCard(page, 'Writing Assistant').getByRole('button', { name: /Test provider connection/ })).not.toBeVisible();
+  await expect(agentCard(page, 'Writing Coach').getByRole('button', { name: /Test provider connection/ })).not.toBeVisible();
 });

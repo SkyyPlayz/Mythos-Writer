@@ -430,7 +430,8 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
-  const agentRow = page.locator('[aria-label="Open Writing Assistant chat"]');
+  // M12: Writing Assistant → Writing Coach rename (agent ids/IPC channels unchanged).
+  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
   if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await agentRow.click();
   }
@@ -441,7 +442,7 @@ async function openWritingAssistantWithScene(page: Page): Promise<void> {
 
   // GRS uses role=button panel headers. Collapse then re-expand to force a remount
   // (clears suppressed-tip state left over from prior tests).
-  const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
+  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
   if ((await waHeader.getAttribute('aria-expanded')) === 'true') {
     await waHeader.click(); // collapse → unmount content
   }
@@ -454,7 +455,7 @@ async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
 
   // GRS uses role=button panel headers, not tabs.
-  const waHeader = page.getByRole('button', { name: 'Writing Assistant panel' });
+  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
   if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
     await waHeader.click();
   }
@@ -463,7 +464,7 @@ async function openAssistantTab(page: Page): Promise<void> {
 }
 
 function assistantPrompt(page: Page) {
-  return page.getByRole('textbox', { name: 'Writing assistant prompt' });
+  return page.getByRole('textbox', { name: 'Writing coach prompt' });
 }
 
 async function fillAssistantPrompt(page: Page, text: string) {
@@ -695,8 +696,12 @@ test('TC-WA-09: Enter submits; empty prompt is no-op', async () => {
   await expect(askBtn).toBeDisabled();
 
   // Pressing Enter on an empty input should not add any messages.
+  // M12: the shared coach session seeds a greeting turn, so the feed may not
+  // be empty — assert the count does not grow instead of asserting zero.
+  const before = await page.locator('.wa-message').count();
   await input.press('Enter');
-  await expect(page.locator('.wa-message')).toHaveCount(0, { timeout: 2_000 });
+  await page.waitForTimeout(1_000);
+  await expect(page.locator('.wa-message')).toHaveCount(before);
 
   // Typed prompt: Ask button enables and Enter submits.
   await input.fill('Help me improve this scene.');
@@ -1091,7 +1096,7 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await showSidebarBtn.click();
     }
-    const waHeader = disabledPage.getByRole('button', { name: 'Writing Assistant panel' });
+    const waHeader = disabledPage.getByRole('button', { name: 'Writing Coach panel' });
     if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
       await waHeader.click();
     }

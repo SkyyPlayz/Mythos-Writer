@@ -109,6 +109,7 @@ import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
 import AgentHubPanel from './AgentHubPanel';
+import CoachPage from './coach/CoachPage';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
@@ -4244,7 +4245,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       pushNotification({
         kind: 'sugg',
         title: `New suggestion ready${proposedCount > 1 ? ` (${proposedCount} pending)` : ''}`,
-        detail: 'Writing Assistant — open Suggestion Review',
+        detail: 'Writing Coach — open Suggestion Review',
         onOpen: () => handleGrsVisibilityChange(true),
       });
     }
@@ -4648,6 +4649,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           )}
         </div>
       )}
+      {activeDockedTabId === null && view === 'coach' && (
+        /* Beta 4 M12 (§5.2): the Writing Coach's page — shares the `coach`
+           session store with the right-panel Coach chat. */
+        <div className="shell-coach">
+          <CoachPage
+            scene={selectedScene}
+            story={selectedStory}
+            currentChapterId={selectedChapter?.id ?? null}
+            agentNames={appSettings?.agentNames}
+          />
+        </div>
+      )}
       {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
           {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
@@ -4767,7 +4780,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
                 onClick={() => setWritingMode('edit')}
                 aria-pressed={writingMode === 'edit'}
-                title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+                title="Edit mode — review with Writing Coach + comments (Ctrl+Shift+E)"
                 data-testid="writing-mode-edit"
               >E</button>
             </div>

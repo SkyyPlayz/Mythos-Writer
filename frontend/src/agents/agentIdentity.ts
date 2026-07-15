@@ -16,7 +16,10 @@ export const NAMED_AGENT_IDS: readonly NamedAgentId[] = [
 ];
 
 export const DEFAULT_AGENT_DISPLAY_NAMES: Record<NamedAgentId, string> = {
-  writingAssistant: 'Writing Assistant',
+  // Beta 4 M12: Writing Assistant → Writing Coach everywhere user-facing.
+  // The persisted id stays `writingAssistant` (settings.agentNames keys,
+  // persona folders, provider secrets) so existing settings keep working.
+  writingAssistant: 'Writing Coach',
   brainstorm: 'Brainstorm Agent',
   archive: 'Archive Agent',
   betaReader: 'Beta Reader',

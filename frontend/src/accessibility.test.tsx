@@ -1,6 +1,6 @@
 /**
  * MYT-254 — WCAG 2.1 AA accessibility audit via axe-core.
- * Covers all five primary surfaces: Brainstorm chat, Writing Assistant sidebar,
+ * Covers all five primary surfaces: Brainstorm chat, Writing Coach sidebar,
  * Settings panel, Editor toolbar (BlockEditor draft-state), Vault browser (EntityBrowser).
  * Each describe block renders the component in isolation and asserts axe passes.
  */
@@ -190,11 +190,11 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Surface 2 — Writing Assistant sidebar
+// Surface 2 — Writing Coach sidebar
 // ══════════════════════════════════════════════════════════════════════════════
 import WritingAssistantPanel from './WritingAssistantPanel';
 
-describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', () => {
+describe('Accessibility — WritingAssistantPanel (Writing Coach sidebar)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
 
   it('idle/no-scene state has no axe violations', async () => {
@@ -210,11 +210,11 @@ describe('Accessibility — WritingAssistantPanel (Writing Assistant sidebar)', 
   });
 
   // AC-WA-23: Panel structural ARIA roles
-  it('AC-WA-23: panel has role=complementary and aria-label="Writing Assistant"', () => {
+  it('AC-WA-23: panel has role=complementary and aria-label="Writing Coach"', () => {
     const { container } = render(<WritingAssistantPanel scene={null} />);
     const panel = container.querySelector('[role="complementary"]');
     expect(panel).not.toBeNull();
-    expect(panel?.getAttribute('aria-label')).toBe('Writing Assistant');
+    expect(panel?.getAttribute('aria-label')).toBe('Writing Coach');
   });
 
   it('AC-WA-23: message list has role=list', () => {

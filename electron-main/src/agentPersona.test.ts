@@ -49,7 +49,7 @@ describe('loadPersonaFile (§1)', () => {
   it('returns bundled default when no override exists', () => {
     const result = loadPersonaFile(tmpDir, 'writingAssistant', 'SOUL');
     expect(result.isCustom).toBe(false);
-    expect(result.content).toContain('Writing Assistant');
+    expect(result.content).toContain('Writing Coach');
   });
 
   it('returns user override when override file exists', () => {
@@ -119,7 +119,7 @@ describe('loadAgentPersona (§2)', () => {
 describe('buildAgentSystemPrompt (§3)', () => {
   it('includes SOUL content', () => {
     const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
-    expect(prompt).toContain('Writing Assistant');
+    expect(prompt).toContain('Writing Coach');
     // SOUL.md has "Warm but direct"
     expect(prompt).toContain('Warm but direct');
   });
@@ -505,7 +505,7 @@ describe('M22 §7c — writePersonaFile (identity files editable)', () => {
 describe('M22 §7d — buildAgentSystemPrompt includes LEARNING', () => {
   it('includes bundled LEARNING content', () => {
     const prompt = buildAgentSystemPrompt(tmpDir, 'writingAssistant');
-    expect(prompt).toContain('# Writing Assistant — Learning');
+    expect(prompt).toContain('# Writing Coach — Learning');
   });
 
   it('still excludes TOOLS for every agent', () => {

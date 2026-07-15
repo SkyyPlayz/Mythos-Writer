@@ -1,0 +1,541 @@
+/* Beta 4 M12 — Writing Coach page (§5.2).
+   Values ported 1:1 from the Liquid Neon prototype coach screen (HTML 609–765). */
+
+.coach-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+
+.coach-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 22px 10px;
+}
+
+.coach-icon-tile {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 14px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.coach-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f3fc;
+}
+
+.coach-sub {
+  font-size: 10.5px;
+  color: #7686a2;
+  margin-top: 1px;
+}
+
+.coach-session-pill {
+  flex: none;
+}
+
+.coach-header-spacer {
+  flex: 1;
+}
+
+.coach-skills {
+  display: flex;
+  gap: 6px;
+}
+
+.coach-skill-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 99px;
+  font-size: 10.5px;
+}
+
+.coach-skill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.coach-skill-name {
+  color: #aebad0;
+}
+
+.coach-skill-value {
+  font-weight: 600;
+}
+
+/* ── Body: feed column + right rail ── */
+
+.coach-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.coach-feed-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.coach-feed {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px 24px;
+}
+
+.coach-feed-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.coach-row {
+  display: flex;
+}
+
+.coach-row--user {
+  justify-content: flex-end;
+}
+
+.coach-bubble--user {
+  max-width: 78%;
+  padding: 10px 13px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  color: #dbe4f5;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.coach-bubble--coach {
+  max-width: 84%;
+  padding: 10px 13px;
+  border-radius: 14px 14px 14px 4px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cdd8ea;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+/* Lesson card (§5.2) */
+
+.coach-lesson-card {
+  border-radius: 14px;
+  background: var(--gs2, rgba(155, 95, 255, 0.06));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.45));
+  box-shadow: 0 0 18px -8px var(--g2, rgba(155, 95, 255, 0.4));
+  padding: 14px 16px;
+}
+
+.coach-lesson-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #e9ddff;
+  margin-bottom: 7px;
+}
+
+.coach-lesson-text {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #c8d3e7;
+  margin-bottom: 9px;
+}
+
+.coach-lesson-points {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 9px;
+}
+
+.coach-lesson-point {
+  display: flex;
+  gap: 9px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #aebad0;
+}
+
+.coach-lesson-arrow {
+  color: var(--n2, #9b5fff);
+  flex: none;
+}
+
+/* Drill footer (yellow clock) */
+
+.coach-drill {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: rgba(255, 211, 25, 0.06);
+  border: 1px solid rgba(255, 211, 25, 0.3);
+  font-size: 11px;
+  line-height: 1.55;
+  color: #ffe680;
+}
+
+.coach-drill-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* Analysis card (§5.4 renderer — data lands in M13) */
+
+.coach-analysis-card {
+  border-radius: 14px;
+  background: rgba(9, 11, 20, 0.5);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.45));
+  box-shadow: 0 0 18px -8px var(--g1, rgba(0, 240, 255, 0.4));
+  padding: 14px 16px;
+}
+
+.coach-analysis-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #eef2fb;
+  margin-bottom: 10px;
+}
+
+.coach-analysis-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.coach-badge {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.coach-badge--computed {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+}
+
+.coach-badge--read {
+  color: var(--n2, #9b5fff);
+  background: var(--gs2, rgba(155, 95, 255, 0.08));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+}
+
+.coach-badge-note {
+  font-size: 9.5px;
+  color: #7686a2;
+}
+
+.coach-analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 16px;
+  margin-bottom: 12px;
+}
+
+.coach-analysis-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3.5px 0;
+  font-size: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.coach-analysis-stat-k {
+  color: #8e9db8;
+}
+
+.coach-analysis-stat-v {
+  color: #dbe4f5;
+  text-align: right;
+}
+
+.coach-analysis-reads {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 11px;
+}
+
+.coach-analysis-read {
+  display: flex;
+  gap: 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.coach-analysis-read-k {
+  color: var(--n2, #9b5fff);
+  font-weight: 600;
+  width: 64px;
+  flex: none;
+}
+
+.coach-analysis-read-v {
+  color: #c3cee2;
+}
+
+.coach-analysis-takeaway {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c8d3e7;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 9px;
+}
+
+/* Typing dots — prototype lnPulse 1s ease-in-out, .2s/.4s stagger */
+
+.coach-typing {
+  padding: 11px 15px;
+  border-radius: 14px 14px 14px 4px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.coach-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--n2, #9b5fff);
+  animation: lnPulse 1s ease-in-out infinite;
+}
+
+.coach-typing-dot--d2 {
+  animation-delay: 0.2s;
+}
+
+.coach-typing-dot--d3 {
+  animation-delay: 0.4s;
+}
+
+.coach-error {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #ff9db4;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: rgba(255, 95, 143, 0.06);
+  border: 1px solid rgba(255, 95, 143, 0.3);
+}
+
+/* ── Chips row + input ── */
+
+.coach-composer {
+  padding: 0 24px 14px;
+}
+
+.coach-composer-inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.coach-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 9px;
+}
+
+.coach-chip {
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
+  color: #aebad0;
+  cursor: pointer;
+  background: transparent;
+  font-family: inherit;
+}
+
+.coach-chip:hover {
+  color: #fff;
+  box-shadow: 0 0 12px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.coach-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.coach-input {
+  flex: 1;
+  height: 58px;
+  resize: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
+  border-radius: 13px;
+  color: #dbe4f5;
+  font-size: 12.5px;
+  padding: 10px 12px;
+  line-height: 1.55;
+  font-family: inherit;
+}
+
+.coach-input:focus {
+  outline: none;
+  border-color: var(--b2, rgba(155, 95, 255, 0.55));
+  box-shadow: 0 0 16px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.coach-send {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  flex: none;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 18px -3px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.coach-send:hover {
+  transform: scale(1.06);
+}
+
+.coach-footer {
+  font-size: 9.5px;
+  color: #7686a2;
+  margin-top: 7px;
+  text-align: center;
+}
+
+/* ── Right rail: SUGGESTIONS ── */
+
+.coach-rail {
+  width: 266px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.coach-rail-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #7686a2;
+  margin-bottom: 3px;
+}
+
+.coach-rail-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  color: #aebad0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  margin-bottom: 5px;
+}
+
+.coach-rail-group:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.coach-rail-chev {
+  flex: none;
+  display: flex;
+  transition: transform 0.18s ease;
+  opacity: 0.6;
+}
+
+.coach-rail-chev--open {
+  transform: rotate(90deg);
+}
+
+.coach-rail-group-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.coach-rail-group-count {
+  font-size: 10px;
+  color: #7686a2;
+}
+
+.coach-rail-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px 8px 24px;
+  border-radius: 9px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: transparent;
+  font-family: inherit;
+  margin-bottom: 5px;
+}
+
+.coach-rail-item:hover {
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.coach-rail-item-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6ecf9;
+}
+
+.coach-rail-item-detail {
+  display: block;
+  font-size: 10px;
+  color: #8e9db8;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.coach-rail-hint {
+  font-size: 9px;
+  color: #586a88;
+  line-height: 1.5;
+  padding: 4px 2px 0;
+}

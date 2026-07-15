@@ -427,6 +427,20 @@ describe('agent session files', () => {
     fs.writeFileSync(path.join(tmp, 'Sessions', 'note.md'), '---\ntitle: Note\n---\nJust a note');
     expect(listSessions(tmp)).toHaveLength(0);
   });
+
+  // M12: the Coach encodes lesson/analysis cards as an HTML-comment marker
+  // line + JSON payload inside an agent turn. The marker must survive the
+  // session-file round-trip byte-exact (it is not a turn fence).
+  it('M12: coach card marker turns round-trip losslessly', () => {
+    const cardText = '<!-- mythos:coach-card v1 -->\n{"kind":"lesson","title":"Lesson — grounding","text":"Anchor place fast.","points":["one","two"],"drill":"Drill: 5 minutes."}';
+    const { session } = createSession(tmp, {
+      agent: 'coach',
+      turns: [{ role: 'agent', at: '2026-01-01T00:00:00.000Z', text: cardText }],
+    });
+    const read = readSession(tmp, session.id);
+    expect(read?.turns).toHaveLength(1);
+    expect(read?.turns[0].text).toBe(cardText);
+  });
 });
 
 // ─── settings.json + timelines.json ─────────────────────────────────────────

@@ -35,7 +35,7 @@ export const AGENT_ACTIONS: readonly AgentActionDef[] = [
 /** Post-action toast copy (prototype actEdit/actStory toasts; ignore is silent). */
 export const AGENT_ACTION_SUCCESS_TOAST: Record<AgentAction, string | null> = {
   match_archive: 'Note updated to match the story',
-  suggest_story_change: 'Suggested edit drafted — see Writing Assistant',
+  suggest_story_change: 'Suggested edit drafted — see Writing Coach',
   ignore: null,
 };
 
