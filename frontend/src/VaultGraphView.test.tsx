@@ -5,7 +5,10 @@ import VaultGraphView, {
   categoryColor,
   computeNodeRadius,
   computeDepthVisible,
+  deriveNodeBlurb,
+  FALLBACK_BLURB,
   hexToRgba,
+  PHYSICS_SLIDER_DEFS,
   relayoutSim,
   stepSim,
   SIM_DEFAULTS,
@@ -105,12 +108,13 @@ describe('VaultGraphView', () => {
 
     render(<VaultGraphView initialVaultScope="both" onOpenNote={onOpenNote} onOpenScene={onOpenScene} />);
 
-    const sceneNode = await screen.findByRole('button', { name: /open scene Scene One/i });
+    const sceneNode = await screen.findByRole('button', { name: /select scene Scene One/i });
     expect(within(sceneNode).getByTestId('vault-graph-node-circle')).toHaveClass('vgv-node-circle--scenes');
     expect(screen.getByRole('button', { name: /scenes filter/i })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('vault-edge-characters/ava.md__story:story-1:chapter-1:scene-1')).toHaveClass('vgv-graph-edge--cross-vault');
 
-    fireEvent.click(sceneNode);
+    // M26: double-click opens the scene (single click only selects)
+    fireEvent.doubleClick(sceneNode);
 
     expect(onOpenScene).toHaveBeenCalledWith('story-1', 'chapter-1', 'scene-1');
     expect(onOpenNote).not.toHaveBeenCalled();
@@ -119,7 +123,7 @@ describe('VaultGraphView', () => {
   it('renders circular category-token nodes with radius based on degree', async () => {
     render(<VaultGraphView />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     const circle = within(avaNode).getByTestId('vault-graph-node-circle');
 
     expect(circle).toHaveAttribute('r', String(computeNodeRadius(2)));
@@ -130,7 +134,7 @@ describe('VaultGraphView', () => {
   it('dims non-neighbour nodes and unrelated edges on hover', async () => {
     render(<VaultGraphView />);
 
-    const citadelNode = await screen.findByRole('button', { name: /open note Citadel/i });
+    const citadelNode = await screen.findByRole('button', { name: /select note Citadel/i });
     fireEvent.mouseEnter(citadelNode);
 
     expect(screen.getByTestId('vault-node-characters/ava.md')).not.toHaveClass('vgv-graph-node--dimmed');
@@ -141,15 +145,19 @@ describe('VaultGraphView', () => {
     expect(screen.getByTestId('vault-node-items/orb.md')).not.toHaveClass('vgv-graph-node--dimmed');
   });
 
-  it('selects and opens a node on click, then deselects on empty canvas click', async () => {
+  it('M26: click selects without opening, double-click opens, canvas click deselects', async () => {
     const onOpenNote = vi.fn();
     render(<VaultGraphView onOpenNote={onOpenNote} />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     fireEvent.click(avaNode);
 
-    expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
+    // Prototype gNodesR pick (6182): click only selects and shows the card.
+    expect(onOpenNote).not.toHaveBeenCalled();
     expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--selected');
+
+    fireEvent.doubleClick(avaNode);
+    expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
 
     fireEvent.click(screen.getByTestId('vault-graph-canvas'));
     expect(screen.getByTestId('vault-node-characters/ava.md')).not.toHaveClass('vgv-graph-node--selected');
@@ -161,7 +169,7 @@ describe('VaultGraphView', () => {
     await screen.findByTestId('vault-graph-view');
     expect(screen.getByRole('button', { name: /zoom out/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /zoom in/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /reset graph view/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /fit graph view/i })).toBeInTheDocument();
   });
 
   it('treats the graph canvas as the single keyboard entry point and cycles nodes by degree then label', async () => {
@@ -180,6 +188,11 @@ describe('VaultGraphView', () => {
     fireEvent.keyDown(canvas, { key: 'Tab', shiftKey: true });
     expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--keyboard-focused');
 
+    // M26: first Enter selects (shows the node card), second Enter opens.
+    fireEvent.keyDown(canvas, { key: 'Enter' });
+    expect(onOpenNote).not.toHaveBeenCalled();
+    expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--selected');
+
     fireEvent.keyDown(canvas, { key: 'Enter' });
     expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
   });
@@ -196,7 +209,7 @@ describe('VaultGraphView', () => {
     const canvas = screen.getByRole('application', { name: /Notes Vault graph/i });
     fireEvent.keyDown(canvas, { key: 'Tab' });
 
-    expect(liveRegion).toHaveTextContent('Ava. characters note. 2 connections. Press Enter to open.');
+    expect(liveRegion).toHaveTextContent('Ava. characters note. 2 connections. Press Enter to select; press Enter again to open.');
   });
 
   it('shows an accessible legend popover when multiple categories are visible', async () => {
@@ -342,14 +355,14 @@ describe('VaultGraphView', () => {
   it('AC-GV-06: toggling a category chip off hides nodes in that category', async () => {
     render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
+    await screen.findByRole('button', { name: /select note Ava/i });
 
     const chipsGroup = screen.getByRole('group', { name: /category filters/i });
     const characterChip = within(chipsGroup).getByRole('button', { name: /characters filter/i });
 
     await act(async () => { fireEvent.click(characterChip); });
 
-    expect(screen.queryByRole('button', { name: /open note Ava/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /select note Ava/i })).not.toBeInTheDocument();
     expect(characterChip).toHaveAttribute('aria-pressed', 'false');
     expect(characterChip).toHaveClass('vgv-chip--inactive');
   });
@@ -357,16 +370,16 @@ describe('VaultGraphView', () => {
   it('AC-GV-06: re-enabling a chip restores nodes', async () => {
     render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
+    await screen.findByRole('button', { name: /select note Ava/i });
 
     const chipsGroup = screen.getByRole('group', { name: /category filters/i });
     const characterChip = within(chipsGroup).getByRole('button', { name: /characters filter/i });
 
     await act(async () => { fireEvent.click(characterChip); }); // disable
-    expect(screen.queryByRole('button', { name: /open note Ava/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /select note Ava/i })).not.toBeInTheDocument();
 
     await act(async () => { fireEvent.click(characterChip); }); // re-enable
-    expect(await screen.findByRole('button', { name: /open note Ava/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /select note Ava/i })).toBeInTheDocument();
   });
 
   // ─── AC-GV-07: Depth slider ───────────────────────────────────────────────────
@@ -385,15 +398,15 @@ describe('VaultGraphView', () => {
   it('AC-GV-07: with node selected and depth=1, only direct neighbours visible', async () => {
     render(<VaultGraphView />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     await act(async () => { fireEvent.click(avaNode); });
 
     const slider = screen.getByLabelText(/depth limit/i);
     await act(async () => { fireEvent.change(slider, { target: { value: '1' } }); });
 
-    expect(screen.getByRole('button', { name: /open note Ava/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /open note Citadel/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /open note Orb/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /select note Ava/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /select note Citadel/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /select note Orb/i })).toBeInTheDocument();
   });
 
   // ─── AC-GV-08: Search highlight / dim ────────────────────────────────────────
@@ -401,7 +414,7 @@ describe('VaultGraphView', () => {
   it('AC-GV-08: search highlights matching nodes and dims non-matching', async () => {
     render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
+    await screen.findByRole('button', { name: /select note Ava/i });
 
     const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
     await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
@@ -414,7 +427,7 @@ describe('VaultGraphView', () => {
   it('AC-GV-08: clearing search restores nodes to rest state', async () => {
     render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
+    await screen.findByRole('button', { name: /select note Ava/i });
 
     const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
     await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
@@ -428,7 +441,7 @@ describe('VaultGraphView', () => {
   it('AC-GV-08: Escape key clears search query', async () => {
     render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
+    await screen.findByRole('button', { name: /select note Ava/i });
 
     const searchInput = screen.getByRole('searchbox', { name: /search nodes/i });
     await act(async () => { fireEvent.change(searchInput, { target: { value: 'Ava' } }); });
@@ -684,7 +697,7 @@ describe('VaultGraphView M21 vault graph v2', () => {
   it('renders a star-glow disc per node from the category gradient', async () => {
     render(<VaultGraphView />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     const star = within(avaNode).getByTestId('vault-graph-star');
 
     expect(star).toHaveClass('vgv-star-disc');
@@ -699,9 +712,8 @@ describe('VaultGraphView M21 vault graph v2', () => {
   it('recoloring a category updates its star gradient stops', async () => {
     const { container } = render(<VaultGraphView />);
 
-    await screen.findByRole('button', { name: /open note Ava/i });
-    fireEvent.click(screen.getByTestId('vault-graph-filters-toggle'));
-
+    await screen.findByRole('button', { name: /select note Ava/i });
+    // M26: the recolor wheel lives in the always-mounted left panel now.
     const input = screen.getByLabelText('Recolor Characters');
     await act(async () => { fireEvent.change(input, { target: { value: '#112233' } }); });
 
@@ -714,7 +726,6 @@ describe('VaultGraphView M21 vault graph v2', () => {
     render(<VaultGraphView />);
 
     await screen.findByTestId('vault-graph-view');
-    fireEvent.click(screen.getByTestId('vault-graph-filters-toggle'));
 
     expect((screen.getByLabelText('Note ↔ note links color') as HTMLInputElement).value).toBe('#9fc0e8');
     expect((screen.getByLabelText('Story ↔ note links color') as HTMLInputElement).value).toBe('#ffd319');
@@ -723,7 +734,7 @@ describe('VaultGraphView M21 vault graph v2', () => {
   it('dragging a node pins it at the drop position; Re-layout clears the pin', async () => {
     render(<VaultGraphView />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     const avaGroup = screen.getByTestId('vault-node-characters/ava.md');
 
     await act(async () => {
@@ -744,37 +755,41 @@ describe('VaultGraphView M21 vault graph v2', () => {
     expect(avaGroup).not.toHaveClass('vgv-graph-node--pinned');
   });
 
-  it('a drag does not open the note, a plain click still does', async () => {
+  it('a drag does not open the note, a double-click still does', async () => {
     const onOpenNote = vi.fn();
     render(<VaultGraphView onOpenNote={onOpenNote} />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
 
     await act(async () => {
       fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
       fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
       fireEvent.mouseUp(window);
       fireEvent.click(avaNode); // browser fires a click right after mouseup
+      fireEvent.doubleClick(avaNode); // a trailing dblclick is swallowed too
     });
     expect(onOpenNote).not.toHaveBeenCalled();
 
-    // After the trailing-click window closes, a plain click opens the note
+    // After the trailing-click window closes, a double-click opens the note
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    await act(async () => { fireEvent.click(avaNode); });
+    await act(async () => { fireEvent.doubleClick(avaNode); });
     expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
   });
 
-  it('selecting a node opens the inspector with title, category, and clickable connections', async () => {
+  it('selecting a node opens the inspector with title, category, blurb, and clickable connections', async () => {
     const onOpenNote = vi.fn();
     render(<VaultGraphView onOpenNote={onOpenNote} />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     fireEvent.click(avaNode);
 
     const inspector = screen.getByTestId('vault-graph-inspector');
     expect(within(inspector).getByTestId('vault-graph-inspector-title')).toHaveTextContent('Ava');
     expect(within(inspector).getByText('Character')).toBeInTheDocument();
-    expect(onOpenNote).toHaveBeenCalledTimes(1);
+    // M26: click selects only — no note open until the card button/dblclick
+    expect(onOpenNote).not.toHaveBeenCalled();
+    // M26: blurb falls back to the prototype copy when no note IPC is mocked
+    expect(within(inspector).getByTestId('vault-graph-inspector-blurb')).toHaveTextContent(FALLBACK_BLURB);
 
     const connections = within(inspector).getAllByTestId(/^vault-graph-inspector-conn-/);
     expect(connections).toHaveLength(2);
@@ -782,7 +797,7 @@ describe('VaultGraphView M21 vault graph v2', () => {
     // Connection rows re-select without opening (prototype gSel.conns pick)
     fireEvent.click(within(inspector).getByTestId('vault-graph-inspector-conn-locations/citadel.md'));
     expect(screen.getByTestId('vault-graph-inspector-title')).toHaveTextContent('Citadel');
-    expect(onOpenNote).toHaveBeenCalledTimes(1);
+    expect(onOpenNote).not.toHaveBeenCalled();
 
     // The explicit open button opens the selected node
     fireEvent.click(screen.getByTestId('vault-graph-inspector-open'));
@@ -792,7 +807,7 @@ describe('VaultGraphView M21 vault graph v2', () => {
   it('closes the inspector when the canvas is clicked', async () => {
     render(<VaultGraphView />);
 
-    const avaNode = await screen.findByRole('button', { name: /open note Ava/i });
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
     fireEvent.click(avaNode);
     expect(screen.getByTestId('vault-graph-inspector')).toBeInTheDocument();
 
@@ -808,18 +823,23 @@ describe('VaultGraphView M21 vault graph v2', () => {
 
     render(<VaultGraphView initialVaultScope="both" />);
 
-    await screen.findByRole('button', { name: /open scene Scene One/i });
-    const toggle = screen.getByRole('switch', { name: /show story cluster/i });
+    await screen.findByRole('button', { name: /select scene Scene One/i });
+    // M26: the toolbar switch and the left-panel gold card drive one state.
+    const toggle = screen.getByTestId('vault-graph-story-toggle');
+    const cardToggle = screen.getByTestId('vault-graph-story-card-toggle');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(cardToggle).toHaveAttribute('aria-checked', 'true');
 
     await act(async () => { fireEvent.click(toggle); });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByRole('button', { name: /open scene Scene One/i })).not.toBeInTheDocument();
+    expect(cardToggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('button', { name: /select scene Scene One/i })).not.toBeInTheDocument();
     // The switch mirrors the Scenes chip (single visibility source)
     expect(screen.getByRole('button', { name: /scenes filter/i })).toHaveAttribute('aria-pressed', 'false');
 
-    await act(async () => { fireEvent.click(toggle); });
-    expect(await screen.findByRole('button', { name: /open scene Scene One/i })).toBeInTheDocument();
+    await act(async () => { fireEvent.click(cardToggle); });
+    expect(await screen.findByRole('button', { name: /select scene Scene One/i })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
   it('zoom buttons use multiplicative prototype steps and Fit resets to 100%', async () => {
@@ -832,8 +852,226 @@ describe('VaultGraphView M21 vault graph v2', () => {
     fireEvent.click(screen.getByRole('button', { name: /zoom in/i }));
     expect(pct).toHaveTextContent('118%');
 
-    fireEvent.click(screen.getByRole('button', { name: /reset graph view/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fit graph view/i }));
     expect(pct).toHaveTextContent('100%');
+  });
+
+  it('M26: Fit resets the viewport but keeps the selection and its node card', async () => {
+    render(<VaultGraphView />);
+
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
+    fireEvent.click(avaNode);
+    expect(screen.getByTestId('vault-graph-inspector')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /zoom in/i }));
+    fireEvent.click(screen.getByTestId('vault-graph-fit'));
+
+    expect(screen.getByTestId('vault-graph-zoom-pct')).toHaveTextContent('100%');
+    // Prototype gZoomReset (7165) only touches zoom/pan — the card stays.
+    expect(screen.getByTestId('vault-graph-inspector')).toBeInTheDocument();
+    expect(screen.getByTestId('vault-node-characters/ava.md')).toHaveClass('vgv-graph-node--selected');
+  });
+});
+
+// ─── M26: left panel, physics sliders, node card, persistence ────────────────
+
+describe('VaultGraphView M26 vault graph refinements', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    (window as any).api = {
+      vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MOCK_DATA.nodes }),
+      vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MOCK_DATA.edges }),
+    };
+  });
+
+  it('renders the left panel with category rows: eye toggle, recolor wheel, count', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const panel = screen.getByTestId('vault-graph-left-panel');
+
+    // One row per category chip, each with an eye toggle + wheel + count
+    const eye = within(panel).getByTestId('vault-graph-eye-characters');
+    expect(eye).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByLabelText('Recolor Characters')).toBeInTheDocument();
+    expect(within(panel).getByTestId('vault-graph-count-characters')).toHaveTextContent('1');
+    expect(within(panel).getByTestId('vault-graph-count-locations')).toHaveTextContent('1');
+    expect(within(panel).getByTestId('vault-graph-count-items')).toHaveTextContent('1');
+    expect(within(panel).getByTestId('vault-graph-count-scenes')).toHaveTextContent('0');
+
+    // Gold story-cluster card + forces sliders + hint are all present
+    expect(within(panel).getByTestId('vault-graph-story-card')).toBeInTheDocument();
+    for (const { key } of PHYSICS_SLIDER_DEFS) {
+      expect(within(panel).getByTestId(`vault-graph-physics-${key}`)).toBeInTheDocument();
+    }
+  });
+
+  it('eye toggle hides the category from the sim but keeps its count', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /select note Ava/i });
+    const eye = screen.getByTestId('vault-graph-eye-characters');
+
+    await act(async () => { fireEvent.click(eye); });
+
+    expect(eye).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('button', { name: /select note Ava/i })).not.toBeInTheDocument();
+    // Counts describe the vault, not the current visibility
+    expect(screen.getByTestId('vault-graph-count-characters')).toHaveTextContent('1');
+    // The bottom chip strip mirrors the same state
+    expect(screen.getByRole('button', { name: /characters filter/i })).toHaveAttribute('aria-pressed', 'false');
+
+    await act(async () => { fireEvent.click(eye); });
+    expect(await screen.findByRole('button', { name: /select note Ava/i })).toBeInTheDocument();
+  });
+
+  it('physics sliders show prototype defaults and re-settle the sim live', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /select note Ava/i });
+
+    const slider = screen.getByTestId('vault-graph-physics-linkDistance') as HTMLInputElement;
+    expect(slider.value).toBe(String(SIM_DEFAULTS.linkDistance));
+    expect(slider.min).toBe('40');
+    expect(slider.max).toBe('240');
+    expect(screen.getByTestId('vault-graph-physics-linkDistance-value')).toHaveTextContent('120');
+
+    const before = screen.getByTestId('vault-node-characters/ava.md').getAttribute('transform');
+    await act(async () => { fireEvent.change(slider, { target: { value: '240' } }); });
+
+    expect(screen.getByTestId('vault-graph-physics-linkDistance-value')).toHaveTextContent('240');
+    // The sim re-settles under the new parameters — positions move.
+    const after = screen.getByTestId('vault-node-characters/ava.md').getAttribute('transform');
+    expect(after).not.toBe(before);
+  });
+
+  it('clamps out-of-range physics values to the prototype slider ranges', async () => {
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const slider = screen.getByTestId('vault-graph-physics-repelForce') as HTMLInputElement;
+
+    await act(async () => { fireEvent.change(slider, { target: { value: '9999' } }); });
+    expect(screen.getByTestId('vault-graph-physics-repelForce-value')).toHaveTextContent('30');
+  });
+
+  it('persists recolors, hidden categories, and physics across remounts', async () => {
+    const { unmount } = render(<VaultGraphView />);
+
+    await screen.findByRole('button', { name: /select note Ava/i });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Recolor Characters'), { target: { value: '#112233' } });
+      fireEvent.change(screen.getByLabelText('Note ↔ note links color'), { target: { value: '#445566' } });
+      fireEvent.click(screen.getByTestId('vault-graph-eye-items'));
+      fireEvent.change(screen.getByTestId('vault-graph-physics-centerForce'), { target: { value: '12' } });
+    });
+    unmount();
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((screen.getByLabelText('Recolor Characters') as HTMLInputElement).value).toBe('#112233');
+    expect((screen.getByLabelText('Note ↔ note links color') as HTMLInputElement).value).toBe('#445566');
+    expect(screen.getByTestId('vault-graph-eye-items')).toHaveAttribute('aria-pressed', 'false');
+    expect((screen.getByTestId('vault-graph-physics-centerForce') as HTMLInputElement).value).toBe('12');
+    expect(screen.queryByRole('button', { name: /select note Orb/i })).not.toBeInTheDocument();
+  });
+
+  it('ignores corrupted stored view state and falls back to defaults', async () => {
+    window.localStorage.setItem('mythos:vaultGraph:viewState', '{not json');
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+
+    expect((screen.getByLabelText('Recolor Characters') as HTMLInputElement).value).toBe('#00f0ff');
+    expect((screen.getByTestId('vault-graph-physics-linkDistance') as HTMLInputElement).value).toBe('120');
+  });
+
+  it('the Filters toolbar button collapses the left panel and persists it', async () => {
+    const { unmount } = render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const toggle = screen.getByTestId('vault-graph-panel-toggle');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await act(async () => { fireEvent.click(toggle); });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('vault-graph-left-panel')).not.toBeInTheDocument();
+    unmount();
+
+    render(<VaultGraphView />);
+    await screen.findByTestId('vault-graph-view');
+    expect(screen.getByTestId('vault-graph-panel-toggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('vault-graph-left-panel')).not.toBeInTheDocument();
+  });
+
+  it('node card shows the first prose line of the note as its blurb', async () => {
+    (window as any).api.readNotesVault = vi.fn().mockResolvedValue({
+      content: '---\ntitle: Ava\n---\n# Heading\n\nAva is the **reluctant heir** of [[Veynn|the city]].\n',
+      path: 'Characters/Ava.md',
+    });
+
+    render(<VaultGraphView />);
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
+    fireEvent.click(avaNode);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('vault-graph-inspector-blurb'))
+        .toHaveTextContent('Ava is the reluctant heir of the city.');
+    });
+    expect((window as any).api.readNotesVault).toHaveBeenCalledWith('Characters/Ava.md');
+  });
+
+  it('node card falls back to the prototype blurb when the note has no prose', async () => {
+    (window as any).api.readNotesVault = vi.fn().mockResolvedValue({
+      content: '---\ntitle: Ava\n---\n# Only headings here\n',
+      path: 'Characters/Ava.md',
+    });
+
+    render(<VaultGraphView />);
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
+    fireEvent.click(avaNode);
+
+    await waitFor(() => {
+      expect((window as any).api.readNotesVault).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId('vault-graph-inspector-blurb')).toHaveTextContent(FALLBACK_BLURB);
+  });
+});
+
+describe('deriveNodeBlurb (M26)', () => {
+  it('skips frontmatter, headings, lists, quotes, and fences', () => {
+    const content = [
+      '---',
+      'title: Test',
+      'tags: [a, b]',
+      '---',
+      '# Heading',
+      '> quoted line',
+      '- list item',
+      '```',
+      'code line',
+      '```',
+      'First real prose line.',
+    ].join('\n');
+    expect(deriveNodeBlurb(content)).toBe('First real prose line.');
+  });
+
+  it('unwraps wiki links (aliases win) and strips inline markup', () => {
+    expect(deriveNodeBlurb('The [[Broker]] fears *daylight* and `salt`.')).toBe('The Broker fears daylight and salt.');
+    expect(deriveNodeBlurb('[[Veynn|The last city]] still stands.')).toBe('The last city still stands.');
+  });
+
+  it('clamps to 180 chars with an ellipsis', () => {
+    const long = 'a'.repeat(400);
+    const blurb = deriveNodeBlurb(long);
+    expect(blurb).toHaveLength(180);
+    expect(blurb!.endsWith('…')).toBe(true);
+  });
+
+  it('returns null for empty or prose-free content', () => {
+    expect(deriveNodeBlurb('')).toBeNull();
+    expect(deriveNodeBlurb('# Heading only\n\n- list\n')).toBeNull();
   });
 });
 
