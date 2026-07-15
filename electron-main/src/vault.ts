@@ -18,6 +18,7 @@ import type {
   TimelineSettings,
 } from './ipc.js';
 import { writeManifestAtomic, SCHEMA_VERSION } from './manifest.js';
+import { blocksToMarkdownBody, unwrapBlockSegment } from './sceneBody.js';
 import { safeVaultJoin } from './vault/safeVaultJoin.js';
 
 export {
@@ -638,13 +639,284 @@ export function readEntityFile(vaultRoot: string, relativePath: string): EntityF
 }
 
 // ─── Manifest helpers ───
+//
+// SKY-6596 / GH #893: manifest.json is structure-only on disk (see
+// stripEmbeddedProseForPersist in manifest.ts) — every scene's prose lives in
+// its `.md` file. readManifest rehydrates `blocks[].content` from disk on
+// every call so the in-memory/IPC manifest shape is unchanged for every
+// existing consumer; only the on-disk bytes shrank. Hydration is block-aware
+// (PR #932 review): when the stripped manifest carries per-block boundary
+// metadata (`bodySegLen`, written by stripSceneProse in manifest.ts) that is
+// consistent with the `.md` body, each block's serialized segment is sliced
+// back out and its type marker inverted (see sceneBody.ts), so multi-block
+// scenes round-trip with content, types, ids, and order intact. On any
+// inconsistency — external edit, legacy manifest without metadata — the
+// whole body goes into the first prose block (the pre-#932 behavior) with a
+// console.warn naming the scene; the body is never lost and nothing throws.
+//
+// A per-process cache keyed by the scene's resolved absolute file path (not
+// scene id — ids are only unique *within* a vault, and a running app session
+// can open more than one vault) + the `.md` file's mtime/size avoids
+// re-reading unchanged scenes across the many `readManifest` calls in a
+// session.
+
+interface SceneProseCacheEntry {
+  mtimeMs: number;
+  size: number;
+  content: string;
+}
+
+const sceneProseHydrationCache = new Map<string, SceneProseCacheEntry>();
+
+interface HydratedSceneBody {
+  /** Raw markdown body of the scene's `.md` ('' when missing/unreadable). */
+  body: string;
+  /** Identity of the on-disk file this body came from (path@mtime:size), or
+   * null when no readable file exists. Used to de-duplicate fallback warns. */
+  fileKey: string | null;
+}
+
+function hydrateSceneBody(vaultRoot: string, scene: SceneEntry): HydratedSceneBody {
+  let absPath: string;
+  let stat: fs.Stats;
+  try {
+    absPath = safePath(vaultRoot, scene.path);
+    stat = fs.statSync(absPath);
+  } catch {
+    // No `.md` file on disk — an orphaned manifest entry. Nothing to hydrate.
+    return { body: '', fileKey: null };
+  }
+  const fileKey = `${absPath}@${stat.mtimeMs}:${stat.size}`;
+  const cached = sceneProseHydrationCache.get(absPath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    return { body: cached.content, fileKey };
+  }
+  let content = '';
+  try {
+    content = readSceneFile(vaultRoot, scene.path).prose;
+  } catch {
+    // Unreadable/corrupt `.md` — treat as empty, same as every other
+    // `.md`-sourced read path in this codebase (export, search, SCENE_GET).
+  }
+  sceneProseHydrationCache.set(absPath, { mtimeMs: stat.mtimeMs, size: stat.size, content });
+  return { body: content, fileKey };
+}
+
+/** Set (or create) a scene's sole prose block content, in place. */
+function setSceneProse(scene: SceneEntry, content: string): void {
+  const proseBlock = scene.blocks?.find((b) => b.type === 'prose');
+  if (proseBlock) {
+    proseBlock.content = content;
+  } else {
+    scene.blocks = [
+      ...(scene.blocks ?? []),
+      { id: crypto.randomUUID(), type: 'prose', order: 0, content, updatedAt: scene.updatedAt },
+    ];
+  }
+}
+
+/** Whole-body-into-the-prose-block hydration is exact (not a fallback) when
+ * there is no block structure beyond a single prose block to restore. */
+function hasTrivialBlockStructure(blocks: BlockEntry[] | undefined): boolean {
+  if (!blocks || blocks.length === 0) return true;
+  return blocks.length === 1 && blocks[0].type === 'prose';
+}
+
+// One warn per scene per on-disk `.md` version — readManifest runs constantly
+// (dozens of calls per user action), so an unconditional warn would flood the
+// log for a scene that stays in the fallback state.
+const warnedBlockHydrationFallbacks = new Set<string>();
+
+function warnBlockHydrationFallback(scene: SceneEntry, fileKey: string | null, reason: string): void {
+  const key = `${scene.id}|${fileKey ?? 'missing'}`;
+  if (warnedBlockHydrationFallbacks.has(key)) return;
+  warnedBlockHydrationFallbacks.add(key);
+  console.warn(
+    `[vault] scene "${scene.title}" (id ${scene.id}, ${scene.path}): ${reason}; ` +
+      'hydrating the whole .md body into the first prose block. No text is lost, ' +
+      'but per-block structure is unavailable for this scene until its next in-app save.'
+  );
+}
+
+/**
+ * Block-aware hydration (PR #932 review). Restores every block's content from
+ * the scene's `.md` body using the boundary metadata stripSceneProse recorded
+ * at write time; falls back to whole-body-in-first-prose-block (with a warn)
+ * whenever that metadata is absent or inconsistent with the file. Consumes
+ * the one-shot `bodySegLen` metadata (call once per scene object — see
+ * readManifest's identity de-duplication). Never throws; never drops the body.
+ */
+function hydrateSceneBlocks(vaultRoot: string, scene: SceneEntry): void {
+  const { body, fileKey } = hydrateSceneBody(vaultRoot, scene);
+  const blocks = scene.blocks ?? [];
+  const clearMeta = () => {
+    for (const b of blocks) delete b.bodySegLen;
+  };
+
+  if (hasTrivialBlockStructure(blocks)) {
+    // 0 blocks or a single prose block — whole-body hydration IS exact.
+    clearMeta();
+    setSceneProse(scene, body);
+    return;
+  }
+
+  const metaBlocks = blocks.filter((b) => b.bodySegLen !== undefined);
+  const metaValid =
+    metaBlocks.length > 0 &&
+    metaBlocks.every((b) => Number.isInteger(b.bodySegLen) && (b.bodySegLen as number) > 0);
+
+  if (metaValid) {
+    // Reconstruct the layout: segment-bearing blocks in serialization order
+    // (stable sort by `order`, matching blocksToMarkdownBody), joined by the
+    // fixed two-character blank-line separator.
+    const ordered = [...blocks].sort((a, b) => a.order - b.order);
+    const withSeg = ordered.filter((b) => b.bodySegLen !== undefined);
+    let expectedTotal = 2 * (withSeg.length - 1);
+    for (const b of withSeg) expectedTotal += b.bodySegLen as number;
+
+    if (expectedTotal === body.length) {
+      // Slice each segment, verify the separators and type markers, and only
+      // commit if the WHOLE scene is consistent — a partial restore would
+      // silently drop the unverified remainder.
+      const contents: string[] = [];
+      let offset = 0;
+      let consistent = true;
+      for (let k = 0; k < withSeg.length; k++) {
+        if (k > 0) {
+          if (body.slice(offset, offset + 2) !== '\n\n') {
+            consistent = false;
+            break;
+          }
+          offset += 2;
+        }
+        const len = withSeg[k].bodySegLen as number;
+        const content = unwrapBlockSegment(withSeg[k].type, body.slice(offset, offset + len));
+        if (content === null) {
+          consistent = false;
+          break;
+        }
+        contents.push(content);
+        offset += len;
+      }
+      if (consistent) {
+        for (let k = 0; k < withSeg.length; k++) withSeg[k].content = contents[k];
+        for (const b of blocks) if (b.bodySegLen === undefined) b.content = '';
+        clearMeta();
+        return;
+      }
+    }
+  }
+
+  // Fallback: whole body into the first prose block (pre-#932 behavior).
+  clearMeta();
+  if (body === '') {
+    // Missing or empty `.md` — nothing to place. Not an external-edit signal
+    // (orphaned manifest entries land here), so no warn.
+    setSceneProse(scene, body);
+    return;
+  }
+  warnBlockHydrationFallback(
+    scene,
+    fileKey,
+    metaBlocks.length === 0
+      ? 'structure-only manifest has no block boundary metadata for this multi-block scene (legacy or hand-edited manifest)'
+      : 'block boundary metadata does not match the scene .md body (externally edited?)'
+  );
+  setSceneProse(scene, body);
+}
+
+/**
+ * Visit every scene reachable from a manifest — both the nested
+ * `stories[].chapters[].scenes[]` structure and the flat legacy `scenes[]` /
+ * `chapters[].scenes[]` lists kept for backward compat. Some write paths
+ * share object references between the two; others don't. Callers whose `fn`
+ * is not idempotent per scene OBJECT (block-aware hydration consumes the
+ * one-shot `bodySegLen` metadata) must de-duplicate by object identity.
+ */
+function forEachManifestScene(manifest: Manifest, fn: (scene: SceneEntry) => void): void {
+  for (const story of manifest.stories ?? []) {
+    for (const chapter of story.chapters ?? []) {
+      for (const scene of chapter.scenes ?? []) fn(scene);
+    }
+  }
+  for (const chapter of manifest.chapters ?? []) {
+    for (const scene of chapter.scenes ?? []) fn(scene);
+  }
+  for (const scene of manifest.scenes ?? []) fn(scene);
+}
 
 export function readManifest(manifestPath: string): Manifest {
-  return JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+  const manifestDir = path.dirname(manifestPath);
+  // Beta 4 M9 (found by the comments vault-copy round-trip): a MythosVault v2
+  // manifest is the regenerable cache at `<Story Vault>/.mythos/manifest-cache.json`
+  // (MYTHOS_MACHINE_DIRNAME in mythosFormat/mythosJson.ts — not imported here
+  // to keep vault.ts free of a module cycle). Scene `path`s are relative to
+  // the STORY VAULT root, so hydrating against `.mythos/` resolved every
+  // scene body to a missing file and served empty block content for all v2
+  // vaults. v0.4 manifests live at `<Story Vault>/manifest.json`, where the
+  // dirname IS the vault root.
+  const vaultRoot =
+    path.basename(manifestDir) === '.mythos' ? path.dirname(manifestDir) : manifestDir;
+  // De-duplicate by object identity: hydration consumes the one-shot
+  // `bodySegLen` metadata, so a scene object shared between the nested and
+  // flat lists must be hydrated exactly once. (JSON.parse never produces
+  // shared references, but readManifest's contract shouldn't depend on that.)
+  const hydrated = new Set<SceneEntry>();
+  forEachManifestScene(manifest, (scene) => {
+    if (hydrated.has(scene)) return;
+    hydrated.add(scene);
+    hydrateSceneBlocks(vaultRoot, scene);
+  });
+  return manifest;
 }
 
 export function writeManifest(manifestPath: string, manifest: Manifest): void {
   writeManifestAtomic(manifestPath, manifest);
+}
+
+/**
+ * SKY-6596 migration safety net. For every scene whose manifest entry still
+ * carries embedded block content (a pre-migration vault, or a hand-edited
+ * one) but has no readable `.md` file backing it, write the full serialized
+ * body out to a `.md` file now — *before* the migration write-back
+ * (`beforeMigrationWrite` in manifest.ts's `openManifest`) unconditionally
+ * strips embedded prose from the manifest on write. Never lets prose be
+ * dropped without another home. Pure side effect — returns the manifest
+ * unchanged.
+ */
+export function ensureSceneFilesForManifestScenes(manifest: Manifest, vaultRoot: string): Manifest {
+  forEachManifestScene(manifest, (scene) => {
+    // PR #932 review: recover the FULL serialized body — every block, in
+    // order, wrapped in its type marker — not just the first prose block's
+    // content, so a multi-block pre-migration scene loses nothing. Written
+    // with the exact serializer stripSceneProse derives its `bodySegLen`
+    // boundary metadata from, so the migrated manifest's metadata matches
+    // this file byte-for-byte and the next readManifest restores every block.
+    const embeddedBody = blocksToMarkdownBody(scene.blocks ?? []);
+    if (!embeddedBody) return;
+    try {
+      readSceneFile(vaultRoot, scene.path);
+      return; // `.md` already exists and parses — nothing to recover.
+    } catch {
+      // Missing or corrupt — recover it below.
+    }
+    try {
+      writeSceneFileAtomic(vaultRoot, scene.path, {
+        id: scene.id,
+        title: scene.title,
+        chapterId: scene.chapterId,
+        storyId: scene.storyId,
+        order: scene.order,
+        prose: embeddedBody,
+      });
+    } catch {
+      // Path is unsafe or unwritable — leave the embedded prose in the
+      // manifest object; the pre-migration backup written by openManifest
+      // just before this hook runs still has it either way.
+    }
+  });
+  return manifest;
 }
 
 export function defaultManifest(vaultRoot: string): Manifest {

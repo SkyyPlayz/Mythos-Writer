@@ -86,7 +86,7 @@
   background: rgba(255, 255, 255, .03);
   border: 1px solid rgba(255, 255, 255, .08);
   border-radius: 13px;
-  cursor: pointer;
+  cursor: grab; /* prototype 6367: the whole card drags */
   display: flex;
   flex-direction: column;
   min-height: 108px;
@@ -102,7 +102,6 @@
   border-color: var(--b1, rgba(0, 240, 255, .5));
   box-shadow: 0 0 18px -6px var(--g1, rgba(0, 240, 255, .4));
   transform: translateY(-2px);
-  cursor: grab;
 }
 
 .scene-card:focus-visible {
@@ -162,24 +161,11 @@
   flex-shrink: 0;
 }
 
-.scene-card__drag-handle {
+/* Prototype 787: POV label, top-right of the card */
+.scene-card__pov {
   color: #7686a2;
-  cursor: grab;
-  font-size: 13px;
-  line-height: 1;
-  min-width: 24px;
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 4px;
-  margin: -4px;
-  border-radius: 4px;
-  transition: color 0.1s;
-}
-
-.scene-card__drag-handle:hover {
-  color: var(--text-body, #c8d3e7);
+  flex-shrink: 0;
+  font-size: 9.5px;
 }
 
 .scene-card__title {
@@ -220,8 +206,7 @@
 
 /* ─── Reduced motion ─── */
 @media (prefers-reduced-motion: reduce) {
-  .scene-card,
-  .scene-card__drag-handle {
+  .scene-card {
     transition: none;
   }
 

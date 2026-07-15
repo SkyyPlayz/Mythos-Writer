@@ -1,50 +1,48 @@
-// Beta 3 "Liquid Neon" M12 — the doc-header Drafts popover (prototype
-// 673–694, row data drafts/draftRows 3098–3103 + 4460–4463): per-document
-// version list with version label + delta chip + meta line, per-row
-// Compare/Restore, and a footer with the snapshot-cadence label and the
-// keep-N stepper. Versions come from the existing SKY-1611 drafts IPC
-// (draftsList/draftsPreview/draftsRestore — same flow as SceneHistory.tsx);
-// keep-N persists to `settings.snapshots.maxPerScene`, the exact field
-// SettingsPanel's SnapshotsSection manages.
+// Beta 4 M10 — the doc-header Drafts popover, refreshed from Beta 3 M12 to
+// the v2 prototype (Liquid Neon.dc.html 882–905, draftRows 6424–6427,
+// keepN 7344–7346, autosaveSlider 6448) and re-based onto the M5 file store:
+// numbered draft files served through the SKY-10 version IPC (useSceneDrafts
+// upstream) instead of the SKY-1611 SQLite snapshots.
+//
+// Per-document version list (version label + delta chip + meta line,
+// per-row Compare/Restore) over a footer with BOTH M10 settings:
+//   · snapshot frequency — `editorPrefs.autosaveSeconds` (5–120s, the exact
+//     field Settings → Editor's "Autosave snapshot every" slider manages);
+//   · keep-count — `versions.maxPerScene` (the SKY-10/M5 store's retention
+//     field, the one VersionHistorySection manages).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { countWords } from './diffSegments';
+import type { SceneDraftEntry } from './useSceneDrafts';
 import './DraftsPopover.css';
 
-export interface DraftCompareRequest {
-  /** The snapshot picked for comparison (older side of the diff). */
-  snapshot: DraftSnapshot;
-  /** That snapshot's full text, already fetched via draftsPreview. */
-  content: string;
-  /** Display label for the snapshot, e.g. "Draft 6". */
-  label: string;
-}
-
 export interface DraftsPopoverProps {
-  /** Scene/document id the drafts belong to (draftsList key). */
-  sceneId: string;
   /** Human document label for the header, e.g. "Scene 4". */
   documentLabel: string;
+  /** Stored drafts, newest first (from useSceneDrafts). */
+  drafts: SceneDraftEntry[];
+  /** Label of the live editor text, e.g. "Draft 7". */
+  currentLabel: string;
   /** The editor's live text — the implicit newest "current" draft. */
   currentContent: string;
-  /** Compare clicked: host opens DraftDiffView with old = payload, new = current. */
-  onCompare: (payload: DraftCompareRequest) => void;
-  /** Restore resolved: host swaps the editor content (same contract as SceneHistory). */
-  onRestore: (content: string) => void;
+  /** Compare clicked: host opens the full diff against this draft. */
+  onCompare: (draft: SceneDraftEntry) => void;
+  /** Restore clicked: host runs the undoable load-draft flow. */
+  onRestore: (draft: SceneDraftEntry) => void;
   /** Close request (outside click, Escape, or after a restore). */
   onClose: () => void;
-  /**
-   * Footer cadence label — "Snapshot every {label}". Display-only: the app
-   * snapshots on every save and AppSettings has no interval field, so the
-   * default reads "save". Hosts with a cadence can pass e.g. "30s".
-   */
-  autosaveIntervalLabel?: string;
+  /** Toggle anchor excluded from outside-click closing (the "Draft N ▾" pill). */
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
-/** keep-N clamps match SnapshotsSection's input (min=1 max=500). */
+/** keep-N clamps match VersionHistorySection's input (min=1 max=500). */
 const KEEP_MIN = 1;
 const KEEP_MAX = 500;
 const KEEP_DEFAULT = 100;
-const KEEP_AGE_DEFAULT = 30;
+/** Frequency clamps match Settings → Editor's autosave slider (5–120s). */
+const FREQ_MIN = 5;
+const FREQ_MAX = 120;
+const FREQ_STEP = 5;
+const FREQ_DEFAULT = 30;
 
 /** Prototype-style compact age: "2m ago" · "yesterday" · "2 days ago". */
 function relativeAge(ts: number, now: number = Date.now()): string {
@@ -68,50 +66,22 @@ function formatDelta(newerWords: number, thisWords: number): string {
 }
 
 export default function DraftsPopover({
-  sceneId,
   documentLabel,
+  drafts,
+  currentLabel,
   currentContent,
   onCompare,
   onRestore,
   onClose,
-  autosaveIntervalLabel = 'save',
+  anchorRef,
 }: DraftsPopoverProps) {
-  const [snapshots, setSnapshots] = useState<DraftSnapshot[]>([]);
-  const [contents, setContents] = useState<Record<string, string>>({});
   const [keepN, setKeepN] = useState<number>(KEEP_DEFAULT);
-  const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [freqS, setFreqS] = useState<number>(FREQ_DEFAULT);
   const rootRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<AppSettings | null>(null);
 
-  // Load the version list, then previews in parallel for word counts/deltas.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await window.api.draftsList(sceneId);
-        if (cancelled) return;
-        setSnapshots(res.snapshots);
-        const pairs = await Promise.all(
-          res.snapshots.map(async (snap) => {
-            try {
-              const preview = await window.api.draftsPreview(snap.id);
-              return [snap.id, preview.content] as const;
-            } catch {
-              return null; // meta stays pending for this row; actions still work
-            }
-          }),
-        );
-        if (cancelled) return;
-        setContents(Object.fromEntries(pairs.filter((p): p is readonly [string, string] => p !== null)));
-      } catch (err) {
-        if (!cancelled) setError(`Couldn't load drafts: ${(err as Error).message}`);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [sceneId]);
-
-  // keep-N from the same settings field SnapshotsSection manages.
+  // Settings load: keep-N from versions.maxPerScene (the M5/SKY-10 store's
+  // retention field), frequency from editorPrefs.autosaveSeconds.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -119,8 +89,9 @@ export default function DraftsPopover({
         const settings = await window.api.settingsGet();
         if (cancelled) return;
         settingsRef.current = settings;
-        setKeepN(settings.snapshots?.maxPerScene ?? KEEP_DEFAULT);
-      } catch { /* non-fatal — stepper starts at the default */ }
+        setKeepN(settings.versions?.maxPerScene ?? KEEP_DEFAULT);
+        setFreqS(settings.editorPrefs?.autosaveSeconds ?? FREQ_DEFAULT);
+      } catch { /* non-fatal — steppers start at the defaults */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -128,7 +99,11 @@ export default function DraftsPopover({
   // Outside click + Escape close, same pattern as the title-bar popovers.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
+      const target = e.target as Node;
+      if (rootRef.current && !rootRef.current.contains(target)) {
+        if (anchorRef?.current && anchorRef.current.contains(target)) return;
+        onClose();
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -139,7 +114,7 @@ export default function DraftsPopover({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
   const persistKeepN = useCallback((next: number) => {
     const clamped = Math.max(KEEP_MIN, Math.min(KEEP_MAX, next));
@@ -148,37 +123,24 @@ export default function DraftsPopover({
     if (!prev) return; // settings never loaded — nothing safe to write back
     const updated: AppSettings = {
       ...prev,
-      snapshots: { maxAgeDays: prev.snapshots?.maxAgeDays ?? KEEP_AGE_DEFAULT, maxPerScene: clamped },
+      versions: { maxAgeDays: prev.versions?.maxAgeDays ?? 0, maxPerScene: clamped },
     };
     settingsRef.current = updated;
     window.api.settingsSet(updated).catch(() => {});
   }, []);
 
-  const handleCompare = useCallback(async (snap: DraftSnapshot, label: string) => {
-    setError(null);
-    try {
-      const content = contents[snap.id] ?? (await window.api.draftsPreview(snap.id)).content;
-      onCompare({ snapshot: snap, content, label });
-    } catch (err) {
-      setError(`Couldn't load this draft: ${(err as Error).message}`);
-    }
-  }, [contents, onCompare]);
-
-  const handleRestore = useCallback(async (snap: DraftSnapshot) => {
-    setRestoringId(snap.id);
-    setError(null);
-    try {
-      // Existing restore flow (SceneHistory/DraftHistoryPanel): the main
-      // process snapshots the current text first, so nothing is ever lost.
-      const res = await window.api.draftsRestore(snap.id, sceneId, currentContent);
-      onRestore(res.content);
-      onClose();
-    } catch (err) {
-      setError(`Couldn't restore this draft: ${(err as Error).message}`);
-    } finally {
-      setRestoringId(null);
-    }
-  }, [sceneId, currentContent, onRestore, onClose]);
+  const persistFreq = useCallback((next: number) => {
+    const clamped = Math.max(FREQ_MIN, Math.min(FREQ_MAX, next));
+    setFreqS(clamped);
+    const prev = settingsRef.current;
+    if (!prev) return;
+    const updated: AppSettings = {
+      ...prev,
+      editorPrefs: { ...prev.editorPrefs, autosaveSeconds: clamped },
+    };
+    settingsRef.current = updated;
+    window.api.settingsSet(updated).catch(() => {});
+  }, []);
 
   const currentWords = countWords(currentContent);
 
@@ -190,18 +152,17 @@ export default function DraftsPopover({
       aria-label={`Drafts and history — ${documentLabel}`}
       data-testid="ln-drafts-popover"
     >
-      <div className="ln-drafts-heading">DRAFTS &amp; HISTORY — {documentLabel.toUpperCase()}</div>
-
-      {error && (
-        <div className="ln-drafts-error" role="alert">{error}</div>
-      )}
+      <div className="ln-drafts-heading">DRAFTS &amp; HISTORY</div>
+      <div className="ln-drafts-scope">
+        {documentLabel} <span className="ln-drafts-scope-hint">— drafts of what&apos;s open, nothing else</span>
+      </div>
 
       <div className="ln-drafts-rows">
         {/* Synthetic top row: the live editor text is the current draft. */}
         <div className="ln-drafts-row" data-testid="ln-draft-row-current">
           <div className="ln-drafts-row-main">
             <div className="ln-drafts-row-title">
-              Draft {snapshots.length + 1}{' '}
+              {currentLabel}{' '}
               <span className="ln-drafts-delta is-current">current</span>
             </div>
             <div className="ln-drafts-row-meta">{currentWords.toLocaleString()} words · now</div>
@@ -214,55 +175,68 @@ export default function DraftsPopover({
           </button>
         </div>
 
-        {snapshots.map((snap, i) => {
-          const label = snap.label || `Draft ${snapshots.length - i}`;
-          const content = contents[snap.id];
-          const words = content !== undefined ? countWords(content) : null;
-          const newerContent = i === 0 ? currentContent : contents[snapshots[i - 1].id];
-          const delta =
-            words !== null && newerContent !== undefined
-              ? formatDelta(countWords(newerContent), words)
-              : '';
+        {drafts.map((draft, i) => {
+          const words = countWords(draft.content);
+          const newerContent = i === 0 ? currentContent : drafts[i - 1].content;
+          const delta = formatDelta(countWords(newerContent), words);
           return (
-            <div className="ln-drafts-row" key={snap.id} data-testid={`ln-draft-row-${snap.id}`}>
+            <div className="ln-drafts-row" key={draft.ts} data-testid={`ln-draft-row-${draft.ts}`}>
               <div className="ln-drafts-row-main">
                 <div className="ln-drafts-row-title">
-                  {label}{' '}
-                  {delta && <span className="ln-drafts-delta">{delta}</span>}
+                  {draft.label}{' '}
+                  <span className="ln-drafts-delta">{delta}</span>
                 </div>
                 <div className="ln-drafts-row-meta">
-                  {words !== null ? `${words.toLocaleString()} words · ` : ''}
-                  {relativeAge(snap.createdAt)}
+                  {words.toLocaleString()} words
+                  {draft.savedAtMs !== null ? ` · ${relativeAge(draft.savedAtMs)}` : ''}
                 </div>
               </div>
               <button
                 type="button"
                 className="ln-drafts-btn-compare"
-                onClick={() => void handleCompare(snap, label)}
-                aria-label={`Compare ${label} with the current draft`}
+                onClick={() => onCompare(draft)}
+                aria-label={`Compare ${draft.label} with the current draft`}
               >
                 Compare
               </button>
               <button
                 type="button"
                 className="ln-drafts-btn-restore"
-                onClick={() => void handleRestore(snap)}
-                disabled={restoringId !== null}
-                aria-label={`Restore ${label}`}
+                onClick={() => onRestore(draft)}
+                aria-label={`Restore ${draft.label}`}
               >
-                {restoringId === snap.id ? 'Restoring…' : 'Restore'}
+                Restore
               </button>
             </div>
           );
         })}
 
-        {snapshots.length === 0 && (
+        {drafts.length === 0 && (
           <div className="ln-drafts-empty">No snapshots yet — save to start collecting drafts.</div>
         )}
       </div>
 
       <div className="ln-drafts-footer">
-        <span className="ln-drafts-footer-label">Snapshot every {autosaveIntervalLabel}</span>
+        <span className="ln-drafts-footer-label">Snapshot every</span>
+        <div className="ln-drafts-stepper">
+          <button
+            type="button"
+            className="ln-drafts-step"
+            onClick={() => persistFreq(freqS - FREQ_STEP)}
+            aria-label="Snapshot less often"
+          >
+            −
+          </button>
+          <span className="ln-drafts-step-value" data-testid="ln-drafts-freq-s">{freqS}s</span>
+          <button
+            type="button"
+            className="ln-drafts-step"
+            onClick={() => persistFreq(freqS + FREQ_STEP)}
+            aria-label="Snapshot more often"
+          >
+            +
+          </button>
+        </div>
         <span className="ln-drafts-footer-keep">Keep</span>
         <div className="ln-drafts-stepper">
           <button

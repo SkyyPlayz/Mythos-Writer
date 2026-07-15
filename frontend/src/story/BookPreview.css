@@ -1,0 +1,331 @@
+/* Beta 4 M14 — Book view (prototype 812–871 + bookWrapSt 7156).
+   Compiled read-only manuscript: header row (READ-ONLY badge · meta ·
+   Export…), centered book page whose max-width follows the editor pageW,
+   comment underlines (kind palette shared with CommentsGutter.css) and a
+   floating read-only comment card. */
+
+.book-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ── Header row (prototype 814–820) ── */
+
+.book-preview__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 20px 6px;
+  flex: none;
+}
+
+/* Prototype 815: purple-rimmed READ-ONLY chip */
+.book-preview__readonly {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: #8e9db8;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4));
+  border-radius: 7px;
+  padding: 3px 8px;
+  flex: none;
+}
+
+.book-preview__meta {
+  font-size: 11px;
+  color: #8e9db8;
+}
+
+.book-preview__spacer { flex: 1; }
+
+/* Prototype 818: gradient Export… pill */
+.book-preview__export {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 0 16px -3px var(--g2, rgba(155, 95, 255, .4));
+  transition: transform .12s ease;
+}
+
+.book-preview__export:hover { transform: scale(1.04); }
+.book-preview__export:focus-visible { outline: 2px solid var(--n1, #00f0ff); outline-offset: 2px; }
+
+/* ── Scroll + page (prototype 822–823, bookWrapSt 7156) ── */
+
+.book-preview__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 26px 60px;
+}
+
+.book-preview__page {
+  margin: 0 auto;
+  font-family: 'Lora', Georgia, serif;
+  color: var(--txB, #c8d3e7);
+  background: rgba(9, 11, 20, .66);
+  border: 1px solid rgba(255, 255, 255, .06);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(2, 4, 10, .55);
+  padding: 70px 76px 90px;
+}
+
+@media (max-width: 900px) { .book-preview__page { padding: 48px 32px 64px; } }
+
+/* ── Title block (prototype 825–830) ── */
+
+.book-preview__title-block { text-align: center; padding: 40px 0 70px; }
+
+.book-preview__story-title {
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--txH, #f0f3fc);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.book-preview__story-title::after {
+  content: '';
+  display: block;
+  width: 130px;
+  height: 2px;
+  margin: 20px auto;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  opacity: .7;
+  border-radius: 2px;
+}
+
+.book-preview__story-title:focus { outline: none; }
+
+.book-preview__synopsis {
+  font-size: 14px;
+  color: #8e9db8;
+  font-style: italic;
+  margin: 14px auto 0;
+  line-height: 1.7;
+  max-width: 480px;
+}
+
+/* ── Chapter heading (prototype 838–841) ── */
+
+.book-preview__chapter {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1400px;
+}
+
+.book-preview__chapter-head { text-align: center; margin: 44px 0 26px; }
+
+.book-preview__chapter-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .26em;
+  color: var(--n1, #00f0ff);
+  font-family: 'Inter', sans-serif;
+}
+
+.book-preview__chapter-title {
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--txH, #eef2fb);
+  margin: 6px 0 0;
+  line-height: 1.3;
+}
+
+/* ── Prose (prototype bookPSt 5554) ── */
+
+.book-preview__para {
+  font-size: 15px;
+  line-height: 1.9;
+  text-align: justify;
+  margin: 0 0 1em;
+}
+
+/* M11 carry-over (#938): paragraph wash while the audiobook reader speaks it
+   (prototype bookPSt reading 5553); the exact sentence is painted by
+   ::highlight(msv-reading-sentence) in ManuscriptView.css. */
+.book-preview__para--reading {
+  background: var(--gs1, rgba(0, 240, 255, 0.14));
+  border-radius: 8px;
+  box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+  transition: background 0.25s ease;
+}
+
+/* Prototype 843: ◆ ◆ ◆ between scenes */
+.book-preview__scene-sep {
+  text-align: center;
+  color: #586a88;
+  font-size: 11px;
+  letter-spacing: .6em;
+  margin: 1.8em 0;
+}
+
+.book-preview__no-content {
+  color: #7686a2;
+  font-style: italic;
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* Prototype 845: END OF DRAFT */
+.book-preview__end {
+  text-align: center;
+  color: #586a88;
+  font-size: 10.5px;
+  letter-spacing: .3em;
+  margin-top: 56px;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── Comment underlines (kind palette = CommentsGutter.css) ── */
+
+.book-anchor--user {
+  --cmt-kind: rgb(255, 211, 25);
+  --cmt-kind-soft: rgba(255, 211, 25, 0.13);
+}
+
+.book-anchor--writing {
+  --cmt-kind: var(--n1, rgb(0, 240, 255));
+  --cmt-kind-soft: var(--gs1, rgba(0, 240, 255, 0.12));
+}
+
+.book-anchor--archive {
+  --cmt-kind: rgb(255, 95, 143);
+  --cmt-kind-soft: rgba(255, 95, 143, 0.13);
+}
+
+.book-anchor--beta {
+  --cmt-kind: var(--n3, rgb(255, 77, 255));
+  --cmt-kind-soft: var(--gs3, rgba(255, 77, 255, 0.12));
+}
+
+.book-anchor {
+  background: var(--cmt-kind-soft);
+  border-bottom: 2px solid var(--cmt-kind);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* ── Floating read-only comment card ── */
+
+.book-preview__comment-card {
+  position: fixed;
+  z-index: 60;
+  width: 280px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  background: rgba(15, 19, 33, .97);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g1, rgba(0, 240, 255, .4));
+}
+
+.book-preview__comment-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.book-preview__comment-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--cmt-kind, rgb(255, 211, 25));
+}
+
+.book-preview__comment-dot--user { --cmt-kind: rgb(255, 211, 25); }
+.book-preview__comment-dot--writing { --cmt-kind: var(--n1, rgb(0, 240, 255)); }
+.book-preview__comment-dot--archive { --cmt-kind: rgb(255, 95, 143); }
+.book-preview__comment-dot--beta { --cmt-kind: var(--n3, rgb(255, 77, 255)); }
+
+.book-preview__comment-author {
+  flex: 1;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6ecf9;
+}
+
+.book-preview__comment-close {
+  background: none;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  padding: 0;
+}
+
+.book-preview__comment-close:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+
+.book-preview__comment-quote {
+  font-size: 10.5px;
+  font-style: italic;
+  color: #8e9db8;
+  margin: 0 0 6px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255, 255, 255, .14);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.book-preview__comment-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #c3cee2;
+  margin: 0;
+}
+
+.book-preview__comment-open {
+  margin-top: 9px;
+  padding: 4px 11px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .4));
+  background: none;
+  color: var(--n1, #00f0ff);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.book-preview__comment-open:hover { background: var(--gs1, rgba(0, 240, 255, .12)); }
+
+/* ── Empty states ── */
+
+.book-preview-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 32px;
+  color: var(--text-muted);
+}
+
+.book-preview-empty__icon { font-size: 3rem; line-height: 1; }
+.book-preview-empty__title { font-size: 1.1rem; font-weight: 600; color: var(--text-body); margin: 0; }
+.book-preview-empty__hint { font-size: 0.9rem; color: var(--text-muted); margin: 0; text-align: center; max-width: 360px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .book-preview__export { transition: none; }
+  .book-preview__export:hover { transform: none; }
+}

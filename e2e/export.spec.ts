@@ -207,6 +207,7 @@ async function mockExportHandlers(app: ElectronApplication, exportDir: string): 
       stub('export:plaintext', 'txt');
       stub('export:docx', 'docx');
       stub('export:epub', 'epub');
+      stub('export:pdf', 'pdf');
 
       // Expose a helper to switch a channel into cancel mode.
       (globalThis as Record<string, unknown>).__setExportCancel = (channel: string) => stubCancel(channel);
@@ -288,9 +289,9 @@ test.afterAll(async () => {
   fs.rmSync(exportDir, { recursive: true, force: true });
 });
 
-// ─── AC-EXQ-1: Dialog renders three format radio options ─────────────────────
+// ─── AC-EXQ-1: Dialog renders the M14 format cards ───────────────────────────
 
-test('AC-EXQ-1: ExportDialog opens and renders Markdown, Plaintext, DOCX radio options', async () => {
+test('AC-EXQ-1: ExportDialog opens and renders DOCX, PDF, EPUB, MD and TXT format cards', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Select the seeded story so selectedStoryId is set in AppMenuBar.
@@ -310,10 +311,16 @@ test('AC-EXQ-1: ExportDialog opens and renders Markdown, Plaintext, DOCX radio o
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
   await expect(dialog).toBeVisible();
 
-  // All three format options must be present.
-  await expect(dialog.locator('label', { hasText: 'Markdown (.md)' })).toBeVisible();
-  await expect(dialog.locator('label', { hasText: 'Plain Text (.txt)' })).toBeVisible();
-  await expect(dialog.locator('label', { hasText: 'Word Document (.docx)' })).toBeVisible();
+  // All five M14 format cards must be present (radio values are stable).
+  for (const value of ['docx', 'pdf', 'epub', 'markdown', 'plaintext']) {
+    await expect(dialog.locator(`input[type="radio"][value="${value}"]`)).toBeAttached();
+  }
+  // DOCX is the default (prototype exportFmt: 'DOCX').
+  await expect(dialog.locator('input[type="radio"][value="docx"]')).toBeChecked();
+
+  // M14 scope segmented control (Full book / Current part / Current chapter).
+  await expect(dialog.getByRole('button', { name: 'Full book' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Current part' })).toBeDisabled();
 
   // Close dialog before next test.
   await dialog.locator('button[aria-label="Close"]').click();
@@ -344,9 +351,9 @@ test('AC-EXQ-7: ExportDialog shows non-zero word count estimate for seeded story
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 });
 
-// ─── AC-EXQ-3: DOCX selection + export writes file ───────────────────────────
+// ─── AC-EXQ-3: DOCX selection + export writes file, Done state closes ────────
 
-test('AC-EXQ-3: selecting DOCX and clicking Export triggers IPC and writes export file', async () => {
+test('AC-EXQ-3: selecting DOCX and clicking Export triggers IPC, shows Done state, writes file', async () => {
   await clearExportCalls(app!);
 
   await openExportDialog(page);
@@ -359,8 +366,12 @@ test('AC-EXQ-3: selecting DOCX and clicking Export triggers IPC and writes expor
   // Click Export.
   await dialog.getByRole('button', { name: /^Export/ }).click();
 
-  // Dialog should close (mock returns non-cancelled, then onClose is called).
-  await dialog.waitFor({ state: 'detached', timeout: 8_000 });
+  // M14: successful export lands on the Done state (check + file chip),
+  // the dialog stays open until Done is clicked.
+  await expect(dialog.getByText('Export complete')).toBeVisible({ timeout: 8_000 });
+  await expect(dialog.getByText('export-stub.docx')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 
   const calls = await getExportCalls(app!);
   const docxCall = calls.find((c) => c.channel === 'export:docx');
@@ -369,9 +380,31 @@ test('AC-EXQ-3: selecting DOCX and clicking Export triggers IPC and writes expor
   expect(fs.existsSync(docxCall!.filePath!), 'Exported DOCX stub file must exist on disk').toBe(true);
 });
 
-// ─── AC-EXQ-6: Cancel closes dialog without writing any file ─────────────────
+// ─── AC-EXQ-8 (M14): PDF card is live and dispatches export:pdf ──────────────
 
-test('AC-EXQ-6: clicking Cancel closes ExportDialog without triggering any export', async () => {
+test('AC-EXQ-8: selecting PDF and clicking Export triggers export:pdf and writes file', async () => {
+  await clearExportCalls(app!);
+
+  await openExportDialog(page);
+  const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
+
+  await dialog.locator('input[type="radio"][value="pdf"]').click();
+  await expect(dialog.locator('input[type="radio"][value="pdf"]')).toBeChecked();
+  await dialog.getByRole('button', { name: /^Export/ }).click();
+
+  await expect(dialog.getByText('Export complete')).toBeVisible({ timeout: 8_000 });
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await dialog.waitFor({ state: 'detached', timeout: 4_000 });
+
+  const calls = await getExportCalls(app!);
+  const pdfCall = calls.find((c) => c.channel === 'export:pdf');
+  expect(pdfCall, 'export:pdf IPC must have been called').toBeTruthy();
+  expect(fs.existsSync(pdfCall!.filePath!), 'Exported PDF stub file must exist on disk').toBe(true);
+});
+
+// ─── AC-EXQ-6: closing the dialog does not trigger any export ────────────────
+
+test('AC-EXQ-6: closing ExportDialog without exporting triggers no export IPC', async () => {
   await clearExportCalls(app!);
 
   await openExportDialog(page);
@@ -379,16 +412,50 @@ test('AC-EXQ-6: clicking Cancel closes ExportDialog without triggering any expor
 
   const filesBefore = fs.readdirSync(exportDir).length;
 
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await dialog.locator('button[aria-label="Close"]').click();
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
 
   // No IPC call made.
   const calls = await getExportCalls(app!);
-  expect(calls.length, 'No export IPC calls expected after Cancel').toBe(0);
+  expect(calls.length, 'No export IPC calls expected after Close').toBe(0);
 
   // No new files written.
   const filesAfter = fs.readdirSync(exportDir).length;
-  expect(filesAfter, 'No export files should be written after Cancel').toBe(filesBefore);
+  expect(filesAfter, 'No export files should be written after Close').toBe(filesBefore);
+});
+
+// ─── AC-EXQ-9 (M14): cancelled save dialog returns to the pick step ──────────
+
+test('AC-EXQ-9: a cancelled save dialog returns to the pick step without closing', async () => {
+  await setExportCancel(app!, 'export:docx');
+
+  await openExportDialog(page);
+  const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
+
+  await dialog.getByRole('button', { name: /^Export/ }).click();
+
+  // Back on the pick step: the run button is visible again, dialog still open.
+  await expect(dialog.getByRole('button', { name: /^Export DOCX/ })).toBeVisible({ timeout: 8_000 });
+  await expect(dialog.getByText('Export complete')).not.toBeVisible();
+
+  await dialog.locator('button[aria-label="Close"]').click();
+  await dialog.waitFor({ state: 'detached', timeout: 4_000 });
+
+  // Restore the writing stub for later tests.
+  await app!.evaluate(({ ipcMain }, { dir }: { dir: string }) => {
+    const getBuiltinModule = (process as unknown as {
+      getBuiltinModule: (id: string) => unknown;
+    }).getBuiltinModule;
+    const nodeFs = getBuiltinModule('fs') as typeof import('fs');
+    const nodePath = getBuiltinModule('path') as typeof import('path');
+    ipcMain.removeHandler('export:docx');
+    ipcMain.handle('export:docx', () => {
+      const filePath = nodePath.join(dir, 'export-stub.docx');
+      nodeFs.writeFileSync(filePath, 'stub:export:docx');
+      ((globalThis as Record<string, unknown>).__exportCalls as unknown[]).push({ channel: 'export:docx', filePath });
+      return { path: filePath, cancelled: false };
+    });
+  }, { dir: exportDir });
 });
 
 // ─── AC-EXQ-2: EPUB radio present when scope=story ───────────────────────────
@@ -396,7 +463,8 @@ test('AC-EXQ-6: clicking Cancel closes ExportDialog without triggering any expor
 test('AC-EXQ-2: ExportDialog shows EPUB radio option when scope is story', async () => {
   await openExportDialog(page);
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
-  await expect(dialog.locator('label', { hasText: 'EPUB (.epub)' })).toBeVisible();
+  // M14 card title is "EPUB"; the radio keeps the accessible "(.epub)" name.
+  await expect(dialog.getByRole('radio', { name: /epub \(\.epub\)/i })).toBeAttached();
   // EPUB radio must be enabled for story scope.
   await expect(dialog.locator('input[type="radio"][value="epub"]')).not.toBeDisabled();
   await dialog.locator('button[aria-label="Close"]').click();
@@ -412,7 +480,10 @@ test('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file', async () =
   await dialog.locator('input[type="radio"][value="epub"]').click();
   await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeChecked();
   await dialog.getByRole('button', { name: /^Export/ }).click();
-  await dialog.waitFor({ state: 'detached', timeout: 8_000 });
+  // M14: land on the Done state, then close via Done.
+  await expect(dialog.getByText('Export complete')).toBeVisible({ timeout: 8_000 });
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await dialog.waitFor({ state: 'detached', timeout: 4_000 });
   const calls = await getExportCalls(app!);
   const epubCall = calls.find((c) => c.channel === 'export:epub');
   expect(epubCall, 'export:epub IPC must have been called').toBeTruthy();
