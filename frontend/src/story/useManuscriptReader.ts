@@ -22,8 +22,11 @@ import {
   flowScopeKey,
   flowStartIndex,
   sceneSkipIndex,
+  timeSkipIndex,
+  READER_SKIP_SECONDS,
   type ReaderFlowItem,
 } from './readerFlow';
+import { resolveReaderVoiceId } from './readerVoices';
 import type { ManuscriptCursor } from './manuscriptModel';
 import type { Story } from '../types';
 
@@ -35,6 +38,12 @@ const MAX_CONSECUTIVE_ERRORS = 3;
 export const READER_MIN_RATE = 0.5;
 export const READER_MAX_RATE = 2;
 
+/** M11: the sentence being read, as offsets into the block's content. */
+export interface ReaderSentenceRange {
+  start: number;
+  end: number;
+}
+
 export interface ManuscriptReader {
   /** Reader bar visibility (prototype reader.open). */
   open: boolean;
@@ -44,6 +53,8 @@ export interface ManuscriptReader {
   flowLength: number;
   /** Block id of the paragraph being read, or null (heading/selection/idle). */
   curKey: string | null;
+  /** M11: sentence offsets inside curKey's block, or null (heading/idle). */
+  curRange: ReaderSentenceRange | null;
   /** Session speed, 0.5–2.0 (seeded from voice prefs). */
   rate: number;
   /** Session voice id ('' = default; seeded from voice prefs). */
@@ -66,10 +77,10 @@ export interface ManuscriptReader {
   /** Read exactly this text, once (selection-bar Read action). */
   readSelection: (text: string) => boolean;
   pause: () => void;
-  /** Jump to a flow index and play it (position scrubber). */
+  /** Jump to a flow index and play it. */
   seek: (idx: number) => void;
-  /** ±1 utterance (the prototype's ∓10s buttons). */
-  skip: (n: number) => void;
+  /** M11: ±~10s of estimated speech (the transport's ∓10s buttons). */
+  skipTime: (dir: 1 | -1) => void;
   skipScene: (dir: 1 | -1) => void;
   setRate: (rate: number) => void;
   setVoiceId: (voiceId: string) => void;
@@ -90,6 +101,7 @@ export function useManuscriptReader(
   const [playing, setPlaying] = useState(false);
   const [idx, setIdx] = useState(0);
   const [curKey, setCurKey] = useState<string | null>(null);
+  const [curRange, setCurRange] = useState<ReaderSentenceRange | null>(null);
   const [flow, setFlow] = useState<ReaderFlowItem[]>([]);
   const [selOnly, setSelOnly] = useState(false);
   const [rate, setRateState] = useState(() => clampReaderRate(voicePrefs?.ttsRate));
@@ -120,9 +132,11 @@ export function useManuscriptReader(
   }, [prefVoiceId]);
 
   // The reader's session speed/voice override the stored prefs for its own
-  // utterances (volume/mute still follow Settings → Voice).
+  // utterances (volume/mute still follow Settings → Voice). Catalog picks
+  // (Edge/Piper/Kokoro entries whose engine isn't set up) resolve to the
+  // engine default so playback never dies (§1.2).
   const mergedPrefs = useMemo<TtsVoicePrefs>(
-    () => ({ ...voicePrefs, ttsRate: rate, ttsVoiceId: voiceId || undefined }),
+    () => ({ ...voicePrefs, ttsRate: rate, ttsVoiceId: resolveReaderVoiceId(voiceId) || undefined }),
     [voicePrefs, rate, voiceId]
   );
 
@@ -153,6 +167,7 @@ export function useManuscriptReader(
     playingRef.current = false;
     setPlaying(false);
     setCurKey(null);
+    setCurRange(null);
   }, []);
 
   const noopAnnounce = useCallback(() => {}, []);
@@ -167,10 +182,12 @@ export function useManuscriptReader(
       }
       idxRef.current = i;
       setIdx(i);
-      setCurKey(items[i].key);
+      const item = items[i];
+      setCurKey(item.key);
+      setCurRange(item.key && item.end > item.start ? { start: item.start, end: item.end } : null);
       playingRef.current = true;
       setPlaying(true);
-      tts.speakCard(items[i].text, `${READER_CARD_PREFIX}${i}`, noopAnnounce);
+      tts.speakCard(item.text, `${READER_CARD_PREFIX}${i}`, noopAnnounce);
     },
     [tts, halt, noopAnnounce]
   );
@@ -203,6 +220,7 @@ export function useManuscriptReader(
     tts.cancelCurrent();
     setPlaying(false);
     setCurKey(null);
+    setCurRange(null);
   }, [tts]);
 
   /** Install a flow and start speaking at startAt. */
@@ -236,7 +254,11 @@ export function useManuscriptReader(
       const trimmed = text.trim();
       if (!trimmed) return false;
       scopeRef.current = flowScopeKey(story, cursor);
-      return begin([{ text: trimmed, key: null, sceneId: null, sceneOrdinal: 0 }], 0, true);
+      return begin(
+        [{ text: trimmed, key: null, sceneId: null, sceneOrdinal: 0, start: 0, end: 0 }],
+        0,
+        true
+      );
     },
     [story, cursor, begin]
   );
@@ -269,11 +291,22 @@ export function useManuscriptReader(
     [speakIdx]
   );
 
-  const skip = useCallback(
-    (n: number) => {
-      seek(idxRef.current + n);
+  // ±10s of estimated speech at the current rate (prototype's ∓10s buttons,
+  // recalibrated for M11's sentence-level flow items).
+  const rateRef = useRef(rate);
+  useEffect(() => { rateRef.current = rate; }, [rate]);
+  const skipTime = useCallback(
+    (dir: 1 | -1) => {
+      const target = timeSkipIndex(
+        flowRef.current,
+        idxRef.current,
+        dir,
+        READER_SKIP_SECONDS,
+        rateRef.current
+      );
+      if (target > -1) speakIdx(target);
     },
-    [seek]
+    [speakIdx]
   );
 
   const skipScene = useCallback(
@@ -325,6 +358,7 @@ export function useManuscriptReader(
     idx,
     flowLength: flow.length,
     curKey,
+    curRange,
     rate,
     voiceId,
     selOnly,
@@ -338,7 +372,7 @@ export function useManuscriptReader(
     readSelection,
     pause,
     seek,
-    skip,
+    skipTime,
     skipScene,
     setRate,
     setVoiceId,

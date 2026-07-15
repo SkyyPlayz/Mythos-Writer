@@ -6,8 +6,13 @@
 // expands it in place with the agent-action row (archive comments), Resolve,
 // and the "Show in focus" override toggle. Presentational — all mutations go
 // through the callbacks so ManuscriptView owns store wiring + toasts.
+//
+// Beta 4 M11: the gutter also hosts the Reader card (readerSlot) above the
+// comment cards — v2 prototype gutterOpen/gutterSt 6775–6776: the column
+// top-docks its content while comments are visible and centers the Reader
+// card vertically when they're hidden.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import {
   AGENT_ACTIONS,
   agentActionAvailability,
@@ -28,6 +33,8 @@ export interface CommentsGutterProps {
   /** Focus-mode override state + toggle ("Show in focus"). */
   commentsInFocus: boolean;
   onToggleCommentsInFocus: () => void;
+  /** M11: the Reader card, docked above the comment cards (prototype 1154). */
+  readerSlot?: ReactNode;
 }
 
 function CommentCard({
@@ -149,26 +156,36 @@ export default function CommentsGutter({
   onAgentAction,
   commentsInFocus,
   onToggleCommentsInFocus,
+  readerSlot,
 }: CommentsGutterProps) {
-  if (comments.length === 0) return null;
+  if (comments.length === 0 && !readerSlot) return null;
   return (
-    <aside className="msv-gutter" data-testid="msv-gutter" aria-label="Manuscript comments">
-      <div className="msv-gutter-title">COMMENTS</div>
-      {comments.map((c) => (
-        <CommentCard
-          key={c.id}
-          comment={c}
-          open={openId === c.id}
-          onToggleOpen={onToggleOpen}
-          onResolve={onResolve}
-          onAgentAction={onAgentAction}
-          commentsInFocus={commentsInFocus}
-          onToggleCommentsInFocus={onToggleCommentsInFocus}
-        />
-      ))}
-      <div className="msv-gutter-hint">
-        Docked by default — hidden in Focus mode. Select text in the page to add one.
-      </div>
+    <aside
+      className={`msv-gutter${comments.length === 0 ? ' msv-gutter--center' : ''}`}
+      data-testid="msv-gutter"
+      aria-label="Manuscript margin"
+    >
+      {readerSlot}
+      {comments.length > 0 && (
+        <>
+          <div className="msv-gutter-title">COMMENTS</div>
+          {comments.map((c) => (
+            <CommentCard
+              key={c.id}
+              comment={c}
+              open={openId === c.id}
+              onToggleOpen={onToggleOpen}
+              onResolve={onResolve}
+              onAgentAction={onAgentAction}
+              commentsInFocus={commentsInFocus}
+              onToggleCommentsInFocus={onToggleCommentsInFocus}
+            />
+          ))}
+          <div className="msv-gutter-hint">
+            Docked by default — hidden in Focus mode. Select text in the page to add one.
+          </div>
+        </>
+      )}
     </aside>
   );
 }
