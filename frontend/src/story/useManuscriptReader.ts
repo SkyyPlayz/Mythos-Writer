@@ -67,6 +67,9 @@ export interface ManuscriptReader {
   available: boolean;
   /** Prototype readerStatus: "Reading N of M" / "Paused" / "Ready". */
   status: string;
+  /** True when the current scope linearizes to any utterance — false is the
+   *  "nothing to read" refusal, distinct from muted/unavailable (GH#946). */
+  hasContent: () => boolean;
   openReader: () => void;
   /** Stop playback and hide the bar. */
   close: () => void;
@@ -327,6 +330,13 @@ export function useManuscriptReader(
     setVoiceIdState(next);
   }, []);
 
+  // Only consulted on a refused play (rare, user-initiated), so building the
+  // flow to test emptiness is fine — and can't drift from playFrom's own build.
+  const hasContent = useCallback(
+    () => buildReaderFlow(story, cursor).length > 0,
+    [story, cursor]
+  );
+
   const openReader = useCallback(() => setOpen(true), []);
 
   const close = useCallback(() => {
@@ -365,6 +375,7 @@ export function useManuscriptReader(
     muted,
     available,
     status,
+    hasContent,
     openReader,
     close,
     toggle,
