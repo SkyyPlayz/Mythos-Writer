@@ -551,7 +551,7 @@ Accept: every §14 item checked off in the PR description with evidence.
 | M11 | Reader refinements | 3 | M7 | ✅ merged | #938 |
 | M12 | Coach page | 3 | M5, M15 | 🔨 in progress (claude/beta4-m12, stacked on #917) | |
 | M13 | Scene Analysis | 3 | M12 | ⏳ | |
-| M14 | Structure & Book/Export | 3 | M7 | 🔀 in PR | #939 |
+| M14 | Structure & Book/Export | 3 | M7 | ✅ merged | #939 |
 | M15 | Agent hub + sessions | 3 | M5 | 🔀 in PR | #917 |
 | M16 | Notes explorer parity | 4 | M5 | ✅ merged | #920 |
 | M17 | Note body + wiki links | 4 | M6, M16 | ✅ merged | #940 |
