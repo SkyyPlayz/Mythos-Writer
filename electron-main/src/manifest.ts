@@ -3,7 +3,8 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import type { Manifest, SceneEntry, ChapterEntry } from './ipc.js';
+import type { Manifest, SceneEntry, ChapterEntry, BlockEntry } from './ipc.js';
+import { computeSceneBodyLayout } from './sceneBody.js';
 
 export const SCHEMA_VERSION = 2 as const;
 
@@ -123,11 +124,26 @@ export function migrateManifest(raw: Raw): Manifest {
 
 function stripSceneProse(scene: SceneEntry): SceneEntry {
   if (!scene.blocks || scene.blocks.length === 0) return scene;
+  // Block-aware persistence (PR #932 review): alongside blanking content,
+  // record each block's serialized-segment length within the scene's `.md`
+  // body (`bodySegLen`) so `readManifest` can hydrate all N blocks — content,
+  // type, id, and order intact — instead of dumping the whole raw body into
+  // the first prose block. The lengths are derived arithmetically (no body
+  // string is built, no file I/O — see computeSceneBodyLayout), so the write
+  // stays O(structure) and the metadata is still structure-only in spirit:
+  // a few machine-derived bytes per block.
+  const { segments } = computeSceneBodyLayout(scene.blocks);
+  const lengthByIndex = new Map<number, number>();
+  for (const seg of segments) lengthByIndex.set(seg.index, seg.length);
   let changed = false;
-  const blocks = scene.blocks.map((b) => {
-    if (b.content === '') return b;
+  const blocks = scene.blocks.map((b, i) => {
+    const bodySegLen = lengthByIndex.get(i);
+    if (b.content === '' && b.bodySegLen === bodySegLen) return b;
     changed = true;
-    return { ...b, content: '' };
+    const next: BlockEntry = { ...b, content: '' };
+    if (bodySegLen === undefined) delete next.bodySegLen;
+    else next.bodySegLen = bodySegLen;
+    return next;
   });
   return changed ? { ...scene, blocks } : scene;
 }
@@ -143,9 +159,11 @@ function stripChapterProse(chapter: ChapterEntry): ChapterEntry {
  * `beforeMigrationWrite`). Stripping `blocks[].content` here — unconditionally,
  * on every write, regardless of caller — keeps `manifest.json` O(structure)
  * instead of O(vault): this is what makes `scene:save` stop re-serializing
- * every scene's prose on every keystroke-flush. Returns a new object; never
- * mutates the caller's manifest (`scene:save` keeps its own hydrated
- * in-memory copy, with content intact, for its save-to-save cache).
+ * every scene's prose on every keystroke-flush. Each stripped block also
+ * records its serialized-segment boundary (`bodySegLen`, see stripSceneProse)
+ * so readManifest can hydrate multi-block scenes losslessly. Returns a new
+ * object; never mutates the caller's manifest (`scene:save` keeps its own
+ * hydrated in-memory copy, with content intact, for its save-to-save cache).
  */
 export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
   return {
