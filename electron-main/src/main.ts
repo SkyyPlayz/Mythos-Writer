@@ -93,6 +93,7 @@ import {
   type VersionListPayload,
   type VersionGetPayload,
   type VersionRollbackPayload,
+  type VersionSavePayload,
   type SearchQueryPayload,
   type WritingScanPayload,
   type BetaReadScanPayload,
@@ -335,6 +336,7 @@ import {
   readManifest,
   writeManifest as writeManifestRaw,
   defaultManifest,
+  ensureSceneFilesForManifestScenes,
   reindexVault,
   loadVaultIndexCache,
   saveVaultIndexCache,
@@ -463,6 +465,8 @@ import {
 import { indexDocument, buildFullIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
+import { buildManuscriptHtml } from './pdfExport.js';
+import os from 'os';
 import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
   sceneToPlaintext, chapterToPlaintext, storyToPlaintext, vaultToPlaintext,
@@ -834,6 +838,10 @@ function ensureVaultDir() {
             created_at: entry.createdAt,
           });
         },
+        // SKY-6596: before the migration write strips embedded scene prose
+        // from the manifest, make sure every scene that still only carries
+        // prose in the manifest (not in a `.md` file) gets one written now.
+        beforeMigrationWrite: (manifest, root) => ensureSceneFilesForManifestScenes(manifest, root),
       });
     } catch (err) {
       if (err instanceof ManifestMigrationError) {
@@ -1165,6 +1173,117 @@ function buildTextExport(
         defaultFilename: 'vault-export',
       };
     }
+  }
+}
+
+// Beta 4 M14 — last file written by any export handler. Read only by
+// EXPORT_REVEAL_LAST ("Show in folder" on the export modal Done state); the
+// renderer never supplies the path.
+let lastExportPath: string | null = null;
+
+// ─── Export scope resolution (Beta 4 M14 — shared by DOCX + PDF) ───
+
+interface ResolvedExportScope {
+  title: string;
+  synopsis?: string;
+  chapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }>;
+}
+
+function resolveExportScope(
+  manifest: import('./ipc.js').Manifest,
+  scope: import('./ipc.js').ExportScope,
+): ResolvedExportScope {
+  const readProse = (sc: import('./ipc.js').SceneEntry): { id: string; title: string; prose: string } => {
+    let prose = '';
+    try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+    return { id: sc.id, title: sc.title, prose };
+  };
+
+  if (scope.kind === 'scene') {
+    let found: import('./ipc.js').SceneEntry | null = null;
+    outer: for (const st of manifest.stories) {
+      for (const ch of st.chapters) {
+        const sc = ch.scenes.find((s) => s.id === scope.sceneId);
+        if (sc) { found = sc; break outer; }
+      }
+    }
+    if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
+    const scene = readProse(found);
+    return { title: found.title, chapters: [{ id: found.id, title: found.title, scenes: [scene] }] };
+  }
+  if (scope.kind === 'chapter') {
+    const st = manifest.stories.find((s) => s.id === scope.storyId);
+    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
+    const ch = st.chapters.find((c) => c.id === scope.chapterId);
+    if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
+    return {
+      title: ch.title,
+      synopsis: st.synopsis,
+      chapters: [{
+        id: ch.id,
+        title: ch.title,
+        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
+      }],
+    };
+  }
+  if (scope.kind === 'story') {
+    const st = manifest.stories.find((s) => s.id === scope.storyId);
+    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
+    return {
+      title: st.title,
+      synopsis: st.synopsis,
+      chapters: [...st.chapters].sort((a, b) => a.order - b.order).map((ch) => ({
+        id: ch.id,
+        title: ch.title,
+        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
+      })),
+    };
+  }
+  // vault
+  const chapters: ResolvedExportScope['chapters'] = [];
+  for (const st of manifest.stories) {
+    for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
+      chapters.push({
+        id: ch.id,
+        title: `${st.title} — ${ch.title}`,
+        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
+      });
+    }
+  }
+  return { title: 'Vault Export', chapters };
+}
+
+// ─── PDF rendering (Beta 4 M14) — hidden BrowserWindow + printToPDF ───
+// No new dependencies: Chromium is the PDF engine. The compiled HTML is
+// written to a private temp file (data: URLs hit Chromium's 2 MB URL cap on
+// full-length manuscripts), loaded into an offscreen window with fully
+// locked-down webPreferences, printed, then cleaned up.
+
+async function renderHtmlToPdf(html: string): Promise<Buffer> {
+  const tmpFile = path.join(
+    os.tmpdir(),
+    `mythos-pdf-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.html`,
+  );
+  fs.writeFileSync(tmpFile, html, 'utf-8');
+  // Hardened, preload-less window: no IPC surface at all — it only renders
+  // the compiled (fully HTML-escaped) manuscript for printing.
+  const win = new BrowserWindow({
+    show: false,
+    width: 816,
+    height: 1056,
+    webPreferences: secureWebPreferences({}),
+  });
+  try {
+    await win.loadFile(tmpFile);
+    const pdf = await win.webContents.printToPDF({
+      pageSize: 'Letter',
+      printBackground: false,
+      margins: { top: 1, bottom: 1, left: 1, right: 1 },
+    });
+    return Buffer.from(pdf);
+  } finally {
+    win.destroy();
+    try { fs.unlinkSync(tmpFile); } catch { /* best effort */ }
   }
 }
 
@@ -1951,6 +2070,22 @@ const handlers: IpcHandlers = {
       version: getVersion(getVaultRoot(), payload.sceneId, payload.ts, { chapterRelPath }),
     };
   },
+  // Beta 4 M10: explicit renderer-initiated snapshot into the SKY-10/M5 store
+  // (numbered draft files on v2 vaults, per-chapter versions/ tree on legacy
+  // vaults). Used by "Save snapshot now" and the drafts compare surfaces.
+  [IPC_CHANNELS.VERSION_SAVE]: (payload: VersionSavePayload) => {
+    ensureVaultDir();
+    const chapterRelPath = resolveSceneChapterDir(payload.sceneId);
+    if (!chapterRelPath) throw new Error(`Scene not found: ${payload.sceneId}`);
+    const retention = loadAppSettings().versions;
+    return {
+      version: saveVersion(getVaultRoot(), payload.sceneId, payload.content, {
+        chapterRelPath,
+        intent: payload.intent ?? 'save',
+        retention,
+      }),
+    };
+  },
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => {
     ensureVaultDir();
     // Locate scene in manifest to get its vault path and current metadata
@@ -1966,7 +2101,13 @@ const handlers: IpcHandlers = {
     if (!found) throw new Error(`Scene not found: ${payload.sceneId}`);
 
     safePath(getVaultRoot(), found.path);
-    const chapterRelPath = path.posix.dirname(found.path.split(path.sep).join('/'));
+    // Beta 4 M10: resolve the versions dir the same way version:list/get/save
+    // do (nested scenes → chapter.path, flat scenes → the scene file's dir).
+    // Rollback previously always used dirname(scene.path), which never matched
+    // the store for nested manifests whose scenes live under `…/scenes/`.
+    const chapterRelPath =
+      resolveSceneChapterDir(payload.sceneId) ??
+      path.posix.dirname(found.path.split(path.sep).join('/'));
 
     let currentProse = '';
     try {
@@ -4173,8 +4314,8 @@ const handlers: IpcHandlers = {
     return readBgImageAsDataUrl(payload.filePath);
   },
 
-  // ─── EPUB export (MYT-342) ───
-  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string; metadata?: { title?: string; author?: string; language?: string }; targetPath?: string }) => {
+  // ─── EPUB export (MYT-342; options Beta 4 M14) ───
+  [IPC_CHANNELS.EXPORT_EPUB]: async (payload: { storyId: string; metadata?: { title?: string; author?: string; language?: string }; targetPath?: string; options?: import('./ipc.js').ExportOptions }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
     const story = manifest.stories.find((s) => s.id === payload.storyId);
@@ -4218,6 +4359,8 @@ const handlers: IpcHandlers = {
       author: payload.metadata?.author,
       language: payload.metadata?.language,
       chapters,
+      synopsis: story.synopsis,
+      options: payload.options,
     });
     // SKY-157: pre-export snapshot for every scene in the story
     const { snapshots: retention } = loadAppSettings();
@@ -4230,11 +4373,12 @@ const handlers: IpcHandlers = {
       }
     }
     writeFileAtomic(filePath, buffer);
-    return { path: filePath, cancelled: false };
+    lastExportPath = filePath;
+    return { path: filePath, cancelled: false, bytes: buffer.length };
   },
 
-  // ─── DOCX export (MYT-252, extended SKY-153) ───
-  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId?: string; scope?: import('./ipc.js').ExportScope }) => {
+  // ─── DOCX export (MYT-252, extended SKY-153; options Beta 4 M14) ───
+  [IPC_CHANNELS.EXPORT_DOCX]: async (payload: { storyId?: string; scope?: import('./ipc.js').ExportScope; options?: import('./ipc.js').ExportOptions }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
 
@@ -4243,66 +4387,7 @@ const handlers: IpcHandlers = {
       ? payload.scope
       : { kind: 'story', storyId: payload.storyId! };
 
-    let docxTitle = 'Export';
-    let docxChapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }> = [];
-
-    if (scope.kind === 'scene') {
-      let found: import('./ipc.js').SceneEntry | null = null;
-      outer: for (const st of manifest.stories) {
-        for (const ch of st.chapters) {
-          const sc = ch.scenes.find((s) => s.id === scope.sceneId);
-          if (sc) { found = sc; break outer; }
-        }
-      }
-      if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-      let prose = '';
-      try { prose = readSceneFile(getVaultRoot(), found.path).prose; } catch { /* missing */ }
-      docxTitle = found.title;
-      docxChapters = [{ id: found.id, title: found.title, scenes: [{ id: found.id, title: found.title, prose }] }];
-    } else if (scope.kind === 'chapter') {
-      const st = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-      const ch = st.chapters.find((c) => c.id === scope.chapterId);
-      if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-      docxTitle = ch.title;
-      docxChapters = [{
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
-          let prose = '';
-          try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
-          return { id: sc.id, title: sc.title, prose };
-        }),
-      }];
-    } else if (scope.kind === 'story') {
-      const st = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-      docxTitle = st.title;
-      docxChapters = [...st.chapters].sort((a, b) => a.order - b.order).map((ch) => ({
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
-          let prose = '';
-          try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
-          return { id: sc.id, title: sc.title, prose };
-        }),
-      }));
-    } else {
-      docxTitle = 'Vault Export';
-      for (const st of manifest.stories) {
-        for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
-          docxChapters.push({
-            id: ch.id,
-            title: `${st.title} — ${ch.title}`,
-            scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => {
-              let prose = '';
-              try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
-              return { id: sc.id, title: sc.title, prose };
-            }),
-          });
-        }
-      }
-    }
+    const { title: docxTitle, synopsis, chapters: docxChapters } = resolveExportScope(manifest, scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export DOCX',
@@ -4311,7 +4396,7 @@ const handlers: IpcHandlers = {
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
 
-    const buffer = await buildDocx({ title: docxTitle, chapters: docxChapters });
+    const buffer = await buildDocx({ title: docxTitle, chapters: docxChapters, synopsis, options: payload.options });
     // SKY-157: pre-export snapshot for every scene being exported
     const { snapshots: retentionDocx } = loadAppSettings();
     for (const ch of docxChapters) {
@@ -4320,7 +4405,48 @@ const handlers: IpcHandlers = {
       }
     }
     writeFileAtomic(result.filePath, buffer);
-    return { path: result.filePath, cancelled: false };
+    lastExportPath = result.filePath;
+    return { path: result.filePath, cancelled: false, bytes: buffer.length };
+  },
+
+  // ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) — Chromium printToPDF ───
+  [IPC_CHANNELS.EXPORT_PDF]: async (payload: { scope: import('./ipc.js').ExportScope; options?: import('./ipc.js').ExportOptions }) => {
+    ensureVaultDir();
+    const manifest = readManifest(getManifestPath());
+    const { title: pdfTitle, synopsis, chapters: pdfChapters } = resolveExportScope(manifest, payload.scope);
+
+    const result = await dialog.showSaveDialog({
+      title: 'Export PDF',
+      defaultPath: `${pdfTitle.replace(/[/\\?%*:|"<>]/g, '-')}.pdf`,
+      filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+    });
+    if (result.canceled || !result.filePath) return { path: null, cancelled: true };
+
+    const html = buildManuscriptHtml({
+      title: pdfTitle,
+      synopsis,
+      chapters: pdfChapters,
+      options: payload.options,
+    });
+    const buffer = await renderHtmlToPdf(html);
+
+    // SKY-157: pre-export snapshot for every scene being exported
+    const { snapshots: retentionPdf } = loadAppSettings();
+    for (const ch of pdfChapters) {
+      for (const sc of ch.scenes) {
+        if (sc.prose) saveSnapshot(getVaultRoot(), sc.id, sc.prose, retentionPdf, 'Pre-export snapshot');
+      }
+    }
+    writeFileAtomic(result.filePath, buffer);
+    lastExportPath = result.filePath;
+    return { path: result.filePath, cancelled: false, bytes: buffer.length };
+  },
+
+  // ─── Reveal last export (Beta 4 M14 — export modal "Show in folder") ───
+  [IPC_CHANNELS.EXPORT_REVEAL_LAST]: async () => {
+    if (!lastExportPath || !fs.existsSync(lastExportPath)) return { opened: false };
+    shell.showItemInFolder(lastExportPath);
+    return { opened: true };
   },
 
   // ─── Markdown + plain-text export (SKY-153) ───
@@ -4335,8 +4461,10 @@ const handlers: IpcHandlers = {
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
-    writeFileAtomic(result.filePath, Buffer.from(content, 'utf-8'));
-    return { path: result.filePath, cancelled: false };
+    const mdBuffer = Buffer.from(content, 'utf-8');
+    writeFileAtomic(result.filePath, mdBuffer);
+    lastExportPath = result.filePath;
+    return { path: result.filePath, cancelled: false, bytes: mdBuffer.length };
   },
 
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
@@ -4349,8 +4477,10 @@ const handlers: IpcHandlers = {
       filters: [{ name: 'Plain Text', extensions: ['txt'] }],
     });
     if (result.canceled || !result.filePath) return { path: null, cancelled: true };
-    writeFileAtomic(result.filePath, Buffer.from(content, 'utf-8'));
-    return { path: result.filePath, cancelled: false };
+    const txtBuffer = Buffer.from(content, 'utf-8');
+    writeFileAtomic(result.filePath, txtBuffer);
+    lastExportPath = result.filePath;
+    return { path: result.filePath, cancelled: false, bytes: txtBuffer.length };
   },
 
   // ─── Obsidian vault import wizard (MYT-244) ───

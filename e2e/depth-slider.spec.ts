@@ -587,7 +587,9 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
     await expect(para).toBeVisible({ timeout: 4_000 });
     await expect(para).toHaveText('The bells rang over the harbor.');
 
-    // Rewrite the paragraph inline; Enter commits (prototype behavior).
+    // Rewrite the paragraph inline; Enter splits at the caret (Beta 4 M8 —
+    // prototype paraKey). With the caret at the end, the rewritten text
+    // commits and an empty trailing paragraph is created after it.
     await para.click();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('Nine bells, counted twice.');
@@ -599,5 +601,9 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
     await expect
       .poll(() => fs.readFileSync(scenePath, 'utf8'), { timeout: 10_000 })
       .toContain('Nine bells, counted twice.');
+
+    // M8: the split appended a second (placeholder) paragraph to the scene
+    // and moved the caret into it — the sheet now shows two rows.
+    await expect(page.locator('[data-testid^="msv-para-"]')).toHaveCount(2);
   });
 });

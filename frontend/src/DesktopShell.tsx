@@ -6,7 +6,13 @@ import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
 import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
-import { applyLiquidNeonV2Tokens, vaultDefaultThemePatch, type LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import {
+  applyLiquidNeonV2Tokens,
+  normalizeLiquidNeonV2,
+  vaultDefaultThemePatch,
+  type LiquidNeonPageCfg,
+  type LiquidNeonV2Settings,
+} from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName } from './ProjectSwitcher';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
@@ -14,7 +20,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, moveParagraph, sceneStatus, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cycleStatus, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, sceneStatus, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -34,6 +40,7 @@ import {
   upsertSceneTab,
   upsertNoteTab,
   reconcileSceneTabs,
+  renameCommitsProvisional,
   workspaceStripModeFor,
   provisionalSceneIsAway,
   PROVISIONAL_CREATED_TOAST,
@@ -52,11 +59,18 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
+import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import SceneHistory from './SceneHistory';
+// Beta 4 M10 — Drafts v2: compare split, full diff, popover on the M5 store.
+import DraftsCompareSplit from './drafts/DraftsCompareSplit';
+import DraftDiffView from './drafts/DraftDiffView';
+import DraftsPopover from './drafts/DraftsPopover';
+import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
+import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo';
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
@@ -625,192 +639,6 @@ export function BookOutlineView({ story, selectedChapterId, selectedSceneId, onS
   );
 }
 
-// ─── Full Book preview (SKY-3213 C4) — preview-only continuous prose ───
-// Preview-only because C5 (virtualization) has not yet landed.
-
-interface FullBookPreviewViewProps {
-  story: Story | null;
-}
-
-function FullBookPreviewView({ story }: FullBookPreviewViewProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const headerRef = useRef<HTMLHeadingElement | null>(null);
-
-  useEffect(() => {
-    headerRef.current?.focus({ preventScroll: true });
-  }, [story?.id]);
-
-  const chapters = useMemo(
-    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
-    [story],
-  );
-
-  const chapterSections = useMemo(
-    () =>
-      chapters.map((ch) => ({
-        chapter: ch,
-        scenes: [...ch.scenes]
-          .sort((a, b) => a.order - b.order)
-          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
-      })),
-    [chapters],
-  );
-
-  const totalChapters = chapterSections.length;
-
-  const scrollToChapter = useCallback(
-    (idx: number) => {
-      if (!scrollRef.current || totalChapters === 0) return;
-      const wrapped = ((idx % totalChapters) + totalChapters) % totalChapters;
-      const el = scrollRef.current.querySelector<HTMLElement>(
-        `[data-chapter-idx="${wrapped}"]`,
-      );
-      el?.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
-      el?.focus({ preventScroll: true });
-    },
-    [totalChapters],
-  );
-
-  if (!story) {
-    return (
-      <div className="full-book-preview-empty" role="status" aria-live="polite">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">No story selected</p>
-        <p className="full-book-preview-empty__hint">Select a story from the Editor view to read the full book.</p>
-      </div>
-    );
-  }
-
-  if (chapters.length === 0) {
-    return (
-      <div className="full-book-preview-empty" role="status">
-        <span className="full-book-preview-empty__icon" aria-hidden="true">📖</span>
-        <p className="full-book-preview-empty__title">{story.title}</p>
-        <p className="full-book-preview-empty__hint">No chapters yet. Add chapters and scenes in the Editor view.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={scrollRef}
-      className="full-book-preview-wrap"
-      role="document"
-      aria-label={`Full book preview: ${story.title}`}
-    >
-      <div className="full-book-preview">
-        <header className="full-book-preview__book-header">
-          <h1
-            ref={headerRef}
-            className="full-book-preview__story-title"
-            tabIndex={-1}
-          >
-            {story.title}
-          </h1>
-          <span className="full-book-preview__readonly-badge" role="note">
-            Preview — read only
-          </span>
-          {story.synopsis && (
-            <p className="full-book-preview__synopsis">{story.synopsis}</p>
-          )}
-        </header>
-
-        {chapterSections.map(({ chapter, scenes }, idx) => (
-          <section
-            key={chapter.id}
-            className="full-book-preview__chapter"
-            aria-labelledby={`fbp-ch-${chapter.id}`}
-            tabIndex={-1}
-            data-chapter-idx={idx}
-          >
-            <h2
-              className="full-book-preview__chapter-title"
-              id={`fbp-ch-${chapter.id}`}
-            >
-              {chapter.title}
-            </h2>
-            {scenes.length === 0 ? (
-              <p className="full-book-preview__no-content">
-                — no written scenes in this chapter —
-              </p>
-            ) : (
-              scenes.map((scene, si) => {
-                const sortedBlocks = [...scene.blocks]
-                  .sort((a, b) => a.order - b.order)
-                  .filter((b) => b.content.trim());
-                return (
-                  <article
-                    key={scene.id}
-                    className="full-book-preview__scene"
-                    aria-labelledby={`fbp-sc-${scene.id}`}
-                  >
-                    <h3
-                      className="full-book-preview__scene-title"
-                      id={`fbp-sc-${scene.id}`}
-                    >
-                      {scene.title}
-                    </h3>
-                    <div className="full-book-preview__scene-body">
-                      {sortedBlocks.map((block) => (
-                        <p
-                          key={block.id}
-                          className={`full-book-preview__block full-book-preview__block--${block.type}`}
-                        >
-                          {block.content}
-                        </p>
-                      ))}
-                    </div>
-                    {si < scenes.length - 1 && (
-                      <div
-                        className="full-book-preview__scene-sep"
-                        aria-hidden="true"
-                      >
-                        ✦ ✦ ✦
-                      </div>
-                    )}
-                  </article>
-                );
-              })
-            )}
-            <nav
-              className="full-book-preview__chapter-nav"
-              aria-label={`Navigate chapters (${idx + 1} of ${totalChapters})`}
-            >
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx - 1)}
-                aria-label="Previous chapter (wraps to last)"
-              >
-                ← Prev
-              </button>
-              <span className="full-book-preview__nav-pos" aria-hidden="true">
-                {idx + 1} / {totalChapters}
-              </span>
-              <button
-                className="full-book-preview__nav-btn"
-                onClick={() => scrollToChapter(idx + 1)}
-                aria-label="Next chapter (wraps to first)"
-              >
-                Next →
-              </button>
-            </nav>
-          </section>
-        ))}
-
-        <footer className="full-book-preview__footer">
-          <button
-            className="full-book-preview__back-top"
-            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() })}
-            aria-label="Back to top of book"
-          >
-            ↑ Back to top
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────
 
 /** Match a KeyboardEvent against a shortcut string like 'ctrl+shift+v' or 'alt+v'. */
@@ -902,6 +730,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
+  // Beta 4 M10 — Drafts v2 surfaces (compare split · full diff · popover) +
+  // the exact-undo state for Load draft (CF-4). Undo survives split close.
+  const [draftsSplitOpen, setDraftsSplitOpen] = useState(false);
+  const [draftsDiffOpen, setDraftsDiffOpen] = useState(false);
+  const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
+  const [draftsSelectedTs, setDraftsSelectedTs] = useState<string | null>(null);
+  const [draftsUndo, setDraftsUndo] = useState<DraftUndoState | null>(null);
+  const draftsPillRef = useRef<HTMLButtonElement | null>(null);
   /** SKY-204: currently open vault note path (relative to notes vault root). */
   const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
   /** SKY-204: word count of the currently open vault note, updated live. */
@@ -1185,6 +1021,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePagePrefsChange, pagePrefs]);
 
+  // Beta 4 M10 — numbered drafts (M5 file store) for the open scene, shared
+  // by the popover, the compare split, and the full diff.
+  const sceneDrafts = useSceneDrafts(selectedScene?.id ?? null);
+  const refreshSceneDrafts = sceneDrafts.refresh;
+
   const handleManualSnapshot = useCallback(async () => {
     if (!selectedScene) return;
     const content = editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n');
@@ -1200,9 +1041,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     } catch {
       // non-fatal
     }
+    // Beta 4 M10: also snapshot into the SKY-10/M5 store — numbered draft
+    // files on v2 vaults — so the Drafts v2 surfaces list this save.
+    try {
+      await window.api.versionSave?.(selectedScene.id, content, 'save');
+      void refreshSceneDrafts();
+    } catch {
+      // non-fatal
+    }
     // Notify useWritingScheduler on_save cadence listeners (AC-CAD-02)
     window.dispatchEvent(new CustomEvent('scene:saved'));
-  }, [selectedScene]);
+  }, [selectedScene, refreshSceneDrafts]);
 
   const handleSceneRestore = useCallback((content: string) => {
     if (!selectedScene) return;
@@ -2878,6 +2727,72 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }, 1200);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem, provisionalScene, storyDocTabs, persistDocTabs]);
 
+  // ─── Beta 4 M10: Drafts v2 — load draft with exact undo (CF-4) ─────────────
+
+  /** Apply draft text to the open scene through the normal save pipeline
+   *  (manifest + markdown persist), then remount the editor to show it. */
+  const applyDraftContent = useCallback((content: string) => {
+    const restoredBlock: Block = {
+      id: generateId(),
+      type: 'prose',
+      content,
+      order: 0,
+      updatedAt: now(),
+    };
+    handleBlocksChange([restoredBlock]);
+    setRestoreKey(k => k + 1);
+  }, [handleBlocksChange]);
+
+  /** Prototype loadDraftH: snapshot-first store rollback, apply, arm Undo. */
+  const handleLoadDraft = useCallback(async (draft: SceneDraftEntry) => {
+    if (!selectedScene) return;
+    if (!draft.content.trim()) {
+      showLnToast('Nothing to load from this draft');
+      return;
+    }
+    try {
+      const undoState = await loadDraft(
+        {
+          getCurrentContent: () =>
+            editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
+          applyContent: applyDraftContent,
+          rollback: (ts) => window.api.versionRollback(selectedScene.id, ts),
+        },
+        selectedScene.id,
+        draft,
+      );
+      setDraftsUndo(undoState);
+      void refreshSceneDrafts(); // the pre-rollback snapshot is a new row
+      showLnToast(`${draft.label} loaded into “${selectedScene.title}” — Undo is in the drafts bar`);
+    } catch (err) {
+      showLnToast(`Couldn't load this draft: ${(err as Error).message}`);
+    }
+  }, [selectedScene, applyDraftContent, refreshSceneDrafts]);
+
+  /** Prototype draftUndoH: put the exact pre-load text back. */
+  const handleDraftUndo = useCallback(() => {
+    if (!draftsUndo || draftsUndo.sceneId !== selectedScene?.id) return;
+    undoLoadDraft({ applyContent: applyDraftContent }, draftsUndo);
+    setDraftsUndo(null);
+    showLnToast('Undone — your current draft is back');
+  }, [draftsUndo, selectedScene, applyDraftContent]);
+
+  /** Popover "Compare" → full diff against that draft (prototype 6426). */
+  const handleDraftCompare = useCallback((draft: SceneDraftEntry) => {
+    setDraftsSelectedTs(draft.ts);
+    setDraftsPopoverOpen(false);
+    setDraftsDiffOpen(true);
+  }, []);
+
+  // Scene switches leave every drafts surface + selection behind; the undo
+  // chip is per-scene by construction (sceneId check in handleDraftUndo).
+  useEffect(() => {
+    setDraftsSplitOpen(false);
+    setDraftsDiffOpen(false);
+    setDraftsPopoverOpen(false);
+    setDraftsSelectedTs(null);
+  }, [selectedScene?.id]);
+
   const handleDraftStateChange = useCallback((state: DraftState) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
     const updatedScene: Scene = { ...selectedScene, draftState: state, updatedAt: now() };
@@ -2895,6 +2810,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     );
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
+
+  // SKY-6491: DocHeader's editable title was wired to a no-op that silently
+  // discarded edits — commit the new title into the scene like every other
+  // per-field scene mutation in this file (state + manifest + markdown).
+  const handleSceneTitleChange = useCallback((title: string) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === selectedScene.title) return;
+    const updatedScene: Scene = { ...selectedScene, title: trimmed, updatedAt: now() };
+    setSelectedScene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    persistSceneMarkdown(updatedScene);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
 
@@ -3961,6 +3900,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setManuscriptPartZoom(cursor.zoom === 'part');
   }, [selectedStory, handleSelectScene, setViewDepth]);
 
+  // Beta 4 M8: shared follow-up for model-driven manuscript changes — the
+  // manuscript renders `selectedStory`, which updateManifest alone does NOT
+  // refresh, so the selection objects must follow the new story for the
+  // change to appear (and for the view's caret hand-off to find it).
+  const refreshManuscriptSelection = useCallback((nextStory: Story) => {
+    setSelectedStory(nextStory);
+    setSelectedChapter((prev) => (prev ? nextStory.chapters.find((ch) => ch.id === prev.id) ?? prev : prev));
+    setSelectedScene((prev) =>
+      prev
+        ? nextStory.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === prev.id) ?? prev
+        : prev
+    );
+  }, []);
+
   // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
   // SKY-3211 handlers assume selectedChapter, so these find the owner).
   const handleManuscriptEditParagraph = useCallback((sceneId: string, blockId: string, newText: string) => {
@@ -4000,7 +3953,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     );
     updateManifest(updatedStories);
-  }, [selectedStory, stories, updateManifest]);
+    // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
+    // dot actually recolors (updateManifest alone leaves it stale).
+    const cycledStory = updatedStories.find((st) => st.id === selectedStory.id);
+    if (cycledStory) refreshManuscriptSelection(cycledStory);
+    // Beta 4 M8 (§1.6): every dot click confirms — prototype cycleStatus toast.
+    showLnToast(`“${scene.title}” → ${next === 'done' ? 'Complete' : next === 'draft' ? 'Drafting' : 'Planned'}`);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 3 M10: paragraph grip drag — pure move via the model, then persist
   // every changed scene through the same per-scene markdown + snapshot path
@@ -4031,6 +3990,109 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     showLnToast('Block moved');
   }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
+  // Beta 4 M8: shared persistence for model-driven single-scene block edits
+  // (split/merge/empty-removal) — stamp the scene, write the manifest, then
+  // the scene's own markdown + snapshot (per-scene storage contract).
+  const applyManuscriptSceneChange = useCallback((nextStory: Story, sceneId: string) => {
+    const stamp = now();
+    const stamped: Story = {
+      ...nextStory,
+      chapters: nextStory.chapters.map((ch) =>
+        ch.scenes.some((sc) => sc.id === sceneId)
+          ? { ...ch, scenes: ch.scenes.map((sc) => (sc.id === sceneId ? { ...sc, updatedAt: stamp } : sc)) }
+          : ch
+      ),
+    };
+    updateManifest(stories.map((st) => (st.id === stamped.id ? stamped : st)));
+    refreshManuscriptSelection(stamped);
+    const scene = stamped.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (scene) {
+      persistSceneMarkdown(scene);
+      const content = [...scene.blocks].sort((a, b) => a.order - b.order).map((b) => b.content).join('\n\n');
+      window.api.snapshotSave?.(sceneId, content).catch(() => {});
+    }
+  }, [stories, updateManifest, persistSceneMarkdown, refreshManuscriptSelection]);
+
+  // Beta 4 M8: Enter splits the paragraph at the caret (prototype paraKey).
+  const handleManuscriptSplitParagraph = useCallback((sceneId: string, blockId: string, before: string, after: string): string | null => {
+    if (!selectedStory) return null;
+    const res = splitParagraph(selectedStory, { sceneId, blockId }, before, after, { makeId: generateId });
+    if (!res) return null;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return res.newBlockId;
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: Backspace at paragraph start merges into the previous block.
+  const handleManuscriptMergeParagraph = useCallback((sceneId: string, blockId: string, currentText: string): { mergedBlockId: string; mergedText: string } | null => {
+    if (!selectedStory) return null;
+    const res = mergeParagraphUp(selectedStory, { sceneId, blockId }, currentText);
+    if (!res) return null;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return { mergedBlockId: res.mergedBlockId, mergedText: res.mergedText };
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: a paragraph emptied on blur is removed (min 1 per scene —
+  // the model refuses the scene's last block and the view keeps it as ' ').
+  const handleManuscriptRemoveParagraph = useCallback((sceneId: string, blockId: string): boolean => {
+    if (!selectedStory) return false;
+    const res = removeEmptyParagraph(selectedStory, { sceneId, blockId });
+    if (!res) return false;
+    applyManuscriptSceneChange(res.story, sceneId);
+    return true;
+  }, [selectedStory, applyManuscriptSceneChange]);
+
+  // Beta 4 M8: inline scene-heading rename. Renaming a provisional scene
+  // persists it (§1.5) — same commit path as the first real keystroke in
+  // handleBlocksChange: append to its chapter, un-provisional its tab.
+  const handleManuscriptRenameScene = useCallback((sceneId: string, title: string) => {
+    if (provisionalScene?.sceneId === sceneId) {
+      if (!renameCommitsProvisional(title)) return;
+      if (!selectedScene || selectedScene.id !== sceneId) return;
+      const updatedScene: Scene = { ...selectedScene, title, updatedAt: now() };
+      setSelectedScene(updatedScene);
+      const updatedStories = stories.map((story) =>
+        story.id !== provisionalScene.storyId ? story : {
+          ...story,
+          chapters: story.chapters.map((ch) =>
+            ch.id !== provisionalScene.chapterId ? ch : { ...ch, scenes: [...ch.scenes, updatedScene] }
+          ),
+        }
+      );
+      updateManifest(updatedStories);
+      persistSceneMarkdown(updatedScene);
+      const committedStory = updatedStories.find((st) => st.id === provisionalScene.storyId);
+      if (committedStory) {
+        setSelectedStory(committedStory);
+        const committedChapter = committedStory.chapters.find((ch) => ch.id === provisionalScene.chapterId);
+        if (committedChapter) setSelectedChapter(committedChapter);
+      }
+      const committedTabs = storyDocTabs.map((t) =>
+        t.id === provisionalScene.tabId ? { ...t, provisional: undefined, title } : t,
+      );
+      setStoryDocTabs(committedTabs);
+      persistDocTabs({ story: { tabs: committedTabs, activeId: provisionalScene.tabId } });
+      setProvisionalScene(null);
+      return;
+    }
+    if (!selectedStory) return;
+    const renamed = renameScene(selectedStory, sceneId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+    const scene = renamed.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (scene) persistSceneMarkdown(scene); // the title lives in the scene file's frontmatter
+  }, [provisionalScene, selectedScene, selectedStory, stories, updateManifest, persistSceneMarkdown, storyDocTabs, persistDocTabs, refreshManuscriptSelection]);
+
+  // Beta 4 M8: inline chapter-heading rename (manifest-only — chapter titles
+  // have no per-chapter file).
+  const handleManuscriptRenameChapter = useCallback((chapterId: string, title: string) => {
+    if (!selectedStory) return;
+    const renamed = renameChapter(selectedStory, chapterId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
+
   // Beta 3 M10: manuscript sheet width (prototype pageW) persisted app-wide.
   const handleManuscriptPageWidthChange = useCallback((px: number) => {
     setAppSettings((prev) => {
@@ -4040,6 +4102,45 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return updated;
     });
   }, []);
+
+  // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
+  // same live-apply + persist shape as the width handler above, scoped to
+  // liquidNeonV2.pageCfg instead of going through the Settings panel's draft
+  // Save flow (this is a one-click swap, not a form).
+  const patchManuscriptPageCfg = useCallback((patch: Partial<LiquidNeonPageCfg>) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const liquidNeonV2 = normalizeLiquidNeonV2(prev.liquidNeonV2);
+      const updated: AppSettings = {
+        ...prev,
+        liquidNeonV2: { ...liquidNeonV2, pageCfg: { ...liquidNeonV2.pageCfg, ...patch } },
+      };
+      window.api.settingsSet(updated).catch(() => {});
+      void applyLiquidNeonV2Theme(updated.liquidNeonV2);
+      return updated;
+    });
+  }, []);
+
+  const handleManuscriptPageStyleChange = useCallback(
+    (mode: LiquidNeonPageCfg['mode']) => patchManuscriptPageCfg({ mode }),
+    [patchManuscriptPageCfg]
+  );
+
+  const handlePickPageTexture = useCallback(() => {
+    window.api?.pickBgImage?.()
+      .then(async (res) => {
+        if (!res?.filePath) return;
+        // Same resolution as the wallpaper's customWp (M4): a raw filesystem
+        // path doesn't load via CSS url() in the renderer, so it's converted
+        // to a data URL once here rather than on every paint.
+        let dataUrl: string | null | undefined;
+        try {
+          dataUrl = (await window.api?.loadBgImage?.(res.filePath))?.dataUrl;
+        } catch { /* fall back to the raw path */ }
+        patchManuscriptPageCfg({ mode: 'custom', textureUrl: dataUrl ?? res.filePath });
+      })
+      .catch(() => {});
+  }, [patchManuscriptPageCfg]);
 
   // Beta 3 M10 toolbar actions (prototype 766-777). Read is scripted until the
   // M13 TTS Reader lands; Dictate reuses the existing voice pipeline; Assist
@@ -4217,7 +4318,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const paletteCommands = useMemo(() => [
     { t: 'Toggle focus mode', sub: 'Hide chrome · just the page', run: () => toggleDistractionFree() },
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
-    { t: 'Export…', sub: 'DOCX · EPUB · Markdown', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
+    { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
     { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
@@ -4563,7 +4664,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {tourOpen && (
         <TourModal onClose={() => setTourOpen(false)} />
       )}
-      {exportScope && <ExportDialog scope={exportScope} stories={stories} onClose={() => setExportScope(null)} />}
+      {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
       {templatePickerOpen && (
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
@@ -4660,7 +4761,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'book' && (
         <div className="shell-book">
-          <FullBookPreviewView story={selectedStory ?? null} />
+          {/* Beta 4 M14: compiled read-only book (page width follows the editor).
+              M11 carry-over (#938 → #939): the persistent audiobook bar moved
+              with the view into BookPreview — the tts/voice settings ride along. */}
+          <BookPreview
+            story={selectedStory ?? null}
+            pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+            onExport={() => {
+              if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
+            }}
+            onOpenScene={handleOpenSceneById}
+            ttsSettings={appSettings?.tts}
+            voicePrefs={appSettings?.voice}
+          />
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
@@ -4900,9 +5013,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   onMoveParagraph={handleManuscriptMoveParagraph}
+                  onSplitParagraph={handleManuscriptSplitParagraph}
+                  onMergeParagraph={handleManuscriptMergeParagraph}
+                  onRemoveParagraph={handleManuscriptRemoveParagraph}
+                  onRenameScene={handleManuscriptRenameScene}
+                  onRenameChapter={handleManuscriptRenameChapter}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -4931,9 +5051,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditParagraph={handleManuscriptEditParagraph}
                   onCycleStatus={handleManuscriptCycleStatus}
                   onMoveParagraph={handleManuscriptMoveParagraph}
+                  onSplitParagraph={handleManuscriptSplitParagraph}
+                  onMergeParagraph={handleManuscriptMergeParagraph}
+                  onRemoveParagraph={handleManuscriptRemoveParagraph}
+                  onRenameScene={handleManuscriptRenameScene}
+                  onRenameChapter={handleManuscriptRenameChapter}
                   pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
                   onPageWidthChange={handleManuscriptPageWidthChange}
                   liquidNeon={appSettings?.liquidNeonV2}
+                  onPageStyleChange={handleManuscriptPageStyleChange}
+                  onPickPageTexture={handlePickPageTexture}
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
@@ -4955,8 +5082,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <DocHeader
                   title={selectedScene.title ?? ''}
-                  onTitleChange={(_t) => { /* no-op: scene title editing not wired in this view */ }}
-                  wordCount={0}
+                  onTitleChange={handleSceneTitleChange}
+                  wordCount={focusWordCount}
                   breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
                   zoom={docZoom}
                   onZoomChange={setDocZoom}
@@ -4989,6 +5116,44 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   <span className="scene-autosave" aria-live="polite">
                     {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
                   </span>
+                  {/* Beta 4 M10 — Drafts v2 entry points: "Draft N ▾" pill
+                      (popover w/ snapshot settings) + "Drafts" (compare split). */}
+                  <span className="scene-drafts-anchor">
+                    <button
+                      ref={draftsPillRef}
+                      className="scene-drafts-pill"
+                      onClick={() => setDraftsPopoverOpen(o => !o)}
+                      aria-haspopup="dialog"
+                      aria-expanded={draftsPopoverOpen}
+                      data-testid="scene-drafts-pill"
+                    >
+                      {sceneDrafts.currentLabel} ▾
+                    </button>
+                    {draftsPopoverOpen && (
+                      <DraftsPopover
+                        documentLabel={selectedScene.title ?? 'Scene'}
+                        drafts={sceneDrafts.drafts}
+                        currentLabel={sceneDrafts.currentLabel}
+                        currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                        onCompare={handleDraftCompare}
+                        onRestore={(draft) => {
+                          setDraftsPopoverOpen(false);
+                          void handleLoadDraft(draft);
+                        }}
+                        onClose={() => setDraftsPopoverOpen(false)}
+                        anchorRef={draftsPillRef}
+                      />
+                    )}
+                  </span>
+                  <button
+                    className={`scene-drafts-compare-btn${draftsSplitOpen ? ' is-active' : ''}`}
+                    onClick={() => { setDraftsSplitOpen(o => !o); setDraftsDiffOpen(false); }}
+                    aria-pressed={draftsSplitOpen}
+                    title="Drafts — compare previous drafts side-by-side"
+                    data-testid="scene-drafts-compare-btn"
+                  >
+                    Drafts
+                  </button>
                   <button
                     className="btn-history"
                     onClick={() => setShowSceneHistory(true)}
@@ -5006,6 +5171,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 {!inFocusOrDF && !topBarHidden && (
                   <PageRuler prefs={pagePrefs} onPrefsChange={handlePagePrefsChange} />
                 )}
+                {/* Beta 4 M10: row wrapper — column layout normally; becomes a
+                    flex row hosting the drafts compare split when it's open. */}
+                <div className={`shell-drafts-splitrow${draftsSplitOpen ? ' shell-drafts-splitrow--open' : ''}`}>
                 <div
                   ref={pageWrapRef}
                   className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
@@ -5076,6 +5244,46 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                       else if (e.key === 'ArrowLeft') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.max(320, cur - 10) });
                     }}
                   />
+                </div>
+                {/* Beta 4 M10: drafts compare split (scope = the open scene). */}
+                {draftsSplitOpen && (
+                  <DraftsCompareSplit
+                    scopeLabel={selectedScene.title ?? 'Scene'}
+                    drafts={sceneDrafts.drafts}
+                    currentLabel={sceneDrafts.currentLabel}
+                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                    selectedTs={draftsSelectedTs}
+                    onSelectTs={setDraftsSelectedTs}
+                    onFullDiff={() => setDraftsDiffOpen(true)}
+                    onLoadDraft={(draft) => { void handleLoadDraft(draft); }}
+                    undoLabel={draftsUndo && draftsUndo.sceneId === selectedScene.id ? draftsUndo.loadedLabel : null}
+                    onUndo={handleDraftUndo}
+                    onClose={() => setDraftsSplitOpen(false)}
+                    error={sceneDrafts.error}
+                  />
+                )}
+                {/* Beta 4 M10: full side-by-side diff — covers the page area
+                    (doc header + toolbars stay usable); current draft ALWAYS
+                    the left/green column. */}
+                {draftsDiffOpen && (() => {
+                  const diffDraft =
+                    sceneDrafts.drafts.find(d => d.ts === draftsSelectedTs) ?? sceneDrafts.drafts[0] ?? null;
+                  return diffDraft ? (
+                    <div className="shell-drafts-diff-cover" data-testid="shell-drafts-diff-cover">
+                      <DraftDiffView
+                        documentLabel={selectedScene.title ?? 'Scene'}
+                        currentLabel={sceneDrafts.currentLabel}
+                        previousLabel={diffDraft.label}
+                        currentText={selectedScene.blocks.map(b => b.content).join('\n\n')}
+                        previousText={diffDraft.content}
+                        previousOptions={sceneDrafts.drafts.map(d => ({ id: d.ts, label: d.label }))}
+                        selectedPreviousId={diffDraft.ts}
+                        onSelectPrevious={setDraftsSelectedTs}
+                        onClose={() => setDraftsDiffOpen(false)}
+                      />
+                    </div>
+                  ) : null;
+                })()}
                 </div>
                 {showSceneHistory && (
                   <SceneHistory

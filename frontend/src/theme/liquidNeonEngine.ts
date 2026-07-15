@@ -10,8 +10,12 @@ import { schedulePreBlurredWallpaper } from './preBlurWallpaper';
 import { enforceContrastFloor } from '../theme';
 
 export interface LiquidNeonPageCfg {
-  /** Manuscript page mode. 'default' is the "No glow" option (prototype key, 4619). */
-  mode: 'neon' | 'default' | 'scroll' | 'off';
+  /**
+   * Manuscript page mode. 'default' is the "No glow" option (prototype key,
+   * 4619). 'custom' (M7, §5.1) covers the page with a user-uploaded texture
+   * image instead of a flat/glass background.
+   */
+  mode: 'neon' | 'default' | 'scroll' | 'off' | 'custom';
   bg: string;
   /** Page background opacity, 0–100. */
   op: number;
@@ -19,6 +23,8 @@ export interface LiquidNeonPageCfg {
   blur: number;
   /** Scroll mode: glowing archaic edge symbols (prototype pc.sym, 4622). */
   sym?: boolean;
+  /** M7: custom page-texture image ref (file path or data/blob URL) for mode 'custom'. */
+  textureUrl?: string;
 }
 
 export interface LiquidNeonTextCfg {

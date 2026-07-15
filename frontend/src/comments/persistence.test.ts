@@ -69,6 +69,18 @@ describe('serialize → parse round-trip', () => {
     const raw = serializeCommentsFile([mkComment()]);
     expect(raw).not.toContain('suggestionId');
   });
+
+  it('renames legacy Writing Assistant authors to Writing Coach on read (M9)', () => {
+    const raw = serializeCommentsFile([
+      mkComment({ id: 'c-old', kind: 'writing', author: 'Writing Assistant' }),
+      mkComment({ id: 'c-user', kind: 'user', author: 'Writing Assistant' }),
+    ]);
+    const parsed = parseCommentsFile(raw);
+    // Agent comments never surface the stale pre-Coach name…
+    expect(parsed[0].author).toBe('Writing Coach');
+    // …but a user who happens to sign that way is left untouched.
+    expect(parsed[1].author).toBe('Writing Assistant');
+  });
 });
 
 describe('parseCommentsFile tolerance', () => {

@@ -1,13 +1,30 @@
-import { useState, useEffect, type ReactElement } from 'react';
+// Beat Sheet right panel — Beta 4 M14 refresh (FULL-SPEC §5.3).
+//
+// Prototype: "Mythos Writer - Liquid Neon.dc.html" 3108–3134 (rpBeats panel:
+// chart icon + "Beat Sheet" + "n / m mapped", gradient progress, act groups
+// "ACT I — SETUP", beat rows [pct · name · mapped-scene · green dot], hint
+// "…drag scenes onto beats to map them.") + template picker (M14 "beat-sheet
+// templates in the right panel"; frameworks from tlTpls 4178–4184).
+//
+// M14 change: the component is now CONTROLLED — assignments live in
+// ManuscriptStructureView (single source of truth for grid, list and panel);
+// beat rows accept scene drops (HTML5 dnd, same payload the grid/list drags
+// carry) in addition to the Beta 3 right-click context menu.
+
+import { useState, type ReactElement } from 'react';
 import type { Scene } from '../../types';
-import { BEAT_ACTS, ALL_BEATS } from './BEAT_STRUCTURE';
-import type { BeatActId } from './BEAT_STRUCTURE';
+import {
+  BEAT_TEMPLATES,
+  getBeatTemplate,
+  beatsOf,
+  type BeatTemplateId,
+} from './BEAT_STRUCTURE';
 import './BeatSheetSidebar.css';
 
 export type BeatAssignments = Record<string, string>; // sceneId → beatId
 
-/** Persist beat assignments in localStorage keyed by vault root. */
-function loadAssignments(vaultKey: string): BeatAssignments {
+/** Load persisted beat assignments (localStorage, keyed by vault root). */
+export function loadAssignments(vaultKey: string): BeatAssignments {
   try {
     const raw = localStorage.getItem(`mythos-beats-v1:${vaultKey}`);
     return raw ? (JSON.parse(raw) as BeatAssignments) : {};
@@ -16,34 +33,52 @@ function loadAssignments(vaultKey: string): BeatAssignments {
   }
 }
 
+/** Load the persisted beat-sheet template choice (Beta 4 M14). */
+export function loadTemplateId(vaultKey: string): BeatTemplateId {
+  try {
+    const raw = localStorage.getItem(`mythos-beat-template-v1:${vaultKey}`);
+    if (raw && BEAT_TEMPLATES.some((t) => t.id === raw)) return raw as BeatTemplateId;
+  } catch {
+    // localStorage unavailable
+  }
+  return 'save-the-cat';
+}
+
+export function saveTemplateId(vaultKey: string, id: BeatTemplateId): void {
+  try {
+    localStorage.setItem(`mythos-beat-template-v1:${vaultKey}`, id);
+  } catch {
+    // ignore
+  }
+}
 
 interface BeatSheetSidebarProps {
   scenes: Scene[];
-  vaultKey: string;
+  /** Scene→beat assignments (owned by ManuscriptStructureView). */
+  assignments: BeatAssignments;
+  /** Active beat-sheet template. */
+  templateId: BeatTemplateId;
+  onTemplateChange: (id: BeatTemplateId) => void;
   /** Controlled from outside: which beatId is "focused" (highlighted in grid) */
   focusedBeatId?: string | null;
   onBeatFocus: (beatId: string | null) => void;
-  onAssignmentsChange: (assignments: BeatAssignments) => void;
+  /** Map a dragged scene onto a beat (drop target path). */
+  onAssignScene: (sceneId: string, beatId: string | null) => void;
 }
 
 export function BeatSheetSidebar({
   scenes,
-  vaultKey,
+  assignments,
+  templateId,
+  onTemplateChange,
   focusedBeatId,
   onBeatFocus,
-  onAssignmentsChange,
+  onAssignScene,
 }: BeatSheetSidebarProps): ReactElement {
-  const [assignments, setAssignments] = useState<BeatAssignments>(() =>
-    loadAssignments(vaultKey),
-  );
-  const [collapsedActs, setCollapsedActs] = useState<Set<BeatActId>>(new Set());
+  const [dropBeatId, setDropBeatId] = useState<string | null>(null);
 
-  // Re-load assignments when vaultKey changes (project switch)
-  useEffect(() => {
-    const loaded = loadAssignments(vaultKey);
-    setAssignments(loaded);
-    onAssignmentsChange(loaded);
-  }, [vaultKey, onAssignmentsChange]);
+  const template = getBeatTemplate(templateId);
+  const templateBeats = beatsOf(template);
 
   const scenesForBeat = (beatId: string) =>
     scenes.filter((s) => assignments[s.id] === beatId);
@@ -52,27 +87,28 @@ export function BeatSheetSidebar({
     onBeatFocus(focusedBeatId === beatId ? null : beatId);
   };
 
-  const toggleAct = (actId: BeatActId) => {
-    setCollapsedActs((prev) => {
-      const next = new Set(prev);
-      if (next.has(actId)) {
-        next.delete(actId);
-      } else {
-        next.add(actId);
-      }
-      return next;
-    });
-  };
-
-  // Prototype 2361–2363: "n / m mapped" + gradient progress bar
-  const mappedBeats = ALL_BEATS.filter((b) => scenesForBeat(b.id).length > 0).length;
-  const totalBeats = ALL_BEATS.length;
+  // Prototype 3113–3115: "n / m mapped" + gradient progress bar
+  const mappedBeats = templateBeats.filter((b) => scenesForBeat(b.id).length > 0).length;
+  const totalBeats = templateBeats.length;
 
   return (
-    <aside className="beat-sidebar" aria-label="Beat sheet — Save the Cat (3-Act)">
+    <aside className="beat-sidebar" aria-label={`Beat sheet — ${template.name}`}>
       <div className="beat-sidebar__header">
-        {/* Framework picker deferred to v2 pending usage signal */}
-        <span className="beat-sidebar__title">Save the Cat (3-Act)</span>
+        <svg
+          className="beat-sidebar__icon"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 19V5M4 19h16" />
+          <path d="M8 15l3-4 3 2 4-6" />
+        </svg>
+        <span className="beat-sidebar__title">Beat Sheet</span>
         <span className="beat-sidebar__mapped">
           {mappedBeats} / {totalBeats} mapped
         </span>
@@ -91,73 +127,82 @@ export function BeatSheetSidebar({
         />
       </div>
 
-      {BEAT_ACTS.map((act) => {
-        const isCollapsed = collapsedActs.has(act.id);
-        const actSceneCount = act.beats.reduce(
-          (sum, b) => sum + scenesForBeat(b.id).length,
-          0,
-        );
+      {/* Beta 4 M14 — beat-sheet template picker */}
+      <label className="beat-sidebar__template">
+        <span className="sr-only">Beat-sheet template</span>
+        <select
+          className="beat-sidebar__template-select"
+          value={templateId}
+          onChange={(e) => onTemplateChange(e.target.value as BeatTemplateId)}
+        >
+          {BEAT_TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </label>
 
-        return (
-          <section key={act.id} className={`beat-act beat-act--${act.id}`}>
-            <button
-              className="beat-act__header"
-              onClick={() => toggleAct(act.id)}
-              aria-expanded={!isCollapsed}
-              aria-controls={`beat-act-${act.id}`}
-            >
-              <span className="beat-act__chevron" aria-hidden="true">
-                {isCollapsed ? '▶' : '▼'}
-              </span>
-              <span className="beat-act__name">{act.title}</span>
-              {actSceneCount > 0 && (
-                <span className="beat-act__count" aria-label={`${actSceneCount} scenes assigned`}>
-                  {actSceneCount}
-                </span>
-              )}
-            </button>
+      <div className="beat-sidebar__acts">
+        {template.acts.map((actSection) => (
+          <section key={actSection.id} className={`beat-act beat-act--${actSection.id}`}>
+            <div className="beat-act__header">{actSection.title}</div>
 
-            {!isCollapsed && (
-              <ul id={`beat-act-${act.id}`} className="beat-act__beats" role="list">
-                {act.beats.map((beat) => {
-                  const assignedScenes = scenesForBeat(beat.id);
-                  const isFocused = focusedBeatId === beat.id;
+            <ul className="beat-act__beats" role="list">
+              {actSection.beats.map((beat) => {
+                const assignedScenes = scenesForBeat(beat.id);
+                const isFocused = focusedBeatId === beat.id;
+                const isDropTarget = dropBeatId === beat.id;
+                const mappedLabel = assignedScenes.map((s) => s.title).join(' · ');
 
-                  return (
-                    <li key={beat.id} className={`beat-item${isFocused ? ' beat-item--focused' : ''}`}>
-                      <button
-                        className="beat-item__label"
-                        onClick={() => handleBeatClick(beat.id)}
-                        aria-pressed={isFocused}
-                        aria-label={`${beat.name}: ${assignedScenes.length} scene${assignedScenes.length !== 1 ? 's' : ''} assigned. Click to highlight.`}
-                      >
-                        {beat.name}
-                      </button>
-                      {assignedScenes.length > 0 && (
-                        <>
-                          <span
-                            className="beat-item__count"
-                            aria-hidden="true"
-                          >
-                            {assignedScenes.length}
-                          </span>
-                          <span className="beat-item__dot" aria-hidden="true" />
-                        </>
+                return (
+                  <li
+                    key={beat.id}
+                    className={[
+                      'beat-item',
+                      isFocused ? 'beat-item--focused' : '',
+                      isDropTarget ? 'beat-item--drop' : '',
+                    ].filter(Boolean).join(' ')}
+                    data-testid={`beat-item-${beat.id}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'link';
+                      setDropBeatId(beat.id);
+                    }}
+                    onDragLeave={() => setDropBeatId((prev) => (prev === beat.id ? null : prev))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDropBeatId(null);
+                      const sceneId = e.dataTransfer.getData('text/plain');
+                      if (sceneId && scenes.some((s) => s.id === sceneId)) {
+                        onAssignScene(sceneId, beat.id);
+                      }
+                    }}
+                  >
+                    <span className="beat-item__pct" aria-hidden="true">{beat.pct}</span>
+                    <button
+                      className="beat-item__label"
+                      onClick={() => handleBeatClick(beat.id)}
+                      aria-pressed={isFocused}
+                      aria-label={`${beat.name}: ${assignedScenes.length} scene${assignedScenes.length !== 1 ? 's' : ''} assigned. Click to highlight.`}
+                    >
+                      <span className="beat-item__name">{beat.name}</span>
+                      {mappedLabel && (
+                        <span className="beat-item__scene">{mappedLabel}</span>
                       )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+                    </button>
+                    {assignedScenes.length > 0 && (
+                      <span className="beat-item__dot" aria-hidden="true" />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </section>
-        );
-      })}
+        ))}
 
-      <p className="beat-sidebar__hint">
-        Right-click a scene card to assign it to a beat.
-      </p>
+        <p className="beat-sidebar__hint">
+          {template.name} structure — drag scenes onto beats to map them.
+        </p>
+      </div>
     </aside>
   );
 }
-
-export { loadAssignments };

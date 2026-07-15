@@ -45,6 +45,8 @@ interface SceneVersion {
   content: string;
   intent: VersionIntent;
   contentHash: string;
+  /** Beta 4 M10: ISO save time when the store records one (v2 draft files / legacy stamps). */
+  savedAt?: string;
 }
 
 // SKY-1611 — SQLite-backed versioned draft snapshots
@@ -908,6 +910,8 @@ interface Window {
     versionList: (sceneId: string) => Promise<{ versions: SceneVersion[] }>;
     versionGet: (sceneId: string, ts: string) => Promise<{ version: SceneVersion | null }>;
     versionRollback: (sceneId: string, ts: string) => Promise<{ restoredVersion: SceneVersion; preRollbackVersion: SceneVersion }>;
+    /** Beta 4 M10: explicit snapshot into the SKY-10/M5 store (numbered draft files on v2 vaults). */
+    versionSave: (sceneId: string, content: string, intent?: VersionIntent) => Promise<{ version: SceneVersion }>;
 
     // SKY-10 — Legacy single-file-per-chapter migration
     migrationDryRun: (storyPath?: string) => Promise<{ plans: MigrationPlan[] }>;
@@ -1061,15 +1065,21 @@ interface Window {
     // Search (MYT-251)
     searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<{ results: Array<{ docId: string; vault: 'story' | 'notes'; kind: string; title: string; snippet: string; rank: number }> }>;
 
-    // EPUB export (MYT-342)
-    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
+    // EPUB export (MYT-342; options Beta 4 M14)
+    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
 
-    // DOCX export (MYT-252)
-    exportDocx: (storyId?: string, scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+    // DOCX export (MYT-252; options Beta 4 M14)
+    exportDocx: (storyId?: string, scope?: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+
+    // PDF export (Beta 4 M14, FULL-SPEC §5.5)
+    exportPdf: (scope: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+
+    // Reveal the last exported file in the OS file manager (Beta 4 M14)
+    exportRevealLast: () => Promise<{ opened: boolean }>;
 
     // Markdown / plaintext export
-    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
-    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean }>;
+    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
 
     // Scene Crafter Kanban board (SKY-1758/SKY-1763)
     sceneCrafterGetBoard: (storyId: string, storySlug: string) => Promise<SceneCrafterBoard | null>;

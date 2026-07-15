@@ -2,7 +2,7 @@ import { useState, useCallback, type ReactElement } from 'react';
 import type { Story, Scene, Chapter } from '../../types';
 import { SceneCard } from './SceneCard';
 import type { BeatAssignments } from './BeatSheetSidebar';
-import { BEAT_ACTS } from './BEAT_STRUCTURE';
+import { ALL_BEATS, type BeatTemplate } from './BEAT_STRUCTURE';
 import './SceneGrid.css';
 
 interface DragState {
@@ -32,6 +32,8 @@ interface ReorderState {
 interface SceneGridProps {
   story: Story;
   beatAssignments: BeatAssignments;
+  /** Active beat-sheet template — drives the right-click assign menu (M14). */
+  template: BeatTemplate;
   focusedBeatId?: string | null;
   onSelectScene: (scene: Scene, chapter: Chapter, story: Story) => void;
   onReorderScenes: (storyId: string, chapterId: string, orderedIds: string[]) => void;
@@ -47,11 +49,9 @@ interface SceneGridProps {
   announce: (msg: string) => void;
 }
 
+/** Act of a beat id — searched across every template (ids are globally unique). */
 function resolveBeatActId(beatId: string): string | null {
-  for (const act of BEAT_ACTS) {
-    if (act.beats.some((b) => b.id === beatId)) return act.id;
-  }
-  return null;
+  return ALL_BEATS.find((b) => b.id === beatId)?.act ?? null;
 }
 
 function computeChapterWords(chapter: Chapter): number {
@@ -67,6 +67,7 @@ function computeChapterWords(chapter: Chapter): number {
 export function SceneGrid({
   story,
   beatAssignments,
+  template,
   focusedBeatId,
   onSelectScene,
   onReorderScenes,
@@ -321,7 +322,7 @@ export function SceneGrid({
                       </button>
                     </div>
                   ) : (
-                    sortedScenes.map((scene) => {
+                    sortedScenes.map((scene, sceneIdx) => {
                       const beatId = beatAssignments[scene.id] ?? null;
                       const beatActId = beatId ? resolveBeatActId(beatId) : null;
                       const isDropBefore =
@@ -349,6 +350,7 @@ export function SceneGrid({
                         >
                           <SceneCard
                             scene={scene}
+                            sceneNumber={sceneIdx + 1}
                             beatActId={showBeatTint}
                             isDragging={dragState?.sceneId === scene.id}
                             isDragOver={isDropBefore}
@@ -377,6 +379,7 @@ export function SceneGrid({
           x={contextMenu.x}
           y={contextMenu.y}
           sceneId={contextMenu.sceneId}
+          template={template}
           currentBeatId={beatAssignments[contextMenu.sceneId] ?? null}
           onAssign={(beatId) => {
             onBeatAssign(contextMenu.sceneId, beatId);
@@ -395,6 +398,8 @@ interface BeatContextMenuProps {
   x: number;
   y: number;
   sceneId: string;
+  /** Active beat-sheet template (M14 — menu lists its beats). */
+  template: BeatTemplate;
   currentBeatId: string | null;
   onAssign: (beatId: string | null) => void;
   onClose: () => void;
@@ -403,6 +408,7 @@ interface BeatContextMenuProps {
 function BeatContextMenu({
   x,
   y,
+  template,
   currentBeatId,
   onAssign,
   onClose,
@@ -422,7 +428,7 @@ function BeatContextMenu({
         onKeyDown={(e) => e.key === 'Escape' && onClose()}
       >
         <div className="context-menu__header">Assign to beat</div>
-        {BEAT_ACTS.flatMap((act) =>
+        {template.acts.flatMap((act) =>
           act.beats.map((beat) => (
             <button
               key={beat.id}

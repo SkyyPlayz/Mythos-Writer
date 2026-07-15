@@ -196,6 +196,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('version:get', { sceneId, ts }),
   versionRollback: (sceneId: string, ts: string) =>
     ipcRenderer.invoke('version:rollback', { sceneId, ts }),
+  // Beta 4 M10: explicit snapshot into the SKY-10/M5 store
+  versionSave: (sceneId: string, content: string, intent?: string) =>
+    ipcRenderer.invoke('version:save', { sceneId, content, intent }),
 
   // SKY-10 — Legacy single-file-per-chapter migration
   migrationDryRun: (storyPath?: string) =>
@@ -505,13 +508,21 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('agent:budget-cap', handler);
   },
 
-  // EPUB export (MYT-342)
-  exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string) =>
-    ipcRenderer.invoke('export:epub', { storyId, metadata, targetPath }),
+  // EPUB export (MYT-342; options Beta 4 M14)
+  exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) =>
+    ipcRenderer.invoke('export:epub', { storyId, metadata, targetPath, options }),
 
-  // DOCX export (MYT-252, extended SKY-153)
-  exportDocx: (storyId: string | undefined, scope?: unknown) =>
-    ipcRenderer.invoke('export:docx', scope ? { scope } : { storyId }),
+  // DOCX export (MYT-252, extended SKY-153; options Beta 4 M14)
+  exportDocx: (storyId: string | undefined, scope?: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) =>
+    ipcRenderer.invoke('export:docx', scope ? { scope, options } : { storyId, options }),
+
+  // PDF export (Beta 4 M14, FULL-SPEC §5.5)
+  exportPdf: (scope: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) =>
+    ipcRenderer.invoke('export:pdf', { scope, options }),
+
+  // Reveal the last exported file in the OS file manager (Beta 4 M14).
+  // The path lives in the main process — nothing is passed from here.
+  exportRevealLast: () => ipcRenderer.invoke('export:reveal-last', undefined),
 
   // Markdown export (SKY-153)
   exportMarkdown: (scope: unknown) =>
