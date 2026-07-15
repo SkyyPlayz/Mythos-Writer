@@ -570,6 +570,14 @@ export const IPC_CHANNELS = {
   AUTO_LINKER_SET_SETTINGS: 'auto-linker:set-settings',
   AUTO_LINKER_FORMAT_VAULT_NOW: 'auto-linker:format-vault-now',
   AUTO_LINKER_REBUILD_INDEX: 'auto-linker:rebuild-index',
+
+  // SKY-6228: M15 — agent chat sessions (vault-file backed, M5 format)
+  AGENT_SESSION_LIST: 'agentSession:list',
+  AGENT_SESSION_CREATE: 'agentSession:create',
+  AGENT_SESSION_RENAME: 'agentSession:rename',
+  AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
+  AGENT_SESSION_DELETE: 'agentSession:delete',
+  AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -979,6 +987,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
   [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
   [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
+
+  // SKY-6228: M15 — agent chat sessions
+  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
+  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => AgentSessionCreateResponse;
+  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => AgentSessionRenameResponse;
+  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => AgentSessionDuplicateResponse;
+  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) => AgentSessionDeleteResponse;
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => AgentSessionAppendTurnsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -4688,3 +4704,44 @@ export interface OutlineLoadPayload { storyVaultPath: string; }
 export type OutlineLoadResponse = OutlineData | null;
 export interface OutlineSavePayload { storyVaultPath: string; data: OutlineData; }
 export interface OutlineSaveResponse { saved: boolean; }
+
+// SKY-6228: M15 — agent chat session IPC types
+export type { AgentSessionFile, AgentSessionSummary, SessionTurn, SessionAgent } from './mythosFormat/agentSessions.js';
+
+export interface AgentSessionListPayload { agent?: string; }
+export interface AgentSessionListResponse { sessions: import('./mythosFormat/agentSessions.js').AgentSessionSummary[]; }
+
+export interface AgentSessionCreatePayload {
+  agent: string;
+  title?: string;
+  greeting?: string;
+}
+export interface AgentSessionCreateResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  relPath: string;
+}
+
+export interface AgentSessionRenamePayload { sessionId: string; title: string; }
+export interface AgentSessionRenameResponse { ok: boolean; }
+
+export interface AgentSessionDuplicatePayload { sessionId: string; }
+export interface AgentSessionDuplicateResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  relPath: string;
+}
+
+export interface AgentSessionDeletePayload { sessionId: string; }
+export interface AgentSessionDeleteResponse {
+  ok: boolean;
+  /** When the last session was deleted a fresh one is auto-created. */
+  replacement?: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  replacementRelPath?: string;
+}
+
+export interface AgentSessionAppendTurnsPayload {
+  sessionId: string;
+  turns: import('./mythosFormat/agentSessions.js').SessionTurn[];
+}
+export interface AgentSessionAppendTurnsResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
+}
