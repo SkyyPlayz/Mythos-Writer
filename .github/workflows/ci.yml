@@ -206,7 +206,8 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-1:
-    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y
+    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y,
+    # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -285,6 +286,21 @@ jobs:
       - name: E2E — Settings background image persistence (SKY-3219)
         run: xvfb-run --auto-servernum npm run test:e2e:settings-background
 
+      - name: E2E — Smoke test app launch (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:smoke
+
+      - name: E2E — Background scrim opacity slider (SKY-3220, SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:bg-scrim-slider
+
+      - name: E2E — Story tab subview (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:story-tab-subview
+
+      - name: E2E — Writing suggestions panel (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:suggestions
+
+      - name: E2E — Tab shell (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:tab-shell
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -296,6 +312,7 @@ jobs:
 
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # two-vault-firstrun, notes-tab, archive-agent-mvp (SKY-6933 sweep)
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -360,6 +377,15 @@ jobs:
       - name: E2E — Comments v2 gutter + vault-copy round-trip (Beta 4 M9)
         run: xvfb-run --auto-servernum npm run test:e2e:comments
 
+      - name: E2E — Two-vault first-run flow (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:two-vault-firstrun
+
+      - name: E2E — Notes tab (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-tab
+
+      - name: E2E — Archive agent MVP (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:archive-agent-mvp
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -371,6 +397,7 @@ jobs:
 
   e2e-shard-3:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete
+    # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, readme-screenshots (SKY-6933 sweep)
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -443,6 +470,21 @@ jobs:
       - name: E2E — Wiki-link autocomplete popup (SKY-5702 / GH#650 WL-1)
         run: xvfb-run --auto-servernum npm run test:e2e:wiki-link-autocomplete
 
+      - name: E2E — Wiki-links regression (SKY-6933 sweep, ex-PR #955)
+        run: xvfb-run --auto-servernum npm run test:e2e:wiki-links
+
+      - name: E2E — Cross-tab links (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:cross-tab-links
+
+      - name: E2E — Shell relayout regression (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:shell-relayout-regression
+
+      - name: E2E — Auto-linker (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:auto-linker
+
+      - name: E2E — README screenshots (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:readme-screenshots
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -454,6 +496,7 @@ jobs:
 
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
+    # editor-format-bar, notes-parity, word-count (SKY-6933 sweep)
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -523,6 +566,15 @@ jobs:
 
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
+
+      - name: E2E — Editor format bar (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:editor-format-bar
+
+      - name: E2E — Notes parity (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-parity
+
+      - name: E2E — Word count (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:word-count
 
       - name: Upload E2E report on failure
         if: failure()
