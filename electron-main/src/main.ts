@@ -98,6 +98,11 @@ import {
   type SearchQueryPayload,
   type WritingScanPayload,
   type BetaReadScanPayload,
+  type BetaReportRunPayload,
+  type BetaReportListPayload,
+  type BetaReportGetPayload,
+  type BetaReport,
+  type BetaReportSummary,
   type VaultObsidianDryRunPayload,
   type VaultObsidianRegisterPayload,
   type VaultLoadSamplePayload,
@@ -291,6 +296,9 @@ import {
   insertBetaReadComment,
   listBetaReadComments,
   dismissBetaReadComment,
+  insertBetaReport,
+  listBetaReports,
+  getBetaReport,
   insertManifestMigrationLog,
   insertArchiveIgnore,
   listArchiveIgnores,
@@ -518,6 +526,12 @@ import {
   buildBetaReadComments,
   buildWritingAssistantUserContent,
 } from './writingAssistant.js';
+import {
+  parseBetaReportResponse,
+  buildBetaReportUserContent,
+  dbRowToBetaReport,
+  dbRowToBetaReportSummary,
+} from './betaReport.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall } from './uninstallHelper.js';
@@ -4030,6 +4044,20 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     dismissBetaReadComment(payload.id);
     return { id: payload.id, dismissed: true };
+  },
+
+  // ─── Beta Reader agent view (SKY-6982, Beta 4 M27) ───
+  [IPC_CHANNELS.BETA_REPORT_LIST]: (payload: BetaReportListPayload) => {
+    ensureVaultDir();
+    const reports: BetaReportSummary[] = listBetaReports(payload.storyId).map(dbRowToBetaReportSummary);
+    return { reports };
+  },
+
+  [IPC_CHANNELS.BETA_REPORT_GET]: (payload: BetaReportGetPayload) => {
+    ensureVaultDir();
+    const row = getBetaReport(payload.id);
+    const report: BetaReport | null = row ? dbRowToBetaReport(row) : null;
+    return { report };
   },
 
   // ─── Search (MYT-251) ───
@@ -8572,6 +8600,128 @@ function registerBetaReadScanHandler(): void {
   }));
 }
 
+// ─── Beta Reader agent view — structured report run (SKY-6982; Beta 4 M27) ───
+// Runs a scoped (scene/chapter/story) LLM read and returns a report (score
+// chips + LOVED/STUMBLED/CONFUSED reactions). Persists the report so the
+// BETA READS history survives restarts; margin comments are posted by the
+// renderer via the M9/M11 comments store (kind: 'beta') once the reactions
+// come back — this handler never writes to the manuscript or its comments.
+const BETA_REPORT_MAX_INPUT_CHARS = 60_000;
+
+function registerBetaReportRunHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.BETA_REPORT_RUN, wrapIpcHandler(IPC_CHANNELS.BETA_REPORT_RUN, async (event, payload: BetaReportRunPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    if (!payload?.text?.trim()) {
+      throw new Error('Nothing to read — the selected scope has no manuscript text.');
+    }
+
+    const settings = loadAppSettings();
+    const betaReaderSettings = getBetaReaderSettings(settings);
+    if (!betaReaderSettings.enabled) {
+      throw new Error('Beta Reader is disabled — enable it in Settings > AI Agents to run a read.');
+    }
+    const budgetCheck = checkCallBudget('beta-reader', betaReaderSettings, getDb());
+    if (!budgetCheck.allowed) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: 'beta-reader',
+            agentLabel: resolveAgentDisplayName('betaReader', settings.agentNames),
+            reason: budgetCheck.reason,
+          });
+        }
+      });
+      throw new Error(`Beta Reader hit its ${budgetCheck.reason === 'daily_token_cap' ? 'daily' : 'hourly'} budget cap.`);
+    }
+
+    const betaReportProviderConfig = getProviderConfigForAgent('betaReader');
+    const startedAt = Date.now();
+    let genError: string | null = null;
+    const runAbort = new AbortController();
+    const runTimeout = setTimeout(() => runAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
+
+    try {
+      let responseText = '';
+      for await (const token of streamFromProvider(betaReportProviderConfig, {
+        system: buildAgentSystemPrompt(app.getPath('userData'), 'betaReader'),
+        messages: [{
+          role: 'user',
+          content: buildBetaReportUserContent(
+            payload.scope.label,
+            payload.focus,
+            payload.text.slice(0, BETA_REPORT_MAX_INPUT_CHARS),
+          ),
+        }],
+        maxTokens: 3072,
+        signal: runAbort.signal,
+      })) {
+        responseText += token;
+      }
+
+      const parsed = parseBetaReportResponse(responseText);
+      const reportId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const reactions: BetaReport['reactions'] = parsed.reactions.map((r) => ({
+        id: crypto.randomUUID(),
+        kind: r.kind,
+        sceneId: r.sceneId,
+        quote: r.quote,
+        where: r.where,
+        note: r.note,
+      }));
+      const report: BetaReport = {
+        id: reportId,
+        storyId: payload.storyId,
+        scope: payload.scope,
+        focus: payload.focus,
+        overall: { score: parsed.summary.overallScore, verdict: parsed.summary.overallVerdict },
+        categories: parsed.summary.categories,
+        feedback: parsed.summary.feedback,
+        reactions,
+        createdAt,
+      };
+
+      insertBetaReport({
+        id: report.id,
+        story_id: report.storyId,
+        scope_kind: report.scope.kind,
+        scope_id: report.scope.id,
+        scope_label: report.scope.label,
+        focus_json: JSON.stringify(report.focus),
+        overall_score: report.overall.score,
+        overall_verdict: report.overall.verdict,
+        categories_json: JSON.stringify(report.categories),
+        feedback: report.feedback,
+        reactions_json: JSON.stringify(report.reactions),
+        created_at: report.createdAt,
+      });
+
+      return { report };
+    } catch (err: unknown) {
+      genError = (err as Error).message ?? 'unknown error';
+      throw err;
+    } finally {
+      clearTimeout(runTimeout);
+      const digest = crypto.createHash('sha256').update(payload.text.slice(0, 100)).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'beta-reader',
+          model: betaReportProviderConfig.model,
+          endpoint: 'messages.stream',
+          request_id: null,
+          tokens_in: null,
+          tokens_out: null,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: digest,
+        });
+      } catch { /* non-fatal */ }
+    }
+  }));
+}
+
 // ─── Archive → Scene Crafter suggestion generator (SKY-3200 / SKY-3199 §4) ──
 // Gap detection only — Archive proposes scene_crafter_card suggestions via DB
 // insert; it never reads or writes the board file. Gated on
@@ -9123,6 +9273,7 @@ app.whenReady().then(async () => {
   registerArchiveContinuityHandlers();
   registerWritingScanHandler();
   registerBetaReadScanHandler();
+  registerBetaReportRunHandler();
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
