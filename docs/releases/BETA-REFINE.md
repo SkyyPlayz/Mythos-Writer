@@ -565,7 +565,7 @@ Accept: every §14 item checked off in the PR description with evidence.
 | M24 | Remaining modes | 6 | M23 | ⏳ | |
 | M25 | Timeline panel + Archive | 6 | M23, M15 | ⏳ | |
 | M26 | Vault Graph refinements | 7 | M5 | 🔀 in PR (all checks green) | #955 |
-| M27 | Beta Reader view | 7 | M9, M15 | ⏳ | |
+| M27 | Beta Reader view | 7 | M9, M15 | 🔀 in PR | #965 |
 | M28 | Settings workspace | 7 | M1, M5, M6 | 🔀 in PR | #959 |
 | M29 | Welcome wizard | 7 | M5, M28 | ⏳ | |
 | M30 | Release prep + acceptance | 7 | all | ⏳ | |
