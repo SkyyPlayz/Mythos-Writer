@@ -3,6 +3,7 @@ import {
   PROVIDER_OPTIONS,
   LISTABLE_PROVIDERS,
   OAUTH_PROVIDERS,
+  DEFAULT_BASE_URLS,
   type ProviderKind,
   type TestConnectionStatus,
   type ModelListStatus,
@@ -99,7 +100,12 @@ export default function ProviderSection({
             setModelListStatus('idle');
             setModelListError(null);
             setUseCustomInput(false);
-            onFetchModels(next, providerBaseUrl);
+            // SKY-6941: default Base URL to the new provider's endpoint (matches
+            // AgentProviderSection's per-agent override behavior) instead of
+            // leaving the previous provider's URL in place.
+            const nextBaseUrl = DEFAULT_BASE_URLS[next] || '';
+            setProviderBaseUrl(nextBaseUrl);
+            onFetchModels(next, nextBaseUrl);
           }}
         >
           {PROVIDER_OPTIONS.map((o) => (
@@ -168,7 +174,7 @@ export default function ProviderSection({
                   className="settings-input"
                   type="url"
                   value={providerBaseUrl}
-                  placeholder="http://localhost:11434"
+                  placeholder={DEFAULT_BASE_URLS[providerKind] || 'http://localhost:11434'}
                   spellCheck={false}
                   aria-label="Provider base URL"
                   onChange={(e) => { setProviderBaseUrl(e.target.value); setTestConnectionStatus('idle'); setSavedOk(false); }}
