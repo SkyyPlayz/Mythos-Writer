@@ -301,6 +301,21 @@ jobs:
       - name: E2E — Tab shell (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:tab-shell
 
+      - name: E2E — Local model picker (SKY-6933 sweep)
+        run: xvfb-run --auto-servernum npm run test:e2e:lmp
+
+      - name: E2E — Cloud sync (SKY-6933 sweep, skip-guarded — deferred feature)
+        run: xvfb-run --auto-servernum npm run test:e2e:cloud-sync
+
+      - name: E2E — Continuity peek (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:continuity-peek
+
+      - name: E2E — Accessibility fixes SKY-1362 (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:accessibility-fixes-sky1362
+
+      - name: E2E — Beta read (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:beta-read
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -385,6 +400,18 @@ jobs:
 
       - name: E2E — Archive agent MVP (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:archive-agent-mvp
+
+      - name: E2E — Brainstorm wave 3.3 drag-reorder (SKY-6933 sweep, skip-guarded — narrow-layout controls)
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-wave33
+
+      - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
+        run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
+
+      - name: E2E — Icons (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:icons
+
+      - name: E2E — Keyboard shortcuts dialog (SKY-6933 sweep, skip-guarded — stale selectors)
+        run: xvfb-run --auto-servernum npm run test:e2e:keyboard-shortcuts
 
       - name: Upload E2E report on failure
         if: failure()
@@ -485,6 +512,18 @@ jobs:
       - name: E2E — README screenshots (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:readme-screenshots
 
+      - name: E2E — Onboarding four paths (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-four-paths
+
+      - name: E2E — Panel system wave 2f (SKY-6933 sweep, 2 tests skip-guarded — layout-delete test bug)
+        run: xvfb-run --auto-servernum npm run test:e2e:panel-system-wave2f
+
+      - name: E2E — Proposal card hover (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:proposal-card-hover
+
+      - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
+        run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -575,6 +614,30 @@ jobs:
 
       - name: E2E — Word count (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:word-count
+
+      - name: E2E — Settings category sub-nav (SKY-6933 sweep, skip-guarded — needs Electron-harness rewrite)
+        run: xvfb-run --auto-servernum npm run test:e2e:settings-category-subnav
+
+      - name: E2E — v1 vault migration (SKY-6933 sweep, skip-guarded — stale schema-version constant)
+        run: xvfb-run --auto-servernum npm run test:e2e:v1-vault-migration
+
+      - name: E2E — Voice IO (SKY-6933 sweep, skip-guarded — stale selectors)
+        run: xvfb-run --auto-servernum npm run test:e2e:voice-io
+
+      - name: E2E — Vault routing regression (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:vault-routing
+
+      - name: E2E — Inline scene rename (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:inline-scene-rename
+
+      - name: E2E — Note templates (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:note-templates
+
+      - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
+
+      - name: E2E — SKY-214 entity screenshots (SKY-6933 sweep, skip-guarded — stale selector)
+        run: xvfb-run --auto-servernum npm run test:e2e:sky214-entity-screenshots
 
       - name: Upload E2E report on failure
         if: failure()
