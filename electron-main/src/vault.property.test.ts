@@ -83,20 +83,28 @@ describe('parseFrontmatter / serializeFrontmatter — property-based (SKY-361)',
   // MUTATION DETECTION: change serializeFrontmatter to write `key value` instead
   // of `key: value` (drop the colon).  parseFrontmatter skips every such line,
   // so frontmatter[key] becomes undefined and the assertion fails.
-  it('P2: roundtrip — serialize→parse recovers original string-valued frontmatter and prose', () => {
-    fc.assert(
-      fc.property(safeStringRecord, safeProse, (fm, prose) => {
-        const serialized = serializeFrontmatter(fm, prose);
-        const { frontmatter, prose: parsedProse } = parseFrontmatter(serialized);
+  // 2,000 runs of record-generation + serialize + parse take ~600ms on an
+  // idle machine but have been observed over the 5s default vitest timeout
+  // on a loaded CI runner (SKY-7006) — bump the test timeout, not numRuns,
+  // so coverage is unchanged.
+  it(
+    'P2: roundtrip — serialize→parse recovers original string-valued frontmatter and prose',
+    () => {
+      fc.assert(
+        fc.property(safeStringRecord, safeProse, (fm, prose) => {
+          const serialized = serializeFrontmatter(fm, prose);
+          const { frontmatter, prose: parsedProse } = parseFrontmatter(serialized);
 
-        for (const [key, val] of Object.entries(fm)) {
-          expect(frontmatter[key]).toBe(val);
-        }
-        expect(parsedProse).toBe(prose);
-      }),
-      { numRuns: 2_000 }
-    );
-  });
+          for (const [key, val] of Object.entries(fm)) {
+            expect(frontmatter[key]).toBe(val);
+          }
+          expect(parsedProse).toBe(prose);
+        }),
+        { numRuns: 2_000 }
+      );
+    },
+    20_000
+  );
 
   // ── P3: Plain-text pass-through ──────────────────────────────────────────
   // Any string that does NOT begin with "---" has no frontmatter. It must be
