@@ -69,6 +69,14 @@ export interface ContinuityPanelProps {
   onConsentGranted?: () => void;
   onCountChange?: (count: number) => void;
   onOpenSettings?: () => void;
+  /**
+   * SKY-6978 (Beta4/M18): the Notes editor's right-panel "CONTINUITY FLAGS"
+   * header — replaces the default "Continuity" title with the FULL-SPEC §6 /
+   * prototype (3152) label + ARCHIVE AGENT badge. Story-side usages
+   * (archive-continuity tab, BrainstormPage's hidden facts-column instance)
+   * keep the default header.
+   */
+  flagsHeader?: boolean;
 }
 
 export default function ContinuityPanel({
@@ -79,6 +87,7 @@ export default function ContinuityPanel({
   onConsentGranted,
   onCountChange,
   onOpenSettings,
+  flagsHeader = false,
 }: ContinuityPanelProps) {
   const [panelState, setPanelState] = useState<PanelState>('loading');
   const [items, setItems] = useState<InconsistencyItem[]>([]);
@@ -221,13 +230,22 @@ export default function ContinuityPanel({
     });
   }, []);
 
+  const header = flagsHeader ? (
+    <PanelHeader
+      title={<span className="cp-flags-label">CONTINUITY FLAGS</span>}
+      actions={<span className="cp-flags-badge">ARCHIVE AGENT</span>}
+    />
+  ) : (
+    <PanelHeader
+      icon={<ScrollText size={14} aria-hidden="true" />}
+      title="Continuity"
+    />
+  );
+
   if (!enabled) {
     return (
       <div className="cp-panel">
-        <PanelHeader
-          icon={<ScrollText size={14} aria-hidden="true" />}
-          title="Continuity"
-        />
+        {header}
         <p role="status" className="cp-status-msg" aria-live="polite">Archive Agent is disabled. Enable it in Settings.</p>
       </div>
     );
@@ -238,10 +256,7 @@ export default function ContinuityPanel({
 
   return (
     <div className="cp-panel">
-      <PanelHeader
-        icon={<ScrollText size={14} aria-hidden="true" />}
-        title="Continuity"
-      />
+      {header}
       {/* Always-in-DOM aria-live status region */}
       <p
         role="status"

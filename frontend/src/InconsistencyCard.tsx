@@ -251,7 +251,10 @@ export function InconsistencyCard({
           )}
         </div>
 
-        {/* Action row */}
+        {/* Action row — labels match the M9 comments-v2 archive-action wording
+            verbatim (frontend/src/comments/agentActions.ts AGENT_ACTIONS) so
+            the Notes right panel's flag cards (SKY-6978) read identically to
+            the manuscript's Archive Agent comment card. */}
         <div className="ic-action-row" role="group" aria-label="Inconsistency actions">
           <button
             type="button"
@@ -260,7 +263,7 @@ export function InconsistencyCard({
             onClick={handleMatchArchive}
             disabled={isBusy || expandOpen}
           >
-            Match Archive
+            Edit notes to match
           </button>
           <button
             type="button"
@@ -269,7 +272,7 @@ export function InconsistencyCard({
             onClick={handleSuggestEdit}
             disabled={isBusy || expandOpen}
           >
-            Suggest Edit
+            Suggest story change
           </button>
           <button
             type="button"
