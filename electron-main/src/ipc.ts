@@ -10,6 +10,13 @@ import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/typ
 export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
 export type { OutlineNode, OutlineData };
+import type {
+  TimelinesStore,
+  TimelineDefinition,
+  TimelineKind,
+  TimelineCalendar,
+} from './timelines/model.js';
+export type { TimelinesStore, TimelineDefinition, TimelineKind, TimelineCalendar };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
 // SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
@@ -104,6 +111,8 @@ export const IPC_CHANNELS = {
   VERSION_LIST: 'version:list',
   VERSION_GET: 'version:get',
   VERSION_ROLLBACK: 'version:rollback',
+  // Beta 4 M10 — explicit snapshot into the SKY-10/M5 store
+  VERSION_SAVE: 'version:save',
 
   // SKY-10 — Legacy single-file-per-chapter migration
   MIGRATION_DRY_RUN: 'migration:dryRun',
@@ -221,6 +230,13 @@ export const IPC_CHANNELS = {
 
   // Multi-scope plain text export (SKY-153)
   EXPORT_PLAINTEXT: 'export:plaintext',
+
+  // Beta 4 M14 — PDF export via Chromium printToPDF (FULL-SPEC §5.5)
+  EXPORT_PDF: 'export:pdf',
+
+  // Beta 4 M14 — reveal the last exported file in the OS file manager.
+  // Path state lives in the main process only (never renderer-supplied).
+  EXPORT_REVEAL_LAST: 'export:reveal-last',
 
   // Obsidian vault import wizard (MYT-244)
   VAULT_OBSIDIAN_DRY_RUN: 'vault:obsidian-dry-run',
@@ -455,6 +471,11 @@ export const IPC_CHANNELS = {
   TIMELINE_PROPOSALS_LIST: 'timeline:proposals:list',
   TIMELINE_PROPOSAL_RESOLVE: 'timeline:proposal:resolve',
 
+  // SKY-6306 M21: Multi-timeline store IPC
+  TIMELINES_GET_STORE: 'timelines:getStore',
+  TIMELINES_UPSERT: 'timelines:upsert',
+  TIMELINES_SET_ACTIVE: 'timelines:setActive',
+
   // SKY-863: Cloud-sync conflict detection + lockfile
   VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
   VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
@@ -561,6 +582,14 @@ export const IPC_CHANNELS = {
   AUTO_LINKER_SET_SETTINGS: 'auto-linker:set-settings',
   AUTO_LINKER_FORMAT_VAULT_NOW: 'auto-linker:format-vault-now',
   AUTO_LINKER_REBUILD_INDEX: 'auto-linker:rebuild-index',
+
+  // SKY-6228: M15 — agent chat sessions (vault-file backed, M5 format)
+  AGENT_SESSION_LIST: 'agentSession:list',
+  AGENT_SESSION_CREATE: 'agentSession:create',
+  AGENT_SESSION_RENAME: 'agentSession:rename',
+  AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
+  AGENT_SESSION_DELETE: 'agentSession:delete',
+  AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -671,6 +700,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VERSION_LIST]: (payload: VersionListPayload) => VersionListResponse;
   [IPC_CHANNELS.VERSION_GET]: (payload: VersionGetPayload) => VersionGetResponse;
   [IPC_CHANNELS.VERSION_ROLLBACK]: (payload: VersionRollbackPayload) => VersionRollbackResponse;
+  [IPC_CHANNELS.VERSION_SAVE]: (payload: VersionSavePayload) => VersionSaveResponse;
   [IPC_CHANNELS.MIGRATION_DRY_RUN]: (payload: MigrationDryRunPayload) => MigrationDryRunResponse;
   [IPC_CHANNELS.MIGRATION_APPLY]: (payload: MigrationApplyPayload) => MigrationApplyResponse;
   [IPC_CHANNELS.MYTHOS_MIGRATION_STATUS]: (payload: never) => MythosMigrationStatusResponse;
@@ -737,6 +767,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: (payload: ExportPlaintextPayload) => Promise<ExportPlaintextResponse>;
+  [IPC_CHANNELS.EXPORT_PDF]: (payload: ExportPdfPayload) => Promise<ExportPdfResponse>;
+  [IPC_CHANNELS.EXPORT_REVEAL_LAST]: (payload: never) => Promise<ExportRevealLastResponse>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_DRY_RUN]: (payload: VaultObsidianDryRunPayload) => Promise<VaultObsidianDryRunReport | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_OBSIDIAN_REGISTER]: (payload: VaultObsidianRegisterPayload) => Promise<VaultObsidianRegisterResponse | RegistrationTokenError>;
   // Beta 3 M24 — settings vault/story import
@@ -967,6 +999,18 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
   [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
   [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
+  // SKY-6306 M21: Multi-timeline store
+  [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload: TimelinesGetStorePayload) => TimelinesGetStoreResponse;
+  [IPC_CHANNELS.TIMELINES_UPSERT]: (payload: TimelinesUpsertPayload) => TimelinesUpsertResponse;
+  [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload: TimelinesSetActivePayload) => TimelinesSetActiveResponse;
+
+  // SKY-6228: M15 — agent chat sessions
+  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
+  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => AgentSessionCreateResponse;
+  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => AgentSessionRenameResponse;
+  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => AgentSessionDuplicateResponse;
+  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) => AgentSessionDeleteResponse;
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => AgentSessionAppendTurnsResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1164,6 +1208,16 @@ export interface BlockEntry {
   order: number;
   content: string;
   updatedAt: string;
+  /**
+   * SKY-6596 (PR #932): length of this block's serialized segment within the
+   * scene's `.md` body, recorded by `stripEmbeddedProseForPersist`
+   * (manifest.ts) when `content` is blanked for the structure-only on-disk
+   * manifest. Present only in the persisted manifest.json, and only for
+   * blocks whose content serializes to a non-empty segment (see
+   * sceneBody.ts). `readManifest` (vault.ts) consumes and deletes it during
+   * block-aware hydration, so it never rides on IPC payloads.
+   */
+  bodySegLen?: number;
 }
 
 export interface SceneCard {
@@ -1428,10 +1482,25 @@ export interface SceneVersion {
   intent: VersionIntent;
   /** Full sha256(content) hex. */
   contentHash: string;
+  /** Beta 4 M10: ISO save time when the store records one (v2 draft files). */
+  savedAt?: string;
 }
 
 export interface VersionListPayload {
   sceneId: string;
+}
+
+// Beta 4 M10 — renderer-initiated snapshot into the SKY-10/M5 store (numbered
+// draft files on v2 vaults, per-chapter versions/ tree on legacy vaults).
+export interface VersionSavePayload {
+  sceneId: string;
+  content: string;
+  /** Defaults to 'save'. */
+  intent?: VersionIntent;
+}
+
+export interface VersionSaveResponse {
+  version: SceneVersion;
 }
 
 export interface VersionListResponse {
@@ -3064,6 +3133,19 @@ export interface BetaReadScanResponse {
 
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
+/**
+ * Beta 4 M14 — compile options shared by the DOCX / PDF / EPUB exporters
+ * (prototype export modal toggles 3846–3851: "Include synopsis page" +
+ * "Scene separators (◆ ◆ ◆)"). Omitted options preserve the pre-M14
+ * behavior (no synopsis page, no separators).
+ */
+export interface ExportOptions {
+  /** Insert a synopsis page after the title page (default false). */
+  includeSynopsis?: boolean;
+  /** Insert "◆ ◆ ◆" separators between scenes in a chapter (default false). */
+  sceneSeparators?: boolean;
+}
+
 export interface ExportEpubMetadata {
   title?: string;
   author?: string;
@@ -3080,11 +3162,15 @@ export interface ExportEpubPayload {
    * paths, `../` traversal, and symlink escapes are rejected.
    */
   targetPath?: string;
+  /** Beta 4 M14 — synopsis / separator compile options. */
+  options?: ExportOptions;
 }
 
 export interface ExportEpubResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 // ─── DOCX export (MYT-252) ───
@@ -3094,11 +3180,32 @@ export interface ExportDocxPayload {
   storyId?: string;
   // SKY-153: full scope control; takes precedence over storyId when present.
   scope?: ExportScope;
+  /** Beta 4 M14 — synopsis / separator compile options. */
+  options?: ExportOptions;
 }
 
 export interface ExportDocxResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
+}
+
+// ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) ───
+
+export interface ExportPdfPayload {
+  scope: ExportScope;
+  options?: ExportOptions;
+}
+
+export interface ExportPdfResponse {
+  path: string | null;
+  cancelled: boolean;
+  bytes?: number;
+}
+
+export interface ExportRevealLastResponse {
+  opened: boolean;
 }
 
 // ─── Multi-scope export (SKY-153) ───
@@ -3117,6 +3224,8 @@ export interface ExportMarkdownPayload {
 export interface ExportMarkdownResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 export interface ExportPlaintextPayload {
@@ -3126,6 +3235,8 @@ export interface ExportPlaintextPayload {
 export interface ExportPlaintextResponse {
   path: string | null;
   cancelled: boolean;
+  /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
+  bytes?: number;
 }
 
 // ─── Budget enforcement push event (MYT-207) ───
@@ -4609,3 +4720,58 @@ export interface OutlineLoadPayload { storyVaultPath: string; }
 export type OutlineLoadResponse = OutlineData | null;
 export interface OutlineSavePayload { storyVaultPath: string; data: OutlineData; }
 export interface OutlineSaveResponse { saved: boolean; }
+
+// SKY-6306 M21: Multi-timeline store IPC
+export interface TimelinesGetStorePayload { vaultRoot?: string; }
+export interface TimelinesGetStoreResponse { store: TimelinesStore; }
+
+export interface TimelinesUpsertPayload {
+  id?: string;
+  name: string;
+  kind: TimelineKind;
+  calendar?: Partial<TimelineCalendar>;
+}
+export interface TimelinesUpsertResponse { ok: boolean; id: string; store: TimelinesStore; }
+
+export interface TimelinesSetActivePayload { timelineId: string; }
+export interface TimelinesSetActiveResponse { ok: boolean; store: TimelinesStore; }
+// SKY-6228: M15 — agent chat session IPC types
+export type { AgentSessionFile, AgentSessionSummary, SessionTurn, SessionAgent } from './mythosFormat/agentSessions.js';
+
+export interface AgentSessionListPayload { agent?: string; }
+export interface AgentSessionListResponse { sessions: import('./mythosFormat/agentSessions.js').AgentSessionSummary[]; }
+
+export interface AgentSessionCreatePayload {
+  agent: string;
+  title?: string;
+  greeting?: string;
+}
+export interface AgentSessionCreateResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  relPath: string;
+}
+
+export interface AgentSessionRenamePayload { sessionId: string; title: string; }
+export interface AgentSessionRenameResponse { ok: boolean; }
+
+export interface AgentSessionDuplicatePayload { sessionId: string; }
+export interface AgentSessionDuplicateResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  relPath: string;
+}
+
+export interface AgentSessionDeletePayload { sessionId: string; }
+export interface AgentSessionDeleteResponse {
+  ok: boolean;
+  /** When the last session was deleted a fresh one is auto-created. */
+  replacement?: import('./mythosFormat/agentSessions.js').AgentSessionFile;
+  replacementRelPath?: string;
+}
+
+export interface AgentSessionAppendTurnsPayload {
+  sessionId: string;
+  turns: import('./mythosFormat/agentSessions.js').SessionTurn[];
+}
+export interface AgentSessionAppendTurnsResponse {
+  session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
+}

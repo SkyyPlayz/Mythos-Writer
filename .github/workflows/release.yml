@@ -118,8 +118,13 @@ jobs:
           gh release upload "$TAG" dist-electron/*.exe dist-electron/*.zip dist-electron/*.yml --clobber
 
   # macOS build — optional; not a dependency of publish-release.
-  # Runs on hosted macos-latest; will be skipped when Actions minutes are exhausted.
+  # DISABLED 2026-07-14 (Skyy): Actions budget is reserved for releases the owner can
+  # actually install; macOS is a deferred platform (no Mac) and macos-latest bills at
+  # 10x Linux. The old "will be skipped when minutes are exhausted" assumption stopped
+  # holding once the budget was topped up — it would now really run and really bill.
+  # To re-enable when macOS ships, delete the `if: false` line below.
   build-mac:
+    if: false
     needs: [determine-release, create-release]
     runs-on: macos-latest
     continue-on-error: true

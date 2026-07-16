@@ -10,7 +10,9 @@
 //
 // Self-contained: pure UI + local fold/width/toolbar state. Persistence stays
 // with the caller via onEditParagraph / onCycleStatus / onCursorChange /
-// onMoveParagraph / onPageWidthChange.
+// onMoveParagraph / onPageWidthChange, plus the M8 editing-model callbacks
+// (onSplitParagraph / onMergeParagraph / onRemoveParagraph / onRenameScene /
+// onRenameChapter — prototype paraKey/editPara/editTitle 5095–5146).
 
 import {
   useCallback,
@@ -19,6 +21,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
@@ -26,6 +29,8 @@ import {
 import {
   breadcrumbs,
   buildBlocks,
+  normalizeInlineTitle,
+  splitParagraphText,
   zoomStep,
   type ManuscriptBlock,
   type ManuscriptCursor,
@@ -34,7 +39,9 @@ import {
   type ZoomLevel,
 } from './manuscriptModel';
 import { pageModeChrome, PageModeRunes } from './pageMode';
-import type { LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
+import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
+import MarginRuler from './MarginRuler';
+import PageChrome from './PageChrome';
 import {
   AGENT_ACTION_SUCCESS_TOAST,
   findAnchorSceneId,
@@ -46,6 +53,7 @@ import {
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
+import CommentOpenCard from './CommentOpenCard';
 import ParagraphRow from './ParagraphRow';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
@@ -54,8 +62,12 @@ import {
   wikiLinkFor,
   type EntityMatch,
 } from './autoLinkText';
-import ReaderBar from './ReaderBar';
+import { ReaderCard } from './ReaderBar';
 import { useManuscriptReader } from './useManuscriptReader';
+import {
+  clearReadingSentenceHighlight,
+  setReadingSentenceHighlight,
+} from './readerHighlight';
 import { showLnToast } from '../theme/lnToast';
 import type { TtsEngineSettings, TtsVoicePrefs } from '../hooks/useTtsPlayer';
 import type { Story } from '../types';
@@ -75,8 +87,46 @@ export interface ManuscriptViewProps {
   onPageWidthChange?: (px: number) => void;
   /** M10: grip drag dropped one paragraph onto another (lands before target). */
   onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
+  /**
+   * M8: Enter splits the focused paragraph at the caret. The handler applies
+   * the split to the story and returns the id of the block created for the
+   * text after the caret (null = not applied). The caret then lands at the
+   * start of that new paragraph. Absent → Enter commits-and-blurs (legacy).
+   */
+  onSplitParagraph?: (
+    sceneId: string,
+    blockId: string,
+    before: string,
+    after: string
+  ) => string | null;
+  /**
+   * M8: Backspace at paragraph start merges into the previous paragraph.
+   * Returns the surviving block + merged text (null = first block of the
+   * scene / not applied). The caret lands at the end of the merged block.
+   */
+  onMergeParagraph?: (
+    sceneId: string,
+    blockId: string,
+    currentText: string
+  ) => { mergedBlockId: string; mergedText: string } | null;
+  /**
+   * M8: a paragraph emptied on blur is removed. Returns false when the
+   * paragraph was kept (min 1 per scene) — it then commits as ' '.
+   */
+  onRemoveParagraph?: (sceneId: string, blockId: string) => boolean;
+  /** M8: inline scene-heading rename (renaming a provisional scene persists it). */
+  onRenameScene?: (sceneId: string, title: string) => void;
+  /** M8: inline chapter-heading rename. */
+  onRenameChapter?: (chapterId: string, title: string) => void;
   /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
   liquidNeon?: Partial<LiquidNeonV2Settings> | null;
+  /**
+   * M7 (§5.1): page-style quick-switch inside the Page setup popover. Omit to
+   * hide the switch entirely (style stays Settings-only, as it is today).
+   */
+  onPageStyleChange?: (mode: LiquidNeonPageCfg['mode']) => void;
+  /** M7: "Choose image…" trigger for the Custom texture page style. */
+  onPickPageTexture?: () => void;
   /**
    * M10 toolbar actions (prototype 766–777). Dictate/Assist hide when their
    * handler is absent. Read is built in (W0.4): the toolbar's single Read
@@ -126,6 +176,9 @@ const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quot
 const FONT_OPTIONS = ['Lora', 'Georgia', 'Palatino Linotype', 'Inter'];
 const FSIZE_MIN = 9;
 const FSIZE_MAX = 18;
+// Spec order (§5.1): 1.85 is the toolbar default.
+const LINE_SPACING_OPTIONS = ['1.15', '1.3', '1.5', '1.85', '2', '2.5', '3', '3.5', '4', '5', '6'];
+const LINE_SPACING_DEFAULT = '1.85';
 
 type FmtKey = 'b' | 'i' | 'u' | 's';
 type AlignKey = 'left' | 'center' | 'right' | 'justify';
@@ -245,7 +298,14 @@ export default function ManuscriptView({
   pageWidth = 1000,
   onPageWidthChange,
   onMoveParagraph,
+  onSplitParagraph,
+  onMergeParagraph,
+  onRemoveParagraph,
+  onRenameScene,
+  onRenameChapter,
   liquidNeon,
+  onPageStyleChange,
+  onPickPageTexture,
   onDictate,
   dictating = false,
   onAssist,
@@ -267,8 +327,14 @@ export default function ManuscriptView({
   const [styleSel, setStyleSel] = useState('Body Text');
   const [font, setFont] = useState('Lora');
   const [fsize, setFsize] = useState(12);
+  const [lineSpacing, setLineSpacing] = useState(LINE_SPACING_DEFAULT);
   const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
   const [align, setAlign] = useState<AlignKey>('left');
+
+  // M7: "Page setup" popover (width + page style) — replaces the always-open
+  // width strip so the control surface matches §5.1's "compact popover, not
+  // a strip".
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
 
   // M10 page-edge drag + paragraph grip drag state.
   const [edgeDragging, setEdgeDragging] = useState(false);
@@ -328,6 +394,8 @@ export default function ManuscriptView({
 
   // M10: page-mode sheet chrome from M4's persisted settings (pageCfg).
   const pageChrome = useMemo(() => pageModeChrome(liquidNeon), [liquidNeon]);
+  // M7: display name for the Page setup popover's custom-texture row.
+  const textureFileName = liquidNeon?.pageCfg?.textureUrl?.split(/[\\/]/).pop();
 
   // Follow persisted width when it changes elsewhere (settings load after mount).
   useEffect(() => {
@@ -357,6 +425,9 @@ export default function ManuscriptView({
   }, [scopeKey]);
 
   // ←/→ hop same-level siblings (prototype 3919–3922), except while typing.
+  // M8 (§1 keyboard map): Alt+←/→ hops scenes (chapters at chapter zoom) even
+  // FROM inside a paragraph — plain arrows stay in the text. Any in-flight
+  // contentEditable edit is blur-committed before the scope swaps it out.
   // W0.4: Ctrl/Cmd+Alt+↑/↓ steps the zoom level here too — the shell's
   // DepthSlider (which owned that shortcut) no longer mounts while the
   // manuscript's own doc header is the single zoom bar.
@@ -374,6 +445,15 @@ export default function ManuscriptView({
       }
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       if (cursor.zoom === 'book') return;
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.closest?.('[contenteditable="true"]')) {
+          active.blur();
+        }
+        step(e.key === 'ArrowRight' ? 1 : -1);
+        return;
+      }
       const target = e.target as HTMLElement | null;
       const tag = (target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -386,15 +466,25 @@ export default function ManuscriptView({
     return () => window.removeEventListener('keydown', onKey);
   }, [cursor, onCursorChange, step]);
 
-  // Abandoned grip drags (mouseup outside any paragraph) clear the drag state.
+  // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
+  // outside any paragraph), Escape, and losing window focus all clear it.
   useEffect(() => {
     if (!dragPara) return;
     const clear = () => {
       updateDragPara(null);
       setDropKey(null);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clear();
+    };
     window.addEventListener('mouseup', clear);
-    return () => window.removeEventListener('mouseup', clear);
+    window.addEventListener('blur', clear);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mouseup', clear);
+      window.removeEventListener('blur', clear);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [dragPara, updateDragPara]);
 
   const handleScroll = useCallback(
@@ -426,6 +516,20 @@ export default function ManuscriptView({
     container.scrollTop = bi * EST_BLOCK_H;
   }, [readerKey, blocks]);
 
+  // M11: paint the sentence being read inside the block wash (§5.1). Uses the
+  // CSS Custom Highlight API so the contentEditable DOM is never touched;
+  // degrades to the block-level wash where the API is unavailable (jsdom).
+  const readerRange = reader.curRange;
+  useEffect(() => {
+    if (!readerKey || !readerRange) {
+      clearReadingSentenceHighlight();
+      return;
+    }
+    const el = scrollRef.current?.querySelector(`[data-testid="msv-para-${readerKey}"]`);
+    setReadingSentenceHighlight(el, readerRange.start, readerRange.end);
+    return () => clearReadingSentenceHighlight();
+  }, [readerKey, readerRange, blocks]);
+
   // M13: selection-bar Read — speak just the highlighted passage.
   const handleReadSelection = useCallback(() => {
     if (!selAnchor) return;
@@ -444,6 +548,16 @@ export default function ManuscriptView({
   const commitParagraph = useCallback(
     (sceneId: string, blockId: string, original: string, el: HTMLElement) => {
       let text = el.textContent ?? '';
+      // M8 (prototype editPara): a paragraph emptied on blur is removed;
+      // the model keeps a minimum of one per scene — a kept survivor
+      // commits as the prototype's single-space placeholder instead.
+      if (onRemoveParagraph && text.trim() === '') {
+        if (onRemoveParagraph(sceneId, blockId)) {
+          committedRef.current.delete(blockId);
+          return;
+        }
+        text = ' ';
+      }
       // M23 'auto' mode: link entity mentions on commit (the plain-text
       // analog of BlockEditor's auto-on-save apply path).
       if (autoLinkMode === 'auto' && autoLinkTerms.length > 0) {
@@ -454,8 +568,101 @@ export default function ManuscriptView({
       committedRef.current.set(blockId, text);
       onEditParagraph(sceneId, blockId, text);
     },
-    [onEditParagraph, autoLinkMode, autoLinkTerms]
+    [onEditParagraph, onRemoveParagraph, autoLinkMode, autoLinkTerms]
   );
+
+  // ── M8: Enter split / Backspace merge + caret hand-off ──
+  // The follow-up caret target renders on the NEXT story pass (the split /
+  // merge lands in the caller's state first), so it is parked in a ref and
+  // claimed by the effect below once its paragraph exists in the DOM.
+  const pendingCaretRef = useRef<{ blockId: string; place: 'start' | 'end' } | null>(null);
+
+  useEffect(() => {
+    const pending = pendingCaretRef.current;
+    if (!pending) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-testid="msv-para-${pending.blockId}"]`
+    );
+    if (!el) return;
+    pendingCaretRef.current = null;
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(pending.place === 'start');
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch {
+      // jsdom's Selection API is partial — focus alone is enough there.
+    }
+  }, [blocks]);
+
+  const handleRowSplit = useCallback(
+    (sceneId: string, blockId: string, text: string, offset: number, el: HTMLElement) => {
+      if (!onSplitParagraph) return;
+      const { before, after } = splitParagraphText(text, offset);
+      // Blur first, with the commit suppressed (the split itself persists
+      // both halves): once unfocused, the row's memo gate lets the content
+      // change re-render through React — never mutate its DOM by hand, the
+      // children may be React-managed comment/hint spans.
+      committedRef.current.set(blockId, text);
+      el.blur();
+      const newBlockId = onSplitParagraph(sceneId, blockId, before, after);
+      if (!newBlockId) {
+        committedRef.current.delete(blockId); // split refused — restore the baseline
+        return;
+      }
+      committedRef.current.set(blockId, before);
+      committedRef.current.set(newBlockId, after);
+      pendingCaretRef.current = { blockId: newBlockId, place: 'start' };
+    },
+    [onSplitParagraph]
+  );
+
+  const handleRowMergeUp = useCallback(
+    (sceneId: string, blockId: string, currentText: string): boolean => {
+      if (!onMergeParagraph) return false;
+      const res = onMergeParagraph(sceneId, blockId, currentText);
+      if (!res) return false;
+      committedRef.current.set(res.mergedBlockId, res.mergedText);
+      // The merged-away row unmounts — a stray blur must not re-commit it.
+      committedRef.current.set(blockId, currentText);
+      pendingCaretRef.current = { blockId: res.mergedBlockId, place: 'end' };
+      return true;
+    },
+    [onMergeParagraph]
+  );
+
+  // ── M8: inline heading renames (prototype editTitle) ──
+  // Empty renames revert; normalization differences are written back so the
+  // heading never displays text the story does not hold. Renaming a
+  // provisional scene persists it (§1.5) — the shell's handler owns that.
+  const commitHeadingRename = useCallback(
+    (kind: 'chapter' | 'scene', id: string, originalTitle: string, el: HTMLElement) => {
+      const raw = el.textContent ?? '';
+      const title = normalizeInlineTitle(raw);
+      if (!title) {
+        el.textContent = originalTitle;
+        return;
+      }
+      if (title !== raw) el.textContent = title;
+      if (title === originalTitle) return;
+      if (kind === 'chapter') onRenameChapter?.(id, title);
+      else onRenameScene?.(id, title);
+    },
+    [onRenameChapter, onRenameScene]
+  );
+
+  // §1: Enter commits inline renames (blur runs the commit handler).
+  const headingKeyDown = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+  }, []);
 
   const commitPageWidth = useCallback(
     (w: number) => {
@@ -510,6 +717,11 @@ export default function ManuscriptView({
     (sceneId: string, blockId: string, e: ReactMouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      // Prototype paraDown: drop any live text selection so the drag never
+      // extends it (user-select is suppressed for the drag's duration too).
+      if (typeof window.getSelection === 'function') {
+        window.getSelection()?.removeAllRanges();
+      }
       updateDragPara({ sceneId, blockId });
     },
     [updateDragPara]
@@ -589,9 +801,22 @@ export default function ManuscriptView({
   }, []);
 
   // Anchored underlines open (not toggle) their card — stable for ParagraphRow.
-  const handleOpenComment = useCallback((id: string | null) => {
-    setOpenCommentId(id);
-  }, []);
+  // M9 (v2 prototype seg pick 4664): opening a comment dismisses a pending
+  // selection composer ({ cOpen: sg.cid, cSel: null }).
+  const handleOpenComment = useCallback(
+    (id: string | null) => {
+      setOpenCommentId(id);
+      clearSelectionBar();
+    },
+    [clearSelectionBar]
+  );
+
+  // M9: the open comment card (v2 prototype cOpenData 6502) — the open id
+  // resolved against the live list, so resolving/removing closes the card.
+  const openComment = useMemo(
+    () => (openCommentId ? comments.find((c) => c.id === openCommentId) ?? null : null),
+    [openCommentId, comments]
+  );
 
   // M23: click an auto-link hint → replace the mention with its [[wiki link]].
   const handleApplyAutoLink = useCallback(
@@ -616,6 +841,7 @@ export default function ManuscriptView({
     width: `${pageW}px`,
     fontFamily: fontStack(font),
     fontSize: `${(fsize * 1.42).toFixed(1)}px`,
+    lineHeight: lineSpacing,
   };
   // Memoized so its identity only changes with the toolbar state — it is
   // shallow-compared by every ParagraphRow's memo gate.
@@ -660,7 +886,25 @@ export default function ManuscriptView({
                 {CHEVRON_RIGHT(13)}
               </button>
               <div className="msv-h2-label">{b.label}</div>
-              <div className="msv-h2-title">{b.title}</div>
+              {/* M8: chapter titles are inline-editable (prototype editTitle). */}
+              <div
+                className="msv-h2-title"
+                data-testid={`msv-chapter-title-${b.chapterId}`}
+                contentEditable={!!onRenameChapter}
+                suppressContentEditableWarning
+                spellCheck={false}
+                {...(onRenameChapter
+                  ? {
+                      role: 'textbox' as const,
+                      'aria-label': 'Chapter title — Enter commits',
+                      onBlur: (e: ReactFocusEvent<HTMLElement>) =>
+                        commitHeadingRename('chapter', b.chapterId, b.title, e.currentTarget),
+                      onKeyDown: headingKeyDown,
+                    }
+                  : {})}
+              >
+                {b.title}
+              </div>
             </div>
             {b.folded &&
               renderFoldPill(
@@ -683,7 +927,26 @@ export default function ManuscriptView({
               >
                 {CHEVRON_RIGHT(13)}
               </button>
-              <span className="msv-h3-title">{b.title}</span>
+              {/* M8: scene titles are inline-editable; renaming a provisional
+                  scene persists it (§1.5 — the shell's rename handler). */}
+              <span
+                className="msv-h3-title"
+                data-testid={`msv-scene-title-${b.sceneId}`}
+                contentEditable={!!onRenameScene}
+                suppressContentEditableWarning
+                spellCheck={false}
+                {...(onRenameScene
+                  ? {
+                      role: 'textbox' as const,
+                      'aria-label': 'Scene title — Enter commits',
+                      onBlur: (e: ReactFocusEvent<HTMLElement>) =>
+                        commitHeadingRename('scene', b.sceneId, b.title, e.currentTarget),
+                      onKeyDown: headingKeyDown,
+                    }
+                  : {})}
+              >
+                {b.title}
+              </span>
               <button
                 type="button"
                 className={`msv-dot msv-dot--${b.status}`}
@@ -717,8 +980,14 @@ export default function ManuscriptView({
             autoLinkTerms={autoLinkTerms}
             reading={readerKey === b.blockId}
             showDropLine={!!dragPara && dropKey === b.blockId}
+            dragging={
+              !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
+            }
+            dropCap={b.first && (cursor.zoom === 'scene' || cursor.zoom === 'chapter')}
             paraStyle={paraStyle}
             onCommit={commitParagraph}
+            onSplit={onSplitParagraph ? handleRowSplit : undefined}
+            onMergeUp={onMergeParagraph ? handleRowMergeUp : undefined}
             onGripDown={handleGripDown}
             onParaOver={handleParaOver}
             onParaDrop={handleParaDrop}
@@ -825,29 +1094,43 @@ export default function ManuscriptView({
           </svg>
           {comments.length}
         </button>
-        <div className="msv-width-ctl" title="Page width — also drag the page edges">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#8e9db8"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
+        {/* M7 (§5.1): page-setup is a compact popover, not an always-open strip. */}
+        <div className="msv-page-setup-anchor">
+          <button
+            type="button"
+            className={`msv-page-setup-btn${pageSetupOpen ? ' msv-page-setup-btn--on' : ''}`}
+            data-testid="msv-page-setup-btn"
+            title="Page setup — width and page style"
+            aria-label="Page setup"
+            aria-pressed={pageSetupOpen}
+            onClick={() => setPageSetupOpen((v) => !v)}
           >
-            <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
-          </svg>
-          <input
-            type="range"
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
+            </svg>
+            <span className="msv-page-setup-readout">{pageW}px</span>
+          </button>
+          <PageChrome
+            open={pageSetupOpen}
+            onClose={() => setPageSetupOpen(false)}
+            pageWidth={pageW}
             min={PAGE_W_MIN}
             max={PAGE_W_MAX}
-            value={pageW}
-            data-testid="msv-width-slider"
-            aria-label="Page width"
-            onChange={(e) => commitPageWidth(Number(e.target.value))}
+            onPageWidthChange={commitPageWidth}
+            pageStyleMode={onPageStyleChange ? pageChrome.mode : undefined}
+            onPageStyleChange={onPageStyleChange}
+            textureFileName={textureFileName}
+            onPickPageTexture={onPickPageTexture}
           />
-          <span className="msv-width-readout">{pageW}px</span>
         </div>
       </div>
 
@@ -898,6 +1181,19 @@ export default function ManuscriptView({
             +
           </button>
         </div>
+        <select
+          className="msv-tb-select msv-tb-line-spacing"
+          data-testid="msv-line-spacing-select"
+          aria-label="Line spacing"
+          value={lineSpacing}
+          onChange={(e) => setLineSpacing(e.target.value)}
+        >
+          {LINE_SPACING_OPTIONS.map((ls) => (
+            <option key={ls} value={ls}>
+              {ls}
+            </option>
+          ))}
+        </select>
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
         {FMT_KEYS.map(({ k, label }) => (
           <button
@@ -1012,6 +1308,17 @@ export default function ManuscriptView({
         )}
       </div>
 
+      {/* M7 (§5.1): margin ruler — ticks, end stops, glowing page-width span,
+          diamond resize handles, live px readout while dragging. */}
+      <MarginRuler
+        pageWidth={pageW}
+        min={PAGE_W_MIN}
+        max={PAGE_W_MAX}
+        gutterOpen={commentsVisible}
+        onChange={setPageW}
+        onCommit={commitPageWidth}
+      />
+
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
       <div className="msv-body">
         {/* page scroll area with floating arrows (prototype 808–810) */}
@@ -1053,6 +1360,17 @@ export default function ManuscriptView({
               onSave={handleSaveComment}
               onCancel={clearSelectionBar}
               onRead={handleReadSelection}
+            />
+          )}
+          {/* M9: open comment card (v2 prototype cOpenData 1063–1085) */}
+          {openComment && (
+            <CommentOpenCard
+              comment={openComment}
+              onClose={() => setOpenCommentId(null)}
+              onResolve={handleResolveComment}
+              onAgentAction={handleAgentAction}
+              commentsInFocus={commentsInFocus}
+              onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
             />
           )}
           <div className="msv-sheet-wrap" style={sheetWrapStyle}>
@@ -1105,21 +1423,22 @@ export default function ManuscriptView({
             </div>
           </div>
         </div>
-        {/* M11: margin gutter dock (prototype 911–963) */}
-        {commentsVisible && (
+        {/* M11: margin gutter dock (v2 prototype gutterOpen 6775): comments
+            when visible, plus the Reader card while the reader is open —
+            docked above the comments, centered when they're hidden. */}
+        {((commentsVisible && comments.length > 0) || reader.open) && (
           <CommentsGutter
-            comments={comments}
+            comments={commentsVisible ? comments : NO_COMMENTS}
             openId={openCommentId}
             onToggleOpen={handleToggleOpenComment}
             onResolve={handleResolveComment}
             onAgentAction={handleAgentAction}
-            commentsInFocus={commentsInFocus}
-            onToggleCommentsInFocus={() => setCommentsInFocus(!commentsInFocus)}
+            readerSlot={
+              reader.open ? <ReaderCard reader={reader} ttsSettings={ttsSettings} /> : null
+            }
           />
         )}
       </div>
-      {/* M13: audiobook bar (prototype Book-preview bar 641–658) */}
-      {reader.open && <ReaderBar reader={reader} ttsSettings={ttsSettings} />}
     </div>
   );
 }

@@ -12,7 +12,9 @@
 /**
  * Who left the comment.
  * - `user`    — the writer (prototype color #ffd319).
- * - `writing` — Writing Assistant agent (slot-A neon, `--n1`).
+ * - `writing` — Writing Coach agent (slot-A neon, `--n1`; Beta 4 M9 renames
+ *               the surface labels per the v2 prototype kMeta 6503 — the
+ *               stored kind key stays `writing` for sidecar compatibility).
  * - `archive` — Archive Agent continuity flag (prototype color #ff5f8f);
  *               carries the 3 actions (edit notes / suggest change / ignore).
  * - `beta`    — Beta Reader agent reactions (M22; slot-C neon, `--n3`).
@@ -70,10 +72,10 @@ export interface CreateCommentInput {
   storyPath?: string;
 }
 
-/** Display metadata per kind (prototype kMeta 4515 / kMeta2 4633). */
+/** Display metadata per kind (v2 prototype kMeta 6503 / kMeta2 6765). */
 export const COMMENT_KIND_META: Record<CommentKind, { label: string; defaultAuthor: string }> = {
   user: { label: 'Comment', defaultAuthor: 'You' },
-  writing: { label: 'Writing Assistant', defaultAuthor: 'Writing Assistant' },
+  writing: { label: 'Writing Coach', defaultAuthor: 'Writing Coach' },
   archive: { label: 'Archive Agent — continuity', defaultAuthor: 'Archive Agent' },
   beta: { label: 'Beta Reader', defaultAuthor: 'Beta Reader' },
 };

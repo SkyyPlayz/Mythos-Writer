@@ -215,95 +215,132 @@ describe('computeSynopsis', () => {
   });
 });
 
-// ─── BEAT_STRUCTURE ───
+// ─── BEAT_STRUCTURE (Beta 4 M14: 3 templates) ───
 
 describe('BEAT_STRUCTURE', () => {
-  it('exports 3 acts', async () => {
+  it('exports 3 acts for the default (Save the Cat) template', async () => {
     const { BEAT_ACTS } = await import('./BEAT_STRUCTURE');
     expect(BEAT_ACTS).toHaveLength(3);
     expect(BEAT_ACTS.map((a) => a.id)).toEqual(['setup', 'confrontation', 'resolution']);
   });
 
-  it('has 15 total beats', async () => {
-    const { ALL_BEATS } = await import('./BEAT_STRUCTURE');
-    expect(ALL_BEATS).toHaveLength(15);
+  it('Save the Cat keeps its 15 Beta 3 beat ids (persisted assignments survive)', async () => {
+    const { BEAT_ACTS } = await import('./BEAT_STRUCTURE');
+    const ids = BEAT_ACTS.flatMap((a) => a.beats.map((b) => b.id));
+    expect(ids).toHaveLength(15);
+    expect(ids).toContain('catalyst');
+    expect(ids).toContain('midpoint');
+    expect(ids).toContain('final-image');
   });
 
-  it('each beat has a unique id', async () => {
+  it('exports the three prototype templates', async () => {
+    const { BEAT_TEMPLATES } = await import('./BEAT_STRUCTURE');
+    expect(BEAT_TEMPLATES.map((t) => t.id)).toEqual(['save-the-cat', 'three-act', 'heros-journey']);
+    expect(BEAT_TEMPLATES.map((t) => t.name)).toEqual([
+      'Save the Cat (3-Act)',
+      'Three-Act Structure',
+      'Hero’s Journey',
+    ]);
+  });
+
+  it('every beat id is unique across ALL templates and carries a pct label', async () => {
     const { ALL_BEATS } = await import('./BEAT_STRUCTURE');
     const ids = ALL_BEATS.map((b) => b.id);
     expect(new Set(ids).size).toBe(ids.length);
+    for (const beat of ALL_BEATS) expect(beat.pct).toMatch(/^\d+%$/);
+  });
+
+  it('getBeatTemplate falls back to Save the Cat for unknown ids', async () => {
+    const { getBeatTemplate } = await import('./BEAT_STRUCTURE');
+    expect(getBeatTemplate('nope').id).toBe('save-the-cat');
+    expect(getBeatTemplate('three-act').id).toBe('three-act');
   });
 });
 
-// ─── BeatSheetSidebar header label (SKY-573) ───
+// ─── BeatSheetSidebar (Beta 4 M14: controlled panel + templates) ───
+
+function renderSidebar(over: Partial<Parameters<typeof BeatSheetSidebar>[0]> = {}) {
+  const props = {
+    scenes: [] as Scene[],
+    assignments: {},
+    templateId: 'save-the-cat' as const,
+    onTemplateChange: vi.fn(),
+    focusedBeatId: null,
+    onBeatFocus: vi.fn(),
+    onAssignScene: vi.fn(),
+    ...over,
+  };
+  return { ...render(<BeatSheetSidebar {...props} />), props };
+}
 
 describe('BeatSheetSidebar', () => {
-  it('renders "Save the Cat (3-Act)" as the sidebar header', () => {
-    render(
-      <BeatSheetSidebar
-        scenes={[]}
-        vaultKey="test"
-        focusedBeatId={null}
-        onBeatFocus={() => {}}
-        onAssignmentsChange={() => {}}
-      />,
-    );
-    expect(screen.getByText('Save the Cat (3-Act)')).toBeTruthy();
+  it('renders the prototype header: Beat Sheet + mapped count', () => {
+    renderSidebar();
+    expect(screen.getByText('Beat Sheet')).toBeTruthy();
+    expect(screen.getByText('0 / 15 mapped')).toBeTruthy();
   });
 
-  it('sidebar landmark has correct accessible label', () => {
-    const { container } = render(
-      <BeatSheetSidebar
-        scenes={[]}
-        vaultKey="test"
-        focusedBeatId={null}
-        onBeatFocus={() => {}}
-        onAssignmentsChange={() => {}}
-      />,
-    );
+  it('sidebar landmark carries the active template name', () => {
+    const { container } = renderSidebar();
     const aside = container.querySelector('aside');
     expect(aside?.getAttribute('aria-label')).toBe('Beat sheet — Save the Cat (3-Act)');
   });
 
-  // M14: mapped-progress header per prototype 2361–2363
-  it('shows "0 / 15 mapped" and an empty progress bar with no assignments', () => {
-    render(
-      <BeatSheetSidebar
-        scenes={[]}
-        vaultKey="test"
-        focusedBeatId={null}
-        onBeatFocus={() => {}}
-        onAssignmentsChange={() => {}}
-      />,
-    );
-    expect(screen.getByText('0 / 15 mapped')).toBeTruthy();
-    const bar = screen.getByRole('progressbar', { name: /beats mapped/i });
-    expect(bar).toHaveAttribute('aria-valuenow', '0');
-    expect(bar).toHaveAttribute('aria-valuemax', '15');
+  it('renders prototype act eyebrows and pct labels', () => {
+    renderSidebar();
+    expect(screen.getByText('ACT I — SETUP')).toBeTruthy();
+    expect(screen.getByText('ACT II — CONFRONTATION')).toBeTruthy();
+    expect(screen.getByText('ACT III — RESOLUTION')).toBeTruthy();
+    expect(screen.getByText('50%')).toBeTruthy(); // Midpoint
   });
 
-  it('counts a beat as mapped once a scene is assigned to it', () => {
-    localStorage.setItem(
-      'mythos-beats-v1:test-mapped',
-      JSON.stringify({ s1: 'catalyst', s2: 'catalyst' }),
-    );
-    render(
-      <BeatSheetSidebar
-        scenes={[makeScene({ id: 's1' }), makeScene({ id: 's2', title: 'Second' })]}
-        vaultKey="test-mapped"
-        focusedBeatId={null}
-        onBeatFocus={() => {}}
-        onAssignmentsChange={() => {}}
-      />,
-    );
-    // Two scenes on one beat → 1 / 15 mapped, with a mapped dot on the row
+  it('counts a beat as mapped and shows the assigned scene title on the row', () => {
+    renderSidebar({
+      scenes: [makeScene({ id: 's1', title: 'The Catalyst Scene' })],
+      assignments: { s1: 'catalyst' },
+    });
     expect(screen.getByText('1 / 15 mapped')).toBeTruthy();
     expect(
       screen.getByRole('progressbar', { name: /beats mapped/i }),
     ).toHaveAttribute('aria-valuenow', '1');
+    expect(screen.getByText('The Catalyst Scene')).toBeTruthy();
     expect(document.querySelector('.beat-item__dot')).toBeTruthy();
-    localStorage.removeItem('mythos-beats-v1:test-mapped');
+  });
+
+  it('template picker switches frameworks via onTemplateChange', () => {
+    const onTemplateChange = vi.fn();
+    renderSidebar({ onTemplateChange });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'heros-journey' } });
+    expect(onTemplateChange).toHaveBeenCalledWith('heros-journey');
+  });
+
+  it('renders the selected template beats (Hero’s Journey → 8 beats)', () => {
+    renderSidebar({ templateId: 'heros-journey' });
+    expect(screen.getByText('0 / 8 mapped')).toBeTruthy();
+    expect(screen.getByText('Ordinary World')).toBeTruthy();
+    expect(screen.getByText('Return with the Elixir')).toBeTruthy();
+    expect(screen.getByText(/Hero’s Journey structure — drag scenes onto beats/)).toBeTruthy();
+  });
+
+  it('dropping a dragged scene on a beat row maps it (onAssignScene)', () => {
+    const onAssignScene = vi.fn();
+    renderSidebar({
+      scenes: [makeScene({ id: 's1' })],
+      onAssignScene,
+    });
+    const row = screen.getByTestId('beat-item-midpoint');
+    const dataTransfer = { getData: vi.fn(() => 's1'), dropEffect: '' };
+    fireEvent.dragOver(row, { dataTransfer });
+    fireEvent.drop(row, { dataTransfer });
+    expect(onAssignScene).toHaveBeenCalledWith('s1', 'midpoint');
+  });
+
+  it('ignores drops that do not carry a known scene id', () => {
+    const onAssignScene = vi.fn();
+    renderSidebar({ scenes: [makeScene({ id: 's1' })], onAssignScene });
+    const row = screen.getByTestId('beat-item-midpoint');
+    fireEvent.drop(row, { dataTransfer: { getData: vi.fn(() => 'not-a-scene') } });
+    expect(onAssignScene).not.toHaveBeenCalled();
   });
 });
 
@@ -460,5 +497,125 @@ describe('ManuscriptStructureView — Ctrl+Z undo (SKY-573)', () => {
     const input = container.querySelector('input')!;
     fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
     expect(onReorderScenes).toHaveBeenCalledTimes(1); // still only 1 call
+  });
+});
+
+// ─── Beta 4 M14 — grid card prototype parity ───
+
+describe('SceneGrid cards (M14)', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  function renderGridStory(story: Story) {
+    localStorage.setItem('mythos-msv-view-mode-v1', 'card');
+    render(
+      <ManuscriptStructureView
+        story={story}
+        onSelectScene={() => {}}
+        onReorderScenes={() => {}}
+        onMoveScene={() => {}}
+        onCreateScene={() => {}}
+        onCreateChapter={() => {}}
+        vaultRoot="test-vault"
+      />,
+    );
+  }
+
+  it('titles cards "Scene N · <title>" (prototype 788)', () => {
+    renderGridStory(
+      makeStory([
+        makeChapter([
+          makeSceneWithId('sc1', 0, 'Alpha'),
+          makeSceneWithId('sc2', 1, 'Beta'),
+        ]),
+      ]),
+    );
+    expect(screen.getByText('Scene 1 · Alpha')).toBeTruthy();
+    expect(screen.getByText('Scene 2 · Beta')).toBeTruthy();
+  });
+
+  it('shows the POV label when scene metadata carries one', () => {
+    const scene = { ...makeSceneWithId('sc1', 0, 'Alpha'), timelineMetadata: { pov: 'Mira' } };
+    renderGridStory(makeStory([makeChapter([scene])]));
+    expect(screen.getByText('POV Mira')).toBeTruthy();
+  });
+
+  it('the whole card is draggable (no grip handle, prototype cursor:grab)', () => {
+    renderGridStory(makeStory([makeChapter([makeSceneWithId('sc1', 0, 'Alpha')])]));
+    const card = screen.getByRole('option', { name: /Scene: Alpha/i });
+    expect(card).toHaveAttribute('draggable', 'true');
+    expect(document.querySelector('.scene-card__drag-handle')).toBeNull();
+  });
+});
+
+// ─── Beta 4 M14 — list view drag parity ───
+
+describe('ListView mouse drag (M14)', () => {
+  beforeEach(() => {
+    localStorage.setItem('mythos-msv-view-mode-v1', 'list');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  const TWO_CHAPTER_STORY: Story = makeStory([
+    makeChapter([
+      makeSceneWithId('sc1', 0, 'Scene Alpha'),
+      makeSceneWithId('sc2', 1, 'Scene Beta'),
+    ], 'ch1'),
+    makeChapter([makeSceneWithId('sc3', 0, 'Scene Gamma')], 'ch2'),
+  ]);
+
+  it('rows are draggable and dropping on a row reorders within the chapter', () => {
+    const onReorderScenes = vi.fn();
+    render(
+      <ManuscriptStructureView
+        story={TWO_CHAPTER_STORY}
+        onSelectScene={() => {}}
+        onReorderScenes={onReorderScenes}
+        onMoveScene={() => {}}
+        onCreateScene={() => {}}
+        onCreateChapter={() => {}}
+        vaultRoot="test-vault"
+      />,
+    );
+
+    const alpha = screen.getByRole('treeitem', { name: /Scene: Scene Alpha/i });
+    const beta = screen.getByRole('treeitem', { name: /Scene: Scene Beta/i });
+    expect(alpha).toHaveAttribute('draggable', 'true');
+
+    const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'sc2'), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(beta, { dataTransfer });
+    fireEvent.dragOver(alpha, { dataTransfer });
+    fireEvent.drop(alpha, { dataTransfer });
+
+    expect(onReorderScenes).toHaveBeenCalledWith('st1', 'ch1', ['sc2', 'sc1']);
+  });
+
+  it('dropping a row on another chapter header moves the scene across chapters', () => {
+    const onMoveScene = vi.fn();
+    render(
+      <ManuscriptStructureView
+        story={TWO_CHAPTER_STORY}
+        onSelectScene={() => {}}
+        onReorderScenes={() => {}}
+        onMoveScene={onMoveScene}
+        onCreateScene={() => {}}
+        onCreateChapter={() => {}}
+        vaultRoot="test-vault"
+      />,
+    );
+
+    const alpha = screen.getByRole('treeitem', { name: /Scene: Scene Alpha/i });
+    const ch2Header = screen.getByText('CHAPTER 2').closest('.list-chapter__header')!;
+
+    const dataTransfer = { setData: vi.fn(), getData: vi.fn(() => 'sc1'), effectAllowed: '', dropEffect: '' };
+    fireEvent.dragStart(alpha, { dataTransfer });
+    fireEvent.dragOver(ch2Header, { dataTransfer });
+    fireEvent.drop(ch2Header, { dataTransfer });
+
+    expect(onMoveScene).toHaveBeenCalledWith('st1', 'sc1', 'ch1', 'ch2', null);
   });
 });

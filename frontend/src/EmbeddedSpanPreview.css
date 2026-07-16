@@ -1,0 +1,46 @@
+/* SKY-6306 M21 — Embedded span mini-preview */
+
+.esp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  border-top: 1px dashed rgba(167, 139, 250, 0.45);
+  cursor: pointer;
+  text-align: left;
+}
+
+.esp__label {
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(167, 139, 250, 0.8);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.esp__strip {
+  display: block;
+  overflow: visible;
+}
+
+.esp__axis {
+  stroke: rgba(167, 139, 250, 0.25);
+  stroke-width: 1;
+}
+
+.esp__dot {
+  fill: rgba(167, 139, 250, 0.7);
+}
+
+/* Parent span gets dashed border when it embeds another timeline */
+[data-embeds-timeline="true"] {
+  border: 1.5px dashed rgba(167, 139, 250, 0.5) !important;
+  border-radius: 4px;
+}

@@ -66,6 +66,8 @@ function rowProps(blockId: string, over: Partial<ParagraphRowProps> = {}): Parag
     autoLinkTerms: EMPTY_TERMS,
     reading: false,
     showDropLine: false,
+    dragging: false,
+    dropCap: false,
     paraStyle: PARA_STYLE,
     onCommit: noopCommit,
     onGripDown: noopGrip,
@@ -289,6 +291,11 @@ describe('ParagraphRow memo gate (render-count probes)', () => {
     expect(paragraphRowPropsEqual(p, { ...p, content: 'changed' })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, reading: true })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, showDropLine: true })).toBe(false);
+    // M8: drag-dim + drop-cap + split/merge handlers gate too.
+    expect(paragraphRowPropsEqual(p, { ...p, dragging: true })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, dropCap: true })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, onSplit: () => {} })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, onMergeUp: () => true })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, paraStyle: { ...PARA_STYLE } })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, autoLinkTerms: [] })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, comments: [mkComment('c9', 's1', 'x')] })).toBe(false);
@@ -315,7 +322,8 @@ describe('ManuscriptView row memoization (integration)', () => {
     vi.mocked(findAutoLinkHints).mockClear();
     vi.mocked(segmentsFor).mockClear();
 
-    fireEvent.change(screen.getByTestId('msv-width-slider'), { target: { value: '1400' } });
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
+    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '1400' } });
     expect(screen.getByText('1400px')).toBeInTheDocument(); // the view re-rendered …
     expect(vi.mocked(findAutoLinkHints)).not.toHaveBeenCalled(); // … the rows did not
     expect(vi.mocked(segmentsFor)).not.toHaveBeenCalled();
@@ -347,6 +355,7 @@ describe('ManuscriptView row memoization (integration)', () => {
 
   it('an in-flight edit survives unrelated re-renders and still commits on blur', () => {
     const { props } = renderView();
+    fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
     const para = screen.getByTestId('msv-para-s1-b0');
     act(() => para.focus());
     para.textContent = 'work in progress';
@@ -362,7 +371,7 @@ describe('ManuscriptView row memoization (integration)', () => {
         kind: 'archive',
       });
     });
-    fireEvent.change(screen.getByTestId('msv-width-slider'), { target: { value: '1200' } });
+    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '1200' } });
 
     expect(para.textContent).toBe('work in progress'); // keystrokes intact
     expect(document.activeElement).toBe(para); // caret still in the row
@@ -429,5 +438,18 @@ describe('ManuscriptView row memoization (integration)', () => {
 
     act(() => para.blur());
     expect(commits).toEqual(['first edit', 'first edit plus more']);
+  });
+});
+
+// ─── M8: drop cap ────────────────────────────────────────────────────────────
+
+describe('M8 drop cap (prototype: suppressed while comment anchors segment)', () => {
+  it('applies the drop-cap class only while the text has no comment segments', () => {
+    const p = rowProps('b1', { dropCap: true });
+    const { rerender } = render(<ParagraphRowBase {...p} />);
+    expect(screen.getByTestId('msv-para-b1').className).toContain('msv-para-text--dropcap');
+
+    rerender(<ParagraphRowBase {...p} comments={[mkComment('c1', 's1', 'Prose for b1')]} />);
+    expect(screen.getByTestId('msv-para-b1').className).not.toContain('msv-para-text--dropcap');
   });
 });
