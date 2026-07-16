@@ -1,0 +1,179 @@
+/* SKY-6306 M21 — Timeline picker card */
+
+.tlpicker {
+  position: relative;
+}
+
+.tlpicker__card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 8px;
+  color: var(--color-text-primary, #e8e8f0);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.tlpicker__card:hover,
+.tlpicker__card[aria-expanded="true"] {
+  background: rgba(139, 92, 246, 0.28);
+}
+
+.tlpicker__icon {
+  color: rgba(139, 92, 246, 0.9);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.tlpicker__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.tlpicker__name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tlpicker__kind {
+  font-size: 10px;
+  color: var(--color-text-secondary, rgba(232, 232, 240, 0.55));
+  margin-top: 1px;
+}
+
+.tlpicker__chevron {
+  flex-shrink: 0;
+  color: var(--color-text-secondary, rgba(232, 232, 240, 0.55));
+  transition: transform 0.18s;
+}
+
+.tlpicker__chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown */
+.tlpicker__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--color-surface-elevated, #1e1e2e);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  padding: 4px;
+}
+
+.tlpicker__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--color-text-primary, #e8e8f0);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tlpicker__item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tlpicker__item--active {
+  color: rgba(167, 139, 250, 1);
+}
+
+.tlpicker__item-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary, rgba(232, 232, 240, 0.55));
+  flex-shrink: 0;
+}
+
+.tlpicker__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlpicker__active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(167, 139, 250, 1);
+  flex-shrink: 0;
+}
+
+.tlpicker__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.tlpicker__action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--color-text-secondary, rgba(232, 232, 240, 0.6));
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tlpicker__action:hover {
+  color: var(--color-text-primary, #e8e8f0);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tlpicker__hint {
+  padding: 4px 8px 6px;
+  margin: 0;
+  font-size: 10px;
+  color: var(--color-text-secondary, rgba(232, 232, 240, 0.38));
+  line-height: 1.4;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 2px;
+}
+
+/* ── Demo marker (owner ruling, PR #914) ──
+   Timelines seeded as demo content (source: 'seed') carry a visible badge so
+   demo data is never mistaken for the user's own work. */
+.tlpicker__demo-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border-radius: 7px;
+  color: var(--color-warning, #e8b74a);
+  border: 1px solid currentColor;
+  background: rgba(232, 183, 74, 0.12);
+}

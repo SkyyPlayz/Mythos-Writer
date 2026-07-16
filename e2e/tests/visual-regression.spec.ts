@@ -64,6 +64,7 @@ function seedUserData(userData: string, vaultDir: string): void {
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
+    notesTabUpgradeToastShown: true,
     agents: {
       writingAssistant: {
         enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30,
