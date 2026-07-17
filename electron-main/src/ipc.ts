@@ -15,8 +15,21 @@ import type {
   TimelineDefinition,
   TimelineKind,
   TimelineCalendar,
+  TimelineEra,
+  TimelineSpan,
+  TimelineRow,
+  TimelineEvent,
 } from './timelines/model.js';
-export type { TimelinesStore, TimelineDefinition, TimelineKind, TimelineCalendar };
+export type {
+  TimelinesStore,
+  TimelineDefinition,
+  TimelineKind,
+  TimelineCalendar,
+  TimelineEra,
+  TimelineSpan,
+  TimelineRow,
+  TimelineEvent,
+};
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
 // SuggestionStatus and SuggestionCategory are also defined inline below (backward compat).
@@ -475,6 +488,9 @@ export const IPC_CHANNELS = {
   TIMELINES_GET_STORE: 'timelines:getStore',
   TIMELINES_UPSERT: 'timelines:upsert',
   TIMELINES_SET_ACTIVE: 'timelines:setActive',
+  // Beta 4 M22: Axis engine — era/span/event/row item persistence
+  TIMELINES_UPSERT_ITEM: 'timelines:upsertItem',
+  TIMELINES_DELETE_ITEM: 'timelines:deleteItem',
 
   // SKY-863: Cloud-sync conflict detection + lockfile
   VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
@@ -1003,6 +1019,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload: TimelinesGetStorePayload) => TimelinesGetStoreResponse;
   [IPC_CHANNELS.TIMELINES_UPSERT]: (payload: TimelinesUpsertPayload) => TimelinesUpsertResponse;
   [IPC_CHANNELS.TIMELINES_SET_ACTIVE]: (payload: TimelinesSetActivePayload) => TimelinesSetActiveResponse;
+  // Beta 4 M22: Axis engine item persistence
+  [IPC_CHANNELS.TIMELINES_UPSERT_ITEM]: (payload: TimelinesUpsertItemPayload) => TimelinesUpsertItemResponse;
+  [IPC_CHANNELS.TIMELINES_DELETE_ITEM]: (payload: TimelinesDeleteItemPayload) => TimelinesDeleteItemResponse;
 
   // SKY-6228: M15 — agent chat sessions
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
@@ -4735,6 +4754,34 @@ export interface TimelinesUpsertResponse { ok: boolean; id: string; store: Timel
 
 export interface TimelinesSetActivePayload { timelineId: string; }
 export interface TimelinesSetActiveResponse { ok: boolean; store: TimelinesStore; }
+
+// Beta 4 M22: Axis engine — persist plotted items (eras, spans, events,
+// custom rows) mutated by direct manipulation / the exact-time picker.
+export type TimelinesItemType = 'era' | 'span' | 'event' | 'row';
+
+export type TimelinesItem = TimelineEra | TimelineSpan | TimelineEvent | TimelineRow;
+
+export interface TimelinesUpsertItemPayload {
+  type: TimelinesItemType;
+  /** Full item, id included — inserted when new, replaced when existing. */
+  item: TimelinesItem;
+}
+export interface TimelinesUpsertItemResponse {
+  ok: boolean;
+  store: TimelinesStore;
+  error?: string;
+}
+
+export interface TimelinesDeleteItemPayload {
+  type: TimelinesItemType;
+  id: string;
+}
+export interface TimelinesDeleteItemResponse {
+  ok: boolean;
+  store: TimelinesStore;
+  error?: string;
+}
+
 // SKY-6228: M15 — agent chat session IPC types
 export type { AgentSessionFile, AgentSessionSummary, SessionTurn, SessionAgent } from './mythosFormat/agentSessions.js';
 

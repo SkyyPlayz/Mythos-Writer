@@ -991,6 +991,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('timelines:upsert', payload),
   timelinesSetActive: (timelineId: string) =>
     ipcRenderer.invoke('timelines:setActive', { timelineId }),
+  // Beta 4 M22: Axis engine — era/span/event/row item persistence
+  timelinesUpsertItem: (payload: { type: string; item: Record<string, unknown> }) =>
+    ipcRenderer.invoke('timelines:upsertItem', payload),
+  timelinesDeleteItem: (payload: { type: string; id: string }) =>
+    ipcRenderer.invoke('timelines:deleteItem', payload),
 
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {
