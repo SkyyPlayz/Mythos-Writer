@@ -203,6 +203,33 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.getByText(/Pacing is rhythm/)).toBeInTheDocument();
   });
 
+  // SKY-7076 (gh-960 gap): the session picker must refuse to switch/new-chat
+  // while a reply is generating — pinning keeps persisted data correct
+  // regardless, but this closes the confusing-UX half of the gap too.
+  it('disables the session picker while a reply is generating, re-enables once it resolves', async () => {
+    const mock = installMockApi({ deferChat: true });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+
+    const input = screen.getByTestId('coach-input');
+    fireEvent.change(input, { target: { value: 'Why does this scene drag?' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(screen.getByTestId('coach-typing')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Session:/ }));
+    expect(screen.getByText('+ New chat')).toBeDisabled();
+
+    // The dropdown stays open across the resolution — re-check the SAME
+    // rendered button rather than re-toggling (a second click would just
+    // close the dropdown again).
+    await act(async () => { mock.resolveChat(); });
+    await flush();
+
+    expect(screen.getByText('+ New chat')).not.toBeDisabled();
+  });
+
   it('passes the open scene as teaching context', async () => {
     const { api } = installMockApi();
     const scene = story.chapters[1].scenes[0];

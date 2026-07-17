@@ -134,7 +134,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
           <div className="coach-title">{displayName}</div>
           <div className="coach-sub">Teaches you to write better using your own pages — it never ghost-writes</div>
         </div>
-        <AgentSessionPicker store={conversation.store} className="coach-session-pill" />
+        <AgentSessionPicker store={conversation.store} className="coach-session-pill" busy={conversation.busy} />
         <div className="coach-header-spacer" />
         <div className="coach-skills" data-testid="coach-skills">
           {SKILL_CHIPS.map(([k, v, color]) => (
@@ -163,6 +163,14 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
         <div className="coach-feed-col">
           <div className="coach-feed" ref={feedRef} data-testid="coach-feed">
             <div className="coach-feed-inner">
+              {/* SKY-7076: while switching sessions the store clears the stale
+                  transcript before the read resolves — show a neutral loading
+                  state instead of leaving the feed blank with no explanation. */}
+              {conversation.store.loading && conversation.messages.length === 0 && (
+                <div className="coach-session-loading" data-testid="coach-session-loading" role="status" aria-live="polite">
+                  Loading session…
+                </div>
+              )}
               {conversation.messages.map((m, i) => (
                 <CoachFeedMessage key={i} message={m} />
               ))}

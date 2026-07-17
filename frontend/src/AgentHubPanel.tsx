@@ -409,6 +409,9 @@ function AgentChatView({
   onAutoApplyCategoriesChange,
 }: AgentChatViewProps) {
   const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
+  // SKY-7076: mirror WritingAssistantPanel's generation state so this
+  // surface's picker is disabled during generation too, not just Coach's.
+  const [coachBusy, setCoachBusy] = useState(false);
 
   return (
     <div className="ahp-chat-view">
@@ -429,7 +432,7 @@ function AgentChatView({
           <AgentIcon agentId={agentId} />
         </span>
         <span className="ahp-chat-agent-name">{displayName}</span>
-        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" />
+        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={agentId === 'writing-assistant' && coachBusy} />
       </div>
 
       {/* Writing Coach uses the existing panel; M12 wires it onto the SHARED
@@ -455,6 +458,7 @@ function AgentChatView({
           autoApplyCategories={autoApplyCategories}
           onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
           displayName={displayName}
+          onBusyChange={setCoachBusy}
         />
       )}
 
