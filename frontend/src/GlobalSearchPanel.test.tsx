@@ -136,6 +136,45 @@ describe('GlobalSearchPanel', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'hero' } });
     await waitFor(() => expect(searchVault).toHaveBeenCalledWith('hero', 'story', 20, undefined), { timeout: 600 });
   });
+
+  // SKY-7082 / TC-GS-06: a slow debounced fetch for a since-cleared query
+  // must not repopulate the list once the query is cleared.
+  it('clears results on empty query and ignores a stale in-flight response', async () => {
+    const result = {
+      resultType: 'scene' as const,
+      docId: 'stale-1',
+      vault: 'story' as const,
+      kind: 'scene',
+      title: 'Stale Dragon Scene',
+      snippet: '',
+      rank: -1,
+    };
+    let resolveStale: (v: { results: typeof result[] }) => void = () => {};
+    const stale = new Promise<{ results: typeof result[] }>((res) => { resolveStale = res; });
+    const searchVault = vi.fn().mockReturnValueOnce(stale);
+    (window as unknown as { api: unknown }).api = { searchVault };
+
+    render(<GlobalSearchPanel open={true} onNavigate={() => {}} onClose={() => {}} />);
+    const input = screen.getByRole('combobox');
+
+    fireEvent.change(input, { target: { value: 'dragon' } });
+    await waitFor(() => expect(searchVault).toHaveBeenCalledWith('dragon', 'both', 20, undefined), { timeout: 600 });
+
+    // Clear before the stale fetch resolves.
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(screen.getByText(/Type to search/)).toBeInTheDocument();
+
+    // The stale fetch for "dragon" now resolves late — it must not repopulate
+    // the list that was already cleared.
+    resolveStale({ results: [result] });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.queryByText('Stale Dragon Scene')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(screen.getByText(/Type to search/)).toBeInTheDocument();
+  });
 });
 
 // Beta 4 M2 — the title-bar "Search vault…" field hands its draft query to
