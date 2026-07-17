@@ -68,6 +68,13 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // Bumped on every runSearch call (including the empty-query clear branch) so
+  // a slow or previously-queued search response can never overwrite a newer
+  // one — e.g. a debounced fetch still in flight when the query is cleared,
+  // or a timer left pending from before the panel was last closed (SKY-7082:
+  // this component returns null rather than unmounting, so state/timers
+  // survive a close).
+  const searchIdRef = useRef(0);
 
   // Partition results into scenes and entities; keyboard nav uses the flat order.
   const { sceneResults, entityResults, flatResults } = useMemo(() => {
@@ -84,6 +91,14 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
       .filter((c) => !q || c.t.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q))
       .slice(0, 5);
   }, [commands, query]);
+
+  // This component returns null rather than unmounting when closed, so its
+  // state and timers persist across close/reopen — cancel any pending
+  // debounced search here to stop it firing into a later session.
+  useEffect(() => {
+    if (open) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,6 +136,7 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
 
   const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
     const filters = tagFilters ?? activeTagFilters;
+    const searchId = ++searchIdRef.current;
     if (!q.trim() && !filters.length) {
       setResults([]);
       setLoading(false);
@@ -129,14 +145,17 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     setLoading(true);
     try {
       const resp = await window.api.searchVault(q, s, 20, filters.length ? filters : undefined) as { results?: SearchResultItem[] };
+      // A newer search (including an empty-query clear) has started since
+      // this one was fired — this response is stale, discard it.
+      if (searchId !== searchIdRef.current) return;
       if (resp?.results) {
         setResults(resp.results);
         setActiveIdx(-1);
       }
     } catch {
-      setResults([]);
+      if (searchId === searchIdRef.current) setResults([]);
     } finally {
-      setLoading(false);
+      if (searchId === searchIdRef.current) setLoading(false);
     }
   }, [activeTagFilters]);
 
@@ -145,9 +164,16 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
       const q = e.target.value;
       setQuery(q);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!q.trim() && !activeTagFilters.length) {
+        // Nothing to debounce for a cleared query — resolve immediately so
+        // results don't linger while a stale in-flight fetch could still
+        // repopulate them (SKY-7082/TC-GS-06).
+        runSearch(q, scope);
+        return;
+      }
       debounceRef.current = setTimeout(() => runSearch(q, scope), 300);
     },
-    [scope, runSearch],
+    [scope, runSearch, activeTagFilters],
   );
 
   const handleScopeChange = useCallback(
