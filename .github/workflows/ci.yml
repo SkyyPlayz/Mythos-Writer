@@ -370,7 +370,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-3:
-    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
+    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded), global-search
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -449,6 +449,9 @@ jobs:
         # here and just proves it collects cleanly. Un-skip once auto-update
         # is un-deferred and a real feed exists to test against.
         run: xvfb-run --auto-servernum npm run test:e2e:auto-update
+
+      - name: E2E — Global Search TC-GS-01..06 (SKY-129/160/905/7082)
+        run: xvfb-run --auto-servernum npm run test:e2e:global-search
 
       - name: Upload E2E report on failure
         if: failure()

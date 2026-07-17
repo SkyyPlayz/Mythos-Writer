@@ -65,9 +65,20 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
   const [loading, setLoading] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
+  // True once the user has driven a real (non-empty) query during this open
+  // session — distinguishes "panel just opened, show the palette" from
+  // "user searched and cleared it back out" (SKY-7082/TC-GS-06).
+  const [hasTyped, setHasTyped] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // Bumped on every runSearch call (including the empty-query clear branch) so
+  // a slow or previously-queued search response can never overwrite a newer
+  // one — e.g. a debounced fetch still in flight when the query is cleared,
+  // or a timer left pending from before the panel was last closed (SKY-7082:
+  // this component returns null rather than unmounting, so state/timers
+  // survive a close).
+  const searchIdRef = useRef(0);
 
   // Partition results into scenes and entities; keyboard nav uses the flat order.
   const { sceneResults, entityResults, flatResults } = useMemo(() => {
@@ -77,17 +88,31 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
   }, [results]);
 
   // Beta 3 M5: commands filter like the prototype (4450–4452) — substring on
-  // title or sub, capped at 5, shown even before typing.
+  // title or sub, capped at 5, shown even before typing (i.e. on first open).
+  // Once the user has actually searched and cleared it back to empty, the
+  // palette must stay hidden rather than reappear in its place (SKY-7082).
   const cmdHits = useMemo(() => {
     const q = query.trim().toLowerCase();
+    if (!q && hasTyped) return [];
     return (commands ?? [])
       .filter((c) => !q || c.t.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q))
       .slice(0, 5);
-  }, [commands, query]);
+  }, [commands, query, hasTyped]);
+
+  // This component returns null rather than unmounting when closed, so its
+  // state and timers persist across close/reopen — cancel any pending
+  // debounced search here to stop it firing into a later session.
+  useEffect(() => {
+    if (open) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     inputRef.current?.focus();
+    // Fresh open — reset the "has this session's query ever been non-empty"
+    // flag so the command palette can show again until a real search happens.
+    setHasTyped(!!(initialQuery && initialQuery.trim()));
     // Beta 4 M2: the title-bar field hands its draft here — seed and search
     // immediately so the FTS5 results appear without retyping (CF-14).
     if (initialQuery && initialQuery.trim()) {
@@ -121,6 +146,7 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
 
   const runSearch = useCallback(async (q: string, s: SearchScope, tagFilters?: string[]) => {
     const filters = tagFilters ?? activeTagFilters;
+    const searchId = ++searchIdRef.current;
     if (!q.trim() && !filters.length) {
       setResults([]);
       setLoading(false);
@@ -129,14 +155,17 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     setLoading(true);
     try {
       const resp = await window.api.searchVault(q, s, 20, filters.length ? filters : undefined) as { results?: SearchResultItem[] };
+      // A newer search (including an empty-query clear) has started since
+      // this one was fired — this response is stale, discard it.
+      if (searchId !== searchIdRef.current) return;
       if (resp?.results) {
         setResults(resp.results);
         setActiveIdx(-1);
       }
     } catch {
-      setResults([]);
+      if (searchId === searchIdRef.current) setResults([]);
     } finally {
-      setLoading(false);
+      if (searchId === searchIdRef.current) setLoading(false);
     }
   }, [activeTagFilters]);
 
@@ -144,10 +173,18 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const q = e.target.value;
       setQuery(q);
+      if (q.trim()) setHasTyped(true);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (!q.trim() && !activeTagFilters.length) {
+        // Nothing to debounce for a cleared query — resolve immediately so
+        // results don't linger while a stale in-flight fetch could still
+        // repopulate them (SKY-7082/TC-GS-06).
+        runSearch(q, scope);
+        return;
+      }
       debounceRef.current = setTimeout(() => runSearch(q, scope), 300);
     },
-    [scope, runSearch],
+    [scope, runSearch, activeTagFilters],
   );
 
   const handleScopeChange = useCallback(
