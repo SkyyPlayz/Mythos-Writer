@@ -691,7 +691,7 @@ jobs:
       - name: E2E — Auto-linker (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:auto-linker
 
-      - name: E2E — Global search FTS5 (SKY-6933 sweep, 1 test skip-guarded — real bug, tracked SKY-7082/PR #968)
+      - name: E2E — Global Search TC-GS-01..06 (SKY-129/160/905/7082)
         run: xvfb-run --auto-servernum npm run test:e2e:global-search
 
       - name: E2E — README screenshots (SKY-6933 sweep)
@@ -708,6 +708,7 @@ jobs:
 
       - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
         run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
+
 
       - name: Upload E2E report on failure
         if: failure()
