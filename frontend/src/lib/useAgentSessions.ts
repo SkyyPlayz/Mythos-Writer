@@ -25,7 +25,8 @@ export interface UseAgentSessionsResult {
   refresh: () => Promise<AgentSessionSummary[] | undefined>;
 }
 
-export function useAgentSessions(agent: string): UseAgentSessionsResult {
+export function useAgentSessions(agent: string, options?: { autoCreate?: boolean }): UseAgentSessionsResult {
+  const autoCreate = options?.autoCreate ?? true;
   const [sessions, setSessions] = useState<AgentSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<AgentSessionFile | null>(null);
@@ -53,7 +54,7 @@ export function useAgentSessions(agent: string): UseAgentSessionsResult {
       setSessions(list);
       if (list.length > 0) {
         setActiveSessionId(list[0].id);
-      } else {
+      } else if (autoCreate) {
         // Auto-create the first session for this agent
         const greeting = AGENT_GREETINGS[agent] ?? null;
         const res = await api.create(agent, undefined, greeting ?? undefined);
@@ -61,12 +62,16 @@ export function useAgentSessions(agent: string): UseAgentSessionsResult {
         setActiveSession(res.session);
         setActiveSessionId(res.session.id);
       }
+      // else: agent surface isn't active/enabled yet — leave sessions empty
+      // rather than writing a session file for a feature the user hasn't used
+      // (SKY-6945: was silently creating a Sessions/*.md note in every vault,
+      // including disabled-agent and empty-vault fixtures).
     } catch {
       // no vault; degrade silently — UI shows empty state
     } finally {
       setLoading(false);
     }
-  }, [agent, api]);
+  }, [agent, api, autoCreate]);
 
   useEffect(() => {
     if (initialised.current) return;
