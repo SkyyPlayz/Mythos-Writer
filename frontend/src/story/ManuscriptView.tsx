@@ -1287,7 +1287,7 @@ export default function ManuscriptView({
             type="button"
             className="msv-tb-action msv-tb-assist"
             data-testid="msv-tb-assist"
-            title="Open the Writing Assistant"
+            title="Open the Writing Coach"
             onClick={onAssist}
           >
             <svg

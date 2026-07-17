@@ -221,7 +221,7 @@ test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent m
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Writing Assistant model input should be a text input (not a select)
-  const waModel = page.getByLabel('Writing Assistant model');
+  const waModel = page.getByLabel('Writing Coach model');
   await expect(waModel).toHaveAttribute('type', 'text');
 
   // Brainstorm model input should be text input

@@ -162,7 +162,7 @@ export default function AgentsSection({
           <label className="settings-toggle">
             <input
               type="checkbox"
-              aria-label="Enable Writing Assistant"
+              aria-label="Enable Writing Coach"
               checked={settings.agents.writingAssistant.enabled}
               onChange={(e) => setAgentField('writingAssistant', 'enabled', e.target.checked)}
             />
@@ -180,7 +180,7 @@ export default function AgentsSection({
                   id="wa-model"
                   className="settings-input settings-select settings-input-sm"
                   value={settings.agents.writingAssistant.model}
-                  aria-label="Writing Assistant model"
+                  aria-label="Writing Coach model"
                   onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
                 >
                   {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -192,7 +192,7 @@ export default function AgentsSection({
                   type="text"
                   value={settings.agents.writingAssistant.model}
                   placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Writing Assistant model"
+                  aria-label="Writing Coach model"
                   maxLength={128}
                   onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
                 />
@@ -304,7 +304,7 @@ export default function AgentsSection({
               <input
                 id="wa-auto-apply"
                 type="checkbox"
-                aria-label="Auto-apply Writing Assistant suggestions"
+                aria-label="Auto-apply Writing Coach suggestions"
                 checked={settings.agents.writingAssistant.autoApply}
                 onChange={(e) => setAgentField('writingAssistant', 'autoApply', e.target.checked)}
               />
@@ -314,7 +314,7 @@ export default function AgentsSection({
           </div>
           <AutoApplyCategoryToggles
             idPrefix="wa"
-            agentLabel="Writing Assistant"
+            agentLabel="Writing Coach"
             agent={settings.agents.writingAssistant}
             agentKey="writingAssistant"
             onChange={setCategoryAutoApply}
@@ -331,7 +331,7 @@ export default function AgentsSection({
                 step={0.05}
                 disabled={!settings.agents.writingAssistant.autoApply}
                 value={settings.agents.writingAssistant.confidenceThreshold}
-                aria-label="Writing Assistant auto-apply threshold"
+                aria-label="Writing Coach auto-apply threshold"
                 onChange={(e) => setAgentField('writingAssistant', 'confidenceThreshold', Number(e.target.value))}
               />
               <span className="settings-slider-value">{settings.agents.writingAssistant.confidenceThreshold.toFixed(2)}</span>

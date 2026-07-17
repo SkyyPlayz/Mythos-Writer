@@ -14,7 +14,7 @@ import './DockedTabBar.css';
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 export const DOCKED_TAB_PANEL_LABELS: Record<string, string> = {
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
   stories: 'Story Navigator',

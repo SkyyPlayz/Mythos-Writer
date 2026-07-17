@@ -391,6 +391,14 @@
   position: relative;
 }
 
+/* Beta 4 M12 — Writing Coach page container (§5.2) */
+.shell-coach {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ─── Full Book preview (SKY-3213 C4) ─── */
 .shell-book { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 /* Beta 4 M14: the compiled Book view moved to story/BookPreview.tsx (+ BookPreview.css);

@@ -27,6 +27,8 @@ import type {
   AgentSessionDeleteResponse,
   AgentSessionAppendTurnsPayload,
   AgentSessionAppendTurnsResponse,
+  AgentSessionReadPayload,
+  AgentSessionReadResponse,
 } from './ipc.js';
 
 export function handleAgentSessionList(
@@ -108,5 +110,16 @@ export function handleAgentSessionAppendTurns(
   payload: AgentSessionAppendTurnsPayload,
 ): AgentSessionAppendTurnsResponse {
   const session = appendTurns(notesRoot, payload.sessionId, payload.turns);
+  return { session };
+}
+
+// M12 — hydrate one full session (turns included). Coach page ↔ Coach panel
+// render the same conversation, so a surface mounting onto an existing
+// session needs its stored turns, not just the list summary.
+export function handleAgentSessionRead(
+  notesRoot: string,
+  payload: AgentSessionReadPayload,
+): AgentSessionReadResponse {
+  const session = readSession(notesRoot, payload.sessionId);
   return { session };
 }
