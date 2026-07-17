@@ -107,6 +107,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-6933: GabesPC (WSL2 host) can sleep mid-run under default Windows
+        # power settings; the job's real work finishes but the wall-clock
+        # timeout-minutes counter (tracked by the Actions service, not the
+        # runner) keeps advancing through the sleep, cancelling the job right
+        # as it wraps up (run 29619457945: coverage printed, then "operation
+        # was canceled" at the 20-min mark). Same guard as build-electron
+        # (SKY-2427) and the e2e shards (SKY-6906). No-op on non-WSL2 runners.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" &
+          echo "WSL2 sleep prevention started."
+
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
@@ -134,6 +154,16 @@ jobs:
             electron-main/coverage/
             frontend/coverage/
           retention-days: 3
+
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
 
   build-electron:
     # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced
