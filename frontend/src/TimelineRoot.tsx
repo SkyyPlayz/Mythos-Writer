@@ -39,18 +39,23 @@ import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineLanes from './TimelineLanes';
 import TimelineRelationships from './TimelineRelationships';
 import TimelineSubway from './TimelineSubway';
+import AxisView from './timeline2/AxisView';
+import CalendarEditorModal from './timeline2/CalendarEditorModal';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import './TimelineRoot.css';
 
 const STORAGE_KEY_MODE = 'timeline:viewMode';
 const STORAGE_KEY_GROUP = 'timeline:groupBy';
 
-/** Prototype mode segment labels (4571). */
+/** Prototype mode segment labels (4571) + the M22 axis engine surface. */
 const MODE_OPTIONS: { value: TimelineMode; label: string }[] = [
   { value: 'progress', label: 'Plan vs Progress' },
   { value: 'structure', label: 'Structure' },
   { value: 'spreadsheet', label: 'Spreadsheet' },
   { value: 'relations', label: 'Relationships' },
   { value: 'subway', label: 'Subway' },
+  { value: 'axis', label: 'Axis' },
 ];
 
 /** M23: cap plan-note reads per load — vaults can hold many plan files. */
@@ -128,8 +133,8 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
   // ── M21: multi-timeline store ──
   const [timelinesStore, setTimelinesStore] = useState<TimelinesStore | null>(null);
-  const [showNewTimelineModal, setShowNewTimelineModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const { toast, showToast } = useToast();
 
   // ── Shared Aeon data (progress / structure / relations / subway) ──
   const [aeonData, setAeonData] = useState<AeonTimelineData>(EMPTY_AEON_DATA);
@@ -155,13 +160,48 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     }).catch(() => {});
   }, [api]);
 
+  // Prototype `tlNewTimeline` (7216): '+ New timeline' creates one right away
+  // (no editor modal) and switches to it.
   const handleNewTimeline = useCallback(() => {
-    setShowNewTimelineModal(true);
-  }, []);
+    const upsert = api.timelinesUpsert;
+    const setActive = api.timelinesSetActive;
+    if (typeof upsert !== 'function' || typeof setActive !== 'function') return;
+    upsert({ name: 'New Timeline', kind: 'custom' })
+      .then((res) => {
+        if (!res.ok) return;
+        return setActive(res.id).then((activated) => {
+          if (activated.ok) setTimelinesStore(activated.store);
+          showToast('New timeline — add spans, or embed an existing timeline inside it');
+        });
+      })
+      .catch(() => {});
+  }, [api, showToast]);
 
   const handleEditCalendar = useCallback(() => {
     setShowCalendarModal(true);
   }, []);
+
+  // M22: persist calendar edits on the active timeline.
+  const activeTimeline = timelinesStore?.timelines.find(
+    (t) => t.id === timelinesStore.activeTimelineId,
+  );
+  const handleCalendarChange = useCallback(
+    (calendar: { preset: string; monthsPerYear: number; daysPerMonth: number; hoursPerDay: number }, presetLabel?: string) => {
+      if (!activeTimeline || typeof api.timelinesUpsert !== 'function') return;
+      api.timelinesUpsert({
+        id: activeTimeline.id,
+        name: activeTimeline.name,
+        kind: activeTimeline.kind,
+        calendar,
+      })
+        .then((res) => {
+          if (res.ok) setTimelinesStore(res.store);
+          if (presetLabel) showToast(`Calendar set — ${presetLabel}`);
+        })
+        .catch(() => {});
+    },
+    [api, activeTimeline, showToast],
+  );
 
   useEffect(() => {
     if (!story) {
@@ -248,7 +288,10 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   }, []);
 
   const isLanesMode = viewMode === 'progress' || viewMode === 'structure';
-  const isAeonMode = viewMode !== 'spreadsheet';
+  // M22: the axis engine renders from the vault-scoped timelines store — it
+  // needs neither a story nor the Aeon dataset (and owns its own zoom seg).
+  const isAxisMode = viewMode === 'axis';
+  const isAeonMode = viewMode !== 'spreadsheet' && !isAxisMode;
 
   const legend = useMemo(() => {
     if (viewMode !== 'progress') return null;
@@ -330,88 +373,82 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
         <div className="tlr-spacer" aria-hidden="true" />
 
-        <div className="tlr-group-by" role="group" aria-label="Group scenes by">
-          <label className="tlr-group-label" htmlFor="tlr-group-select">
-            Group:
-          </label>
-          <select
-            id="tlr-group-select"
-            className="tlr-group-select"
-            value={groupBy}
-            onChange={e => handleGroupByChange(e.target.value as TimelineGroupBy)}
-            data-testid="groupby-select"
-          >
-            {GROUP_BY_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* M22: the axis mode owns its own zoom seg; the legacy group /
+            zoom / Today controls only apply to the Beta 3 surfaces. */}
+        {!isAxisMode && (
+          <>
+            <div className="tlr-group-by" role="group" aria-label="Group scenes by">
+              <label className="tlr-group-label" htmlFor="tlr-group-select">
+                Group:
+              </label>
+              <select
+                id="tlr-group-select"
+                className="tlr-group-select"
+                value={groupBy}
+                onChange={e => handleGroupByChange(e.target.value as TimelineGroupBy)}
+                data-testid="groupby-select"
+              >
+                {GROUP_BY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <div
-          className="tlr-seg"
-          role="group"
-          aria-label="Timeline zoom"
-          data-testid="tl-zoom-seg"
-        >
-          {VALID_TIMELINE_ZOOMS.map(z => (
-            <button
-              key={z}
-              type="button"
-              className={`tlr-seg-btn${zoom === z ? ' tlr-seg-btn--active' : ''}`}
-              aria-pressed={zoom === z}
-              onClick={() => setZoom(z)}
-              data-testid={`tl-zoom-${z}`}
+            <div
+              className="tlr-seg"
+              role="group"
+              aria-label="Timeline zoom"
+              data-testid="tl-zoom-seg"
             >
-              {TIMELINE_ZOOM_LABELS[z]}
-            </button>
-          ))}
-        </div>
+              {VALID_TIMELINE_ZOOMS.map(z => (
+                <button
+                  key={z}
+                  type="button"
+                  className={`tlr-seg-btn${zoom === z ? ' tlr-seg-btn--active' : ''}`}
+                  aria-pressed={zoom === z}
+                  onClick={() => setZoom(z)}
+                  data-testid={`tl-zoom-${z}`}
+                >
+                  {TIMELINE_ZOOM_LABELS[z]}
+                </button>
+              ))}
+            </div>
 
-        <button
-          type="button"
-          className="tlr-today-btn"
-          onClick={handleToday}
-          data-testid="tl-today-btn"
-        >
-          Today
-        </button>
+            <button
+              type="button"
+              className="tlr-today-btn"
+              onClick={handleToday}
+              data-testid="tl-today-btn"
+            >
+              Today
+            </button>
+          </>
+        )}
       </div>
 
-      {/* M21: modal stubs — implementations added in M22+ */}
-      {showNewTimelineModal && (
-        <div
-          className="tlr-modal-stub"
-          role="dialog"
-          aria-modal="true"
-          aria-label="New timeline"
-          data-testid="new-timeline-modal"
-          onClick={() => setShowNewTimelineModal(false)}
-        >
-          <div className="tlr-modal-stub__inner" onClick={(e) => e.stopPropagation()}>
-            <p>New timeline — full editor coming in M22.</p>
-            <button onClick={() => setShowNewTimelineModal(false)}>Close</button>
-          </div>
-        </div>
-      )}
-      {showCalendarModal && (
-        <div
-          className="tlr-modal-stub"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Edit calendar"
-          data-testid="edit-calendar-modal"
-          onClick={() => setShowCalendarModal(false)}
-        >
-          <div className="tlr-modal-stub__inner" onClick={(e) => e.stopPropagation()}>
-            <p>Calendar editor — coming in M22.</p>
-            <button onClick={() => setShowCalendarModal(false)}>Close</button>
-          </div>
-        </div>
+      {/* M22: per-timeline calendar editor (prototype 3738–3772) */}
+      {showCalendarModal && activeTimeline && (
+        <CalendarEditorModal
+          timelineName={activeTimeline.name}
+          calendar={activeTimeline.calendar}
+          onChange={handleCalendarChange}
+          onClose={() => setShowCalendarModal(false)}
+        />
       )}
 
       <div className="tlr-body">
+        {/* ── M22: Axis engine (§8.3) — vault-scoped, story-independent ── */}
+        {isAxisMode && timelinesStore && (
+          <AxisView store={timelinesStore} onStoreChange={setTimelinesStore} />
+        )}
+        {isAxisMode && !timelinesStore && (
+          <div className="tlr-state" data-testid="tlr-axis-unavailable">
+            <h2>Timeline store unavailable.</h2>
+          </div>
+        )}
+
         {viewMode === 'spreadsheet' && (
           <TimelineSpreadsheet
             story={story}
@@ -458,6 +495,8 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
           </>
         )}
       </div>
+
+      <Toast message={toast?.message ?? null} level={toast?.level} />
     </div>
   );
 }

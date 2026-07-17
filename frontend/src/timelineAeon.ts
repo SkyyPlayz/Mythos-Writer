@@ -13,11 +13,13 @@
 
 // ─── View modes ───
 
-/** The five prototype timeline modes (prototype `tlModeSeg`, 4571). */
-export type TimelineMode = 'progress' | 'structure' | 'spreadsheet' | 'relations' | 'subway';
+/** The five prototype timeline modes (prototype `tlModeSeg`, 4571) plus the
+ *  Beta 4 M22 axis engine surface ('axis' — §8.3; M23/M24 fold the remaining
+ *  modes onto it). */
+export type TimelineMode = 'progress' | 'structure' | 'spreadsheet' | 'relations' | 'subway' | 'axis';
 
 export const VALID_TIMELINE_MODES: readonly TimelineMode[] = [
-  'progress', 'structure', 'spreadsheet', 'relations', 'subway',
+  'progress', 'structure', 'spreadsheet', 'relations', 'subway', 'axis',
 ];
 
 /** Beta-2 stored view modes map onto their Beta-3 successors:

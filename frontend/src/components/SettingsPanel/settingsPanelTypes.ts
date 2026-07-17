@@ -15,17 +15,42 @@ export interface CustomFieldDef {
   options?: string[];
 }
 
-export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'llamacpp' | 'custom';
 
+// Beta 4 M28 (B4-10): full BYO stays — Claude API, any OpenAI-compatible
+// endpoint (the 'custom' kind), and the three local runtimes (Ollama /
+// LM Studio / llama.cpp). llama.cpp's `llama-server` speaks the OpenAI
+// chat-completions dialect at :8080/v1, so it rides the same adapter.
 export const PROVIDER_OPTIONS: { value: ProviderKind; label: string; needsKey: boolean; needsUrl: boolean }[] = [
   { value: 'anthropic', label: 'Anthropic (Claude)', needsKey: true, needsUrl: false },
   { value: 'openai', label: 'OpenAI', needsKey: true, needsUrl: false },
   { value: 'ollama', label: 'Ollama (local)', needsKey: false, needsUrl: true },
   { value: 'lmstudio', label: 'LM Studio (local)', needsKey: false, needsUrl: true },
+  { value: 'llamacpp', label: 'llama.cpp (local)', needsKey: false, needsUrl: true },
   { value: 'custom', label: 'Custom endpoint', needsKey: true, needsUrl: true },
 ];
 
-export const LISTABLE_PROVIDERS = new Set<ProviderKind>(['ollama', 'lmstudio', 'openai', 'custom']);
+export const LISTABLE_PROVIDERS = new Set<ProviderKind>(['ollama', 'lmstudio', 'llamacpp', 'openai', 'custom']);
+
+/**
+ * Beta 4 M28 (B4-6 / B4-10): providers with an OAuth "log in" path. Every
+ * button ships in connect-later state — it renders, explains what account
+ * linking will do when it lands, and stores no credentials.
+ */
+export const OAUTH_PROVIDERS: Partial<Record<ProviderKind, { buttonLabel: string; explainer: string }>> = {
+  anthropic: {
+    buttonLabel: 'Log in with Claude',
+    explainer:
+      'Account linking is coming soon — signing in with your Claude subscription will power the agents ' +
+      'without an API key. Until then, paste an Anthropic API key below; it is stored locally on this machine.',
+  },
+  openai: {
+    buttonLabel: 'Log in with ChatGPT',
+    explainer:
+      'Account linking is coming soon — signing in with your ChatGPT account will power the agents ' +
+      'without an API key. Until then, paste an OpenAI API key below; it is stored locally on this machine.',
+  },
+};
 
 export const TELEMETRY_DATA_LIST = [
   'App version and platform (OS / Electron version)',
@@ -95,6 +120,7 @@ export const DEFAULT_BASE_URLS: Record<ProviderKind, string> = {
   openai: 'https://api.openai.com/v1',
   ollama: 'http://127.0.0.1:11434/v1',
   lmstudio: 'http://127.0.0.1:1234/v1',
+  llamacpp: 'http://127.0.0.1:8080/v1',
   custom: '',
 };
 
@@ -116,6 +142,16 @@ export const ALL_CATEGORIES_ENABLED: Record<SuggestionCategory, boolean> = {
   other: true,
 };
 
+/** Beta 4 M28 (B4-8): every auto-apply toggle ships OFF by default. */
+export const ALL_CATEGORIES_DISABLED: Record<SuggestionCategory, boolean> = {
+  punctuation: false,
+  spelling: false,
+  grammar: false,
+  'sentence-structure': false,
+  'style-tone': false,
+  other: false,
+};
+
 export const BUDGET_DEFAULTS: AgentBudgetSettings = {
   autoApply: false,
   confidenceThreshold: 0.85,
@@ -123,7 +159,10 @@ export const BUDGET_DEFAULTS: AgentBudgetSettings = {
   maxSuggestionsPerHour: 50,
   heartbeatIntervalMinutes: 5,
   maxTokensPerDay: 500_000,
-  autoApplyCategories: ALL_CATEGORIES_ENABLED,
+  // B4-8: defaults ship with an explicit all-false map, so a fresh vault has
+  // every auto-apply category OFF until the user opts in. Legacy vaults with
+  // no map keep the pre-SKY-908 "all enabled" semantics (back-compat below).
+  autoApplyCategories: ALL_CATEGORIES_DISABLED,
 };
 
 export const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
@@ -142,6 +181,20 @@ export function isCategoryAutoApplyEnabled(
   if (!agent.autoApplyCategories) return true;
   const value = agent.autoApplyCategories[category];
   return value !== false;
+}
+
+/**
+ * Beta 4 M28 (B4-8): per-category certainty threshold. Suggestions at/above
+ * the threshold auto-apply (snapshot-first, undoable); below it they land in
+ * the suggestion inbox for review. Falls back to the agent's global
+ * confidenceThreshold when the category has no explicit value.
+ */
+export function categoryAutoApplyThreshold(
+  agent: AgentBudgetSettings,
+  category: SuggestionCategory,
+): number {
+  const value = agent.autoApplyThresholds?.[category];
+  return typeof value === 'number' && !Number.isNaN(value) ? value : agent.confidenceThreshold;
 }
 
 /** Beta 3 M22: default Beta Reader agent settings (also the back-fill for pre-M22 settings files). */
