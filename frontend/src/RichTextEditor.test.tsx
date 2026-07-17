@@ -3,7 +3,8 @@
 // The core is what both the Story editor (BlockEditor) and Notes rich mode
 // (NoteViewer) wrap. These tests pin the shared contract:
 //   1. both surfaces mount the SAME base extension set, including Underline
-//   2. Markdown serialize round-trips (incl. <u>, matching the fidelity guard)
+//   2. Markdown serialize round-trips (incl. <u> and text alignment, matching
+//      the fidelity guard)
 //   3. entity @-mention insert works through the shared picker stack
 //   4. wiki-link clicks delegate to the caller
 //   5. debounced onChange, suppressed initial change, flush-on-unmount
@@ -181,6 +182,32 @@ describe('RichTextEditor markdown round-trip', () => {
       extraExtensions: STORY_EXTRAS,
     });
     const { editor: notesEditor, unmount: unmountNotes } = await mountCore({ content: FULL_MARK_SET_MD });
+
+    expect(getEditorMarkdown(storyEditor)).toBe(getEditorMarkdown(notesEditor));
+
+    unmountStory();
+    unmountNotes();
+  });
+
+  it('round-trips paragraph and heading text alignment (SKY-5705/SKY-7073)', async () => {
+    // Alignment has no native Markdown syntax; AlignedParagraph/AlignedHeading
+    // (lib/alignedBlocks.ts) record it as a trailing `{.align}` marker instead
+    // of a mark, so it needs its own round-trip pin alongside underline's.
+    const md = 'A centered paragraph. {.center}\n\n## A right-aligned heading {.right}\n';
+    const { editor, unmount } = await mountCore({ content: md });
+    const out = getEditorMarkdown(editor);
+    expect(out).toContain('A centered paragraph. {.center}');
+    expect(out).toContain('## A right-aligned heading {.right}');
+    unmount();
+  });
+
+  it('Story and Notes configs serialize alignment markers byte-identically', async () => {
+    const md = 'A centered paragraph. {.center}\n\n## A right-aligned heading {.right}\n';
+    const { editor: storyEditor, unmount: unmountStory } = await mountCore({
+      content: md,
+      extraExtensions: STORY_EXTRAS,
+    });
+    const { editor: notesEditor, unmount: unmountNotes } = await mountCore({ content: md });
 
     expect(getEditorMarkdown(storyEditor)).toBe(getEditorMarkdown(notesEditor));
 

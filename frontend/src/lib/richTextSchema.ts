@@ -9,7 +9,7 @@
 // to read and one place to extend. `RichTextEditor.test.tsx` pins every entry
 // with a Story-vs-Notes parity assertion.
 
-export type RichTextMarkKind = 'mark' | 'node';
+export type RichTextMarkKind = 'mark' | 'node' | 'attribute';
 
 export interface RichTextMarkDef {
   /** Tiptap/ProseMirror schema name (matches `editor.isActive(name)`). */
@@ -22,18 +22,20 @@ export interface RichTextMarkDef {
 }
 
 /**
- * The full set of formatting marks/nodes guaranteed to round-trip
+ * The full set of formatting marks/nodes/attributes guaranteed to round-trip
  * byte-identically between Story and Notes via the shared Markdown
  * serializer (`getEditorMarkdown` / `tiptap-markdown`).
  *
  * Sourced from StarterKit (bold/italic/strike/underline/headings/lists/
- * blockquote/code/codeBlock) plus WikiLink, the app's custom inline node.
+ * blockquote/code/codeBlock) plus WikiLink (the app's custom inline node)
+ * and TextAlign (a paragraph/heading attribute, not a mark or node — see
+ * `alignedBlocks.ts`).
  *
- * NOT included: text alignment. There is no Markdown syntax for it and no
- * extension currently mounted — adding it requires overriding StarterKit's
- * bundled Heading/Paragraph nodes with custom markdown-serialize storage
- * (StarterKit doesn't expose per-attribute serialize hooks), which is
- * out of scope for this ticket. Tracked as a follow-up (see GH #642 thread).
+ * Text alignment (SKY-5705 / SKY-7073 / GH #642) has no native CommonMark
+ * syntax, so it round-trips via `AlignedParagraph`/`AlignedHeading`, which
+ * override StarterKit's bundled Paragraph/Heading with custom
+ * `addStorage().markdown.serialize` hooks (StarterKit itself exposes no
+ * per-attribute serialize hook to hang this off of).
  */
 export const RICH_TEXT_SCHEMA: readonly RichTextMarkDef[] = [
   { name: 'bold', kind: 'mark', label: 'Bold', markdownSyntax: '**text**' },
@@ -47,6 +49,12 @@ export const RICH_TEXT_SCHEMA: readonly RichTextMarkDef[] = [
   { name: 'blockquote', kind: 'node', label: 'Blockquote', markdownSyntax: '> text' },
   { name: 'codeBlock', kind: 'node', label: 'Code block', markdownSyntax: '```\ncode\n```' },
   { name: 'wikiLink', kind: 'node', label: 'Wiki link', markdownSyntax: '[[target]]' },
+  {
+    name: 'textAlign',
+    kind: 'attribute',
+    label: 'Text alignment (paragraph/heading)',
+    markdownSyntax: 'trailing `{.center}` / `{.right}` / `{.justify}` marker (left/default emits none)',
+  },
 ] as const;
 
 export const RICH_TEXT_SCHEMA_NAMES: readonly string[] = RICH_TEXT_SCHEMA.map((m) => m.name);

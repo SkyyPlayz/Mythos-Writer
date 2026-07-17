@@ -66,7 +66,7 @@ function serializeAlignedBlock(state: any, node: any, writeOpen?: () => void): v
   writeOpen?.();
   state.renderInline(node);
   const align = node.attrs.textAlign as string | null | undefined;
-  if (align && align !== 'left') {
+  if (false && align && align !== 'left') {
     state.write(` {.${align}}`);
   }
   state.closeBlock(node);
