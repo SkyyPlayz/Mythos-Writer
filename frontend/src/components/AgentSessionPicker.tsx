@@ -9,9 +9,17 @@ interface Props {
   store: UseAgentSessionsResult;
   /** Extra class applied to the pill root (e.g. for placement overrides). */
   className?: string;
+  /**
+   * SKY-7076: true while a reply is generating on this surface. Switching or
+   * creating a session is disabled for the duration — the in-flight turns
+   * are pinned to their origin session regardless, but letting the user swap
+   * out from under a generating reply is still confusing UX even when the
+   * data stays correct.
+   */
+  busy?: boolean;
 }
 
-export default function AgentSessionPicker({ store, className = '' }: Props) {
+export default function AgentSessionPicker({ store, className = '', busy = false }: Props) {
   const [open, setOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -102,7 +110,14 @@ export default function AgentSessionPicker({ store, className = '' }: Props) {
                   <button
                     type="button"
                     className="asp-row-label"
-                    onClick={() => { void switchSession(s.id); setOpen(false); }}
+                    disabled={busy}
+                    aria-disabled={busy}
+                    title={busy ? 'Wait for the current reply to finish before switching sessions' : undefined}
+                    onClick={() => {
+                      if (busy) return;
+                      void switchSession(s.id);
+                      setOpen(false);
+                    }}
                   >
                     <span className={`asp-status-dot${s.id === activeSessionId ? ' asp-status-dot--active' : ''}`} aria-hidden="true" />
                     <span className="asp-row-name">{s.title ?? 'Chat'}</span>
@@ -139,7 +154,14 @@ export default function AgentSessionPicker({ store, className = '' }: Props) {
             <button
               type="button"
               className="asp-new-btn"
-              onClick={() => { void newSession(); setOpen(false); }}
+              disabled={busy}
+              aria-disabled={busy}
+              title={busy ? 'Wait for the current reply to finish before starting a new chat' : undefined}
+              onClick={() => {
+                if (busy) return;
+                void newSession();
+                setOpen(false);
+              }}
             >
               + New chat
             </button>

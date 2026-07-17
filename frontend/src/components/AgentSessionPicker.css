@@ -96,6 +96,16 @@
   color: #f0f3fc;
 }
 
+.asp-row-label:disabled,
+.asp-new-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.asp-row-label:disabled:hover {
+  color: #c8d3e7;
+}
+
 .asp-status-dot {
   width: 6px;
   height: 6px;
@@ -191,6 +201,6 @@
   transition: background 0.1s;
 }
 
-.asp-new-btn:hover {
+.asp-new-btn:hover:not(:disabled) {
   background: rgba(255, 77, 255, 0.08);
 }
