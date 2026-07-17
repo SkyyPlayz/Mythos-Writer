@@ -451,7 +451,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // M20: board-page right panel QUICK GENERATE box.
   const [quickGenText, setQuickGenText] = useState('');
   // M20 (SKY-6663): Brainstorm chat lives on the shared M15 agent-session store.
-  const sessionStore = useAgentSessions('brainstorm');
+  // autoCreate: enabled — don't silently write a Sessions/*.md note into the
+  // vault for a disabled agent, or from a hidden/background mount before the
+  // user has ever opened Brainstorm (SKY-6945).
+  const sessionStore = useAgentSessions('brainstorm', { autoCreate: enabled });
   const sessionStoreRef = useRef(sessionStore);
   sessionStoreRef.current = sessionStore;
   const syncedSessionIdRef = useRef<string | null>(null);

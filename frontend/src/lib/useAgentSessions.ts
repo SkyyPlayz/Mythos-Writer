@@ -58,7 +58,7 @@ function getApi(): AgentSessionsApi | undefined {
   return window.api?.agentSessions;
 }
 
-function createStore(agent: string): AgentSessionStore {
+function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   const store: AgentSessionStore = {
     state: { sessions: [], activeSessionId: null, activeSession: null, loading: true },
     listeners: new Set(),
@@ -118,7 +118,7 @@ function createStore(agent: string): AgentSessionStore {
       if (list.length > 0) {
         set({ activeSessionId: list[0].id });
         await hydrateActive(list[0].id);
-      } else {
+      } else if (autoCreate) {
         // Auto-create the first session for this agent
         const greeting = AGENT_GREETINGS[agent] ?? null;
         const res = await api.create(agent, undefined, greeting ?? undefined);
@@ -128,6 +128,10 @@ function createStore(agent: string): AgentSessionStore {
           activeSessionId: res.session.id,
         });
       }
+      // else: agent surface isn't active/enabled yet — leave sessions empty
+      // rather than writing a session file for a feature the user hasn't used
+      // (SKY-6945: was silently creating a Sessions/*.md note in every vault,
+      // including disabled-agent and empty-vault fixtures).
     } catch {
       // no vault; degrade silently — UI shows empty state
     } finally {
@@ -220,18 +224,23 @@ function createStore(agent: string): AgentSessionStore {
   return store;
 }
 
-/** Get (or create) the shared session store for one agent key. */
-export function getAgentSessionStore(agent: string): AgentSessionStore {
+/**
+ * Get (or create) the shared session store for one agent key.
+ * `autoCreate` (default true) only takes effect the first time a store is
+ * created for this agent — later callers join the existing store/init state
+ * (same one-shot-init semantics as the rest of the singleton).
+ */
+export function getAgentSessionStore(agent: string, options?: { autoCreate?: boolean }): AgentSessionStore {
   let store = stores.get(agent);
   if (!store) {
-    store = createStore(agent);
+    store = createStore(agent, options?.autoCreate ?? true);
     stores.set(agent, store);
   }
   return store;
 }
 
-export function useAgentSessions(agent: string): UseAgentSessionsResult {
-  const store = getAgentSessionStore(agent);
+export function useAgentSessions(agent: string, options?: { autoCreate?: boolean }): UseAgentSessionsResult {
+  const store = getAgentSessionStore(agent, options);
   const subscribe = useCallback(
     (fn: () => void) => store.subscribe(fn),
     [store],
