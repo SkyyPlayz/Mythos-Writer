@@ -17,6 +17,8 @@ describe('StorySubViewBar', () => {
   it('renders sub-view tabs', () => {
     render(<StorySubViewBar {...DEFAULT_PROPS} />);
     expect(screen.getByRole('tab', { name: /editor/i })).toBeInTheDocument();
+    // M12 (§5.2): the Writing Coach page is a Story sub-tab.
+    expect(screen.getByRole('tab', { name: /^coach$/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /scene crafter/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /structure/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /timeline/i })).toBeInTheDocument();

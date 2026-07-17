@@ -67,13 +67,13 @@ function makeScene(id: string, title: string, content: string): Scene {
 describe('WritingAssistantPanel', () => {
   it('renders prompt textarea and disabled Ask button initially', () => {
     render(<WritingAssistantPanel scene={null} />);
-    expect(screen.getByLabelText(/writing assistant prompt/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/writing coach prompt/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^ask$/i })).toBeDisabled();
   });
 
   it('enables the button once prompt is non-empty', () => {
     render(<WritingAssistantPanel scene={null} />);
-    const input = screen.getByLabelText(/writing assistant prompt/i);
+    const input = screen.getByLabelText(/writing coach prompt/i);
     fireEvent.change(input, { target: { value: 'How can I make this scene more tense?' } });
     expect(screen.getByRole('button', { name: /^ask$/i })).not.toBeDisabled();
   });
@@ -82,15 +82,15 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Try adding a ticking clock.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'How to add tension?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/writing assistant response/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/writing coach response/i)).toBeInTheDocument();
     });
-    expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Try adding a ticking clock.');
+    expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Try adding a ticking clock.');
     expect(screen.getByRole('button', { name: /^apply:/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^reject:/i })).toBeInTheDocument();
   });
@@ -99,7 +99,7 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Use shorter sentences.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Pacing advice?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -115,7 +115,7 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Cut the adverbs.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Style advice?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -141,7 +141,7 @@ describe('WritingAssistantPanel', () => {
     };
 
     render(<WritingAssistantPanel scene={scene} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'what happens next?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -224,7 +224,7 @@ describe('WritingAssistantPanel', () => {
     };
 
     render(<WritingAssistantPanel scene={scene} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Beta-read this scene' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -238,7 +238,7 @@ describe('WritingAssistantPanel', () => {
 
   it('requires a selected scene before starting Beta-Read mode', async () => {
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'beta read this scene' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -254,7 +254,7 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockRejectedValueOnce(new Error('ANTHROPIC_API_KEY is not set.'));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'test' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -262,7 +262,7 @@ describe('WritingAssistantPanel', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
     });
-    expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
   });
 
   it('does not modify scene content — no vault write', async () => {
@@ -272,12 +272,12 @@ describe('WritingAssistantPanel', () => {
     (window as unknown as { api: unknown }).api = makeApi({ writeVault: mockWriteVault });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'ideas' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
-    await waitFor(() => screen.getByLabelText(/writing assistant response/i));
+    await waitFor(() => screen.getByLabelText(/writing coach response/i));
     expect(mockWriteVault).not.toHaveBeenCalled();
   });
 
@@ -302,7 +302,7 @@ describe('WritingAssistantPanel', () => {
     mockAgentWritingAssistant.mockRejectedValueOnce(new Error(message));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'test prompt' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -310,7 +310,7 @@ describe('WritingAssistantPanel', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(message);
     });
-    expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
   });
 });
 
@@ -328,7 +328,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     );
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'keep going' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -347,7 +347,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     );
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'keep going' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -361,7 +361,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     // Ask button returns; error toast confirms cancellation
     expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Generation cancelled. You can retry now.');
-    expect(screen.queryByLabelText(/writing assistant response/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
 
     // Late response arriving after cancel must be ignored
     resolveRequest!({ text: 'late response should be ignored' });
@@ -375,7 +375,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'test stall path' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -401,7 +401,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'test stall cancel' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -424,7 +424,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'test hard timeout' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -450,7 +450,7 @@ describe('WritingAssistantPanel — cancel and stall UX', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'slow but steady' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -544,7 +544,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
   it('AC-WA-26: shows disabled message when enabled=false and no scans fire', async () => {
     render(<WritingAssistantPanel scene={mockScene} enabled={false} scanIntervalSeconds={10} isActive={true} />);
 
-    expect(screen.getByText(/writing assistant is disabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/writing coach is disabled/i)).toBeInTheDocument();
 
     await act(() => { vi.advanceTimersByTime(30_000); });
     expect(mockWritingScan).not.toHaveBeenCalled();
@@ -877,8 +877,8 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
       ], {} as ResizeObserver);
     });
 
-    expect(screen.getByRole('button', { name: /open writing assistant/i })).toBeInTheDocument();
-    expect(screen.queryByRole('complementary', { name: /writing assistant/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open writing coach/i })).toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: /writing coach/i })).not.toBeInTheDocument();
   });
 
   it('AC25: clicking collapsed badge opens overlay panel', async () => {
@@ -898,9 +898,9 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
       ], {} as ResizeObserver);
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /open writing assistant/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open writing coach/i }));
 
-    expect(screen.getByRole('complementary', { name: /writing assistant/i })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: /writing coach/i })).toBeInTheDocument();
   });
 });
 
@@ -924,7 +924,7 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   async function renderWithSuggestion(text = 'Try shorter sentences.') {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text });
     render(<WritingAssistantPanel scene={null} ttsSettings={piperSettings} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'advice?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1048,7 +1048,7 @@ describe('WritingAssistantPanel — Beta-Read trigger detection (AC-WA-17)', () 
     mockBetaReadScan.mockResolvedValueOnce({ comments: [], scannedAt: new Date().toISOString() });
 
     render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), { target: { value: prompt } });
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), { target: { value: prompt } });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
     await waitFor(() => expect(mockBetaReadScan).toHaveBeenCalledTimes(1));
@@ -1069,7 +1069,7 @@ describe('WritingAssistantPanel — Beta-Read trigger detection (AC-WA-17)', () 
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Try adding a ticking clock.' });
 
     render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'How can I improve the pacing of this scene?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1087,7 +1087,7 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Response.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    const textarea = screen.getByLabelText(/writing assistant prompt/i);
+    const textarea = screen.getByLabelText(/writing coach prompt/i);
 
     // Empty prompt — Enter should be a no-op
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
@@ -1115,14 +1115,14 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Tell me a story' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
     // Streaming bubble appears (empty text + cursor)
     await waitFor(() =>
-      expect(screen.getByLabelText(/writing assistant response/i)).toBeInTheDocument(),
+      expect(screen.getByLabelText(/writing coach response/i)).toBeInTheDocument(),
     );
     expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
 
@@ -1131,7 +1131,7 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     act(() => { emitChunk?.('upon '); });
     act(() => { emitChunk?.('a time.'); });
 
-    expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Once upon a time.');
+    expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Once upon a time.');
     // Cursor still present — still streaming
     expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
   });
@@ -1140,13 +1140,13 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Done.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Finish it' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/writing assistant response/i)).toHaveTextContent('Done.'),
+      expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Done.'),
     );
     // No cursor after streaming finishes
     expect(document.querySelector('.wa-cursor')).not.toBeInTheDocument();
@@ -1156,7 +1156,7 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Keep going' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1181,7 +1181,7 @@ describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Some advice.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'How should I write this?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1202,7 +1202,7 @@ describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
     render(<WritingAssistantPanel scene={null} />);
 
     // First ask — default preset (Epic Fantasy, tone=Serious)
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Tell me about the scene.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1218,7 +1218,7 @@ describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
     fireEvent.click(romanceItem);
 
     // Second ask — preset should now be Modern Romance
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'What next?' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1242,7 +1242,7 @@ describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
     mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Initial response.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Write something.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1260,7 +1260,7 @@ describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
       .mockResolvedValueOnce({ text: 'Warmer response.' });
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Tell me about this scene.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1284,7 +1284,7 @@ describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
       .mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
 
     render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing assistant prompt/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
       target: { value: 'Anything.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
@@ -1475,13 +1475,13 @@ describe('WritingAssistantPanel — Beta-Read error propagation (GH #740)', () =
   });
 
   it('does NOT crash with TypeError when betaReadScan returns { error } (regression for GH #740)', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({ error: 'Writing Assistant unavailable.' });
+    mockBetaReadScan.mockResolvedValueOnce({ error: 'Writing Coach unavailable.' });
 
     render(<WritingAssistantPanel scene={betaReadScene} />);
     expect(() => fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }))).not.toThrow();
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Writing Assistant unavailable.');
+      expect(screen.getByRole('alert')).toHaveTextContent('Writing Coach unavailable.');
     });
   });
 

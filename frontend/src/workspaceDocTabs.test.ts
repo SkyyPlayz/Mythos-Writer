@@ -163,6 +163,8 @@ describe('workspaceStripModeFor (§4: strip on Story + Notes only)', () => {
     expect(workspaceStripModeFor('story', 'editor', 'editor')).toEqual({ kind: 'docs', strip: 'story' });
     expect(workspaceStripModeFor('story', 'structure', 'editor')).toEqual({ kind: 'docs', strip: 'story' });
     expect(workspaceStripModeFor('story', 'book', 'editor')).toEqual({ kind: 'docs', strip: 'story' });
+    // M12: the Coach sub-tab keeps the Story doc strip (prototype showTabStrip 7404).
+    expect(workspaceStripModeFor('story', 'coach', 'editor')).toEqual({ kind: 'docs', strip: 'story' });
   });
 
   it('shows the Notes document strip on the notes editor sub-view', () => {

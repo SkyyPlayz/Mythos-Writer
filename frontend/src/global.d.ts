@@ -277,8 +277,10 @@ interface AgentBudgetSettings {
   maxSuggestionsPerHour: number;
   heartbeatIntervalMinutes: number;
   maxTokensPerDay: number;
-  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled. */
+  /** SKY-908 — per-category auto-apply allow-list. Undefined ⇒ all enabled (legacy back-compat; Beta 4 defaults write an explicit all-false map per B4-8). */
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  /** Beta 4 M28 (B4-8) — per-category certainty threshold. Missing key ⇒ falls back to confidenceThreshold. */
+  autoApplyThresholds?: Partial<Record<SuggestionCategory, number>>;
 }
 
 interface AgentVoiceSettings {
@@ -441,7 +443,7 @@ interface LiquidNeonPrefs {
 
 /** Provider configuration shared by global and per-agent overrides (SKY-683). */
 interface ProviderConfig {
-  kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+  kind: 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'llamacpp' | 'custom';
   apiKey?: string;
   baseUrl?: string;
   model: string;
@@ -669,7 +671,7 @@ interface AppSettings {
 type AppTab = 'story' | 'notes' | 'brainstorm';
 
 /** SKY-2094: Sub-view within the Story tab. */
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
+type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 /** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
 type NotesSubView = 'editor' | 'graph' | 'entities';
@@ -1634,6 +1636,8 @@ interface Window {
       duplicate: (sessionId: string) => Promise<AgentSessionCreateResult>;
       delete: (sessionId: string) => Promise<AgentSessionDeleteResult>;
       appendTurns: (sessionId: string, turns: AgentSessionTurn[]) => Promise<{ session: AgentSessionFile | null }>;
+      /** M12 — hydrate a full session (turns included); optional for older preloads. */
+      read?: (sessionId: string) => Promise<{ session: AgentSessionFile | null }>;
     };
 
     // SKY-3189 (G3): true when running in a packaged Electron build.

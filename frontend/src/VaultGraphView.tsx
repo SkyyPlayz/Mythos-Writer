@@ -11,6 +11,7 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from 'react';
+import { stripHiddenBlocks } from './lib/frontmatter';
 import './VaultGraphView.css';
 
 // M21: canvas matches the prototype sim space (Liquid Neon prototype 1615, 3835).
@@ -150,6 +151,160 @@ const CHIP_DEFS: { key: GraphCategory; label: string }[] = [
   { key: 'misc', label: 'Misc' },
 ];
 const ALL_CHIP_KEYS = new Set<GraphCategory>(CHIP_DEFS.map((c) => c.key));
+
+// ─── M26: physics sliders (prototype gSliders, 6345–6349) ────────────────────
+export const PHYSICS_SLIDER_DEFS: ReadonlyArray<{
+  key: keyof SimParams;
+  label: string;
+  min: number;
+  max: number;
+}> = [
+  { key: 'centerForce', label: 'Center force', min: 0, max: 20 },
+  { key: 'repelForce', label: 'Repel force', min: 0, max: 30 },
+  { key: 'linkForce', label: 'Link force', min: 0, max: 20 },
+  { key: 'linkDistance', label: 'Link distance', min: 40, max: 240 },
+];
+
+function clampSimParam(key: keyof SimParams, value: number): number {
+  const def = PHYSICS_SLIDER_DEFS.find((d) => d.key === key);
+  if (!def || !Number.isFinite(value)) return SIM_DEFAULTS[key];
+  return clampValue(def.min, def.max, value);
+}
+
+// ─── M26: left-panel view state persistence ───────────────────────────────────
+// Recolors, visibility toggles, physics, and the panel collapse survive
+// remounts via localStorage — the same pattern as the GH #650 scope key above.
+const VIEW_STATE_STORAGE_KEY = 'mythos:vaultGraph:viewState';
+
+interface StoredViewState {
+  catColors?: Partial<Record<GraphCategory, string>>;
+  lineColors?: Partial<Record<'note' | 'story', string>>;
+  hiddenCategories?: GraphCategory[];
+  physics?: Partial<SimParams>;
+  panelOpen?: boolean;
+}
+
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+function readStoredViewState(): StoredViewState {
+  try {
+    const raw = window.localStorage.getItem(VIEW_STATE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as StoredViewState;
+  } catch {
+    return {}; // storage unavailable or corrupted — defaults win
+  }
+}
+
+function persistViewState(state: StoredViewState): void {
+  try {
+    window.localStorage.setItem(VIEW_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch { /* storage unavailable — view state stays session-only */ }
+}
+
+function sanitizeColorMap<K extends string>(
+  defaults: Record<K, string>,
+  stored: Partial<Record<K, string>> | undefined,
+): Record<K, string> {
+  const next = { ...defaults };
+  if (!stored || typeof stored !== 'object') return next;
+  for (const key of Object.keys(defaults) as K[]) {
+    const value = stored[key];
+    if (typeof value === 'string' && HEX_COLOR_RE.test(value)) next[key] = value;
+  }
+  return next;
+}
+
+function initialCatColors(): Record<GraphCategory, string> {
+  return sanitizeColorMap(GRAPH_CATEGORY_COLORS, readStoredViewState().catColors);
+}
+
+function initialLineColors(): { note: string; story: string } {
+  return sanitizeColorMap(EDGE_COLOR_DEFAULTS, readStoredViewState().lineColors);
+}
+
+function initialActiveCategories(): Set<GraphCategory> {
+  const active = new Set<GraphCategory>(ALL_CHIP_KEYS);
+  const hidden = readStoredViewState().hiddenCategories;
+  if (Array.isArray(hidden)) {
+    for (const value of hidden) {
+      if (typeof value === 'string' && isGraphCategory(value)) active.delete(value);
+    }
+  }
+  return active;
+}
+
+function initialSimParams(): SimParams {
+  const stored = readStoredViewState().physics;
+  const params = { ...SIM_DEFAULTS };
+  if (stored && typeof stored === 'object') {
+    for (const { key } of PHYSICS_SLIDER_DEFS) {
+      const value = stored[key];
+      if (typeof value === 'number') params[key] = clampSimParam(key, value);
+    }
+  }
+  return params;
+}
+
+function initialPanelOpen(): boolean {
+  return readStoredViewState().panelOpen !== false;
+}
+
+// ─── M26: node-card blurb (prototype gSel.blurb, 6184–6187) ──────────────────
+
+/** Prototype fallback for nodes without readable prose (6187). */
+export const FALLBACK_BLURB = 'Linked entity in the vault.';
+const BLURB_MAX_CHARS = 180;
+
+/**
+ * Derive a short blurb from raw note markdown: strip the hidden blocks every
+ * preview surface strips (W0.2 `stripHiddenBlocks`: YAML frontmatter + the
+ * trailing `%% kanban:settings %%` block), then skip headings, fences,
+ * list/quote/table markup, unwrap wiki links and inline markup, and return
+ * the first prose line clamped to 180 chars. Null when no prose exists.
+ */
+export function deriveNodeBlurb(content: string): string | null {
+  if (!content) return null;
+  const body = stripHiddenBlocks(content);
+  let inFence = false;
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.startsWith('```') || line.startsWith('~~~')) { inFence = !inFence; continue; }
+    if (inFence || !line) continue;
+    if (/^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||!\[|<|%%)/.test(line)) continue;
+    const text = line
+      .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).trim())
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`~]/g, '')
+      .trim();
+    if (!/[\p{L}\p{N}]/u.test(text)) continue;
+    return text.length > BLURB_MAX_CHARS ? `${text.slice(0, BLURB_MAX_CHARS - 1).trimEnd()}…` : text;
+  }
+  return null;
+}
+
+function extractIpcContent(response: unknown): string | null {
+  if (typeof response === 'string') return response;
+  if (response && typeof response === 'object'
+    && typeof (response as { content?: unknown }).content === 'string') {
+    return (response as { content: string }).content;
+  }
+  return null;
+}
+
+/** Read the selected node's file through the matching vault IPC, best-effort. */
+async function fetchNodeBlurb(node: Pick<GraphNode, 'path' | 'vault'>): Promise<string | null> {
+  try {
+    const reader = node.vault === 'story' ? window.api?.readVault : window.api?.readNotesVault;
+    if (typeof reader !== 'function') return null;
+    const content = extractIpcContent(await reader(node.path));
+    return content ? deriveNodeBlurb(content) : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface GraphNode {
   id: string;
@@ -504,7 +659,7 @@ function nodeAnnouncement(node: PositionedNode, neighbours: Map<string, Set<stri
   const label = displayLabel(node.label);
   const connectionCount = neighbours.get(node.id)?.size ?? 0;
   if (terse) return `${label}. ${connectionCount} connections.`;
-  return `${label}. ${node.categoryKey} note. ${connectionCount} connections. Press Enter to open.`;
+  return `${label}. ${node.categoryKey} note. ${connectionCount} connections. Press Enter to select; press Enter again to open.`;
 }
 
 function prefersReducedMotion(): boolean {
@@ -674,7 +829,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   const [keyboardFocusedNodeId, setKeyboardFocusedNodeId] = useState<string | null>(null);
   const [liveMessage, setLiveMessage] = useState('');
   const [legendOpen, setLegendOpen] = useState(false);
-  const [activeCategories, setActiveCategories] = useState<Set<GraphCategory>>(new Set(ALL_CHIP_KEYS));
+  const [activeCategories, setActiveCategories] = useState<Set<GraphCategory>>(initialActiveCategories);
   const [depthLimit, setDepthLimit] = useState(DEPTH_UNLIMITED);
   const [chipsExpanded, setChipsExpanded] = useState(false);
   const toolbarRef = useRef<HTMLElement | null>(null);
@@ -688,13 +843,15 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   // ─── M21: live force sim, per-category colors, filters + inspector ─────────
   // Bumped after every sim tick so render snapshots the latest positions.
   const [, setSimVersion] = useState(0);
-  const [catColors, setCatColors] = useState<Record<GraphCategory, string>>(
-    () => ({ ...GRAPH_CATEGORY_COLORS }),
-  );
-  const [lineColors, setLineColors] = useState<{ note: string; story: string }>(
-    () => ({ ...EDGE_COLOR_DEFAULTS }),
-  );
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [catColors, setCatColors] = useState<Record<GraphCategory, string>>(initialCatColors);
+  const [lineColors, setLineColors] = useState<{ note: string; story: string }>(initialLineColors);
+  // M26: left panel (prototype ln-left-graph, 421–445) + live physics params.
+  const [panelOpen, setPanelOpen] = useState<boolean>(initialPanelOpen);
+  const [simParams, setSimParams] = useState<SimParams>(initialSimParams);
+  // The rAF loop and settle paths read the ref so slider changes apply mid-run
+  // without restarting or re-allocating the sim world.
+  const simParamsRef = useRef<SimParams>(simParams);
+  const [selectedBlurb, setSelectedBlurb] = useState<string | null>(null);
   const simRef = useRef<Map<string, SimNodeState>>(new Map());
   const simInputsRef = useRef<{ ids: string[]; links: Array<[string, string]> }>({ ids: [], links: [] });
   const seededDataRef = useRef<VaultGraphData | null>(null);
@@ -711,7 +868,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   const wakeSim = useCallback(() => {
     if (!canAnimateSim()) {
       const { ids, links } = simInputsRef.current;
-      settleSim(simRef.current, ids, links, SIM_DEFAULTS, settleBudget(ids.length));
+      settleSim(simRef.current, ids, links, simParamsRef.current, settleBudget(ids.length));
       setSimVersion((v) => v + 1);
       return;
     }
@@ -719,7 +876,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     frameRef.current = 0;
     const tick = () => {
       const { ids, links } = simInputsRef.current;
-      const energy = stepSim(simRef.current, ids, links);
+      const energy = stepSim(simRef.current, ids, links, simParamsRef.current);
       frameRef.current += 1;
       // Prototype 3841–3848: keep stepping while hot, repaint every 2nd frame.
       // Persistent pins each contribute 1 energy, so subtract them from the
@@ -739,6 +896,33 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
   }, []);
+
+  // M26: persist recolors, visibility toggles, physics, and panel collapse.
+  // The mount pass is skipped — it would only write back what was just read.
+  const viewStateHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!viewStateHydratedRef.current) {
+      viewStateHydratedRef.current = true;
+      return;
+    }
+    persistViewState({
+      catColors,
+      lineColors,
+      hiddenCategories: CHIP_DEFS.map((chip) => chip.key).filter((key) => !activeCategories.has(key)),
+      physics: simParams,
+      panelOpen,
+    });
+  }, [catColors, lineColors, activeCategories, simParams, panelOpen]);
+
+  // M26: physics sliders drive the live sim. The ref is the source of truth
+  // for the (possibly already running) rAF loop; state mirrors it for the UI.
+  // No reseeding happens — positions and pins are preserved.
+  const handleSimParamChange = useCallback((key: keyof SimParams, rawValue: number) => {
+    const next = { ...simParamsRef.current, [key]: clampSimParam(key, rawValue) };
+    simParamsRef.current = next;
+    setSimParams(next);
+    wakeSim();
+  }, [wakeSim]);
 
   useEffect(() => {
     let cancelled = false;
@@ -850,7 +1034,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     if (firstLayoutRef.current || !canAnimateSim()) {
       firstLayoutRef.current = false;
       const { ids, links } = simInputsRef.current;
-      settleSim(simRef.current, ids, links, SIM_DEFAULTS, settleBudget(ids.length));
+      settleSim(simRef.current, ids, links, simParamsRef.current, settleBudget(ids.length));
     } else {
       pendingWakeRef.current = true;
     }
@@ -957,6 +1141,13 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     setKeyboardFocusedNodeId(null);
   }, []);
 
+  // M26: Fit acts on the viewport only (prototype gZoomReset, 7165) — the
+  // selection and its node card stay put. Escape/0 keep the full reset above.
+  const handleFit = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === '0') resetView();
@@ -1015,7 +1206,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     if (event.key === 'Enter' || event.key === ' ') {
       if (!currentNode) return;
       event.preventDefault();
-      selectNode(currentNode);
+      activateNode(currentNode);
       return;
     }
 
@@ -1083,10 +1274,20 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     onOpenNote?.(node.path);
   }, [onOpenNote, onOpenScene]);
 
+  // M26: click selects and surfaces the node card (prototype gNodesR pick,
+  // 6182) — opening is the card's job (`Open note`), double-click, or a second
+  // Enter on the already-selected node.
   const selectNode = useCallback((node: PositionedNode) => {
     setSelectedNodeId(node.id);
-    openNode(node);
-  }, [openNode]);
+  }, []);
+
+  const activateNode = useCallback((node: PositionedNode) => {
+    if (selectedNodeId === node.id) {
+      openNode(node);
+    } else {
+      selectNode(node);
+    }
+  }, [selectedNodeId, openNode, selectNode]);
 
   // M21 drag-to-pin (prototype nodeDown, 3849–3866). Dragging pins the node at
   // fx/fy; unlike the prototype the pin survives mouse-up — Re-layout clears it.
@@ -1189,6 +1390,26 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
   // M21 inspector: selected node + its visible connections (prototype gSel, 4307–4313).
   const selectedNode = selectedNodeId ? nodeById.get(selectedNodeId) ?? null : null;
+
+  // M26: node-card blurb — first prose line of the selected note, read through
+  // the matching vault IPC (prototype gSel.blurb). Falls back to the prototype
+  // copy when the file is unreadable or has no prose.
+  const selectedNodePath = selectedNode?.path ?? null;
+  const selectedNodeVaultKind = selectedNode?.vault ?? null;
+  useEffect(() => {
+    setSelectedBlurb(null);
+    if (!selectedNodePath) return undefined;
+    // Skip the async round-trip entirely when the read IPC is unavailable —
+    // the card then shows the prototype fallback copy.
+    const reader = selectedNodeVaultKind === 'story' ? window.api?.readVault : window.api?.readNotesVault;
+    if (typeof reader !== 'function') return undefined;
+    let cancelled = false;
+    void fetchNodeBlurb({ path: selectedNodePath, vault: selectedNodeVaultKind ?? undefined }).then((blurb) => {
+      if (!cancelled && blurb !== null) setSelectedBlurb(blurb);
+    });
+    return () => { cancelled = true; };
+  }, [selectedNodeId, selectedNodePath, selectedNodeVaultKind]);
+
   const inspectorConnections: PositionedNode[] = selectedNode && filteredData
     ? filteredData.edges
       .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
@@ -1319,10 +1540,18 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
         </div>
           {vaultScopeSelector}
-        {/* M21: Story-cluster toggle + Re-layout, prototype header 1600–1611.
-            The prototype's left-panel filter strip (413–443) lives in
-            DesktopShell's left panel, which this module doesn't own — those
-            controls sit in the Colors popover on the canvas instead. */}
+        {/* M26: collapse toggle for the left panel (filters + forces). */}
+        <button
+          type="button"
+          className="vgv-panel-toggle"
+          aria-expanded={panelOpen}
+          aria-controls="vault-graph-left-panel"
+          data-testid="vault-graph-panel-toggle"
+          onClick={() => setPanelOpen((open) => !open)}
+        >
+          Filters
+        </button>
+        {/* M21: Story-cluster toggle + Re-layout, prototype header 2195–2199. */}
         <div className="vgv-story-cluster" data-testid="vault-graph-story-cluster">
           <span className="vgv-story-cluster-label">Story cluster</span>
           <button
@@ -1390,6 +1619,144 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           </button>
         </div>
       )}
+
+      <div className="vgv-body">
+        {/* M26 left panel — prototype ln-left-graph (421–445): category filter
+            rows (eye toggle + recolor wheel + counts), gold story-cluster
+            card, connection-line colors, physics sliders. Every control here
+            drives the live sim/render state. */}
+        {panelOpen && (
+          <aside
+            id="vault-graph-left-panel"
+            className="vgv-left-panel"
+            data-testid="vault-graph-left-panel"
+            aria-label="Graph filters and forces"
+          >
+            <div className="vgv-filters-heading">Graph filters</div>
+            {CHIP_DEFS.map(({ key, label }) => {
+              const color = categoryColor(key, catColors);
+              const active = activeCategories.has(key);
+              return (
+                <div key={key} className={`vgv-filter-row${active ? '' : ' vgv-filter-row--off'}`}>
+                  <button
+                    type="button"
+                    className="vgv-filter-eye"
+                    aria-pressed={active}
+                    aria-label={`Toggle ${label} visibility`}
+                    title={active ? `Hide ${label}` : `Show ${label}`}
+                    data-testid={`vault-graph-eye-${key}`}
+                    onClick={() => handleToggleCategory(key)}
+                  >
+                    {active ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                        <path d="M1 1l22 22" />
+                      </svg>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="vgv-filter-name"
+                    aria-pressed={active}
+                    onClick={() => handleToggleCategory(key)}
+                  >
+                    <span
+                      className="vgv-filter-dot"
+                      aria-hidden="true"
+                      style={{ background: color, boxShadow: `0 0 8px ${color}` }}
+                    />
+                    {label}
+                  </button>
+                  <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
+                    <input
+                      type="color"
+                      value={color}
+                      aria-label={`Recolor ${label}`}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setCatColors((prev) => ({ ...prev, [key]: value }));
+                      }}
+                    />
+                  </label>
+                  <span className="vgv-filter-count" data-testid={`vault-graph-count-${key}`}>
+                    {categoryCounts.get(key) ?? 0}
+                  </span>
+                </div>
+              );
+            })}
+            {/* Gold story-cluster card (prototype 429–432) */}
+            <div className="vgv-story-card" data-testid="vault-graph-story-card">
+              <div className="vgv-story-card-copy">
+                <div className="vgv-story-card-title">Show story cluster</div>
+                <div className="vgv-story-card-sub">Manuscript as gold nodes, linked to the vault</div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={storyClusterOn}
+                aria-label="Show story cluster in graph"
+                data-testid="vault-graph-story-card-toggle"
+                className={`vgv-toggle${storyClusterOn ? ' vgv-toggle--on' : ''}`}
+                onClick={handleStoryClusterToggle}
+              >
+                <span className="vgv-toggle-knob" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="vgv-filters-heading">Connection lines</div>
+            {([['note', 'Note ↔ note links'], ['story', 'Story ↔ note links']] as const).map(([key, label]) => (
+              <div key={key} className="vgv-line-row">
+                <span className="vgv-line-label">{label}</span>
+                <span
+                  className="vgv-line-swatch"
+                  aria-hidden="true"
+                  style={{ background: lineColors[key], boxShadow: `0 0 8px ${lineColors[key]}` }}
+                />
+                <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
+                  <input
+                    type="color"
+                    value={lineColors[key]}
+                    aria-label={`${label} color`}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setLineColors((prev) => ({ ...prev, [key]: value }));
+                    }}
+                  />
+                </label>
+              </div>
+            ))}
+            <div className="vgv-filters-heading">Forces</div>
+            {PHYSICS_SLIDER_DEFS.map(({ key, label, min, max }) => (
+              <div key={key} className="vgv-physics-row">
+                <div className="vgv-physics-head">
+                  <span className="vgv-physics-label">{label}</span>
+                  <span className="vgv-physics-value" data-testid={`vault-graph-physics-${key}-value`}>
+                    {simParams[key]}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  className="vgv-physics-slider"
+                  min={min}
+                  max={max}
+                  step={1}
+                  value={simParams[key]}
+                  aria-label={label}
+                  data-testid={`vault-graph-physics-${key}`}
+                  onChange={(event) => handleSimParamChange(key, Number(event.target.value))}
+                />
+              </div>
+            ))}
+            <div className="vgv-panel-hint">
+              Drag nodes to rearrange — the graph settles around them. Click to inspect, hover to trace connections.
+            </div>
+          </aside>
+        )}
 
       <div
         className="vgv-canvas"
@@ -1495,7 +1862,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                   key={node.id}
                   role="button"
                   tabIndex={-1}
-                  aria-label={`${node.vault === 'story' ? 'Open scene' : 'Open note'} ${label}`}
+                  aria-label={`${node.vault === 'story' ? 'Select scene' : 'Select note'} ${label}`}
                   data-testid={`vault-node-${node.id}`}
                   className={nodeClass}
                   transform={`translate(${node.x} ${node.y})`}
@@ -1508,10 +1875,15 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                     if (dragMovedRef.current) return;
                     selectNode(node);
                   }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    if (dragMovedRef.current) return;
+                    openNode(node);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      selectNode(node);
+                      activateNode(node);
                     }
                   }}
                 >
@@ -1586,6 +1958,10 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                 </div>
               </div>
               <div className="vgv-inspector-path">{selectedNode.path}</div>
+              {/* M26: blurb — first prose line of the note (prototype 3540) */}
+              <div className="vgv-inspector-blurb" data-testid="vault-graph-inspector-blurb">
+                {selectedBlurb ?? FALLBACK_BLURB}
+              </div>
             </div>
             <div className="vgv-inspector-card">
               <div className="vgv-inspector-section">Connections</div>
@@ -1623,86 +1999,15 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           </aside>
         )}
 
-        <div className="vgv-graph-controls" aria-label="Graph controls">
-          {/* M21: category recolor + line colors — prototype left panel 413–443 */}
-          <div className="vgv-filters-wrap">
-            <button
-              type="button"
-              aria-label="Graph colors and filters"
-              aria-expanded={filtersOpen}
-              aria-controls="vault-graph-filters"
-              data-testid="vault-graph-filters-toggle"
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              Colors
-            </button>
-            {filtersOpen && (
-              <div
-                id="vault-graph-filters"
-                className="vgv-filters-popover"
-                role="dialog"
-                aria-label="Graph colors and filters"
-                data-testid="vault-graph-filters"
-              >
-                <div className="vgv-filters-heading">Graph filters</div>
-                {CHIP_DEFS.map(({ key, label }) => {
-                  const color = categoryColor(key, catColors);
-                  const active = activeCategories.has(key);
-                  return (
-                    <div key={key} className={`vgv-filter-row${active ? '' : ' vgv-filter-row--off'}`}>
-                      <button
-                        type="button"
-                        className="vgv-filter-name"
-                        aria-pressed={active}
-                        onClick={() => handleToggleCategory(key)}
-                      >
-                        <span
-                          className="vgv-filter-dot"
-                          aria-hidden="true"
-                          style={{ background: color, boxShadow: `0 0 8px ${color}` }}
-                        />
-                        {label}
-                      </button>
-                      <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
-                        <input
-                          type="color"
-                          value={color}
-                          aria-label={`Recolor ${label}`}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setCatColors((prev) => ({ ...prev, [key]: value }));
-                          }}
-                        />
-                      </label>
-                      <span className="vgv-filter-count">{categoryCounts.get(key) ?? 0}</span>
-                    </div>
-                  );
-                })}
-                <div className="vgv-filters-heading">Connection lines</div>
-                {([['note', 'Note ↔ note links'], ['story', 'Story ↔ note links']] as const).map(([key, label]) => (
-                  <div key={key} className="vgv-line-row">
-                    <span className="vgv-line-label">{label}</span>
-                    <span
-                      className="vgv-line-swatch"
-                      aria-hidden="true"
-                      style={{ background: lineColors[key], boxShadow: `0 0 8px ${lineColors[key]}` }}
-                    />
-                    <label className="vgv-filter-wheel" title={`Recolor ${label}`}>
-                      <input
-                        type="color"
-                        value={lineColors[key]}
-                        aria-label={`${label} color`}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setLineColors((prev) => ({ ...prev, [key]: value }));
-                        }}
-                      />
-                    </label>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* M26: clicks on the control dock must not fall through to the
+            canvas — the canvas click clears the selection (node card). */}
+        <div
+          className="vgv-graph-controls"
+          aria-label="Graph controls"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {/* M26: category recolors + line colors moved to the left panel
+              (prototype ln-left-graph) — the M21 Colors popover is gone. */}
           {shouldShowLegend && (
             <div className="vgv-legend-wrap">
               <button
@@ -1736,7 +2041,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
             <button type="button" aria-label="Zoom out" onClick={zoomOut}>−</button>
             <span className="vgv-zoom-pct" data-testid="vault-graph-zoom-pct">{Math.round(zoom * 100)}%</span>
             <button type="button" aria-label="Zoom in" onClick={zoomIn}>+</button>
-            <button type="button" aria-label="Reset graph view" onClick={resetView}>Fit</button>
+            <button type="button" aria-label="Fit graph view" data-testid="vault-graph-fit" onClick={handleFit}>Fit</button>
           </div>
         </div>
 
@@ -1745,6 +2050,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
           Scroll to zoom · drag empty space to pan · drag nodes to pin
         </div>
       </div>
+      </div>{/* end vgv-body */}
 
       {/* Bottom toolbar — category chips + depth slider (spec: 40px) */}
       <footer className="vgv-bottom-toolbar" role="toolbar" aria-label="Graph filters">

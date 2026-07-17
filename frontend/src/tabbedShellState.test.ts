@@ -181,7 +181,8 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
   });
 
   it('SKY-3213: preserves all valid story sub-views on round-trip', () => {
-    (['editor', 'kanban', 'structure', 'timeline', 'book'] as StorySubView[]).forEach((sv) => {
+    // M12 adds the `coach` sub-view (§5.2).
+    (['editor', 'coach', 'kanban', 'structure', 'timeline', 'book'] as StorySubView[]).forEach((sv) => {
       const state = deserializeTabbedShellState({ storySubView: sv } as AppTabShellState);
       expect(state.storySubView).toBe(sv);
     });

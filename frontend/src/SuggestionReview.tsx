@@ -11,14 +11,14 @@ type StatusFilter = 'all' | 'accepted' | 'rejected' | 'ignored';
 type PanelTab = 'inbox' | 'audit';
 
 const AGENT_LABELS: Record<SuggestionSourceAgent, string> = {
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   brainstorm: 'Brainstorm',
   archive: 'Archive',
 };
 
 const AGENT_FILTER_OPTIONS: { id: AgentFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'writing-assistant', label: 'Writing Assistant' },
+  { id: 'writing-assistant', label: 'Writing Coach' },
   { id: 'brainstorm', label: 'Brainstorm' },
   { id: 'archive', label: 'Archive' },
 ];

@@ -34,6 +34,12 @@ export interface LiquidNeonTextCfg {
   split: boolean;
   nHead: string;
   nBody: string;
+  /**
+   * Beta 4 M28 (§13): wiki-link color override. null/absent = theme-driven
+   * (slot B / neon-cyan fallbacks in the wiki-link CSS); a hex value emits
+   * the --wiki-c token that those rules read first.
+   */
+  wiki?: string | null;
 }
 
 export type LiquidNeonWallpaperKey = 'match' | 'aurora' | 'slate' | 'deep' | 'none' | 'custom';
@@ -108,7 +114,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   frameAnim: 'off',
   frameSpeed: 12,
   pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 },
-  txtCfg: { head: '#f0f3fc', body: '#c8d3e7', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7' },
+  txtCfg: { head: '#f0f3fc', body: '#c8d3e7', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7', wiki: null },
   scrollTint: '#2b2213',
   scrollOp: 92,
   ambMode: 'match',
@@ -251,6 +257,11 @@ export function computeLiquidNeonV2Tokens(
   if (S.uiBtnCol.toLowerCase() !== LIQUID_NEON_V2_DEFAULTS.uiBtnCol) {
     tokens['--btn-text'] = S.uiBtnCol;
   }
+  // Beta 4 M28 (§13): wiki-link color override — only emitted when customized
+  // so the theme's slot-B / neon-cyan fallbacks own the color otherwise.
+  if (S.txtCfg.wiki) {
+    tokens['--wiki-c'] = S.txtCfg.wiki;
+  }
   return tokens;
 }
 
@@ -327,6 +338,8 @@ export function applyLiquidNeonV2Tokens(
   // Customized button text was previously applied but is now default again —
   // clear the stale inline token so Button.css variants take back over.
   if (!tokens['--btn-text']) el.style.removeProperty('--btn-text');
+  // Same reset dance for the wiki-link color override (M28).
+  if (!tokens['--wiki-c']) el.style.removeProperty('--wiki-c');
   // Beta 4 M1 — Interface density: tokens.css shrinks the --space-* /
   // --ln-card-pad-* scales off this attribute, so paddings change live.
   if (S.density === 'comfortable') el.removeAttribute('data-ln-density');

@@ -2,7 +2,7 @@
 // SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
 import './StorySubViewBar.css';
 
-type StorySubView = 'editor' | 'kanban' | 'structure' | 'timeline' | 'book';
+type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
 
 interface StorySubViewBarProps {
   activeSubView: string;
@@ -12,6 +12,8 @@ interface StorySubViewBarProps {
 
 const SUB_VIEWS: { id: StorySubView; label: string }[] = [
   { id: 'editor', label: 'Editor' },
+  // Beta 4 M12 (§5 / §5.2): the Writing Coach's page is a Story sub-tab.
+  { id: 'coach', label: 'Coach' },
   { id: 'kanban', label: 'Scene Crafter' },
   { id: 'structure', label: 'Structure' },
   { id: 'timeline', label: 'Timeline' },

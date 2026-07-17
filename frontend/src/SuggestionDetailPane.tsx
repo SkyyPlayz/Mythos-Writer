@@ -45,7 +45,7 @@ interface Props {
 }
 
 export const AGENT_LABELS: Record<SuggestionSourceAgent, string> = {
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   brainstorm: 'Brainstorm',
   archive: 'Archive',
 };

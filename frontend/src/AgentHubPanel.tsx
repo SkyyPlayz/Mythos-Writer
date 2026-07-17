@@ -432,9 +432,12 @@ function AgentChatView({
         <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" />
       </div>
 
-      {/* Writing Coach / Writing Assistant uses the existing panel */}
+      {/* Writing Coach uses the existing panel; M12 wires it onto the SHARED
+          coach session store so this mini chat and the Coach page render one
+          conversation (§5.2/§5.6). */}
       {agentId === 'writing-assistant' && (
         <WritingAssistantPanel
+          sessionStore={coachSessionStore}
           scene={scene}
           enabled={enabled}
           scanIntervalSeconds={scanIntervalSeconds}

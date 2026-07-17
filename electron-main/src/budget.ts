@@ -38,10 +38,14 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  * 2. SKY-908 — if autoApplyCategories is defined, the suggestion's category
  *    must be enabled. Missing keys default to enabled so forward-compat
  *    schemas do not silently disable new categories.
- * 3. confidence must be >= confidenceThreshold — otherwise stay proposed.
+ * 3. B4-8 (Beta 4 M28) — confidence must be >= the per-category certainty
+ *    threshold (autoApplyThresholds[category]), falling back to the agent's
+ *    confidenceThreshold when the category has no explicit value. Below the
+ *    threshold the suggestion stays proposed and lands in the suggestion
+ *    inbox for review.
  * 4. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
  *    Checks: hourly suggestion count, hourly token count, daily token count.
- * 5. All checks pass → auto-apply.
+ * 5. All checks pass → auto-apply (snapshot-first via applyVaultWrite).
  */
 export function evaluateAutoApply(
   confidence: number,
@@ -59,8 +63,9 @@ export function evaluateAutoApply(
     return { shouldAutoApply: false, budgetExceeded: false };
   }
 
+  const effectiveCategory = coerceSuggestionCategory(category);
+
   if (settings.autoApplyCategories) {
-    const effectiveCategory = coerceSuggestionCategory(category);
     const enabled = settings.autoApplyCategories[effectiveCategory];
     // Absent keys default to enabled (forward-compat); only an explicit
     // `false` disables auto-apply for that category.
@@ -69,7 +74,14 @@ export function evaluateAutoApply(
     }
   }
 
-  if (confidence < settings.confidenceThreshold) {
+  // B4-8: per-category certainty threshold, falling back to the agent-wide
+  // confidenceThreshold. Below-threshold suggestions stay proposed → inbox.
+  const rawThreshold = settings.autoApplyThresholds?.[effectiveCategory];
+  const threshold =
+    typeof rawThreshold === 'number' && !Number.isNaN(rawThreshold)
+      ? rawThreshold
+      : settings.confidenceThreshold;
+  if (confidence < threshold) {
     return { shouldAutoApply: false, budgetExceeded: false };
   }
 
