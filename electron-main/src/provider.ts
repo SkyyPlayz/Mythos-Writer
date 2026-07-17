@@ -9,7 +9,10 @@ import Anthropic from '@anthropic-ai/sdk';
 
 // ─── Provider config ─────────────────────────────────────────────────────────
 
-export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'custom';
+// Beta 4 M28 (B4-10): 'llamacpp' — llama.cpp's llama-server speaks the OpenAI
+// chat-completions dialect at http://127.0.0.1:8080/v1, so it rides the same
+// OpenAI-compatible transport as ollama/lmstudio/custom.
+export type ProviderKind = 'anthropic' | 'openai' | 'ollama' | 'lmstudio' | 'llamacpp' | 'custom';
 
 export interface ProviderConfig {
   kind: ProviderKind;
@@ -35,6 +38,7 @@ export const DEFAULT_BASE_URLS: Record<ProviderKind, string | undefined> = {
   openai: 'https://api.openai.com/v1',
   ollama: 'http://127.0.0.1:11434/v1',
   lmstudio: 'http://127.0.0.1:1234/v1',
+  llamacpp: 'http://127.0.0.1:8080/v1',
   custom: undefined,
 };
 
@@ -296,6 +300,8 @@ export const PROVIDER_CAPABILITIES: Record<ProviderKind, ReadonlyArray<ProviderC
   openai: ['stt', 'tts'],
   ollama: ['stt', 'tts'],
   lmstudio: ['stt', 'tts'],
+  // llama-server exposes chat completions only — no /audio/* endpoints.
+  llamacpp: [],
   custom: ['stt', 'tts'],
 };
 

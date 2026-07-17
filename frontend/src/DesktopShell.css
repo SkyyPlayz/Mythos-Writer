@@ -16,6 +16,9 @@
   flex: 1;
   overflow: hidden;
   min-width: 0;
+  /* M28: anchors the full-view Settings workspace (.settings-overlay is
+     position:absolute inset:0 so the nav rail stays visible beside it). */
+  position: relative;
 }
 
 /* SKY-3098 fix: WorkspaceTabBar uses height:100% (correct for flex-row context) but

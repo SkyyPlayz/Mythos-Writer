@@ -7183,14 +7183,16 @@ const AGENT_BUDGET_DEFAULTS = {
   // MYT-343: per-agent config additions
   autoApplyThreshold: 0.85,
   requestsPerMinute: 60,
-  // SKY-321: per-category auto-apply toggles (writing-assistant only; all ON by default)
+  // SKY-321 shipped these all ON; Beta 4 M28 (B4-8, binding owner decision)
+  // flips the default: every auto-apply category toggle ships OFF until the
+  // user opts in. Vaults that already saved an explicit map keep their values.
   autoApplyCategories: {
-    punctuation: true,
-    spelling: true,
-    grammar: true,
-    'sentence-structure': true,
-    'style-tone': true,
-    other: true,
+    punctuation: false,
+    spelling: false,
+    grammar: false,
+    'sentence-structure': false,
+    'style-tone': false,
+    other: false,
   } as Record<import('./ipc.js').SuggestionCategory, boolean>,
 };
 
@@ -7278,6 +7280,19 @@ function loadAppSettings(): AppSettings {
       if (rawAgents.writingAssistant && !(rawAgents.writingAssistant as unknown as Record<string, unknown>).cadenceTrigger) {
         base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
         base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
+      }
+      // Beta 4 M28 (B4-8) back-compat: SETTINGS_DEFAULTS now carries an
+      // explicit all-false autoApplyCategories map (every toggle OFF by
+      // default). An agent that already had autoApply=true on disk but no
+      // per-category map predates the map — injecting the all-false default
+      // would silently disable a working setup, so drop the injected map and
+      // let the evaluator's legacy "absent map ⇒ all enabled" semantics keep
+      // their behavior. Fresh installs and opted-out agents keep the all-OFF map.
+      for (const agentKey of ['writingAssistant', 'brainstorm', 'archive', 'betaReader'] as const) {
+        const rawAgent = rawAgents[agentKey] as unknown as Record<string, unknown> | undefined;
+        if (rawAgent && rawAgent.autoApply === true && !('autoApplyCategories' in rawAgent)) {
+          delete (base.agents[agentKey] as unknown as Record<string, unknown>).autoApplyCategories;
+        }
       }
       // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
       // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
