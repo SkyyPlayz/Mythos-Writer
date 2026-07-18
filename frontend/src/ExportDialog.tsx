@@ -28,7 +28,7 @@ interface Props {
   currentChapterId?: string | null;
 }
 
-type ExportResult = { path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] };
+type ExportResult = { path: string | null; cancelled: boolean; bytes?: number };
 interface ExportOptions { includeSynopsis: boolean; sceneSeparators: boolean }
 
 // ─── Persisted compile options (prototype S.sx.expSyn / expSep defaults) ───
@@ -178,7 +178,7 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
   const [format, setFormat] = useState<ExportFormat>('docx');
   const [step, setStep] = useState<ExportStep>('pick');
   const [options, setOptions] = useState<ExportOptions>(loadExportOptions);
-  const [done, setDone] = useState<{ path: string; bytes?: number; missingSceneIds?: string[] } | null>(null);
+  const [done, setDone] = useState<{ path: string; bytes?: number } | null>(null);
 
   // Scope segment (prototype exScopeSeg: Full book / Current part / Current
   // chapter). Only story- and chapter-scoped opens carry a story context;
@@ -232,7 +232,7 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
         setStep('pick');
         return;
       }
-      setDone({ path: res.path, bytes: res.bytes, missingSceneIds: res.missingSceneIds });
+      setDone({ path: res.path, bytes: res.bytes });
       setStep('done');
     } catch (err) {
       alert(`Export failed: ${(err as Error).message}`);
@@ -270,11 +270,6 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
               <span className="export-dialog-file-name" title={done.path}>{basename(done.path)}</span>
               {done.bytes !== undefined && <span className="export-dialog-file-size">{formatBytes(done.bytes)}</span>}
             </div>
-            {done.missingSceneIds && done.missingSceneIds.length > 0 && (
-              <div className="export-dialog-warning">
-                ⚠️ {done.missingSceneIds.length} {done.missingSceneIds.length === 1 ? 'scene' : 'scenes'} had no prose file and {done.missingSceneIds.length === 1 ? 'was' : 'were'} exported empty
-              </div>
-            )}
             <div className="export-dialog-done-actions">
               <button className="export-dialog-reveal" onClick={() => { void window.api.exportRevealLast?.(); }}>Show in folder</button>
               <button className="export-dialog-done-btn" onClick={onClose}>Done</button>
