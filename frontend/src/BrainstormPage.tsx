@@ -900,16 +900,20 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     proposalsRef.current = proposals;
   }, [proposals]);
 
-  // Warn before window close when there is an active session
+  // Warn before window close when there is unsaved user work. M20: the shared
+  // session store (SKY-6663) hydrates `messages` with the agent's auto-greeting
+  // on mount — a passive panel open with zero user interaction must not count
+  // as "an active session", or the window can never close (SKY-6930).
   useEffect(() => {
+    const hasUserMessage = messages.some((m) => m.role === 'user');
     const handler = (e: BeforeUnloadEvent) => {
-      if (messages.length > 0 || facts.length > 0 || prompt.trim()) {
+      if (hasUserMessage || facts.length > 0 || prompt.trim()) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [messages.length, facts.length, prompt]);
+  }, [messages, facts.length, prompt]);
 
   // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
   // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.

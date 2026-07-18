@@ -2835,6 +2835,51 @@ describe('BrainstormPage — M20 shared session store', () => {
     await waitFor(() => expect(sessionApi.list).toHaveBeenCalled());
     expect(sessionApi.appendTurns).not.toHaveBeenCalled();
   });
+
+  // SKY-6930: a passive mount (compact panel opened, never typed in) hydrates
+  // the agent's auto-greeting into `messages` — that alone must not block the
+  // window from closing, or the app hangs on every close (Electron never
+  // shows a dialog for an unhandled `beforeunload` prevention; it just never
+  // closes the window).
+  it('does not block window close after a passive mount (auto-greeting only, no user turns)', async () => {
+    const sessionApi = makeSessionApi({
+      id: 's1',
+      turns: [{ role: 'agent', text: 'Hello! Share any idea.', at: '2026-01-01T00:00:00.000Z' }],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Hello! Share any idea.')).toBeInTheDocument(),
+    );
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('blocks window close once the user has actually sent a message', async () => {
+    const sessionApi = makeSessionApi({ id: 's1', turns: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A market where memories are traded' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
 
 // ─── M19: chat restyle extras + activity feed + board tools/zoom/search ──────
