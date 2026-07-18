@@ -171,6 +171,44 @@ describe('writeManifestAtomic', () => {
   });
 });
 
+describe('writeManifestAtomic — return value (SKY-6195)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-write-bytes-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns the exact byte length of the file actually written to disk', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const bytes = writeManifestAtomic(manifestPath, defaultManifest(tmpDir));
+    expect(bytes).toBe(fs.statSync(manifestPath).size);
+  });
+
+  it('reflects the stripped (prose-blanked) size, not the pre-strip size — proves a single stringify', () => {
+    // VAULT_MANIFEST_WRITE previously stringified the manifest a second time
+    // (pretty-printed, with embedded prose still present) purely to compute a
+    // `bytes` count that never matched what writeManifestAtomic actually wrote
+    // to disk. The returned byte count must match the on-disk (structure-only,
+    // compact) file, not a second, differently-formatted serialization.
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const m: Manifest = {
+      ...defaultManifest(tmpDir),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'x'.repeat(50_000))],
+    };
+    const prettyWithProse = Buffer.byteLength(JSON.stringify(m, null, 2), 'utf-8');
+
+    const bytes = writeManifestAtomic(manifestPath, m);
+
+    expect(bytes).toBe(fs.statSync(manifestPath).size);
+    expect(bytes).toBeLessThan(prettyWithProse);
+    expect(bytes).toBeLessThan(2_000);
+  });
+});
+
 describe('openManifest', () => {
   let tmpDir: string;
 
@@ -484,6 +522,77 @@ describe('stripEmbeddedProseForPersist', () => {
     expect(persisted.scenes[0].title).toBe('Scene s1');
     expect(persisted.scenes[0].path).toBe('a.md');
     expect(persisted.scenes[0].blocks[0].type).toBe('prose');
+  });
+});
+
+describe('stripEmbeddedProseForPersist — derived wordCount (SKY-6195)', () => {
+  const vaultRoot = '/tmp/vault';
+
+  it('computes wordCount from block content before stripping it', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'The quick brown fox jumps over the lazy dog.')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(9);
+    expect(persisted.scenes[0].blocks[0].content).toBe('');
+  });
+
+  it('sums word counts across multiple blocks without merging words across block boundaries', () => {
+    const scene: SceneEntry = {
+      ...makeScene('s1', 'a.md'),
+      blocks: [
+        { id: 'b1', type: 'prose', order: 0, content: 'One two three', updatedAt: new Date().toISOString() },
+        { id: 'b2', type: 'dialogue', order: 1, content: 'Four five', updatedAt: new Date().toISOString() },
+      ],
+    };
+    const m: Manifest = { ...defaultManifest(vaultRoot), scenes: [scene] };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(5);
+  });
+
+  it('is 0 for a scene with no blocks', () => {
+    const m: Manifest = { ...defaultManifest(vaultRoot), scenes: [makeScene('s1', 'a.md')] };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(0);
+  });
+
+  it('is 0 for a scene whose only block is blank', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', '   ')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(0);
+  });
+
+  it('recomputes on every persist — stays in sync with the latest prose, not stale', () => {
+    const scene = makeSceneWithProse('s1', 'a.md', 'One two three');
+    const first = stripEmbeddedProseForPersist({ ...defaultManifest(vaultRoot), scenes: [scene] });
+    expect(first.scenes[0].wordCount).toBe(3);
+
+    // Same scene, later edited to have more words, re-persisted independently.
+    const edited = makeSceneWithProse('s1', 'a.md', 'One two three four five six');
+    const second = stripEmbeddedProseForPersist({ ...defaultManifest(vaultRoot), scenes: [edited] });
+    expect(second.scenes[0].wordCount).toBe(6);
+  });
+
+  it('is not stale after the same block object has its content mutated in place (scene:save pattern)', () => {
+    // `scene:save` (main.ts) does `proseBlock.content = payload.prose` on the
+    // EXISTING block object rather than replacing it — unlike the test above,
+    // which persists two distinct scene/block objects. The per-block
+    // word-count memo (manifest.ts) must key on content, not just object
+    // identity, or this in-place edit would keep returning the count cached
+    // from the first persist.
+    const scene = makeSceneWithProse('s1', 'a.md', 'One two three');
+    const manifest: Manifest = { ...defaultManifest(vaultRoot), scenes: [scene] };
+
+    const first = stripEmbeddedProseForPersist(manifest);
+    expect(first.scenes[0].wordCount).toBe(3);
+
+    scene.blocks[0].content = 'One two three four five six seven';
+    const second = stripEmbeddedProseForPersist(manifest);
+    expect(second.scenes[0].wordCount).toBe(7);
   });
 });
 
