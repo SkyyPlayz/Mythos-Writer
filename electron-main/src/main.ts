@@ -1122,9 +1122,24 @@ function safeExportFilename(s: string): string {
   return s.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'export';
 }
 
-function readSceneProseForExport(sc: import('./ipc.js').SceneEntry): ExportableScene {
+// SKY-7192 — a scene's .md file can go missing (deleted/moved outside the
+// app) without the manifest entry being cleaned up. Exporting must not
+// silently emit empty prose for it: warn in dev and let callers collect the
+// affected scene IDs so the export UI can tell the user which scenes were hit.
+function warnMissingSceneFile(sc: import('./ipc.js').SceneEntry): void {
+  if (!app.isPackaged) {
+    console.warn(`[export] scene "${sc.title}" (${sc.id}) has no prose file at "${sc.path}" — exporting empty prose`);
+  }
+}
+
+function readSceneProseForExport(sc: import('./ipc.js').SceneEntry, missingSceneIds: string[]): ExportableScene {
   let prose = '';
-  try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing file */ }
+  try {
+    prose = readSceneFile(getVaultRoot(), sc.path).prose;
+  } catch {
+    missingSceneIds.push(sc.id);
+    warnMissingSceneFile(sc);
+  }
   return { title: sc.title, prose };
 }
 
@@ -1132,10 +1147,11 @@ function buildTextExport(
   manifest: import('./ipc.js').Manifest,
   scope: import('./ipc.js').ExportScope,
   format: 'markdown' | 'plaintext',
-): { content: string; defaultFilename: string } {
+): { content: string; defaultFilename: string; missingSceneIds: string[] } {
+  const missingSceneIds: string[] = [];
   const toChapter = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({
     title: ch.title,
-    scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readSceneProseForExport),
+    scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => readSceneProseForExport(sc, missingSceneIds)),
   });
   const toStory = (st: import('./ipc.js').StoryEntry): ExportableStory => ({
     title: st.title,
@@ -1158,10 +1174,11 @@ function buildTextExport(
         ) ?? null;
       }
       if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-      const exportScene = readSceneProseForExport(found);
+      const exportScene = readSceneProseForExport(found, missingSceneIds);
       return {
         content: md ? sceneToMarkdown(exportScene) : sceneToPlaintext(exportScene),
         defaultFilename: safeExportFilename(found.title),
+        missingSceneIds,
       };
     }
     case 'chapter': {
@@ -1169,10 +1186,11 @@ function buildTextExport(
       if (!story) throw new Error(`Story not found: ${scope.storyId}`);
       const ch = story.chapters.find((c) => c.id === scope.chapterId);
       if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order).map(readSceneProseForExport);
+      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order).map((sc) => readSceneProseForExport(sc, missingSceneIds));
       return {
         content: md ? chapterToMarkdown(ch.title, scenes) : chapterToPlaintext(ch.title, scenes),
         defaultFilename: safeExportFilename(ch.title),
+        missingSceneIds,
       };
     }
     case 'story': {
@@ -1182,6 +1200,7 @@ function buildTextExport(
       return {
         content: md ? storyToMarkdown(exportStory) : storyToPlaintext(exportStory),
         defaultFilename: safeExportFilename(story.title),
+        missingSceneIds,
       };
     }
     case 'vault': {
@@ -1189,6 +1208,7 @@ function buildTextExport(
       return {
         content: md ? vaultToMarkdown(exportStories) : vaultToPlaintext(exportStories),
         defaultFilename: 'vault-export',
+        missingSceneIds,
       };
     }
   }
@@ -1205,15 +1225,23 @@ interface ResolvedExportScope {
   title: string;
   synopsis?: string;
   chapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }>;
+  /** SKY-7192 — scene IDs whose .md file was missing at export time. */
+  missingSceneIds: string[];
 }
 
 function resolveExportScope(
   manifest: import('./ipc.js').Manifest,
   scope: import('./ipc.js').ExportScope,
 ): ResolvedExportScope {
+  const missingSceneIds: string[] = [];
   const readProse = (sc: import('./ipc.js').SceneEntry): { id: string; title: string; prose: string } => {
     let prose = '';
-    try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+    try {
+      prose = readSceneFile(getVaultRoot(), sc.path).prose;
+    } catch {
+      missingSceneIds.push(sc.id);
+      warnMissingSceneFile(sc);
+    }
     return { id: sc.id, title: sc.title, prose };
   };
 
@@ -1227,7 +1255,7 @@ function resolveExportScope(
     }
     if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
     const scene = readProse(found);
-    return { title: found.title, chapters: [{ id: found.id, title: found.title, scenes: [scene] }] };
+    return { title: found.title, chapters: [{ id: found.id, title: found.title, scenes: [scene] }], missingSceneIds };
   }
   if (scope.kind === 'chapter') {
     const st = manifest.stories.find((s) => s.id === scope.storyId);
@@ -1242,6 +1270,7 @@ function resolveExportScope(
         title: ch.title,
         scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
       }],
+      missingSceneIds,
     };
   }
   if (scope.kind === 'story') {
@@ -1255,6 +1284,7 @@ function resolveExportScope(
         title: ch.title,
         scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
       })),
+      missingSceneIds,
     };
   }
   // vault
@@ -1268,7 +1298,7 @@ function resolveExportScope(
       });
     }
   }
-  return { title: 'Vault Export', chapters };
+  return { title: 'Vault Export', chapters, missingSceneIds };
 }
 
 // ─── PDF rendering (Beta 4 M14) — hidden BrowserWindow + printToPDF ───
@@ -4356,6 +4386,7 @@ const handlers: IpcHandlers = {
     }
 
     // Build chapter/scene structure, reading prose from vault
+    const epubMissingSceneIds: string[] = [];
     const chapters = story.chapters
       .slice()
       .sort((a, b) => a.order - b.order)
@@ -4367,7 +4398,12 @@ const handlers: IpcHandlers = {
           .sort((a, b) => a.order - b.order)
           .map((sc) => {
             let prose = '';
-            try { prose = readSceneFile(getVaultRoot(), sc.path).prose; } catch { /* missing */ }
+            try {
+              prose = readSceneFile(getVaultRoot(), sc.path).prose;
+            } catch {
+              epubMissingSceneIds.push(sc.id);
+              warnMissingSceneFile(sc);
+            }
             return { id: sc.id, title: sc.title, prose };
           }),
       }));
@@ -4392,7 +4428,12 @@ const handlers: IpcHandlers = {
     }
     writeFileAtomic(filePath, buffer);
     lastExportPath = filePath;
-    return { path: filePath, cancelled: false, bytes: buffer.length };
+    return {
+      path: filePath,
+      cancelled: false,
+      bytes: buffer.length,
+      missingSceneIds: epubMissingSceneIds.length ? epubMissingSceneIds : undefined,
+    };
   },
 
   // ─── DOCX export (MYT-252, extended SKY-153; options Beta 4 M14) ───
@@ -4405,7 +4446,7 @@ const handlers: IpcHandlers = {
       ? payload.scope
       : { kind: 'story', storyId: payload.storyId! };
 
-    const { title: docxTitle, synopsis, chapters: docxChapters } = resolveExportScope(manifest, scope);
+    const { title: docxTitle, synopsis, chapters: docxChapters, missingSceneIds: docxMissing } = resolveExportScope(manifest, scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export DOCX',
@@ -4424,14 +4465,19 @@ const handlers: IpcHandlers = {
     }
     writeFileAtomic(result.filePath, buffer);
     lastExportPath = result.filePath;
-    return { path: result.filePath, cancelled: false, bytes: buffer.length };
+    return {
+      path: result.filePath,
+      cancelled: false,
+      bytes: buffer.length,
+      missingSceneIds: docxMissing.length ? docxMissing : undefined,
+    };
   },
 
   // ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) — Chromium printToPDF ───
   [IPC_CHANNELS.EXPORT_PDF]: async (payload: { scope: import('./ipc.js').ExportScope; options?: import('./ipc.js').ExportOptions }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { title: pdfTitle, synopsis, chapters: pdfChapters } = resolveExportScope(manifest, payload.scope);
+    const { title: pdfTitle, synopsis, chapters: pdfChapters, missingSceneIds: pdfMissing } = resolveExportScope(manifest, payload.scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export PDF',
@@ -4457,7 +4503,12 @@ const handlers: IpcHandlers = {
     }
     writeFileAtomic(result.filePath, buffer);
     lastExportPath = result.filePath;
-    return { path: result.filePath, cancelled: false, bytes: buffer.length };
+    return {
+      path: result.filePath,
+      cancelled: false,
+      bytes: buffer.length,
+      missingSceneIds: pdfMissing.length ? pdfMissing : undefined,
+    };
   },
 
   // ─── Reveal last export (Beta 4 M14 — export modal "Show in folder") ───
@@ -4472,7 +4523,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_MARKDOWN]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename } = buildTextExport(manifest, payload.scope, 'markdown');
+    const { content, defaultFilename, missingSceneIds: mdMissing } = buildTextExport(manifest, payload.scope, 'markdown');
     const result = await dialog.showSaveDialog({
       title: 'Export Markdown',
       defaultPath: `${defaultFilename}.md`,
@@ -4482,13 +4533,18 @@ const handlers: IpcHandlers = {
     const mdBuffer = Buffer.from(content, 'utf-8');
     writeFileAtomic(result.filePath, mdBuffer);
     lastExportPath = result.filePath;
-    return { path: result.filePath, cancelled: false, bytes: mdBuffer.length };
+    return {
+      path: result.filePath,
+      cancelled: false,
+      bytes: mdBuffer.length,
+      missingSceneIds: mdMissing.length ? mdMissing : undefined,
+    };
   },
 
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename } = buildTextExport(manifest, payload.scope, 'plaintext');
+    const { content, defaultFilename, missingSceneIds: txtMissing } = buildTextExport(manifest, payload.scope, 'plaintext');
     const result = await dialog.showSaveDialog({
       title: 'Export Plain Text',
       defaultPath: `${defaultFilename}.txt`,
@@ -4498,7 +4554,12 @@ const handlers: IpcHandlers = {
     const txtBuffer = Buffer.from(content, 'utf-8');
     writeFileAtomic(result.filePath, txtBuffer);
     lastExportPath = result.filePath;
-    return { path: result.filePath, cancelled: false, bytes: txtBuffer.length };
+    return {
+      path: result.filePath,
+      cancelled: false,
+      bytes: txtBuffer.length,
+      missingSceneIds: txtMissing.length ? txtMissing : undefined,
+    };
   },
 
   // ─── Obsidian vault import wizard (MYT-244) ───

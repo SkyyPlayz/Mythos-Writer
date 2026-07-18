@@ -84,6 +84,10 @@
 .export-dialog-file-chip { display: flex; align-items: center; gap: 9px; margin: 13px auto 0; max-width: 360px; padding: 9px 12px; border-radius: 11px; background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .1); color: var(--n1, #00f0ff); }
 .export-dialog-file-name { flex: 1; text-align: left; font-size: 11.5px; color: #dbe4f5; font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .export-dialog-file-size { font-size: 10px; color: #7686a2; }
+/* SKY-7192 — missing-scene-file warning (Done step) */
+.export-dialog-warning { display: flex; align-items: flex-start; gap: 8px; margin: 12px auto 0; max-width: 400px; padding: 9px 12px; border-radius: 11px; text-align: left; font-size: 11px; line-height: 1.4; color: var(--state-warning, #f5b942); background: var(--state-warning-bg, rgba(245, 185, 66, .1)); border: 1px solid color-mix(in srgb, var(--state-warning, #f5b942) 40%, transparent); }
+.export-dialog-warning svg { flex: none; margin-top: 1px; }
+
 .export-dialog-done-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
 .export-dialog-reveal { padding: 6px 14px; border-radius: 9px; border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, .4)); background: none; color: #c3cee2; font-size: 11.5px; cursor: pointer; }
 .export-dialog-reveal:hover { border-color: var(--b1, rgba(0, 240, 255, .5)); color: #fff; }

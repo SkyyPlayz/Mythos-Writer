@@ -290,6 +290,31 @@ describe('ExportDialog steps (M14)', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
+  it('does not show the missing-scene warning when the export has no missing scenes', async () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    expect(await screen.findByText('Export complete')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('SKY-7192: Done state names scenes that exported with missing prose files', async () => {
+    mockExportDocx.mockResolvedValue({
+      path: '/tmp/story.docx',
+      cancelled: false,
+      bytes: 2048,
+      missingSceneIds: ['scene-1'],
+    });
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    expect(await screen.findByText('Export complete')).toBeInTheDocument();
+    const warning = screen.getByRole('alert');
+    expect(warning).toHaveTextContent('1 scene has missing prose files and exported empty: Opening');
+  });
+
   it('Show in folder calls exportRevealLast', async () => {
     renderDialog({ kind: 'story', storyId: 'story-1' });
 

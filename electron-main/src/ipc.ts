@@ -3194,6 +3194,8 @@ export interface ExportEpubResponse {
   cancelled: boolean;
   /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
   bytes?: number;
+  /** SKY-7192 — scene IDs whose .md file was missing (exported empty), if any. */
+  missingSceneIds?: string[];
 }
 
 // ─── DOCX export (MYT-252) ───
@@ -3212,6 +3214,8 @@ export interface ExportDocxResponse {
   cancelled: boolean;
   /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
   bytes?: number;
+  /** SKY-7192 — scene IDs whose .md file was missing (exported empty), if any. */
+  missingSceneIds?: string[];
 }
 
 // ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) ───
@@ -3225,6 +3229,8 @@ export interface ExportPdfResponse {
   path: string | null;
   cancelled: boolean;
   bytes?: number;
+  /** SKY-7192 — scene IDs whose .md file was missing (exported empty), if any. */
+  missingSceneIds?: string[];
 }
 
 export interface ExportRevealLastResponse {
@@ -3249,6 +3255,8 @@ export interface ExportMarkdownResponse {
   cancelled: boolean;
   /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
   bytes?: number;
+  /** SKY-7192 — scene IDs whose .md file was missing (exported empty), if any. */
+  missingSceneIds?: string[];
 }
 
 export interface ExportPlaintextPayload {
@@ -3260,6 +3268,8 @@ export interface ExportPlaintextResponse {
   cancelled: boolean;
   /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
   bytes?: number;
+  /** SKY-7192 — scene IDs whose .md file was missing (exported empty), if any. */
+  missingSceneIds?: string[];
 }
 
 // ─── Budget enforcement push event (MYT-207) ───
