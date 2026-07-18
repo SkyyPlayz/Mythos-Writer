@@ -302,6 +302,20 @@
   color: #c3cee2;
 }
 
+/* M13: honest state when the coach's read is unavailable (AI disabled /
+   unconfigured / errored) — computed stats above still render in full. */
+.coach-analysis-read-note {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #8e9db8;
+  font-style: italic;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(155, 95, 255, 0.35);
+  margin-bottom: 11px;
+}
+
 .coach-analysis-takeaway {
   font-size: 12px;
   line-height: 1.6;

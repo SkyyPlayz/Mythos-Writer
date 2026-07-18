@@ -11,7 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { defaultManifest, readManifest, writeManifest } from './vault.js';
+import { defaultManifest, readManifest, writeManifest, ensureSceneFilesForManifestScenes } from './vault.js';
+import { openManifest, SCHEMA_VERSION as MANIFEST_SCHEMA_VERSION } from './manifest.js';
 import type { Manifest, SceneEntry } from './ipc.js';
 import type { ManifestTimelineEntry } from './vault/manifest/types.js';
 import { handleTimelineList, handleTimelineUpsert } from './timelineIpc.js';
@@ -247,5 +248,100 @@ describe('handleTimelineUpsert', () => {
     expect(events).toHaveLength(1);
     expect(events[0].id).toBe(migrated.id);
     expect(events[0].when).not.toBe(migrated.when);
+  });
+});
+
+// ─── SKY-6195: migration + timeline IPC cross-cutting regression ────────────
+//
+// The risk this guards against: manifest.ts (the live Manifest, opened via
+// `openManifest` at vault-boot — see main.ts's ensureVaultDir) and
+// vault/manifest/types.ts (the sibling ManifestV1 schema) each declare their
+// own independent SCHEMA_VERSION. If a Timeline IPC call read the manifest
+// through the ManifestV1 gate (`openManifestV1`), bumping manifest.ts's
+// version without bumping ManifestV1's in lockstep would make every
+// `timeline:list`/`timeline:upsert` call throw `ManifestVersionError`
+// immediately after a boot-time migration. SKY-6632 already closed this off
+// a different way: `handleTimelineList`/`handleTimelineUpsert` never touch
+// `openManifestV1` — they read the real on-disk shape via `vault.ts`'s
+// `readManifest` (schema-version-agnostic) and `timelines/store.ts`. This
+// test exercises the exact end-to-end sequence a real boot performs —
+// `openManifest` migrating a legacy manifest, exactly as main.ts's
+// `ensureVaultDir` calls it — and asserts the Timeline IPC handlers succeed
+// immediately afterward, on the same vault, with no separate reopen.
+describe('SKY-6195: timeline IPC succeeds immediately after a migrating vault-open', () => {
+  let tmpDir: string;
+  let manifestPath: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    manifestPath = path.join(tmpDir, 'manifest.json');
+  });
+  afterEach(() => { cleanDir(tmpDir); });
+
+  it('handleTimelineList succeeds right after openManifest migrates a legacy (no schemaVersion) manifest', () => {
+    const legacyEntry: ManifestTimelineEntry = {
+      sceneId: 'scene-1',
+      inferredDay: 3,
+      inferredTime: 'dawn',
+      confidence: 0.8,
+      rawCue: 'Day 3',
+    };
+    // A pre-migration, real-vault-shaped manifest: no schemaVersion field,
+    // object `provenance`, array `boardReferences` (not `boards`).
+    const legacy = {
+      version: '1.0.0',
+      vaultRoot: tmpDir,
+      stories: [],
+      entities: [],
+      suggestions: [],
+      scenes: [makeScene('scene-1')],
+      chapters: [],
+      provenance: {},
+      boardReferences: [],
+      timeline: [legacyEntry],
+    };
+    fs.writeFileSync(manifestPath, JSON.stringify(legacy), 'utf-8');
+
+    // Exactly what main.ts's ensureVaultDir does on every vault open.
+    const migrated = openManifest(manifestPath, {
+      vaultRoot: tmpDir,
+      beforeMigrationWrite: (manifest, root) => ensureSceneFilesForManifestScenes(manifest, root),
+    });
+    expect(migrated.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION);
+
+    // Immediately after the migrating open — no separate reopen or delay —
+    // the Timeline IPC channels must work, not throw ManifestVersionError.
+    expect(() => handleTimelineList(tmpDir)).not.toThrow();
+    const listed = handleTimelineList(tmpDir);
+    expect(listed.entries).toHaveLength(1);
+    expect(listed.entries[0].sceneId).toBe('scene-1');
+
+    expect(() => handleTimelineUpsert(tmpDir, { sceneId: 'scene-1', day: 5, time: 'noon' })).not.toThrow();
+    const upserted = handleTimelineUpsert(tmpDir, { sceneId: 'scene-1', day: 5, time: 'noon' });
+    expect(upserted.ok).toBe(true);
+    expect(upserted.entry?.userOverride?.day).toBe(5);
+  });
+
+  it('handleTimelineUpsert succeeds right after openManifest migrates a legacy manifest with no timeline data yet', () => {
+    const legacy = {
+      version: '1.0.0',
+      vaultRoot: tmpDir,
+      stories: [],
+      entities: [],
+      suggestions: [],
+      scenes: [makeScene('scene-1')],
+      chapters: [],
+      provenance: {},
+      boardReferences: [],
+    };
+    fs.writeFileSync(manifestPath, JSON.stringify(legacy), 'utf-8');
+
+    openManifest(manifestPath, {
+      vaultRoot: tmpDir,
+      beforeMigrationWrite: (manifest, root) => ensureSceneFilesForManifestScenes(manifest, root),
+    });
+
+    const result = handleTimelineUpsert(tmpDir, { sceneId: 'scene-1', day: 1, time: 'morning' });
+    expect(result.ok).toBe(true);
   });
 });

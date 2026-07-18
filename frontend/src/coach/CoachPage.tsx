@@ -17,6 +17,7 @@ import { resolveAgentDisplayName } from '../agents/agentIdentity';
 import AgentSessionPicker from '../components/AgentSessionPicker';
 import type { UnifiedSuggestion } from '../SuggestionDetailPane';
 import { useCoachConversation } from './useCoachConversation';
+import { useSceneAnalysisPending } from './sceneAnalysis';
 import type { CoachMessage } from './coachMessages';
 import {
   buildCoachSuggestionGroups,
@@ -71,6 +72,9 @@ function useCoachRailSuggestions(): UnifiedSuggestion[] {
 
 export default function CoachPage({ scene, story, currentChapterId, agentNames }: Props) {
   const conversation = useCoachConversation(scene);
+  // M13: a Full Scene Analysis kicked off from the right panel shows the same
+  // typing dots while the coach's AI read is being fetched.
+  const analysisPending = useSceneAnalysisPending();
   const [input, setInput] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -97,7 +101,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messageCount, conversation.busy]);
+  }, [messageCount, conversation.busy, analysisPending]);
 
   const send = useCallback((text?: string) => {
     const value = (text ?? input).trim();
@@ -179,7 +183,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
                   <div className="coach-bubble coach-bubble--user">{conversation.pendingPrompt}</div>
                 </div>
               )}
-              {conversation.busy && (
+              {(conversation.busy || analysisPending) && (
                 <div className="coach-row" data-testid="coach-typing">
                   <div className="coach-typing">
                     <span className="coach-typing-dot" />
@@ -331,15 +335,24 @@ function CoachFeedMessage({ message }: { message: CoachMessage }) {
         <span className="coach-badge coach-badge--read">COACH&#39;S READ · AI</span>
         <span className="coach-badge-note">judgment calls — needs a model</span>
       </div>
-      <div className="coach-analysis-reads">
-        {message.read.map(([k, v]) => (
-          <div key={k} className="coach-analysis-read">
-            <span className="coach-analysis-read-k">{k}</span>
-            <span className="coach-analysis-read-v">{v}</span>
-          </div>
-        ))}
-      </div>
-      <div className="coach-analysis-takeaway">{message.takeaway}</div>
+      {message.read.length > 0 && (
+        <div className="coach-analysis-reads">
+          {message.read.map(([k, v]) => (
+            <div key={k} className="coach-analysis-read">
+              <span className="coach-analysis-read-k">{k}</span>
+              <span className="coach-analysis-read-v">{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {message.readNote && (
+        /* M13: honest state when the coach's read is unavailable — the
+           computed section above still rendered in full. */
+        <div className="coach-analysis-read-note" data-testid="coach-read-unavailable">
+          {message.readNote}
+        </div>
+      )}
+      {message.takeaway && <div className="coach-analysis-takeaway">{message.takeaway}</div>}
       {message.drill && <DrillFooter drill={message.drill} />}
     </div>
   );

@@ -122,8 +122,69 @@ export function migrateManifest(raw: Raw): Manifest {
   return current as unknown as Manifest;
 }
 
+/**
+ * Single-pass, allocation-free word count (no `split`/`match` array). This
+ * runs on every scene's content on every manifest write (see
+ * `computeSceneWordCount`/`stripSceneProse`) — for a several-thousand-scene
+ * vault, `split(/\s+/)` materializing a token array per scene measurably
+ * regressed write latency (caught by manifestPerf.test.ts's O(vault) write
+ * bound). A regex-free char scan avoids that allocation entirely.
+ */
+function countWords(text: string): number {
+  let count = 0;
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    // ASCII whitespace: space, tab, LF, VT, FF, CR. Matches the practical
+    // range of `\s` for authored prose without the array-allocating regex.
+    const isSpace = c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13;
+    if (isSpace) {
+      inWord = false;
+    } else if (!inWord) {
+      inWord = true;
+      count++;
+    }
+  }
+  return count;
+}
+
+// SKY-6195: per-block word-count memo, keyed by block object identity *and*
+// a snapshot of the content it was computed from. Blocks are NOT uniformly
+// immutable: `scene:save` (main.ts) mutates `proseBlock.content` on the
+// existing block object in place rather than replacing it, so identity alone
+// is not a safe cache key — it would silently keep serving a stale count for
+// every actively-edited scene after its first save. Storing the content
+// alongside the count and comparing on read fixes that: an in-place edit
+// invalidates the entry (content !== cached.content), while an unchanged
+// block hits V8's pointer-equality fast path for identical string references
+// and stays effectively O(1). This is what makes a vault-wide write only
+// re-scan the handful of blocks that actually changed since the last write,
+// instead of every hydrated scene's full prose every time — the O(vault)
+// cost this WeakMap avoids is CPU (word counting), not disk bytes, which
+// stripEmbeddedProseForPersist already keeps flat.
+const blockWordCountCache = new WeakMap<BlockEntry, { content: string; count: number }>();
+
+function cachedBlockWordCount(b: BlockEntry): number {
+  const cached = blockWordCountCache.get(b);
+  if (cached !== undefined && cached.content === b.content) return cached.count;
+  const count = countWords(b.content);
+  blockWordCountCache.set(b, { content: b.content, count });
+  return count;
+}
+
+/**
+ * SKY-6195: total word count across a scene's blocks, summed per-block (not
+ * on the concatenated body) so words never merge across a block boundary
+ * that has no whitespace of its own.
+ */
+function computeSceneWordCount(blocks: BlockEntry[]): number {
+  return blocks.reduce((total, b) => total + cachedBlockWordCount(b), 0);
+}
+
 function stripSceneProse(scene: SceneEntry): SceneEntry {
-  if (!scene.blocks || scene.blocks.length === 0) return scene;
+  if (!scene.blocks || scene.blocks.length === 0) {
+    return scene.wordCount === 0 ? scene : { ...scene, wordCount: 0 };
+  }
   // Block-aware persistence (PR #932 review): alongside blanking content,
   // record each block's serialized-segment length within the scene's `.md`
   // body (`bodySegLen`) so `readManifest` can hydrate all N blocks — content,
@@ -135,7 +196,11 @@ function stripSceneProse(scene: SceneEntry): SceneEntry {
   const { segments } = computeSceneBodyLayout(scene.blocks);
   const lengthByIndex = new Map<number, number>();
   for (const seg of segments) lengthByIndex.set(seg.index, seg.length);
-  let changed = false;
+  // SKY-6195: computed from the still-populated `blocks[].content` — before
+  // it's blanked below — and persisted as a structural field alongside
+  // `bodySegLen`, so it stays in sync with the last-saved prose on every write.
+  const wordCount = computeSceneWordCount(scene.blocks);
+  let changed = scene.wordCount !== wordCount;
   const blocks = scene.blocks.map((b, i) => {
     const bodySegLen = lengthByIndex.get(i);
     if (b.content === '' && b.bodySegLen === bodySegLen) return b;
@@ -145,7 +210,7 @@ function stripSceneProse(scene: SceneEntry): SceneEntry {
     else next.bodySegLen = bodySegLen;
     return next;
   });
-  return changed ? { ...scene, blocks } : scene;
+  return changed ? { ...scene, blocks, wordCount } : scene;
 }
 
 function stripChapterProse(chapter: ChapterEntry): ChapterEntry {
@@ -181,8 +246,12 @@ export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
  * Atomic write: serialise to a temp file then rename into place.
  * A process crash after writeFileSync but before renameSync leaves the
  * original file intact (the .tmp is orphaned but harmless).
+ *
+ * Returns the byte length of the content actually written, so callers that
+ * need a byte count (e.g. the VAULT_MANIFEST_WRITE IPC response) don't have
+ * to re-serialize the manifest a second time just to measure it (SKY-6195).
  */
-export function writeManifestAtomic(manifestPath: string, manifest: Manifest): void {
+export function writeManifestAtomic(manifestPath: string, manifest: Manifest): number {
   const tmp = `${manifestPath}.tmp`;
   // Compact, structure-only serialization (SKY-6596): scene prose is stripped
   // (see stripEmbeddedProseForPersist) so this write is O(structure), not
@@ -191,8 +260,10 @@ export function writeManifestAtomic(manifestPath: string, manifest: Manifest): v
   // a machine-managed file, and pretty printing still costs real time on a
   // large story count even without embedded prose.
   const persisted = stripEmbeddedProseForPersist(manifest);
-  fs.writeFileSync(tmp, JSON.stringify(persisted), 'utf-8');
+  const json = JSON.stringify(persisted);
+  fs.writeFileSync(tmp, json, 'utf-8');
   fs.renameSync(tmp, manifestPath);
+  return Buffer.byteLength(json, 'utf-8');
 }
 
 /**
