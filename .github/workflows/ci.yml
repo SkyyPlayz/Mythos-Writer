@@ -139,8 +139,6 @@ jobs:
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && '' || '--coverage' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -169,11 +167,20 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Resolve coverage flag
+        id: coverage-flag
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=--coverage" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Test (electron-main)
-        run: npm run test -w electron-main -- $COVERAGE_FLAG
+        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }}
 
       - name: Test (frontend)
-        run: npm run test -w frontend -- $COVERAGE_FLAG
+        run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
 
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
@@ -691,7 +698,7 @@ jobs:
       - name: E2E — Auto-linker (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:auto-linker
 
-      - name: E2E — Global search FTS5 (SKY-6933 sweep, 1 test skip-guarded — real bug, tracked SKY-7082/PR #968)
+      - name: E2E — Global Search TC-GS-01..06 (SKY-129/160/905/7082)
         run: xvfb-run --auto-servernum npm run test:e2e:global-search
 
       - name: E2E — README screenshots (SKY-6933 sweep)
@@ -708,6 +715,7 @@ jobs:
 
       - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
         run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
+
 
       - name: Upload E2E report on failure
         if: failure()
