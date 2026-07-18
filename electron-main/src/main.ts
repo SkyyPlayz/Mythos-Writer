@@ -398,7 +398,9 @@ import {
   nextV2SceneRelPath,
   isCanonicalV2ChapterPath,
 } from './mythosFormat/v2Manifest.js';
-import { ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
+import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
+// Beta 4 M29 — Welcome wizard genre starter notes.
+import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
 import {
   detectVaultFormat,
   planMythosVaultMigration,
@@ -2697,7 +2699,7 @@ const handlers: IpcHandlers = {
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
   // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate, genre, themeKey } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string) => {
       const current = loadAppSettings();
@@ -2729,87 +2731,66 @@ const handlers: IpcHandlers = {
       return { ok: true };
     }
 
-    // SKY-2220 / SKY-906: Quick Start / legacy one-click default Mythos Vault setup. Mirrors the SKY-320
-    // vault:createDefaultMythos bundle layout, then seeds a first scene like
-    // the blank mode so the editor lands on something writable rather than
-    // an empty manuscript. The whole flow is bypassable from a "Skip" link if
-    // the user later wants to start over.
+    // M29 (Welcome wizard): 'quick-start' / 'start-fresh' create a MythosVault
+    // v2 via createMythosVault — mythos.json + Veynn demo seed (unless the
+    // Start Fresh path picked the blank template), so a fresh install lands in
+    // a vault where every screen demos itself. Genre starter notes (Story
+    // Templates / Beat Sheet / Agent Personas) are seeded at creation time
+    // only; the seed decision is recorded in mythos.json (W0.1 rule).
+    const completeWithMythosV2 = async (
+      parentBase: string,
+      opts: { vaultName?: string; seedDemo: boolean },
+    ): Promise<OnboardingCompleteResponse> => {
+      // themeKey feeds mythos.json's free-form defaultTheme; cap it to a safe
+      // token so a hostile renderer can't stuff arbitrary data into the vault.
+      const safeTheme = (typeof themeKey === 'string' && /^[a-z0-9-]{1,64}$/.test(themeKey))
+        ? themeKey
+        : undefined;
+      const created = createMythosVault(parentBase, {
+        ...(opts.vaultName ? { name: opts.vaultName } : {}),
+        seedDemo: opts.seedDemo,
+        ...(safeTheme ? { defaultTheme: safeTheme } : {}),
+      });
+      if (!created.ok) return { ok: false, error: created.error };
+
+      saveVaultSettings({
+        vaultRoot: created.storyVaultPath,
+        notesVaultRoot: created.notesVaultPath,
+        layoutMode: opts.seedDemo ? 'default' : 'blank',
+      });
+      addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
+
+      if (isGenreSeedGenre(genre)) {
+        writeGenreStarterNotes(created.mythosRoot, genre);
+      }
+
+      await stopVaultWatcher();
+      await startVaultWatcher(created.storyVaultPath, notifyVaultChanged);
+      await stopNotesVaultWatcher();
+      await startNotesVaultWatcher(created.notesVaultPath, notifyNotesVaultChanged);
+
+      persistSettings(created.firstSceneId, created.firstScenePath, parentBase);
+      return { ok: true, firstSceneId: created.firstSceneId, firstScenePath: created.firstScenePath };
+    };
+
+    // Quick Start: one decision path — default location, always demo-seeded.
+    // ('default-mythos-vault' is the legacy backend alias for the same flow.)
     if (startMode === 'quick-start' || startMode === 'default-mythos-vault') {
       const parentBase = (vaultParentPath?.trim() && vaultParentPath.trim().length > 0)
         ? vaultParentPath.trim().replace(/^~/, app.getPath('home'))
         : defaultMythosVaultsParent();
-      const bundle = scaffoldDefaultMythosVault(parentBase, { baseName: vaultName });
-      if (!bundle.ok) {
-        return { ok: false, error: bundle.error };
-      }
-      const { storyVaultPath: storyVaultPathDefault, notesVaultPath: notesVaultPathDefault } = bundle;
+      return completeWithMythosV2(parentBase, { vaultName, seedDemo: true });
+    }
 
-      saveVaultSettings({
-        vaultRoot: storyVaultPathDefault,
-        notesVaultRoot: notesVaultPathDefault,
-        layoutMode: 'blank',
+    // Start Fresh: chosen location + name; demo seed unless 'blank' template.
+    if (startMode === 'start-fresh') {
+      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
+      if (!vaultName?.trim()) return { ok: false, error: 'vaultName is required' };
+      const parentBase = vaultParentPath.trim().replace(/^~/, app.getPath('home'));
+      return completeWithMythosV2(parentBase, {
+        vaultName: vaultName.trim(),
+        seedDemo: customTemplate !== 'blank',
       });
-      addToRecentProjects(storyVaultPathDefault, notesVaultPathDefault);
-      ensureVaultDir();
-      // W0.1: route the notes seed through the seed-once gate so the marker
-      // is recorded — quick-start persists layoutMode 'blank' for the story
-      // half but seeds the notes half with the full SKY-15 layout.
-      ensureVaultSeeded({
-        root: notesVaultPathDefault,
-        mode: 'default',
-        layout: NOTES_VAULT_SEED_LAYOUT,
-        scaffold: scaffoldNotesVault,
-        registry: vaultSeedRegistry,
-      });
-
-      // Seed a first scene so the editor opens on something writable.
-      const effectiveStoryTitle = (storyTitle?.trim() || 'My First Story');
-      const nowStr = new Date().toISOString();
-      const storyId = crypto.randomUUID();
-      const chapterId = crypto.randomUUID();
-      const sceneId = crypto.randomUUID();
-      const storyFolderName = effectiveStoryTitle;
-      const storyDirPath = `Manuscript/${storyFolderName}`;
-      const chapterDirPath = `Manuscript/${storyFolderName}/chapter-1`;
-      const sceneRelPath = `Manuscript/${storyFolderName}/chapter-1/chapter-1-scene-1.md`;
-
-      writeSceneFile(storyVaultPathDefault, sceneRelPath, {
-        id: sceneId,
-        title: 'Chapter 1, Scene 1',
-        chapterId,
-        storyId,
-        order: 0,
-        prose: '',
-      });
-      const outlinePath = path.join(storyVaultPathDefault, storyDirPath, 'Outline.md');
-      const synopsisPath = path.join(storyVaultPathDefault, storyDirPath, 'Synopsis.md');
-      if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, `# Outline\n\nStart with the big beats for ${effectiveStoryTitle}.\n`, 'utf-8');
-      if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, `# Synopsis\n\nA short pitch for ${effectiveStoryTitle}.\n`, 'utf-8');
-
-      const scene = {
-        id: sceneId, title: 'Chapter 1, Scene 1', path: sceneRelPath,
-        order: 0, chapterId, storyId, blocks: [],
-        draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
-      };
-      const chapter = {
-        id: chapterId, title: 'Chapter 1', path: chapterDirPath,
-        order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr,
-      };
-      const story = {
-        id: storyId, title: effectiveStoryTitle, path: storyDirPath,
-        chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
-      };
-      const manifest = readManifest(getManifestPath());
-      manifest.stories.push(story);
-      writeManifest(getManifestPath(), manifest);
-
-      await stopVaultWatcher();
-      await startVaultWatcher(storyVaultPathDefault, notifyVaultChanged);
-      await stopNotesVaultWatcher();
-      await startNotesVaultWatcher(notesVaultPathDefault, notifyNotesVaultChanged);
-
-      persistSettings(sceneId, sceneRelPath, parentBase);
-      return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
     }
 
     if (startMode === 'open-existing') {
