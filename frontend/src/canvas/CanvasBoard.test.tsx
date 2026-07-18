@@ -23,10 +23,11 @@ interface HarnessProps {
   initial: CanvasBoardData;
   onChange?: (board: CanvasBoardData) => void;
   onOpenNote?: (nid: string) => void;
+  readOnly?: boolean;
 }
 
 /** Controlled wrapper standing in for the persisting caller (M18/M19). */
-function Harness({ initial, onChange, onOpenNote }: HarnessProps) {
+function Harness({ initial, onChange, onOpenNote, readOnly }: HarnessProps) {
   const [board, setBoard] = useState(initial);
   return (
     <CanvasBoard
@@ -36,6 +37,7 @@ function Harness({ initial, onChange, onOpenNote }: HarnessProps) {
         onChange?.(next);
       }}
       onOpenNote={onOpenNote}
+      readOnly={readOnly}
     />
   );
 }
@@ -272,5 +274,42 @@ describe('note avatar', () => {
     render(<Harness initial={makeBoard()} onOpenNote={onOpenNote} />);
     fireEvent.click(within(screen.getByTestId('canvas-card-b')).getByTitle('No note attached yet'));
     expect(onOpenNote).not.toHaveBeenCalled();
+  });
+});
+
+describe('readOnly mode (Beta 4/M19, §7.1 — editor Scenes tab mini canvas)', () => {
+  it('still pans and zooms', () => {
+    render(<Harness initial={makeBoard()} readOnly />);
+    fireEvent.mouseDown(screen.getByTestId('canvas-pan-layer'), { button: 0, clientX: 5, clientY: 5 });
+    fireEvent.mouseMove(window, { clientX: 25, clientY: 15 });
+    fireEvent.mouseUp(window);
+    expect(screen.getByTestId('canvas-stage').style.transform).toBe('translate(20px,10px) scale(1)');
+
+    fireEvent.click(screen.getByTitle('Zoom in'));
+    expect(screen.getByTestId('canvas-zoom-pct')).toHaveTextContent('115%');
+  });
+
+  it('still opens the attached note on avatar click', () => {
+    const onOpenNote = vi.fn();
+    render(<Harness initial={makeBoard()} onOpenNote={onOpenNote} readOnly />);
+    fireEvent.click(within(screen.getByTestId('canvas-card-a')).getByTitle('Open the attached note'));
+    expect(onOpenNote).toHaveBeenCalledWith('mira');
+  });
+
+  it('hides connect, delete, resize, and add-card controls', () => {
+    render(<Harness initial={makeBoard()} readOnly />);
+    expect(screen.queryByTitle('Connect to another card')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Delete card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('canvas-card-resize-a')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Add card')).not.toBeInTheDocument();
+  });
+
+  it('does not call onChange when a card head is dragged', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} readOnly />);
+    fireEvent.mouseDown(screen.getByTestId('canvas-card-head-a'), { clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(window, { clientX: 60, clientY: 60 });
+    fireEvent.mouseUp(window);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

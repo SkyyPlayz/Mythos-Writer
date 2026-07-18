@@ -3,24 +3,33 @@ import type { Story } from '../../types';
 import CanvasBoard from '../../canvas/CanvasBoard';
 import type { CanvasBoardData } from '../../canvas/canvasTypes';
 import {
+  CRAFTER_COACH_SYSTEM_PROMPT,
+  CRAFTER_GENERATE_COPY,
   CRAFTER_LENGTHS,
   CRAFTER_TONES,
-  DRAFT_BOARD_DELAY_MS,
   addBeat,
+  buildDraftPrompt,
+  castCardsFromSuggested,
+  castFromSuggested,
   composeDraftBoard,
+  composeDraftPassCard,
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
+  moveBeat,
+  placesFromSuggested,
   planNotesFromVault,
   removeBeat,
   suggestedFromVault,
   toggleTone,
+  wordCount,
   type ChosenCard,
   type CrafterSetup,
   type SuggestedCard,
   type VaultListItem,
 } from './crafterState';
 import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
+import { useIpcStream } from '../../hooks/useIpcStream';
 import './SceneCrafterPage.css';
 
 export interface SceneCrafterCard {
@@ -48,8 +57,6 @@ interface Props {
   story: Story;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
-  /** Draft-board busy delay override (prototype: 1200ms). Tests pass 0. */
-  draftDelayMs?: number;
 }
 
 /** Debounce for persisting canvas edits (drag/resize emit change storms). */
@@ -84,7 +91,6 @@ export default function SceneCrafterPage({
   story,
   onOpenNote,
   onOpenScene,
-  draftDelayMs = DRAFT_BOARD_DELAY_MS,
 }: Props) {
   const storySlug = useMemo(() => storySlugFromStory(story), [story]);
   const [board, setBoard] = useState<SceneCrafterBoard | null>(null);
@@ -110,12 +116,23 @@ export default function SceneCrafterPage({
   const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState('');
   const [boardsNote, setBoardsNote] = useState<string | null>(null);
+  // Explicit "Custom…" selection in the POV dropdown — tracked separately from
+  // setup.pov because an empty custom value is indistinguishable from "no POV
+  // chosen yet" if derived from the text alone (§7.1, AC1).
+  const [povCustomMode, setPovCustomMode] = useState(false);
+  // AI first-pass draft generation (§7.1): streamId drives useIpcStream; a
+  // failure to even start the stream (e.g. no API key) lands in draftStartError
+  // since useIpcStream only observes post-start stream:error events.
+  const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
+  const [draftStartError, setDraftStartError] = useState<string | null>(null);
+  const draftStream = useIpcStream(draftStreamId);
 
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const moveMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const draftTimerRef = useRef<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<CanvasBoardData | null>(null);
+  const draftStreamIdRef = useRef<string | null>(null);
+  draftStreamIdRef.current = draftStreamId;
 
   const loadBoard = useCallback(async () => {
     setLoading(true);
@@ -163,10 +180,10 @@ export default function SceneCrafterPage({
     return () => { window.api.sceneCrafterClose?.(storySlug); };
   }, [storySlug]);
 
-  // Cancel the draft-board timer and flush any pending canvas save on unmount.
+  // Cancel any in-flight draft generation and flush a pending canvas save on unmount.
   useEffect(() => {
     return () => {
-      if (draftTimerRef.current !== null) window.clearTimeout(draftTimerRef.current);
+      if (draftStreamIdRef.current) void window.api.streamCancel(draftStreamIdRef.current);
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
       const toSave = pendingSaveRef.current;
       pendingSaveRef.current = null;
@@ -377,9 +394,16 @@ export default function SceneCrafterPage({
   }
 
   // ── M18: suggested cards, plan cards, draft boards ─────────────────────────
-  const suggestedGroups = groupSuggested(filterSuggested(suggestedFromVault(vaultItems), sugQ));
+  const allSuggested = suggestedFromVault(vaultItems);
+  const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
   const planNotes = planNotesFromVault(vaultItems);
   const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
+  // ── M19: POV select sourced from the vault's Characters group (§7.1, AC1) ──
+  const cast = castFromSuggested(allSuggested);
+  const povIsCustom = povCustomMode || (setup.pov.trim() !== '' && !cast.includes(setup.pov));
+  // ── M19: right kanban — beats/cast/places (§7.1, AC8) ───────────────────────
+  const castCards = castCardsFromSuggested(allSuggested);
+  const placeCards = placesFromSuggested(allSuggested);
 
   function patchSetup(patch: Partial<CrafterSetup>) {
     setSetup((prev) => ({ ...prev, ...patch }));
@@ -425,19 +449,48 @@ export default function SceneCrafterPage({
     return chosen;
   }
 
-  /** Prototype draftBoard() (lines 3403–3423): busy → compose → land under BOARDS. */
-  function draftBoard() {
-    if (setup.status === 'busy') return;
-    const chosen = chosenCards();
-    const boardNumber = boards.length + 1;
-    patchSetup({ status: 'busy' });
-    draftTimerRef.current = window.setTimeout(() => {
-      draftTimerRef.current = null;
-      const next = composeDraftBoard(setup, chosen, boardNumber);
-      setBoards((prev) => [...prev, next]);
-      setSetup((prev) => ({ ...prev, status: 'done' }));
-      void persistBoard(next);
-    }, draftDelayMs);
+  // ── M19: AI first-pass generation (§7.1) ────────────────────────────────────
+  // The Writing Coach drafts a scaffold from the setup + chosen cards. The
+  // result only ever reaches the canvas board via addDraftToBoard() below —
+  // no path here writes to manuscript/scene storage (decisions log B4-9, AC6).
+  function startDraftStream() {
+    setDraftStartError(null);
+    const prompt = buildDraftPrompt(setup, chosenCards(), summary);
+    window.api
+      .streamStart({ messages: [{ role: 'user', content: prompt }], system: CRAFTER_COACH_SYSTEM_PROMPT, maxTokens: 900 })
+      .then(({ streamId }) => setDraftStreamId(streamId))
+      .catch((err) => {
+        setDraftStartError(err instanceof Error ? err.message : 'AI unavailable — check your API key in settings.');
+      });
+  }
+
+  function generateDraft() {
+    if (draftStreamId) return;
+    startDraftStream();
+  }
+
+  function discardDraft() {
+    if (draftStreamId && !draftStream.done) draftStream.cancel();
+    setDraftStreamId(null);
+    setDraftStartError(null);
+  }
+
+  /** Retry bypasses generateDraft()'s guard — draftStreamId hasn't cleared yet in this tick. */
+  function retryDraft() {
+    discardDraft();
+    startDraftStream();
+  }
+
+  /** Add to scene board (B4-9): the draft card lands on a new canvas board — never in the manuscript. */
+  async function addDraftToBoard() {
+    if (!draftStreamId || !draftStream.done || draftStream.error) return;
+    const boardId = 'b' + Date.now();
+    const draftCard = composeDraftPassCard(setup, draftStream.text, `${boardId}-first-pass`);
+    const next = composeDraftBoard(setup, chosenCards(), boards.length + 1, boardId, draftCard);
+    setBoards((prev) => [...prev, next]);
+    discardDraft();
+    await persistBoard(next);
+    setOpenBoardId(next.id);
   }
 
   /** Canvas mutations update state immediately and persist on a debounce. */
@@ -633,11 +686,34 @@ export default function SceneCrafterPage({
               </label>
               <label className="sc-field">
                 <span className="sc-field-label">POV</span>
-                <input
-                  value={setup.pov}
-                  placeholder="Who carries the camera?"
-                  onChange={(event) => patchSetup({ pov: event.target.value })}
-                />
+                <select
+                  aria-label="POV"
+                  value={povIsCustom ? '__custom__' : setup.pov}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (next === '__custom__') {
+                      setPovCustomMode(true);
+                    } else {
+                      setPovCustomMode(false);
+                      patchSetup({ pov: next });
+                    }
+                  }}
+                >
+                  <option value="">Who carries the camera?</option>
+                  {cast.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                  <option value="__custom__">Custom…</option>
+                </select>
+                {povIsCustom && (
+                  <input
+                    className="sc-pov-custom"
+                    aria-label="Custom POV name"
+                    value={setup.pov}
+                    placeholder="Name this scene's POV"
+                    onChange={(event) => patchSetup({ pov: event.target.value })}
+                  />
+                )}
               </label>
               <label className="sc-field">
                 <span className="sc-field-label">GOAL</span>
@@ -659,7 +735,42 @@ export default function SceneCrafterPage({
               <div className="sc-field-label sc-section-label">BEATS</div>
               <ul className="sc-beats">
                 {setup.beats.map((beat, index) => (
-                  <li key={`${beat}-${index}`} className="sc-beat">
+                  <li
+                    key={`${beat}-${index}`}
+                    className="sc-beat"
+                    draggable
+                    data-testid={`sc-beat-${index}`}
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData('text/plain', String(index));
+                      event.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const from = Number(event.dataTransfer.getData('text/plain'));
+                      if (!Number.isInteger(from) || from === index) return;
+                      setSetup((prev) => {
+                        const beats = prev.beats.slice();
+                        const [moved] = beats.splice(from, 1);
+                        beats.splice(index, 0, moved);
+                        return { ...prev, beats };
+                      });
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="sc-beat-move"
+                      aria-label={`Move beat "${beat}" up`}
+                      disabled={index === 0}
+                      onClick={() => setSetup((prev) => moveBeat(prev, index, -1))}
+                    >↑</button>
+                    <button
+                      type="button"
+                      className="sc-beat-move"
+                      aria-label={`Move beat "${beat}" down`}
+                      disabled={index === setup.beats.length - 1}
+                      onClick={() => setSetup((prev) => moveBeat(prev, index, 1))}
+                    >↓</button>
                     <span>{beat}</span>
                     <button
                       type="button"
@@ -714,6 +825,15 @@ export default function SceneCrafterPage({
                   </button>
                 ))}
               </div>
+              {setup.len === 'Custom' && (
+                <input
+                  className="sc-len-custom"
+                  aria-label="Custom length"
+                  placeholder="e.g. 900 words, or “until the door opens”"
+                  value={setup.customLen}
+                  onChange={(event) => patchSetup({ customLen: event.target.value })}
+                />
+              )}
 
               <div className="sc-field-label sc-section-label">BOARDS</div>
               {boards.length > 0 && (
@@ -776,30 +896,66 @@ export default function SceneCrafterPage({
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                className="sc-draft-btn"
-                onClick={draftBoard}
-                disabled={setup.status === 'busy'}
-              >
-                Draft board ✦
-              </button>
+              <p className="sc-generate-copy">{CRAFTER_GENERATE_COPY}</p>
+              {!draftStreamId && (
+                <button type="button" className="sc-draft-btn" onClick={generateDraft}>
+                  Generate ✦
+                </button>
+              )}
+              {draftStartError && (
+                <div className="sc-draft-error" role="alert">
+                  {draftStartError}
+                  <button type="button" onClick={generateDraft}>Try again</button>
+                </div>
+              )}
               <div className="sc-help">
-                Reads your summary + selected plan cards and builds a canvas board — it lands under BOARDS in Scene Setup.
+                Generated text is a planning scaffold only — it never enters the manuscript. Add it to the scene board and copy from it by hand.
               </div>
             </div>
-            {setup.status === 'idle' && (
-              <div className="sc-draft-idle">Set beats and tone, then<br />Draft — the card lands here.</div>
-            )}
-            {setup.status === 'busy' && (
-              <div className="sc-draft-busy">
-                <div className="sc-skel" />
-                <div className="sc-skel sc-skel--short" />
+
+            {draftStreamId && !draftStream.done && !draftStream.error && (
+              <div className="sc-draft-busy" data-testid="sc-draft-generating">
+                {draftStream.text ? (
+                  <div className="sc-draft-live-preview">{draftStream.text}</div>
+                ) : (
+                  <>
+                    <div className="sc-skel" />
+                    <div className="sc-skel sc-skel--short" />
+                  </>
+                )}
                 <div className="sc-draft-busy-label">Drafting to your beats…</div>
+                <button type="button" className="sc-draft-cancel" onClick={discardDraft}>Cancel</button>
               </div>
             )}
-            {setup.status === 'done' && (
-              <div className="sc-draft-done">✦ Canvas board drafted — open it under BOARDS.</div>
+
+            {draftStreamId && draftStream.error && (
+              <div className="sc-draft-error" role="alert">
+                {draftStream.error}
+                <button type="button" onClick={retryDraft}>Retry</button>
+                <button type="button" onClick={discardDraft}>Discard</button>
+              </div>
+            )}
+
+            {draftStreamId && draftStream.done && !draftStream.error && (
+              <div className="sc-draft-card" data-testid="sc-draft-card">
+                <div className="sc-draft-card-head">
+                  <span className="sc-draft-card-av">✎</span>
+                  <span className="sc-draft-card-title">{(setup.title.trim() || 'Untitled scene')} — first pass</span>
+                </div>
+                <div className="sc-draft-card-body">{draftStream.text}</div>
+                <div className="sc-draft-card-meta">{wordCount(draftStream.text)} words</div>
+                <div className="sc-draft-card-actions">
+                  <button type="button" className="sc-draft-add" onClick={() => void addDraftToBoard()}>
+                    Add to scene board
+                  </button>
+                  <button type="button" onClick={retryDraft}>Retry</button>
+                  <button type="button" onClick={discardDraft}>Discard</button>
+                </div>
+              </div>
+            )}
+
+            {!draftStreamId && !draftStartError && (
+              <div className="sc-draft-idle">Set beats and tone, then<br />Generate — the card lands here.</div>
             )}
             {boardsNote && <div className="sc-boards-note">{boardsNote}</div>}
           </section>
@@ -921,6 +1077,45 @@ export default function SceneCrafterPage({
         ))}
           </div>
         </div>
+
+        {/* ── Right kanban: beats / cast / places (§7.1, AC8) ── */}
+        <aside className="sc-right-kanban" aria-label="Scene board: beats, cast, and places">
+          <div className="sc-right-kanban-col" aria-label="Beats">
+            <div className="sc-right-kanban-head">BEATS</div>
+            {setup.beats.length === 0 && <div className="sc-help">Add beats in Scene Setup — they&apos;ll show up here.</div>}
+            {setup.beats.map((beat, index) => (
+              <div className="sc-right-kanban-card" key={`${beat}-${index}`}>{beat}</div>
+            ))}
+          </div>
+          <div className="sc-right-kanban-col" aria-label="Cast">
+            <div className="sc-right-kanban-head">CAST</div>
+            {castCards.length === 0 && <div className="sc-help">No Characters notes in your vault yet.</div>}
+            {castCards.map((card) => (
+              <button
+                type="button"
+                key={card.nid}
+                className="sc-right-kanban-card sc-right-kanban-card--linked"
+                onClick={() => onOpenNote?.(card.nid)}
+              >
+                {card.t}
+              </button>
+            ))}
+          </div>
+          <div className="sc-right-kanban-col" aria-label="Places">
+            <div className="sc-right-kanban-head">PLACES</div>
+            {placeCards.length === 0 && <div className="sc-help">No Locations notes in your vault yet.</div>}
+            {placeCards.map((card) => (
+              <button
+                type="button"
+                key={card.nid}
+                className="sc-right-kanban-card sc-right-kanban-card--linked"
+                onClick={() => onOpenNote?.(card.nid)}
+              >
+                {card.t}
+              </button>
+            ))}
+          </div>
+        </aside>
       </div>
     </section>
   );

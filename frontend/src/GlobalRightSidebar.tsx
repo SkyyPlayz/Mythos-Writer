@@ -17,6 +17,7 @@ const PANEL_LABELS: Record<string, string> = {
   'scene-notes': 'Scene Notes',
   'scene-properties': 'Scene Properties',
   'scene-outline': 'Outline',
+  scenes: 'Scenes',
   'writing-assistant': 'Writing Coach',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
@@ -37,6 +38,7 @@ const RIGHT_PANEL_IDS: PanelId[] = [
   'scene-notes',
   'scene-properties',
   'scene-outline',
+  'scenes',
   'brainstorm',
 ];
 
