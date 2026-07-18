@@ -215,6 +215,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-6906: GabesPC (WSL2 host) can sleep under default Windows power
+        # settings during a ~15-20 min E2E shard, dropping the self-hosted
+        # runner connection mid-job ("runner has received a shutdown signal").
+        # build-electron already guards its own ~90-min job (SKY-2427); the
+        # E2E shards need the same guard since they run just as long.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard1 &
+          echo "WSL2 sleep prevention started."
+
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
@@ -325,6 +343,16 @@ jobs:
           path: e2e-report/
           retention-days: 3
 
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard1 -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
+
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
@@ -334,6 +362,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-6906: see e2e-shard-1 for rationale.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard2 &
+          echo "WSL2 sleep prevention started."
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -431,6 +473,16 @@ jobs:
           path: e2e-report/
           retention-days: 3
 
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard2 -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
+
   e2e-shard-3:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
     # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, global-search, readme-screenshots,
@@ -441,6 +493,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-6906: see e2e-shard-1 for rationale.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard3 &
+          echo "WSL2 sleep prevention started."
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -553,6 +619,16 @@ jobs:
           path: e2e-report/
           retention-days: 3
 
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard3 -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
+
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     # editor-format-bar, notes-parity, word-count (SKY-6933 sweep)
@@ -562,6 +638,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: WSL2 power keep-alive — prevent Windows host sleep
+        # SKY-6906: see e2e-shard-1 for rationale.
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then
+            echo "Not WSL2 — sleep prevention skipped."; exit 0
+          fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          if [ ! -x "$PS" ]; then
+            echo "powershell.exe not accessible — sleep prevention skipped."; exit 0
+          fi
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard4 &
+          echo "WSL2 sleep prevention started."
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -667,6 +757,16 @@ jobs:
           name: e2e-report-shard-4
           path: e2e-report/
           retention-days: 3
+
+      - name: Stop WSL2 power keep-alive
+        if: always()
+        run: |
+          if ! grep -qi microsoft /proc/version 2>/dev/null; then exit 0; fi
+          PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+          [ -x "$PS" ] || exit 0
+          "$PS" -NonInteractive -ExecutionPolicy Bypass \
+            -File "$(wslpath -w "$(pwd)/scripts/ci-power-keepalive.ps1")" -Id shard4 -Stop 2>/dev/null || true
+          echo "WSL2 sleep prevention stopped."
 
   ci:
     # Required check aggregator — always runs (if: always()) so branch protection
