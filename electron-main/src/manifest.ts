@@ -148,13 +148,32 @@ function countWords(text: string): number {
   return count;
 }
 
+// SKY-6195: per-block word-count memo, keyed by block object identity. Blocks
+// are treated as immutable elsewhere in this module (edits replace a block
+// with a new object rather than mutating `content` in place — see
+// `stripSceneProse`'s own `{ ...b, content: '' }`), so an unchanged block
+// keeps the same reference across saves. Caching on that reference means a
+// vault-wide write only re-scans the handful of blocks that actually changed
+// since the last write, instead of every hydrated scene's full prose every
+// time — the O(vault) cost this WeakMap avoids is CPU (word counting), not
+// disk bytes, which stripEmbeddedProseForPersist already keeps flat.
+const blockWordCountCache = new WeakMap<BlockEntry, number>();
+
+function cachedBlockWordCount(b: BlockEntry): number {
+  const cached = blockWordCountCache.get(b);
+  if (cached !== undefined) return cached;
+  const count = countWords(b.content);
+  blockWordCountCache.set(b, count);
+  return count;
+}
+
 /**
  * SKY-6195: total word count across a scene's blocks, summed per-block (not
  * on the concatenated body) so words never merge across a block boundary
  * that has no whitespace of its own.
  */
 function computeSceneWordCount(blocks: BlockEntry[]): number {
-  return blocks.reduce((total, b) => total + countWords(b.content), 0);
+  return blocks.reduce((total, b) => total + cachedBlockWordCount(b), 0);
 }
 
 function stripSceneProse(scene: SceneEntry): SceneEntry {

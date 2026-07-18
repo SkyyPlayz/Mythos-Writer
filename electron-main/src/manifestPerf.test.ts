@@ -9,6 +9,18 @@
 //   - pre-SKY-6596 equivalent (embedded prose): ~23.4 MB manifest.json, ~53 ms write
 //   - post-SKY-6596 (structure-only):           ~766 KB, ~4 ms write — flat
 //     regardless of prose size (~30x smaller, ~15x faster on this fixture)
+//
+// SKY-6195 update: `wordCount` (manifest.ts) must be derived from each
+// scene's full prose, which is an unavoidable O(content) scan the very first
+// time a hydrated scene is written — unlike the structural fields above,
+// there's no way to know a text's word count without reading all of it. That
+// one-time cost is memoized per block object (`blockWordCountCache` in
+// manifest.ts), so it is NOT repeated on subsequent writes as long as a
+// block's content is unchanged (the common case: only the actively-edited
+// scene's blocks are new objects between one autosave and the next). The
+// test below asserts both halves of that guarantee separately: a generous
+// bound on the first (cold-cache) write, and a tight one on an immediate
+// repeat write with the same block references.
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import os from 'os';
@@ -82,18 +94,31 @@ describe('SKY-6596 perf validation — manifest write cost on a 3000-scene synth
       const afterMs = Number(process.hrtime.bigint() - afterStart) / 1e6;
       const afterSize = fs.statSync(manifestPath).size;
 
+      const repeatStart = process.hrtime.bigint();
+      writeManifestAtomic(manifestPath, manifest);
+      const repeatMs = Number(process.hrtime.bigint() - repeatStart) / 1e6;
+
       // eslint-disable-next-line no-console
       console.log(
         `[SKY-6596 perf] 3000-scene / 8KB-scene synthetic vault — manifest write:\n` +
           `  before (embedded prose): ${(beforeSize / 1024 / 1024).toFixed(2)} MB, ${beforeMs.toFixed(2)} ms\n` +
-          `  after  (structure-only): ${(afterSize / 1024).toFixed(1)} KB, ${afterMs.toFixed(2)} ms`,
+          `  after  (structure-only): ${(afterSize / 1024).toFixed(1)} KB, ${afterMs.toFixed(2)} ms\n` +
+          `  repeat (same blocks, cache warm): ${repeatMs.toFixed(2)} ms`,
       );
 
       expect(afterSize).toBeLessThan(beforeSize / 20); // at least ~20x smaller on disk (actual: ~30x)
-      // Not a strict multiple of `beforeMs` (timing noise on shared CI runners),
-      // but the write must not scale with vault size — a generous absolute
-      // bound that would fail immediately if stripping regressed.
-      expect(afterMs).toBeLessThan(200);
+      // First write of a freshly-hydrated vault: wordCount's per-block scan
+      // (uncached) is a genuine, unavoidable one-time O(content) cost — not a
+      // strict multiple of `beforeMs` (timing noise on shared CI runners),
+      // and no longer the ~4ms flat number from pre-SKY-6195, but still
+      // generously bounded well short of scaling into seconds.
+      expect(afterMs).toBeLessThan(1500);
+      // Repeat write with the SAME block references (the realistic case: an
+      // autosave firing again while only one scene is being edited): the
+      // per-block word-count cache means this must stay close to the
+      // original O(structure) number, regardless of how many scenes are
+      // hydrated with unchanged prose.
+      expect(repeatMs).toBeLessThan(300);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
