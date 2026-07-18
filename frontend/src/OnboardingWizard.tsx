@@ -315,12 +315,20 @@ function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongsi
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`. */
-function WizardDots({ total, current }: { total: number; current: number }) {
+/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`.
+ *  SKY-7593 (design-handoff v2 §6): optional `labels` names each step so the
+ *  dyslexic-friendly progress indicator doesn't rely on working memory alone.
+ *  The dots stay aria-hidden — the adjacent `gs-step-label` text already gives
+ *  screen readers the equivalent "X of Y" position, so labelling here too
+ *  would double-announce it. */
+function WizardDots({ total, current, labels }: { total: number; current: number; labels?: string[] }) {
   return (
     <div className="wiz-dots" data-testid="wiz-dots" aria-hidden="true">
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
+        <span key={i} className="wiz-dot-group">
+          <span className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
+          {labels?.[i] && <span className="wiz-dot__label">{labels[i]}</span>}
+        </span>
       ))}
     </div>
   );
@@ -376,21 +384,6 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       <span className="gs-card__desc">{description}</span>
       <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
     </button>
-  );
-}
-
-/** M29 (SKY-7473, design-handoff v2 §2.1): static "two-vault promise" card —
- *  informational only, no interaction, sets the mental model that a vault is
- *  really two homes (Story + Notes) before the location field asks for one. */
-function TwoVaultPromiseCard({ icon, title, description, testId }: { icon: string; title: string; description: string; testId: string }) {
-  return (
-    <div className="gs-two-vault-card" data-testid={testId}>
-      <span className="gs-two-vault-card__icon" aria-hidden="true">{icon}</span>
-      <div className="gs-two-vault-card__body">
-        <span className="gs-two-vault-card__title">{title}</span>
-        <span className="gs-two-vault-card__desc">{description}</span>
-      </div>
-    </div>
   );
 }
 
@@ -806,11 +799,17 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   /** M29: the shared genre/theme pages render/back-navigate differently
    *  depending on which of the 3 creating paths funneled into them —
-   *  Quick Start skips location+template, so it's a 2-step mini-flow. */
-  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep } {
-    if (wizardFlow === 'quick-start') return { label: 'Quick Start', totalSteps: 2, genreBack: 'step1' };
-    if (wizardFlow === 'template') return { label: 'Use a Template', totalSteps: 4, genreBack: 'step2' };
-    return { label: 'Start Fresh', totalSteps: 4, genreBack: 'custom-template' };
+   *  Quick Start skips location+template, so it's a 2-step mini-flow.
+   *  SKY-7593: Quick Start is now launched from the custom-location screen's
+   *  "One-click setup" link (spec §2.2), so its back-target moved with it. */
+  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep; dotLabels: string[] } {
+    if (wizardFlow === 'quick-start') {
+      return { label: 'Quick Start', totalSteps: 2, genreBack: 'custom-location', dotLabels: ['Genre', 'Theme'] };
+    }
+    if (wizardFlow === 'template') {
+      return { label: 'Use a Template', totalSteps: 4, genreBack: 'step2', dotLabels: ['Template', 'Details', 'Genre', 'Theme'] };
+    }
+    return { label: 'Start Fresh', totalSteps: 4, genreBack: 'custom-template', dotLabels: ['Location', 'Template', 'Genre', 'Theme'] };
   }
 
   /** M29: genre + theme sent with every creating completion call. */
@@ -1773,65 +1772,51 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          {/* M29: the four Beta 4 entry paths (BETA-REFINE §M29). */}
+          {/* SKY-7593: entry paths per design-handoff v2 §1.1 (SKY-7255) — supersedes
+              the SKY-6983 card set per CTO ruling (SKY-7590). "Restore from backup"
+              (prototype's 4th path) is substituted with "Open existing vault" since
+              Sync & Backup hasn't shipped yet — see spec §1.1 deviation note. */}
           <div className="gs-cards gs-cards--four" role="group" aria-label="Choose how to get started">
             <StartingPointCard
               icon="&#x2728;"
-              title="Start fresh"
-              description="A new vault with a guided setup — location, genre and theme."
-              ctaLabel="Set up &#x2192;"
-              onActivate={handleStartFresh}
-              testId="card-start-fresh"
+              title="Open sample project"
+              description="See how it works with a small demo: characters, lore, and one drafted chapter."
+              ctaLabel="Open sample &#x2192;"
+              onActivate={handleSelectSample}
+              testId="card-sample"
               cardRef={quickStartRef}
               chip="Recommended"
             />
             <StartingPointCard
-              icon="&#x1F4CB;"
-              title="Use a template"
-              description="Scaffold your vault from a story or worldbuilding template."
-              ctaLabel="Browse templates &#x2192;"
-              onActivate={handleSelectTemplate}
-              testId="card-template"
+              icon="&#x1F4DD;"
+              title="Start blank"
+              description="Create an empty vault. Choose where to save it on the next screen."
+              ctaLabel="Choose location &#x2192;"
+              onActivate={handleStartFresh}
+              testId="card-start-blank"
             />
             <StartingPointCard
-              icon="&#x1F4C2;"
-              title="Import existing"
-              description="Open a vault, or bring in Obsidian or Word files."
-              ctaLabel="Import &#x2192;"
+              icon="&#x1F4E5;"
+              title="Import Obsidian vault"
+              description="Point at an existing vault. You'll see every change before anything is saved."
+              ctaLabel="Pick folder &#x2192;"
               onActivate={() => { resetImportState(); setStep('step-import'); }}
-              testId="card-import"
-              isSecondary
+              testId="card-import-obsidian"
             />
             <StartingPointCard
-              icon="&#x26A1;"
-              title="Quick start"
-              description="The fastest route to the editor — we pick the location for you."
-              ctaLabel="Start &#x2192;"
-              onActivate={handleQuickStart}
-              testId="card-quick-start"
+              icon="&#x1F4C1;"
+              title="Open existing vault"
+              description="Already have a Mythos vault on this computer? Open it here."
+              ctaLabel="Browse &#x2192;"
+              onActivate={() => { void handleOpenExistingVault(); }}
+              testId="card-open-existing"
             />
           </div>
 
-          {/* AC-L-07/AC-L-08: footer links */}
+          {/* SKY-7593: "Explore a sample world?" and "Restart an existing project?"
+              are now redundant with the Open sample project / Import Obsidian vault
+              cards above and have been removed. */}
           <div className="gs-landing-footer">
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={handleSelectSample}
-              data-testid="gs-sample-link"
-            >
-              Explore a sample world?
-            </button>
-            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={() => { resetImportState(); setStep('step-import'); }}
-              data-testid="gs-restart-link"
-            >
-              Restart an existing project?
-            </button>
-            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
             <a
               className="gs-footer-link"
               href="https://mythoswriter.com/help"
@@ -1859,9 +1844,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               className="btn-ghost btn-back"
               type="button"
               onClick={() => {
-                setStep('step1');
+                setStep('custom-location');
                 requestAnimationFrame(() => {
-                  const el = document.querySelector('[data-testid="card-template"]') as HTMLElement | null;
+                  const el = document.querySelector('[data-testid="custom-location-use-template-link"]') as HTMLElement | null;
                   el?.focus();
                 });
               }}
@@ -2408,26 +2393,29 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={1} />
-          <h2 className="gs-modal__title">Your world needs two homes.</h2>
-          <p className="gs-modal__subtitle">We&apos;ll set up two vaults together. You&apos;ll never have to think about this again.</p>
+          <WizardDots total={4} current={1} labels={['Location', 'Template', 'Genre', 'Theme']} />
+          <h2 className="gs-modal__title">Where should your vault live?</h2>
+          <p className="gs-modal__subtitle">Plain text files on your computer. Yours to keep, no lock-in.</p>
 
-          <div className="gs-two-vault-row" data-testid="gs-two-vault-promise" role="group" aria-label="Your two vaults">
-            <TwoVaultPromiseCard
-              icon="&#x1F4D6;"
-              title="Story Vault"
-              description="Your manuscript. Chapters and scenes."
-              testId="gs-two-vault-story"
-            />
-            <TwoVaultPromiseCard
-              icon="&#x1F5C2;&#xFE0F;"
-              title="Notes Vault"
-              description="Characters, places, and research."
-              testId="gs-two-vault-notes"
-            />
+          {/* SKY-7593: two-vault promise (design-handoff v2 §2.1) */}
+          <div className="gs-two-vault-promise" data-testid="two-vault-promise">
+            <h3 className="gs-two-vault-promise__heading">Your world needs two homes.</h3>
+            <p className="gs-two-vault-promise__subhead">
+              We&rsquo;ll set up two vaults together. You&rsquo;ll never have to think about this again.
+            </p>
+            <div className="gs-two-vault-promise__cards">
+              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-story">
+                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F4D6;</span>
+                <span className="gs-two-vault-promise__title">Story Vault</span>
+                <span className="gs-two-vault-promise__desc">Your manuscript. Chapters and scenes.</span>
+              </div>
+              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-notes">
+                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F5C2;</span>
+                <span className="gs-two-vault-promise__title">Notes Vault</span>
+                <span className="gs-two-vault-promise__desc">Characters, places, and research.</span>
+              </div>
+            </div>
           </div>
-
-          <p className="gs-modal__subtitle gs-modal__subtitle--tight">Plain text files on your computer. Yours to keep, no lock-in.</p>
 
           <div className="gs-form">
             <div className="gs-form__field">
@@ -2545,6 +2533,28 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               Next &#x2192;
             </button>
           </div>
+
+          {/* SKY-7593: Use a Template + Quick Start moved here from step1 (spec §2.2) —
+              secondary, low-emphasis links, not top-level cards. */}
+          <div className="gs-landing-footer gs-landing-footer--secondary">
+            <button
+              className="gs-footer-link"
+              type="button"
+              onClick={handleSelectTemplate}
+              data-testid="custom-location-use-template-link"
+            >
+              Use a template instead &#x2192;
+            </button>
+            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
+            <button
+              className="gs-footer-link"
+              type="button"
+              onClick={handleQuickStart}
+              data-testid="custom-location-quick-start-link"
+            >
+              One-click setup &#x2192;
+            </button>
+          </div>
         </div>
       )}
 
@@ -2571,7 +2581,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={2} />
+          <WizardDots total={4} current={2} labels={['Location', 'Template', 'Genre', 'Theme']} />
           <h2 className="gs-modal__title">Choose a starting template</h2>
           <p className="gs-modal__subtitle">You can always change this later.</p>
 
@@ -2667,7 +2677,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={wizFlowMeta().totalSteps} current={wizFlowMeta().totalSteps === 2 ? 1 : 3} />
+          <WizardDots
+            total={wizFlowMeta().totalSteps}
+            current={wizFlowMeta().totalSteps === 2 ? 1 : 3}
+            labels={wizFlowMeta().dotLabels}
+          />
           <h2 className="gs-modal__title">Pick a genre preset</h2>
           <p className="gs-modal__subtitle">This sets your starter templates and story tools. Change it anytime.</p>
 
@@ -2731,7 +2745,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={wizFlowMeta().totalSteps} current={wizFlowMeta().totalSteps} />
+          <WizardDots
+            total={wizFlowMeta().totalSteps}
+            current={wizFlowMeta().totalSteps}
+            labels={wizFlowMeta().dotLabels}
+          />
           <h2 className="gs-modal__title">Choose your neon</h2>
           <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
 

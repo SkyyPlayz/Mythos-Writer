@@ -152,21 +152,24 @@ async function renderWizard(ui: ReactElement) {
   return result;
 }
 
-// M29: "Start fresh" is now a direct step1 card (no more card-custom sub-selector).
+// SKY-7593: "Start fresh" is renamed "Start blank" per design-handoff v2 §1.1.
 async function openStartFresh() {
-  fireEvent.click(screen.getByTestId('card-start-fresh'));
+  fireEvent.click(screen.getByTestId('card-start-blank'));
   await flushAsyncEffects();
 }
 
-// M29: the sample-world entry point moved to a step1 footer link.
+// SKY-7593: "Open sample project" is now a top-level step1 card (design-handoff
+// v2 §1.1 promotes it out of the footer, matching the CTO ruling in SKY-7590).
 async function openSampleFlow() {
-  fireEvent.click(screen.getByTestId('gs-sample-link'));
+  fireEvent.click(screen.getByTestId('card-sample'));
   await flushAsyncEffects();
 }
 
-// M29: "Use a template" is now a direct step1 card (no more card-custom sub-selector).
+// SKY-7593: "Use a template" moved off step1 onto the custom-location screen
+// as a secondary link (design-handoff v2 §2.2) — reach it via Start Blank first.
 async function openTemplateGallery() {
-  fireEvent.click(screen.getByTestId('card-template'));
+  await openStartFresh();
+  fireEvent.click(screen.getByTestId('custom-location-use-template-link'));
   await flushAsyncEffects();
 }
 
@@ -265,35 +268,34 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows four top-level starting-point cards (Start Fresh / Template / Import / Quick Start)', async () => {
+  // SKY-7593 (design-handoff v2 §1.1, CTO ruling SKY-7590): entry-path cards
+  // supersede the earlier SKY-6983 set (Start Fresh / Template / Import / Quick
+  // Start) — Open sample project promotes to top-level, Template + Quick Start
+  // fold into secondary links under Start Blank (see openTemplateGallery /
+  // custom-location-quick-start-link tests below).
+  it('shows four top-level starting-point cards (Sample / Start Blank / Import Obsidian / Open Existing)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-start-fresh')).toBeInTheDocument();
-    expect(screen.getByTestId('card-template')).toBeInTheDocument();
-    expect(screen.getByTestId('card-import')).toBeInTheDocument();
-    expect(screen.getByTestId('card-quick-start')).toBeInTheDocument();
-    expect(screen.queryByTestId('card-custom')).not.toBeInTheDocument();
+    expect(screen.getByTestId('card-sample')).toBeInTheDocument();
+    expect(screen.getByTestId('card-start-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('card-import-obsidian')).toBeInTheDocument();
+    expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
+    expect(screen.queryByTestId('card-template')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('card-quick-start')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card labels match 4-card design copy', async () => {
+  it('card labels match the spec §1.1 4-card design copy', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-start-fresh')).toHaveTextContent('Start fresh');
-    expect(screen.getByTestId('card-template')).toHaveTextContent('Use a template');
-    expect(screen.getByTestId('card-import')).toHaveTextContent('Import existing');
-    expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick start');
+    expect(screen.getByTestId('card-sample')).toHaveTextContent('Open sample project');
+    expect(screen.getByTestId('card-start-blank')).toHaveTextContent('Start blank');
+    expect(screen.getByTestId('card-import-obsidian')).toHaveTextContent('Import Obsidian vault');
+    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open existing vault');
     await act(async () => {});
   });
 
-  it('AC-L-05: first card (Start Fresh) receives focus when Step 1 mounts', async () => {
+  it('AC-L-05: first card (Open sample project) receives focus when Step 1 mounts', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(document.activeElement).toBe(screen.getByTestId('card-start-fresh'));
-    await act(async () => {});
-  });
-
-  it('AC-L-07: "Restart an existing project?" link is present on Step 1', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-restart-link')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-restart-link').textContent).toMatch(/Restart an existing project/);
+    expect(document.activeElement).toBe(screen.getByTestId('card-sample'));
     await act(async () => {});
   });
 
@@ -304,20 +306,12 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('AC-L-01: Import card has secondary CSS modifier for visual distinction', async () => {
+  // SKY-7593: Quick Start now launches from the custom-location screen's
+  // "One-click setup" link (spec §2.2), not a step1 card.
+  it('clicking "One-click setup" navigates to the shared genre step (2-step flow)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-import')).toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-quick-start')).not.toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-start-fresh')).not.toHaveClass('gs-card--secondary');
-    expect(screen.getByTestId('card-template')).not.toHaveClass('gs-card--secondary');
-    await act(async () => {});
-  });
-
-  // M29: Quick Start is now synchronous and funnels into the shared 2-step
-  // genre/theme mini-flow instead of hitting the API immediately.
-  it('clicking Quick Start card navigates to the shared genre step (2-step flow)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
+    await openStartFresh();
+    fireEvent.click(screen.getByTestId('custom-location-quick-start-link'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     expect(screen.getByText('Quick Start · 1 of 2')).toBeInTheDocument();
@@ -325,14 +319,15 @@ describe('OnboardingWizard — Step 1', () => {
     await act(async () => {});
   });
 
-  it('shows scaffold error UI when vault creation fails via Quick Start card', async () => {
+  it('shows scaffold error UI when vault creation fails via One-click setup', async () => {
     mockApi = makeApi({
       onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
     });
     (window as unknown as { api: unknown }).api = mockApi;
     const onComplete = vi.fn();
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    fireEvent.click(screen.getByTestId('card-quick-start'));
+    await openStartFresh();
+    fireEvent.click(screen.getByTestId('custom-location-quick-start-link'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('custom-genre-continue'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
@@ -344,44 +339,43 @@ describe('OnboardingWizard — Step 1', () => {
     expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 
-  it('Import card navigates to the import / open screen (SKY-2990)', async () => {
+  it('Import Obsidian vault card navigates to the import / open screen (SKY-2990)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-import'));
+    fireEvent.click(screen.getByTestId('card-import-obsidian'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
     expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
     await act(async () => {});
   });
 
-  it('"Restart an existing project?" link navigates to the import / open screen (SKY-2990)', async () => {
+  it('Open existing vault card browses for a folder and completes onboarding', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-restart-link'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('card-open-existing'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalled());
     await act(async () => {});
   });
 
-  it('Skip link is removed from Step 1 (replaced by Restart + Learn more — SKY-2987)', async () => {
+  it('Skip link is removed from Step 1 (replaced by card set + Learn more — SKY-2987)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     expect(screen.queryByTestId('gs-skip')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card-start-fresh advances to the custom-location screen', async () => {
+  it('card-start-blank advances to the custom-location screen', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await openStartFresh();
     expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('gs-sample-link advances to Step 1c (genre picker)', async () => {
+  it('card-sample advances to Step 1c (genre picker)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await openSampleFlow();
     expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
     await act(async () => {});
   });
 
-  it('card-template advances to the template gallery', async () => {
+  it('"Use a template instead" link (custom-location) advances to the template gallery', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await openTemplateGallery();
     expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
@@ -465,12 +459,12 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     await waitFor(() => expect(screen.getAllByText(/Use this/)).toHaveLength(4));
   });
 
-  it('Back button returns to step1 (M29: no more step1b sub-selector)', async () => {
+  it('Back button returns to custom-location (SKY-7593: template link now lives there)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await openTemplateGallery();
     await waitFor(() => screen.getByTestId('gs-back-step1b'));
     fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
   });
 
   it('selecting a template card shows preview without navigating', async () => {
@@ -670,25 +664,29 @@ describe('OnboardingWizard — Step 1b (template picker)', () => {
     expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
   });
 
-  // SKY-1362: F-14 — Back from template-picker restores focus to the "Use a template" card
-  it('Back from template-picker restores focus to the card that triggered navigation', async () => {
-    // Capture the rAF callback; fire it after React commits the step1 DOM so the trigger exists.
-    // React unmounts/remounts step1 on transition, so the implementation does a querySelector
-    // on data-testid to find the fresh element rather than using the stale captured ref.
+  // SKY-1362/SKY-7593: F-14 — Back from template-picker restores focus to the
+  // "Use a template instead" link on custom-location (its trigger now lives
+  // there, not on step1, per design-handoff v2 §2.2).
+  it('Back from template-picker restores focus to the link that triggered navigation', async () => {
+    // Capture the rAF callback; fire it after React commits the custom-location DOM
+    // so the trigger exists. React unmounts/remounts custom-location on transition,
+    // so the implementation does a querySelector on data-testid to find the fresh
+    // element rather than using a stale captured ref.
     const rafRef = { current: null as ((time: number) => void) | null };
     vi.stubGlobal('requestAnimationFrame', (fn: (time: number) => void) => { rafRef.current = fn; return 0; });
     try {
       await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-      const templateCard = screen.getByTestId('card-template');
-      templateCard.focus();
-      fireEvent.click(templateCard);
+      await openStartFresh();
+      const templateLink = screen.getByTestId('custom-location-use-template-link');
+      templateLink.focus();
+      fireEvent.click(templateLink);
       await waitFor(() => screen.getByTestId('gs-back-step1b'));
       await act(async () => { fireEvent.click(screen.getByTestId('gs-back-step1b')); });
-      // React committed step1; fire rAF — implementation finds the fresh card-template
-      expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
+      // React committed custom-location; fire rAF — implementation finds the fresh link
+      expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
       rafRef.current?.(0);
-      // Check focus on the freshly-mounted card-template element (NOT the stale pre-nav ref)
-      expect(document.activeElement).toBe(screen.getByTestId('card-template'));
+      // Check focus on the freshly-mounted link (NOT the stale pre-nav ref)
+      expect(document.activeElement).toBe(screen.getByTestId('custom-location-use-template-link'));
     } finally {
       vi.unstubAllGlobals();
     }
@@ -1262,9 +1260,9 @@ describe('OnboardingWizard — AC coverage', () => {
     // Step 1 copy
     expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
     expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
-    expect(screen.getByTestId('card-start-fresh')).toHaveTextContent('Start fresh');
-    expect(screen.getByTestId('card-template')).toHaveTextContent('Use a template');
-    expect(screen.getByTestId('card-quick-start')).toHaveTextContent('Quick start');
+    expect(screen.getByTestId('card-sample')).toHaveTextContent('Open sample project');
+    expect(screen.getByTestId('card-start-blank')).toHaveTextContent('Start blank');
+    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open existing vault');
     // Advance to Step 2 (via the template gallery) for step 2 copy
     await openStep2ViaTemplate();
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
@@ -1289,7 +1287,7 @@ describe('OnboardingWizard — Template counter (SKY-1397)', () => {
     await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(1));
     // Navigate back and visit again
     fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    fireEvent.click(screen.getByTestId('card-template'));
+    fireEvent.click(screen.getByTestId('custom-location-use-template-link'));
     await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
   });
 
@@ -1469,18 +1467,11 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
 // ─── Import / Open screen (SKY-2990) ───────────────────────────────────────────
 
 describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
-  it('AC-I-01: card-import navigates to import screen', async () => {
+  it('AC-I-01: card-import-obsidian navigates to import screen', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-import'));
+    fireEvent.click(screen.getByTestId('card-import-obsidian'));
     await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC-I-01b: gs-restart-link navigates to import screen', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-restart-link'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
     await act(async () => {});
   });
 

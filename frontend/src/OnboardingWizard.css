@@ -217,57 +217,6 @@ a.gs-footer-link:focus-visible {
   margin: -0.75rem 0 0;
 }
 
-.gs-modal__subtitle--tight {
-  margin-top: 0.5rem;
-}
-
-/* ── M29 (SKY-7473, design-handoff v2 §2.1): two-vault promise cards ──
-   Static/informational, no interaction — sits above the location field on
-   the custom-location screen. */
-.gs-two-vault-row {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4, 16px);
-  margin-top: 0.25rem;
-}
-
-@media (max-width: 600px) {
-  .gs-two-vault-row { grid-template-columns: 1fr; }
-}
-
-.gs-two-vault-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: var(--space-4, 16px);
-  background: var(--glass, var(--bg-elevated));
-  border: var(--frame-width-rest) solid var(--border-subtle);
-  border-radius: 13px;
-}
-
-.gs-two-vault-card__icon {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-.gs-two-vault-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.gs-two-vault-card__title {
-  font-size: 0.9rem;
-  font-weight: var(--weight-emphasis);
-  color: var(--text-header);
-}
-
-.gs-two-vault-card__desc {
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-  line-height: var(--leading-sm);
-}
-
 /* ─── Step 1 cards ── */
 
 .gs-cards {
@@ -651,6 +600,72 @@ a.gs-footer-link:focus-visible {
 
 .template-preview__cta {
   align-self: flex-start;
+}
+
+/* SKY-7593 (design-handoff v2 §2.1): two-vault promise — static, no
+   interaction, sits above the location field on custom-location. */
+.gs-two-vault-promise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  margin: 0 0 var(--space-5, 20px);
+}
+
+.gs-two-vault-promise__heading {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.gs-two-vault-promise__subhead {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.gs-two-vault-promise__cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4, 16px);
+}
+
+@media (max-width: 600px) {
+  .gs-two-vault-promise__cards { grid-template-columns: 1fr; }
+}
+
+.gs-two-vault-promise__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: var(--space-4, 16px);
+  border-radius: 10px;
+  background: var(--glass, var(--color-surface));
+  border: var(--bw, 1px) solid var(--b1, var(--color-border));
+}
+
+.gs-two-vault-promise__icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.gs-two-vault-promise__title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.gs-two-vault-promise__desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* SKY-7593 (design-handoff v2 §2.2): secondary entry links folded under
+   Start Blank's location screen — same visual weight as the landing footer. */
+.gs-landing-footer--secondary {
+  margin-top: var(--space-4, 16px);
 }
 
 /* ─── Step 2 form ── */
@@ -1743,6 +1758,22 @@ a.gs-footer-link:focus-visible {
 .wiz-dot--on {
   background: var(--n1);
   box-shadow: 0 0 8px var(--g1);
+}
+
+/* SKY-7593 (design-handoff v2 §6): labelled dots — short lines under each
+   dot so a dyslexic user doesn't have to hold "how many steps are left" in
+   working memory. */
+.wiz-dot-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.wiz-dot__label {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 /* ── Genre preset grid (prototype 2812–2816, chip styles 4441) ── */

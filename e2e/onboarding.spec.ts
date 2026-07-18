@@ -85,13 +85,13 @@ async function waitUntil(
 }
 
 /**
- * Wait for the step-1 4-path card screen, then click the "Start fresh" card
- * and drive the shared location → template screens up to (but not through)
- * the genre page.
+ * Wait for the step-1 4-path card screen, then click the "Start blank" card
+ * (SKY-7593) and drive the shared location → template screens up to (but not
+ * through) the genre page.
  */
 async function enterStartFresh(page: Page, vaultName: string): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-  await page.locator('[data-testid="card-start-fresh"]').click();
+  await page.locator('[data-testid="card-start-blank"]').click();
   await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
   // The path field starts unvalidated ('idle', which disables Next) until it's
   // edited — clear it, then re-fill with its own default value, to trigger the
@@ -111,7 +111,7 @@ async function enterStartFresh(page: Page, vaultName: string): Promise<void> {
 //
 // With no app-settings.json seeded, onboardingComplete defaults to undefined (falsy)
 // and OnboardingWizard is rendered. The test navigates:
-//   screen-step1 → card-start-fresh → screen-custom-location → fill vault name →
+//   screen-step1 → card-start-blank → screen-custom-location → fill vault name →
 //   screen-custom-template → custom-template-blank → screen-custom-genre →
 //   screen-custom-theme → custom-theme-finish → (real onboarding:complete IPC)
 //   → DesktopShell
@@ -196,7 +196,7 @@ test.describe('TC-OB-01: Start Fresh (blank template)', () => {
 // onboarding:complete's dev-mode path resolution for the sample-project bundle
 // (which differs between packaged and unpackaged Electron builds).
 //
-// Flow: screen-step1 → gs-sample-link (footer link, not a step-1 path card) →
+// Flow: screen-step1 → card-sample (SKY-7593: top-level card, spec §1.1) →
 //   screen-step1c → pick a genre → genre-start-btn →
 //   (mocked onboarding:complete) → DesktopShell
 //
@@ -253,7 +253,7 @@ test.describe('TC-OB-02: Sample Novel', () => {
     });
 
     await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-    await page.locator('[data-testid="gs-sample-link"]').click();
+    await page.locator('[data-testid="card-sample"]').click();
     await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
 
     // Select any genre and start — the IPC call is mocked so genre choice doesn't matter for
@@ -273,13 +273,15 @@ test.describe('TC-OB-02: Sample Novel', () => {
 
 // ─── TC-OB-03: From Template ──────────────────────────────────────────────────
 //
-// "Use a template" card navigates to the template gallery screen (screen-step1b,
-// backed by wizard step 'step1b-inner'). Mocks template:list so no real
-// templates need to be seeded in userData. Mocks onboarding:complete to bypass
-// actual template scaffolding (covered by unit tests). Verifies the full
-// wizard UI flow through the template picker and the shared genre/theme pages
-// every M29 entry path funnels through:
-//   screen-step1 → card-template → screen-step1b → template-card-e2e-tmpl →
+// SKY-7593: "Use a template" is a secondary link on custom-location (spec
+// §2.2), not a step1 card — navigates to the template gallery screen
+// (screen-step1b, backed by wizard step 'step1b-inner'). Mocks template:list
+// so no real templates need to be seeded in userData. Mocks onboarding:complete
+// to bypass actual template scaffolding (covered by unit tests). Verifies the
+// full wizard UI flow through the template picker and the shared genre/theme
+// pages every M29 entry path funnels through:
+//   screen-step1 → card-start-blank → screen-custom-location →
+//   custom-location-use-template-link → screen-step1b → template-card-e2e-tmpl →
 //   screen-step2 → fill title with default save path → gs-create-story →
 //   screen-custom-genre → screen-custom-theme → custom-theme-finish →
 //   (mocked onboarding:complete) → DesktopShell
@@ -326,9 +328,12 @@ test.describe('TC-OB-03: From Template', () => {
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 
-    // Step 1: choose the "Use a template" path card
+    // SKY-7593: "Use a template" is now a secondary link on custom-location
+    // (spec §2.2), reached via the Start Blank card.
     await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
-    await page.locator('[data-testid="card-template"]').click();
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
     await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
 
     // Template card must appear after template:list resolves

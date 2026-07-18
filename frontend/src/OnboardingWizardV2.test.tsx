@@ -158,11 +158,11 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
     await act(async () => {});
   });
 
-  it('Start Fresh card carries the prototype Recommended chip; step1 has exactly 4 cards (M29)', async () => {
+  it('Open sample project card carries the spec Recommended chip; step1 has exactly 4 cards (SKY-7593)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    const startFresh = screen.getByTestId('card-start-fresh');
-    expect(startFresh.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
-    // M29: 4 top-level cards (start fresh / template / import / quick start)
+    const sampleCard = screen.getByTestId('card-sample');
+    expect(sampleCard.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
+    // SKY-7593: 4 top-level cards (sample / start blank / import obsidian / open existing)
     expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
     await act(async () => {});
   });
@@ -189,9 +189,9 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
 // ─── Guided setup: navigation ─────────────────────────────────────────────────
 
 describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
-  it('step1 offers a Start Fresh card that opens the custom-location step (M29)', async () => {
+  it('step1 offers a Start Blank card that opens the custom-location step (SKY-7593)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await click('card-start-fresh');
+    await click('card-start-blank');
     expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
     expect(screen.getByText('Start Fresh · 1 of 4')).toBeInTheDocument();
   });

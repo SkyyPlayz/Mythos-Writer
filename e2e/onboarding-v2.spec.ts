@@ -68,23 +68,29 @@ async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<
 
 /**
  * Click a start-path card, adapting legacy onboarding-v2 test IDs to the
- * Beta 4 M29 flow (BETA-REFINE §M29):
+ * SKY-7593 flow (design-handoff v2 §1.1, supersedes the earlier Beta 4 M29
+ * flow per CTO ruling SKY-7590):
  *
- *  - 'card-quick-start' family → the real `card-quick-start` landing card.
+ *  - 'card-quick-start' family → Quick Start moved off step1 onto the
+ *    custom-location screen as the "One-click setup" link (spec §2.2), reached
+ *    via the Start Blank card.
  *  - 'card-blank' family → M29 deleted the standalone "Blank Slate" card and
  *    its sub-selector (`card-custom` / `screen-step1b-options`). screen-step2
  *    (the title/author/save-path form these legacy IDs exist to reach) is now
- *    only reachable via "Use a Template", so this stubs a single-item
- *    template:list and drives the template picker to land on screen-step2.
- *    Requires `app` so the IPC stub can be installed.
- *  - 'card-sample' family → the sample flow is no longer a step1 card; it's
- *    the `gs-sample-link` footer link ("Explore a sample world?").
+ *    only reachable via "Use a Template" (also moved to custom-location, spec
+ *    §2.2), so this stubs a single-item template:list and drives the template
+ *    picker to land on screen-step2. Requires `app` so the IPC stub can be
+ *    installed.
+ *  - 'card-sample' family → "Open sample project" is a real top-level step1
+ *    card again (promoted per spec §1.1), so this clicks it directly.
  */
 async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronApplication): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
 
   if (cardTestId === 'card-default-mythos-vault' || cardTestId === 'card-quick-start' || cardTestId === 'card-path-default') {
-    await page.locator('[data-testid="card-quick-start"]').click();
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-quick-start-link"]').click();
     return;
   }
 
@@ -102,7 +108,9 @@ async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronAppl
         }],
       }));
     });
-    await page.locator('[data-testid="card-template"]').click();
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
     await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('[data-testid="template-card-e2e-step2-stub"]')).toBeVisible({ timeout: 6_000 });
     await page.locator('[data-testid="template-card-e2e-step2-stub"]').click();
@@ -111,7 +119,7 @@ async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronAppl
   }
 
   if (cardTestId === 'card-sample' || cardTestId === 'card-path-sample') {
-    await page.locator('[data-testid="gs-sample-link"]').click();
+    await page.locator('[data-testid="card-sample"]').click();
     return;
   }
 
