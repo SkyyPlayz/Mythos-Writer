@@ -607,9 +607,6 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
   AGENT_SESSION_DELETE: 'agentSession:delete',
   AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
-  // M12 — read a full session (turns included) so chat surfaces can hydrate
-  // an existing session on mount / switch (Coach page ↔ Coach panel share one store).
-  AGENT_SESSION_READ: 'agentSession:read',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───

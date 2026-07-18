@@ -196,7 +196,6 @@ import {
   type AgentSessionDuplicatePayload,
   type AgentSessionDeletePayload,
   type AgentSessionAppendTurnsPayload,
-  type AgentSessionReadPayload,
 } from './ipc.js';
 import { loadOutline, saveOutline } from './outline.js';
 import {
@@ -207,7 +206,6 @@ import {
   handleAgentSessionDuplicate,
   handleAgentSessionDelete,
   handleAgentSessionAppendTurns,
-  handleAgentSessionRead,
 } from './agentSessionsIpc.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
@@ -6672,8 +6670,6 @@ const handlers: IpcHandlers = {
     handleAgentSessionDelete(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
     handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
-  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
-    handleAgentSessionRead(getNotesVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───

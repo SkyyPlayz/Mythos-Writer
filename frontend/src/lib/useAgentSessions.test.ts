@@ -36,9 +36,6 @@ function setupMockApi(sessions: AgentSessionFile[]) {
 
   const mockApi = {
     list: vi.fn().mockResolvedValue({ sessions: summaries }),
-    read: vi.fn().mockImplementation(async (sessionId: string) => ({
-      session: sessions.find((s) => s.id === sessionId) ?? null,
-    })),
     create: vi.fn().mockImplementation(async (agent: string, title?: string, greeting?: string) => {
       const s = makeMockSession({
         id: 'new-session-' + Date.now(),
@@ -177,6 +174,9 @@ describe('useAgentSessions', () => {
       ],
     });
     const mockApi = setupMockApi([s1, s2]);
+    (mockApi as unknown as Record<string, unknown>).read = vi.fn().mockImplementation(async (sessionId: string) => ({
+      session: [s1, s2].find((s) => s.id === sessionId) ?? null,
+    }));
     const { result } = renderHook(() => useAgentSessions('brainstorm'));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 

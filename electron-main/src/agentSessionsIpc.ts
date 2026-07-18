@@ -29,8 +29,6 @@ import type {
   AgentSessionDeleteResponse,
   AgentSessionAppendTurnsPayload,
   AgentSessionAppendTurnsResponse,
-  AgentSessionReadPayload,
-  AgentSessionReadResponse,
 } from './ipc.js';
 
 export function handleAgentSessionList(
@@ -40,16 +38,6 @@ export function handleAgentSessionList(
   let sessions = listSessions(notesRoot);
   if (payload?.agent) sessions = sessions.filter((s) => s.agent === payload.agent);
   return { sessions };
-}
-
-// M20 (SKY-6663): hydrate one session's full turn history — used by the
-// Brainstorm chat when switching sessions. Lookup is by the PARSED
-// frontmatter id (readSession), never a substring scan (B1 contract).
-export function handleAgentSessionRead(
-  notesRoot: string,
-  payload: AgentSessionReadPayload,
-): AgentSessionReadResponse {
-  return { session: readSession(notesRoot, payload.sessionId) };
 }
 
 export function handleAgentSessionCreate(
