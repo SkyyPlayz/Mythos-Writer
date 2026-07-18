@@ -700,6 +700,12 @@
   animation-delay: 0.2s;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sc-skel {
+    animation: none;
+  }
+}
+
 .sc-draft-busy-label {
   font-size: 10.5px;
   color: var(--n2, #9b5fff);
