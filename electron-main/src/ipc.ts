@@ -3211,6 +3211,8 @@ export interface ExportDocxResponse {
   cancelled: boolean;
   /** Beta 4 M14 — size of the written file (export modal Done-state chip). */
   bytes?: number;
+  /** SKY-7108 — scene ids where .md file was missing during export. */
+  missingSceneIds?: string[];
 }
 
 // ─── PDF export (Beta 4 M14, FULL-SPEC §5.5) ───
@@ -3224,6 +3226,8 @@ export interface ExportPdfResponse {
   path: string | null;
   cancelled: boolean;
   bytes?: number;
+  /** SKY-7108 — scene ids where .md file was missing during export. */
+  missingSceneIds?: string[];
 }
 
 export interface ExportRevealLastResponse {
