@@ -59,11 +59,13 @@ Reusing the prototype's real 4 `pathCards`, with "Restore from backup" swapped f
 
 **IA change (the only structural change in this spec):** promote **Open sample project** from its current buried position (Custom → step1b, 2 clicks deep) to a top-level card. It's the prototype's actual `RECOMMENDED` default and the best self-demoing path (M29's own acceptance line: "every screen self-demos") — burying the best default behind an extra click works against Serial Position / Recognition-over-Recall. Quick Start and the Template gallery stay reachable — fold them into "Start blank"'s tail as secondary options (see §2.2), they don't need separate top-level cards.
 
-Persistent on this screen only: **"Skip — continue to the app →"** (existing copy, exact match to prototype line 3898) — lands in a fresh empty vault with defaults, no path chosen. Never remove this; it's the ultimate escape hatch (Nielsen's user-control-and-freedom).
+Persistent on this screen only: **"Skip — continue to the app →"** — lands in a fresh empty vault with defaults, no path chosen. **Engineering note (CTO technical-feasibility review, SKY-7395, PR #983):** despite matching prototype line 3898, this link does not exist in `step1` today. The only shipped `startMode: 'skip'` wiring is `handleOpenExistingStory` (`OnboardingWizard.tsx:2795`), which is the "Open Existing Story" error-recovery button shown on scaffold failure (`step3`) — unrelated to a Welcome-screen escape hatch. **Scope this as new work in the M29 issue**, not a "confirm it still works" checklist item — it's the ultimate escape hatch (Nielsen's user-control-and-freedom) and needs to be built, not verified.
 
 ---
 
 ## 2. Vault setup — redline `B-vault-setup-two-vault-promise.png`
+
+**Engineering note (CTO technical-feasibility review, SKY-7395, PR #983):** this single screen merges what are today **three separate wizard steps** (`custom-location`, `custom-template`, `custom-genre`, each its own screen per `WizardDots total={4}`). The individual fields/grids below are reused verbatim as stated, but combining three screens into one is layout/composition work beyond copy relocation — scope it as such, not as a pure copy-only diff.
 
 ### 2.1 Two-vault promise (new)
 
@@ -142,6 +144,8 @@ Below that: **one card**, a deliberately trimmed subset of Settings → AI Agent
 
 **Left out on purpose** (this is the wizard, not Settings): model-list fetch/selection rows, the 4 per-agent Identity & Files cards, autonomy toggles. Those stay exactly where they are today (Settings → AI Agents) — a new user configuring their first agent doesn't need to pick per-agent models before they've written a word. This is Progressive Disclosure, not a missing feature.
 
+**Engineering note (CTO technical-feasibility review, SKY-7395, PR #983):** `ProviderSection` (lines ~183-220) has no prop to suppress the model-list block today — the "Default model" field + select + "Refresh models" button render unconditionally whenever the section renders. Importing it verbatim, as this spec originally implied, will show that UI. **M29 needs a small new prop on `ProviderSection`** (e.g. `hideModelField`) to actually leave it out — pick this explicitly rather than accepting the model-list UI shows in the wizard by default.
+
 One line under the card, always visible regardless of provider state: **"You can write, take notes, and build your timeline with zero AI set up."** — removes any lingering "am I locked out if I skip" anxiety (Loss Aversion mitigation).
 
 ### 4.2 States
@@ -203,7 +207,7 @@ General rules for engineering to hold the line on for any *new* copy in this mil
 - `TwoVaultPromiseCard` — the Story Vault / Notes Vault pair in §2.1. Simple, no state, two instances side by side.
 - `ThemeGridCard` — replaces the inline `wiz-theme-row` mapping; one card = colour strip + name + selected state. Take 6 hex values + name as props (already the shape of `theme/presets.ts` entries — no new data modeling needed).
 - `ColorSlotStrip` — the 6-segment strip itself, factored out of `ThemeGridCard` so it's reusable. **Cross-surface reuse note (steward hat):** Settings → Appearance's "Neon border colors" section (FULL-SPEC §3, 6 rows: label+role/swatch/hex/curated swatches) renders the same 6 slots today as separate rows — `ColorSlotStrip` at a smaller scale is a legitimate shared primitive between the wizard and that Settings page. Not required for M29, but flag it in the PR description so whoever touches Appearance next sees the option instead of re-inventing it.
-- `WizardProviderStep` — thin wrapper composing the trimmed `ProviderSection` subset described in §4.1, plus the skip link and the "zero AI set up" reassurance line.
+- `WizardProviderStep` — composes the trimmed `ProviderSection` subset described in §4.1, plus the skip link and the "zero AI set up" reassurance line. **Engineering note (CTO review, SKY-7395):** don't undersize this as a "thin wrapper" — `ProviderSection` needs ~15 props of controlled state (`providerKind`, `apiKey`/dirty, `baseUrl`, `model`, `testStatus`/`testMsg`, `modelList`/`Status`/`Error`, `useCustomInput`, `onFetchModels`, `activeProviderSupportsVoice`, etc.), all currently owned by `SettingsPanel`. This is a real state-and-IPC integration, not a JSX pass-through — size the M29 provider-step ticket accordingly.
 
 ---
 
