@@ -1230,6 +1230,14 @@ export interface SceneEntry {
   chronologicalTime?: ChronologicalTime;
   entityLinks?: SceneEntityLinks;
   timelineMetadata?: SceneTimelineMetadata;
+  /**
+   * SKY-6195: word count across the scene's blocks, derived and (re)computed
+   * by `stripEmbeddedProseForPersist` (manifest.ts) from `blocks[].content`
+   * every time the manifest is written — before that content is blanked for
+   * the structure-only on-disk form. Always in sync with the last-saved
+   * prose; a structural field like `bodySegLen`, not user-editable.
+   */
+  wordCount?: number;
 }
 
 export interface BlockEntry {

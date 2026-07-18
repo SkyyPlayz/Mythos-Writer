@@ -728,12 +728,13 @@ const getNotesVaultRoot = () =>
  * per-story book.md spines) are re-synced so the FILES stay the source of
  * truth — copying the vault folder carries all structure (the storage rule).
  */
-function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): void {
-  writeManifestRaw(manifestPath, manifest);
+function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): number {
+  const bytes = writeManifestRaw(manifestPath, manifest);
   const mythosRoot = mythosRootForStoryVault(getVaultRoot());
   if (mythosRoot !== null && manifestPath === getManifestPath()) {
     syncCanonicalFromManifest(mythosRoot, manifest);
   }
+  return bytes;
 }
 
 // W0.1: settings-backed half of the seed-once marker (see vaultSeeding.ts).
@@ -1535,8 +1536,10 @@ const handlers: IpcHandlers = {
     // ManifestValidationError on the first invalid field; setupIpcMain's
     // try/catch converts it into { error } for the renderer.
     assertValidManifest(payload?.manifest);
-    writeManifest(getManifestPath(), payload.manifest);
-    const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
+    // SKY-6195: writeManifest returns the byte length of what was actually
+    // written (the structure-only, prose-stripped, compact-JSON form) — no
+    // second stringify just to report a size.
+    const bytes = writeManifest(getManifestPath(), payload.manifest);
     return { path: getManifestPath(), bytes };
   },
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: async () => {

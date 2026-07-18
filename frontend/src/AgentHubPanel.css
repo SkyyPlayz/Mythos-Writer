@@ -279,6 +279,72 @@
   margin: 0;
 }
 
+/* M13 (§5.4) — prototype 3016 BETA badge (purple, slot-B). */
+.ahp-badge--beta {
+  background: rgba(155, 95, 255, 0.08);
+  color: var(--n2, #9b5fff);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+}
+
+/* Prototype 3018–3022: k/v rows, 11.5px, 4px vertical padding. */
+.ahp-analysis-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ahp-analysis-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 11.5px;
+}
+
+.ahp-analysis-row-k {
+  color: #8e9db8;
+}
+
+.ahp-analysis-row-v {
+  color: #dbe4f5;
+  text-align: right;
+}
+
+/* Prototype 5848: the hot value glows cyan (Tension row). */
+.ahp-analysis-row-v--hot {
+  color: var(--n1, #00f0ff);
+  font-weight: 600;
+  text-shadow: 0 0 10px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+/* Prototype 3023: one-line computed note. */
+.ahp-analysis-note {
+  font-size: 10.5px;
+  color: #7d8dab;
+  margin: 7px 0 10px;
+}
+
+/* Prototype 3024: View Full Analysis button (cyan border → purple hover). */
+.ahp-view-analysis-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 7px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  background: none;
+  color: #c3cee2;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.ahp-view-analysis-btn:hover {
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  color: #fff;
+  box-shadow: 0 0 14px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
 /* ── In-panel chat view ───────────────────────────── */
 
 .ahp-chat-view {
