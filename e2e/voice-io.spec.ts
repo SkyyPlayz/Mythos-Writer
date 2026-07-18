@@ -319,6 +319,10 @@ test('TC-V-10b: Brainstorm live region persists across recording toggle', async 
   const micBtn = page.locator('[data-testid="brainstorm-mic-btn"], .brainstorm-mic-btn').first();
   await expect(micBtn).toBeVisible({ timeout: 4_000 });
   await micBtn.click(); // start recording
+  // start() is async (awaits getUserMedia) — wait for the listening state to
+  // actually land before the next click, or the second click can race the
+  // still-'idle' closure and fire start() again instead of stop().
+  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--listening/, { timeout: 5_000 });
   const liveRegion = page.locator('.brainstorm-page [role="status"][aria-live="polite"]').first();
   await expect(liveRegion).toBeAttached();
   await micBtn.click(); // stop recording -> transcription in flight (default mock resolves quickly)
