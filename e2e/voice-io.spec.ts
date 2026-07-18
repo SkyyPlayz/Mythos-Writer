@@ -25,20 +25,21 @@
  * (SKY-3189) from the browser SpeechRecognition API to useVoiceDictation
  * (MediaRecorder + voice:transcribe IPC, Whisper-backed) because Web Speech
  * does not work in packaged Electron. SKY-7430 removed the file-wide SKY-6933
- * skip, rewrote openBrainstorm()/openAssistantPanel() to match the current
- * TabBar nav (SKY-2094/SKY-3201), and un-skipped TC-V-01a/b and TC-V-02a/c
- * against the useVoiceDictation path: launchApp() passes Chromium's
- * fake-media-device flags so getUserMedia() yields a real (synthetic)
- * MediaStream, and the voice:transcribe IPC handler is stubbed
- * (setVoiceTranscribeMock) to drive the listening → processing → idle | error
- * state machine deterministically. TC-V-03/V-12 remain skipped — unrelated to
- * this mic-button surface.
+ * skip, rewrote openBrainstorm() to match the current TabBar nav
+ * (SKY-2094/SKY-3201), and un-skipped TC-V-01a/b and TC-V-02a/c against the
+ * useVoiceDictation path: launchApp() passes Chromium's fake-media-device
+ * flags so getUserMedia() yields a real (synthetic) MediaStream, and the
+ * voice:transcribe IPC handler is stubbed (setVoiceTranscribeMock) to drive
+ * the listening → processing → idle | error state machine deterministically.
+ * TC-V-03/V-12 remain skipped — unrelated to this mic-button surface.
  *
  * Un-skipping the whole file also exposed TC-V-06/08/09b/10e as broken for
- * reasons unrelated to the mic-state work (openAssistantPanel() nav still
- * stale, and TC-V-09b's Settings toggle no longer maps to the flag that gates
- * the Brainstorm mic) — re-skipped with a pointer to the SKY-7540 follow-up
- * rather than block this lift on an unrelated nav/product-flag fix.
+ * reasons unrelated to the mic-state work: openAssistantPanel() still uses a
+ * stale nav path (its Ctrl+1 partial update reaches the Story tab but the
+ * Assistant surface itself moved to a left-sidebar toolbar panel), and
+ * TC-V-09b's Settings toggle no longer maps to the flag that gates the
+ * Brainstorm mic — re-skipped with a pointer to the SKY-7540 follow-up rather
+ * than block this lift on an unrelated nav/product-flag fix.
  *
  * TC-V-09 is a smoke E2E test — the primary assertion coverage lives in the
  * corresponding unit test file above. It verifies the surface renders in a
@@ -190,43 +191,6 @@ async function openAssistantPanel(page: Page): Promise<void> {
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
 }
 
-async function installSpeechRecognitionMock(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    type RecognitionCallback = ((event: Event) => void) | null;
-
-    class MockSpeechRecognition {
-      continuous = false;
-      interimResults = false;
-      lang = '';
-      onstart: RecognitionCallback = null;
-      onend: RecognitionCallback = null;
-      onerror: ((event: { error: string }) => void) | null = null;
-      onresult: unknown = null;
-
-      start(): void {
-        setTimeout(() => this.onstart?.(new Event('start')), 0);
-      }
-
-      stop(): void {
-        this.onend?.(new Event('end'));
-      }
-
-      abort(): void {
-        this.onend?.(new Event('end'));
-      }
-    }
-
-    Object.defineProperty(window, 'SpeechRecognition', {
-      configurable: true,
-      value: MockSpeechRecognition,
-    });
-    Object.defineProperty(window, 'webkitSpeechRecognition', {
-      configurable: true,
-      value: MockSpeechRecognition,
-    });
-  });
-}
-
 type VoiceTranscribeResult = { text: string; confidence?: number } | { error: string };
 
 interface VoiceTranscribeMockConfig {
@@ -287,7 +251,6 @@ test.beforeAll(async () => {
 
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await installSpeechRecognitionMock(page);
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
