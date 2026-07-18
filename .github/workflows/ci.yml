@@ -140,7 +140,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && '' || '--coverage' }}
+      # github.event_name != 'pull_request' guards the truthy branch so the
+      # `&&`/`||` ternary never has to fall through on an empty string (GitHub
+      # Actions expressions treat '' as falsy, which made the inverted form of
+      # this condition always resolve to '--coverage' — see SKY-7541).
+      COVERAGE_FLAG: ${{ github.event_name != 'pull_request' && '--coverage' || '' }}
 
     steps:
       - uses: actions/checkout@v4
