@@ -208,7 +208,8 @@ describe('useAgentSessions', () => {
 
   it('M12: degrades to summaries-only when preload lacks read()', async () => {
     const s1 = makeMockSession({ id: 's1' });
-    setupMockApi([s1]); // no read()
+    const mockApi = setupMockApi([s1]);
+    delete (mockApi as unknown as Record<string, unknown>).read; // simulate an older preload
     const { result } = renderHook(() => useAgentSessions('coach'));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
