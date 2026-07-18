@@ -28,7 +28,7 @@ interface Props {
   currentChapterId?: string | null;
 }
 
-type ExportResult = { path: string | null; cancelled: boolean; bytes?: number };
+type ExportResult = { path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] };
 interface ExportOptions { includeSynopsis: boolean; sceneSeparators: boolean }
 
 // ─── Persisted compile options (prototype S.sx.expSyn / expSep defaults) ───
@@ -67,6 +67,14 @@ function getScopedScenes(scope: ExportScope, stories: Story[]): Scene[] {
 
 function estimateWords(scenes: Scene[]): number { return scenes.reduce((t,sc)=>t+sc.blocks.reduce((u,b:Block)=>b.type==='note'?u:u+b.content.split(/\s+/).filter(Boolean).length,0),0); }
 
+// SKY-7108 — resolve missing-file scene ids to titles for the Done-state
+// warning; falls back to the raw id if the scene can't be found (e.g. it was
+// deleted from the manifest between export and render).
+function sceneLabel(sceneId: string, stories: Story[]): string {
+  for (const st of stories) for (const ch of st.chapters) { const sc = ch.scenes.find((s) => s.id === sceneId); if (sc) return sc.title; }
+  return sceneId;
+}
+
 function scopeLabel(scope: ExportScope, stories: Story[]): string {
   switch (scope.kind) {
     case 'vault': return 'Entire Vault';
@@ -84,15 +92,22 @@ async function exportEpub(scope: ExportScope, stories: Story[], options: ExportO
 
   const storyIds = stories.filter((story) => story.chapters.some((chapter) => chapter.scenes.length > 0)).map((story) => story.id);
   const exportedPaths: string[] = [];
+  const missingSceneIds: string[] = [];
   let totalBytes = 0;
 
   for (const storyId of storyIds) {
     const result = await window.api.exportEpub(storyId, undefined, undefined, options);
     if (result.cancelled) return { path: exportedPaths.join('\n') || null, cancelled: true };
     if (result.path) { exportedPaths.push(result.path); totalBytes += result.bytes ?? 0; }
+    if (result.missingSceneIds) missingSceneIds.push(...result.missingSceneIds);
   }
 
-  return { path: exportedPaths.join('\n') || null, cancelled: false, bytes: totalBytes || undefined };
+  return {
+    path: exportedPaths.join('\n') || null,
+    cancelled: false,
+    bytes: totalBytes || undefined,
+    missingSceneIds: missingSceneIds.length ? missingSceneIds : undefined,
+  };
 }
 
 // ─── Format cards (prototype exportFmts 4326–4331 + carried-over MD/TXT) ───
@@ -178,7 +193,7 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
   const [format, setFormat] = useState<ExportFormat>('docx');
   const [step, setStep] = useState<ExportStep>('pick');
   const [options, setOptions] = useState<ExportOptions>(loadExportOptions);
-  const [done, setDone] = useState<{ path: string; bytes?: number } | null>(null);
+  const [done, setDone] = useState<{ path: string; bytes?: number; missingSceneIds?: string[] } | null>(null);
 
   // Scope segment (prototype exScopeSeg: Full book / Current part / Current
   // chapter). Only story- and chapter-scoped opens carry a story context;
@@ -232,7 +247,7 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
         setStep('pick');
         return;
       }
-      setDone({ path: res.path, bytes: res.bytes });
+      setDone({ path: res.path, bytes: res.bytes, missingSceneIds: res.missingSceneIds });
       setStep('done');
     } catch (err) {
       alert(`Export failed: ${(err as Error).message}`);
@@ -270,6 +285,13 @@ export default function ExportDialog({ scope, stories, onClose, currentChapterId
               <span className="export-dialog-file-name" title={done.path}>{basename(done.path)}</span>
               {done.bytes !== undefined && <span className="export-dialog-file-size">{formatBytes(done.bytes)}</span>}
             </div>
+            {done.missingSceneIds && done.missingSceneIds.length > 0 && (
+              // SKY-7108 — surface scenes whose .md file was missing so a broken
+              // export is never mistaken for a complete one.
+              <div className="export-dialog-done-warning" role="alert">
+                {done.missingSceneIds.length === 1 ? '1 scene had' : `${done.missingSceneIds.length} scenes had`} no prose file and {done.missingSceneIds.length === 1 ? 'was' : 'were'} exported empty: {done.missingSceneIds.map((id) => sceneLabel(id, stories)).join(', ')}
+              </div>
+            )}
             <div className="export-dialog-done-actions">
               <button className="export-dialog-reveal" onClick={() => { void window.api.exportRevealLast?.(); }}>Show in folder</button>
               <button className="export-dialog-done-btn" onClick={onClose}>Done</button>

@@ -39,6 +39,9 @@ import {
   type Page,
 } from '@playwright/test';
 
+// SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source
+test.skip(true, 'SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source');
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');

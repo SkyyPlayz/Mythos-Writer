@@ -61,15 +61,16 @@ function makeInput(overrides: Partial<AeonDeriveInput> = {}): AeonDeriveInput {
 // ─── Mode resolution ───
 
 describe('resolveTimelineMode', () => {
-  it('accepts every prototype mode', () => {
-    for (const m of ['progress', 'structure', 'spreadsheet', 'relations', 'subway']) {
+  it('accepts every prototype mode (M23: seven — tlModeSeg 6559)', () => {
+    for (const m of ['progress', 'structure', 'plot', 'spreadsheet', 'tension', 'relations', 'subway']) {
       expect(resolveTimelineMode(m)).toBe(m);
     }
   });
 
-  it('migrates the legacy Beta-2 modes', () => {
+  it('migrates the legacy Beta-2 modes and the interim M22 axis surface', () => {
     expect(resolveTimelineMode('aeon')).toBe('progress');
     expect(resolveTimelineMode('track')).toBe('subway');
+    expect(resolveTimelineMode('axis')).toBe('progress');
   });
 
   it('returns null for unknown or absent values', () => {

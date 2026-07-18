@@ -253,12 +253,21 @@ async function activateStorySection(pg: Page): Promise<void> {
 }
 
 /** Open the story's first scene so DesktopShell sets `selectedStory`, then
- *  switch to the Timeline view. Returns once the spreadsheet root is mounted.
+ *  switch to the Timeline view.
+ *
+ *  Beta 4 M23 made Progress (the axis lane rows) the DEFAULT timeline mode,
+ *  so suites that exercise the Beta-2 spreadsheet surface (the TC-TL-0x
+ *  block and the perf gate) explicitly switch to Spreadsheet after the view
+ *  mounts; pass mode 'progress' to stay on the axis lanes.
  *
  *  StoryNavigator initialises with every story + chapter expanded, so we look
  *  for the scene row directly rather than clicking toggles — toggling here
  *  would collapse the tree and hide the scene we need. */
-async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
+async function openTimeline(
+  pg: Page,
+  sceneTitle: string,
+  mode: 'spreadsheet' | 'progress' = 'spreadsheet',
+): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   const storiesTab = pg.locator('.rail-tab', { hasText: 'Stories' });
@@ -278,7 +287,16 @@ async function openTimeline(pg: Page, sceneTitle: string): Promise<void> {
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
 
-  await expect(pg.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
+  await expect(pg.locator('[data-testid="timeline-root"]')).toBeVisible({ timeout: 8_000 });
+  if (mode === 'spreadsheet') {
+    // Persisted viewMode may already be 'spreadsheet' from an earlier switch
+    // in this profile; clicking the seg button is idempotent either way.
+    await pg.locator('[data-testid="view-mode-spreadsheet"]').click();
+    await expect(pg.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
+  } else {
+    await pg.locator('[data-testid="view-mode-progress"]').click();
+    await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
+  }
 }
 
 // ─── Suite-level state ────────────────────────────────────────────────────────
@@ -708,159 +726,196 @@ test.describe('SKY-797 — perf gate', () => {
   });
 });
 
-// ─── Beta 3 M20 — Timeline v2: five Aeon modes (TC-TL-M20-*) ─────────────────
+
+// ─── Beta 4 M23 — Lane rows + Progress/Structure (TC-TL-M23-*) ───────────────
 //
-// The Beta-2 "Spreadsheet / AEON / AEON Track" switcher grew into the
-// prototype's five modes: Plan vs Progress / Structure / Spreadsheet /
-// Relationships / Subway (TimelineRoot.tsx + TimelineLanes / Relationships /
-// Subway). The AEON Track surface was superseded by these views, so the old
-// TC-TL-TRK-* suite (which drove a now-unreachable mode) was replaced by this
-// block. All five views derive from the same seeded scene data; the fixture
-// has no written word counts and no character entities, which also exercises
-// the graceful-degradation paths (all-planned greying, no-character hints).
+// M23 (§8.4) rebuilt the Progress/Structure surfaces on the M22 axis engine:
+// the seven-mode segment (Progress · Structure · Plotlines · Spreadsheet ·
+// Tension · Relationships · Subway), the full story row stack plotted from
+// timelines.json, the functional View/Show filters, Templates ▾ (dashed beat
+// plotlines — §14.4 step 8) and the Progress written/planned greyscale. The
+// timelines store is seeded EXPLICITLY on disk (never relying on implicit
+// demo seeding) so every row assertion maps to a known fixture item.
 
-test.describe('Beta 3 M20 — Timeline v2 five modes (TC-TL-M20-*)', () => {
-  const M20_STORY_ID = 'story-m20-e2e';
-  const M20_CHAPTER_ID = 'chapter-m20-e2e';
-  const M20_STORY_TITLE = 'Chronicles of the Aeon';
-  const M20_CHAPTER_TITLE = 'Aeon One';
+test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
+  const M23_STORY_ID = 'story-m23-e2e';
+  const M23_CHAPTER_ID = 'chapter-m23-e2e';
+  const M23_STORY_TITLE = 'Chronicles of the Axis';
+  const M23_CHAPTER_TITLE = 'Axis One';
 
-  const A1 = { id: 'sc-m20-1', title: 'Boarding',  date: '2340-01-01', arcs: ['arc-m20-a'], pov: 'Eira', mood: 'tense' };
-  const A2 = { id: 'sc-m20-2', title: 'Delay',     date: '2340-01-03', arcs: ['arc-m20-a'], pov: 'Eira', mood: 'somber' };
-  const A3 = { id: 'sc-m20-3', title: 'Terminus',  date: '2340-08-20', arcs: ['arc-m20-b'], pov: 'Kael', mood: 'hopeful' };
-  const A4 = { id: 'sc-m20-4', title: 'Flashback', date: '',           arcs: [] as string[], pov: 'Eira', mood: 'wry' };
+  const B1 = { id: 'sc-m23-1', title: 'Boarding',  date: '2340-01-01', arcs: [] as string[], pov: 'Eira', mood: 'tense' };
+  const B2 = { id: 'sc-m23-2', title: 'Terminus',  date: '2340-08-20', arcs: [] as string[], pov: 'Kael', mood: 'hopeful' };
 
-  const M20_ARC_A = { id: 'arc-m20-a', title: 'Hero Journey', color: '#00f0ff' };
-  const M20_ARC_B = { id: 'arc-m20-b', title: 'Villain Rise', color: '#ff4dff' };
+  /** Explicit timelines.json fixture: one story timeline with books, an arc,
+   *  a character lifespan, world/theme chips and a flashback event pair. */
+  function seedTimelinesStore(vaultDir: string): void {
+    const now = new Date().toISOString();
+    const store = {
+      schemaVersion: 1,
+      activeTimelineId: 'tl-story',
+      timelines: [
+        {
+          id: 'tl-story', name: 'The Last City of Veynn', kind: 'story', axis: 'calendar',
+          calendar: { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 },
+          createdAt: now, updatedAt: now,
+        },
+      ],
+      eras: [
+        { id: 'era-1', timelineId: 'tl-story', name: 'OPENING', startWhen: 0, endWhen: 864 },
+      ],
+      spans: [
+        { id: 'book-1', timelineId: 'tl-story', name: 'BOOK ONE', startWhen: 0, endWhen: 432 },
+        { id: 'book-2', timelineId: 'tl-story', name: 'BOOK TWO', startWhen: 432, endWhen: 864 },
+        { id: 'arc-1', timelineId: 'tl-story', name: 'I. The Call', startWhen: 0, endWhen: 400, rowId: 'lane:arcs' },
+        { id: 'char-1', timelineId: 'tl-story', name: 'Mira', startWhen: 0, endWhen: 800, rowId: 'lane:characters' },
+      ],
+      rows: [],
+      events: [
+        { id: 'ev-early', timelineId: 'tl-story', name: 'The Watcher Calls', when: 100, chapter: 1, summary: 'A summons at dawn.' },
+        { id: 'ev-flash', timelineId: 'tl-story', name: 'The Crown of Ash', when: 50, chapter: 31, summary: 'The truth of the royal line.' },
+        { id: 'ev-late', timelineId: 'tl-story', name: 'The Last Stand', when: 800, chapter: 40 },
+        { id: 'ev-world', timelineId: 'tl-story', name: 'Festival of Lanterns', when: 300, rowId: 'lane:world' },
+        { id: 'ev-theme', timelineId: 'tl-story', name: 'Trust & Betrayal', when: 0, rowId: 'lane:themes' },
+      ],
+    };
+    fs.writeFileSync(path.join(vaultDir, 'timelines.json'), JSON.stringify(store, null, 2));
+  }
 
-  let m20UserData: string;
-  let m20VaultDir: string;
-  let m20NotesVaultDir: string;
-  let m20App: ElectronApplication | undefined;
-  let m20Page: Page;
+  let m23UserData: string;
+  let m23VaultDir: string;
+  let m23NotesVaultDir: string;
+  let m23App: ElectronApplication | undefined;
+  let m23Page: Page;
 
   test.beforeAll(async () => {
-    m20UserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m20-user-'));
-    m20VaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m20-vault-'));
-    m20NotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m20-notes-'));
-    seedUserData(m20UserData, m20VaultDir, m20NotesVaultDir);
+    m23UserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-user-'));
+    m23VaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-vault-'));
+    m23NotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-notes-'));
+    seedUserData(m23UserData, m23VaultDir, m23NotesVaultDir);
     seedVault(
-      m20VaultDir,
-      M20_STORY_ID, M20_STORY_TITLE,
-      M20_CHAPTER_ID, M20_CHAPTER_TITLE,
-      [A1, A2, A3, A4],
-      [M20_ARC_A, M20_ARC_B],
+      m23VaultDir,
+      M23_STORY_ID, M23_STORY_TITLE,
+      M23_CHAPTER_ID, M23_CHAPTER_TITLE,
+      [B1, B2],
+      [],
     );
-    m20App = await launchApp(m20UserData);
-    m20Page = await firstWindow(m20App);
-    await openTimeline(m20Page, A1.title);
+    seedTimelinesStore(m23VaultDir);
+    m23App = await launchApp(m23UserData);
+    m23Page = await firstWindow(m23App);
+    await openTimeline(m23Page, B1.title, 'progress');
   });
 
   test.afterAll(async () => {
-    await m20App?.close().catch(() => {});
-    fs.rmSync(m20UserData, { recursive: true, force: true });
-    fs.rmSync(m20VaultDir, { recursive: true, force: true });
-    fs.rmSync(m20NotesVaultDir, { recursive: true, force: true });
+    await m23App?.close().catch(() => {});
+    fs.rmSync(m23UserData, { recursive: true, force: true });
+    fs.rmSync(m23VaultDir, { recursive: true, force: true });
+    fs.rmSync(m23NotesVaultDir, { recursive: true, force: true });
   });
 
-  test('TC-TL-M20-01: the mode segment offers the five prototype modes with Spreadsheet as default', async () => {
-    const modeBar = m20Page.getByRole('group', { name: 'Timeline view mode' });
+  test('TC-TL-M23-01: seven-mode segment with Progress default + the full toolbar', async () => {
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await expect(modeBar).toBeVisible({ timeout: 6_000 });
-    for (const label of ['Plan vs Progress', 'Structure', 'Spreadsheet', 'Relationships', 'Subway']) {
+    for (const label of ['Progress', 'Structure', 'Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
       await expect(modeBar.getByRole('button', { name: label, exact: true })).toBeVisible();
     }
-    await expect(modeBar.getByRole('button', { name: 'Spreadsheet', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(m20Page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible();
+    await expect(modeBar.getByRole('button', { name: 'Progress', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    // Toolbar: Templates ▾, + Plotline, View/Group/Show selects, Today.
+    await expect(m23Page.locator('[data-testid="tl-templates-btn"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-add-plotline"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-view-filter"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="groupby-select"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-show-filter"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-today-btn"]')).toBeVisible();
   });
 
-  test('TC-TL-M20-02: all five modes render their surface from the same seeded scene data', async () => {
-    const modeBar = m20Page.getByRole('group', { name: 'Timeline view mode' });
+  test('TC-TL-M23-02: every story row plots from timelines.json', async () => {
+    // ERAS + BOOKS (M22 rows) from the seeded store.
+    await expect(m23Page.locator('[data-testid="ax-era-era-1"]')).toHaveText('OPENING');
+    await expect(m23Page.locator('[data-testid="ax-span-book-1"]')).toContainText('BOOK ONE');
+    // M23 rows: ARCS · CHAPTERS · KEY EVENTS (badged) · CHARACTERS · WORLD · THEMES.
+    await expect(m23Page.locator('[data-testid="ax-arc-arc-1"]')).toContainText('I. The Call');
+    await expect(m23Page.locator('[data-testid="ax-chapter"]')).toHaveCount(1); // one story chapter
+    await expect(m23Page.locator('[data-testid="ax-event-ev-early"]')).toContainText('The Watcher Calls');
+    await expect(m23Page.locator('[data-testid="ax-event-ev-early"]')).toContainText('Ch. 1');
+    await expect(m23Page.locator('[data-testid="ax-flash-ev-flash"]')).toHaveText('FLASHBACK');
+    await expect(m23Page.locator('[data-testid="ax-char-char-1"]')).toContainText('Mira');
+    await expect(m23Page.locator('[data-testid="ax-world-ev-world"]')).toContainText('Festival of Lanterns');
+    await expect(m23Page.locator('[data-testid="ax-theme-ev-theme"]')).toContainText('Trust & Betrayal');
+    // Story-lane items never leak into KEY EVENTS.
+    await expect(m23Page.locator('[data-testid="ax-event-ev-world"]')).toHaveCount(0);
+    // Left panel: Overview + book-focus cards.
+    await expect(m23Page.locator('[data-testid="tl-overview-card"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-book-card-book-1"]')).toContainText('BOOK ONE');
+  });
 
-    // Plan vs Progress → lane stack + legend.
-    await modeBar.getByRole('button', { name: 'Plan vs Progress' }).click();
-    const lanes = m20Page.locator('[data-testid="timeline-lanes"]');
-    await expect(lanes).toBeVisible({ timeout: 6_000 });
-    await expect(lanes).toHaveAttribute('data-mode', 'progress');
-    await expect(m20Page.locator('[data-testid="tl-legend"]')).toContainText('planned from your notes');
-    await expect(m20Page.locator('[data-testid="tla-chapter-cell"]')).toHaveCount(1);
-    // Four seeded scenes → four key-event cards.
-    await expect(m20Page.locator('[data-testid="tla-event-card"]')).toHaveCount(4);
+  test('TC-TL-M23-03: Progress greys planned content; Structure does not', async () => {
+    // No seeded scene has a word count → the chapter is unwritten/planned.
+    const mini = m23Page.locator('[data-testid="ax-chapter"]').first();
+    await expect(mini).toBeVisible({ timeout: 6_000 });
+    await expect(mini).toHaveAttribute('style', /grayscale\(0?\.92\) brightness\(0?\.82\)/);
 
-    // Structure → same lanes, ungreyed, no legend.
-    await modeBar.getByRole('button', { name: 'Structure' }).click();
-    await expect(lanes).toHaveAttribute('data-mode', 'structure');
-    await expect(m20Page.locator('[data-testid="tl-legend"]')).toHaveCount(0);
-    await expect(m20Page.locator('[data-testid="tla-event-card"]')).toHaveCount(4);
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+    await modeBar.getByRole('button', { name: 'Structure', exact: true }).click();
+    await expect(mini).not.toHaveAttribute('style', /grayscale/);
+    await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible();
+  });
 
-    // Relationships → event headers from the same events; no seeded character
-    // entities → degradation hint instead of presence rows.
-    await modeBar.getByRole('button', { name: 'Relationships' }).click();
-    await expect(m20Page.locator('[data-testid="timeline-relationships"]')).toBeVisible({ timeout: 6_000 });
-    await expect(m20Page.locator('[data-testid="trl-event-head"]')).toHaveCount(4);
-    await expect(m20Page.locator('[data-testid="trl-no-lines"]')).toBeVisible();
+  test('TC-TL-M23-04: Templates ▾ → Save the Cat lays a dashed beat plotline (§14.4 step 8)', async () => {
+    await m23Page.locator('[data-testid="tl-templates-btn"]').click();
+    await expect(m23Page.locator('[data-testid="tl-templates-menu"]')).toBeVisible();
+    await m23Page.locator('[data-testid="tl-template-save-the-cat"]').click();
 
-    // Subway → same event stations; same degradation hint for lines.
-    await modeBar.getByRole('button', { name: 'Subway' }).click();
-    await expect(m20Page.locator('[data-testid="timeline-subway"]')).toBeVisible({ timeout: 6_000 });
-    await expect(m20Page.locator('[data-testid="tsw-event"]')).toHaveCount(4);
-    await expect(m20Page.locator('[data-testid="tsw-no-lines"]')).toBeVisible();
+    // Toast confirms; the PLOTLINES row gains a lane of 8 dashed beat chips.
+    // Filtered by text: several app-toasts can coexist (the global
+    // notes-migration notice merged from main, plus other timeline toasts),
+    // so a bare [data-testid="app-toast"] locator trips Playwright's strict
+    // mode. Same pattern as wiki-links.spec.ts.
+    await expect(m23Page.locator('[data-testid="app-toast"]')
+      .filter({ hasText: '“Save the Cat” laid onto the timeline as a plotline' }))
+      .toBeVisible({ timeout: 8_000 });
+    await expect(m23Page.locator('.ax-plotcard[data-beat="true"]')).toHaveCount(8, { timeout: 8_000 });
+    await expect(m23Page.locator('.ax-plotcard').first()).toHaveCSS('border-style', 'dashed');
+    // The left panel lists the new plotline with its card count.
+    await expect(m23Page.locator('[data-testid="tlr-aside"]')).toContainText('Save the Cat');
+    // Beat cards survive restarts: the store on disk now holds the plotline row.
+    const onDisk = JSON.parse(fs.readFileSync(path.join(m23VaultDir, 'timelines.json'), 'utf-8'));
+    expect(onDisk.rows.some((r: { kind: string; name: string }) => r.kind === 'plotline' && r.name === 'Save the Cat')).toBe(true);
+    expect(onDisk.events.filter((e: { beat?: boolean }) => e.beat).length).toBe(8);
+  });
 
-    // Back to the spreadsheet — the Beta-2 surface is intact.
+  test('TC-TL-M23-05: the Show filter regroups the KEY EVENTS row live', async () => {
+    // Nothing is written (no word counts) → Written Only empties the row.
+    await m23Page.locator('[data-testid="tl-show-filter"]').selectOption('Written Only');
+    await expect(m23Page.locator('[data-testid="ax-event-ev-early"]')).toHaveCount(0);
+    await expect(m23Page.locator('[data-testid="ax-event-ev-late"]')).toHaveCount(0);
+    await m23Page.locator('[data-testid="tl-show-filter"]').selectOption('Planned Only');
+    await expect(m23Page.locator('[data-testid="ax-event-ev-early"]')).toBeVisible();
+    await m23Page.locator('[data-testid="tl-show-filter"]').selectOption('All Events');
+    await expect(m23Page.locator('[data-testid="ax-event-ev-late"]')).toBeVisible();
+  });
+
+  test('TC-TL-M23-06: Today explains itself while nothing is written; modes route their surfaces', async () => {
+    await m23Page.locator('[data-testid="tl-today-btn"]').click();
+    // Filtered by text (see TC-TL-M23-04): concurrent app-toasts must not
+    // make this locator ambiguous under Playwright's strict mode.
+    await expect(m23Page.locator('[data-testid="app-toast"]')
+      .filter({ hasText: 'Nothing written yet' }))
+      .toBeVisible();
+
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+    await modeBar.getByRole('button', { name: 'Plotlines', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="tlr-plot-stub"]')).toBeVisible();
+    await modeBar.getByRole('button', { name: 'Tension', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="tlr-tension-stub"]')).toBeVisible();
+    await modeBar.getByRole('button', { name: 'Relationships', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-relationships"]')).toBeVisible({ timeout: 6_000 });
+    await modeBar.getByRole('button', { name: 'Subway', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-subway"]')).toBeVisible({ timeout: 6_000 });
     await modeBar.getByRole('button', { name: 'Spreadsheet', exact: true }).click();
-    await expect(m20Page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 6_000 });
-    await expect(m20Page.locator(`[data-testid="row-${A1.id}"]`)).toBeVisible();
-  });
-
-  test('TC-TL-M20-03: Plan vs Progress greys unwritten content with the exact prototype filter', async () => {
-    const modeBar = m20Page.getByRole('group', { name: 'Timeline view mode' });
-    await modeBar.getByRole('button', { name: 'Plan vs Progress' }).click();
-    const cell = m20Page.locator('[data-testid="tla-chapter-cell"]').first();
-    await expect(cell).toBeVisible({ timeout: 6_000 });
-    // No seeded scene has a word count → everything is "planned from notes".
-    // React/Chromium serialize the inline filter with leading zeros
-    // (grayscale(0.92)), so accept both forms of the prototype values.
-    await expect(cell).toHaveAttribute('style', /grayscale\(0?\.92\) brightness\(0?\.82\)/);
-
-    await modeBar.getByRole('button', { name: 'Structure' }).click();
-    await expect(cell).not.toHaveAttribute('style', /grayscale/);
-  });
-
-  test('TC-TL-M20-04: the minimap window scrubs the lane canvas horizontally', async () => {
-    const modeBar = m20Page.getByRole('group', { name: 'Timeline view mode' });
-    await modeBar.getByRole('button', { name: 'Structure' }).click();
-    await expect(m20Page.locator('[data-testid="timeline-lanes"]')).toBeVisible({ timeout: 6_000 });
-
-    // Densest zoom widens the canvas to 450% so there is room to scroll.
-    await m20Page.locator('[data-testid="tl-zoom-scene"]').click();
-
-    const scroller = m20Page.locator('[data-testid="tla-scroll"]');
-    expect(await scroller.evaluate(el => el.scrollLeft)).toBe(0);
-
-    const minimap = m20Page.locator('[data-testid="timeline-minimap"]');
-    await expect(minimap).toBeVisible();
-    const box = await minimap.boundingBox();
-    if (!box) throw new Error('minimap has no bounding box');
-
-    // Drag from the window toward the right end of the track.
-    await m20Page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
-    await m20Page.mouse.down();
-    await m20Page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 6 });
-    await m20Page.mouse.up();
-
-    const scrolled = await scroller.evaluate(el => el.scrollLeft);
-    expect(scrolled, 'dragging the minimap window right must scroll the lanes right').toBeGreaterThan(0);
-  });
-
-  test('TC-TL-M20-05: Today flips the lanes modes to Plan vs Progress and keeps the other modes', async () => {
-    const modeBar = m20Page.getByRole('group', { name: 'Timeline view mode' });
-
-    await modeBar.getByRole('button', { name: 'Structure' }).click();
-    await m20Page.locator('[data-testid="tl-today-btn"]').click();
-    await expect(modeBar.getByRole('button', { name: 'Plan vs Progress' })).toHaveAttribute('aria-pressed', 'true');
-
-    await modeBar.getByRole('button', { name: 'Subway' }).click();
-    await m20Page.locator('[data-testid="tl-today-btn"]').click();
-    await expect(modeBar.getByRole('button', { name: 'Subway' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(m20Page.locator('[data-testid="timeline-subway"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 6_000 });
+    // Back to the lanes for good measure.
+    await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
   });
 });
