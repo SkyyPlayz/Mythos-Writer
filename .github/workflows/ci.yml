@@ -206,7 +206,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-1:
-    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y
+    # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y, smoke, tab-shell, story-tab-subview, notes-tab, cloud-sync
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -285,6 +285,21 @@ jobs:
       - name: E2E — Settings background image persistence (SKY-3219)
         run: xvfb-run --auto-servernum npm run test:e2e:settings-background
 
+      - name: E2E — App smoke (vault CRUD + basic navigation) (MYT-255)
+        run: xvfb-run --auto-servernum npm run test:e2e:smoke
+
+      - name: E2E — Tab shell switching + state persistence (SKY-2094)
+        run: xvfb-run --auto-servernum npm run test:e2e:tab-shell
+
+      - name: E2E — Story tab sub-view bar defaults + persistence (SKY-2095)
+        run: xvfb-run --auto-servernum npm run test:e2e:story-tab-subview
+
+      - name: E2E — Notes tab layout + sub-view persistence (SKY-2096)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-tab
+
+      - name: E2E — Cloud sync vault move + conflict warnings (SKY-865)
+        run: xvfb-run --auto-servernum npm run test:e2e:cloud-sync
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -295,7 +310,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration, continuity-peek, suggestions, v1-migration, icons, onboarding
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -360,6 +375,21 @@ jobs:
       - name: E2E — Comments v2 gutter + vault-copy round-trip (Beta 4 M9)
         run: xvfb-run --auto-servernum npm run test:e2e:comments
 
+      - name: E2E — Continuity peek right-sidebar panel (SKY-2012)
+        run: xvfb-run --auto-servernum npm run test:e2e:continuity-peek
+
+      - name: E2E — Suggestion store apply/reject/rollback (MYT-354)
+        run: xvfb-run --auto-servernum npm run test:e2e:suggestions
+
+      - name: E2E — v1 vault migration regression (SKY-1409)
+        run: xvfb-run --auto-servernum npm run test:e2e:v1-migration
+
+      - name: E2E — Emoji icon frontmatter in Notes Vault tree (SKY-194)
+        run: xvfb-run --auto-servernum npm run test:e2e:icons
+
+      - name: E2E — Onboarding wizard three-path smoke (MYT-379)
+        run: xvfb-run --auto-servernum npm run test:e2e:onboarding
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -370,7 +400,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-3:
-    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded), global-search
+    # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded), global-search, accessibility-sky1362, inline-scene-rename, note-templates, word-count, vault-routing
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -453,6 +483,21 @@ jobs:
       - name: E2E — Global Search TC-GS-01..06 (SKY-129/160/905/7082)
         run: xvfb-run --auto-servernum npm run test:e2e:global-search
 
+      - name: E2E — Accessibility fixes aria-hidden + focus-restore (SKY-1362)
+        run: xvfb-run --auto-servernum npm run test:e2e:accessibility-sky1362
+
+      - name: E2E — Inline scene rename TC-ISR-01..06 (SKY-115)
+        run: xvfb-run --auto-servernum npm run test:e2e:inline-scene-rename
+
+      - name: E2E — Note templates dialog + prompt fields (SKY-190)
+        run: xvfb-run --auto-servernum npm run test:e2e:note-templates
+
+      - name: E2E — Word count status bar + navigator badge (SKY-615)
+        run: xvfb-run --auto-servernum npm run test:e2e:word-count
+
+      - name: E2E — Vault routing regression (SKY-4712 nav)
+        run: xvfb-run --auto-servernum npm run test:e2e:vault-routing
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -463,7 +508,7 @@ jobs:
           retention-days: 3
 
   e2e-shard-4:
-    # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
+    # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter, two-vault-firstrun, keyboard-shortcuts, provider-settings, voice-io
     needs: [build-electron]
     runs-on: self-hosted
     timeout-minutes: 30
@@ -534,6 +579,18 @@ jobs:
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
 
+      - name: E2E — Two-vault first-run layout seeding (MYT-769)
+        run: xvfb-run --auto-servernum npm run test:e2e:two-vault-firstrun
+
+      - name: E2E — Keyboard shortcuts global + editor (SKY-194)
+        run: xvfb-run --auto-servernum npm run test:e2e:keyboard-shortcuts
+
+      - name: E2E — Provider settings Ollama/Anthropic/test-connection (SKY-686)
+        run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
+
+      - name: E2E — Voice IO push-to-talk + TTS (SKY-1506)
+        run: xvfb-run --auto-servernum npm run test:e2e:voice-io
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -543,12 +600,171 @@ jobs:
           path: e2e-report/
           retention-days: 3
 
+  e2e-shard-5:
+    # Shard 5: bg-scrim-slider, brainstorm-wave33, coach-page, auto-linker, scene-editor-empty-states, onboarding-four-paths, lmp, notes-parity
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
+      - name: E2E — Background scrim slider CSS var regression (SKY-3220)
+        run: xvfb-run --auto-servernum npm run test:e2e:bg-scrim-slider
+
+      - name: E2E — Brainstorm Wave 3.3 drag-reorder + open-in-writing-panel (SKY-1404)
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-wave33
+
+      - name: E2E — Writing Coach page + suggestions rail (Beta 4 M12)
+        run: xvfb-run --auto-servernum npm run test:e2e:coach-page
+
+      - name: E2E — Auto-linker hint decoration + accept/reject (SKY-192)
+        run: xvfb-run --auto-servernum npm run test:e2e:auto-linker
+
+      - name: E2E — Scene Crafter editor empty states AC-ES-01..02 (SKY-1996)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
+
+      - name: E2E — Four-path onboarding AC-OB-01..25 (SKY-2639)
+        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-four-paths
+
+      - name: E2E — Local model picker (SKY-LMP)
+        run: xvfb-run --auto-servernum npm run test:e2e:lmp
+
+      - name: E2E — Notes rich-mode parity with Story editor (SKY-3204/B6)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-parity
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-5
+          path: e2e-report/
+          retention-days: 3
+
+  e2e-shard-6:
+    # Shard 6: editor-format-bar, editor-page-chrome, archive-agent, beta-read, cross-tab-links, custom-templates, panel-layouts, shell-relayout, wiki-links
+    needs: [build-electron]
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore electron build from cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: out/
+          key: electron-build-${{ github.run_id }}
+
+      - name: Rebuild electron if cache miss
+        # SKY-3742/SKY-3872: fallback rebuild when the cache key was evicted under
+        # load. Avoids fail-on-cache-miss hard-fail while always supplying a build.
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: rm -rf out/ && npm run build:electron
+
+      - name: Install Xvfb (virtual display for Electron E2E)
+        run: |
+          if command -v Xvfb >/dev/null 2>&1; then
+            echo "Xvfb already installed — skipping apt-get (avoids sudo on self-hosted runner)"
+          else
+            sudo apt-get update -q
+            sudo apt-get install -y xvfb
+          fi
+
+      - name: E2E — Story editor formatting toolbar + Underline mark (SKY-3204/B6)
+        run: xvfb-run --auto-servernum npm run test:e2e:editor-format-bar
+
+      - name: E2E — Story page chrome presets + margin/font sliders (SKY-3204/B6)
+        run: xvfb-run --auto-servernum npm run test:e2e:editor-page-chrome
+
+      - name: E2E — Archive Agent MVP TC-AA-01..08 (SKY-2588)
+        run: xvfb-run --auto-servernum npm run test:e2e:archive-agent
+
+      - name: E2E — Beta-Read anchored inline comments TC-BR-01..03 (MYT-381)
+        run: xvfb-run --auto-servernum npm run test:e2e:beta-read
+
+      - name: E2E — Cross-tab wiki-link jumps + tab-aware shortcuts (SKY-2099)
+        run: xvfb-run --auto-servernum npm run test:e2e:cross-tab-links
+
+      - name: E2E — Custom template lifecycle rename/delete/duplicate (SKY-1462)
+        run: xvfb-run --auto-servernum npm run test:e2e:custom-templates
+
+      - name: E2E — Panel system Wave 2f saved workspace layouts (SKY-1700)
+        run: xvfb-run --auto-servernum npm run test:e2e:panel-layouts
+
+      - name: E2E — Shell relayout regression + workspace tab strip (SKY-3180)
+        run: xvfb-run --auto-servernum npm run test:e2e:shell-relayout
+
+      - name: E2E — Cross-vault wiki-link navigation + graph scopes (SKY-4712)
+        run: xvfb-run --auto-servernum npm run test:e2e:wiki-links
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-shard-6
+          path: e2e-report/
+          retention-days: 3
+
   ci:
     # Required check aggregator — always runs (if: always()) so branch protection
     # gets a definitive pass/fail rather than a "pending" indefinite skipped state
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
-    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4, e2e-shard-5, e2e-shard-6]
     runs-on: self-hosted
     if: always()
     timeout-minutes: 5
@@ -556,7 +772,7 @@ jobs:
     steps:
       - name: All checks passed
         run: |
-          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
+          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }} ${{ needs.e2e-shard-5.result }} ${{ needs.e2e-shard-6.result }}"
           echo "Upstream results: $results"
           for r in $results; do
             if [ "$r" != "success" ]; then
@@ -564,7 +780,7 @@ jobs:
               exit 1
             fi
           done
-          echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
+          echo "All checks passed — lint, typecheck, unit, and all 6 E2E shards are green."
 
   build-macos:
     # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
