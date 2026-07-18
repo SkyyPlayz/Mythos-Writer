@@ -862,6 +862,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Notify Paperclip board of CI completion
+        # A board-ping is a notification, not a quality gate — never let it fail
+        # the `report` job and turn an otherwise-green PR red (SKY-7434).
+        continue-on-error: true
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
