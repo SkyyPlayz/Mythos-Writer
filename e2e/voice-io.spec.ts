@@ -8,9 +8,9 @@
  *
  * | AC      | Implementation | Unit coverage                             | E2E here                   |
  * |---------|----------------|-------------------------------------------|----------------------------|
- * | AC-V-01 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-01 (skip — needs STT) |
- * | AC-V-02 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-02a skip / V-02b ✓    |
- * | AC-V-03 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-03 (skip — needs STT) |
+ * | AC-V-01 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-01a real (mock STT) / V-01b real (mock error) |
+ * | AC-V-02 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-02a real / V-02b ✓ / V-02c real |
+ * | AC-V-03 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-03a real (mock STT) / V-03b skip (feature not implemented) |
  * | AC-V-04 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-04a ✓ / TC-V-04b ✓   |
  * | AC-V-05 | SKY-1503       | accessibility.test.tsx ✓                  | TC-V-05a ✓ / TC-V-05b ✓   |
  * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 (smoke E2E)        |
@@ -19,12 +19,23 @@
  * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E)        |
  * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10 real               |
  * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 real               |
- * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 (skip — needs STT) |
+ * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 real (mock STT)    |
  *
- * SKY-1503 merged via PR #457. Tests that depend on the browser-native
- * SpeechRecognition API (onresult, silence timer, onstart) remain skipped because
- * headless Electron cannot drive real microphone input. The unit tests in
- * BrainstormPage.test.tsx provide that coverage via mocked Web Speech events.
+ * SKY-1503 merged via PR #457. SKY-3192 lifted most of the tests that depend on
+ * the browser-native SpeechRecognition API by installing a scriptable mock engine
+ * (`installSpeechRecognitionMock` below) that can fire onresult/onerror events on
+ * demand — headless Electron still can't drive a real microphone, but the mock
+ * exercises the exact same event-handler code paths BrainstormPage.tsx wires up
+ * for the real API. TC-V-03b stays skipped: it covers a countdown SR announcement
+ * that was deliberately never implemented (visual-only countdown), not a test
+ * infra gap. TC-V-07 stays skipped: it needs a WA suggestion card, which requires
+ * a real LLM round trip this suite doesn't stub.
+ *
+ * Two integration-smoke tests exercise the full pipelines end to end:
+ *   - "capture→transcribe→insert": mock STT result → silence-timeout commit →
+ *     text lands in the Brainstorm prompt textarea.
+ *   - "speak→play": window.api.voiceSpeak → main-process handler → voice:speak:done
+ *     push event round-trips through the real preload bridge.
  *
  * TC-V-06..V-09 are smoke E2E tests — the primary assertion coverage lives in the
  * corresponding unit test files above. These tests verify the surfaces render in a
@@ -137,7 +148,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 /** Navigate to Brainstorm and wait for it to load. */
 async function openBrainstorm(page: Page): Promise<void> {
-  if (await page.locator('.brainstorm-title').isVisible().catch(() => false)) return;
+  if (await page.locator('.brainstorm-header .pc-header-title').isVisible().catch(() => false)) return;
 
   const legacyMenu = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
   if (await legacyMenu.count()) {
@@ -152,7 +163,7 @@ async function openBrainstorm(page: Page): Promise<void> {
     }
   }
 
-  await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.brainstorm-header .pc-header-title')).toBeVisible({ timeout: 8_000 });
 }
 
 /** Navigate to the Editor sidebar's Assistant tab and wait for it to mount. */
@@ -167,9 +178,19 @@ async function openAssistantPanel(page: Page): Promise<void> {
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
 }
 
+/**
+ * Installs a scriptable SpeechRecognition mock plus two window-level test hooks:
+ *   - `__fireMockRecognitionResult(text, isFinal)` dispatches onresult on the most
+ *     recently constructed instance, shaped like a real SpeechRecognitionEvent.
+ *   - `__voiceMockForceError` — when set to an error code string before start(),
+ *     the mock fires onerror instead of onstart (simulates e.g. 'not-allowed').
+ * Both let tests drive BrainstormPage's real onresult/onerror handlers without a
+ * live microphone.
+ */
 async function installSpeechRecognitionMock(page: Page): Promise<void> {
   await page.evaluate(() => {
     type RecognitionCallback = ((event: Event) => void) | null;
+    type ResultCallback = ((event: { resultIndex: number; results: unknown }) => void) | null;
 
     class MockSpeechRecognition {
       continuous = false;
@@ -178,9 +199,20 @@ async function installSpeechRecognitionMock(page: Page): Promise<void> {
       onstart: RecognitionCallback = null;
       onend: RecognitionCallback = null;
       onerror: ((event: { error: string }) => void) | null = null;
-      onresult: unknown = null;
+      onresult: ResultCallback = null;
+
+      constructor() {
+        (window as unknown as { __lastMockRecognition?: MockSpeechRecognition })
+          .__lastMockRecognition = this;
+      }
 
       start(): void {
+        const forceError = (window as unknown as { __voiceMockForceError?: string })
+          .__voiceMockForceError;
+        if (forceError) {
+          setTimeout(() => this.onerror?.({ error: forceError }), 0);
+          return;
+        }
         setTimeout(() => this.onstart?.(new Event('start')), 0);
       }
 
@@ -201,7 +233,37 @@ async function installSpeechRecognitionMock(page: Page): Promise<void> {
       configurable: true,
       value: MockSpeechRecognition,
     });
+
+    (window as unknown as {
+      __fireMockRecognitionResult: (text: string, isFinal: boolean) => void;
+    }).__fireMockRecognitionResult = (text: string, isFinal: boolean) => {
+      const rec = (window as unknown as { __lastMockRecognition?: MockSpeechRecognition })
+        .__lastMockRecognition;
+      if (!rec?.onresult) return;
+      const result = Object.assign([{ transcript: text, confidence: 1 }], { isFinal });
+      rec.onresult({ resultIndex: 0, results: [result] });
+    };
   });
+}
+
+/** Fire a mock SpeechRecognition onresult event on the active recognition instance. */
+async function fireMockRecognitionResult(page: Page, text: string, isFinal: boolean): Promise<void> {
+  await page.evaluate(
+    ({ text, isFinal }) => {
+      (window as unknown as {
+        __fireMockRecognitionResult: (t: string, f: boolean) => void;
+      }).__fireMockRecognitionResult(text, isFinal);
+    },
+    { text, isFinal },
+  );
+}
+
+/** Arm (or clear, with `null`) forced onerror behaviour for the next recognition start(). */
+async function setForceVoiceError(page: Page, error: string | null): Promise<void> {
+  await page.evaluate((err) => {
+    (window as unknown as { __voiceMockForceError?: string }).__voiceMockForceError =
+      err ?? undefined;
+  }, error);
 }
 
 async function analyzeMicColorContrast(page: Page): Promise<AxeRunResult> {
@@ -461,29 +523,43 @@ test('TC-V-10e: Writing Assistant live region is always in DOM', async () => {
 //   - .voice-countdown-ring (shown when listening + silenceSecondsLeft !== null)
 //   - data-testid="voice-alert" (aria-live="assertive") for SR announcements
 
-test.skip('TC-V-01a: mic button shows processing state (requires SpeechRecognition onresult — headless unsupported)', async () => {
-  // Processing state triggered by SpeechRecognition final result
+test('TC-V-01a: mic button shows processing state after 3s of silence', async () => {
+  // BrainstormPage's silence timer (not onresult itself) drives the listening →
+  // processing → idle transition: onstart begins a 3s countdown: once elapsed the
+  // mic auto-commits and moves to processing for ~400ms before returning to idle.
   await openBrainstorm(page);
   const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
   await micBtn.click();
-  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--processing/, { timeout: 5_000 });
+  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--processing/, { timeout: 6_000 });
+  // Let the auto-commit finish so state is clean idle for the next test.
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });
 
-test.skip('TC-V-01b: mic button shows error state with non-colour signal (requires prior mic session — headless unsupported)', async () => {
-  // Error state triggered by SpeechRecognition onerror; must carry icon + aria-label
+test('TC-V-01b: mic button shows error state with non-colour signal', async () => {
+  // Error state triggered by SpeechRecognition onerror; must carry icon + aria-label.
   await openBrainstorm(page);
+  await setForceVoiceError(page, 'not-allowed');
   const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
-  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--error/, { timeout: 5_000 });
+  await micBtn.click();
+  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--error/, { timeout: 3_000 });
   await expect(micBtn).not.toHaveAttribute('aria-label', '');
+  await expect(micBtn).toHaveAttribute('aria-label', /voice error/i);
+  // Reset: clicking in the error state resets to idle (handleMicToggle).
+  await setForceVoiceError(page, null);
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });
 
-test.skip('TC-V-02a: transcript strip visible during voice listening (requires SpeechRecognition onstart — headless unsupported)', async () => {
+test('TC-V-02a: transcript strip visible during voice listening', async () => {
   // Selector: data-testid="voice-transcript-strip" / .voice-transcript-strip--visible
   await openBrainstorm(page);
   const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
   await micBtn.click();
   const strip = page.locator('[data-testid="voice-transcript-strip"]');
   await expect(strip).toHaveClass(/voice-transcript-strip--visible/, { timeout: 3_000 });
+  // Reset for the next test.
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });
 
 test('TC-V-02b: transcript strip not visible when idle', async () => {
@@ -493,26 +569,35 @@ test('TC-V-02b: transcript strip not visible when idle', async () => {
   await expect(strip).not.toHaveClass(/voice-transcript-strip--visible/);
 });
 
-test.skip('TC-V-02c: transcript strip no transition under prefers-reduced-motion (requires TC-V-02a listening state — headless unsupported)', async () => {
+test('TC-V-02c: transcript strip no transition under prefers-reduced-motion', async () => {
   // .voice-transcript-strip { transition: none } under prefers-reduced-motion (CSS AC-V-12)
   const cdpSession = await page.context().newCDPSession(page);
   await cdpSession.send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
   });
   await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  await micBtn.click();
   const strip = page.locator('[data-testid="voice-transcript-strip"]');
   await expect(strip).toHaveCSS('transition-duration', '0s', { timeout: 2_000 });
   await cdpSession.send('Emulation.setEmulatedMedia', { features: [] });
+  // Reset for the next test.
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });
 
-test.skip('TC-V-03a: silence countdown ring appears after first speech result (requires SpeechRecognition onstart + silence timer — headless unsupported)', async () => {
+test('TC-V-03a: silence countdown ring appears after first speech result', async () => {
   // Selector: .voice-countdown-ring (SVG ring element within .brainstorm-mic-container)
   await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
-  // Ring renders once SpeechRecognition fires an onresult; it fires each transcript event
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  await micBtn.click();
+  await fireMockRecognitionResult(page, 'once upon a time', false);
+  // Ring renders once the silence timer has ticked at least once after listening starts.
   const ring = page.locator('.voice-countdown-ring');
   await expect(ring).toBeAttached({ timeout: 5_000 });
+  // Reset for the next test.
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });
 
 test.skip('TC-V-03b: silence countdown SR announcement (not implemented — countdown is visual-only; setAlertText only fires for cancel/error)', async () => {
@@ -566,6 +651,46 @@ test('TC-V-05b: mic button aria-pressed=true after mic toggle', async () => {
   await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
 });
 
+// ─── Integration smoke: capture→transcribe→insert & speak→play ─────────────
+//
+// SKY-3192 scope: verify the full voice pipelines end to end rather than just
+// individual UI states. These exercise the same production code paths as the
+// unit/E2E tests above but assert on the pipeline's *outcome* (text lands in the
+// prompt field; the speak round trip completes) instead of intermediate UI state.
+
+test('Integration smoke — capture→transcribe→insert: mock STT result lands in the prompt field', async () => {
+  await openBrainstorm(page);
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  const promptInput = page.locator('.brainstorm-input');
+  await expect(promptInput).toHaveValue('');
+
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 });
+  await fireMockRecognitionResult(page, 'a dragon guards the tower', true);
+
+  // The confirmed transcript is only inserted once the silence timer commits it
+  // (~3s after the last onresult), transitioning listening → processing → idle.
+  await expect(promptInput).toHaveValue(/dragon guards the tower/i, { timeout: 6_000 });
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
+
+  // Leave a clean slate for later tests (axe scan re-uses this same mic button).
+  await promptInput.fill('');
+});
+
+test('Integration smoke — speak→play: voice:speak round-trips through the real preload bridge', async () => {
+  // Exercises the actual renderer → preload → ipcMain → push-event round trip
+  // (voice.ts's real TTS synthesis is stubbed in beforeAll per Option C — no
+  // bundled engine — but the IPC plumbing under test is 100% production code).
+  const speakId = await page.evaluate(() => new Promise<string>((resolve) => {
+    const unsub = window.api.onVoiceSpeakDone((evt) => {
+      unsub();
+      resolve(evt.speakId);
+    });
+    void window.api.voiceSpeak('Hello from the voice pipeline smoke test.');
+  }));
+  expect(speakId).toBe('mock-speak-1');
+});
+
 // ─── TC-V-11: axe color-contrast ─────────────────────────────────────────────
 //
 // AC-V-11: mic states must not communicate by colour alone and must pass axe's
@@ -615,7 +740,7 @@ test('TC-V-11: all 4 mic states pass axe color-contrast rule', async () => {
 // removed; silence countdown replaced with static text."
 // TC-V-02c above covers the transcript-strip transition-duration portion.
 
-test.skip('TC-V-12: silence countdown under prefers-reduced-motion (requires SpeechRecognition silence timer — headless unsupported)', async () => {
+test('TC-V-12: silence countdown under prefers-reduced-motion', async () => {
   // Under reduced-motion: .voice-countdown-ring animation is stripped via CSS.
   // .voice-countdown-text (static label) is always rendered alongside the ring;
   // CSS @media prefers-reduced-motion shows the text instead of animating the ring.
@@ -624,16 +749,26 @@ test.skip('TC-V-12: silence countdown under prefers-reduced-motion (requires Spe
     features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
   });
   await openBrainstorm(page);
-  await page.locator('[data-testid="brainstorm-mic-btn"]').click();
-  // Ring exists but its SVG animation CSS should have animation-duration: 0
+  const micBtn = page.locator('[data-testid="brainstorm-mic-btn"]');
+  // TC-V-11 leaves the DOM node's attributes force-mutated into its last scanned
+  // state (axe scan writes attributes directly, bypassing React). A real click
+  // drives a genuine state transition, which forces React to reconcile the node
+  // back to production markup before we assert against it.
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 });
+  await fireMockRecognitionResult(page, 'a quiet village at dusk', false);
+
+  // Ring still renders (React doesn't condition on reduced-motion) but CSS hides
+  // it: `.voice-countdown-ring { display: none }` under prefers-reduced-motion.
   const ring = page.locator('.voice-countdown-ring');
-  if (await ring.count() > 0) {
-    await expect(ring).toHaveCSS('animation-duration', '0s');
-  }
-  // Text element must be visible (CSS shows it under reduced-motion)
+  await expect(ring).toBeAttached({ timeout: 5_000 });
+  await expect(ring).toHaveCSS('display', 'none');
+  // The static countdown text replaces it: `.voice-countdown-text { display: block }`.
   const countdownText = page.locator('.voice-countdown-text');
-  if (await countdownText.count() > 0) {
-    await expect(countdownText).toBeVisible();
-  }
+  await expect(countdownText).toBeVisible();
+
   await cdpSession.send('Emulation.setEmulatedMedia', { features: [] });
+  // Reset for suite hygiene.
+  await micBtn.click();
+  await expect(micBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 2_000 });
 });

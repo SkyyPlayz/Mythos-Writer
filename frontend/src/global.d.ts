@@ -422,6 +422,7 @@ interface AppSettings {
     enabled: boolean;
     provider: 'local' | 'cloud' | 'auto';
     localBinaryPath?: string;
+    localModelPath?: string;
     cloudEndpoint?: string;
     cloudApiKey?: string;
   };
@@ -764,7 +765,7 @@ interface Window {
      */
     settingsSet: (
       settings: AppSettings,
-      tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
+      tokens?: { sttBinaryToken?: string; sttModelToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
     ) => Promise<{ saved: boolean; error?: string }>;
     /** Test connection to an AI provider (MYT-779). */
     settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
@@ -772,7 +773,7 @@ interface Window {
     providerListModels: (payload: { kind: string; baseUrl?: string }) => Promise<{ ok: true; models: string[] } | { ok: false; error: string }>;
     /** Main-process file picker for local voice binary / model selection (MYT-788). */
     voicePickBinary: (
-      kind: 'stt-binary' | 'tts-binary' | 'tts-model',
+      kind: 'stt-binary' | 'stt-model' | 'tts-binary' | 'tts-model',
     ) => Promise<{ path: string | null; cancelled: boolean; registrationToken: string | null }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;

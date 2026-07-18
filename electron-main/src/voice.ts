@@ -442,7 +442,7 @@ export async function transcribeAudio(
     if (binPath && fs.existsSync(binPath)) {
       const gate = checkSpawnPath(binPath);
       if (gate.ok) {
-        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType);
+        return transcribeLocal(gate.realPath ?? binPath, settings.localModelPath, audio, mimeType);
       }
       if (provider === 'local') {
         throw new InvalidVoiceInputError(`Local STT refused: ${gate.error}`);
@@ -490,6 +490,7 @@ export async function transcribeAudio(
 
 async function transcribeLocal(
   binaryPath: string,
+  modelPath: string | undefined,
   audio: Buffer,
   mimeType: string,
 ): Promise<VoiceTranscribeResponse> {
@@ -497,11 +498,12 @@ async function transcribeLocal(
   // and passes in the resolved real-path of the binary.
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
   const tmpFile = path.join(os.tmpdir(), `mythos-stt-${crypto.randomUUID()}.${ext}`);
+  const modelArgs = modelPath ? ['-m', modelPath] : [];
 
   try {
     fs.writeFileSync(tmpFile, audio);
     const text = await new Promise<string>((resolve, reject) => {
-      const proc = spawn(binaryPath, [tmpFile, '--no-prints', '--no-timestamps'], {
+      const proc = spawn(binaryPath, [...modelArgs, tmpFile, '--no-prints', '--no-timestamps'], {
         timeout: 30_000,
       });
       const stdoutChunks: Buffer[] = [];

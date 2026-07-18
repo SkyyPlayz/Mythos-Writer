@@ -1236,7 +1236,7 @@ export interface VaultPickFolderResponse {
  * never restricts to those filters — the user can pick any file.
  */
 export interface VoicePickBinaryPayload {
-  kind: 'stt-binary' | 'tts-binary' | 'tts-model';
+  kind: 'stt-binary' | 'stt-model' | 'tts-binary' | 'tts-model';
 }
 
 /**
@@ -1754,6 +1754,8 @@ export interface SttSettings {
   provider: 'local' | 'cloud' | 'auto';
   /** Absolute path to local whisper.cpp binary */
   localBinaryPath?: string;
+  /** Absolute path to whisper.cpp GGML model file (e.g. ggml-tiny.en.bin) */
+  localModelPath?: string;
   /** OpenAI-compatible audio transcription endpoint */
   cloudEndpoint?: string;
   /**
@@ -2122,6 +2124,7 @@ export interface SettingsSetPayload {
    * token.
    */
   sttBinaryToken?: string;
+  sttModelToken?: string;
   ttsBinaryToken?: string;
   ttsModelToken?: string;
 }

@@ -220,7 +220,7 @@ contextBridge.exposeInMainWorld('api', {
   settingsGet: () => invokeEnvelope('settings:get', undefined),
   // MYT-788: optional `tokens` carries one-shot registration tokens from
   // voicePickBinary, required when changing the local STT/TTS path fields.
-  settingsSet: (settings: unknown, tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string }) =>
+  settingsSet: (settings: unknown, tokens?: { sttBinaryToken?: string; sttModelToken?: string; ttsBinaryToken?: string; ttsModelToken?: string }) =>
     invokeEnvelope('settings:set', { settings, ...(tokens ?? {}) }),
   // MYT-779: test connection to an AI provider.
   settingsTestConnection: (provider: unknown) => invokeEnvelope('settings:testConnection', { provider }),
