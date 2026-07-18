@@ -1278,6 +1278,8 @@ interface Window {
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
+    // Beta 4 M29 (AC7): user-facing "Replay wizard" — every build, current vault untouched
+    onboardingReplay: () => Promise<{ ok: boolean }>;
     // SKY-2971: Word (.docx) → Story Vault importer
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
     // SKY-2993: Obsidian vault importer

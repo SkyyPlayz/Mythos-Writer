@@ -158,12 +158,12 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
     await act(async () => {});
   });
 
-  it('Quick Start card carries the prototype Recommended chip; step1 still has exactly 3 cards', async () => {
+  it('Start Fresh card carries the prototype Recommended chip; step1 has exactly 4 cards (M29)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    const quickStart = screen.getByTestId('card-quick-start');
-    expect(quickStart.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
-    // AC-OB-01 landing contract: 3 top-level cards (quick start / custom / import)
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
+    const startFresh = screen.getByTestId('card-start-fresh');
+    expect(startFresh.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
+    // M29: 4 top-level cards (start fresh / template / import / quick start)
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
     await act(async () => {});
   });
 
@@ -184,13 +184,11 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
 // ─── Guided setup: navigation ─────────────────────────────────────────────────
 
 describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
-  it('step1b offers a Guided Setup card that opens the custom-location step', async () => {
+  it('step1 offers a Start Fresh card that opens the custom-location step (M29)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await click('card-custom');
-    expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
-    await click('card-guided-setup');
+    await click('card-start-fresh');
     expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 1 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 1 of 4')).toBeInTheDocument();
   });
 
   it('shows 4 progress dots with the current step filled', async () => {
@@ -209,7 +207,7 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-template-continue');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 3 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 3 of 4')).toBeInTheDocument();
     await click('custom-genre-back');
     expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
   });
@@ -220,7 +218,7 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-genre-continue');
     expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 4 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 4 of 4')).toBeInTheDocument();
     await click('custom-theme-back');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
   });
@@ -316,7 +314,7 @@ describe('OnboardingWizard v2 — guided finish persists genre + theme (Beta 3 M
     await runGuidedFlow(onComplete);
     expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({
-        startMode: 'blank',
+        startMode: 'start-fresh',
         customTemplate: 'recommended',
         vaultName: 'MythosWriter',
       }),

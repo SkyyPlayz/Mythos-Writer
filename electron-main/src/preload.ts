@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
   onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
+  // Beta 4 M29 (AC7): user-facing "Replay wizard" — every build, current vault untouched.
+  onboardingReplay: () => ipcRenderer.invoke('onboarding:replay', undefined),
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),

@@ -3653,7 +3653,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // panels render correctly regardless of which sidebar they live in.
   const renderSidebarPanel = useCallback((id: SidebarPanelId): ReactNode => {
     const showTemplateCta =
-      appSettings?.onboardingStartMode === 'blank' &&
+      (appSettings?.onboardingStartMode === 'start-fresh' || appSettings?.onboardingStartMode === 'blank') &&
       !(gettingStartedProgress?.completedItems.includes('write-scene'));
     switch (id) {
       case 'stories':
@@ -4337,6 +4337,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       : `“${story.title}” created — the Story Plan note could not be written`);
   }, [stories, updateManifest, handleNavSectionChange]);
 
+  // Beta 4 M29 (AC7): "Replay wizard" — shared by the project menu, Help
+  // menu, and command palette. Uses the every-build replay channel, never
+  // the MYTHOS_DEV-only debug reset, so the current vault stays put.
+  const replayOnboardingWizard = useCallback(() => {
+    window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
+  }, []);
+
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
   const paletteCommands = useMemo(() => [
@@ -4344,6 +4351,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
     { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
     { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
+    { t: 'Replay welcome wizard', sub: 'Onboarding, once more — current vault untouched', run: replayOnboardingWizard },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4429,6 +4437,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ] },
     { label: 'Help', items: [
       { label: 'Welcome tour', run: () => setTourOpen(true) },
+      { label: 'Replay welcome wizard…', run: replayOnboardingWizard },
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
       { label: 'Check for updates', run: () => {
@@ -4569,7 +4578,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenVault={() => { void openVaultViaPicker(); }}
           onCreateVault={() => { void createMythosVault(); }}
           onReplayOnboarding={() => {
-            window.api?.onboardingReset?.().then(() => window.location.reload()).catch(() => {});
+            window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
           }}
           notificationCenter={<NotificationCenter />}
         />
