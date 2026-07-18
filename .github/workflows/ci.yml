@@ -787,10 +787,13 @@ jobs:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
     # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
     # steps are gated at step level instead.
-    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
-    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    # SKY-7428: native windows-latest runner (was ubuntu-latest cross-building via
+    # wine, which broke — "wine is required" — after the hosted-runner migration).
+    # The windows-latest quota failure seen on PR #571 was a private-repo minutes
+    # limit; the repo is now public (35507aea), so hosted Windows minutes are free
+    # and native packaging is simpler and more reliable than a wine cross-build.
     needs: [setup]
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 40
     continue-on-error: true
     defaults:
@@ -852,7 +855,7 @@ jobs:
     # actions: read is required for gh run list / gh run view used by the
     # repo-wide failure detection in notify-board.sh (SKY-3907).
     needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
