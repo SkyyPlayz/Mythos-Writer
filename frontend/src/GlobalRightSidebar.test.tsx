@@ -247,4 +247,22 @@ describe('GlobalRightSidebar', () => {
       expect(screen.getByRole('button', { name: 'Move Brainstorm' })).toBeInTheDocument();
     });
   });
+
+  describe('scenes panel (Beta 4/M19, §7.1)', () => {
+    it('lists Scenes in the Add Panel picker when not already added', () => {
+      const panels: PanelConfig[] = [
+        { id: 'writing-assistant', collapsed: false },
+      ];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
+      expect(screen.getByRole('menuitem', { name: 'Scenes' })).toBeInTheDocument();
+    });
+
+    it('renders the scenes panel body when added and expanded', () => {
+      const panels: PanelConfig[] = [{ id: 'scenes', collapsed: false }];
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={panels} />);
+      expect(screen.getByLabelText(/scenes panel/i)).toBeInTheDocument();
+      expect(screen.getByTestId('scenes')).toBeInTheDocument();
+    });
+  });
 });

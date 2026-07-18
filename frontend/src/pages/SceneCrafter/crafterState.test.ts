@@ -2,17 +2,25 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  CRAFTER_GENERATE_COPY,
   CRAFTER_LENGTHS,
   CRAFTER_TONES,
   addBeat,
+  buildDraftPrompt,
+  castCardsFromSuggested,
+  castFromSuggested,
   composeDraftBoard,
+  composeDraftPassCard,
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
+  moveBeat,
+  placesFromSuggested,
   planNotesFromVault,
   removeBeat,
   suggestedFromVault,
   toggleTone,
+  wordCount,
   type CrafterSetup,
   type VaultListItem,
 } from './crafterState';
@@ -25,14 +33,13 @@ describe('crafter setup state', () => {
   it('defaults match the prototype crafter shape (line 3287)', () => {
     const setup = defaultCrafterSetup();
     expect(setup.len).toBe('Medium');
-    expect(setup.status).toBe('idle');
     expect(setup.beats).toEqual([]);
     expect(setup.tones).toEqual({});
   });
 
-  it('exposes the prototype tone and length lists', () => {
+  it('exposes the prototype tone and length lists plus the Beta 4/M19 Custom length', () => {
     expect(CRAFTER_TONES).toEqual(['Tense', 'Quiet', 'Action', 'Mystery', 'Dread', 'Wonder']);
-    expect(CRAFTER_LENGTHS).toEqual(['Short', 'Medium', 'Long']);
+    expect(CRAFTER_LENGTHS).toEqual(['Short', 'Medium', 'Long', 'Custom']);
   });
 
   it('addBeat trims and appends; blank input is a no-op', () => {
@@ -53,6 +60,13 @@ describe('crafter setup state', () => {
     const on = toggleTone(setup, 'Tense');
     expect(on.tones.Tense).toBe(true);
     expect(toggleTone(on, 'Tense').tones.Tense).toBe(false);
+  });
+
+  it('moveBeat reorders by index and is a no-op past either edge', () => {
+    const setup = { ...defaultCrafterSetup(), beats: ['a', 'b', 'c'] };
+    expect(moveBeat(setup, 0, 1).beats).toEqual(['b', 'a', 'c']);
+    expect(moveBeat(setup, 2, 1)).toBe(setup); // past the right edge
+    expect(moveBeat(setup, 0, -1)).toBe(setup); // past the left edge
   });
 });
 
@@ -95,6 +109,22 @@ describe('suggested cards from the vault listing', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].title).toBe('LOCATIONS');
     expect(groups[0].cards.map((c) => c.t)).toEqual(['Ward Violet']);
+  });
+
+  it('title-cases lowercase filenames without touching already-cased ones (GAP P2 #13)', () => {
+    const cards = suggestedFromVault([item('Chapters/chaper 1.md'), item('Characters/McMillan.md')]);
+    expect(cards.map((c) => c.t)).toEqual(['Chaper 1', 'McMillan']);
+  });
+
+  it('castFromSuggested returns names from the CHARACTERS group only', () => {
+    const cards = suggestedFromVault(items);
+    expect(castFromSuggested(cards)).toEqual(['Liora Ashen', 'The Lamplighter']);
+  });
+
+  it('castCardsFromSuggested and placesFromSuggested split the right kanban columns (§7.1)', () => {
+    const cards = suggestedFromVault(items);
+    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'The Lamplighter']);
+    expect(placesFromSuggested(cards).map((c) => c.t)).toEqual(['Ward Violet']);
   });
 });
 
@@ -177,5 +207,89 @@ describe('composeDraftBoard (prototype draftBoard, lines 3403–3423)', () => {
     const board = composeDraftBoard(defaultCrafterSetup(), [], 1, 'b5');
     expect(board.name).toBe('Untitled scene — board 1');
     expect(board.cards[0].t).toBe('Untitled scene — beats');
+  });
+
+  it('appends the AI first-pass draft card last and links it from the hub (AC6/AC7)', () => {
+    const draftCard = composeDraftPassCard(setup, 'She reached the door.', 'b6-first-pass');
+    const board = composeDraftBoard(setup, [], 1, 'b6', draftCard);
+    expect(board.cards.at(-1)).toBe(draftCard);
+    expect(board.links).toContainEqual(['b6-0', 'b6-first-pass']);
+  });
+
+  it('omits the draft card entirely when none is passed (existing callers unaffected)', () => {
+    const board = composeDraftBoard(setup, [], 1, 'b7');
+    expect(board.cards.some((c) => c.id.includes('first-pass'))).toBe(false);
+  });
+});
+
+describe('composeDraftPassCard (Beta 4/M19 §7.1 — AI first-pass draft card)', () => {
+  const setup: CrafterSetup = { ...defaultCrafterSetup(), title: 'The Broken Gate' };
+
+  it('labels the card "— first pass" and reports the word count', () => {
+    const card = composeDraftPassCard(setup, 'She reached the sealed door and stopped.', 'c1');
+    expect(card.t).toBe('The Broken Gate — first pass');
+    expect(card.d).toContain('— 7 words');
+    expect(card.nid).toBeNull();
+  });
+
+  it('truncates long drafts to a preview with an ellipsis', () => {
+    const long = 'word '.repeat(200).trim();
+    const card = composeDraftPassCard(setup, long, 'c2');
+    expect(card.d).toMatch(/…\n\n— 200 words$/);
+    expect(card.d.length).toBeLessThan(long.length);
+  });
+
+  it('untitled setups fall back to "Untitled scene — first pass"', () => {
+    const card = composeDraftPassCard(defaultCrafterSetup(), 'Text.', 'c3');
+    expect(card.t).toBe('Untitled scene — first pass');
+  });
+});
+
+describe('wordCount', () => {
+  it('counts whitespace-delimited words and handles blank text', () => {
+    expect(wordCount('  She reached   the door.  ')).toBe(4);
+    expect(wordCount('')).toBe(0);
+    expect(wordCount('   ')).toBe(0);
+  });
+});
+
+describe('buildDraftPrompt (Beta 4/M19 §7.1 — Coach-framed generation)', () => {
+  it('includes every populated setup field and the coach-framed copy is verbatim from spec', () => {
+    const setup: CrafterSetup = {
+      ...defaultCrafterSetup(),
+      title: 'The Broken Gate',
+      pov: 'Mira Veynn',
+      goal: 'Reach the unmapped door.',
+      conflict: 'The Broker wants a memory.',
+      beats: ['Cold open on the sealed door', 'The hum answers her blood'],
+      tones: { Tense: true },
+    };
+    const chosen = [{ title: 'Kael Thorne', desc: 'Favor-debt callback.', nid: 'Characters/Kael Thorne' }];
+    const prompt = buildDraftPrompt(setup, chosen, 'She has one chance to open it.');
+    expect(prompt).toContain('Title: The Broken Gate');
+    expect(prompt).toContain('POV: Mira Veynn');
+    expect(prompt).toContain('Goal: Reach the unmapped door.');
+    expect(prompt).toContain('Conflict: The Broker wants a memory.');
+    expect(prompt).toContain('1. Cold open on the sealed door');
+    expect(prompt).toContain('2. The hum answers her blood');
+    expect(prompt).toContain('Tone: Tense');
+    expect(prompt).toContain('Length: Medium');
+    expect(prompt).toContain('Quick summary: She has one chance to open it.');
+    expect(prompt).toContain('- Kael Thorne: Favor-debt callback.');
+
+    expect(CRAFTER_GENERATE_COPY).toBe(
+      'Set the shape — the Writing Coach drafts a first-pass scaffold from YOUR ' +
+      'beats, then annotates why it made each choice, so the rewrite teaches you.',
+    );
+  });
+
+  it('uses the custom length text when len is Custom', () => {
+    const setup = { ...defaultCrafterSetup(), len: 'Custom' as const, customLen: '900 words' };
+    expect(buildDraftPrompt(setup, [], '')).toContain('Length: 900 words');
+  });
+
+  it('omits every empty field instead of emitting blank lines', () => {
+    const prompt = buildDraftPrompt(defaultCrafterSetup(), [], '');
+    expect(prompt).toBe('Title: Untitled scene\n\nLength: Medium');
   });
 });
