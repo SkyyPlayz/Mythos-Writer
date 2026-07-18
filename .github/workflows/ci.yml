@@ -139,8 +139,6 @@ jobs:
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && '' || '--coverage' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -169,11 +167,20 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Resolve coverage flag
+        id: coverage-flag
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=--coverage" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Test (electron-main)
-        run: npm run test -w electron-main -- $COVERAGE_FLAG
+        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }}
 
       - name: Test (frontend)
-        run: npm run test -w frontend -- $COVERAGE_FLAG
+        run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
 
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
