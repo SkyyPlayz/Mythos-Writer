@@ -92,7 +92,7 @@ const ITEM_KEY_BY_TYPE: Record<TimelinesUpsertItemPayload['type'], ItemKey> = {
   row: 'rows',
 };
 
-const ROW_KINDS = new Set(['custom', 'arc', 'entity']);
+const ROW_KINDS = new Set(['custom', 'arc', 'entity', 'plotline']);
 
 /**
  * Validate one axis item against the M21 schema. Throws RangeError/Error on
@@ -123,11 +123,24 @@ function assertItemValid(store: TimelinesStore, payload: TimelinesUpsertItemPayl
       }
       break;
     }
-    case 'event':
+    case 'event': {
       assertValidWhen(item.when as number);
+      // M23 optional story-lane fields: reject malformed values so NaN /
+      // wrong-typed payloads can never reach timelines.json (§8.2 discipline).
+      if (item.chapter != null) {
+        if (typeof item.chapter !== 'number' || !Number.isFinite(item.chapter) || item.chapter < 1) {
+          throw new RangeError('event.chapter must be a number ≥ 1');
+        }
+      }
+      if (item.beat != null && typeof item.beat !== 'boolean') throw new Error('event.beat must be a boolean');
+      if (item.written != null && typeof item.written !== 'boolean') throw new Error('event.written must be a boolean');
+      if (item.summary != null && typeof item.summary !== 'string') throw new Error('event.summary must be a string');
+      if (item.icon != null && typeof item.icon !== 'string') throw new Error('event.icon must be a string');
       break;
+    }
     case 'row':
       if (!ROW_KINDS.has(item.kind as string)) throw new Error('row.kind is invalid');
+      if (item.color != null && typeof item.color !== 'string') throw new Error('row.color must be a string');
       break;
   }
 }
@@ -166,15 +179,21 @@ export function handleTimelinesDeleteItem(
   const list = store[key] as { id: string }[];
   const idx = list.findIndex((existing) => existing.id === payload.id);
   if (idx === -1) return { ok: false, store, error: 'Item not found' };
+  const removed = list[idx];
   list.splice(idx, 1);
 
   // Deleting a custom row removes the spans plotted on it (prototype delRow
-  // drops the whole row including its items).
+  // drops the whole row including its items). M23: a plotline row owns its
+  // scene-card events outright — deleting the plotline deletes the cards;
+  // other row kinds just unlink their events.
   if (payload.type === 'row') {
     store.spans = store.spans.filter((span) => span.rowId !== payload.id);
-    store.events = store.events.map((event) =>
-      event.rowId === payload.id ? { ...event, rowId: undefined } : event,
-    );
+    const rowKind = (removed as TimelineRow).kind;
+    store.events = rowKind === 'plotline'
+      ? store.events.filter((event) => event.rowId !== payload.id)
+      : store.events.map((event) =>
+          event.rowId === payload.id ? { ...event, rowId: undefined } : event,
+        );
   }
 
   writeTimelinesStore(vaultRoot, store);
