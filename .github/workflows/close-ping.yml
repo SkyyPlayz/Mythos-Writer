@@ -20,7 +20,7 @@ jobs:
   close-ping:
     # Self-hosted only — mirrors the `report` job's runner policy (no public/fork
     # PR exposure; paperclipai CLI is only available on the self-hosted runner).
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout (for scripts/notify-board.sh)
         uses: actions/checkout@v4
