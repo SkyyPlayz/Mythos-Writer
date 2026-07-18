@@ -132,15 +132,26 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
+// SKY-7593: Quick Start moved off step1 onto the custom-location screen as
+// the "One-click setup" link (design-handoff v2 §2.2), reached via the Start
+// Blank card — see e2e/onboarding-v2.spec.ts's clickStep1Card for the same move.
 async function selectQuickStartCard(pg: Page): Promise<void> {
   await expect(pg.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 30_000 });
 
-  const quickStartCandidates = [
+  const quickStartLinkCandidates = [
+    'custom-location-quick-start-link',
     'card-quick-start',
     'card-default-mythos-vault',
     'card-path-default',
   ];
-  for (const testId of quickStartCandidates) {
+
+  const startBlank = pg.locator('[data-testid="card-start-blank"]');
+  if (await startBlank.isVisible().catch(() => false)) {
+    await startBlank.click();
+    await pg.locator('[data-testid="screen-custom-location"]').waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+  }
+
+  for (const testId of quickStartLinkCandidates) {
     const card = pg.locator(`[data-testid="${testId}"]`);
     if (await card.isVisible().catch(() => false)) {
       await card.click();
@@ -160,7 +171,7 @@ async function selectQuickStartCard(pg: Page): Promise<void> {
     return;
   }
 
-  throw new Error('Could not find Quick Start card on onboarding step 1');
+  throw new Error('Could not find Quick Start entry point (custom-location-quick-start-link)');
 }
 
 // Beta 4 M29: Quick Start no longer creates the vault immediately — it now
