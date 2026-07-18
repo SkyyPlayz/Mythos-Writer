@@ -2138,7 +2138,7 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -2152,7 +2152,7 @@ export interface AppSettings {
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;

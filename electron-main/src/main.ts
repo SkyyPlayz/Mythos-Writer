@@ -2595,7 +2595,14 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.SETTINGS_GET]: (): AppSettings => {
-    const settings = loadAppSettings();
+    let settings = loadAppSettings();
+    // M29 marker guard: a configured MythosVault v2 (mythos.json beside the
+    // Story Vault) means this install is already set up — never boot into the
+    // wizard for it, even after app-settings.json was cleared or lost.
+    if (settings.onboardingComplete !== true && mythosRootForStoryVault(getVaultRoot()) !== null) {
+      settings = { ...settings, onboardingComplete: true };
+      saveAppSettings(settings);
+    }
     const masked = maskSettingsForRenderer(settings);
     const legacy = detectLegacyVaults({
       homeDir: app.getPath('home'),
@@ -3028,6 +3035,13 @@ const handlers: IpcHandlers = {
       saveVaultSettings({ vaultRoot: storyVaultPath, notesVaultRoot: notesVaultPath, layoutMode: 'blank' });
       ensureVaultDir();
       ensureNotesVaultDir();
+
+      // M29: the template bundle keeps the v0.4 layout (template trees carry no
+      // v2 book spines), but it shares the `<root>/Notes Vault` shape, so the
+      // wizard's genre starter notes seed the same way as the v2 paths.
+      if (isGenreSeedGenre(genre)) {
+        writeGenreStarterNotes(storyDir, genre);
+      }
 
       await stopVaultWatcher();
       await startVaultWatcher(storyVaultPath, notifyVaultChanged);
