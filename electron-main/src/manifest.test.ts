@@ -171,6 +171,44 @@ describe('writeManifestAtomic', () => {
   });
 });
 
+describe('writeManifestAtomic — return value (SKY-6195)', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-write-bytes-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns the exact byte length of the file actually written to disk', () => {
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const bytes = writeManifestAtomic(manifestPath, defaultManifest(tmpDir));
+    expect(bytes).toBe(fs.statSync(manifestPath).size);
+  });
+
+  it('reflects the stripped (prose-blanked) size, not the pre-strip size — proves a single stringify', () => {
+    // VAULT_MANIFEST_WRITE previously stringified the manifest a second time
+    // (pretty-printed, with embedded prose still present) purely to compute a
+    // `bytes` count that never matched what writeManifestAtomic actually wrote
+    // to disk. The returned byte count must match the on-disk (structure-only,
+    // compact) file, not a second, differently-formatted serialization.
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const m: Manifest = {
+      ...defaultManifest(tmpDir),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'x'.repeat(50_000))],
+    };
+    const prettyWithProse = Buffer.byteLength(JSON.stringify(m, null, 2), 'utf-8');
+
+    const bytes = writeManifestAtomic(manifestPath, m);
+
+    expect(bytes).toBe(fs.statSync(manifestPath).size);
+    expect(bytes).toBeLessThan(prettyWithProse);
+    expect(bytes).toBeLessThan(2_000);
+  });
+});
+
 describe('openManifest', () => {
   let tmpDir: string;
 

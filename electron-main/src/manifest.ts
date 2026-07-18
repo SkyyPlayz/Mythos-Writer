@@ -181,8 +181,12 @@ export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
  * Atomic write: serialise to a temp file then rename into place.
  * A process crash after writeFileSync but before renameSync leaves the
  * original file intact (the .tmp is orphaned but harmless).
+ *
+ * Returns the byte length of the content actually written, so callers that
+ * need a byte count (e.g. the VAULT_MANIFEST_WRITE IPC response) don't have
+ * to re-serialize the manifest a second time just to measure it (SKY-6195).
  */
-export function writeManifestAtomic(manifestPath: string, manifest: Manifest): void {
+export function writeManifestAtomic(manifestPath: string, manifest: Manifest): number {
   const tmp = `${manifestPath}.tmp`;
   // Compact, structure-only serialization (SKY-6596): scene prose is stripped
   // (see stripEmbeddedProseForPersist) so this write is O(structure), not
@@ -191,8 +195,10 @@ export function writeManifestAtomic(manifestPath: string, manifest: Manifest): v
   // a machine-managed file, and pretty printing still costs real time on a
   // large story count even without embedded prose.
   const persisted = stripEmbeddedProseForPersist(manifest);
-  fs.writeFileSync(tmp, JSON.stringify(persisted), 'utf-8');
+  const json = JSON.stringify(persisted);
+  fs.writeFileSync(tmp, json, 'utf-8');
   fs.renameSync(tmp, manifestPath);
+  return Buffer.byteLength(json, 'utf-8');
 }
 
 /**
