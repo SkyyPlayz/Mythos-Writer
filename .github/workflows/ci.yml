@@ -787,8 +787,10 @@ jobs:
     # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
     # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
     # steps are gated at step level instead.
-    # Run on the repo self-hosted runner while hosted Actions budget is unavailable;
-    # this avoids the instant hosted windows-latest quota failure seen on PR #571.
+    # Cross-builds the Windows NSIS/zip targets from a Linux runner via
+    # electron-builder + wine (see SKY-7428). `ubuntu-latest` since the
+    # hosted-runner migration (35507aea); windows-latest was avoided earlier
+    # due to hosted Windows-runner quota (PR #571) and hasn't been revisited.
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -820,6 +822,15 @@ jobs:
       - name: Install dependencies
         if: github.event_name != 'pull_request'
         run: npm ci
+
+      # SKY-7428: electron-builder's NSIS target cross-builds via wine when not
+      # running on Windows; without it the job fails with "wine is required".
+      - name: Install wine for Windows cross-build
+        if: github.event_name != 'pull_request'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine wine32 mono-devel
 
       - name: Build and package (Windows NSIS + ZIP)
         if: github.event_name != 'pull_request'
