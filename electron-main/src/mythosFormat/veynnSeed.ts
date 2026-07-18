@@ -549,7 +549,8 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
   const spine: BookSpinePart[] = [];
   let sceneCount = 0;
   let firstScene: { id: string; relPath: string } | null = null;
-  MANUSCRIPT.forEach((part, pi) => {
+  // for-of (not forEach) so control-flow analysis tracks the firstScene write.
+  for (const [pi, part] of MANUSCRIPT.entries()) {
     const partDir = partDirName(pi + 1);
     const spinePart: BookSpinePart = {
       dir: partDir,
@@ -565,7 +566,7 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
         title: chapter.title,
         ...(chapter.intro ? { intro: chapter.intro } : {}),
       });
-      chapter.scenes.forEach((scene, si) => {
+      for (const [si, scene] of chapter.scenes.entries()) {
         const sceneAbs = path.join(storyAbs, partDir, chapterDir, sceneFileName(si + 1));
         const sceneId = crypto.randomUUID();
         if (firstScene === null) {
@@ -587,10 +588,10 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
           }),
         );
         sceneCount += 1;
-      });
+      }
     }
     spine.push(spinePart);
-  });
+  }
 
   // book.md — compiled order + metadata.
   writeFileAtomic(
