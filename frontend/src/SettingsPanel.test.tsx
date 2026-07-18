@@ -1152,7 +1152,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByTestId('wa-category-toggles'));
 
     // Every toggle OFF by default → every slider disabled.
-    const spellingToggle = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }) as HTMLInputElement;
+    const spellingToggle = screen.getByRole('checkbox', { name: /writing coach auto-apply spelling/i }) as HTMLInputElement;
     expect(spellingToggle.checked).toBe(false);
     const slider = screen.getByTestId('wa-cat-spelling-threshold') as HTMLInputElement;
     expect(slider.disabled).toBe(true);
