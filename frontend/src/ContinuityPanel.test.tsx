@@ -332,3 +332,25 @@ describe('ContinuityPanel — Scan now triggers IPC', () => {
     );
   });
 });
+
+// SKY-6978 (Beta4/M18): Notes right-panel "CONTINUITY FLAGS" header variant.
+describe('ContinuityPanel — flagsHeader (Notes right panel)', () => {
+  it('shows the default "Continuity" header when flagsHeader is not set', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    expect(screen.getByText('Continuity')).toBeInTheDocument();
+    expect(screen.queryByText('CONTINUITY FLAGS')).not.toBeInTheDocument();
+  });
+
+  it('shows the "CONTINUITY FLAGS" label and ARCHIVE AGENT badge when flagsHeader is set', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} flagsHeader />);
+    expect(screen.getByText('CONTINUITY FLAGS')).toBeInTheDocument();
+    expect(screen.getByText('ARCHIVE AGENT')).toBeInTheDocument();
+    expect(screen.queryByText('Continuity')).not.toBeInTheDocument();
+  });
+
+  it('shows the flags header even in the disabled state', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} enabled={false} flagsHeader />);
+    expect(screen.getByText('CONTINUITY FLAGS')).toBeInTheDocument();
+    expect(screen.getByText('ARCHIVE AGENT')).toBeInTheDocument();
+  });
+});

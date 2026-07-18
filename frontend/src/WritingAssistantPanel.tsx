@@ -316,6 +316,23 @@ export default function WritingAssistantPanel({
     };
   }, [clearStreamResources]);
 
+  // SKY-7113: switching the active Coach session (or starting a new chat)
+  // must not leak this panel's in-flight local buffer into the newly active
+  // session's view, and a reply that was still streaming for the PREVIOUS
+  // session must never be flushed onto the session the user switched to.
+  // Bumping requestIdRef aborts any in-flight `ask()` at its next await point
+  // (see the `requestIdRef.current !== requestId` guards below), so a stale
+  // response is dropped instead of being persisted to the wrong session.
+  useEffect(() => {
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setMessages([]);
+    setTurnSuggestions({});
+    setLoading(false);
+    setStalled(false);
+    setError(null);
+  }, [sessionStore?.activeSessionId, clearStreamResources]);
+
   // Collapse when panel root width < 280px (AC-WA-20)
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return;

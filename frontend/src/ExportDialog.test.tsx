@@ -323,3 +323,43 @@ describe('ExportDialog steps (M14)', () => {
     expect(mockOnClose).not.toHaveBeenCalled();
   });
 });
+
+// ─── SKY-7108 — missing scene .md file warning on the Done state ───
+
+describe('ExportDialog missing scene warning (SKY-7108)', () => {
+  it('a normal export with no missing scenes shows no warning', async () => {
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    expect(await screen.findByText('Export complete')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('surfaces missing scene ids resolved to their titles', async () => {
+    mockExportDocx.mockResolvedValue({ path: '/tmp/story.docx', cancelled: false, bytes: 2048, missingSceneIds: ['scene-1'] });
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    expect(await screen.findByText('Export complete')).toBeInTheDocument();
+    const warning = screen.getByRole('alert');
+    expect(warning).toHaveTextContent('1 scene had no prose file and was exported empty: Opening');
+  });
+
+  it('falls back to the raw id for a missing scene not found in the loaded stories, and pluralizes for multiple', async () => {
+    mockExportDocx.mockResolvedValue({
+      path: '/tmp/story.docx',
+      cancelled: false,
+      bytes: 2048,
+      missingSceneIds: ['scene-1', 'scene-deleted-id'],
+    });
+    renderDialog({ kind: 'story', storyId: 'story-1' });
+
+    fireEvent.click(screen.getByRole('button', { name: /export docx/i }));
+
+    expect(await screen.findByText('Export complete')).toBeInTheDocument();
+    const warning = screen.getByRole('alert');
+    expect(warning).toHaveTextContent('2 scenes had no prose file and were exported empty: Opening, scene-deleted-id');
+  });
+});

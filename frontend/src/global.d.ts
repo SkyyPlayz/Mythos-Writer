@@ -1101,20 +1101,20 @@ interface Window {
     searchVault: (query: string, scope: 'story' | 'notes' | 'both', limit?: number, filterTags?: string[]) => Promise<{ results: Array<{ docId: string; vault: 'story' | 'notes'; kind: string; title: string; snippet: string; rank: number }> }>;
 
     // EPUB export (MYT-342; options Beta 4 M14)
-    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportEpub: (storyId: string, metadata?: { title?: string; author?: string; language?: string }, targetPath?: string, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] }>;
 
     // DOCX export (MYT-252; options Beta 4 M14)
-    exportDocx: (storyId?: string, scope?: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportDocx: (storyId?: string, scope?: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] }>;
 
     // PDF export (Beta 4 M14, FULL-SPEC §5.5)
-    exportPdf: (scope: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportPdf: (scope: unknown, options?: { includeSynopsis?: boolean; sceneSeparators?: boolean }) => Promise<{ path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] }>;
 
     // Reveal the last exported file in the OS file manager (Beta 4 M14)
     exportRevealLast: () => Promise<{ opened: boolean }>;
 
     // Markdown / plaintext export
-    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
-    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number }>;
+    exportMarkdown: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] }>;
+    exportPlaintext: (scope?: unknown) => Promise<{ path: string | null; cancelled: boolean; bytes?: number; missingSceneIds?: string[] }>;
 
     // Scene Crafter Kanban board (SKY-1758/SKY-1763)
     sceneCrafterGetBoard: (storyId: string, storySlug: string) => Promise<SceneCrafterBoard | null>;

@@ -8,7 +8,12 @@
  */
 import { test, expect } from '@playwright/test';
 
-test.describe('Settings category sub-nav (SKY-3215)', () => {
+// SKY-6933: the only e2e spec using a plain page.goto('/') browser test instead
+// of _electron.launch() -- and the repo has no webServer/baseURL configured
+// anywhere (playwright.config.ts, ci.yml), so this suite is structurally
+// non-functional as written. Needs a rewrite to the Electron harness, not a
+// selector fix -- tracked separately under SKY-6933.
+test.describe.skip('Settings category sub-nav (SKY-3215)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     // Open settings via keyboard shortcut or gear button
