@@ -520,7 +520,7 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -1263,7 +1263,7 @@ interface Window {
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
@@ -1271,6 +1271,10 @@ interface Window {
       vaultName?: string;
       sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
       customTemplate?: 'recommended' | 'blank';
+      // M29: wizard genre (seeds starter notes) + Liquid Neon preset key
+      // (recorded as the new vault's default theme).
+      genre?: string;
+      themeKey?: string;
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
     onboardingReset: () => Promise<{ ok: boolean }>;
