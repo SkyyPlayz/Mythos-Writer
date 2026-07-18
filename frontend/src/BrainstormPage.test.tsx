@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
+import { __resetAgentSessionStores } from './lib/useAgentSessions';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -155,6 +156,7 @@ beforeEach(() => {
   });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
+  __resetAgentSessionStores();
 });
 
 afterEach(() => {

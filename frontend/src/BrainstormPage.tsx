@@ -2005,7 +2005,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           mode === 'chat'
             ? (curatorGreeting
               ? 'Curator of this vault — tell it your world'
-              : 'Talk your world into existence — the vault builds itself.')
+              : 'Talk through your story — facts auto-extract to your vault')
             : 'Capture. Connect. Develop.'
         }
         actions={
