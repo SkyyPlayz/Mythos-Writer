@@ -1609,3 +1609,89 @@ describe('WritingAssistantPanel — session-switch isolation (SKY-7076)', () => 
     );
   });
 });
+
+// SKY-7113: session-store isolation. `sessionStore` is the shared coach
+// session store (useAgentSessions); these tests drive the prop directly so
+// they can simulate a session switch mid-flight without depending on the
+// real vault IPC. AgentHubPanel.test.tsx covers the same behaviour through
+// the real hook + picker UI end to end.
+describe('WritingAssistantPanel — session store isolation (SKY-7113)', () => {
+  function makeSessionStore(
+    overrides: Partial<import('./lib/useAgentSessions').UseAgentSessionsResult> = {},
+  ): import('./lib/useAgentSessions').UseAgentSessionsResult {
+    return {
+      sessions: [],
+      activeSession: null,
+      activeSessionId: null,
+      loading: false,
+      switchSession: vi.fn(),
+      newSession: vi.fn(),
+      renameSession: vi.fn(),
+      duplicateSession: vi.fn(),
+      deleteSession: vi.fn(),
+      appendTurns: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it('hydrates the panel from a session that already has persisted turns', () => {
+    const store = makeSessionStore({
+      activeSessionId: 'session-a',
+      activeSession: {
+        id: 'session-a',
+        agent: 'coach',
+        title: 'Session A',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        turns: [
+          { role: 'user', text: 'Hi from A', at: '2026-01-01T00:00:00.000Z' },
+          { role: 'agent', text: 'Hello A', at: '2026-01-01T00:00:01.000Z' },
+        ],
+      },
+    });
+
+    render(<WritingAssistantPanel scene={null} sessionStore={store} />);
+
+    expect(screen.getByText('Hi from A')).toBeInTheDocument();
+    expect(screen.getByText('Hello A')).toBeInTheDocument();
+  });
+
+  it('clears the in-flight local buffer and drops a stale reply when the active session changes underneath it', async () => {
+    let resolveAsk!: (value: { text: string }) => void;
+    mockAgentWritingAssistant.mockReturnValueOnce(
+      new Promise((resolve) => { resolveAsk = resolve; }),
+    );
+
+    const appendTurnsA = vi.fn().mockResolvedValue(undefined);
+    const storeA = makeSessionStore({ activeSessionId: 'session-a', appendTurns: appendTurnsA });
+
+    const { rerender } = render(<WritingAssistantPanel scene={null} sessionStore={storeA} />);
+
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
+      target: { value: 'Question for session A' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    // The optimistic user bubble + streaming placeholder render immediately.
+    expect(await screen.findByText('Question for session A')).toBeInTheDocument();
+
+    // User switches to a different session while the request is still in flight.
+    const appendTurnsB = vi.fn().mockResolvedValue(undefined);
+    const storeB = makeSessionStore({ activeSessionId: 'session-b', appendTurns: appendTurnsB });
+    rerender(<WritingAssistantPanel scene={null} sessionStore={storeB} />);
+
+    expect(screen.queryByText('Question for session A')).not.toBeInTheDocument();
+
+    // The stale response now resolves — it must not be persisted anywhere.
+    await act(async () => {
+      resolveAsk({ text: 'Late reply meant for session A' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Late reply meant for session A')).not.toBeInTheDocument();
+    expect(appendTurnsA).not.toHaveBeenCalled();
+    expect(appendTurnsB).not.toHaveBeenCalled();
+  });
+});

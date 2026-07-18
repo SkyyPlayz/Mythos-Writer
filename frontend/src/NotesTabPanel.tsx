@@ -553,7 +553,7 @@ export default function NotesTabPanel({
                         the flags dock here instead. */}
                     {archiveContinuityEnabled && (
                       <div className="notes-agent-continuity" data-testid="notes-continuity-flags">
-                        <ContinuityPanel scene={activeScene ?? null} enabled />
+                        <ContinuityPanel scene={activeScene ?? null} enabled flagsHeader />
                       </div>
                     )}
                     <div className="notes-agent-chat">
@@ -570,6 +570,7 @@ export default function NotesTabPanel({
                         archiveContinuityEnabled={archiveContinuityEnabled}
                         activeScene={activeScene}
                         compact
+                        curatorGreeting
                       />
                     </div>
                   </div>

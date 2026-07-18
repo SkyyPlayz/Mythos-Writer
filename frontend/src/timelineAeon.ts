@@ -13,21 +13,24 @@
 
 // ─── View modes ───
 
-/** The five prototype timeline modes (prototype `tlModeSeg`, 4571) plus the
- *  Beta 4 M22 axis engine surface ('axis' — §8.3; M23/M24 fold the remaining
- *  modes onto it). */
-export type TimelineMode = 'progress' | 'structure' | 'spreadsheet' | 'relations' | 'subway' | 'axis';
+/** Beta 4 M23 — the prototype's seven timeline modes (`tlModeSeg`, 6559):
+ *  Progress · Structure · Plotlines · Spreadsheet · Tension · Relationships ·
+ *  Subway. Progress/Structure render the §8.3/§8.4 axis lane rows; Plotlines
+ *  and Tension land with M24. */
+export type TimelineMode =
+  | 'progress' | 'structure' | 'plot' | 'spreadsheet' | 'tension' | 'relations' | 'subway';
 
 export const VALID_TIMELINE_MODES: readonly TimelineMode[] = [
-  'progress', 'structure', 'spreadsheet', 'relations', 'subway', 'axis',
+  'progress', 'structure', 'plot', 'spreadsheet', 'tension', 'relations', 'subway',
 ];
 
-/** Beta-2 stored view modes map onto their Beta-3 successors:
- *  AEON lanes → Plan vs Progress lanes, AEON Track → Subway (per the M20 plan:
- *  "Subway … evolves TrackTimeline/AeonLaneView"). */
+/** Legacy stored view modes map onto their successors: Beta-2 AEON lanes →
+ *  Progress, AEON Track → Subway; the interim M22 'axis' surface folded into
+ *  the Progress/Structure lanes (§8.4). */
 export const LEGACY_TIMELINE_MODE_MAP: Readonly<Record<string, TimelineMode>> = {
   aeon: 'progress',
   track: 'subway',
+  axis: 'progress',
 };
 
 /** Resolve a persisted view-mode string to a valid TimelineMode (or null). */

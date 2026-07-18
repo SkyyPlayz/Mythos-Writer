@@ -101,6 +101,26 @@ describe('InconsistencyCard — Ignore action', () => {
   });
 });
 
+// SKY-6978 (Beta4/M18): button copy must match the M9 comments-v2 archive
+// action labels verbatim (frontend/src/comments/agentActions.ts AGENT_ACTIONS)
+// so the Notes right panel's flag cards read identically to the manuscript's
+// Archive Agent comment card.
+describe('InconsistencyCard — action labels match M9 wording', () => {
+  it('renders the full M9-canonical labels, not the old short copy', () => {
+    render(
+      <InconsistencyCard
+        item={makeItem()}
+        archiveStoryEditConsentGiven={true}
+        onResolve={onResolve}
+        onConsentGranted={onConsentGranted}
+      />,
+    );
+    expect(screen.getByText('Edit notes to match')).toBeInTheDocument();
+    expect(screen.getByText('Suggest story change')).toBeInTheDocument();
+    expect(screen.getByText('Ignore')).toBeInTheDocument();
+  });
+});
+
 describe('InconsistencyCard — Match Archive action', () => {
   it('opens expand area with proposed vault change when Match Archive clicked', () => {
     render(
