@@ -171,6 +171,257 @@
   color: #fff;
 }
 
+/* ═══ Beta 4 M23 — toolbar filters, Templates ▾, left focus panel ═══ */
+
+/* Filter selects (prototype 1938–1945) */
+.tlr-filters {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tlr-filter-select {
+  height: 26px;
+  max-width: 118px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.35));
+  border-radius: 8px;
+  color: #dbe4f5;
+  font-size: 10.5px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.tlr-filter-select:focus-visible {
+  outline: none;
+  border-color: var(--b1, rgba(0, 240, 255, 0.6));
+}
+
+/* Templates ▾ + `+ Plotline` (prototype 1918–1937) */
+.tlr-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  background: none;
+  color: #cdd8ea;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tlr-tool-btn:hover {
+  color: #fff;
+  box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.tlr-tool-btn--tpl {
+  border-color: var(--b2, rgba(155, 95, 255, 0.45));
+}
+
+.tlr-tool-btn--tpl:hover {
+  box-shadow: 0 0 12px -3px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.tlr-tpl-anchor {
+  position: relative;
+}
+
+.tlr-tpl-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  cursor: default;
+}
+
+.tlr-tpl-menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 250px;
+  z-index: 46;
+  padding: 8px;
+  border-radius: 13px;
+  background: rgba(15, 19, 33, 0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6);
+  text-align: left;
+}
+
+.tlr-tpl-head {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7686a2;
+  padding: 3px 9px 7px;
+}
+
+.tlr-tpl-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.tlr-tpl-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tlr-tpl-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #e6ecf9;
+}
+
+.tlr-tpl-sub {
+  font-size: 9.5px;
+  color: #8e9db8;
+}
+
+.tlr-tpl-foot {
+  font-size: 8.5px;
+  color: #586a88;
+  padding: 5px 9px 2px;
+}
+
+/* Lanes wrap: left focus panel + axis canvas */
+.tlr-lanes-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.tlr-aside {
+  width: 196px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Book-focus cards (prototype 399–408) */
+.tlr-book-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-family: inherit;
+  text-align: left;
+}
+
+.tlr-book-card:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.6));
+}
+
+.tlr-book-card--active {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 16px -6px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.tlr-book-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef2fb;
+}
+
+.tlr-book-sub {
+  font-size: 10px;
+  color: #8e9db8;
+}
+
+/* PLOTLINES toggles (prototype 409–417) */
+.tlr-aside-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #7686a2;
+  margin: 12px 0 2px;
+}
+
+.tlr-aside-hint {
+  font-size: 9.5px;
+  color: #586a88;
+  padding: 2px 4px;
+}
+
+.tlr-pl-row--off {
+  opacity: 0.4;
+}
+
+.tlr-pl-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tlr-pl-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tlr-pl-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.tlr-pl-name {
+  flex: 1;
+  color: #aebad0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.tlr-pl-count {
+  font-size: 10px;
+  color: #7686a2;
+}
+
+.tlr-pl-rename {
+  width: 100%;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  border-radius: 8px;
+  color: #eef2fb;
+  font-size: 11px;
+  padding: 0 8px;
+}
+
 /* ── Aeon-view loading / error / no-story states ── */
 
 .tlr-state {
