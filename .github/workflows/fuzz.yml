@@ -4,8 +4,24 @@ name: Fuzz (60s)
 # property/fuzz results are visible as a named check separate from the main CI.
 
 on:
+  schedule:
+    - cron: '0 8 * * *'   # nightly 08:00 UTC = 2am MDT, idle fleet; avoids issue-finder's Mon 06:00 slot
   pull_request:
     branches: [main]
+    paths:
+      - 'electron-main/fuzz/**'
+      - 'electron-main/src/vault.ts'
+      - 'electron-main/src/vault/**'
+      - 'electron-main/src/docx.ts'
+      - 'electron-main/src/docxImporter.ts'
+      - 'electron-main/src/epub.ts'
+      - 'package-lock.json'
+      - '.github/workflows/fuzz.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: fuzz-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   property-tests-and-fuzz:

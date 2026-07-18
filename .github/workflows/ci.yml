@@ -36,7 +36,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
   lint:
@@ -67,7 +79,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Lint (frontend)
@@ -90,7 +114,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Type-check (frontend)
@@ -103,6 +139,8 @@ jobs:
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && ' ' || '--coverage' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -116,16 +154,29 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Test with coverage (electron-main)
-        run: npm run test -w electron-main -- --coverage
+      - name: Test (electron-main)
+        run: npm run test -w electron-main -- $COVERAGE_FLAG
 
-      - name: Test with coverage (frontend)
-        run: npm run test -w frontend -- --coverage
+      - name: Test (frontend)
+        run: npm run test -w frontend -- $COVERAGE_FLAG
 
       - name: Upload coverage report
+        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -173,7 +224,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Build (electron-vite)
@@ -223,7 +286,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Restore electron build from cache
@@ -312,7 +387,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Restore electron build from cache
@@ -387,7 +474,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Restore electron build from cache
@@ -477,7 +576,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Restore electron build from cache
@@ -635,12 +746,6 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - name: Skip — packaging only runs on push/workflow_dispatch
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "build-linux: packaging skipped on pull_request events."
-          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
-
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request'
 
@@ -798,12 +903,6 @@ jobs:
         shell: bash
 
     steps:
-      - name: Skip — packaging only runs on push/workflow_dispatch
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "build-windows: packaging skipped on pull_request events."
-          echo "Required check satisfied — packaging runs on push to main or workflow_dispatch only."
-
       - uses: actions/checkout@v4
         if: github.event_name != 'pull_request'
 
