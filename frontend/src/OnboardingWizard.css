@@ -205,6 +205,57 @@ a.gs-footer-link:focus-visible {
   margin: -0.75rem 0 0;
 }
 
+.gs-modal__subtitle--tight {
+  margin-top: 0.5rem;
+}
+
+/* ── M29 (SKY-7473, design-handoff v2 §2.1): two-vault promise cards ──
+   Static/informational, no interaction — sits above the location field on
+   the custom-location screen. */
+.gs-two-vault-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4, 16px);
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 600px) {
+  .gs-two-vault-row { grid-template-columns: 1fr; }
+}
+
+.gs-two-vault-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: var(--space-4, 16px);
+  background: var(--glass, var(--bg-elevated));
+  border: var(--frame-width-rest) solid var(--border-subtle);
+  border-radius: 13px;
+}
+
+.gs-two-vault-card__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.gs-two-vault-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.gs-two-vault-card__title {
+  font-size: 0.9rem;
+  font-weight: var(--weight-emphasis);
+  color: var(--text-header);
+}
+
+.gs-two-vault-card__desc {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: var(--leading-sm);
+}
+
 /* ─── Step 1 cards ── */
 
 .gs-cards {
@@ -1729,17 +1780,19 @@ a.gs-footer-link:focus-visible {
    Selected border/glow + the gradient bar are inline styles computed from the
    preset's slot colors (theme/presets.ts) — the source of truth palette. */
 
+/* M29 (SKY-7473, design-handoff v2 §3.1): 5×2 grid of all 10 presets,
+   replacing the 3-card prototype shortlist row. */
 .wiz-theme-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 9px; /* prototype 2823 */
 }
 
-@media (max-width: 600px) {
-  .wiz-theme-row { flex-direction: column; }
+@media (max-width: 700px) {
+  .wiz-theme-row { grid-template-columns: repeat(2, 1fr); }
 }
 
 .wiz-theme-card {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1758,17 +1811,48 @@ a.gs-footer-link:focus-visible {
   outline-offset: 2px;
 }
 
-.wiz-theme-card__bar {
-  display: block;
+@media (prefers-reduced-motion: reduce) {
+  .wiz-theme-card { transition: none; }
+}
+
+/* 6-segment colour strip (one block per neon slot A–F) — replaces the old
+   single-gradient bar so each slot reads as a discrete colour, not a blur. */
+.wiz-theme-strip {
+  display: flex;
   height: 7px;
   border-radius: 6px;
+  overflow: hidden;
   margin-bottom: 8px; /* prototype 4443 */
 }
 
+.wiz-theme-strip__seg {
+  flex: 1;
+}
+
 .wiz-theme-card__name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   font-weight: 600;
   color: rgb(230 236 249); /* prototype #e6ecf9 */
+}
+
+.wiz-theme-card__check {
+  color: var(--n1);
+}
+
+.wiz-theme-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: rgb(142 157 184); /* prototype #8e9db8 */
+}
+
+.wiz-theme-legend__item {
+  white-space: nowrap;
 }
 
 /* ── Split actions row on the template step (skip vs continue) ── */
