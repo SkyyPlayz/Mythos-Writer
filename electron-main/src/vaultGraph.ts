@@ -4,6 +4,7 @@
 
 import path from 'path';
 import { listVaultFiles, readVaultFile } from './vault.js';
+import { SESSIONS_DIRNAME } from './mythosFormat/agentSessions.js';
 
 // ─── Category mapping (§3.1 of SKY-1743 UX spec) ───
 
@@ -98,9 +99,19 @@ export function invalidateNoteGraphIndex(): void {
 
 // ─── Index builder ───
 
+/** Agent chat transcripts (SKY-6228) are vault-resident system files, not
+ *  user-authored notes — they carry no wikilink semantics of their own and
+ *  must not appear as graph nodes (a passive Brainstorm-panel mount would
+ *  otherwise silently seed the "empty vault" state with a chat transcript). */
+function isSessionFile(relPath: string): boolean {
+  return relPath.split(/[\\/]/)[0] === SESSIONS_DIRNAME;
+}
+
 function buildIndex(notesVaultRoot: string): NoteGraphIndex {
   const { items } = listVaultFiles(notesVaultRoot);
-  const mdFiles = items.filter((f) => !f.isDirectory && f.path.endsWith('.md'));
+  const mdFiles = items.filter(
+    (f) => !f.isDirectory && f.path.endsWith('.md') && !isSessionFile(f.path),
+  );
 
   // Pass 1: read all files, build stem → path map
   const stemToPath = new Map<string, string>();
