@@ -1,5 +1,5 @@
 /**
- * coach-page.spec.ts — Beta 4 M12 (§5.2, §14.6)
+ * coach-page.spec.ts — Beta 4 M12 (§5.2, §14.6) + M13 (§5.4, §14.7)
  *
  * E2E tests for the Writing Coach page (Story → Coach sub-tab):
  *   - header (Writing Coach, never-ghost-writes sub, skill chips)
@@ -7,6 +7,9 @@
  *   - suggestions right rail (SUGGESTIONS eyebrow, collapsible General group)
  *   - ONE conversation store: a message sent on the Coach page shows up in the
  *     right-panel Writing Coach chat (and vice versa) — §14.6 clause 6.
+ *   - M13 Scene Analysis: `View Full Analysis` (right-panel card) opens the
+ *     Coach page with COMPUTED vs COACH'S READ sections (§14.7), and the
+ *     computed section still renders when AI is unavailable.
  *
  * The Anthropic chat IPC is mocked in the main process; no network access.
  *
@@ -140,6 +143,30 @@ async function openCoachPage(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
 }
 
+/** M13: open the seeded scene in the editor (mirrors writing-assistant.spec.ts). */
+async function openScene(page: Page, sceneTitle: string): Promise<void> {
+  await clickStoryNav(page);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
+  const sceneRow = page.locator('.nav-scene-row', { hasText: sceneTitle });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+}
+
+/** M13: surface the agent hub's Scene Analysis card in the right panel. */
+async function openSceneAnalysisCard(page: Page): Promise<void> {
+  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
+  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
+    await waHeader.click();
+  }
+  // A previous test may have left the hub inside an agent chat view.
+  const backBtn = page.locator('.ahp-back-btn');
+  if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await backBtn.click();
+  }
+  await expect(page.locator('[data-testid="view-full-analysis"]')).toBeVisible({ timeout: 8_000 });
+}
+
 let userData: string;
 let vaultDir: string;
 let app: ElectronApplication | undefined;
@@ -223,4 +250,91 @@ test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation',
     .toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.wa-assistant-bubble', { hasText: MOCK_COACH_RESPONSE }).last())
     .toBeVisible({ timeout: 8_000 });
+});
+
+// ── M13 — Scene Analysis (§5.4, §14.7) ──────────────────────────────────────
+
+test('M13 acceptance: with AI failing, View Full Analysis still lands a computed-only card', async () => {
+  // Simulate AI unavailable: the coach agent IPC rejects every call.
+  await app!.evaluate(({ ipcMain }) => {
+    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async () => {
+      throw new Error('Writing Coach is disabled in settings.');
+    });
+  });
+
+  await openScene(page, 'Harbor Scene');
+  await openSceneAnalysisCard(page);
+
+  // The right-panel card computes its values locally — no AI involved.
+  const rows = page.locator('[data-testid="scene-analysis-rows"]');
+  await expect(rows).toContainText('Word Count');
+  await expect(rows).toContainText('Read Time');
+  await expect(rows).toContainText('Pacing');
+  await expect(rows).toContainText('POV');
+
+  await page.locator('[data-testid="view-full-analysis"]').click();
+
+  // Navigates to the Coach page…
+  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+  // …where the card lands with the COMPUTED section fully rendered and an
+  // honest unavailable note for the AI section.
+  const card = page.locator('[data-testid="coach-analysis-card"]').last();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText('COMPUTED · LOCAL · FREE');
+  await expect(card).toContainText('Words');
+  await expect(card).toContainText('Read time');
+  await expect(card).toContainText("COACH'S READ · AI");
+  await expect(card.locator('[data-testid="coach-read-unavailable"]'))
+    .toContainText("Coach's read unavailable");
+});
+
+test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ sections', async () => {
+  // The coach agent now answers the dedicated analysis prompt with valid JSON.
+  await app!.evaluate(({ ipcMain }, args) => {
+    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async () => ({ text: args.response }));
+  }, {
+    response: JSON.stringify({
+      purpose: 'Story progression — commits the crew to the fog',
+      tension: 'Rising — builds from the first bell',
+      pacing: 'Medium — slows at the quay',
+      pov: 'Third limited — holds steady throughout',
+      takeaway: 'Strong atmosphere; pull the risk forward and this scene sings.',
+      drill: 'Drill: mark each paragraph D, A or T and break any DDD run. 5 minutes.',
+    }),
+  });
+
+  // Advance the conversation so the previous (computed-only) analysis card is
+  // no longer the newest turn — the flow skips duplicate stacking, mirroring
+  // the prototype's viewFullAnalysis.
+  await openCoachPage(page);
+  const input = page.locator('[data-testid="coach-input"]');
+  await input.fill('One more question about pacing');
+  await input.press('Enter');
+  await expect(page.locator('.coach-bubble--user', { hasText: 'One more question about pacing' }).last())
+    .toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.coach-bubble--coach', { hasText: 'builds from the first bell' }).last())
+    .toBeVisible({ timeout: 10_000 });
+
+  await openSceneAnalysisCard(page);
+  await page.locator('[data-testid="view-full-analysis"]').click();
+
+  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+  const card = page.locator('[data-testid="coach-analysis-card"]').last();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+
+  // Title (Sc. N is 1-based) + BOTH §5.4 sections.
+  await expect(card).toContainText('Full Scene Analysis — Sc. 1 · Harbor Scene');
+  await expect(card).toContainText('COMPUTED · LOCAL · FREE');
+  await expect(card).toContainText('no AI needed');
+  await expect(card).toContainText('Avg sentence length');
+  await expect(card).toContainText('Filter words (felt, saw, heard)');
+  await expect(card).toContainText('Adverb dialogue tags');
+  await expect(card).toContainText("COACH'S READ · AI");
+  await expect(card).toContainText('judgment calls — needs a model');
+  await expect(card).toContainText('Rising — builds from the first bell');
+  await expect(card).toContainText('Third limited — holds steady throughout');
+  await expect(card).toContainText('pull the risk forward');
+  await expect(card).toContainText('Drill:');
 });

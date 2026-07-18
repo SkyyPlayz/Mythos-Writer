@@ -871,8 +871,9 @@ export function readManifest(manifestPath: string): Manifest {
   return manifest;
 }
 
-export function writeManifest(manifestPath: string, manifest: Manifest): void {
-  writeManifestAtomic(manifestPath, manifest);
+/** Returns the byte length of the manifest content actually written to disk. */
+export function writeManifest(manifestPath: string, manifest: Manifest): number {
+  return writeManifestAtomic(manifestPath, manifest);
 }
 
 /**

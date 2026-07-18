@@ -382,10 +382,7 @@ test('TC-GS-05: rapid typing debounces search requests (≤1 request per 300ms w
 
 // ─── TC-GS-06: Empty query clears results gracefully ──────────────────────────────
 
-// SKY-6933: real bug, not a stale selector -- clearing the query leaves stale
-// .gsp-result-item nodes on screen instead of 0. Already tracked and fixed in
-// SKY-7082 / PR #968; unskip once that PR merges.
-test.skip('TC-GS-06: empty query clears results gracefully', async () => {
+test('TC-GS-06: empty query clears results gracefully', async () => {
   await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
