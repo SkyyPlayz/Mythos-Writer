@@ -15,16 +15,17 @@ import { avatarForTitle } from '../../canvas/canvasTypes';
 /** Tone chips, exactly the prototype list (line 4418). */
 export const CRAFTER_TONES = ['Tense', 'Quiet', 'Action', 'Mystery', 'Dread', 'Wonder'] as const;
 
-/** Length segment options (line 4419). */
-export const CRAFTER_LENGTHS = ['Short', 'Medium', 'Long'] as const;
+/** Length segment options (line 4419). `Custom` is a Beta 4/M19 addition (§7.1, AC1). */
+export const CRAFTER_LENGTHS = ['Short', 'Medium', 'Long', 'Custom'] as const;
 export type CrafterLength = (typeof CRAFTER_LENGTHS)[number];
-
-/** Draft-board lifecycle, mirroring the prototype's `crafter.status`. */
-export type CrafterStatus = 'idle' | 'busy' | 'done';
 
 /**
  * Scene setup — the prototype's `crafter` state (line 3287) plus the
  * title / goal / conflict inputs from the setup form (lines 487–496).
+ *
+ * The prototype's `crafter.status` busy/done lifecycle is gone as of Beta
+ * 4/M19: the real AI generation lifecycle lives in SceneCrafterPage's
+ * `draftStreamId` / `useIpcStream` state instead (§7.1).
  */
 export interface CrafterSetup {
   title: string;
@@ -32,7 +33,8 @@ export interface CrafterSetup {
   goal: string;
   conflict: string;
   len: CrafterLength;
-  status: CrafterStatus;
+  /** Free-text length when `len === 'Custom'` (Beta 4/M19, AC1). Ignored otherwise. */
+  customLen: string;
   beats: string[];
   tones: Record<string, boolean>;
 }
@@ -44,7 +46,7 @@ export function defaultCrafterSetup(): CrafterSetup {
     goal: '',
     conflict: '',
     len: 'Medium',
-    status: 'idle',
+    customLen: '',
     beats: [],
     tones: {},
   };
@@ -60,6 +62,19 @@ export function addBeat(setup: CrafterSetup, beat: string): CrafterSetup {
 /** Remove the beat at `index` (prototype `crafterBeats[i].remove`, line 4420). */
 export function removeBeat(setup: CrafterSetup, index: number): CrafterSetup {
   return { ...setup, beats: setup.beats.filter((_, i) => i !== index) };
+}
+
+/**
+ * Reorder the beat at `index` by `direction` (-1 left/up, +1 right/down).
+ * Out-of-range moves are a no-op (Beta 4/M19, AC1: BEATS add/drag/delete).
+ */
+export function moveBeat(setup: CrafterSetup, index: number, direction: -1 | 1): CrafterSetup {
+  const to = index + direction;
+  if (to < 0 || to >= setup.beats.length) return setup;
+  const beats = setup.beats.slice();
+  const [beat] = beats.splice(index, 1);
+  beats.splice(to, 0, beat);
+  return { ...setup, beats };
 }
 
 /** Toggle a tone chip on/off (prototype `crafterTones[t].pick`, line 4418). */
@@ -104,6 +119,17 @@ export function normalizeVaultPath(path: string): string {
 }
 
 /**
+ * Capitalize the first letter of each word without touching the rest —
+ * `chaper 1` → `Chaper 1`, `Liora Ashen` stays `Liora Ashen`, `McMillan`
+ * stays `McMillan`. This is the conservative half of GAP P2 #13 (filename
+ * casing); the frontmatter `title:` override half is UXDesigner-gated (see
+ * SKY-6979 "Engineering dependencies to resolve") and out of scope here.
+ */
+function titleCaseWords(text: string): string {
+  return text.replace(/\S+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+/**
  * Turn a notes-vault listing into suggested cards. In the prototype the list
  * is stocked by the Brainstorm Agent; here every vault markdown note becomes
  * a card, grouped by its top-level folder (`CHARACTERS`, `LOCATIONS`, …).
@@ -119,7 +145,7 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
     const top = segments.length > 1 ? segments[0] : '';
     if (EXCLUDED_TOP_FOLDERS.has(top.toLowerCase())) continue;
     const base = segments[segments.length - 1].replace(/\.md$/i, '');
-    const title = base.replace(/[-_]+/g, ' ');
+    const title = titleCaseWords(base.replace(/[-_]+/g, ' '));
     cards.push({
       t: title,
       d: segments.slice(0, -1).join(' / ') || 'Vault root',
@@ -129,6 +155,21 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
     });
   }
   return cards;
+}
+
+/** Character names for the POV select — every suggested card grouped under CHARACTERS. */
+export function castFromSuggested(cards: SuggestedCard[]): string[] {
+  return cards.filter((card) => card.group === 'CHARACTERS').map((card) => card.t);
+}
+
+/** Cards for the right kanban's CAST column (§7.1) — full cards, not just names. */
+export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
+  return cards.filter((card) => card.group === 'CHARACTERS');
+}
+
+/** Cards for the right kanban's PLACES column (§7.1). */
+export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
+  return cards.filter((card) => card.group === 'LOCATIONS');
 }
 
 /** Prototype search filter (line 4527): substring over `"<title> <description>"`. */
@@ -250,6 +291,7 @@ export function composeDraftBoard(
   chosen: ChosenCard[],
   boardNumber: number,
   id: string = 'b' + Date.now(),
+  draftCard: CanvasCard | null = null,
 ): CanvasBoardData {
   const title = setup.title.trim() || 'Untitled scene';
   const cards: CanvasCard[] = [
@@ -298,7 +340,88 @@ export function composeDraftBoard(
       nid: card.nid,
     });
   });
+  if (draftCard) cards.push(draftCard);
   const hubId = cards[0].id;
   const links: CanvasLink[] = cards.slice(1).map((card) => [hubId, card.id]);
   return { id, name: `${title} — board ${boardNumber}`, cards, links };
+}
+
+// ─── AI first-pass draft card (Beta 4/M19, §7.1) ──────────────────────────────
+
+/** Draft-pass card body length before truncating into the board preview. */
+const DRAFT_PASS_PREVIEW_CHARS = 320;
+
+/** Count words the same way a writer would — whitespace-delimited tokens. */
+export function wordCount(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+/**
+ * Build the "— first pass" draft card placed under the hub when the writer
+ * clicks **Add to scene board** (B4-9). This card carries only a preview of
+ * the generated scaffold — never the manuscript itself; the writer copies
+ * from here by hand (AC6, decisions log B4-9).
+ */
+export function composeDraftPassCard(setup: CrafterSetup, draftText: string, id: string): CanvasCard {
+  const title = setup.title.trim() || 'Untitled scene';
+  const trimmed = draftText.trim();
+  const preview = trimmed.length > DRAFT_PASS_PREVIEW_CHARS
+    ? `${trimmed.slice(0, DRAFT_PASS_PREVIEW_CHARS).trimEnd()}…`
+    : trimmed;
+  const words = wordCount(trimmed);
+  return {
+    id,
+    t: `${title} — first pass`,
+    d: `${preview}\n\n— ${words} word${words === 1 ? '' : 's'}`,
+    av: '✎',
+    c: 5,
+    x: 440,
+    y: 220,
+    w: 320,
+    h: 220,
+    nid: null,
+  };
+}
+
+// ─── Coach-framed generation prompt (Beta 4/M19, §7.1) ────────────────────────
+
+/**
+ * Coach-persona system prompt for the first-pass generation. Per the
+ * decisions log (B4-9) the output is a planning scaffold for the scene
+ * board — it never reaches the manuscript automatically, so the prompt
+ * enforces that framing on the model as well as the UI enforcing it in code.
+ */
+export const CRAFTER_COACH_SYSTEM_PROMPT =
+  "You are the Writing Coach inside Mythos Writer's Scene Crafter. Draft a " +
+  "first-pass prose scaffold from the writer's beats — a rough pass they can " +
+  'rewrite from, not a finished scene. After the scaffold, add a short ' +
+  '"Why these choices" note explaining the choices you made (POV framing, ' +
+  'pacing, what each beat is doing) so the rewrite teaches the writer ' +
+  'something. Never claim this text belongs in the manuscript — it is only a ' +
+  'planning aid the writer may lift from by hand.';
+
+/** Coach-framed copy shown above the Generate button, verbatim from §7.1. */
+export const CRAFTER_GENERATE_COPY =
+  'Set the shape — the Writing Coach drafts a first-pass scaffold from YOUR ' +
+  'beats, then annotates why it made each choice, so the rewrite teaches you.';
+
+/** Build the user-turn message sent alongside CRAFTER_COACH_SYSTEM_PROMPT. */
+export function buildDraftPrompt(setup: CrafterSetup, chosen: ChosenCard[], summary: string): string {
+  const tones = CRAFTER_TONES.filter((tone) => setup.tones[tone]);
+  const length = setup.len === 'Custom' ? (setup.customLen.trim() || 'Custom') : setup.len;
+  const lines = [
+    `Title: ${setup.title.trim() || 'Untitled scene'}`,
+    setup.pov.trim() ? `POV: ${setup.pov.trim()}` : '',
+    setup.goal.trim() ? `Goal: ${setup.goal.trim()}` : '',
+    setup.conflict.trim() ? `Conflict: ${setup.conflict.trim()}` : '',
+    setup.beats.length > 0 ? `Beats:\n${setup.beats.map((beat, i) => `${i + 1}. ${beat}`).join('\n')}` : '',
+    tones.length > 0 ? `Tone: ${tones.join(', ')}` : '',
+    `Length: ${length}`,
+    summary.trim() ? `Quick summary: ${summary.trim()}` : '',
+    chosen.length > 0
+      ? `Relevant cards:\n${chosen.map((c) => `- ${c.title}${c.desc ? `: ${c.desc}` : ''}`).join('\n')}`
+      : '',
+  ].filter(Boolean);
+  return lines.join('\n\n');
 }
