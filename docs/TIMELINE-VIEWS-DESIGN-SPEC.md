@@ -23,6 +23,20 @@ Subway.** Plotlines and Tension are the other two modes in FULL-SPEC §8.5/§8.4
 they are out of scope for this doc (tracked separately) and are not in the
 mode-switcher list below.
 
+**Axis is not a sixth view.** The shipped M22 `AxisView` (`TimelineRoot.tsx`
+`MODE_OPTIONS`) currently sits in the mode switcher as its own tab, but
+FULL-SPEC §8.3 only ever describes "the axis" as the shared drag/resize/
+direct-manipulation *machinery* behind Progress and Structure lanes — never as
+a user-facing mode. `AxisView`'s own header comment confirms this reading: "M23
+layers the full lane rows … on this machinery" (the lane views consume Axis's
+engine, they don't sit beside it) and "M25 replaces the built-in mini inspector
+with the full right-panel Inspector" (Axis's bespoke chrome is meant to be
+absorbed, not to persist). Treat the standalone Axis tab as M22 engineering
+scaffolding: **the M24 mode-seg issue should retire it as a switcher entry**,
+folding its direct-manipulation primitives into the lane engine Progress/
+Structure already use (§1). The switcher stays at five tabs, matching
+FULL-SPEC and this doc — not six.
+
 Reference renders (synthetic data, 1440×900, real token values) live in
 `docs/screenshots/timeline-views/`. These are a harness built from the approved
 prototype's own markup (`plans/design-handoff/v2/prototype/…dc.html` lines
@@ -49,9 +63,10 @@ on anything they disagree about for the four already-speced views.
 
 One segmented control, top of the Timeline header, immediately right of the
 "Timeline" title (`view-progress.png`) — reusing the existing `tlModeSeg` chrome
-already built for all seven modes (FULL-SPEC §8.4 toolbar, prototype line 1907).
-This doc only adds the five labels in scope: **Progress · Structure · Spreadsheet ·
-Relationships · Subway**.
+(FULL-SPEC §8.4 toolbar, prototype line 1907). Today's shipped switcher has six
+slots (the five in scope here, plus the M22 `axis` scaffold entry — see §0); this
+doc's end state is **five**: **Progress · Structure · Spreadsheet · Relationships
+· Subway**, once M24 retires the Axis tab per §0.
 
 - Single row, no wrapping, no overflow menu at 1440px — five short labels fit
   (Hick's Law: five is comfortably below the point where a picker/dropdown would
