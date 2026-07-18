@@ -10,8 +10,12 @@
 //       "you are here" position on written data
 //   §4  skip-backward flags — planned scenes behind the last written plan
 //       position and never written
+//   §5  TimelineFlag emission (SKY-7379) — the auto-build pass reshapes skip
+//       flags, structural gaps, and projected continuity contradictions into
+//       the unified timeline-scoped flag contract
 
 import { describe, expect, it } from 'vitest';
+import type { InconsistencyItem } from './InconsistencyCard';
 import { deriveAeonTimeline, type AeonChapterInput, type AeonSceneInput } from './timelineAeon';
 import {
   cleanPlanTitle,
@@ -217,5 +221,99 @@ describe('skip-backward flags', () => {
   it('flags nothing when no plan unit is written yet', () => {
     const out = mergePlannedIntoTimeline([], [], parsePlanUnits('- One\n- Two', 'p'));
     expect(out.skipped).toEqual([]);
+  });
+});
+
+// ─── §5 TimelineFlag emission (SKY-7379) ────────────────────────────────────
+
+describe('TimelineFlag emission (SKY-7379)', () => {
+  it('emits ordering_skip, gap, and contradiction flags matching the shared TimelineFlag shape', () => {
+    // Same skip-backward story as §4, plus a trailing chapter heading with no
+    // scenes under it (structural gap) and an open continuity flag anchored
+    // to a real scene on this timeline (contradiction).
+    const md = [
+      "- The Watcher's Call",
+      '- The Broken Gate',
+      '- Signal fires',
+      '- Embers on the Water',
+      '- Finale',
+      '## Interlude',
+    ].join('\n');
+
+    const continuityItem: InconsistencyItem = {
+      id: 'ic-1',
+      category: 'factual_contradiction',
+      severity: 'medium',
+      manuscriptAnchor: { sceneId: 'sc-1', offset: 10, excerpt: 'a contradiction excerpt' },
+      vaultAnchor: { notePath: 'Vault/x.md', line: 1, excerpt: 'vault excerpt' },
+      rationale: 'Scene contradicts the vault entry',
+      proposedResolution: { matchArchiveToStory: '', suggestStoryChange: '' },
+      status: 'open',
+      resolvedAt: null,
+      resolvedAction: null,
+      createdAt: '2026-07-01T00:00:00.000Z',
+    };
+
+    const out = mergePlannedIntoTimeline(
+      REAL_SCENES,
+      REAL_CHAPTERS,
+      parsePlanUnits(md, 'Plans/gate'),
+      [continuityItem],
+    );
+
+    for (const flag of out.flags) {
+      expect(flag).toMatchObject({
+        id: expect.any(String),
+        kind: expect.stringMatching(/^(contradiction|gap|ordering_skip)$/),
+        description: expect.any(String),
+        anchor: expect.any(String),
+        affectedItemId: expect.any(String),
+      });
+    }
+
+    expect(out.flags.map((f) => f.kind).sort()).toEqual([
+      'contradiction',
+      'gap',
+      'ordering_skip',
+      'ordering_skip',
+    ]);
+
+    expect(out.flags.find((f) => f.kind === 'contradiction')).toEqual({
+      id: 'ic-1',
+      kind: 'contradiction',
+      description: 'Scene contradicts the vault entry',
+      anchor: 'a contradiction excerpt',
+      affectedItemId: 'sc-1',
+    });
+
+    const gap = out.flags.find((f) => f.kind === 'gap')!;
+    expect(gap.description).toContain('Interlude');
+    expect(gap.affectedItemId).toBe(out.chapters.find((c) => c.title === 'Interlude')!.id);
+  });
+
+  it('drops a resolved continuity flag and one anchored off this timeline', () => {
+    const resolved: InconsistencyItem = {
+      id: 'ic-resolved',
+      category: 'factual_contradiction',
+      severity: 'low',
+      manuscriptAnchor: { sceneId: 'sc-1', offset: 0, excerpt: 'x' },
+      vaultAnchor: { notePath: 'v.md', line: 1, excerpt: 'y' },
+      rationale: 'already handled',
+      proposedResolution: { matchArchiveToStory: '', suggestStoryChange: '' },
+      status: 'resolved',
+      resolvedAt: '2026-07-02T00:00:00.000Z',
+      resolvedAction: 'match_archive_to_story',
+      createdAt: '2026-07-01T00:00:00.000Z',
+    };
+    const offTimeline: InconsistencyItem = {
+      ...resolved,
+      id: 'ic-off-timeline',
+      status: 'open',
+      resolvedAt: null,
+      resolvedAction: null,
+      manuscriptAnchor: { sceneId: 'sc-not-here', offset: 0, excerpt: 'z' },
+    };
+    const out = mergePlannedIntoTimeline(REAL_SCENES, REAL_CHAPTERS, [], [resolved, offTimeline]);
+    expect(out.flags.filter((f) => f.kind === 'contradiction')).toEqual([]);
   });
 });

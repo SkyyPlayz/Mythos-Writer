@@ -13,8 +13,17 @@
 //   - skip-backward flags: planned scenes that sit BEFORE the last written
 //     plan position but were never written — the author jumped ahead.
 //
+// SKY-7379 — this is also the Archive Agent's timeline auto-build pass per the
+// Timeline Views design spec (§2): alongside `skipped` (legacy M22/23 shape,
+// kept for the existing TimelineRoot badge) it now emits the same findings —
+// plus structural gaps and projected manuscript contradictions — as
+// `TimelineFlag`s (`archive/timelineFlags.ts`), the shape M25's Inspector
+// Flags section and canvas outline will consume.
+//
 // Pure functions only — TimelineRoot does the IPC.
 
+import type { InconsistencyItem } from './InconsistencyCard';
+import { continuityItemsToTimelineFlags, type TimelineFlag } from './archive/timelineFlags';
 import type { AeonChapterInput, AeonSceneInput } from './timelineAeon';
 
 // ─── Plan note parsing ──────────────────────────────────────────────────────
@@ -95,6 +104,11 @@ export function normalizePlanTitle(title: string): string {
 export interface SkippedPlanFlag {
   title: string;
   planId: string;
+  /** The scene id (real or synthetic `plan:...`) this skip is anchored to —
+   *  the Timeline lane item to select on Jump-to-scene. */
+  itemId: string;
+  /** The chapter this skipped scene belongs to, for the flag's anchor text. */
+  chapterId: string;
 }
 
 export interface PlanMergeResult {
@@ -102,6 +116,9 @@ export interface PlanMergeResult {
   chapters: AeonChapterInput[];
   /** Planned-but-unwritten scenes the author skipped past (plan order). */
   skipped: SkippedPlanFlag[];
+  /** SKY-7379 — unified timeline-scoped flags: `skipped` reshaped as
+   *  `ordering_skip`, plus structural `gap`s and projected `contradiction`s. */
+  flags: TimelineFlag[];
 }
 
 const FALLBACK_CHAPTER_ID = 'plan:unsorted';
@@ -117,8 +134,12 @@ export function mergePlannedIntoTimeline(
   scenes: AeonSceneInput[],
   chapters: AeonChapterInput[],
   units: PlanUnit[],
+  continuityFlags: readonly InconsistencyItem[] = [],
 ): PlanMergeResult {
-  if (units.length === 0) return { scenes, chapters, skipped: [] };
+  if (units.length === 0) {
+    const sceneIds = new Set(scenes.map((s) => s.id));
+    return { scenes, chapters, skipped: [], flags: continuityItemsToTimelineFlags(continuityFlags, sceneIds) };
+  }
 
   const chapterByTitle = new Map<string, AeonChapterInput>();
   for (const ch of chapters) {
@@ -137,7 +158,9 @@ export function mergePlannedIntoTimeline(
   const usedKeys = new Set<string>();
 
   // Written state per scene unit, in plan order — for skip-backward flags.
-  const sceneUnitWritten: Array<{ unit: PlanUnit; written: boolean } | null> = [];
+  const sceneUnitWritten: Array<
+    { unit: PlanUnit; written: boolean; itemId: string; chapterId: string } | null
+  > = [];
 
   let contextChapterId: string | null = null;
   let fallbackCreated = false;
@@ -168,7 +191,12 @@ export function mergePlannedIntoTimeline(
     // Scene unit.
     const real = sceneByTitle.get(key);
     if (real) {
-      sceneUnitWritten.push({ unit, written: (real.wordCount ?? 0) > 0 });
+      sceneUnitWritten.push({
+        unit,
+        written: (real.wordCount ?? 0) > 0,
+        itemId: real.id,
+        chapterId: real.chapterId,
+      });
       continue;
     }
 
@@ -181,8 +209,9 @@ export function mergePlannedIntoTimeline(
       chapterId = FALLBACK_CHAPTER_ID;
     }
     syntheticCount += 1;
+    const itemId = `plan:${unit.planId}:sc:${syntheticCount}`;
     outScenes.push({
-      id: `plan:${unit.planId}:sc:${syntheticCount}`,
+      id: itemId,
       title: unit.title,
       chapterId,
       date: '',
@@ -192,7 +221,7 @@ export function mergePlannedIntoTimeline(
       arcIds: [],
       characterIds: [],
     });
-    sceneUnitWritten.push({ unit, written: false });
+    sceneUnitWritten.push({ unit, written: false, itemId, chapterId });
   }
 
   // Skip-backward: scene units before the LAST written plan position that
@@ -204,10 +233,49 @@ export function mergePlannedIntoTimeline(
   if (lastWrittenIdx > -1) {
     sceneUnitWritten.forEach((entry, i) => {
       if (entry && !entry.written && i < lastWrittenIdx) {
-        skipped.push({ title: entry.unit.title, planId: entry.unit.planId });
+        skipped.push({
+          title: entry.unit.title,
+          planId: entry.unit.planId,
+          itemId: entry.itemId,
+          chapterId: entry.chapterId,
+        });
       }
     });
   }
 
-  return { scenes: outScenes, chapters: outChapters, skipped };
+  // SKY-7379 — reshape into the unified TimelineFlag contract.
+  const chapterTitleById = new Map(outChapters.map((c) => [c.id, c.title]));
+  const orderingSkipFlags: TimelineFlag[] = skipped.map((f) => ({
+    id: `flag:skip:${f.itemId}`,
+    kind: 'ordering_skip',
+    description: `Planned scene "${f.title}" was skipped — later scenes were written first.`,
+    anchor: chapterTitleById.get(f.chapterId) ?? f.title,
+    affectedItemId: f.itemId,
+  }));
+
+  // Gap: a chapter (real or plan-synthesized) with no scene coverage at all —
+  // a structural hole in the timeline, distinct from an unwritten-but-planned scene.
+  const sceneCountByChapter = new Map<string, number>();
+  for (const s of outScenes) {
+    sceneCountByChapter.set(s.chapterId, (sceneCountByChapter.get(s.chapterId) ?? 0) + 1);
+  }
+  const gapFlags: TimelineFlag[] = outChapters
+    .filter((c) => !sceneCountByChapter.get(c.id))
+    .map((c) => ({
+      id: `flag:gap:${c.id}`,
+      kind: 'gap' as const,
+      description: `"${c.title}" has no scenes yet.`,
+      anchor: c.title,
+      affectedItemId: c.id,
+    }));
+
+  const timelineSceneIds = new Set(outScenes.map((s) => s.id));
+  const contradictionFlags = continuityItemsToTimelineFlags(continuityFlags, timelineSceneIds);
+
+  return {
+    scenes: outScenes,
+    chapters: outChapters,
+    skipped,
+    flags: [...orderingSkipFlags, ...gapFlags, ...contradictionFlags],
+  };
 }
