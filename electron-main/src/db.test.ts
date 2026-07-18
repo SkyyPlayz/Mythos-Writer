@@ -1241,8 +1241,19 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('listContinuityIssues(status) p95 < 100ms with 5000 rows', () => {
-    const RUNS = 20;
+  it('listContinuityIssues(status) median < 60ms, p95 < 150ms with 5000 rows', () => {
+    // Warm up the query plan / page cache before timing — an untimed cold-start
+    // run would otherwise inflate the first (and under low RUNS, tail-weighted) sample.
+    const WARMUP = 5;
+    for (let w = 0; w < WARMUP; w++) {
+      listContinuityIssues('open');
+    }
+    // 50 samples (up from 20) so p95 lands on the 3rd-worst run rather than the
+    // 2nd-worst — a single shared-runner GC/scheduler blip no longer fails the test.
+    // Median is the primary regression signal; p95 keeps a wide margin purely to
+    // absorb fleet-load noise (SKY-7367 — this budget was already raised once,
+    // 50ms->100ms in SKY-1745, and still flaked under load with the tighter stat).
+    const RUNS = 50;
     const times: number[] = [];
     for (let r = 0; r < RUNS; r++) {
       const start = performance.now();
@@ -1250,8 +1261,10 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
       times.push(performance.now() - start);
     }
     times.sort((a, b) => a - b);
+    const median = times[Math.floor(RUNS / 2)];
     const p95 = times[Math.ceil(RUNS * 0.95) - 1];
-    expect(p95).toBeLessThan(100);
+    expect(median).toBeLessThan(60);
+    expect(p95).toBeLessThan(150);
   });
 
   it('listContinuityIssuesByScene(sceneId, status) p95 < 10ms with 5000 rows', () => {
