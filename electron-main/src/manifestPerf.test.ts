@@ -110,15 +110,23 @@ describe('SKY-6596 perf validation — manifest write cost on a 3000-scene synth
       // First write of a freshly-hydrated vault: wordCount's per-block scan
       // (uncached) is a genuine, unavoidable one-time O(content) cost — not a
       // strict multiple of `beforeMs` (timing noise on shared CI runners),
-      // and no longer the ~4ms flat number from pre-SKY-6195, but still
-      // generously bounded well short of scaling into seconds.
-      expect(afterMs).toBeLessThan(1500);
+      // and no longer the ~4ms flat number from pre-SKY-6195. Locally this
+      // measures ~60-90ms, but a shared CI runner under fleet load has been
+      // observed at ~1.5s for this same single-sample scan (SKY-7553, same
+      // jitter pattern as SKY-7367's db.test.ts perf flakes) — bound is set
+      // well above that observed sample so it still fails fast on an actual
+      // regression (e.g. the scan becoming quadratic) without flaking on
+      // scheduler/GC noise.
+      expect(afterMs).toBeLessThan(4000);
       // Repeat write with the SAME block references (the realistic case: an
       // autosave firing again while only one scene is being edited): the
       // per-block word-count cache means this must stay close to the
       // original O(structure) number, regardless of how many scenes are
-      // hydrated with unchanged prose.
-      expect(repeatMs).toBeLessThan(300);
+      // hydrated with unchanged prose. Locally ~5-10ms; bound carries the
+      // same shared-runner headroom as `afterMs` above while still being
+      // far enough below it to catch a cache regression (which would fall
+      // back to the full uncached scan cost).
+      expect(repeatMs).toBeLessThan(600);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

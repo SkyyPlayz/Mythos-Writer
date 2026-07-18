@@ -576,6 +576,24 @@ describe('stripEmbeddedProseForPersist — derived wordCount (SKY-6195)', () => 
     const second = stripEmbeddedProseForPersist({ ...defaultManifest(vaultRoot), scenes: [edited] });
     expect(second.scenes[0].wordCount).toBe(6);
   });
+
+  it('is not stale after the same block object has its content mutated in place (scene:save pattern)', () => {
+    // `scene:save` (main.ts) does `proseBlock.content = payload.prose` on the
+    // EXISTING block object rather than replacing it — unlike the test above,
+    // which persists two distinct scene/block objects. The per-block
+    // word-count memo (manifest.ts) must key on content, not just object
+    // identity, or this in-place edit would keep returning the count cached
+    // from the first persist.
+    const scene = makeSceneWithProse('s1', 'a.md', 'One two three');
+    const manifest: Manifest = { ...defaultManifest(vaultRoot), scenes: [scene] };
+
+    const first = stripEmbeddedProseForPersist(manifest);
+    expect(first.scenes[0].wordCount).toBe(3);
+
+    scene.blocks[0].content = 'One two three four five six seven';
+    const second = stripEmbeddedProseForPersist(manifest);
+    expect(second.scenes[0].wordCount).toBe(7);
+  });
 });
 
 describe('writeManifestAtomic — structure-only persistence (SKY-6596)', () => {

@@ -148,22 +148,27 @@ function countWords(text: string): number {
   return count;
 }
 
-// SKY-6195: per-block word-count memo, keyed by block object identity. Blocks
-// are treated as immutable elsewhere in this module (edits replace a block
-// with a new object rather than mutating `content` in place — see
-// `stripSceneProse`'s own `{ ...b, content: '' }`), so an unchanged block
-// keeps the same reference across saves. Caching on that reference means a
-// vault-wide write only re-scans the handful of blocks that actually changed
-// since the last write, instead of every hydrated scene's full prose every
-// time — the O(vault) cost this WeakMap avoids is CPU (word counting), not
-// disk bytes, which stripEmbeddedProseForPersist already keeps flat.
-const blockWordCountCache = new WeakMap<BlockEntry, number>();
+// SKY-6195: per-block word-count memo, keyed by block object identity *and*
+// a snapshot of the content it was computed from. Blocks are NOT uniformly
+// immutable: `scene:save` (main.ts) mutates `proseBlock.content` on the
+// existing block object in place rather than replacing it, so identity alone
+// is not a safe cache key — it would silently keep serving a stale count for
+// every actively-edited scene after its first save. Storing the content
+// alongside the count and comparing on read fixes that: an in-place edit
+// invalidates the entry (content !== cached.content), while an unchanged
+// block hits V8's pointer-equality fast path for identical string references
+// and stays effectively O(1). This is what makes a vault-wide write only
+// re-scan the handful of blocks that actually changed since the last write,
+// instead of every hydrated scene's full prose every time — the O(vault)
+// cost this WeakMap avoids is CPU (word counting), not disk bytes, which
+// stripEmbeddedProseForPersist already keeps flat.
+const blockWordCountCache = new WeakMap<BlockEntry, { content: string; count: number }>();
 
 function cachedBlockWordCount(b: BlockEntry): number {
   const cached = blockWordCountCache.get(b);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined && cached.content === b.content) return cached.count;
   const count = countWords(b.content);
-  blockWordCountCache.set(b, count);
+  blockWordCountCache.set(b, { content: b.content, count });
   return count;
 }
 
