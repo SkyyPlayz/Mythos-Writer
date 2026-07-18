@@ -1180,9 +1180,9 @@ jobs:
     # Event-driven board ping. Runs after all required jobs complete on a PR.
     # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
     # sweep for missed pings. PR-only — plain pushes to main get no ping.
-    # Stays self-hosted deliberately: the `paperclipai` CLI it drives only exists
-    # on the local runner (and no public/fork PR exposure per SKY-849). It is not
-    # a required check, so a slow/offline runner never blocks merges.
+    # Runs on ubuntu-latest (GitHub-hosted): the `paperclipai` CLI is not available
+    # on hosted runners, so this step has continue-on-error to prevent false CI failures
+    # (SKY-7490). It is not a required check, so failures never block merges.
     # build-linux and build-windows always run (fast no-op on PRs) so this job
     # is never blocked by upstream skipped status (SKY-2421).
     # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
