@@ -45,8 +45,9 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
   onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank' }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
-  // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears.
-  onboardingReset: () => ipcRenderer.invoke('onboarding:reset', undefined),
+  // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
+  // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
+  onboardingReset: (payload?: { hard?: boolean }) => ipcRenderer.invoke('onboarding:reset', payload),
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
