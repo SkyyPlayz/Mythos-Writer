@@ -1027,7 +1027,10 @@ export interface IpcHandlers {
 
   // SKY-6228: M15 — agent chat sessions
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
-  // SKY-7112: hydrate a persisted transcript by session id (Agent Hub session picker fix)
+  // M20: hydrate one session's full turn history (Brainstorm chat hydration on session switch)
+  // SKY-7112: also used to hydrate the Agent Hub session picker. An unknown id is not an
+  // error — `session: null` tells the renderer to render an empty transcript, mirroring
+  // the AGENT_SESSION_APPEND_TURNS not-found contract.
   [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) => AgentSessionReadResponse;
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => AgentSessionCreateResponse;
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => AgentSessionRenameResponse;
@@ -4854,11 +4857,5 @@ export interface AgentSessionAppendTurnsPayload {
   turns: import('./mythosFormat/agentSessions.js').SessionTurn[];
 }
 export interface AgentSessionAppendTurnsResponse {
-  session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
-}
-
-// M12 — read one full session by id (null when it does not exist).
-export interface AgentSessionReadPayload { sessionId: string; }
-export interface AgentSessionReadResponse {
   session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
 }
