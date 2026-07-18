@@ -601,7 +601,6 @@ export const IPC_CHANNELS = {
 
   // SKY-6228: M15 — agent chat sessions (vault-file backed, M5 format)
   AGENT_SESSION_LIST: 'agentSession:list',
-  AGENT_SESSION_READ: 'agentSession:read',
   AGENT_SESSION_CREATE: 'agentSession:create',
   AGENT_SESSION_RENAME: 'agentSession:rename',
   AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
@@ -1029,7 +1028,6 @@ export interface IpcHandlers {
 
   // SKY-6228: M15 — agent chat sessions
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
-  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) => AgentSessionReadResponse;
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => AgentSessionCreateResponse;
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => AgentSessionRenameResponse;
   [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => AgentSessionDuplicateResponse;
@@ -4804,12 +4802,6 @@ export type { AgentSessionFile, AgentSessionSummary, SessionTurn, SessionAgent }
 export interface AgentSessionListPayload { agent?: string; }
 export interface AgentSessionListResponse { sessions: import('./mythosFormat/agentSessions.js').AgentSessionSummary[]; }
 
-// M20: read one session's full turn history (Brainstorm chat hydration on session switch)
-export interface AgentSessionReadPayload { sessionId: string; }
-export interface AgentSessionReadResponse {
-  session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
-}
-
 export interface AgentSessionCreatePayload {
   agent: string;
   title?: string;
@@ -4845,7 +4837,8 @@ export interface AgentSessionAppendTurnsResponse {
   session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;
 }
 
-// M12 — read one full session by id (null when it does not exist).
+// M12 — read one full session by id (null when it does not exist). Also
+// used by M20 to hydrate a Brainstorm session's turn history on switch.
 export interface AgentSessionReadPayload { sessionId: string; }
 export interface AgentSessionReadResponse {
   session: import('./mythosFormat/agentSessions.js').AgentSessionFile | null;

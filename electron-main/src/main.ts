@@ -190,7 +190,6 @@ import {
   type OutlineSavePayload,
   type OutlineSaveResponse,
   type AgentSessionListPayload,
-  type AgentSessionReadPayload,
   type AgentSessionCreatePayload,
   type AgentSessionRenamePayload,
   type AgentSessionDuplicatePayload,
@@ -201,7 +200,6 @@ import {
 import { loadOutline, saveOutline } from './outline.js';
 import {
   handleAgentSessionList,
-  handleAgentSessionRead,
   handleAgentSessionCreate,
   handleAgentSessionRename,
   handleAgentSessionDuplicate,
@@ -6677,8 +6675,6 @@ const handlers: IpcHandlers = {
     handleAgentSessionDelete(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
     handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
-  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
-    handleAgentSessionRead(getNotesVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───

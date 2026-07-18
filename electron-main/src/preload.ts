@@ -1000,7 +1000,6 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {
     list: (agent?: string) => ipcRenderer.invoke('agentSession:list', { agent }),
-    read: (sessionId: string) => ipcRenderer.invoke('agentSession:read', { sessionId }),
     create: (agent: string, title?: string, greeting?: string) =>
       ipcRenderer.invoke('agentSession:create', { agent, title, greeting }),
     rename: (sessionId: string, title: string) =>
