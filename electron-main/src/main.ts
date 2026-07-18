@@ -2637,6 +2637,7 @@ const handlers: IpcHandlers = {
       current.tts,
       {
         sttBinaryToken: payload.sttBinaryToken,
+        sttModelToken: payload.sttModelToken,
         ttsBinaryToken: payload.ttsBinaryToken,
         ttsModelToken: payload.ttsModelToken,
       },
@@ -4528,17 +4529,21 @@ const handlers: IpcHandlers = {
   // path. settings:set requires this token to change stt.localBinaryPath,
   // tts.localBinaryPath, or tts.localModelPath, so a renderer can never
   // promote an arbitrary local executable into the spawn surface.
-  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'tts-binary' | 'tts-model' }) => {
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'stt-model' | 'tts-binary' | 'tts-model' }) => {
     const title =
       payload?.kind === 'tts-model'
         ? 'Select Local TTS Voice Model (.onnx)'
         : payload?.kind === 'tts-binary'
           ? 'Select Local TTS Binary (Piper)'
-          : 'Select Local STT Binary (whisper.cpp)';
+          : payload?.kind === 'stt-model'
+            ? 'Select Local STT Model File (ggml-*.bin)'
+            : 'Select Local STT Binary (whisper-cli)';
     const filters =
       payload?.kind === 'tts-model'
         ? [{ name: 'Piper voice model', extensions: ['onnx'] }, { name: 'All files', extensions: ['*'] }]
-        : [{ name: 'All files', extensions: ['*'] }];
+        : payload?.kind === 'stt-model'
+          ? [{ name: 'whisper.cpp GGML model', extensions: ['bin'] }, { name: 'All files', extensions: ['*'] }]
+          : [{ name: 'All files', extensions: ['*'] }];
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       title,
