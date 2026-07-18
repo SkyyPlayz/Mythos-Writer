@@ -13,11 +13,11 @@
  * | AC-V-03 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-03 (skip — needs STT) |
  * | AC-V-04 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-04a ✓ / TC-V-04b ✓   |
  * | AC-V-05 | SKY-1503       | accessibility.test.tsx ✓                  | TC-V-05a ✓ / TC-V-05b ✓   |
- * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 (skip — SKY-7540)  |
+ * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 (smoke E2E)        |
  * | AC-V-07 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-07 (skip — needs card)|
- * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 (skip — SKY-7540)  |
+ * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 (smoke E2E)        |
  * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E)        |
- * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10a-d real / 10e skip |
+ * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10a-e real            |
  * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 real               |
  * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 (skip — needs STT) |
  *
@@ -34,12 +34,27 @@
  * TC-V-03/V-12 remain skipped — unrelated to this mic-button surface.
  *
  * Un-skipping the whole file also exposed TC-V-06/08/09b/10e as broken for
- * reasons unrelated to the mic-state work: openAssistantPanel() still uses a
- * stale nav path (its Ctrl+1 partial update reaches the Story tab but the
- * Assistant surface itself moved to a left-sidebar toolbar panel), and
- * TC-V-09b's Settings toggle no longer maps to the flag that gates the
- * Brainstorm mic — re-skipped with a pointer to the SKY-7540 follow-up rather
- * than block this lift on an unrelated nav/product-flag fix.
+ * reasons unrelated to the mic-state work, fixed here (SKY-7540):
+ *
+ *  - openAssistantPanel() used a stale `Ctrl+1` → `tab[name=Assistant]` nav
+ *    that matches an older UI shape. The Writing Coach (`AgentHubPanel`,
+ *    which mounts `WritingAssistantPanel` → `.writing-assistant-panel`) is
+ *    now a left-sidebar panel (`writing-assistant` in `leftSidebarLayout`)
+ *    uncollapsed by the manuscript FormatToolbar's "Open the Writing Coach"
+ *    button (`handleToolbarAssist`, DesktopShell.tsx). That button only
+ *    renders once a scene is open in BlockEditor, so a story/chapter/scene
+ *    is now seeded (see STORY_ID et al.) and openAssistantPanel() selects it
+ *    before clicking the button.
+ *  - TC-V-09b flipped `#voice-enabled` (`appSettings.voice.enabled`) and
+ *    expected the Brainstorm mic to disappear, but Brainstorm's mic
+ *    visibility is gated on the separate `agents.brainstorm.voiceEnabled`
+ *    flag (SKY-2597, `#brainstorm-voice-enabled` in AgentsSection) — the two
+ *    diverged because each agent embedding now carries its own voice flag by
+ *    design (SKY-2597 shipped Brainstorm's own mic-device picker alongside
+ *    it, deliberately independent of the global Settings toggle, which only
+ *    gates the manuscript toolbar's Dictate action and the Writing Coach's
+ *    TTS). The test now flips the control that actually drives the surface
+ *    under test instead of the unrelated global one.
  *
  * TC-V-09 is a smoke E2E test — the primary assertion coverage lives in the
  * corresponding unit test file above. It verifies the surface renders in a
@@ -59,6 +74,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -67,6 +83,15 @@ const AXE_SOURCE = fs.readFileSync(
   path.resolve(__dirname, '../node_modules/axe-core/axe.min.js'),
   'utf8',
 );
+
+// A seeded story/chapter/scene is required for openAssistantPanel(): the
+// manuscript FormatToolbar's "Open the Writing Coach" button (and the rest
+// of the toolbar) only renders once a scene is open in BlockEditor.
+const STORY_ID = 'vio-e2e-story-0001';
+const CHAPTER_ID = 'vio-e2e-chapter-0001';
+const SCENE_ID = 'vio-e2e-scene-0001';
+const SCENE_TITLE = 'Voice IO Scene';
+const SCENE_BODY = 'The keeper lit the lamp and watched the beam sweep across the dark water.';
 
 type AxeRunResult = {
   violations: Array<{
@@ -136,6 +161,60 @@ function seedUserData(userData: string, vaultDir: string): void {
     path.join(userData, 'vault-settings.json'),
     JSON.stringify(vaultSettings, null, 2),
   );
+
+  const now = new Date().toISOString();
+  const manifest = {
+    schemaVersion: 1,
+    version: '2.0.0',
+    vaultRoot: vaultDir,
+    stories: [
+      {
+        id: STORY_ID,
+        title: 'Voice IO E2E Story',
+        path: `stories/${STORY_ID}`,
+        chapters: [
+          {
+            id: CHAPTER_ID,
+            title: 'Chapter One',
+            path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}`,
+            order: 0,
+            scenes: [
+              {
+                id: SCENE_ID,
+                title: SCENE_TITLE,
+                path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes/${SCENE_ID}.md`,
+                order: 0,
+                chapterId: CHAPTER_ID,
+                storyId: STORY_ID,
+                blocks: [
+                  { id: 'vio-e2e-block-0001', type: 'prose', content: SCENE_BODY, order: 0, updatedAt: now },
+                ],
+                draftState: 'in-progress',
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    entities: [],
+    suggestions: [],
+    scenes: [],
+    chapters: [],
+  };
+
+  const sceneDir = path.join(vaultDir, `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes`);
+  fs.mkdirSync(sceneDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sceneDir, `${SCENE_ID}.md`),
+    ['---', `id: ${SCENE_ID}`, `title: "${SCENE_TITLE}"`, `updatedAt: ${now}`, '---', '', SCENE_BODY, ''].join('\n'),
+  );
+  fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
@@ -180,15 +259,47 @@ async function openBrainstorm(page: Page): Promise<void> {
 }
 
 /**
- * Navigate to the Editor sidebar's Assistant tab and wait for it to mount.
- *
- * SKY-7430: same nav rewrite as openBrainstorm() — Ctrl/Cmd+1 switches to the
- * Story tab (the legacy `.app-menu-view-btn` "Editor" menu no longer renders).
+ * Navigate to the Editor, open the seeded scene, and surface the Writing
+ * Assistant panel. SKY-7540: the Assistant is not a Story sub-tab — it's a
+ * left-sidebar panel (`writing-assistant` in leftSidebarLayout) uncollapsed by
+ * the manuscript FormatToolbar's "Open the Writing Coach" button
+ * (handleToolbarAssist, DesktopShell.tsx), which only renders once a scene is
+ * open in BlockEditor. That reveals AgentHubPanel's agent list, not the chat
+ * directly — drill into the Writing Coach row, then past
+ * WritingAssistantPanel's own width-based collapse (AC-WA-20) to reach the
+ * actual `.writing-assistant-panel`.
  */
 async function openAssistantPanel(page: Page): Promise<void> {
-  await page.keyboard.press('Control+1');
-  await page.getByRole('tab', { name: 'Assistant' }).click();
-  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
+  await clickStoryNav(page);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+
+  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+
+  const assistBtn = page.getByRole('button', { name: 'Open the Writing Coach' });
+  await expect(assistBtn).toBeVisible({ timeout: 8_000 });
+  await assistBtn.click();
+
+  // The Assist click only uncollapses the agent-hub panel's list view (the
+  // AGENTS list: Writing Coach / Brainstorm Agent / Archive Agent / Beta
+  // Reader). Drill into the Writing Coach row to reach the chat surface.
+  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
+  if (await agentRow.isVisible({ timeout: 4_000 }).catch(() => false)) {
+    await agentRow.click();
+  }
+
+  // WritingAssistantPanel has its own internal width-based collapse (AC-WA-20,
+  // width < 280px collapses to an icon button) independent of the sidebar
+  // panel's own collapsed state — the narrow left-sidebar column collapses it
+  // by default. Click through the icon button to force overlayOpen, which
+  // renders the full .writing-assistant-panel regardless of width.
+  const openCoachBtn = page.getByRole('button', { name: /^Open Writing Coach/ });
+  if (await openCoachBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await openCoachBtn.click();
+  }
+
+  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 type VoiceTranscribeResult = { text: string; confidence?: number } | { error: string };
@@ -356,7 +467,7 @@ test('TC-V-10d: Brainstorm mic button listening aria-label is correct', async ()
 // Primary unit coverage: WritingAssistantPanel.test.tsx
 // This E2E test verifies the mute toggle renders in a real Electron window.
 
-test.skip('TC-V-06: Writing Assistant mute toggle renders in Electron (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-06: Writing Assistant mute toggle renders in Electron', async () => {
   await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
   // The WritingAssistantPanel only mounts when the Editor sidebar's Assistant tab is active.
@@ -393,7 +504,7 @@ test.skip('TC-V-07: Hear button renders on WA suggestion card (requires LLM/seed
 // play state."
 // Primary unit coverage: WritingAssistantPanel.test.tsx "AC-V-08:" tests.
 
-test.skip('TC-V-08: mute toggle flips aria-pressed in Electron (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-08: mute toggle flips aria-pressed in Electron', async () => {
   await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
   await expect(muteBtn).toBeAttached({ timeout: 5_000 });
@@ -442,7 +553,7 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
   await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 });
 
-test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (SKY-7540 — #voice-enabled maps to appSettings.voice.enabled, but the Brainstorm mic reads the separate agents.brainstorm.voiceEnabled; the two have diverged, see follow-up)', async () => {
+test('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility', async () => {
   await openBrainstorm(page);
   await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toBeVisible({ timeout: 4_000 });
 
@@ -452,9 +563,13 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  const voiceToggle = page.locator('#voice-enabled');
+  // SKY-7540/SKY-2597: Brainstorm's mic is gated by the per-agent
+  // agents.brainstorm.voiceEnabled toggle (AgentsSection), not the top-level
+  // voice.enabled toggle (VoiceSection) — the two are deliberately
+  // independent (each agent embedding carries its own voice flag).
+  const voiceToggle = page.locator('#brainstorm-voice-enabled');
   await expect(voiceToggle).toBeChecked({ timeout: 6_000 });
-  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
+  await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(voiceToggle).not.toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
@@ -466,7 +581,7 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
+  await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(voiceToggle).toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
@@ -480,7 +595,7 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
 //
 // AC-V-10: WA panel must also have an always-in-DOM sr-only live region.
 
-test.skip('TC-V-10e: Writing Assistant live region is always in DOM (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-10e: Writing Assistant live region is always in DOM', async () => {
   await openAssistantPanel(page);
   const liveRegion = page.locator('.writing-assistant-panel [role="status"][aria-live="polite"]');
   await expect(liveRegion).toBeAttached({ timeout: 5_000 });
