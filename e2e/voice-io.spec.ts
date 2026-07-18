@@ -321,8 +321,12 @@ test('TC-V-10b: Brainstorm live region persists across recording toggle', async 
   await micBtn.click(); // start recording
   const liveRegion = page.locator('.brainstorm-page [role="status"][aria-live="polite"]').first();
   await expect(liveRegion).toBeAttached();
-  await micBtn.click(); // stop recording
+  await micBtn.click(); // stop recording -> transcription in flight (default mock resolves quickly)
   await expect(liveRegion).toBeAttached();
+  // Wait for the default mock's voice:transcribe to resolve and the mic to
+  // settle back to idle before the next test reads its aria-label/class — on
+  // a loaded CI runner the resolution can straddle test boundaries otherwise.
+  await expect(micBtn).toHaveClass(/brainstorm-mic-btn--idle/, { timeout: 5_000 });
 });
 
 test('TC-V-10c: Brainstorm mic button idle aria-label is correct', async () => {
