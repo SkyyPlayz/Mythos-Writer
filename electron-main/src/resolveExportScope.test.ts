@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Manifest } from './ipc';
+import type { Manifest } from './ipc.js';
 
 // This test validates SKY-7108: readProse correctly tracks missing scene .md files
 // and distinguishes between truly missing files and legitimately empty files.
