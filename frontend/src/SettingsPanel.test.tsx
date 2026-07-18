@@ -76,11 +76,11 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
     // Agents tab is the default: agent sections visible
-    expect(screen.getAllByText(/writing assistant/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/writing coach/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
     expect(screen.getAllByText(/archive agent/i)[0]).toBeInTheDocument();
     // Category nav tabs exist
-    expect(screen.getByRole('tab', { name: /vaults/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /vault & files/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /agents/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /appearance/i })).toBeInTheDocument();
     // Appearance heading is NOT in the DOM until that tab is selected
@@ -114,7 +114,7 @@ describe('SettingsPanel', () => {
   it('SKY-2973: renders Vaults / Agents / Appearance tabs', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    expect(screen.getByRole('tab', { name: /vaults/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /vault & files/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /agents/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /appearance/i })).toBeInTheDocument();
   });
@@ -132,8 +132,8 @@ describe('SettingsPanel', () => {
   it('SKY-2973: clicking Vaults tab shows vault sections', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    fireEvent.click(screen.getByRole('tab', { name: /vaults/i }));
-    expect(screen.getByRole('tab', { name: /vaults/i })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe('SettingsPanel', () => {
   it('MYT-346: Vaults tab shows the Back up & restore section', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    fireEvent.click(screen.getByRole('tab', { name: /vaults/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     expect(screen.getByRole('heading', { name: /back up & restore/i })).toBeInTheDocument();
     expect(screen.getByTestId('backup-app-data-btn')).toBeInTheDocument();
     expect(screen.getByTestId('restore-app-data-btn')).toBeInTheDocument();
@@ -156,36 +156,52 @@ describe('SettingsPanel', () => {
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
-  it('SKY-5691: settings category tabs support arrow-key navigation (roving tabIndex)', async () => {
+  it('SKY-5691/M28: settings rail tabs support arrow-key navigation (roving tabIndex)', async () => {
+    // M28 rail order (prototype settingsMeta): Account & profile · Appearance ·
+    // AI Agents · Editor · Vault & Files · Sync & Backup · Shortcuts · About.
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    const vaultTab = screen.getByRole('tab', { name: /vaults/i }) as HTMLButtonElement;
-    const agentsTab = screen.getByRole('tab', { name: /agents/i }) as HTMLButtonElement;
+    const accountTab = screen.getByRole('tab', { name: /account & profile/i }) as HTMLButtonElement;
     const appearanceTab = screen.getByRole('tab', { name: /appearance/i }) as HTMLButtonElement;
+    const agentsTab = screen.getByRole('tab', { name: /ai agents/i }) as HTMLButtonElement;
+    const editorTab = screen.getByRole('tab', { name: /^editor$/i }) as HTMLButtonElement;
+    const aboutTab = screen.getByRole('tab', { name: /^about$/i }) as HTMLButtonElement;
 
     // Default: agents tab has tabIndex=0, others -1
     expect(agentsTab.tabIndex).toBe(0);
-    expect(vaultTab.tabIndex).toBe(-1);
+    expect(accountTab.tabIndex).toBe(-1);
     expect(appearanceTab.tabIndex).toBe(-1);
 
-    // ArrowRight: Agents → Appearance, focus moves
+    // ArrowDown (vertical rail): AI Agents → Editor, focus moves
     agentsTab.focus();
-    fireEvent.keyDown(agentsTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(agentsTab, { key: 'ArrowDown' });
+    await waitFor(() => expect(editorTab).toHaveFocus());
+    expect(editorTab).toHaveAttribute('aria-selected', 'true');
+    expect(agentsTab).toHaveAttribute('aria-selected', 'false');
+
+    // ArrowUp: Editor → AI Agents
+    fireEvent.keyDown(editorTab, { key: 'ArrowUp' });
+    await waitFor(() => expect(agentsTab).toHaveFocus());
+    expect(agentsTab).toHaveAttribute('aria-selected', 'true');
+
+    // ArrowUp again: AI Agents → Appearance (adjacency)
+    fireEvent.keyDown(agentsTab, { key: 'ArrowUp' });
     await waitFor(() => expect(appearanceTab).toHaveFocus());
     expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
-    expect(agentsTab).toHaveAttribute('aria-selected', 'false');
     await waitFor(() => expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument());
 
-    // ArrowRight wraps: Appearance → Vaults
-    fireEvent.keyDown(appearanceTab, { key: 'ArrowRight' });
-    await waitFor(() => expect(vaultTab).toHaveFocus());
-    expect(vaultTab).toHaveAttribute('aria-selected', 'true');
+    // ArrowUp wraps from the first entry: Account & profile → About
+    fireEvent.keyDown(appearanceTab, { key: 'ArrowUp' });
+    await waitFor(() => expect(accountTab).toHaveFocus());
+    fireEvent.keyDown(accountTab, { key: 'ArrowUp' });
+    await waitFor(() => expect(aboutTab).toHaveFocus());
+    expect(aboutTab).toHaveAttribute('aria-selected', 'true');
 
-    // ArrowLeft: Vaults → Appearance
-    fireEvent.keyDown(vaultTab, { key: 'ArrowLeft' });
-    await waitFor(() => expect(appearanceTab).toHaveFocus());
-    expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
+    // Home jumps to the first rail entry
+    fireEvent.keyDown(aboutTab, { key: 'Home' });
+    await waitFor(() => expect(accountTab).toHaveFocus());
+    expect(accountTab).toHaveAttribute('aria-selected', 'true');
   });
 
   it('loads settings from IPC on mount', async () => {
@@ -285,9 +301,9 @@ describe('SettingsPanel', () => {
 
   it('persists per-agent toggle changes on save', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/enable writing assistant/i));
+    await waitFor(() => screen.getByLabelText(/enable writing coach/i));
 
-    const toggle = screen.getByRole('checkbox', { name: /enable writing assistant/i }) as HTMLInputElement;
+    const toggle = screen.getByRole('checkbox', { name: /enable writing coach/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     fireEvent.click(toggle);
     expect(toggle.checked).toBe(false);
@@ -366,18 +382,18 @@ describe('SettingsPanel', () => {
 
   it('renders model selectors for all three agents', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+    await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
-    expect(screen.getByLabelText(/writing assistant model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/writing coach model/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/brainstorm agent model/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/archive agent model/i)).toBeInTheDocument();
   });
 
   it('model selectors show the haiku/sonnet/opus options', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+    await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
-    const waSelect = screen.getByLabelText(/writing assistant model/i) as HTMLSelectElement;
+    const waSelect = screen.getByLabelText(/writing coach model/i) as HTMLSelectElement;
     const options = Array.from(waSelect.options).map((o) => o.text);
     expect(options).toContain('claude-haiku');
     expect(options).toContain('claude-sonnet');
@@ -386,9 +402,9 @@ describe('SettingsPanel', () => {
 
   it('model selector change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+    await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
-    fireEvent.change(screen.getByLabelText(/writing assistant model/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach model/i), {
       target: { value: 'claude-haiku-4-5-20251001' },
     });
 
@@ -433,20 +449,20 @@ describe('SettingsPanel', () => {
 
   it('auto-apply threshold slider is disabled when autoApply is off', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
+    await waitFor(() => screen.getByLabelText(/writing coach auto-apply threshold/i));
 
-    const slider = screen.getByLabelText(/writing assistant auto-apply threshold/i) as HTMLInputElement;
+    const slider = screen.getByLabelText(/writing coach auto-apply threshold/i) as HTMLInputElement;
     expect(slider.disabled).toBe(true);
   });
 
   it('auto-apply threshold slider becomes enabled when autoApply is toggled on', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/auto-apply writing assistant suggestions/i));
+    await waitFor(() => screen.getByLabelText(/auto-apply writing coach suggestions/i));
 
-    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i });
+    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing coach suggestions/i });
     fireEvent.click(autoApplyToggle);
 
-    const slider = screen.getByLabelText(/writing assistant auto-apply threshold/i) as HTMLInputElement;
+    const slider = screen.getByLabelText(/writing coach auto-apply threshold/i) as HTMLInputElement;
     expect(slider.disabled).toBe(false);
   });
 
@@ -460,9 +476,9 @@ describe('SettingsPanel', () => {
     };
     mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant auto-apply threshold/i));
+    await waitFor(() => screen.getByLabelText(/writing coach auto-apply threshold/i));
 
-    fireEvent.change(screen.getByLabelText(/writing assistant auto-apply threshold/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach auto-apply threshold/i), {
       target: { value: '0.6' },
     });
 
@@ -473,14 +489,14 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.confidenceThreshold).toBeCloseTo(0.6);
   });
 
-  it('per-category toggles are hidden when Writing Assistant autoApply is off', async () => {
+  it('per-category toggles are hidden when Writing Coach autoApply is off', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(document.querySelector('[data-testid="wa-category-toggles"]')).not.toBeInTheDocument();
   });
 
-  it('per-category toggles appear when Writing Assistant autoApply is enabled', async () => {
+  it('per-category toggles appear when Writing Coach autoApply is enabled', async () => {
     const settingsWithAutoApply = {
       ...defaultSettings,
       agents: {
@@ -508,7 +524,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const spellingToggle = screen.getByRole('checkbox', {
-      name: /writing assistant auto-apply spelling/i,
+      name: /writing coach auto-apply spelling/i,
     }) as HTMLInputElement;
     expect(spellingToggle.checked).toBe(true);
 
@@ -643,10 +659,10 @@ describe('SettingsPanel', () => {
 
   it('full settings round-trip via IPC mock', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+    await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
     // Change model to haiku
-    fireEvent.change(screen.getByLabelText(/writing assistant model/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach model/i), {
       target: { value: 'claude-haiku-4-5-20251001' },
     });
 
@@ -661,9 +677,9 @@ describe('SettingsPanel', () => {
     });
 
     // Enable auto-apply then change threshold
-    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing assistant suggestions/i });
+    const autoApplyToggle = screen.getByRole('checkbox', { name: /auto-apply writing coach suggestions/i });
     fireEvent.click(autoApplyToggle);
-    fireEvent.change(screen.getByLabelText(/writing assistant auto-apply threshold/i), {
+    fireEvent.change(screen.getByLabelText(/writing coach auto-apply threshold/i), {
       target: { value: '0.75' },
     });
 
@@ -986,7 +1002,7 @@ describe('SettingsPanel', () => {
     expect(select.value).toBe('anthropic');
   });
 
-  it('shows all five provider options', async () => {
+  it('shows all six provider options (B4-10: full BYO incl. llama.cpp)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
     const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
@@ -995,7 +1011,155 @@ describe('SettingsPanel', () => {
     expect(values).toContain('openai');
     expect(values).toContain('ollama');
     expect(values).toContain('lmstudio');
+    expect(values).toContain('llamacpp');
     expect(values).toContain('custom');
+  });
+
+  // ── Beta 4 M28 (B4-6/B4-10): OAuth login buttons — connect-later state ──
+
+  it('B4-6: shows the "Log in with Claude" button for the Anthropic provider', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    expect(screen.getByTestId('oauth-login-anthropic')).toHaveTextContent('Log in with Claude');
+    // Connect-later: no explainer until clicked, and no credentials stored.
+    expect(screen.queryByTestId('oauth-explainer-anthropic')).not.toBeInTheDocument();
+  });
+
+  it('B4-6: clicking the OAuth button explains itself and stores nothing', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('oauth-login-anthropic'));
+
+    fireEvent.click(screen.getByTestId('oauth-login-anthropic'));
+    expect(screen.getByTestId('oauth-explainer-anthropic')).toHaveTextContent(/account linking is coming soon/i);
+    // No settings write happened from the click itself.
+    expect(mockSettingsSet).not.toHaveBeenCalled();
+    // Clicking again dismisses the explainer.
+    fireEvent.click(screen.getByTestId('oauth-login-anthropic'));
+    expect(screen.queryByTestId('oauth-explainer-anthropic')).not.toBeInTheDocument();
+  });
+
+  it('B4-10: switching to OpenAI shows its own connect-later login button', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+    expect(screen.getByTestId('oauth-login-openai')).toHaveTextContent('Log in with ChatGPT');
+    // Local runtimes have no OAuth story — no button.
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'llamacpp');
+    expect(screen.queryByTestId('oauth-login-llamacpp')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('oauth-login-anthropic')).not.toBeInTheDocument();
+  });
+
+  // ── Beta 4 M28 (§11): duties chips on the identity cards ──
+
+  it('M28: every agent card shows its duties chips (prototype agentDuties)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    expect(screen.getByTestId('agent-duties-writingAssistant')).toHaveTextContent('Inline prose comments');
+    expect(screen.getByTestId('agent-duties-brainstorm')).toHaveTextContent('Template pre-fill');
+    expect(screen.getByTestId('agent-duties-archive')).toHaveTextContent('Continuity scans & flags');
+    expect(screen.getByTestId('agent-duties-betaReader')).toHaveTextContent('Reactions as margin comments');
+  });
+
+  // ── Beta 4 M28 (§13): workspace chrome ──
+
+  it('M28: renders the full rail (8 categories), page header, and live theme preview', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    const tabs = screen.getAllByRole('tab', {}).filter((t) => t.className.includes('settings-cat-nav__tab'));
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Account & profile', 'Appearance', 'AI Agents', 'Editor',
+      'Vault & Files', 'Sync & Backup', 'Shortcuts', 'About',
+    ]);
+    // Page header shows the prototype settingsMeta description for the page.
+    expect(screen.getByTestId('settings-page-header')).toHaveTextContent(
+      'Providers, personas, and how much autonomy each agent gets.',
+    );
+    // Right panel: live theme preview + reset (§13).
+    expect(screen.getByTestId('settings-theme-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-reset-appearance')).toHaveTextContent(/reset appearance to defaults/i);
+  });
+
+  it('M28: the Editor page hosts the manuscript cards (text colors + page modes)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
+    expect(screen.getByTestId('lnas-txsplit')).toBeInTheDocument();
+    expect(screen.getByTestId('lnas-page-neon')).toBeInTheDocument();
+    expect(screen.getByTestId('lnas-tx-wiki-links')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-autosave-slider')).toBeInTheDocument();
+  });
+
+  // ── Beta 4 M28 (B4-8): per-category certainty sliders ──
+
+  it('B4-8: category rows carry a certainty slider that defaults to the agent threshold', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true, confidenceThreshold: 0.8 },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    const slider = screen.getByTestId('wa-cat-spelling-threshold') as HTMLInputElement;
+    expect(slider.value).toBe('0.8');
+  });
+
+  it('B4-8: changing a category certainty slider persists autoApplyThresholds via IPC', async () => {
+    const settingsWithAutoApply = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, autoApply: true },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsWithAutoApply);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    fireEvent.change(screen.getByTestId('wa-cat-grammar-threshold'), { target: { value: '0.95' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.autoApplyThresholds?.grammar).toBeCloseTo(0.95);
+  });
+
+  it('B4-8: a disabled category toggle disables its certainty slider', async () => {
+    const settingsAllOff = {
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: {
+          ...defaultSettings.agents.writingAssistant,
+          autoApply: true,
+          // B4-8 default shape: explicit all-false map (fresh installs).
+          autoApplyCategories: {
+            punctuation: false, spelling: false, grammar: false,
+            'sentence-structure': false, 'style-tone': false, other: false,
+          },
+        },
+      },
+    };
+    mockSettingsGet.mockResolvedValueOnce(settingsAllOff);
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByTestId('wa-category-toggles'));
+
+    // Every toggle OFF by default → every slider disabled.
+    const spellingToggle = screen.getByRole('checkbox', { name: /writing assistant auto-apply spelling/i }) as HTMLInputElement;
+    expect(spellingToggle.checked).toBe(false);
+    const slider = screen.getByTestId('wa-cat-spelling-threshold') as HTMLInputElement;
+    expect(slider.disabled).toBe(true);
+
+    // Opting in enables the slider.
+    await act(async () => { fireEvent.click(spellingToggle); });
+    expect((screen.getByTestId('wa-cat-spelling-threshold') as HTMLInputElement).disabled).toBe(false);
   });
 
   it('shows API key field for cloud providers', async () => {
@@ -1431,15 +1595,15 @@ describe('Per-agent provider override (SKY-2440)', () => {
   // AC-MP-03 — model selector hidden when override is enabled
   it('AC-MP-03: top-level model selector is hidden when per-agent override is enabled', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/writing assistant model/i));
+    await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
     // Initially the top-level model selector is visible
-    expect(screen.getByLabelText(/writing assistant model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/writing coach model/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
     // Top-level model selector should be gone; override form's model is present instead
-    expect(screen.queryByLabelText(/writing assistant model/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach model/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/model for writingAssistant/i)).toBeInTheDocument();
   });
 
@@ -1672,7 +1836,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
-    // Enable Writing Assistant override with Anthropic Haiku
+    // Enable Writing Coach override with Anthropic Haiku
     fireEvent.click(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
     fireEvent.change(screen.getByRole('combobox', { name: /model for writingAssistant/i }), {
       target: { value: 'claude-haiku-4-5-20251001' },

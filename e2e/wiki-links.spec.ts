@@ -237,16 +237,30 @@ test.describe('wiki-links and multi-vault graph', () => {
   test('graph scope Both shows story and note nodes', async () => {
     await openGraph(page);
     await page.locator('[data-testid="vault-graph-scope-both"]').click();
-    await expect(page.getByRole('button', { name: /Open note Elara/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /Open scene Scene One/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /Select note Elara/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /Select scene Scene One/i })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('clicking a graph story node opens the scene editor', async () => {
+  test('selecting a graph story node and pressing the card Open button opens the scene editor', async () => {
     await openGraph(page);
     await page.locator('[data-testid="vault-graph-scope-both"]').click();
-    const sceneNode = page.getByRole('button', { name: /Open scene Scene One/i });
+    const sceneNode = page.locator(`[data-testid="vault-node-${STORY_NODE_ID}"]`);
     await expect(sceneNode).toBeVisible({ timeout: 10_000 });
-    await sceneNode.locator('[data-testid="vault-graph-node-circle"]').click();
+    // M26 (FULL-SPEC §9): single click selects and surfaces the node card;
+    // the card's Open button (or a double-click) navigates to Story Writer.
+    // The scope switch just reloaded the graph, so the settled-sim is still
+    // animating — dispatch the click as a bubbling MouseEvent straight to the
+    // node (the vault-graph-v0 pattern); a coordinate click races the moving
+    // node and can land on the canvas, which clears the selection.
+    await page.evaluate(
+      (sel) => document.querySelector(sel)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
+      `[data-testid="vault-node-${STORY_NODE_ID}"]`,
+    );
+    const inspector = page.locator('[data-testid="vault-graph-inspector"]');
+    await expect(inspector).toBeVisible({ timeout: 5_000 });
+    const openButton = page.locator('[data-testid="vault-graph-inspector-open"]');
+    await expect(openButton).toHaveText(/Open in Story Writer/i, { timeout: 5_000 });
+    await openButton.click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
     await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
@@ -269,7 +283,7 @@ test.describe('wiki-links and multi-vault graph', () => {
   test('graph defaults to Notes scope and hides story nodes for backward compatibility', async () => {
     await openGraph(page);
     await expect(page.locator('[data-testid="vault-graph-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: /Open note Elara/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /Select note Elara/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(`[data-testid="vault-node-${STORY_NODE_ID}"]`)).toHaveCount(0);
   });
 });

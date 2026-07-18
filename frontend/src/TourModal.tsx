@@ -20,7 +20,7 @@ const TOUR_STEPS = [
   {
     icon: '✦',
     title: 'AI Features',
-    body: 'Switch to the Brainstorm view to generate ideas with AI. The Writing Assistant and Archive agents run in the background, surfacing suggestions and continuity checks.',
+    body: 'Switch to the Brainstorm view to generate ideas with AI. The Writing Coach and Archive agents run in the background, surfacing suggestions and continuity checks.',
   },
   {
     icon: '⌨️',

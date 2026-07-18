@@ -65,12 +65,12 @@ describe('LeftRail panels', () => {
     expect(within(picker).getByRole('option', { name: 'Graph' })).toBeInTheDocument();
   });
 
-  describe('GH #633 — Writing Assistant / Continuity / Scene Preview in left sidebar picker', () => {
-    it('shows Writing Assistant in the add-panel picker', () => {
+  describe('GH #633 — Writing Coach / Continuity / Scene Preview in left sidebar picker', () => {
+    it('shows Writing Coach in the add-panel picker', () => {
       renderLeftRail();
       fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
       const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).getByRole('option', { name: 'Writing Assistant' })).toBeInTheDocument();
+      expect(within(picker).getByRole('option', { name: 'Writing Coach' })).toBeInTheDocument();
     });
 
     it('shows Continuity in the add-panel picker', () => {
@@ -87,7 +87,7 @@ describe('LeftRail panels', () => {
       expect(within(picker).getByRole('option', { name: 'Scene Preview' })).toBeInTheDocument();
     });
 
-    it('hides Writing Assistant from picker when already in the layout', () => {
+    it('hides Writing Coach from picker when already in the layout', () => {
       const layout = {
         ...DEFAULT_LEFT_SIDEBAR_LAYOUT,
         panels: [{ id: 'writing-assistant' as const, collapsed: false }],
@@ -104,7 +104,7 @@ describe('LeftRail panels', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
       const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).queryByRole('option', { name: 'Writing Assistant' })).toBeNull();
+      expect(within(picker).queryByRole('option', { name: 'Writing Coach' })).toBeNull();
     });
   });
 });

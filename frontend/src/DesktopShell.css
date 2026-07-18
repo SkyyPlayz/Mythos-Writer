@@ -16,6 +16,9 @@
   flex: 1;
   overflow: hidden;
   min-width: 0;
+  /* M28: anchors the full-view Settings workspace (.settings-overlay is
+     position:absolute inset:0 so the nav rail stays visible beside it). */
+  position: relative;
 }
 
 /* SKY-3098 fix: WorkspaceTabBar uses height:100% (correct for flex-row context) but
@@ -389,6 +392,14 @@
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+/* Beta 4 M12 — Writing Coach page container (§5.2) */
+.shell-coach {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ─── Full Book preview (SKY-3213 C4) ─── */

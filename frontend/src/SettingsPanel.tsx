@@ -6,6 +6,12 @@ import {
   applyPageBackgroundTokens,
   PAGE_BACKGROUND_DEFAULTS,
 } from './theme';
+import {
+  applyLiquidNeonV2Tokens,
+  LIQUID_NEON_V2_DEFAULTS,
+  type LiquidNeonV2Settings,
+} from './theme/liquidNeonEngine';
+import cosmicBgUrl from './assets/cosmic-bg.webp';
 import { resolveAxisTokens } from './themeAxis';
 import { detectCloudProvider } from './lib/cloudSync';
 import MoveVaultWizard from './MoveVaultWizard';
@@ -38,6 +44,8 @@ import TelemetrySection from './components/SettingsPanel/sections/TelemetrySecti
 // Beta 3 M24: settings remainder pages (prototype §10) + vault/story import
 import AccountProfileSection from './components/SettingsPanel/sections/AccountProfileSection';
 import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
+// Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
+import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
 import ImportVaultSection from './components/SettingsPanel/sections/ImportVaultSection';
 import ImportStorySection from './components/SettingsPanel/sections/ImportStorySection';
 import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
@@ -406,6 +414,31 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, []);
 
+  // Beta 4 M28 (B4-8) — per-category certainty slider. At/above the threshold
+  // a suggestion auto-applies (snapshot-first); below it, it lands in the
+  // suggestion inbox. Only the edited key is materialised; absent keys fall
+  // back to the agent's confidenceThreshold in the evaluator.
+  const setCategoryAutoApplyThreshold = useCallback((
+    agent: keyof AppSettings['agents'],
+    category: SuggestionCategory,
+    threshold: number,
+  ) => {
+    setSettings((prev) => {
+      const current = prev.agents[agent] ?? BETA_READER_DEFAULTS;
+      return {
+        ...prev,
+        agents: {
+          ...prev.agents,
+          [agent]: {
+            ...current,
+            autoApplyThresholds: { ...(current.autoApplyThresholds ?? {}), [category]: threshold },
+          },
+        },
+      };
+    });
+    setSavedOk(false);
+  }, []);
+
   const buildAgentProviderConfig = useCallback((agentName: AgentName): ProviderConfig | undefined => {
     const ov = agentOverrides[agentName];
     if (!ov.enabled) return undefined;
@@ -653,6 +686,28 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, [resetConfirm]);
 
+  // Beta 4 M28 (§13): right-panel "Reset appearance to defaults" — resets BOTH
+  // theme engines (v2 slot engine + legacy Liquid Neon prefs) with the same
+  // two-click confirm the Appearance page uses.
+  const handleResetAppearance = useCallback(() => {
+    if (!resetConfirm) { setResetConfirm(true); return; }
+    const v2Defaults: LiquidNeonV2Settings = {
+      ...LIQUID_NEON_V2_DEFAULTS,
+      slots: [...LIQUID_NEON_V2_DEFAULTS.slots] as LiquidNeonV2Settings['slots'],
+      pageCfg: { ...LIQUID_NEON_V2_DEFAULTS.pageCfg },
+      txtCfg: { ...LIQUID_NEON_V2_DEFAULTS.txtCfg },
+    };
+    setSettings((prev) => ({ ...prev, liquidNeonV2: v2Defaults }));
+    applyLiquidNeonV2Tokens(v2Defaults, cosmicBgUrl);
+    const defaults = { ...LG_DEFAULTS };
+    setLg(defaults);
+    setBgPreviewUrl(null);
+    setResetConfirm(false);
+    resetLiquidNeonTokens();
+    applyLiquidNeonTokens(defaults);
+    setSavedOk(false);
+  }, [resetConfirm]);
+
   if (loading) {
     return (
       <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
@@ -675,10 +730,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
         </div>
 
+        {/* Beta 4 M28 (§13; GAP #8): full workspace view — left rail (vertical
+            tablist), page content, right live theme preview. */}
+        <div className="settings-workspace">
         <nav
           className="settings-cat-nav"
           role="tablist"
           aria-label="Settings categories"
+          aria-orientation="vertical"
           ref={settingsCatNavRef}
           onKeyDown={handleSettingsCategoryKeyDown}
         >
@@ -688,6 +747,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               role="tab"
               id={`settings-category-tab-${cat.id}`}
               data-tabkey={cat.id}
+              data-testid={`settings-cat-${cat.id}`}
               className={`settings-cat-nav__tab${settingsCategory === cat.id ? ' settings-cat-nav__tab--active' : ''}`}
               aria-selected={settingsCategory === cat.id}
               aria-controls="settings-category-panel"
@@ -700,6 +760,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         </nav>
 
         <div className="settings-body" role="tabpanel" id="settings-category-panel" aria-labelledby={`settings-category-tab-${settingsCategory}`}>
+          {/* Page header — prototype settingsMeta title + one-liner (6458).
+              Deliberately not a heading element: several section cards carry
+              an identically-named h3, and duplicate headings would be noise. */}
+          <header className="settings-page-header" data-testid="settings-page-header">
+            <div className="settings-page-header__title">
+              {SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.label}
+            </div>
+            <p className="settings-page-header__sub">
+              {SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.description}
+            </p>
+          </header>
 
           {settingsCategory === 'agents' && (
             <>
@@ -752,6 +823,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 agentTestMsg={agentTestMsg}
                 setAgentField={setAgentField}
                 setCategoryAutoApply={setCategoryAutoApply}
+                setCategoryAutoApplyThreshold={setCategoryAutoApplyThreshold}
                 setAgentOverride={setAgentOverride}
                 onAgentTest={handleAgentTestConnection}
                 micDevices={micDevices}
@@ -816,7 +888,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           )}
 
           {settingsCategory === 'editor' && (
-            <EditorSettingsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+            <>
+              <EditorSettingsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+              {/* M28 (§13): manuscript-only appearance — text colors (incl.
+                  wiki links + story/notes split) and page modes incl. Custom */}
+              <EditorManuscriptSection
+                liquidNeonV2={settings.liquidNeonV2}
+                onChange={(next) => { setSettings((p) => ({ ...p, liquidNeonV2: next })); }}
+                setSavedOk={setSavedOk}
+              />
+            </>
           )}
 
           {settingsCategory === 'sync' && (
@@ -870,6 +951,40 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           {settingsCategory === 'appearance' && (
             <TelemetrySection telemetryEnabled={telemetryEnabled} setTelemetryEnabled={setTelemetryEnabled} setSavedOk={setSavedOk} />
           )}
+
+        </div>
+
+        {/* M28 (§13): right panel — live theme preview + reset. The preview
+            reads the live CSS tokens, so every appearance/editor change shows
+            here immediately. */}
+        <aside className="settings-preview-rail" aria-label="Live theme preview">
+          <div className="settings-preview-card" data-testid="settings-theme-preview">
+            <div className="settings-preview-card__label">Live preview</div>
+            <div className="settings-preview-card__bar" aria-hidden="true" />
+            <div className="settings-preview-card__panel">
+              <div className="settings-preview-card__head">Chapter One</div>
+              <p className="settings-preview-card__body">
+                The neon rain hummed over the undercity while{' '}
+                <span className="settings-preview-card__wiki">[[Veynn]]</span> slept.
+              </p>
+            </div>
+            <div className="settings-preview-card__panel settings-preview-card__panel--alt">
+              <div className="settings-preview-card__note-head">Notes</div>
+              <p className="settings-preview-card__note-body">Every change applies live, everywhere.</p>
+            </div>
+            <button type="button" className="settings-preview-card__btn" tabIndex={-1} aria-hidden="true">
+              Primary button
+            </button>
+          </div>
+          <button
+            type="button"
+            className="lg-btn-reset settings-preview-reset"
+            data-testid="settings-reset-appearance"
+            onClick={handleResetAppearance}
+          >
+            {resetConfirm ? 'Click again to confirm reset' : 'Reset appearance to defaults'}
+          </button>
+        </aside>
 
         </div>
 

@@ -40,8 +40,9 @@ export function handleAgentSessionList(
   return { sessions };
 }
 
-// M20 (SKY-6663): hydrate one session's full turn history — used by the
-// Brainstorm chat when switching sessions. Lookup is by the PARSED
+// M20 (SKY-6663) / M12: hydrate one session's full turn history — used by the
+// Brainstorm chat when switching sessions, and by Coach page ↔ Coach panel so
+// both surfaces render the same conversation. Lookup is by the PARSED
 // frontmatter id (readSession), never a substring scan (B1 contract).
 export function handleAgentSessionRead(
   notesRoot: string,

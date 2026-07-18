@@ -146,11 +146,11 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.getByRole('group', { name: 'Timeline view mode' })).toBeInTheDocument();
   });
 
-  it('offers the five prototype modes with their exact labels', async () => {
+  it('offers the five prototype modes plus the M22 axis surface, exact labels', async () => {
     await renderRoot();
     const toggle = screen.getByTestId('view-mode-toggle');
     const labels = Array.from(toggle.querySelectorAll('button')).map(b => b.textContent);
-    expect(labels).toEqual(['Plan vs Progress', 'Structure', 'Spreadsheet', 'Relationships', 'Subway']);
+    expect(labels).toEqual(['Plan vs Progress', 'Structure', 'Spreadsheet', 'Relationships', 'Subway', 'Axis']);
   });
 
   it('switches to the lanes view in progress mode', async () => {
@@ -379,6 +379,95 @@ describe('TimelineRoot — null story', () => {
     fireEvent.click(screen.getByTestId('view-mode-progress'));
     expect(screen.getByTestId('tlr-no-story')).toBeInTheDocument();
     expect(screen.queryByTestId('mock-lanes')).toBeNull();
+  });
+});
+
+// ─── M22: Axis engine mode + calendar editor ───
+
+describe('TimelineRoot — M22 axis mode', () => {
+  const M21_STORE = {
+    schemaVersion: 1 as const,
+    activeTimelineId: 'tl-story',
+    timelines: [
+      {
+        id: 'tl-story', name: 'Story Timeline', kind: 'story' as const, axis: 'calendar' as const,
+        calendar: { preset: 'standard' as const, monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 },
+        createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+    eras: [], spans: [], rows: [],
+    events: [{ id: 'ev-1', timelineId: 'tl-story', name: 'Inciting incident', when: 2.4 }],
+  };
+
+  function setupTimelinesApi() {
+    Object.defineProperty(window, 'api', {
+      value: {
+        timelineGetScenes: vi.fn().mockResolvedValue({ scenes: [] }),
+        timelineListArcs: vi.fn().mockResolvedValue({ arcs: [] }),
+        entityList: vi.fn().mockResolvedValue({ entities: [] }),
+        timelinesGetStore: vi.fn().mockResolvedValue({ store: M21_STORE }),
+        timelinesUpsert: vi.fn().mockResolvedValue({ ok: true, id: 'tl-story', store: M21_STORE }),
+        timelinesSetActive: vi.fn().mockResolvedValue({ ok: true, store: M21_STORE }),
+        timelinesUpsertItem: vi.fn().mockResolvedValue({ ok: true, store: M21_STORE }),
+        timelinesDeleteItem: vi.fn().mockResolvedValue({ ok: true, store: M21_STORE }),
+      },
+      writable: true, configurable: true,
+    });
+  }
+
+  it('renders the axis engine in axis mode and hides the legacy zoom/group/Today controls', async () => {
+    setupTimelinesApi();
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-axis'));
+    expect(await screen.findByTestId('timeline-axis-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
+    expect(screen.queryByTestId('tl-zoom-seg')).toBeNull();
+    expect(screen.queryByTestId('tl-today-btn')).toBeNull();
+    expect(screen.queryByTestId('groupby-select')).toBeNull();
+    // the axis engine's own zoom seg is present instead
+    expect(screen.getByTestId('ax-zoom-seg')).toBeInTheDocument();
+  });
+
+  it('shows the unavailable state when the timelines store cannot load', async () => {
+    await renderRoot(); // default api: no timelinesGetStore
+    fireEvent.click(screen.getByTestId('view-mode-axis'));
+    expect(screen.getByTestId('tlr-axis-unavailable')).toBeInTheDocument();
+  });
+
+  it('axis mode does not require a story', async () => {
+    setupTimelinesApi();
+    await renderRoot(null);
+    fireEvent.click(screen.getByTestId('view-mode-axis'));
+    expect(await screen.findByTestId('timeline-axis-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('tlr-no-story')).toBeNull();
+  });
+
+  it('Edit calendar… opens the M22 calendar editor and persists preset picks', async () => {
+    setupTimelinesApi();
+    await renderRoot();
+    fireEvent.click(await screen.findByRole('button', { name: /Active timeline:/i }));
+    fireEvent.click(screen.getByTestId('timeline-edit-calendar'));
+    expect(screen.getByTestId('calendar-editor-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cem-preset-aeon-13'));
+    await act(async () => {});
+    expect(window.api.timelinesUpsert).toHaveBeenCalledWith({
+      id: 'tl-story',
+      name: 'Story Timeline',
+      kind: 'story',
+      calendar: { preset: 'aeon-13', monthsPerYear: 13, daysPerMonth: 28, hoursPerDay: 18 },
+    });
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Calendar set — Strange world — 13 × 28 · 18h');
+  });
+
+  it('+ New timeline creates one immediately and switches to it (prototype tlNewTimeline)', async () => {
+    setupTimelinesApi();
+    await renderRoot();
+    fireEvent.click(await screen.findByRole('button', { name: /Active timeline:/i }));
+    fireEvent.click(screen.getByTestId('timeline-new'));
+    await act(async () => {});
+    expect(window.api.timelinesUpsert).toHaveBeenCalledWith({ name: 'New Timeline', kind: 'custom' });
+    expect(window.api.timelinesSetActive).toHaveBeenCalledWith('tl-story');
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('New timeline — add spans');
   });
 });
 

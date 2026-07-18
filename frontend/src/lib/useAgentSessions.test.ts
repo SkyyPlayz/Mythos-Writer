@@ -1,9 +1,10 @@
 // SKY-6228: M15 — unit tests for useAgentSessions hook
 // Tests session rename/duplicate/delete-last behaviours (§11 contract)
+// M12: the store is shared per agent key — reset between tests.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useAgentSessions } from './useAgentSessions';
+import { useAgentSessions, __resetAgentSessionStores } from './useAgentSessions';
 
 // Mock window.api.agentSessions
 function makeMockSession(overrides: Partial<AgentSessionFile> = {}): AgentSessionFile {
@@ -75,6 +76,7 @@ function setupMockApi(sessions: AgentSessionFile[]) {
 describe('useAgentSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetAgentSessionStores();
   });
 
   it('auto-creates a session when none exist', async () => {
@@ -187,6 +189,57 @@ describe('useAgentSessions', () => {
     expect(result.current.activeSession?.id).toBe('s2');
     expect(result.current.activeSession?.turns).toHaveLength(2);
     expect(result.current.activeSession?.turns[1].text).toBe('Continue where we left off');
+  });
+
+  // M12: Coach page ↔ Coach panel chat render one conversation — two hook
+  // instances on the same agent key must share sessions, active id, AND turns.
+  it('M12: two hook instances share one store (turns visible on both surfaces)', async () => {
+    const s1 = makeMockSession({ id: 's1', title: 'Shared thread' });
+    setupMockApi([s1]);
+    const page = renderHook(() => useAgentSessions('coach'));
+    const panel = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    const turn: AgentSessionTurn = { role: 'user', text: 'Teach me pacing', at: '2026-01-01T01:00:00.000Z' };
+    await act(async () => {
+      await page.result.current.appendTurns([turn]);
+    });
+
+    expect(panel.result.current.activeSession?.turns.map((t) => t.text)).toEqual(['Teach me pacing']);
+    expect(panel.result.current.activeSessionId).toBe(page.result.current.activeSessionId);
+
+    // Renaming from the panel is visible on the page.
+    await act(async () => {
+      await panel.result.current.renameSession('s1', 'Lesson thread');
+    });
+    expect(page.result.current.sessions.find((s) => s.id === 's1')?.title).toBe('Lesson thread');
+  });
+
+  // M12: mounting onto an EXISTING session hydrates its stored turns via
+  // agentSession:read so the feed shows history (not just the summary).
+  it('M12: hydrates existing session turns via read()', async () => {
+    const s1 = makeMockSession({
+      id: 's1',
+      turns: [{ role: 'agent', text: 'Welcome back', at: '2026-01-01T00:00:00.000Z' }],
+    });
+    const mockApi = setupMockApi([s1]);
+    (mockApi as unknown as Record<string, unknown>).read = vi.fn().mockResolvedValue({ session: s1 });
+
+    const { result } = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(result.current.activeSessionId).toBe('s1');
+    expect(result.current.activeSession?.turns.map((t) => t.text)).toEqual(['Welcome back']);
+  });
+
+  it('M12: degrades to summaries-only when preload lacks read()', async () => {
+    const s1 = makeMockSession({ id: 's1' });
+    setupMockApi([s1]); // no read()
+    const { result } = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(result.current.activeSessionId).toBe('s1');
+    expect(result.current.activeSession).toBeNull();
   });
 });
 
