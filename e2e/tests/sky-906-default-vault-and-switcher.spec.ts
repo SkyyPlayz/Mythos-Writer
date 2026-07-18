@@ -1,12 +1,14 @@
 /**
  * sky-906-default-vault-and-switcher.spec.ts — SKY-906
  *
- * End-to-end coverage for the Quick Start (one-click) vault setup and the
+ * End-to-end coverage for the Quick Start vault setup and the
  * vault-switcher Add/Switch flow. Boots Electron with no prior vault config
  * (so the onboarding wizard appears), clicks the "Quick Start" card on step 1,
  * and asserts:
  *
- *   - the wizard advances to the scaffolding step then closes
+ *   - the wizard advances through the shared genre/theme mini-flow
+ *     (Beta 4 M29: screen-custom-genre → screen-custom-theme →
+ *     custom-theme-finish) then the scaffolding step, then closes
  *   - main creates `<userData>/vaults/My First Vault/Story Vault`
  *     and `…/Notes Vault` with the expected SKY-15 seed layout
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
@@ -22,8 +24,8 @@
  *
  * Acceptance criteria mapping:
  *   AC1  Clean first-run user can create a default vault with one action
- *   AC2  Manual custom path remains available (sanity: the "Choose custom
- *        folder" card is still on Step 1; not exercised here — covered by
+ *   AC2  Manual custom path remains available (sanity: the "Start fresh"
+ *        card is still on Step 1; not exercised here — covered by
  *        existing onboarding.spec.ts)
  *   AC3  User can switch between ≥2 vaults without losing settings or state
  *   AC4  Regression coverage for default-vault creation AND vault switching
@@ -161,11 +163,19 @@ async function selectQuickStartCard(pg: Page): Promise<void> {
   throw new Error('Could not find Quick Start card on onboarding step 1');
 }
 
+// Beta 4 M29: Quick Start no longer creates the vault immediately — it now
+// funnels into the shared genre → theme mini-flow (screen-custom-genre →
+// screen-custom-theme) before the vault-creation IPC call fires on
+// "Open my vault ✦" (custom-theme-finish). Defaults (first genre chip,
+// first theme card) are fine for this switcher-focused test.
 async function completeQuickStart(pg: Page): Promise<void> {
   await selectQuickStartCard(pg);
+  await expect(pg.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 30_000 });
+  await pg.locator('[data-testid="custom-genre-continue"]').click();
+  await expect(pg.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+  await pg.locator('[data-testid="custom-theme-finish"]').click();
   await Promise.race([
     pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
-    pg.locator('[data-testid="screen-step2"]').waitFor({ state: 'visible', timeout: 30_000 }),
     pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),
   ]);
 }
@@ -197,9 +207,12 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
     expect(fs.existsSync(vaultPair.notesVaultRoot)).toBe(true);
 
     // Quick Start seeds a first scene file so the editor lands on something
-    // writable.
+    // writable. Beta 4 M29: Quick Start creates a MythosVault v2 with the
+    // Veynn demo seed ("The Last City of Veynn") — v2 manuscripts live at
+    // <Story Vault>/<Story>/Part N/Chapter NN/Scene NN.md, with no
+    // "Manuscript/" wrapper folder (that's the legacy v0.4 layout).
     expect(
-      fs.existsSync(path.join(vaultPair.vaultRoot, 'Manuscript', 'My First Story', 'chapter-1', 'chapter-1-scene-1.md')),
+      fs.existsSync(path.join(vaultPair.vaultRoot, 'The Last City of Veynn', 'Part 1', 'Chapter 01', 'Scene 01.md')),
     ).toBe(true);
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.

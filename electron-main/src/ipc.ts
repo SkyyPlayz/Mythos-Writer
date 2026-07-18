@@ -389,6 +389,12 @@ export const IPC_CHANNELS = {
   // (MYTHOS_DEV=1 only) additionally clears vaultRoot/notesVaultRoot/layoutMode.
   ONBOARDING_RESET: 'onboarding:reset',
 
+  // Beta 4 M29 (AC7): user-facing "Replay wizard" — flips onboardingComplete
+  // off so the wizard shows on next boot, WITHOUT touching vaultRoot /
+  // notesVaultRoot, so the current vault is still there if the user cancels
+  // out or picks Import/Open-existing back to it. Available in every build.
+  ONBOARDING_REPLAY: 'onboarding:replay',
+
   // SKY-2971: Word (.docx) → Story Vault importer.
   ONBOARDING_IMPORT_DOCX: 'onboarding:importDocxToStoryVault',
 
@@ -849,6 +855,7 @@ export interface IpcHandlers {
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_REPLAY]: (payload: never) => { ok: true };
   // SKY-2971: .docx importer
   [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
   // SKY-2993: Obsidian vault importer

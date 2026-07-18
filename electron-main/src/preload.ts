@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
   // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
   onboardingReset: (payload?: { hard?: boolean }) => ipcRenderer.invoke('onboarding:reset', payload),
+  // Beta 4 M29 (AC7): user-facing "Replay wizard" — every build, current vault untouched.
+  onboardingReplay: () => ipcRenderer.invoke('onboarding:replay', undefined),
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),

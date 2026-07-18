@@ -3077,6 +3077,16 @@ const handlers: IpcHandlers = {
     return { ok: true as const };
   },
 
+  // Beta 4 M29 (AC7): "Replay wizard" from the project/vault menu, Settings,
+  // or the About section. Unlike ONBOARDING_RESET this runs in every build
+  // and never touches vaultRoot/notesVaultRoot — the current vault stays put
+  // so a cancelled or Import-routed replay lands the user back where they were.
+  [IPC_CHANNELS.ONBOARDING_REPLAY]: () => {
+    const current = loadAppSettings();
+    saveAppSettings({ ...current, onboardingComplete: false });
+    return { ok: true as const };
+  },
+
   // SKY-2971: Word (.docx) → Story Vault importer.
   // Parses each .docx file with mammoth, splits on H1 (chapters) / H2 (scenes),
   // writes scene files + manifest entries for the current vault.
