@@ -9,7 +9,7 @@ on:
 
 jobs:
   property-tests-and-fuzz:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     # Hard cap: property tests + 2×60s fuzz + setup should finish in well under 15 min.
     # Without this, a hung Jazzer process keeps the runner busy=true after disconnect,
     # producing ghost-job runners that block all CI (SKY-2288).
