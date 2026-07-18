@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && ' ' || '--coverage' }}
+      COVERAGE_FLAG: ${{ github.event_name == 'pull_request' && '' || '--coverage' }}
 
     steps:
       - uses: actions/checkout@v4
