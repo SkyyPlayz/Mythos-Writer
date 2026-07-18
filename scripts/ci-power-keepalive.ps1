@@ -1,12 +1,18 @@
 # Prevents the Windows host (GabesPC) from sleeping during CI runs on WSL2.
 # Uses SetThreadExecutionState — no admin rights required.
 #
+# -Id distinguishes concurrent callers (e.g. the 4 E2E shard jobs, which run
+# in parallel on the same runner): each caller gets its own sentinel file, so
+# one job finishing and stopping its keep-alive can't delete a sibling job's
+# still-active sentinel and let the host sleep out from under it (SKY-6906).
+#
 # Usage (from WSL2 bash):
-#   Start: powershell.exe -NonInteractive -ExecutionPolicy Bypass -File <this-script>
-#   Stop:  powershell.exe -NonInteractive -ExecutionPolicy Bypass -File <this-script> -Stop
-param([switch]$Stop)
+#   Start: powershell.exe -NonInteractive -ExecutionPolicy Bypass -File <this-script> [-Id <name>]
+#   Stop:  powershell.exe -NonInteractive -ExecutionPolicy Bypass -File <this-script> -Stop [-Id <name>]
+param([switch]$Stop, [string]$Id = "")
 
-$sentinel = Join-Path $env:TEMP "mythos-ci-keepalive.active"
+$suffix = if ($Id) { "-$Id" } else { "" }
+$sentinel = Join-Path $env:TEMP "mythos-ci-keepalive$suffix.active"
 
 if ($Stop) {
     Remove-Item -Path $sentinel -Force -ErrorAction SilentlyContinue

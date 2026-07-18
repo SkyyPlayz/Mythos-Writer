@@ -54,8 +54,8 @@ if [[ "$ACTION" == "closed" ]]; then
   : "${PAPERCLIP_ASSIGNEE:?missing PAPERCLIP_ASSIGNEE}"
 
   if ! command -v paperclipai >/dev/null 2>&1; then
-    echo "::error::paperclipai CLI not on runner PATH — cannot close ping" >&2
-    exit 1
+    echo "::warning::paperclipai CLI not on runner PATH — skipping close ping (board-ping must never gate merge)" >&2
+    exit 0
   fi
 
   echo "PR #${PR_NUMBER} closed — scanning for open ping and fix-request issues to resolve."
@@ -162,8 +162,8 @@ fi
 : "${PAPERCLIP_ASSIGNEE:?missing PAPERCLIP_ASSIGNEE}"
 
 if ! command -v paperclipai >/dev/null 2>&1; then
-  echo "::error::paperclipai CLI not on runner PATH — cannot ping board" >&2
-  exit 1
+  echo "::warning::paperclipai CLI not on runner PATH — skipping board ping (board-ping must never gate merge)" >&2
+  exit 0
 fi
 
 # macOS packaging is owner-deferred and skipped on pull_request events in this
