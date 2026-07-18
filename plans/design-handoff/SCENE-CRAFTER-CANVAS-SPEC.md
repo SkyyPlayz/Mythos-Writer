@@ -44,6 +44,28 @@ Never merge these into one screen — the setup form needs full-width fields; th
 space. The prototype's separation is correct and PR #973 preserves it (`SceneCrafterPage.tsx` +
 `canvas/CanvasBoard.tsx`).
 
+### 1.1a Known drift — legacy Kanban lanes board (SKY-7589/SKY-7597, tracked SKY-7601)
+
+The shipped `SceneCrafterPage.tsx` (`:963–1078`) also renders a third element inside `.sc-columns`: a
+5-fixed-lane Kanban board (Idea/Outline/Draft/Revision/Done, `"N lanes · N cards"` header, `Add lane`
+button) sitting as a full-width sibling right after the Scene Draft column, reachable only by scrolling
+`.sc-columns`' horizontal scroller past Setup and Draft. **This is not part of the two-state model above
+and is not an approved third view** — resolve it as a drift finding, not new IA to design around:
+
+- It's Beta-2/3 Scene Crafter (see the outdated `plans/ProjectGoalOverView/07-scene-crafter.md`: same
+  concept, same "link a card to a real scene" behavior, earlier column names Ideas/Drafting/Writing/
+  Revised/Cut), which `plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`
+  ("Explicitly obsolete — no carry-forward") already retired in favor of this spec's §7.1/Canvas Board.
+  `SceneCrafterPage.css:939` even self-labels the block `/* Kanban lanes (Beta-2 selectors... */`.
+- It never got deleted when Canvas Board (M18/M19) shipped, and Beta-4 code (`chosenCards()`,
+  `addSuggestedCard()`) was subsequently built depending on it — clicking a suggested card writes into
+  `board.lanes[0]` so it counts toward the AI draft prompt. That coupling, plus ~15 lane-specific tests,
+  is why it can't simply be deleted outright without a rewire.
+- **Disposition: retire, don't document as permanent.** SKY-7601 scopes the migration (rewire
+  `chosenCards()`/suggested-card-click onto the real Plan Cards mechanism, decide the fate of
+  `manuscriptSceneId`/"Go to scene," remove the lanes UI, retire the lane tests). Once SKY-7601 ships,
+  this subsection should be deleted — the two-state model becomes accurate again with no caveat.
+
 ### 1.2 Canvas
 - World size: **2200×1500px** fixed, independent of viewport — cards are absolutely positioned within it.
 - Surface: dotted grid, 22px pitch, `radial-gradient(rgba(158,178,214,.14) 1px, transparent 1.3px)`, over
