@@ -14,14 +14,14 @@ const LEFT_PANELS: { id: SidebarPanelId; label: string }[] = [
   { id: 'review', label: 'Suggestion Review' },
   { id: 'progress', label: 'Writing Goals' },
   { id: 'timeline', label: 'Timeline' },
-  { id: 'writing-assistant', label: 'Writing Assistant' },
+  { id: 'writing-assistant', label: 'Writing Coach' },
   { id: 'archive-continuity', label: 'Continuity' },
   { id: 'scene-preview', label: 'Scene Preview' },
 ];
 
 /** All right-sidebar panels (can be dragged into the left rail). */
 const RIGHT_PANEL_LABELS: Record<string, string> = {
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
 };

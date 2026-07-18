@@ -4,7 +4,6 @@
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
 import { useMemo, useRef } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
 import {
   applyLiquidNeonV2Tokens,
   exportLiquidNeonPreset,
@@ -16,6 +15,7 @@ import {
   type LiquidNeonV2Settings,
   type LiquidNeonWallpaperKey,
 } from '../../../theme/liquidNeonEngine';
+import { onActivateKey, NeonToggle, NeonSlider, NeonSeg, NeonCard as Card, hdrBtnSt } from './liquidNeonControls';
 import {
   LIQUID_NEON_PRESETS,
   LIQUID_NEON_SLOT_ROLES,
@@ -36,114 +36,9 @@ interface Props {
   onNavRailLabelsChange?: (show: boolean) => void;
 }
 
-/** Keyboard activation for div/label elements standing in for a button (Enter/Space). */
-function onActivateKey(handler: () => void) {
-  return (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-}
-
-// ── Small verbatim building blocks ────────────────────────────────────────────
-
-/** mkToggle (prototype 4180) as a component. */
-function NeonToggle({ on, onClick, testId }: { on: boolean; onClick: () => void; testId?: string }) {
-  const pillSt: CSSProperties = {
-    width: 37, height: 21, borderRadius: 99, position: 'relative', cursor: 'pointer', flex: 'none',
-    transition: 'all .2s ease',
-    ...(on
-      ? { background: 'var(--gs1,rgba(0,240,255,.12))', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', boxShadow: '0 0 10px -2px var(--g1,rgba(0,240,255,.4))' }
-      : { background: 'rgba(255,255,255,.04)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.3))' }),
-  };
-  const knobSt: CSSProperties = {
-    position: 'absolute', top: 2.5, left: 3, width: 13, height: 13, borderRadius: '50%',
-    transition: 'all .2s ease', transform: `translateX(${on ? 16 : 0}px)`,
-    ...(on
-      ? { background: 'var(--n1,#00f0ff)', boxShadow: '0 0 8px var(--g1,rgba(0,240,255,.4))' }
-      : { background: '#8e9db8' }),
-  };
-  return (
-    <div
-      onClick={onClick}
-      style={pillSt}
-      role="switch"
-      aria-checked={on}
-      tabIndex={0}
-      onKeyDown={onActivateKey(onClick)}
-      data-testid={testId}
-    >
-      <span style={knobSt} />
-    </div>
-  );
-}
-
-/** mkSlider (prototype 4202): neon-filled range track + live value label. */
-function NeonSlider({ label, value, min, max, unit, onChange, testId }: {
-  label: string; value: number; min: number; max: number; unit: string;
-  onChange: (v: number) => void; testId?: string;
-}) {
-  const pct = ((value - min) / (max - min) * 100).toFixed(1);
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-        <span style={{ fontSize: 11.5, color: '#aebad0' }}>{label}</span>
-        <span style={{ fontSize: 11.5, color: 'var(--n1,#00f0ff)', fontWeight: 600 }}>{value}{unit}</span>
-      </div>
-      <input
-        type="range" min={min} max={max} value={value} data-testid={testId}
-        aria-label={label}
-        onChange={(e) => onChange(+e.target.value)} className="lnas-range"
-        style={{ width: '100%', background: `linear-gradient(to right,var(--n1,#00f0ff) ${pct}%,rgba(255,255,255,.12) ${pct}%)` }}
-      />
-    </div>
-  );
-}
-
-/** segMk (prototype 4231): the pill segment control. */
-function NeonSeg<K extends string>({ options, current, onPick, testIdPrefix }: {
-  options: [K, string][]; current: K; onPick: (k: K) => void; testIdPrefix?: string;
-}) {
-  return (
-    <div style={{ display: 'flex', padding: 3, borderRadius: 10, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.08)', gap: 2, width: 'fit-content' }}>
-      {options.map(([k, label]) => (
-        <div
-          key={k}
-          onClick={() => onPick(k)}
-          role="button"
-          tabIndex={0}
-          aria-pressed={current === k}
-          onKeyDown={onActivateKey(() => onPick(k))}
-          data-testid={testIdPrefix ? `${testIdPrefix}-${k}` : undefined}
-          className={current === k ? undefined : 'lnas-seg-idle'}
-          style={{
-            padding: '4px 13px', borderRadius: 8, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
-            ...(current === k
-              ? { background: 'var(--gs1,rgba(0,240,255,.12))', color: 'var(--n1,#00f0ff)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', fontWeight: 600, boxShadow: '0 0 10px -3px var(--g1,rgba(0,240,255,.4))' }
-              : { color: '#94a3bd', border: '1px solid transparent' }),
-          }}
-        >
-          {label}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Card({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
-  return (
-    <div className="lnas-card">
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eef2fb' }}>{title}</div>
-      {sub && <div style={{ fontSize: 11, color: '#8e9db8', margin: '2px 0 12px' }}>{sub}</div>}
-      {children}
-    </div>
-  );
-}
-
-const SCROLL_WHEEL_GRADIENT = 'conic-gradient(#5a4014,#8a6a2c,#2b2213,#4a3a1a,#5a4014)';
-
 // ── The section ───────────────────────────────────────────────────────────────
+// The small building blocks (NeonToggle / NeonSlider / NeonSeg / Card) live in
+// ./liquidNeonControls — shared with the Editor page's manuscript cards (M28).
 
 export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk, navRailLabels, onNavRailLabelsChange }: Props) {
   const S = useMemo(() => normalizeLiquidNeonV2(liquidNeonV2), [liquidNeonV2]);
@@ -211,12 +106,6 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     }
     importFromText(text);
   };
-
-  /** Header pill style (prototype 2241–2242). */
-  const hdrBtnSt = (borderVar: string): CSSProperties => ({
-    padding: '4px 11px', borderRadius: 8, border: `var(--bw,1px) solid var(${borderVar},rgba(0,240,255,.4))`,
-    color: '#aebad0', fontSize: 10.5, fontWeight: 600, cursor: 'pointer', flex: 'none',
-  });
 
   // Preset cards (prototype 4185–4194)
   const presetCards = (Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]).map((k) => {
@@ -356,44 +245,9 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     } catch { /* dialog cancelled or unavailable */ }
   };
 
-  /**
-   * M7 (§5.1): the manuscript page's own "Custom texture" upload — reuses the
-   * same generic image picker as the wallpaper upload above, scoped to pageCfg.
-   * Unlike the wallpaper (whose raw path is resolved to a data URL later, at
-   * theme-apply time), the page texture is rendered directly from this state
-   * via a plain CSS url() in pageMode.tsx with no such resolution step — so
-   * it's resolved to a data URL here, once, at pick time.
-   */
-  const pickPageTexture = async () => {
-    try {
-      const res = await window.api?.pickBgImage?.();
-      if (!res?.filePath) return;
-      let dataUrl: string | null | undefined;
-      try {
-        dataUrl = (await window.api?.loadBgImage?.(res.filePath))?.dataUrl;
-      } catch { /* fall back to the raw path */ }
-      setPc({ mode: 'custom', textureUrl: dataUrl ?? res.filePath });
-    } catch { /* dialog cancelled or unavailable */ }
-  };
-
   // Frame animation speed slider (prototype 4629–4631): 0.25s quantized, 1–30s.
   const fsQ = Math.max(1, Math.round(S.frameSpeed * 4));
   const fsPct = ((fsQ - 1) / 119 * 100).toFixed(1);
-
-  // Text color rows (prototype 4625–4626)
-  const txRows: { k: string; v: string; on: (v: string) => void }[] = [
-    { k: 'Story headings', v: S.txtCfg.head, on: (v) => patch({ txtCfg: { ...S.txtCfg, head: v } }) },
-    { k: 'Story body', v: S.txtCfg.body, on: (v) => patch({ txtCfg: { ...S.txtCfg, body: v } }) },
-    ...(S.txtCfg.split
-      ? [
-          { k: 'Notes headings', v: S.txtCfg.nHead, on: (v: string) => patch({ txtCfg: { ...S.txtCfg, nHead: v } }) },
-          { k: 'Notes body', v: S.txtCfg.nBody, on: (v: string) => patch({ txtCfg: { ...S.txtCfg, nBody: v } }) },
-        ]
-      : []),
-  ];
-
-  const pc = S.pageCfg;
-  const setPc = (p: Partial<LiquidNeonV2Settings['pageCfg']>) => patch({ pageCfg: { ...pc, ...p } });
 
   const resetToDefaults = () => patch({
     setKey: 'classic',
@@ -658,87 +512,8 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
-      {/* §13 moves the two manuscript cards below to the Editor page in M28;
-          until then they stay here, after the seven §3-ordered cards. */}
-      <Card title="Text colors" sub="Story and notes match by default — split them to style each on its own.">
-        {txRows.map((r) => (
-          <div key={r.k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
-            <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{r.k}</span>
-            <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{r.v}</span>
-            <ColorWheel value={r.v} onChange={r.on} data-testid={`lnas-tx-${r.k.replace(/\s+/g, '-').toLowerCase()}`} />
-          </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 7, borderTop: '1px solid rgba(255,255,255,.06)', marginTop: 6 }}>
-          <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Separate story &amp; notes colors</span>
-          <NeonToggle
-            on={S.txtCfg.split}
-            testId="lnas-txsplit"
-            onClick={() => patch({ txtCfg: { ...S.txtCfg, split: !S.txtCfg.split, nHead: S.txtCfg.head, nBody: S.txtCfg.body } })}
-          />
-        </div>
-      </Card>
-
-      <Card title="Manuscript page" sub="The box your words live in — glass, neon, ancient scroll, a texture of your own, or nothing at all.">
-        <NeonSeg
-          options={[['neon', 'Neon'], ['default', 'No glow'], ['scroll', 'Scroll'], ['custom', 'Custom texture'], ['off', 'Off']]}
-          current={pc.mode}
-          onPick={(k) => setPc({ mode: k })}
-          testIdPrefix="lnas-page"
-        />
-        {pc.mode === 'custom' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 4px' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11.5, color: '#aebad0' }}>Page texture image</div>
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1, wordBreak: 'break-all' }}>
-                {pc.textureUrl ? pc.textureUrl.split(/[\\/]/).pop() : 'No image chosen — cover-fit over the page'}
-              </div>
-            </div>
-            <div
-              role="button"
-              tabIndex={0}
-              data-testid="lnas-page-texture-upload"
-              title="Choose a page texture image"
-              onClick={() => { void pickPageTexture(); }}
-              onKeyDown={onActivateKey(() => { void pickPageTexture(); })}
-              className="lnas-hdr-btn"
-              style={hdrBtnSt('--b2')}
-            >
-              Choose image…
-            </div>
-          </div>
-        )}
-        {pc.mode !== 'off' && pc.mode !== 'scroll' && pc.mode !== 'custom' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 6px' }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Background color</span>
-              <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{pc.bg}</span>
-              <ColorWheel value={pc.bg} onChange={(v) => setPc({ bg: v })} data-testid="lnas-pagebg" />
-            </div>
-            <div style={{ marginBottom: 11 }}>
-              <NeonSlider label="Background opacity" value={pc.op} min={0} max={96} unit="%" onChange={(v) => setPc({ op: v })} testId="lnas-pageop" />
-            </div>
-            <div style={{ marginBottom: 4 }}>
-              <NeonSlider label="Background blur" value={pc.blur} min={0} max={30} unit="px" onChange={(v) => setPc({ blur: v })} testId="lnas-pageblur" />
-            </div>
-          </>
-        )}
-        {pc.mode === 'scroll' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0 6px' }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Scroll color</span>
-              <span style={{ fontSize: 10, color: '#7686a2', fontFamily: 'ui-monospace,monospace' }}>{S.scrollTint}</span>
-              <ColorWheel value={S.scrollTint} gradient={SCROLL_WHEEL_GRADIENT} onChange={(v) => patch({ scrollTint: v })} data-testid="lnas-scrolltint" />
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <NeonSlider label="Scroll opacity" value={S.scrollOp} min={30} max={100} unit="%" onChange={(v) => patch({ scrollOp: v })} testId="lnas-scrollop" />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 2 }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>Glowing archaic symbols</span>
-              <NeonToggle on={!!pc.sym} onClick={() => setPc({ sym: !pc.sym })} testId="lnas-pagesym" />
-            </div>
-          </>
-        )}
-      </Card>
+      {/* M28 (§13): the Text colors + Manuscript page cards moved to the
+          Editor page — see sections/EditorManuscriptSection.tsx. */}
 
       {/* Reset (prototype 2643) */}
       <div

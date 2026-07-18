@@ -16,7 +16,10 @@ export const NAMED_AGENT_IDS: readonly NamedAgentId[] = [
 ];
 
 export const DEFAULT_AGENT_DISPLAY_NAMES: Record<NamedAgentId, string> = {
-  writingAssistant: 'Writing Assistant',
+  // Beta 4 M12: Writing Assistant → Writing Coach everywhere user-facing.
+  // The persisted id stays `writingAssistant` (settings.agentNames keys,
+  // persona folders, provider secrets) so existing settings keep working.
+  writingAssistant: 'Writing Coach',
   brainstorm: 'Brainstorm Agent',
   archive: 'Archive Agent',
   betaReader: 'Beta Reader',
@@ -43,3 +46,36 @@ export const IDENTITY_FILES: ReadonlyArray<{ key: string; fileName: string }> = 
   { key: 'LEARNING', fileName: 'learning.md' },
   { key: 'SOUL', fileName: 'soul.md' },
 ];
+
+/**
+ * Beta 4 M28 (§11/§13): each agent's duties, shown as chips on the Settings →
+ * AI Agents identity cards. Verbatim from the prototype `agentDuties`
+ * (HTML 6709–6714).
+ */
+export const AGENT_DUTIES: Record<NamedAgentId, readonly string[]> = {
+  writingAssistant: [
+    'Lessons & drills (Coach page)',
+    'Suggestions per chapter',
+    'Scene Analysis — AI read',
+    'Scene Crafter first-pass drafts',
+    'Inline prose comments',
+  ],
+  brainstorm: [
+    'Brainstorm chat & idea board',
+    'Fact extraction → vault notes',
+    'Idea Collections & starters',
+    'Notes-panel agent',
+    'Template pre-fill',
+  ],
+  archive: [
+    'Continuity scans & flags',
+    'Story ↔ vault fact checks',
+    'Timeline building & dates',
+    'Vault imports & mapping',
+  ],
+  betaReader: [
+    'Chapter reads on request',
+    'Reactions as margin comments',
+    'Pacing / clarity / hook reports',
+  ],
+};

@@ -651,7 +651,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   test('TC-S-07: filters by agent, confidence range, and target-path search', async () => {
     await openReviewTab();
 
-    await page.getByRole('button', { name: /Writing Assistant, \d+ pending/ }).click();
+    await page.getByRole('button', { name: /Writing Coach, \d+ pending/ }).click();
     await expect(page.locator('.sr-row', { hasText: 'from writing-assistant' }).first()).toBeVisible();
     await expect(page.locator('.sr-row', { hasText: 'from brainstorm' }).first()).not.toBeVisible();
 
@@ -683,7 +683,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     const pane = page.getByRole('complementary', { name: /suggestion detail/i });
     await expect(pane).toBeVisible();
     await expect(pane).toContainText('Bulk QA suggestion 042');
-    await expect(pane).toContainText('Writing Assistant');
+    await expect(pane).toContainText('Writing Coach');
     await expect(pane.getByText('Proposed content', { exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
   });

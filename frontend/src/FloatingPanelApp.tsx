@@ -17,7 +17,7 @@ import './FloatingPanelApp.css';
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const PANEL_LABELS: Record<string, string> = {
-  'writing-assistant': 'Writing Assistant',
+  'writing-assistant': 'Writing Coach',
   'archive-continuity': 'Continuity',
   'scene-preview': 'Scene Preview',
   stories: 'Story Navigator',

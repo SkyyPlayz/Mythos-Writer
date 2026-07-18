@@ -334,8 +334,8 @@ export default function FormatToolbar({ editor, actions }: Props) {
         <button
           type="button"
           className="fmt-action fmt-action--assist"
-          aria-label="Open the Writing Assistant"
-          title="Open the Writing Assistant"
+          aria-label="Open the Writing Coach"
+          title="Open the Writing Coach"
           onMouseDown={(e) => { e.preventDefault(); actions.onAssist?.(); }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">

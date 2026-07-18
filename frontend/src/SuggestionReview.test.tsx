@@ -120,7 +120,7 @@ describe('SuggestionReview — Inbox tab', () => {
   it('renders agent badges for each suggestion', async () => {
     render(<SuggestionReview />);
     await waitFor(() => {
-      expect(screen.getAllByText('Writing Assistant').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Writing Coach').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Brainstorm').length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText('Archive').length).toBeGreaterThanOrEqual(1);
     });
@@ -131,17 +131,17 @@ describe('SuggestionReview — Inbox tab', () => {
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
     expect(screen.getByRole('button', { name: /^All/ })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /Writing Assistant, \d+ pending/ }),
+      screen.getByRole('button', { name: /Writing Coach, \d+ pending/ }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Brainstorm, \d+ pending/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Archive, \d+ pending/ })).toBeInTheDocument();
   });
 
-  it('filter chip for Writing Assistant shows only writing-assistant rows', async () => {
+  it('filter chip for Writing Coach shows only writing-assistant rows', async () => {
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    fireEvent.click(screen.getByRole('button', { name: /Writing Assistant, \d+ pending/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Writing Coach, \d+ pending/ }));
 
     expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
     expect(screen.queryByText('Hero motivation needs clarification.')).not.toBeInTheDocument();
@@ -178,7 +178,7 @@ describe('SuggestionReview — Inbox tab', () => {
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    fireEvent.click(screen.getByRole('button', { name: /Writing Assistant, \d+ pending/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Writing Coach, \d+ pending/ }));
     fireEvent.click(screen.getByRole('button', { name: /^All/ }));
 
     expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
@@ -732,8 +732,8 @@ describe('SuggestionReview — SLICE-3: batch select (AC-S3)', () => {
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    // Filter to Writing Assistant only (1 proposed row)
-    fireEvent.click(screen.getByRole('button', { name: /Writing Assistant, \d+ pending/ }));
+    // Filter to Writing Coach only (1 proposed row)
+    fireEvent.click(screen.getByRole('button', { name: /Writing Coach, \d+ pending/ }));
 
     const selectAll = screen.getByRole('checkbox', { name: /select all/i });
     fireEvent.click(selectAll);

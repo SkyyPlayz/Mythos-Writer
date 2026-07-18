@@ -299,7 +299,7 @@ export default function NotesTabPanel({
               className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
               onClick={() => onSetWritingMode('edit')}
               aria-pressed={writingMode === 'edit'}
-              title="Edit mode — review with Writing Assistant + comments (Ctrl+Shift+E)"
+              title="Edit mode — review with Writing Coach + comments (Ctrl+Shift+E)"
               data-testid="writing-mode-edit"
             >E</button>
           </div>

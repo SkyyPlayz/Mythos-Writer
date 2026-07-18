@@ -12,10 +12,27 @@ import {
   type MicDevice,
 } from '../settingsPanelTypes';
 import {
+  AGENT_DUTIES,
   DEFAULT_AGENT_DISPLAY_NAMES,
   resolveAgentDisplayName,
   type NamedAgentId,
 } from '../../../agents/agentIdentity';
+
+// Beta 4 M28 (§11/§13): duties chips — what each agent handles, shown on its
+// identity card (prototype agentDuties, HTML 6709).
+function AgentDutiesChips({ agent }: { agent: NamedAgentId }) {
+  return (
+    <div
+      className="settings-agent-duties"
+      data-testid={`agent-duties-${agent}`}
+      aria-label={`${DEFAULT_AGENT_DISPLAY_NAMES[agent]} duties`}
+    >
+      {AGENT_DUTIES[agent].map((duty) => (
+        <span key={duty} className="settings-agent-duty-chip">{duty}</span>
+      ))}
+    </div>
+  );
+}
 
 // Beta 3 M22: rename input (prototype Identity & files name field, HTML 1852).
 // The card header shows the resolved name so renames propagate immediately.
@@ -126,6 +143,8 @@ interface AgentsSectionProps {
   agentTestMsg: Record<AgentName, string>;
   setAgentField: <A extends keyof AppSettings['agents'], K extends keyof NonNullable<AppSettings['agents'][A]>>(agent: A, field: K, value: NonNullable<AppSettings['agents'][A]>[K]) => void;
   setCategoryAutoApply: (agent: keyof AppSettings['agents'], category: SuggestionCategory, enabled: boolean) => void;
+  /** Beta 4 M28 (B4-8): per-category certainty slider writes autoApplyThresholds. */
+  setCategoryAutoApplyThreshold: (agent: keyof AppSettings['agents'], category: SuggestionCategory, threshold: number) => void;
   setAgentOverride: <K extends keyof AgentOverrideState>(agentName: AgentName, field: K, value: AgentOverrideState[K]) => void;
   onAgentTest: (agentName: AgentName) => void;
   micDevices: MicDevice[];
@@ -142,6 +161,7 @@ export default function AgentsSection({
   agentTestMsg,
   setAgentField,
   setCategoryAutoApply,
+  setCategoryAutoApplyThreshold,
   setAgentOverride,
   onAgentTest,
   micDevices,
@@ -162,7 +182,7 @@ export default function AgentsSection({
           <label className="settings-toggle">
             <input
               type="checkbox"
-              aria-label="Enable Writing Assistant"
+              aria-label="Enable Writing Coach"
               checked={settings.agents.writingAssistant.enabled}
               onChange={(e) => setAgentField('writingAssistant', 'enabled', e.target.checked)}
             />
@@ -171,6 +191,7 @@ export default function AgentsSection({
         </div>
         <div className="settings-agent-fields">
           <AgentRenameField agent="writingAssistant" idPrefix="wa" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
+          <AgentDutiesChips agent="writingAssistant" />
           {/* Model selector for global provider override */}
           {!agentOverrides.writingAssistant.enabled && (
             <div className="settings-field settings-field-inline">
@@ -180,7 +201,7 @@ export default function AgentsSection({
                   id="wa-model"
                   className="settings-input settings-select settings-input-sm"
                   value={settings.agents.writingAssistant.model}
-                  aria-label="Writing Assistant model"
+                  aria-label="Writing Coach model"
                   onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
                 >
                   {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -192,7 +213,7 @@ export default function AgentsSection({
                   type="text"
                   value={settings.agents.writingAssistant.model}
                   placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Writing Assistant model"
+                  aria-label="Writing Coach model"
                   maxLength={128}
                   onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
                 />
@@ -304,7 +325,7 @@ export default function AgentsSection({
               <input
                 id="wa-auto-apply"
                 type="checkbox"
-                aria-label="Auto-apply Writing Assistant suggestions"
+                aria-label="Auto-apply Writing Coach suggestions"
                 checked={settings.agents.writingAssistant.autoApply}
                 onChange={(e) => setAgentField('writingAssistant', 'autoApply', e.target.checked)}
               />
@@ -314,10 +335,11 @@ export default function AgentsSection({
           </div>
           <AutoApplyCategoryToggles
             idPrefix="wa"
-            agentLabel="Writing Assistant"
+            agentLabel="Writing Coach"
             agent={settings.agents.writingAssistant}
             agentKey="writingAssistant"
             onChange={setCategoryAutoApply}
+            onThresholdChange={setCategoryAutoApplyThreshold}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="wa-confidence">Auto-apply threshold</label>
@@ -331,7 +353,7 @@ export default function AgentsSection({
                 step={0.05}
                 disabled={!settings.agents.writingAssistant.autoApply}
                 value={settings.agents.writingAssistant.confidenceThreshold}
-                aria-label="Writing Assistant auto-apply threshold"
+                aria-label="Writing Coach auto-apply threshold"
                 onChange={(e) => setAgentField('writingAssistant', 'confidenceThreshold', Number(e.target.value))}
               />
               <span className="settings-slider-value">{settings.agents.writingAssistant.confidenceThreshold.toFixed(2)}</span>
@@ -394,6 +416,7 @@ export default function AgentsSection({
         </div>
         <div className="settings-agent-fields">
           <AgentRenameField agent="brainstorm" idPrefix="brainstorm" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
+          <AgentDutiesChips agent="brainstorm" />
           {!agentOverrides.brainstorm.enabled && (
             <div className="settings-field settings-field-inline">
               <label className="settings-label" htmlFor="brainstorm-model">Model</label>
@@ -463,6 +486,7 @@ export default function AgentsSection({
             agent={settings.agents.brainstorm}
             agentKey="brainstorm"
             onChange={setCategoryAutoApply}
+            onThresholdChange={setCategoryAutoApplyThreshold}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="brainstorm-confidence">Auto-apply threshold</label>
@@ -588,6 +612,7 @@ export default function AgentsSection({
         </div>
         <div className="settings-agent-fields">
           <AgentRenameField agent="archive" idPrefix="archive" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
+          <AgentDutiesChips agent="archive" />
           {!agentOverrides.archive.enabled && (
             <div className="settings-field settings-field-inline">
               <label className="settings-label" htmlFor="archive-model">Model</label>
@@ -669,6 +694,7 @@ export default function AgentsSection({
             agent={settings.agents.archive}
             agentKey="archive"
             onChange={setCategoryAutoApply}
+            onThresholdChange={setCategoryAutoApplyThreshold}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="archive-confidence">Auto-apply threshold</label>
@@ -747,6 +773,7 @@ export default function AgentsSection({
         </div>
         <div className="settings-agent-fields">
           <AgentRenameField agent="betaReader" idPrefix="beta-reader" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
+          <AgentDutiesChips agent="betaReader" />
           {!agentOverrides.betaReader.enabled && (
             <div className="settings-field settings-field-inline">
               <label className="settings-label" htmlFor="beta-reader-model">Model</label>
@@ -816,6 +843,7 @@ export default function AgentsSection({
             agent={betaReader}
             agentKey="betaReader"
             onChange={setCategoryAutoApply}
+            onThresholdChange={setCategoryAutoApplyThreshold}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="beta-reader-confidence">Auto-apply threshold</label>

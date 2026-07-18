@@ -62,7 +62,7 @@ async function writingAssistantHandlerWithSettings(
   payload: { prompt: string; context?: string },
 ): Promise<{ text: string; requestId: string }> {
   if (!settings.agents.writingAssistant.enabled) {
-    throw new Error('Writing Assistant is disabled in settings.');
+    throw new Error('Writing Coach is disabled in settings.');
   }
   const client = new Anthropic({ apiKey: settings.apiKey });
   void client; // would stream here in real code
@@ -138,7 +138,7 @@ describe('Writing Assistant — disabled path', () => {
     const settings = makeSettings({ writingAssistantEnabled: false });
     await expect(
       writingAssistantHandlerWithSettings(settings, { prompt: 'Improve this.' }),
-    ).rejects.toThrow('Writing Assistant is disabled in settings.');
+    ).rejects.toThrow('Writing Coach is disabled in settings.');
     expect(vi.mocked(Anthropic)).not.toHaveBeenCalled();
   });
 

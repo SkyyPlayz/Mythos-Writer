@@ -991,6 +991,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('timelines:upsert', payload),
   timelinesSetActive: (timelineId: string) =>
     ipcRenderer.invoke('timelines:setActive', { timelineId }),
+  // Beta 4 M22: Axis engine — era/span/event/row item persistence
+  timelinesUpsertItem: (payload: { type: string; item: Record<string, unknown> }) =>
+    ipcRenderer.invoke('timelines:upsertItem', payload),
+  timelinesDeleteItem: (payload: { type: string; id: string }) =>
+    ipcRenderer.invoke('timelines:deleteItem', payload),
 
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {
@@ -1006,6 +1011,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('agentSession:delete', { sessionId }),
     appendTurns: (sessionId: string, turns: Array<{ role: 'user' | 'agent'; text: string; at: string }>) =>
       ipcRenderer.invoke('agentSession:appendTurns', { sessionId, turns }),
+    // M12 — hydrate a full session (turns included) on mount / switch.
+    read: (sessionId: string) =>
+      ipcRenderer.invoke('agentSession:read', { sessionId }),
   },
 
   // SKY-3189 (G3): true when running in a packaged Electron build.

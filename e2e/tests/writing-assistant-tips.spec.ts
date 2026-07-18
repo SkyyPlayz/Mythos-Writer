@@ -249,7 +249,7 @@ test.beforeAll(async () => {
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
   const waPanel = page.locator('[data-panel-id="writing-assistant"]');
   await expect(waPanel).toBeVisible({ timeout: 4_000 });
-  const waPanelHeader = waPanel.locator('[aria-label="Writing Assistant panel"]');
+  const waPanelHeader = waPanel.locator('[aria-label="Writing Coach panel"]');
   if ((await waPanelHeader.getAttribute('aria-expanded')) === 'false') {
     await waPanelHeader.click();
   }
@@ -257,7 +257,7 @@ test.beforeAll(async () => {
   // SKY-6228: right panel is now the agent hub — the Writing Assistant chat
   // (heartbeat/scan-now) is behind the "Writing Assistant" agent row.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
-  await page.locator('[aria-label="Open Writing Assistant chat"]').click();
+  await page.locator('[aria-label="Open Writing Coach chat"]').click();
   // Wait for the WA chat view (WritingAssistantPanel) to render before tests begin.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });

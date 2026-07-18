@@ -7,6 +7,9 @@
  * TC-PROV-02  Test connection with mocked local provider returns success
  * TC-PROV-03  Per-agent "Use different provider" toggle enables inline provider form
  * TC-PROV-04  Non-Anthropic global provider shows text input for per-agent model
+ * TC-PROV-05  Switching the global provider dropdown fills Base URL with that
+ *              provider's default (SKY-6941 regression — it used to keep the
+ *              previously-selected provider's URL/placeholder)
  *
  * The real `settings:testConnection` IPC handler is replaced with a mock that
  * always succeeds so no actual Ollama/LM Studio instance is needed.
@@ -221,7 +224,7 @@ test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent m
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
   // Writing Assistant model input should be a text input (not a select)
-  const waModel = page.getByLabel('Writing Assistant model');
+  const waModel = page.getByLabel('Writing Coach model');
   await expect(waModel).toHaveAttribute('type', 'text');
 
   // Brainstorm model input should be text input
@@ -231,6 +234,27 @@ test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent m
   // Archive model input should be text input
   const archiveModel = page.getByLabel('Archive Agent model');
   await expect(archiveModel).toHaveAttribute('type', 'text');
+
+  // Close settings
+  await page.click('.settings-close');
+});
+
+test('TC-PROV-05: switching global provider fills Base URL with that provider\'s default', async () => {
+  // App was seeded with Ollama (http://127.0.0.1:11434/v1) — switch to llama.cpp
+  // and confirm the Base URL updates to llama.cpp's own default rather than
+  // keeping Ollama's URL/placeholder (SKY-6941).
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+
+  const providerSelect = page.getByLabel('AI provider');
+  const baseUrlInput = page.getByLabel('Provider base URL');
+  await expect(baseUrlInput).toHaveValue('http://127.0.0.1:11434/v1');
+
+  await providerSelect.selectOption('llamacpp');
+  await expect(baseUrlInput).toHaveValue('http://127.0.0.1:8080/v1');
+
+  await providerSelect.selectOption('lmstudio');
+  await expect(baseUrlInput).toHaveValue('http://127.0.0.1:1234/v1');
 
   // Close settings
   await page.click('.settings-close');

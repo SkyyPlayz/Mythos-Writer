@@ -155,10 +155,10 @@ describe('GlobalRightSidebar', () => {
       expect(screen.getByRole('menuitem', { name: /outline/i })).toBeInTheDocument();
     });
 
-    it('writing assistant / continuity / scene preview are NOT in the right sidebar picker (moved to left)', () => {
+    it('writing coach / continuity / scene preview are NOT in the right sidebar picker (moved to left)', () => {
       renderWithProvider(<GlobalRightSidebar {...defaultProps} panels={[]} />);
       fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-      expect(screen.queryByRole('menuitem', { name: /writing assistant/i })).toBeNull();
+      expect(screen.queryByRole('menuitem', { name: /writing coach/i })).toBeNull();
       expect(screen.queryByRole('menuitem', { name: /^continuity$/i })).toBeNull();
       expect(screen.queryByRole('menuitem', { name: /scene preview/i })).toBeNull();
     });

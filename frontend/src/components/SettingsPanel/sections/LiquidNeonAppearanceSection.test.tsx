@@ -81,71 +81,8 @@ describe('LiquidNeonAppearanceSection', () => {
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).frameSpeed).toBe(7.25);
   });
 
-  it('split toggle seeds notes colors from story colors', async () => {
-    const { onChange } = await setup({ txtCfg: { head: '#111111', body: '#222222', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7' } });
-    expect(screen.queryByText('Notes headings')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('lnas-txsplit'));
-    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
-    expect(next.txtCfg.split).toBe(true);
-    expect(next.txtCfg.nHead).toBe('#111111');
-    expect(next.txtCfg.nBody).toBe('#222222');
-  });
-
-  it('page modes gate their config: neon shows bg controls, scroll shows parchment controls', async () => {
-    await setup({ pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 } });
-    expect(screen.getByTestId('lnas-pageop')).toBeInTheDocument();
-    expect(screen.queryByTestId('lnas-scrollop')).not.toBeInTheDocument();
-  });
-
-  it('scroll mode shows tint, opacity, and symbols toggle', async () => {
-    await setup({ pageCfg: { mode: 'scroll', bg: '#0a0d18', op: 66, blur: 0 } });
-    expect(screen.getByTestId('lnas-scrollop')).toBeInTheDocument();
-    expect(screen.getByTestId('lnas-scrolltint')).toBeInTheDocument();
-    expect(screen.getByTestId('lnas-pagesym')).toBeInTheDocument();
-    expect(screen.queryByTestId('lnas-pageop')).not.toBeInTheDocument();
-  });
-
-  it('picking Custom texture in the segmented control patches pageCfg.mode', async () => {
-    const { onChange } = await setup({ pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 } });
-    fireEvent.click(screen.getByTestId('lnas-page-custom'));
-    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).pageCfg.mode).toBe('custom');
-  });
-
-  it('custom texture mode shows the upload row and hides the flat bg controls (M7 §5.1)', async () => {
-    await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
-    expect(screen.getByTestId('lnas-page-texture-upload')).toBeInTheDocument();
-    expect(screen.queryByTestId('lnas-pageop')).not.toBeInTheDocument();
-    expect(screen.getByText('No image chosen — cover-fit over the page')).toBeInTheDocument();
-  });
-
-  it('choosing a texture image patches pageCfg.textureUrl via the shared image picker', async () => {
-    const pickBgImage = vi.fn().mockResolvedValue({ filePath: '/tmp/parchment.png', cancelled: false });
-    (window as unknown as { api: Record<string, unknown> }).api = { pickBgImage };
-    const { onChange } = await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('lnas-page-texture-upload'));
-    });
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
-    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
-    expect(next.pageCfg.mode).toBe('custom');
-    expect(next.pageCfg.textureUrl).toBe('/tmp/parchment.png');
-    delete (window as unknown as { api?: unknown }).api;
-  });
-
-  it('resolves the chosen texture to a data URL when loadBgImage is available (raw fs paths do not load via CSS url())', async () => {
-    const pickBgImage = vi.fn().mockResolvedValue({ filePath: '/tmp/parchment.png', cancelled: false });
-    const loadBgImage = vi.fn().mockResolvedValue({ dataUrl: 'data:image/png;base64,AAAA' });
-    (window as unknown as { api: Record<string, unknown> }).api = { pickBgImage, loadBgImage };
-    const { onChange } = await setup({ pageCfg: { mode: 'custom', bg: '#0a0d18', op: 66, blur: 0 } });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('lnas-page-texture-upload'));
-    });
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
-    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
-    expect(loadBgImage).toHaveBeenCalledWith('/tmp/parchment.png');
-    expect(next.pageCfg.textureUrl).toBe('data:image/png;base64,AAAA');
-    delete (window as unknown as { api?: unknown }).api;
-  });
+  // M28 (§13): the Text colors + Manuscript page card tests moved to
+  // EditorManuscriptSection.test.tsx alongside the cards themselves.
 
   it('wallpaper card pick patches wp; no custom card without customWp', async () => {
     const { onChange } = await setup();
@@ -204,13 +141,13 @@ describe('LiquidNeonAppearanceSection', () => {
       expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).setKey).toBe('classic');
     });
 
-    it('NeonToggle switches (split, reduce glow) are focusable and activate on Space', async () => {
-      const { onChange } = await setup({ txtCfg: { head: '#111111', body: '#222222', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7' } });
-      const toggle = screen.getByTestId('lnas-txsplit');
+    it('NeonToggle switches (reduce glow) are focusable and activate on Space', async () => {
+      const { onChange } = await setup();
+      const toggle = screen.getByTestId('lnas-reduceglow');
       expect(toggle).toHaveAttribute('role', 'switch');
       expect(toggle).toHaveAttribute('tabIndex', '0');
       fireEvent.keyDown(toggle, { key: ' ' });
-      expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).txtCfg.split).toBe(true);
+      expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).reduceGlow).toBe(true);
     });
 
     it('NeonSeg segment options are focusable buttons activated by Enter', async () => {
@@ -227,11 +164,11 @@ describe('LiquidNeonAppearanceSection', () => {
 // ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
 
 describe('Beta 4 M1 — Appearance card order (§3)', () => {
-  it('renders the seven spec cards in §3 order, manuscript cards after', async () => {
+  it('renders exactly the seven spec cards in §3 order (M28 moved the manuscript cards to the Editor page)', async () => {
     await setup();
     const titles = Array.from(document.querySelectorAll('.lnas-card > div:first-child'))
       .map((el) => el.textContent);
-    expect(titles.slice(0, 7)).toEqual([
+    expect(titles).toEqual([
       'Color theme',
       'Neon border colors',
       'Glow & glass',

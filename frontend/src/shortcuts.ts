@@ -98,7 +98,7 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
       ],
     },
     {
-      label: 'Brainstorm & Writing Assistant',
+      label: 'Brainstorm & Writing Coach',
       entries: [
         { keys: ['Enter'], action: 'Submit prompt' },
         { keys: ['Shift+Enter'], action: 'Insert newline in prompt' },

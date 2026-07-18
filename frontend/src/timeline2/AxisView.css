@@ -1,0 +1,516 @@
+/* Beta 4 M22 — Axis engine. Exact values ported from the prototype
+   ("Mythos Writer - Liquid Neon.dc.html" 1957 / 2074–2180 / 6645–6697):
+   96px row-label column, 19px eras bar with 17px era chips, 13px tick row,
+   8px tick font #586a88, 1px gridlines rgba(255,255,255,.05), span cards
+   46px r11, event cards 215px r13, custom-row items 24px r8, 13px row gap. */
+
+.ax-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.ax-empty {
+  padding: 40px;
+  color: #8e9db8;
+  font-size: 12px;
+}
+
+/* ── Toolbar ── */
+.ax-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px 4px;
+}
+
+.ax-toolbar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef2fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ax-toolbar-spacer {
+  flex: 1;
+}
+
+/* Prototype 1948: zoom seg — 3px pad r10 bg rgba(255,255,255,.05) */
+.ax-zoom-seg {
+  display: flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  gap: 2px;
+}
+
+.ax-zoom-btn {
+  padding: 4px 12px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: #8e9db8;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ax-zoom-btn--active {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  color: var(--n1, #00f0ff);
+}
+
+/* ── Body: scrollable canvas + inspector ── */
+.ax-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* Prototype 1957: the lanes scroller — horizontal scrollbar at its bottom */
+.ax-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 20px 20px;
+}
+
+/* Prototype 6864 tlLanesWrapSt: column, 13px gap; min-width set inline */
+.ax-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.ax-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+/* Prototype 2078: 96px right-aligned uppercase label column */
+.ax-row-label {
+  width: 96px;
+  flex: none;
+  text-align: right;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7686a2;
+  padding-top: 8px;
+  position: relative;
+}
+
+.ax-row-label--btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  padding-top: 0;
+  font-family: inherit;
+}
+
+.ax-row-label--btn:hover {
+  color: var(--n1, #00f0ff);
+}
+
+.ax-row-sublabel {
+  font-size: 7.5px;
+  letter-spacing: 0.06em;
+  color: #586a88;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.ax-row-content {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* Prototype tick gridlines (6688 lineSt) */
+.ax-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+/* ── ERAS bar (2080: 19px bar, 17px chips) + tick row (2083: 13px) ── */
+.ax-eras-bar {
+  position: relative;
+  height: 19px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ax-era {
+  position: absolute;
+  top: 0;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ax-tick-row {
+  position: relative;
+  height: 13px;
+}
+
+.ax-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 8px;
+  color: #586a88;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* ── Edge handles (2093: 7px span handles; 2081/2175: 6px era/custom) ── */
+.ax-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: ew-resize;
+}
+
+.ax-handle--6 {
+  width: 6px;
+}
+
+.ax-handle--7 {
+  width: 7px;
+}
+
+.ax-handle--l {
+  left: 0;
+}
+
+.ax-handle--r {
+  right: 0;
+}
+
+.ax-handle--round-l {
+  border-radius: 11px 0 0 11px;
+}
+
+.ax-handle--round-r {
+  border-radius: 0 11px 11px 0;
+}
+
+.ax-handle--7:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Span cards (6648: 46px, r11, 50px lanes) ── */
+.ax-span {
+  position: absolute;
+  height: 46px;
+  padding: 6px 8px;
+  border-radius: 11px;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: center;
+}
+
+.ax-span-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ax-span-sub {
+  font-size: 10px;
+  color: #8e9db8;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Embedded-timeline preview strips (6654: 3px bars pinned to the bottom) */
+.ax-mini-strip {
+  position: absolute;
+  bottom: 3px;
+  height: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ── Event cards (6692: 215px, r13, 92px lanes) ── */
+.ax-event {
+  position: absolute;
+  transform: translateX(-50%);
+  width: 215px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  cursor: pointer;
+  background: var(--glass2, rgba(21, 26, 45, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ax-event:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.ax-event--selected {
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 22px -5px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.ax-event-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ax-event-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex: none;
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.ax-event-titles {
+  min-width: 0;
+}
+
+.ax-event-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #eef2fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ax-event-when {
+  font-size: 10px;
+  color: var(--n1, #00f0ff);
+}
+
+/* ── Custom rows (2173: 26px lane, 24px items r8) ── */
+.ax-crow-items {
+  height: 26px;
+}
+
+.ax-crow-item {
+  position: absolute;
+  top: 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #e6ecf9;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ax-row-label--custom {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.ax-crow-name {
+  width: 96px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #7686a2;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: right;
+  padding: 2px 5px;
+}
+
+.ax-crow-name:focus {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: #dbe4f5;
+  outline: none;
+}
+
+.ax-crow-remove {
+  background: none;
+  border: none;
+  color: #586a88;
+  font-size: 8.5px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ax-crow-remove:hover {
+  color: #ff6b8a;
+}
+
+/* Prototype 6047 laneAddSt: 30px dashed + button */
+.ax-lane-add {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 26px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: none;
+  color: #586a88;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ax-lane-add:hover {
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.ax-row-label .ax-lane-add {
+  margin-left: auto;
+  margin-top: 4px;
+  min-height: 22px;
+  width: 26px;
+}
+
+.ax-add-crow {
+  align-self: flex-start;
+  margin-left: 106px;
+  padding: 5px 12px;
+  border-radius: 9px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: none;
+  color: #8e9db8;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ax-add-crow:hover {
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+/* ── Mini inspector (placeholder surface until the M25 right panel) ── */
+.ax-inspector {
+  width: 240px;
+  flex: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  overflow-y: auto;
+}
+
+.ax-insp-kind {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7686a2;
+}
+
+.ax-insp-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #7686a2;
+}
+
+.ax-insp-title {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 8px;
+  color: #eef2fb;
+  font-size: 12px;
+  padding: 0 9px;
+}
+
+.ax-insp-when {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10.5px;
+  color: #aebad0;
+  font-family: ui-monospace, monospace;
+}
+
+/* Prototype 3397: Set exact time… button */
+.ax-insp-exact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 27px;
+  border-radius: 9px;
+  background: none;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  color: var(--n1, #00f0ff);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ax-insp-exact:hover {
+  background: var(--gs1, rgba(0, 240, 255, 0.1));
+}
+
+.ax-insp-embed {
+  height: 27px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 8px;
+  color: #dbe4f5;
+  font-size: 10.5px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.ax-insp-delete {
+  margin-top: auto;
+  height: 27px;
+  border-radius: 9px;
+  background: none;
+  border: 1px solid rgba(255, 107, 138, 0.4);
+  color: #ff6b8a;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ax-insp-delete:hover {
+  background: rgba(255, 107, 138, 0.1);
+}

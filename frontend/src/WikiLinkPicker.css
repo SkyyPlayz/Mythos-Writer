@@ -4,7 +4,9 @@
   display: inline;
   border-radius: 4px;
   padding: 0 2px;
-  color: var(--neon-cyan, #00e5ff);
+  /* M28 (§13): --wiki-c is the Settings → Editor "Wiki links" color override;
+     unset, the theme's neon-cyan owns the color as before. */
+  color: var(--wiki-c, var(--neon-cyan, #00e5ff));
   background: rgba(0, 229, 255, 0.1);
   cursor: pointer;
   transition: background 0.15s ease, outline-color 0.15s ease;

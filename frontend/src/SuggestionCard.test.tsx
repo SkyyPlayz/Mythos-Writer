@@ -18,9 +18,9 @@ const noop = () => {};
 
 // AC-WA-4: Card renders agent label
 describe('SuggestionCard — card layout (AC-WA-4)', () => {
-  it('renders the "Writing Assistant" agent label', () => {
+  it('renders the "Writing Coach" agent label', () => {
     render(<SuggestionCard suggestion={makeSuggestion()} onApply={noop} onReject={noop} />);
-    expect(screen.getByText('Writing Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Writing Coach')).toBeInTheDocument();
   });
 
   it('renders suggestion text', () => {
@@ -30,7 +30,7 @@ describe('SuggestionCard — card layout (AC-WA-4)', () => {
 
   it('has article role with accessible label', () => {
     render(<SuggestionCard suggestion={makeSuggestion()} onApply={noop} onReject={noop} />);
-    expect(screen.getByRole('article', { name: /writing assistant suggestion/i })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: /writing coach suggestion/i })).toBeInTheDocument();
   });
 });
 

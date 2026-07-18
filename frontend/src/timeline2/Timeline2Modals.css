@@ -1,0 +1,236 @@
+/* Beta 4 M22 — Exact-time picker + calendar editor modals.
+   Exact values from the prototype 3702–3772: 400px/360px cards, r18,
+   rgba(15,19,33,.97) glass, cyan/purple borders, 30px mono inputs r9,
+   lnFadeUp .16s, gradient primary button with #0b0d17 text. */
+
+.t2m-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: rgba(4, 6, 12, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Calendar editor stacks above the time picker (prototype z 82 > 80) */
+.t2m-overlay--top {
+  z-index: 82;
+}
+
+.t2m-backdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.t2m-card {
+  position: relative;
+  width: 400px;
+  max-width: 92%;
+  border-radius: 18px;
+  background: rgba(15, 19, 33, 0.97);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  padding: 18px 20px;
+  animation: t2mFadeUp 0.16s ease;
+}
+
+.t2m-card--cyan {
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 20px 60px rgba(3, 5, 12, 0.7), 0 0 30px -8px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.t2m-card--purple {
+  width: 360px;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 20px 60px rgba(3, 5, 12, 0.7), 0 0 30px -8px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+@keyframes t2mFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.t2m-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 4px;
+}
+
+.t2m-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f3fc;
+  flex: 1;
+}
+
+.t2m-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e9db8;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-size: 10px;
+}
+
+.t2m-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.t2m-note {
+  font-size: 10.5px;
+  color: #7686a2;
+  margin-bottom: 13px;
+  line-height: 1.5;
+}
+
+.t2m-note b {
+  color: #aebad0;
+}
+
+.t2m-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--n1, #00f0ff);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 10.5px;
+}
+
+.t2m-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #7686a2;
+  margin-bottom: 6px;
+}
+
+.t2m-fields {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.t2m-field {
+  flex: 1;
+}
+
+.t2m-field-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #586a88;
+  margin-bottom: 3px;
+}
+
+.t2m-field-input {
+  width: 100%;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 9px;
+  color: #eef2fb;
+  font-size: 13px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+}
+
+.t2m-cal-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 13px;
+}
+
+.t2m-cal-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.t2m-cal-label {
+  flex: 1;
+  font-size: 11.5px;
+  color: #aebad0;
+}
+
+.t2m-cal-input {
+  width: 70px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.t2m-presets {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-bottom: 13px;
+}
+
+.t2m-preset {
+  font-size: 10.5px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
+  background: none;
+  color: #c3cee2;
+  cursor: pointer;
+}
+
+.t2m-preset:hover {
+  color: #fff;
+  box-shadow: 0 0 12px -4px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.t2m-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.t2m-btn {
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  cursor: pointer;
+  border: none;
+}
+
+.t2m-btn--ghost {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #aebad0;
+}
+
+.t2m-btn--ghost:hover {
+  color: #fff;
+}
+
+.t2m-btn--primary {
+  padding: 6px 18px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-weight: 700;
+}
+
+.t2m-btn--primary:hover {
+  transform: scale(1.04);
+}

@@ -399,7 +399,7 @@ describe('FormatToolbar actions (Beta 3 M10)', () => {
     const { container } = render(<FormatToolbar editor={editor as never} />);
     expect(screen.queryByRole('button', { name: 'Read aloud' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Dictate' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open the Writing Assistant' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open the Writing Coach' })).toBeNull();
     expect(container.querySelector('.fmt-spacer')).toBeNull();
   });
 
@@ -413,7 +413,7 @@ describe('FormatToolbar actions (Beta 3 M10)', () => {
     );
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Read aloud' }));
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Dictate' }));
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open the Writing Assistant' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Open the Writing Coach' }));
     expect(onRead).toHaveBeenCalledTimes(1);
     expect(onDictate).toHaveBeenCalledTimes(1);
     expect(onAssist).toHaveBeenCalledTimes(1);

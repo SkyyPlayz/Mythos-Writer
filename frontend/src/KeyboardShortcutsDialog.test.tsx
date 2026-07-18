@@ -27,7 +27,7 @@ describe('KeyboardShortcutsDialog', () => {
     expect(screen.getByText('Editor — Text (Tiptap)')).toBeInTheDocument();
     expect(screen.getByText('Story Navigator')).toBeInTheDocument();
     expect(screen.getByText('Suggestion Review')).toBeInTheDocument();
-    expect(screen.getByText('Brainstorm & Writing Assistant')).toBeInTheDocument();
+    expect(screen.getByText('Brainstorm & Writing Coach')).toBeInTheDocument();
     expect(screen.getByText('Search Bar')).toBeInTheDocument();
     expect(screen.getByText('Sidebars')).toBeInTheDocument();
   });

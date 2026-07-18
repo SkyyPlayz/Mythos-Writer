@@ -40,7 +40,7 @@ describe('PromptHistoryPanel', () => {
     // Wait for the initial data fetch to settle so its state updates are inside act()
     await waitFor(() => expect(mockGenerationLogRecent).toHaveBeenCalled());
     expect(screen.getByRole('tab', { name: /^All$/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /writing assistant/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /writing coach/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /brainstorm/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /archive/i })).toBeInTheDocument();
   });
@@ -125,9 +125,9 @@ describe('PromptHistoryPanel', () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [entry], total: 1 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
 
-    await waitFor(() => screen.getByRole('button', { name: /writing assistant entry/i }));
+    await waitFor(() => screen.getByRole('button', { name: /writing coach entry/i }));
 
-    const rowBtn = screen.getByRole('button', { name: /writing assistant entry/i });
+    const rowBtn = screen.getByRole('button', { name: /writing coach entry/i });
     expect(rowBtn).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(rowBtn);
 
@@ -143,8 +143,8 @@ describe('PromptHistoryPanel', () => {
     mockGenerationLogRecent.mockResolvedValue({ entries: [entry], total: 1 });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
 
-    await waitFor(() => screen.getByRole('button', { name: /writing assistant entry/i }));
-    const rowBtn = screen.getByRole('button', { name: /writing assistant entry/i });
+    await waitFor(() => screen.getByRole('button', { name: /writing coach entry/i }));
+    const rowBtn = screen.getByRole('button', { name: /writing coach entry/i });
 
     fireEvent.click(rowBtn);
     await waitFor(() => screen.getByLabelText('Entry detail'));
@@ -243,8 +243,8 @@ describe('PromptHistoryPanel', () => {
       total: 1,
     });
     render(<PromptHistoryPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('button', { name: /writing assistant entry/i }));
-    fireEvent.click(screen.getByRole('button', { name: /writing assistant entry/i }));
+    await waitFor(() => screen.getByRole('button', { name: /writing coach entry/i }));
+    fireEvent.click(screen.getByRole('button', { name: /writing coach entry/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Error: API key invalid/i)).toBeInTheDocument();

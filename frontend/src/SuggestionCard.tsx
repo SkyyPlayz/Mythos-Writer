@@ -69,12 +69,12 @@ export function SuggestionCard({ suggestion, onApply, onReject }: SuggestionCard
   return (
     <article
       className={`wa-suggestion-card${isTerminal ? ' wa-suggestion-card--terminal' : ''}`}
-      aria-label="Writing assistant suggestion"
+      aria-label="Writing coach suggestion"
       tabIndex={0}
     >
       <div className="wa-card-agent-row">
         <span className="wa-card-agent-icon" aria-hidden="true">✦</span>
-        <span className="wa-card-agent-label">Writing Assistant</span>
+        <span className="wa-card-agent-label">Writing Coach</span>
       </div>
 
       <p className={`wa-card-text${expanded ? ' wa-card-text--expanded' : ''}`}>

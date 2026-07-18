@@ -5,7 +5,7 @@ type AgentTab = 'all' | 'writing-assistant' | 'brainstorm' | 'archive';
 
 const TABS: { id: AgentTab; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'writing-assistant', label: 'Writing Assistant' },
+  { id: 'writing-assistant', label: 'Writing Coach' },
   { id: 'brainstorm', label: 'Brainstorm' },
   { id: 'archive', label: 'Archive' },
 ];
@@ -83,7 +83,7 @@ export default function PromptHistoryPanel({ onClose }: Props) {
 
   function agentLabel(agent: string): string {
     const map: Record<string, string> = {
-      'writing-assistant': 'Writing Assistant',
+      'writing-assistant': 'Writing Coach',
       brainstorm: 'Brainstorm',
       archive: 'Archive',
     };
