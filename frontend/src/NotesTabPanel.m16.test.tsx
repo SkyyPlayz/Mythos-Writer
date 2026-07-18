@@ -12,11 +12,17 @@ vi.mock('./VaultGraphView', () => ({
 vi.mock('./EntityBrowser', () => ({
   default: () => <div data-testid="entity-browser-mock" />,
 }));
+// SKY-6978 (Beta4/M18): mocks record the props they receive so the Notes
+// right panel's Curator greeting / CONTINUITY FLAGS wiring can be asserted.
 vi.mock('./BrainstormPage', () => ({
-  default: () => <div data-testid="brainstorm-page-mock" />,
+  default: (props: Record<string, unknown>) => (
+    <div data-testid="brainstorm-page-mock" data-curator-greeting={String(!!props.curatorGreeting)} />
+  ),
 }));
 vi.mock('./ContinuityPanel', () => ({
-  default: () => <div data-testid="continuity-panel-mock" />,
+  default: (props: Record<string, unknown>) => (
+    <div data-testid="continuity-panel-mock" data-flags-header={String(!!props.flagsHeader)} />
+  ),
 }));
 vi.mock('./NoteViewer', () => ({
   default: ({ path }: { path: string }) => <div data-testid="note-viewer-mock" data-path={path} />,
@@ -144,6 +150,14 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
     rerender(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled={false} />);
     expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();
+  });
+
+  // SKY-6978 (Beta4/M18): Agent tab wires the Curator greeting + CONTINUITY
+  // FLAGS header variant — Notes-only, not the Story-side Brainstorm embeds.
+  it('passes curatorGreeting to the chat widget and flagsHeader to the continuity panel', () => {
+    render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
+    expect(screen.getByTestId('brainstorm-page-mock')).toHaveAttribute('data-curator-greeting', 'true');
+    expect(screen.getByTestId('continuity-panel-mock')).toHaveAttribute('data-flags-header', 'true');
   });
 
   it('collapse/expand still works with the tabs present', () => {

@@ -1138,6 +1138,20 @@ describe('BrainstormPage — archive ContinuityPanel integration (SKY-2585 AC-F-
   });
 });
 
+// SKY-6978 (Beta4/M18): Notes right-panel Curator greeting override.
+describe('BrainstormPage — curatorGreeting (Notes right panel)', () => {
+  it('shows the default subtitle when curatorGreeting is not set', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByText('Talk through your story — facts auto-extract to your vault')).toBeInTheDocument();
+  });
+
+  it('shows the Curator greeting when curatorGreeting is set', () => {
+    render(<BrainstormPage onClose={() => {}} curatorGreeting />);
+    expect(screen.getByText('Curator of this vault — tell it your world')).toBeInTheDocument();
+    expect(screen.queryByText('Talk through your story — facts auto-extract to your vault')).not.toBeInTheDocument();
+  });
+});
+
 describe('BrainstormPage — prompt char counter', () => {
   it('shows 0 / 2,000 counter when textarea is empty', () => {
     render(<BrainstormPage onClose={() => {}} />);

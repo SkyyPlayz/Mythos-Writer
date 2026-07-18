@@ -330,6 +330,11 @@ interface Props {
   /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language).
    *  Field names match VoiceSettings — pass appSettings.voice straight through. */
   voicePrefs?: TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
+  /** SKY-6978 (Beta4/M18): Notes right-panel embedding — swaps the header
+   *  subtitle to the FULL-SPEC §6 / prototype (3149) Curator greeting.
+   *  Story-side embeddings (Brainstorm Center, right-sidebar tab, split pane)
+   *  keep the default "Talk through your story" subtitle. */
+  curatorGreeting?: boolean;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -343,7 +348,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1679,7 +1684,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         title={mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'}
         subtitle={
           mode === 'chat'
-            ? 'Talk through your story — facts auto-extract to your vault'
+            ? (curatorGreeting
+              ? 'Curator of this vault — tell it your world'
+              : 'Talk through your story — facts auto-extract to your vault')
             : 'Capture. Connect. Develop.'
         }
         actions={

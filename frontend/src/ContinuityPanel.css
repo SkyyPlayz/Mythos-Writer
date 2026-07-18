@@ -10,6 +10,27 @@
   box-sizing: border-box;
 }
 
+/* ── SKY-6978 (Beta4/M18): Notes right-panel "CONTINUITY FLAGS" header ──
+   Prototype 3152: letter-spaced gray label + pink ARCHIVE AGENT chip. ── */
+.cp-flags-label {
+  font-size: var(--text-xs, 10px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cp-flags-badge {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--severity-critical-text, #ff9db4);
+  border: 1px solid var(--severity-critical-border, rgba(255, 95, 143, 0.4));
+  border-radius: 5px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
 /* ── Centered states (empty, not-scanned, loading) ── */
 .cp-centered {
   display: flex;
