@@ -129,6 +129,7 @@ import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import SceneNotesPanel from './SceneNotesPanel';
 import ScenePropertiesPanel from './ScenePropertiesPanel';
+import ScenesPanel from './ScenesPanel';
 import OutlinePlanningPanel from './OutlinePlanningPanel';
 import StoryTimeline from './StoryTimeline';
 import WindowChrome from './components/ui/WindowChrome';
@@ -3769,6 +3770,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
           />
         );
+      case 'scenes':
+        return (
+          <ScenesPanel
+            story={selectedStory}
+            onOpenNote={handleOpenSceneByPath}
+            onOpenFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+          />
+        );
       case 'brainstorm':
         return (
           <BrainstormPage
@@ -3797,6 +3806,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
     betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
+    handleNavSectionChange, handleSetView,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
