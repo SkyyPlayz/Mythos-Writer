@@ -122,8 +122,45 @@ export function migrateManifest(raw: Raw): Manifest {
   return current as unknown as Manifest;
 }
 
+/**
+ * Single-pass, allocation-free word count (no `split`/`match` array). This
+ * runs on every scene's content on every manifest write (see
+ * `computeSceneWordCount`/`stripSceneProse`) — for a several-thousand-scene
+ * vault, `split(/\s+/)` materializing a token array per scene measurably
+ * regressed write latency (caught by manifestPerf.test.ts's O(vault) write
+ * bound). A regex-free char scan avoids that allocation entirely.
+ */
+function countWords(text: string): number {
+  let count = 0;
+  let inWord = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    // ASCII whitespace: space, tab, LF, VT, FF, CR. Matches the practical
+    // range of `\s` for authored prose without the array-allocating regex.
+    const isSpace = c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13;
+    if (isSpace) {
+      inWord = false;
+    } else if (!inWord) {
+      inWord = true;
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * SKY-6195: total word count across a scene's blocks, summed per-block (not
+ * on the concatenated body) so words never merge across a block boundary
+ * that has no whitespace of its own.
+ */
+function computeSceneWordCount(blocks: BlockEntry[]): number {
+  return blocks.reduce((total, b) => total + countWords(b.content), 0);
+}
+
 function stripSceneProse(scene: SceneEntry): SceneEntry {
-  if (!scene.blocks || scene.blocks.length === 0) return scene;
+  if (!scene.blocks || scene.blocks.length === 0) {
+    return scene.wordCount === 0 ? scene : { ...scene, wordCount: 0 };
+  }
   // Block-aware persistence (PR #932 review): alongside blanking content,
   // record each block's serialized-segment length within the scene's `.md`
   // body (`bodySegLen`) so `readManifest` can hydrate all N blocks — content,
@@ -135,7 +172,11 @@ function stripSceneProse(scene: SceneEntry): SceneEntry {
   const { segments } = computeSceneBodyLayout(scene.blocks);
   const lengthByIndex = new Map<number, number>();
   for (const seg of segments) lengthByIndex.set(seg.index, seg.length);
-  let changed = false;
+  // SKY-6195: computed from the still-populated `blocks[].content` — before
+  // it's blanked below — and persisted as a structural field alongside
+  // `bodySegLen`, so it stays in sync with the last-saved prose on every write.
+  const wordCount = computeSceneWordCount(scene.blocks);
+  let changed = scene.wordCount !== wordCount;
   const blocks = scene.blocks.map((b, i) => {
     const bodySegLen = lengthByIndex.get(i);
     if (b.content === '' && b.bodySegLen === bodySegLen) return b;
@@ -145,7 +186,7 @@ function stripSceneProse(scene: SceneEntry): SceneEntry {
     else next.bodySegLen = bodySegLen;
     return next;
   });
-  return changed ? { ...scene, blocks } : scene;
+  return changed ? { ...scene, blocks, wordCount } : scene;
 }
 
 function stripChapterProse(chapter: ChapterEntry): ChapterEntry {

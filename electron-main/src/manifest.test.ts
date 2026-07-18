@@ -525,6 +525,59 @@ describe('stripEmbeddedProseForPersist', () => {
   });
 });
 
+describe('stripEmbeddedProseForPersist — derived wordCount (SKY-6195)', () => {
+  const vaultRoot = '/tmp/vault';
+
+  it('computes wordCount from block content before stripping it', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', 'The quick brown fox jumps over the lazy dog.')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(9);
+    expect(persisted.scenes[0].blocks[0].content).toBe('');
+  });
+
+  it('sums word counts across multiple blocks without merging words across block boundaries', () => {
+    const scene: SceneEntry = {
+      ...makeScene('s1', 'a.md'),
+      blocks: [
+        { id: 'b1', type: 'prose', order: 0, content: 'One two three', updatedAt: new Date().toISOString() },
+        { id: 'b2', type: 'dialogue', order: 1, content: 'Four five', updatedAt: new Date().toISOString() },
+      ],
+    };
+    const m: Manifest = { ...defaultManifest(vaultRoot), scenes: [scene] };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(5);
+  });
+
+  it('is 0 for a scene with no blocks', () => {
+    const m: Manifest = { ...defaultManifest(vaultRoot), scenes: [makeScene('s1', 'a.md')] };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(0);
+  });
+
+  it('is 0 for a scene whose only block is blank', () => {
+    const m: Manifest = {
+      ...defaultManifest(vaultRoot),
+      scenes: [makeSceneWithProse('s1', 'a.md', '   ')],
+    };
+    const persisted = stripEmbeddedProseForPersist(m);
+    expect(persisted.scenes[0].wordCount).toBe(0);
+  });
+
+  it('recomputes on every persist — stays in sync with the latest prose, not stale', () => {
+    const scene = makeSceneWithProse('s1', 'a.md', 'One two three');
+    const first = stripEmbeddedProseForPersist({ ...defaultManifest(vaultRoot), scenes: [scene] });
+    expect(first.scenes[0].wordCount).toBe(3);
+
+    // Same scene, later edited to have more words, re-persisted independently.
+    const edited = makeSceneWithProse('s1', 'a.md', 'One two three four five six');
+    const second = stripEmbeddedProseForPersist({ ...defaultManifest(vaultRoot), scenes: [edited] });
+    expect(second.scenes[0].wordCount).toBe(6);
+  });
+});
+
 describe('writeManifestAtomic — structure-only persistence (SKY-6596)', () => {
   let tmpDir: string;
 
