@@ -13,7 +13,7 @@ import {
   hexA,
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
-import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
+import { LIQUID_NEON_PRESETS, LIQUID_NEON_SLOT_ROLES, type LiquidNeonPresetKey } from './theme/presets';
 import { showLnToast } from './theme/lnToast';
 import './OnboardingWizard.css';
 
@@ -103,8 +103,10 @@ const WIZARD_GENRES = [
 ] as const;
 type WizardGenre = (typeof WIZARD_GENRES)[number];
 
-/** Wizard theme shortlist (prototype `wizThemes`, HTML 4442). */
-const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = ['classic', 'aurora', 'cyber'];
+/** M29 spec §3.1 (SKY-7593): all 10 Liquid Neon presets, 5×2 grid —
+ *  `theme/presets.ts` insertion order is already the single source of truth
+ *  (Classic → Winter), so no re-derivation needed. */
+const WIZARD_THEME_KEYS = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
 
 /** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
 function genreTestId(genre: string): string {
@@ -593,7 +595,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // ─── Beta 3 M25 / Beta 4 M29: shared genre + theme pages ───────────────────
   const [wizardFlow, setWizardFlow] = useState<WizardFlow>('start-fresh');
   const [wizGenre, setWizGenre] = useState<WizardGenre>('Epic Fantasy');
-  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('classic');
+  // M29 spec §3.1 (SKY-7593): default to Winterlight so Continue is never
+  // blocked by an unmade choice. NOTE: the spec claims this "matches the
+  // existing app-wide default" — it doesn't (LIQUID_NEON_V2_DEFAULTS.setKey
+  // is 'classic'); the explicit instruction still stands, the justification
+  // is just wrong.
+  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('winter');
   // Non-null once "Open my vault ✦" ran, so Try Again keeps the personalization.
   const guidedPersonalizationRef = useRef<{ genre: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
 
@@ -2734,15 +2741,19 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             current={wizFlowMeta().totalSteps}
             labels={wizFlowMeta().dotLabels}
           />
-          <h2 className="gs-modal__title">Choose your neon</h2>
+          <h2 className="gs-modal__title">Choose your neon.</h2>
           <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
 
+          {/* M29 spec §3 (SKY-7593): all 10 presets, 5×2 grid, 6-slot colour
+              strip + name. No paragraph copy per card — Chunking/Prägnanz
+              stays intact at 10 cards by keeping each card minimal, not by
+              capping the count. */}
           <div
             role="radiogroup"
             aria-label="Neon theme preset"
-            className="wiz-theme-row"
+            className="wiz-theme-grid"
             onKeyDown={handleGridArrowKeys}
-            data-testid="wiz-theme-row"
+            data-testid="wiz-theme-grid"
           >
             {WIZARD_THEME_KEYS.map((k) => {
               const preset = LIQUID_NEON_PRESETS[k];
@@ -2760,19 +2771,28 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   onClick={() => setWizTheme(k)}
                   data-testid={`wiz-theme-${k}`}
                 >
-                  <span
-                    className="wiz-theme-card__bar"
-                    aria-hidden="true"
-                    style={{
-                      background: `linear-gradient(120deg,${preset.c.join(',')})`,
-                      boxShadow: `0 0 12px -2px ${hexA(preset.c[1], 0.55)}`,
-                    }}
-                  />
-                  <span className="wiz-theme-card__name">{preset.name}</span>
+                  <span className="wiz-theme-card__strip" aria-hidden="true">
+                    {preset.c.map((hex, i) => (
+                      <span key={i} className="wiz-theme-card__slot" style={{ background: hex }} />
+                    ))}
+                  </span>
+                  <span className="wiz-theme-card__name">
+                    {preset.name}
+                    {selected && <span className="wiz-theme-card__check" aria-hidden="true">&#x2713;</span>}
+                  </span>
                 </button>
               );
             })}
           </div>
+          {/* M29 spec §3.1 (SKY-7593): plain-reading-order legend — the strip
+              isn't a decorative abstraction, FULL-SPEC §3 slot-role list verbatim. */}
+          <p className="wiz-theme-legend">
+            {['A', 'B', 'C', 'D', 'E', 'F'].map((letter, i) => (
+              <span key={letter} className="wiz-theme-legend__item">
+                {letter} &#xB7; {LIQUID_NEON_SLOT_ROLES[i]}
+              </span>
+            ))}
+          </p>
 
           <div className="gs-actions">
             <button

@@ -266,20 +266,36 @@ describe('OnboardingWizard v2 — genre step (Beta 3 M25)', () => {
 
 // ─── Guided setup: theme step ─────────────────────────────────────────────────
 
-describe('OnboardingWizard v2 — theme step (Beta 3 M25)', () => {
-  it('renders the prototype wizard theme shortlist from the real preset engine', async () => {
+describe('OnboardingWizard v2 — theme step (M29 spec §3, SKY-7593: all 10 presets, 5×2 grid)', () => {
+  it('renders all 10 presets from the real preset engine, Winterlight selected by default', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
     );
     // Names come from LIQUID_NEON_PRESETS — the M2 preset engine, not copies.
-    expect(screen.getByText(LIQUID_NEON_PRESETS.classic.name)).toBeInTheDocument(); // Neon Classic
-    expect(screen.getByText(LIQUID_NEON_PRESETS.aurora.name)).toBeInTheDocument();  // Aurora
-    expect(screen.getByText(LIQUID_NEON_PRESETS.cyber.name)).toBeInTheDocument();   // Cyberpunk
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'true');
-    // Each card carries the palette gradient bar built from the preset slots.
-    const bar = screen.getByTestId('wiz-theme-cyber').querySelector('.wiz-theme-card__bar') as HTMLElement;
-    expect(bar.style.background).toContain('linear-gradient(120deg');
-    expect(bar.style.background.replace(/\s/g, '')).toContain(LIQUID_NEON_PRESETS.cyber.c.join(',').replace(/\s/g, ''));
+    for (const key of Object.keys(LIQUID_NEON_PRESETS) as Array<keyof typeof LIQUID_NEON_PRESETS>) {
+      expect(screen.getByText(LIQUID_NEON_PRESETS[key].name)).toBeInTheDocument();
+      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
+    }
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'true');
+    // Each card carries a 6-segment colour strip, one block per preset slot.
+    const slots = screen.getByTestId('wiz-theme-cyber').querySelectorAll('.wiz-theme-card__slot');
+    expect(slots).toHaveLength(6);
+    const hexToRgb = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    slots.forEach((slot, i) => {
+      expect((slot as HTMLElement).style.background).toBe(hexToRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
+    });
+    await act(async () => {});
+  });
+
+  it('shows the 6-slot legend in plain reading order', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
+    );
+    expect(screen.getByText(/A · Left panel/)).toBeInTheDocument();
+    expect(screen.getByText(/F · Nav rail/)).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -289,7 +305,7 @@ describe('OnboardingWizard v2 — theme step (Beta 3 M25)', () => {
     );
     await click('wiz-theme-cyber');
     expect(screen.getByTestId('wiz-theme-cyber')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'false');
   });
 });
 
