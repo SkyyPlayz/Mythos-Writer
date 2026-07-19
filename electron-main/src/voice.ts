@@ -464,7 +464,7 @@ export async function transcribeAudio(
     if (binPath && fs.existsSync(binPath)) {
       const gate = checkSpawnPath(binPath);
       if (gate.ok) {
-        return transcribeLocal(gate.realPath ?? binPath, audio, mimeType, lang);
+        return transcribeLocal(gate.realPath ?? binPath, settings.localModelPath, audio, mimeType, lang);
       }
       if (provider === 'local') {
         throw new InvalidVoiceInputError(`Local STT refused: ${gate.error}`);
@@ -512,6 +512,7 @@ export async function transcribeAudio(
 
 async function transcribeLocal(
   binaryPath: string,
+  modelPath: string | undefined,
   audio: Buffer,
   mimeType: string,
   language?: string,
@@ -521,11 +522,12 @@ async function transcribeLocal(
   // normalized/validated by transcribeAudio (normalizeLanguage).
   const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('mp3') ? 'mp3' : 'webm';
   const tmpFile = path.join(os.tmpdir(), `mythos-stt-${crypto.randomUUID()}.${ext}`);
+  const modelArgs = modelPath ? ['-m', modelPath] : [];
 
   try {
     fs.writeFileSync(tmpFile, audio);
     const text = await new Promise<string>((resolve, reject) => {
-      const args = [tmpFile, '--no-prints', '--no-timestamps'];
+      const args = [...modelArgs, tmpFile, '--no-prints', '--no-timestamps'];
       // whisper.cpp language hint (-l LANG); omitted = auto-detect.
       if (language) args.push('-l', language);
       const proc = spawn(binaryPath, args, {

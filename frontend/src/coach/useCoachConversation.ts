@@ -41,6 +41,11 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
     setError(null);
     setPendingPrompt(trimmed);
 
+    // Pin this exchange to whichever session is active RIGHT NOW. If the user
+    // switches sessions before the reply comes back, the turns still belong
+    // in the session they were asked from, never wherever the picker lands.
+    const originSessionId = store.activeSessionId ?? undefined;
+
     const sceneContext = scene
       ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
       : undefined;
@@ -51,7 +56,7 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
       await store.appendTurns([
         { role: 'user', text: trimmed, at: now },
         { role: 'agent', text: response.text, at: new Date().toISOString() },
-      ]);
+      ], originSessionId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg || 'Coach unavailable — check your provider settings.');

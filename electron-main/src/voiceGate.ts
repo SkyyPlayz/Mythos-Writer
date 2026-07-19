@@ -111,6 +111,8 @@ export function checkSpawnPath(p: string | undefined | null): SpawnCheck {
 export interface VoiceSetTokens {
   /** Token bound to the new `stt.localBinaryPath`. */
   sttBinaryToken?: string;
+  /** Token bound to the new `stt.localModelPath`. */
+  sttModelToken?: string;
   /** Token bound to the new `tts.localBinaryPath`. */
   ttsBinaryToken?: string;
   /** Token bound to the new `tts.localModelPath`. */
@@ -172,6 +174,8 @@ export function checkVoiceSettingsUpdate(
 ): VoiceGateResult {
   const nextSttBin = normalizeOptionalPath(nextStt?.localBinaryPath);
   const curSttBin = normalizeOptionalPath(currentStt?.localBinaryPath);
+  const nextSttModel = normalizeOptionalPath(nextStt?.localModelPath);
+  const curSttModel = normalizeOptionalPath(currentStt?.localModelPath);
   const nextTtsBin = normalizeOptionalPath(nextTts?.localBinaryPath);
   const curTtsBin = normalizeOptionalPath(currentTts?.localBinaryPath);
   const nextTtsModel = normalizeOptionalPath(nextTts?.localModelPath);
@@ -179,6 +183,9 @@ export function checkVoiceSettingsUpdate(
 
   const sttBinResult = checkPathField('stt.localBinaryPath', nextSttBin, curSttBin, tokens.sttBinaryToken, now);
   if (!sttBinResult.ok) return sttBinResult;
+
+  const sttModelResult = checkPathField('stt.localModelPath', nextSttModel, curSttModel, tokens.sttModelToken, now);
+  if (!sttModelResult.ok) return sttModelResult;
 
   const ttsBinResult = checkPathField('tts.localBinaryPath', nextTtsBin, curTtsBin, tokens.ttsBinaryToken, now);
   if (!ttsBinResult.ok) return ttsBinResult;
@@ -191,6 +198,10 @@ export function checkVoiceSettingsUpdate(
   if (pathChanged(nextSttBin, curSttBin) && nextSttBin && tokens.sttBinaryToken) {
     validateRegistrationToken(tokens.sttBinaryToken, { now });
     recordTrustedBinary(nextSttBin);
+  }
+  if (pathChanged(nextSttModel, curSttModel) && nextSttModel && tokens.sttModelToken) {
+    validateRegistrationToken(tokens.sttModelToken, { now });
+    recordTrustedBinary(nextSttModel);
   }
   if (pathChanged(nextTtsBin, curTtsBin) && nextTtsBin && tokens.ttsBinaryToken) {
     validateRegistrationToken(tokens.ttsBinaryToken, { now });

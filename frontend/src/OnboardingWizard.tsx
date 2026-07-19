@@ -13,7 +13,7 @@ import {
   hexA,
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
-import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
+import { LIQUID_NEON_PRESETS, LIQUID_NEON_SLOT_ROLES, type LiquidNeonPresetKey } from './theme/presets';
 import { showLnToast } from './theme/lnToast';
 import './OnboardingWizard.css';
 
@@ -98,8 +98,10 @@ const WIZARD_GENRES = [
 ] as const;
 type WizardGenre = (typeof WIZARD_GENRES)[number];
 
-/** Wizard theme shortlist (prototype `wizThemes`, HTML 4442). */
-const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = ['classic', 'aurora', 'cyber'];
+/** M29 (SKY-7473, design-handoff v2 §3): all 10 Liquid Neon presets, 5×2 grid —
+ *  expanded from the original 3-card prototype shortlist per this milestone's
+ *  acceptance criteria. `theme/presets.ts` stays the single source of truth. */
+const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
 
 /** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
 function genreTestId(genre: string): string {
@@ -315,6 +317,20 @@ function WizardDots({ total, current }: { total: number; current: number }) {
   );
 }
 
+/** M29 (SKY-7473, design-handoff v2 §3.1): 6-segment colour strip — one block
+ *  per neon slot (A–F), reusing the preset's `c` tuple verbatim. Decorative;
+ *  the slot roles are spelled out once in the legend below the grid, not
+ *  per-swatch, so it stays glanceable across 10 cards. */
+function ColorSlotStrip({ colors, testId }: { colors: readonly string[]; testId: string }) {
+  return (
+    <span className="wiz-theme-strip" aria-hidden="true" data-testid={testId}>
+      {colors.map((color, i) => (
+        <span key={i} className="wiz-theme-strip__seg" style={{ background: color }} />
+      ))}
+    </span>
+  );
+}
+
 interface StartingPointCardProps {
   icon: string;
   title: string;
@@ -351,6 +367,21 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       <span className="gs-card__desc">{description}</span>
       <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
     </button>
+  );
+}
+
+/** M29 (SKY-7473, design-handoff v2 §2.1): static "two-vault promise" card —
+ *  informational only, no interaction, sets the mental model that a vault is
+ *  really two homes (Story + Notes) before the location field asks for one. */
+function TwoVaultPromiseCard({ icon, title, description, testId }: { icon: string; title: string; description: string; testId: string }) {
+  return (
+    <div className="gs-two-vault-card" data-testid={testId}>
+      <span className="gs-two-vault-card__icon" aria-hidden="true">{icon}</span>
+      <div className="gs-two-vault-card__body">
+        <span className="gs-two-vault-card__title">{title}</span>
+        <span className="gs-two-vault-card__desc">{description}</span>
+      </div>
+    </div>
   );
 }
 
@@ -1719,7 +1750,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <StartingPointCard
               icon="&#x270F;&#xFE0F;"
               title="Custom"
-              description="Fine-grained control: pick your location and starting point."
+              description="Choose your own vault location and starting point."
               ctaLabel="Set up &#x2192;"
               onActivate={handleCreateCustom}
               testId="card-custom"
@@ -2390,8 +2421,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             </button>
           </div>
           <WizardDots total={4} current={1} />
-          <h2 className="gs-modal__title">Where should your vault live?</h2>
-          <p className="gs-modal__subtitle">Plain Markdown files on disk — yours, portable, no lock-in.</p>
+          <h2 className="gs-modal__title">Your world needs two homes.</h2>
+          <p className="gs-modal__subtitle">We&apos;ll set up two vaults together. You&apos;ll never have to think about this again.</p>
+
+          <div className="gs-two-vault-row" data-testid="gs-two-vault-promise" role="group" aria-label="Your two vaults">
+            <TwoVaultPromiseCard
+              icon="&#x1F4D6;"
+              title="Story Vault"
+              description="Your manuscript. Chapters and scenes."
+              testId="gs-two-vault-story"
+            />
+            <TwoVaultPromiseCard
+              icon="&#x1F5C2;&#xFE0F;"
+              title="Notes Vault"
+              description="Characters, places, and research."
+              testId="gs-two-vault-notes"
+            />
+          </div>
+
+          <p className="gs-modal__subtitle gs-modal__subtitle--tight">Plain text files on your computer. Yours to keep, no lock-in.</p>
 
           <div className="gs-form">
             <div className="gs-form__field">
@@ -2592,7 +2640,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={handleCustomFinish}
               data-testid="custom-template-finish"
             >
-              Skip personalization — create vault
+              Skip this — create my vault
             </button>
             <button
               className="btn-primary gs-actions__cta"
@@ -2631,7 +2679,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <WizardDots total={4} current={3} />
           <h2 className="gs-modal__title">Pick a genre preset</h2>
-          <p className="gs-modal__subtitle">Seeds note templates, beat sheet and agent personas. Change anytime.</p>
+          <p className="gs-modal__subtitle">This sets your starter templates and story tools. Change it anytime.</p>
 
           <div
             role="radiogroup"
@@ -2693,7 +2741,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <WizardDots total={4} current={4} />
           <h2 className="gs-modal__title">Choose your neon</h2>
-          <p className="gs-modal__subtitle">Every border in the app glows with your palette. Fine-tune later in Settings.</p>
+          <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
 
           <div
             role="radiogroup"
@@ -2718,19 +2766,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   onClick={() => setWizTheme(k)}
                   data-testid={`wiz-theme-${k}`}
                 >
-                  <span
-                    className="wiz-theme-card__bar"
-                    aria-hidden="true"
-                    style={{
-                      background: `linear-gradient(120deg,${preset.c.join(',')})`,
-                      boxShadow: `0 0 12px -2px ${hexA(preset.c[1], 0.55)}`,
-                    }}
-                  />
-                  <span className="wiz-theme-card__name">{preset.name}</span>
+                  <ColorSlotStrip colors={preset.c} testId={`wiz-theme-${k}-strip`} />
+                  <span className="wiz-theme-card__name">
+                    {preset.name}
+                    {/* Redundant with the border/glow for colour-blind users — never rely on colour alone (WCAG). */}
+                    {selected && <span className="wiz-theme-card__check" aria-hidden="true">&#x2713;</span>}
+                  </span>
                 </button>
               );
             })}
           </div>
+
+          {/* M29 (SKY-7473, design-handoff v2 §3.1): plain-reading-order legend for the 6-segment strip. */}
+          <p className="wiz-theme-legend" data-testid="wiz-theme-legend">
+            {LIQUID_NEON_SLOT_ROLES.map((role, i) => (
+              <span key={role} className="wiz-theme-legend__item">
+                {String.fromCharCode(65 + i)} &middot; {role.split(' · ')[0]}
+              </span>
+            ))}
+          </p>
 
           <div className="gs-actions">
             <button

@@ -1381,6 +1381,26 @@ The story begins here. Delete this scene or rewrite it — the file path
 (\`Manuscript/<chapter>/<scene>.md\`) is what the app indexes.
 `;
 
+// SKY-7473 (M29 welcome wizard): starter beat sheet, seeded next to
+// Outline.md/Synopsis.md so all three story-planning notes live together.
+const BEAT_SHEET_SEED = `---
+seeded_by: SKY-7473
+---
+# Beat Sheet
+
+A short list of the big story beats, in order. Fill in your own as you plan.
+
+1. Opening — where the story starts.
+2. Inciting incident — the event that sets things moving.
+3. First turn — a choice that raises the stakes.
+4. Midpoint — something changes for good or bad.
+5. Crisis — the low point before the end.
+6. Climax — the final confrontation.
+7. Resolution — where things land.
+
+Rename or delete this file when you have your own.
+`;
+
 export function scaffoldStoryVault(
   storyVaultRoot: string,
   mode: VaultLayoutMode = 'default'
@@ -1397,6 +1417,7 @@ export function scaffoldStoryVault(
   }
   seedFile(storyVaultRoot, path.join(storyRoot, 'Outline.md'), OUTLINE_SEED);
   seedFile(storyVaultRoot, path.join(storyRoot, 'Synopsis.md'), SYNOPSIS_SEED);
+  seedFile(storyVaultRoot, path.join(storyRoot, 'Beat Sheet.md'), BEAT_SHEET_SEED);
 }
 
 // ── Notes Vault default layout (SKY-15) ─────────────────────────────────────
@@ -1428,6 +1449,35 @@ export const NOTES_VAULT_EXAMPLE_UNIVERSE_DIRS = [
 ] as const;
 export const NOTES_VAULT_EXAMPLE_STORY = 'My First Story';
 
+// SKY-7473 (M29 welcome wizard): starter reference notes, seeded once per
+// the acceptance criteria ("Templates note", "Personas note" seeded on
+// completion). Skipped for mode='blank' like the rest of this scaffold —
+// Blank Slate keeps its "no pre-seeded content" promise.
+const TEMPLATES_SEED = `---
+seeded_by: SKY-7473
+---
+# Templates
+
+Reusable starting points for new stories and notes live here.
+
+Copy a template into Stories/ or Universes/ when you start something new.
+Rename or delete this file anytime.
+`;
+
+const PERSONAS_SEED = `---
+seeded_by: SKY-7473
+---
+# Personas
+
+Short profiles for your main characters. One entry per character:
+
+- Name
+- Role in the story
+- One sentence about what they want
+
+Rename or delete this file when you have your own character notes.
+`;
+
 export function scaffoldNotesVault(
   notesVaultRoot: string,
   mode: VaultLayoutMode = 'default'
@@ -1445,6 +1495,12 @@ export function scaffoldNotesVault(
   // Per-story notes folder under Stories/ that mirrors the Story Vault
   // example. The Brainstorm Agent uses this on first run.
   seedDir(path.join(notesVaultRoot, 'Stories'), NOTES_VAULT_EXAMPLE_STORY);
+  seedFile(notesVaultRoot, 'Templates.md', TEMPLATES_SEED);
+  seedFile(
+    notesVaultRoot,
+    path.join('Universes', NOTES_VAULT_EXAMPLE_UNIVERSE, 'Personas.md'),
+    PERSONAS_SEED
+  );
 }
 
 /**
