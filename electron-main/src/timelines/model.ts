@@ -16,16 +16,19 @@ export type CalendarPreset = 'standard' | 'aeon-13' | 'custom';
  * - `'migration'` — created by the legacy `manifest.timeline` → TimelinesStore
  *                   migration (real user data).
  * - `'manual'`    — created by a direct user action (IPC upsert paths).
+ * - `'agent'`     — created by the Archive Agent's timeline auto-build /
+ *                   quick-add (Beta 4 M25); feeds the RECENTLY AUTO-ADDED list.
  *
  * The field is optional so items written by other paths (e.g. the M22 axis
  * engine) remain valid; absent means "user content" (treated like 'manual').
  */
-export type TimelineItemSource = 'migration' | 'seed' | 'manual';
+export type TimelineItemSource = 'migration' | 'seed' | 'manual' | 'agent';
 
 export const TIMELINE_ITEM_SOURCES: ReadonlyArray<TimelineItemSource> = [
   'migration',
   'seed',
   'manual',
+  'agent',
 ];
 
 export interface TimelineCalendar {
@@ -105,6 +108,13 @@ export interface TimelineEvent {
   summary?: string;
   /** Key-event icon glyph (prototype tlEvents icons). */
   icon?: string;
+  // ── Beta 4 M25 (§8.6) — Inspector event-editor fields ──
+  /** Point-of-view character name (event editor POV field). */
+  pov?: string;
+  /** Where the event happens (event editor LOCATION field). */
+  location?: string;
+  /** Impact tags, comma-separated; rendered as chips in the static view. */
+  impact?: string;
 }
 
 export interface TimelineDefinition {
