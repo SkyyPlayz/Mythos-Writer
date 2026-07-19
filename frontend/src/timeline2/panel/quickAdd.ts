@@ -8,7 +8,7 @@
 // lands mid-axis for the user to drag. Quick-add always yields an event.
 
 import type { TimelineCalendar, TimelineEvent } from '../../timelinesTypes';
-import { roundWhen, safeEncodeWhen } from '../axis/calendarCodec';
+import { roundWhen, safeEncodeWhen, whenPerYear } from '../axis/calendarCodec';
 
 export interface QuickAddContext {
   timelineId: string;
@@ -113,7 +113,8 @@ export function heuristicQuickAdd(text: string, ctx: QuickAddContext): QuickAddP
 
   const yearMatch = /\b(\d{1,5}(?:\.\d+)?)\b/.exec(text);
   if (yearMatch) {
-    const when = roundWhen(parseFloat(yearMatch[1]) * 10);
+    // `when` = hours/10 in the active calendar — scale the year through it.
+    const when = roundWhen(parseFloat(yearMatch[1]) * whenPerYear(ctx.calendar));
     if (when >= t0 && when <= t1) {
       return { name, when, datedBy: 'year' };
     }
