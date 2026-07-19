@@ -29,11 +29,14 @@ export interface RichTextMarkDef {
  * Sourced from StarterKit (bold/italic/strike/underline/headings/lists/
  * blockquote/code/codeBlock) plus WikiLink, the app's custom inline node.
  *
- * NOT included: text alignment. There is no Markdown syntax for it and no
- * extension currently mounted — adding it requires overriding StarterKit's
- * bundled Heading/Paragraph nodes with custom markdown-serialize storage
- * (StarterKit doesn't expose per-attribute serialize hooks), which is
- * out of scope for this ticket. Tracked as a follow-up (see GH #642 thread).
+ * NOT included: text alignment. It round-trips (paragraph/heading only) via
+ * AlignedParagraph/AlignedHeading's custom markdown-serialize storage
+ * (alignedBlocks.ts) plus the mounted TextAlign extension — see
+ * sharedRichTextSchema.test.ts and RichTextEditor.test.tsx for its contract
+ * tests (SKY-5705/SKY-7073, GH #642). It's left out of this array because it
+ * isn't a `mark` or `node` in the ProseMirror sense — it's an attribute on
+ * the existing paragraph/heading nodes above — so it doesn't fit this list's
+ * name/kind/markdownSyntax shape.
  */
 export const RICH_TEXT_SCHEMA: readonly RichTextMarkDef[] = [
   { name: 'bold', kind: 'mark', label: 'Bold', markdownSyntax: '**text**' },
