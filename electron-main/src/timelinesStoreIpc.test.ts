@@ -261,4 +261,30 @@ describe('M23 — plotline rows and story-lane event fields', () => {
     const row = { id: 'row:bad', timelineId, name: 'X', kind: 'nonsense' } as unknown as TimelineRow;
     expect(handleTimelinesUpsertItem(dir, { type: 'row', item: row }).ok).toBe(false);
   });
+
+  // ── M25 (§8.6) — Inspector event-editor fields ──
+
+  it('persists pov/location/impact and the agent source round-trip (M25)', () => {
+    const event: TimelineEvent = {
+      id: 'ev:m25', timelineId, name: 'The Festival', when: 12.5,
+      pov: 'Kael', location: 'Veynn', impact: 'War begins, The city falls',
+      source: 'agent',
+    };
+    const res = handleTimelinesUpsertItem(dir, { type: 'event', item: event });
+    expect(res.ok).toBe(true);
+    const onDisk = readTimelinesStore(dir).events.find((e) => e.id === 'ev:m25');
+    expect(onDisk).toMatchObject({
+      pov: 'Kael', location: 'Veynn', impact: 'War begins, The city falls', source: 'agent',
+    });
+  });
+
+  it('rejects non-string pov/location/impact (M25)', () => {
+    const bad1 = { id: 'ev:badpov', timelineId, name: 'X', when: 1, pov: 7 } as unknown as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad1 }).ok).toBe(false);
+    const bad2 = { id: 'ev:badloc', timelineId, name: 'X', when: 1, location: [] } as unknown as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad2 }).ok).toBe(false);
+    const bad3 = { id: 'ev:badimp', timelineId, name: 'X', when: 1, impact: { t: 'x' } } as unknown as TimelineEvent;
+    expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad3 }).ok).toBe(false);
+    expect(readTimelinesStore(dir).events.some((e) => e.id.startsWith('ev:bad'))).toBe(false);
+  });
 });
