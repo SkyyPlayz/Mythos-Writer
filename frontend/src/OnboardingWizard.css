@@ -69,11 +69,12 @@ a.gs-footer-link:focus-visible {
   z-index: 1000;
   padding: 1.5rem 1rem;
   overflow-y: auto;  /* SKY-2967: modal scrollable at small viewports — no maximize needed */
-  /* M29 (SKY-7473, design-handoff v2 §7): pin Comfortable-tier spacing so a
-     density=cozy/compact pick from a *previous* session (still applied to
-     <html> when "Replay onboarding" reloads mid-document) can never shrink
-     this first-run/replay surface — a first impression must stay generous
-     regardless of what a later Appearance setting does. */
+  /* M29 spec §7 engineering flag (SKY-7593): `data-ln-density` on <html> is a
+     live, document-wide attribute — a user who set Appearance → Interface
+     density to cozy/compact before replaying the welcome tour would
+     otherwise shrink --space-* to 2-3px inside this first-run overlay,
+     violating the dyslexia-friendly generous-spacing constraint (SKY-3941).
+     Pin the Comfortable values here regardless of the document's density. */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -1819,20 +1820,22 @@ a.gs-footer-link:focus-visible {
   outline-offset: 2px;
 }
 
-/* ── Neon theme cards (prototype 2820–2828, card styles 4442–4445) ──
-   Selected border/glow + the gradient bar are inline styles computed from the
-   preset's slot colors (theme/presets.ts) — the source of truth palette. */
+/* ── Neon theme grid (M29 spec §3, SKY-7593): 10 presets, 5×2, each card = a
+   6-segment colour strip + name, no paragraph copy so 10 cards stay
+   glanceable. Selected border/glow + slot colours are inline styles computed
+   from the preset's slot colors (theme/presets.ts) — the source of truth
+   palette. ── */
 
 /* M29 (SKY-7473, design-handoff v2 §3.1): 5×2 grid of all 10 presets,
    replacing the 3-card prototype shortlist row. */
-.wiz-theme-row {
+.wiz-theme-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 9px; /* prototype 2823 */
 }
 
 @media (max-width: 700px) {
-  .wiz-theme-row { grid-template-columns: repeat(2, 1fr); }
+  .wiz-theme-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 .wiz-theme-card {
@@ -1854,13 +1857,12 @@ a.gs-footer-link:focus-visible {
   outline-offset: 2px;
 }
 
+/* M29 spec §3.4: no hover/mount animation for reduced-motion users. */
 @media (prefers-reduced-motion: reduce) {
   .wiz-theme-card { transition: none; }
 }
 
-/* 6-segment colour strip (one block per neon slot A–F) — replaces the old
-   single-gradient bar so each slot reads as a discrete colour, not a blur. */
-.wiz-theme-strip {
+.wiz-theme-card__strip {
   display: flex;
   height: 7px;
   border-radius: 6px;
@@ -1868,19 +1870,20 @@ a.gs-footer-link:focus-visible {
   margin-bottom: 8px; /* prototype 4443 */
 }
 
-.wiz-theme-strip__seg {
+.wiz-theme-card__slot {
   flex: 1;
 }
 
 .wiz-theme-card__name {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11.5px;
   font-weight: 600;
   color: rgb(230 236 249); /* prototype #e6ecf9 */
 }
 
+/* M29 spec §3.1: selected-state checkmark — never rely on colour/border alone. */
 .wiz-theme-card__check {
   color: var(--n1);
 }
@@ -1889,9 +1892,9 @@ a.gs-footer-link:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  margin: 10px 0 0;
-  font-size: 11px;
-  color: rgb(142 157 184); /* prototype #8e9db8 */
+  margin: -0.5rem 0 0;
+  font-size: 10.5px;
+  color: rgb(159 176 200); /* prototype #9fb0c8 */
 }
 
 .wiz-theme-legend__item {

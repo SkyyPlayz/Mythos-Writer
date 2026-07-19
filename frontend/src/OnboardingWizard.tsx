@@ -103,10 +103,10 @@ const WIZARD_GENRES = [
 ] as const;
 type WizardGenre = (typeof WIZARD_GENRES)[number];
 
-/** M29 (SKY-7473, design-handoff v2 §3): all 10 Liquid Neon presets, 5×2 grid —
- *  expanded from the original 3-card prototype shortlist per this milestone's
- *  acceptance criteria. `theme/presets.ts` stays the single source of truth. */
-const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
+/** M29 spec §3.1 (SKY-7593): all 10 Liquid Neon presets, 5×2 grid —
+ *  `theme/presets.ts` insertion order is already the single source of truth
+ *  (Classic → Winter), so no re-derivation needed. */
+const WIZARD_THEME_KEYS = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
 
 /** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
 function genreTestId(genre: string): string {
@@ -331,20 +331,6 @@ function WizardDots({ total, current, labels }: { total: number; current: number
         </span>
       ))}
     </div>
-  );
-}
-
-/** M29 (SKY-7473, design-handoff v2 §3.1): 6-segment colour strip — one block
- *  per neon slot (A–F), reusing the preset's `c` tuple verbatim. Decorative;
- *  the slot roles are spelled out once in the legend below the grid, not
- *  per-swatch, so it stays glanceable across 10 cards. */
-function ColorSlotStrip({ colors, testId }: { colors: readonly string[]; testId: string }) {
-  return (
-    <span className="wiz-theme-strip" aria-hidden="true" data-testid={testId}>
-      {colors.map((color, i) => (
-        <span key={i} className="wiz-theme-strip__seg" style={{ background: color }} />
-      ))}
-    </span>
   );
 }
 
@@ -609,7 +595,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // ─── Beta 3 M25 / Beta 4 M29: shared genre + theme pages ───────────────────
   const [wizardFlow, setWizardFlow] = useState<WizardFlow>('start-fresh');
   const [wizGenre, setWizGenre] = useState<WizardGenre>('Epic Fantasy');
-  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('classic');
+  // M29 spec §3.1 (SKY-7593): default to Winterlight so Continue is never
+  // blocked by an unmade choice. NOTE: the spec claims this "matches the
+  // existing app-wide default" — it doesn't (LIQUID_NEON_V2_DEFAULTS.setKey
+  // is 'classic'); the explicit instruction still stands, the justification
+  // is just wrong.
+  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('winter');
   // Non-null once "Open my vault ✦" ran, so Try Again keeps the personalization.
   const guidedPersonalizationRef = useRef<{ genre: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
 
@@ -2750,15 +2741,19 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             current={wizFlowMeta().totalSteps}
             labels={wizFlowMeta().dotLabels}
           />
-          <h2 className="gs-modal__title">Choose your neon</h2>
+          <h2 className="gs-modal__title">Choose your neon.</h2>
           <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
 
+          {/* M29 spec §3 (SKY-7593): all 10 presets, 5×2 grid, 6-slot colour
+              strip + name. No paragraph copy per card — Chunking/Prägnanz
+              stays intact at 10 cards by keeping each card minimal, not by
+              capping the count. */}
           <div
             role="radiogroup"
             aria-label="Neon theme preset"
-            className="wiz-theme-row"
+            className="wiz-theme-grid"
             onKeyDown={handleGridArrowKeys}
-            data-testid="wiz-theme-row"
+            data-testid="wiz-theme-grid"
           >
             {WIZARD_THEME_KEYS.map((k) => {
               const preset = LIQUID_NEON_PRESETS[k];
@@ -2776,7 +2771,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   onClick={() => setWizTheme(k)}
                   data-testid={`wiz-theme-${k}`}
                 >
-                  <ColorSlotStrip colors={preset.c} testId={`wiz-theme-${k}-strip`} />
+                  <span className="wiz-theme-card__strip" aria-hidden="true">
+                    {preset.c.map((hex, i) => (
+                      <span key={i} className="wiz-theme-card__slot" style={{ background: hex }} />
+                    ))}
+                  </span>
                   <span className="wiz-theme-card__name">
                     {preset.name}
                     {/* Redundant with the border/glow for colour-blind users — never rely on colour alone (WCAG). */}
@@ -2786,12 +2785,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               );
             })}
           </div>
-
-          {/* M29 (SKY-7473, design-handoff v2 §3.1): plain-reading-order legend for the 6-segment strip. */}
-          <p className="wiz-theme-legend" data-testid="wiz-theme-legend">
-            {LIQUID_NEON_SLOT_ROLES.map((role, i) => (
-              <span key={role} className="wiz-theme-legend__item">
-                {String.fromCharCode(65 + i)} &middot; {role.split(' · ')[0]}
+          {/* M29 spec §3.1 (SKY-7593): plain-reading-order legend — the strip
+              isn't a decorative abstraction, FULL-SPEC §3 slot-role list verbatim. */}
+          <p className="wiz-theme-legend">
+            {['A', 'B', 'C', 'D', 'E', 'F'].map((letter, i) => (
+              <span key={letter} className="wiz-theme-legend__item">
+                {letter} &#xB7; {LIQUID_NEON_SLOT_ROLES[i]}
               </span>
             ))}
           </p>

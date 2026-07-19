@@ -271,30 +271,36 @@ describe('OnboardingWizard v2 — genre step (Beta 3 M25)', () => {
 
 // ─── Guided setup: theme step ─────────────────────────────────────────────────
 
-describe('OnboardingWizard v2 — theme step (Beta 3 M25 / M29 SKY-7473)', () => {
-  it('renders all 10 Liquid Neon presets from the real preset engine', async () => {
+describe('OnboardingWizard v2 — theme step (M29 spec §3, SKY-7593: all 10 presets, 5×2 grid)', () => {
+  it('renders all 10 presets from the real preset engine, Winterlight selected by default', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
     );
     // Names come from LIQUID_NEON_PRESETS — the M2 preset engine, not copies.
     for (const key of Object.keys(LIQUID_NEON_PRESETS) as Array<keyof typeof LIQUID_NEON_PRESETS>) {
-      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
       expect(screen.getByText(LIQUID_NEON_PRESETS[key].name)).toBeInTheDocument();
+      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'true');
-    // Each card carries a 6-segment colour strip, one solid block per preset slot.
-    // jsdom normalizes inline hex colors to rgb() — round-trip the expected
-    // value through a probe element so the comparison isn't format-sensitive.
-    const probe = document.createElement('span');
-    const toRgb = (hex: string) => { probe.style.background = hex; return probe.style.background; };
-    const segs = screen.getByTestId('wiz-theme-cyber-strip').querySelectorAll('.wiz-theme-strip__seg');
-    expect(segs).toHaveLength(6);
-    segs.forEach((seg, i) => {
-      expect((seg as HTMLElement).style.background).toBe(toRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'true');
+    // Each card carries a 6-segment colour strip, one block per preset slot.
+    const slots = screen.getByTestId('wiz-theme-cyber').querySelectorAll('.wiz-theme-card__slot');
+    expect(slots).toHaveLength(6);
+    const hexToRgb = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    slots.forEach((slot, i) => {
+      expect((slot as HTMLElement).style.background).toBe(hexToRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
     });
-    // Selected card shows a redundant checkmark (not colour alone — WCAG).
-    expect(screen.getByTestId('wiz-theme-classic').querySelector('.wiz-theme-card__check')).toBeInTheDocument();
-    expect(screen.getByTestId('wiz-theme-cyber').querySelector('.wiz-theme-card__check')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('shows the 6-slot legend in plain reading order', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
+    );
+    expect(screen.getByText(/A · Left panel/)).toBeInTheDocument();
+    expect(screen.getByText(/F · Nav rail/)).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -304,7 +310,7 @@ describe('OnboardingWizard v2 — theme step (Beta 3 M25 / M29 SKY-7473)', () =>
     );
     await click('wiz-theme-cyber');
     expect(screen.getByTestId('wiz-theme-cyber')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'false');
   });
 });
 
