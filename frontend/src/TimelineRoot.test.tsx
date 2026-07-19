@@ -65,6 +65,10 @@ vi.mock('./timeline2/AxisView', () => ({
     bookFocus?: string | null;
     showFilter?: string;
     todaySignal?: number;
+    selection?: { type: string; id: string } | null;
+    onSelectionChange?: (sel: { type: string; id: string } | null) => void;
+    flaggedItemIds?: Set<string>;
+    jumpTarget?: { id: string; n: number } | null;
   }) => (
     <div
       data-testid="mock-axis"
@@ -74,8 +78,18 @@ vi.mock('./timeline2/AxisView', () => ({
       data-book-focus={props.bookFocus ?? ''}
       data-show={props.showFilter ?? ''}
       data-today-signal={props.todaySignal ?? 0}
+      data-selection={props.selection ? `${props.selection.type}:${props.selection.id}` : ''}
+      data-flagged-count={props.flaggedItemIds?.size ?? 0}
+      data-jump-id={props.jumpTarget?.id ?? ''}
     >
       Axis lanes
+      <button
+        type="button"
+        data-testid="mock-axis-select-event"
+        onClick={() => props.onSelectionChange?.({ type: 'event', id: 'ev-1' })}
+      >
+        select ev-1
+      </button>
     </div>
   ),
 }));
@@ -636,19 +650,20 @@ describe('TimelineRoot — M23 plan auto-build', () => {
     expect((window.api.readNotesVault as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('Plans/gate.md');
   });
 
-  it('shows the skip-backward flag chip for planned scenes left behind', async () => {
+  it('M25: surfaces skipped planned scenes through the header flag badge', async () => {
     setupPlanApi("- Signal fires\n- The Watcher's Call\n- Finale");
     await renderRoot(STORY_WITH_CHAPTERS);
-    const chip = await screen.findByTestId('tl-skip-flags');
-    expect(chip).toHaveTextContent('1 planned scene skipped');
-    expect(chip).toHaveAttribute('title', 'Signal fires');
+    // The skipped scene now arrives as an ordering_skip TimelineFlag
+    // (SKY-7379) on the design-spec §2 badge, not the old legend chip.
+    const badge = await screen.findByTestId('tl-flag-badge');
+    expect(badge).toHaveTextContent('1 flag');
   });
 
-  it('shows no skip chip when writing follows plan order', async () => {
+  it('shows no flag badge when writing follows plan order', async () => {
     setupPlanApi("- The Watcher's Call\n- Finale");
     await renderRoot(STORY_WITH_CHAPTERS);
     await screen.findByTestId('tl-legend');
-    expect(screen.queryByTestId('tl-skip-flags')).toBeNull();
+    expect(screen.queryByTestId('tl-flag-badge')).toBeNull();
   });
 
   it('renders from written scenes alone when the vault has no plan notes', async () => {
@@ -656,7 +671,169 @@ describe('TimelineRoot — M23 plan auto-build', () => {
     (base.listNotesVault as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [] });
     await renderRoot(STORY_WITH_CHAPTERS);
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-chapter-count', '1');
-    expect(screen.queryByTestId('tl-skip-flags')).toBeNull();
+    expect(screen.queryByTestId('tl-flag-badge')).toBeNull();
+  });
+});
+
+// ─── M25: right panel + selection + archive auto-build (SKY-6981) ───
+
+describe('TimelineRoot — M25 right panel', () => {
+  it('mounts the Inspector/Brainstorm/Archive panel beside the canvas', async () => {
+    await renderRoot();
+    expect(screen.getByTestId('timeline-right-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('any canvas selection surfaces the Inspector tab, even from another tab (AC1/§14.5)', async () => {
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('trp-tab-archive'));
+    await act(async () => {});
+    expect(screen.getByTestId('trp-tab-archive')).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByTestId('mock-axis-select-event'));
+    await act(async () => {});
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+    // ev-1 has no rowId → the key-event editor
+    expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('Inciting incident');
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-1');
+  });
+
+  it('a spreadsheet row click resolves to the store event and opens the Inspector (AC1)', async () => {
+    const store = makeM21Store();
+    store.events.push({ id: 'ev-scene', timelineId: 'tl-story', name: 'The Summons', when: 250, sceneId: 'sc-1' });
+    setupApi(store);
+    localStorage.setItem('timeline:viewMode', 'spreadsheet');
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('mock-select-scene'));
+    await act(async () => {});
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('The Summons');
+  });
+
+  it('quick-add plots an agent-sourced event through timelines.json (AC5)', async () => {
+    const api = setupApi();
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('trp-tab-archive'));
+    await act(async () => {});
+
+    const input = screen.getByTestId('trp-quickadd-input');
+    fireEvent.change(input, { target: { value: 'Add the festival from Ch. 4' } });
+    fireEvent.click(screen.getByTestId('trp-quickadd-btn'));
+    await act(async () => {});
+
+    const upsert = (api.timelinesUpsertItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([payload]) => payload.type === 'event' && payload.item.source === 'agent',
+    );
+    expect(upsert).toBeTruthy();
+    expect(upsert![0].item).toMatchObject({
+      timelineId: 'tl-story',
+      name: 'Festival',
+      written: false,
+      source: 'agent',
+    });
+    expect(screen.getByTestId('app-toast')).toHaveTextContent(/Added “Festival”/);
+  });
+
+  it('RECENTLY AUTO-ADDED derives from agent-sourced events with working undo (AC6)', async () => {
+    const store = makeM21Store();
+    store.events.push({
+      id: 'ev-agent', timelineId: 'tl-story', name: 'The festival', when: 300, source: 'agent',
+    });
+    const api = setupApi(store);
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('trp-tab-archive'));
+    await act(async () => {});
+
+    expect(screen.getByTestId('trp-recent-list')).toHaveTextContent('The festival');
+    fireEvent.click(screen.getByTestId('trp-recent-undo-ev-agent'));
+    await act(async () => {});
+    expect(api.timelinesDeleteItem).toHaveBeenCalledWith({ type: 'event', id: 'ev-agent' });
+  });
+
+  it('Inspector delete is undoable from the toast (§1 principle 7)', async () => {
+    const api = setupApi();
+    await renderRoot();
+    fireEvent.click(screen.getByTestId('mock-axis-select-event'));
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId('trp-event-pencil'));
+    fireEvent.click(screen.getByTestId('trp-event-delete'));
+    await act(async () => {});
+
+    expect(api.timelinesDeleteItem).toHaveBeenCalledWith({ type: 'event', id: 'ev-1' });
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('Event deleted');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await act(async () => {});
+    expect(api.timelinesUpsertItem).toHaveBeenCalledWith({
+      type: 'event',
+      item: expect.objectContaining({ id: 'ev-1', name: 'Inciting incident' }),
+    });
+  });
+});
+
+describe('TimelineRoot — M25 archive auto-build writes (AC7)', () => {
+  it('writes planned scenes into timelines.json as agent events', async () => {
+    const base = setupApi() as unknown as Record<string, unknown>;
+    base.timelineGetScenes = vi.fn().mockResolvedValue({
+      scenes: [
+        { id: 'sc-1', title: "The Watcher's Call", chapterId: 'ch-1', timelineMetadata: { wordCount: 900 } },
+      ],
+    });
+    base.listNotesVault = vi.fn().mockResolvedValue({
+      items: [{ path: 'Plans/gate.md', name: 'gate.md', isDirectory: false, modifiedAt: '2026-07-01T00:00:00.000Z' }],
+    });
+    base.readNotesVault = vi.fn().mockResolvedValue({ content: '- Signal fires\n- Finale', path: 'Plans/gate.md' });
+    const storyWithChapters: Story = {
+      ...STORY,
+      chapters: [{
+        id: 'ch-1', title: 'The Quiet Before', path: 'chapters/ch-1', order: 0,
+        scenes: [], createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      }],
+    };
+    await renderRoot(storyWithChapters);
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+
+    const api = window.api;
+    const autoUpserts = (api.timelinesUpsertItem as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([payload]) => payload.type === 'event' && String(payload.item.id).startsWith('event:auto:'),
+    );
+    expect(autoUpserts.length).toBeGreaterThan(0);
+    expect(autoUpserts[0][0].item).toMatchObject({
+      timelineId: 'tl-story',
+      written: false,
+      source: 'agent',
+    });
+  });
+});
+
+describe('TimelineRoot — M25 canvas states (design §4)', () => {
+  it('shows the empty state with a Run Archive Agent CTA; Start empty reveals the axis', async () => {
+    const store = makeM21Store();
+    store.spans = [];
+    store.rows = [];
+    store.events = [];
+    setupApi(store);
+    await renderRoot();
+
+    expect(screen.getByTestId('tlr-empty-state')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-axis')).toBeNull();
+    fireEvent.click(screen.getByTestId('tlr-start-empty'));
+    await act(async () => {});
+    expect(screen.queryByTestId('tlr-empty-state')).toBeNull();
+    expect(screen.getByTestId('mock-axis')).toBeInTheDocument();
+  });
+
+  it('an Archive load failure shows the retry banner while the canvas stays live', async () => {
+    const api = setupApi();
+    (api.timelineGetScenes as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('offline'));
+    await renderRoot();
+
+    expect(screen.getByTestId('tlr-error-banner')).toHaveTextContent(/showing the last synced timeline/);
+    expect(screen.getByTestId('mock-axis')).toBeInTheDocument();
+
+    (api.timelineGetScenes as ReturnType<typeof vi.fn>).mockResolvedValue({ scenes: [] });
+    fireEvent.click(screen.getByTestId('tlr-error-retry'));
+    await act(async () => {});
+    expect(screen.queryByTestId('tlr-error-banner')).toBeNull();
   });
 });
 

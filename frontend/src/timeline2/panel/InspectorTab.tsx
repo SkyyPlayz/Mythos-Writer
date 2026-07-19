@@ -18,7 +18,7 @@ import type {
   TimelineSpan,
 } from '../../timelinesTypes';
 import type { InspectorTarget, TimelineSelectableType } from './selection';
-import { formatWhen, roundWhen } from '../axis/calendarCodec';
+import { formatWhen, roundWhen, whenPerYear } from '../axis/calendarCodec';
 import { LANE_PALETTE } from '../axis/palette';
 import { DraftNumberInput, DraftTextInput } from './DraftInput';
 
@@ -45,9 +45,10 @@ export interface InspectorTabProps {
   onClose: () => void;
 }
 
-/** `when` is stored as year × 10 (§8.2) — the YEAR fields edit plain years. */
-const whenToYear = (when: number) => when / 10;
-const yearToWhen = (year: number) => roundWhen(year * 10);
+/** `when` = absolute hours / 10 in the ACTIVE calendar (M21 codec) — the
+ *  YEAR fields edit plain calendar-year floats (871.25 = quarter into 871). */
+const whenToYear = (when: number, cal: TimelineCalendar) => when / whenPerYear(cal);
+const yearToWhen = (year: number, cal: TimelineCalendar) => roundWhen(year * whenPerYear(cal));
 
 export default function InspectorTab(props: InspectorTabProps) {
   const { target } = props;
@@ -230,9 +231,9 @@ function LaneItemEditor(props: InspectorTabProps & { target: Extract<InspectorTa
             </FieldLabel>
             <DraftNumberInput
               className="trp-input trp-input--mono"
-              value={whenToYear(rangeItem.startWhen)}
+              value={whenToYear(rangeItem.startWhen, calendar)}
               onCommit={(year) => {
-                const startWhen = yearToWhen(year);
+                const startWhen = yearToWhen(year, calendar);
                 // The store rejects end ≤ start — keep at least one tick apart.
                 const endWhen = rangeItem.endWhen > startWhen ? rangeItem.endWhen : roundWhen(startWhen + 0.1);
                 save({ ...rangeItem, startWhen, endWhen });
@@ -247,9 +248,9 @@ function LaneItemEditor(props: InspectorTabProps & { target: Extract<InspectorTa
             </FieldLabel>
             <DraftNumberInput
               className="trp-input trp-input--mono"
-              value={whenToYear(rangeItem.endWhen)}
+              value={whenToYear(rangeItem.endWhen, calendar)}
               onCommit={(year) => {
-                const endWhen = yearToWhen(year);
+                const endWhen = yearToWhen(year, calendar);
                 if (endWhen <= rangeItem.startWhen) return; // snaps back (§8.2 guard)
                 save({ ...rangeItem, endWhen });
               }}
@@ -270,8 +271,8 @@ function LaneItemEditor(props: InspectorTabProps & { target: Extract<InspectorTa
             <FieldLabel title="Sets where it plots on the time axis">YEAR</FieldLabel>
             <DraftNumberInput
               className="trp-input trp-input--mono"
-              value={whenToYear(pointItem.when)}
-              onCommit={(year) => save({ ...pointItem, when: yearToWhen(year) })}
+              value={whenToYear(pointItem.when, calendar)}
+              onCommit={(year) => save({ ...pointItem, when: yearToWhen(year, calendar) })}
               aria-label={`${kindLabel} year`}
               data-testid="trp-lane-year"
             />

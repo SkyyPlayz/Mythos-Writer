@@ -193,12 +193,16 @@ export default function AxisView({
   );
   const storeRef = useRef(localStore);
   storeRef.current = localStore;
+  const prevActiveIdRef = useRef(activeId);
   useEffect(() => {
     const cal = safeCalendar(
       storeRef.current.timelines.find((t) => t.id === activeId)?.calendar,
     );
     setDomain(deriveAxisDomain(storeRef.current, activeId, cal));
-    setSelection(null);
+    // Clear only on a REAL timeline switch — a mount must not null out the
+    // owner's selection (a mode-switch jump sets it right before mounting).
+    if (prevActiveIdRef.current !== activeId) setSelection(null);
+    prevActiveIdRef.current = activeId;
   }, [activeId, setSelection]);
   const [t0, t1] = domain;
 
