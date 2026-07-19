@@ -133,6 +133,34 @@ describe('RichTextEditor markdown round-trip', () => {
     unmount();
   });
 
+  it('round-trips paragraph/heading text alignment (SKY-5705/SKY-7073 GH #642)', async () => {
+    // Mounts the real <RichTextEditor> (the shared core Story/Notes actually
+    // render), not a hand-duplicated extension list, so this catches drift
+    // that a schema-level-only test (sharedRichTextSchema.test.ts) can't: if
+    // TextAlign or AlignedParagraph/AlignedHeading ever fall out of
+    // useRichEditor's mounted extensions, this fails.
+    const md = 'Centered text. {.center}\n\n## Scene Two {.right}\n';
+    const { editor, unmount } = await mountCore({ content: md });
+
+    const json = editor.getJSON();
+    expect(json.content?.[0]?.attrs?.textAlign).toBe('center');
+    expect(json.content?.[1]?.attrs?.textAlign).toBe('right');
+
+    // Full save -> reload cycle: re-serialize, then parse that output again
+    // through a second mount and confirm the alignment survived.
+    const saved = getEditorMarkdown(editor);
+    expect(saved).toContain('{.center}');
+    expect(saved).toContain('{.right}');
+    unmount();
+
+    const { editor: reloaded, unmount: unmountReloaded } = await mountCore({ content: saved });
+    const reloadedJson = reloaded.getJSON();
+    expect(reloadedJson.content?.[0]?.attrs?.textAlign).toBe('center');
+    expect(reloadedJson.content?.[1]?.attrs?.textAlign).toBe('right');
+    expect(getEditorMarkdown(reloaded)).toBe(saved);
+    unmountReloaded();
+  });
+
   // SKY-5705: every mark in RICH_TEXT_SCHEMA round-trips through the shared
   // core, not just the two marks the original SKY-3204 extraction happened
   // to pin (bold/italic were covered above; this closes strike, lists,

@@ -23,8 +23,15 @@ export interface UseAgentSessionsResult {
   duplicateSession: (id: string) => Promise<void>;
   /** Delete a session. If it was the last, a fresh one is auto-created. */
   deleteSession: (id: string) => Promise<void>;
-  /** Append turns to the active session (for persistent chat). */
-  appendTurns: (turns: AgentSessionTurn[]) => Promise<void>;
+  /**
+   * Append turns to a session (for persistent chat). Pass `sessionId` pinned
+   * to whatever was active when the request was SENT — by the time an async
+   * agent reply resolves the user may have switched sessions, and the reply
+   * must still land in the session it was asked from, never the one that
+   * happens to be active at completion time. Omitting it falls back to
+   * whatever is active right now (fine for synchronous callers).
+   */
+  appendTurns: (turns: AgentSessionTurn[], sessionId?: string) => Promise<void>;
   /** Reload sessions from vault. */
   refresh: () => Promise<AgentSessionSummary[] | undefined>;
 }
@@ -143,8 +150,16 @@ function createStore(agent: string): AgentSessionStore {
 
   store.actions = {
     switchSession: async (id: string) => {
-      set({ activeSessionId: id });
-      await hydrateActive(id);
+      if (store.state.activeSessionId === id) return;
+      // Drop the stale transcript immediately so the feed never renders the
+      // PREVIOUS session's turns under the newly-selected session's label
+      // while the read resolves (the "wrong-transcript flash").
+      set({ activeSessionId: id, activeSession: null, loading: true });
+      try {
+        await hydrateActive(id);
+      } finally {
+        if (store.state.activeSessionId === id) set({ loading: false });
+      }
     },
     newSession: async (greeting?: string) => {
       const api = getApi();
@@ -197,15 +212,20 @@ function createStore(agent: string): AgentSessionStore {
       }
       set(patch);
     },
-    appendTurns: async (turns: AgentSessionTurn[]) => {
+    appendTurns: async (turns: AgentSessionTurn[], sessionId?: string) => {
       const api = getApi();
-      const id = store.state.activeSessionId;
+      // Pin the write to the id the caller captured at send time; never to
+      // whatever happens to be active when this promise settles.
+      const id = sessionId ?? store.state.activeSessionId;
       if (!api || !id) return;
       const res = await api.appendTurns(id, turns);
       if (res.session) {
         const s = res.session;
         set({
-          activeSession: s,
+          // Only refresh the rendered transcript if the user is still on
+          // this session — otherwise the write lands on disk correctly but
+          // must not clobber whatever session is now on screen.
+          activeSession: store.state.activeSessionId === s.id ? s : store.state.activeSession,
           sessions: store.state.sessions.map((x) =>
             x.id === s.id ? { ...x, turnCount: s.turns.length, updatedAt: s.updatedAt } : x,
           ),
