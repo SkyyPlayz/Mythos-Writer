@@ -1204,7 +1204,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 data-testid="reset-onboarding"
                 onClick={() => {
                   if (window.confirm('Reset onboarding? The wizard will re-appear on next boot.')) {
-                    window.api.onboardingReset().then(() => {
+                    window.api.onboardingReset({ hard: true }).then(() => {
                       window.location.reload();
                     }).catch(() => {});
                   }

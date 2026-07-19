@@ -33,7 +33,12 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
+function seedUserData(
+  userData: string,
+  vaultDir: string,
+  notesVaultDir: string,
+  layoutMode?: 'default' | 'blank',
+): void {
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
@@ -61,6 +66,7 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
   const vaultSettings = {
     vaultRoot: vaultDir,
     notesVaultRoot: notesVaultDir,
+    ...(layoutMode ? { layoutMode } : {}),
   };
 
   fs.writeFileSync(
@@ -578,9 +584,11 @@ test.describe('Suite B — Empty vault (TC-GV-09)', () => {
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-'));
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-vault-'));
-    // notesVaultDir is intentionally empty — 0 .md files → 0 nodes → empty state
+    // notesVaultDir is intentionally empty — 0 .md files → 0 nodes → empty state.
+    // layoutMode: 'blank' skips the SKY-15/SKY-7473 default scaffold (which would
+    // otherwise seed Templates.md + Personas.md into "empty" notesVaultDir).
     notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-gv0b-notes-'));
-    seedUserData(userData, vaultDir, notesVaultDir);
+    seedUserData(userData, vaultDir, notesVaultDir, 'blank');
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });

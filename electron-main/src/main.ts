@@ -3067,13 +3067,16 @@ const handlers: IpcHandlers = {
     return { ok: false, error: `Unknown startMode: ${startMode}` };
   },
 
-  // SKY-12.4: debug reset — clears vault paths and onboardingComplete so the
-  // wizard re-appears on next boot. Only available when MYTHOS_DEV=1 is set.
-  [IPC_CHANNELS.ONBOARDING_RESET]: () => {
-    if (process.env.MYTHOS_DEV !== '1') {
-      return { ok: true as const };
+  // SKY-12.4 / SKY-7473: soft reset (default) only re-arms the onboarding
+  // gate (onboardingComplete: false) — safe in production, never touches an
+  // existing vault. Powers the user-facing "Replay onboarding" (WindowChrome)
+  // and "Replay welcome tour" (AboutSection) actions. `hard: true` additionally
+  // clears vault paths back to defaults for local from-scratch dev testing —
+  // still gated behind MYTHOS_DEV=1, unchanged from the original debug reset.
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => {
+    if (payload?.hard && process.env.MYTHOS_DEV === '1') {
+      saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
     }
-    saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
     const current = loadAppSettings();
     saveAppSettings({ ...current, onboardingComplete: false });
     return { ok: true as const };

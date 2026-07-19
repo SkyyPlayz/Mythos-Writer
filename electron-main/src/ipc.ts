@@ -384,8 +384,9 @@ export const IPC_CHANNELS = {
   ONBOARDING_IMPORT_DRY_RUN: 'onboarding:import-vault:dry-run',
   ONBOARDING_IMPORT_COMMIT: 'onboarding:import-vault:commit',
 
-  // SKY-12.4: debug reset (MYTHOS_DEV=1 only). Clears vaultRoot, notesVaultRoot,
-  // and onboardingComplete so the wizard re-appears on next boot.
+  // SKY-12.4 / SKY-7473: soft reset (default) clears onboardingComplete so the
+  // wizard re-appears on next boot, without touching vault paths. `hard: true`
+  // (MYTHOS_DEV=1 only) additionally clears vaultRoot/notesVaultRoot/layoutMode.
   ONBOARDING_RESET: 'onboarding:reset',
 
   // SKY-2971: Word (.docx) → Story Vault importer.
@@ -847,7 +848,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
-  [IPC_CHANNELS.ONBOARDING_RESET]: (payload: never) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => { ok: true };
   // SKY-2971: .docx importer
   [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
   // SKY-2993: Obsidian vault importer
