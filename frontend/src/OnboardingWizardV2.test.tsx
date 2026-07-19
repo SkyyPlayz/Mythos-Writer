@@ -178,6 +178,11 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
     // Path card: 16px radius + hover lift (prototype HTML 2789)
     expect(css).toMatch(/\.gs-card\s*\{[^}]*border-radius: 16px/);
     expect(css).toMatch(/\.gs-card:hover\s*\{[^}]*translateY\(-3px\)/);
+    // SKY-7473 (M29 §7): Comfortable-tier --space-* pinned on the overlay so a
+    // density=compact/cozy pick from a prior session can never shrink the
+    // first-run/replay wizard when "Replay onboarding" reloads mid-document.
+    expect(css).toMatch(/\.gs-overlay\s*\{[^}]*--space-4:\s*16px/);
+    expect(css).toMatch(/\.gs-overlay\s*\{[^}]*--space-5:\s*20px/);
   });
 });
 
@@ -268,20 +273,30 @@ describe('OnboardingWizard v2 — genre step (Beta 3 M25)', () => {
 
 // ─── Guided setup: theme step ─────────────────────────────────────────────────
 
-describe('OnboardingWizard v2 — theme step (Beta 3 M25)', () => {
-  it('renders the prototype wizard theme shortlist from the real preset engine', async () => {
+describe('OnboardingWizard v2 — theme step (Beta 3 M25 / M29 SKY-7473)', () => {
+  it('renders all 10 Liquid Neon presets from the real preset engine', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
     );
     // Names come from LIQUID_NEON_PRESETS — the M2 preset engine, not copies.
-    expect(screen.getByText(LIQUID_NEON_PRESETS.classic.name)).toBeInTheDocument(); // Neon Classic
-    expect(screen.getByText(LIQUID_NEON_PRESETS.aurora.name)).toBeInTheDocument();  // Aurora
-    expect(screen.getByText(LIQUID_NEON_PRESETS.cyber.name)).toBeInTheDocument();   // Cyberpunk
+    for (const key of Object.keys(LIQUID_NEON_PRESETS) as Array<keyof typeof LIQUID_NEON_PRESETS>) {
+      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
+      expect(screen.getByText(LIQUID_NEON_PRESETS[key].name)).toBeInTheDocument();
+    }
     expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'true');
-    // Each card carries the palette gradient bar built from the preset slots.
-    const bar = screen.getByTestId('wiz-theme-cyber').querySelector('.wiz-theme-card__bar') as HTMLElement;
-    expect(bar.style.background).toContain('linear-gradient(120deg');
-    expect(bar.style.background.replace(/\s/g, '')).toContain(LIQUID_NEON_PRESETS.cyber.c.join(',').replace(/\s/g, ''));
+    // Each card carries a 6-segment colour strip, one solid block per preset slot.
+    // jsdom normalizes inline hex colors to rgb() — round-trip the expected
+    // value through a probe element so the comparison isn't format-sensitive.
+    const probe = document.createElement('span');
+    const toRgb = (hex: string) => { probe.style.background = hex; return probe.style.background; };
+    const segs = screen.getByTestId('wiz-theme-cyber-strip').querySelectorAll('.wiz-theme-strip__seg');
+    expect(segs).toHaveLength(6);
+    segs.forEach((seg, i) => {
+      expect((seg as HTMLElement).style.background).toBe(toRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
+    });
+    // Selected card shows a redundant checkmark (not colour alone — WCAG).
+    expect(screen.getByTestId('wiz-theme-classic').querySelector('.wiz-theme-card__check')).toBeInTheDocument();
+    expect(screen.getByTestId('wiz-theme-cyber').querySelector('.wiz-theme-card__check')).not.toBeInTheDocument();
     await act(async () => {});
   });
 
