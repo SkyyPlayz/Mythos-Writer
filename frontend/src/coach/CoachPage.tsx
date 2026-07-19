@@ -17,6 +17,7 @@ import { resolveAgentDisplayName } from '../agents/agentIdentity';
 import AgentSessionPicker from '../components/AgentSessionPicker';
 import type { UnifiedSuggestion } from '../SuggestionDetailPane';
 import { useCoachConversation } from './useCoachConversation';
+import { useSceneAnalysisPending } from './sceneAnalysis';
 import type { CoachMessage } from './coachMessages';
 import {
   buildCoachSuggestionGroups,
@@ -71,6 +72,9 @@ function useCoachRailSuggestions(): UnifiedSuggestion[] {
 
 export default function CoachPage({ scene, story, currentChapterId, agentNames }: Props) {
   const conversation = useCoachConversation(scene);
+  // M13: a Full Scene Analysis kicked off from the right panel shows the same
+  // typing dots while the coach's AI read is being fetched.
+  const analysisPending = useSceneAnalysisPending();
   const [input, setInput] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -97,7 +101,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messageCount, conversation.busy]);
+  }, [messageCount, conversation.busy, analysisPending]);
 
   const send = useCallback((text?: string) => {
     const value = (text ?? input).trim();
@@ -134,7 +138,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
           <div className="coach-title">{displayName}</div>
           <div className="coach-sub">Teaches you to write better using your own pages — it never ghost-writes</div>
         </div>
-        <AgentSessionPicker store={conversation.store} className="coach-session-pill" />
+        <AgentSessionPicker store={conversation.store} className="coach-session-pill" busy={conversation.busy} />
         <div className="coach-header-spacer" />
         <div className="coach-skills" data-testid="coach-skills">
           {SKILL_CHIPS.map(([k, v, color]) => (
@@ -163,6 +167,14 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
         <div className="coach-feed-col">
           <div className="coach-feed" ref={feedRef} data-testid="coach-feed">
             <div className="coach-feed-inner">
+              {/* SKY-7076: while switching sessions the store clears the stale
+                  transcript before the read resolves — show a neutral loading
+                  state instead of leaving the feed blank with no explanation. */}
+              {conversation.store.loading && conversation.messages.length === 0 && (
+                <div className="coach-session-loading" data-testid="coach-session-loading" role="status" aria-live="polite">
+                  Loading session…
+                </div>
+              )}
               {conversation.messages.map((m, i) => (
                 <CoachFeedMessage key={i} message={m} />
               ))}
@@ -171,7 +183,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
                   <div className="coach-bubble coach-bubble--user">{conversation.pendingPrompt}</div>
                 </div>
               )}
-              {conversation.busy && (
+              {(conversation.busy || analysisPending) && (
                 <div className="coach-row" data-testid="coach-typing">
                   <div className="coach-typing">
                     <span className="coach-typing-dot" />
@@ -323,15 +335,24 @@ function CoachFeedMessage({ message }: { message: CoachMessage }) {
         <span className="coach-badge coach-badge--read">COACH&#39;S READ · AI</span>
         <span className="coach-badge-note">judgment calls — needs a model</span>
       </div>
-      <div className="coach-analysis-reads">
-        {message.read.map(([k, v]) => (
-          <div key={k} className="coach-analysis-read">
-            <span className="coach-analysis-read-k">{k}</span>
-            <span className="coach-analysis-read-v">{v}</span>
-          </div>
-        ))}
-      </div>
-      <div className="coach-analysis-takeaway">{message.takeaway}</div>
+      {message.read.length > 0 && (
+        <div className="coach-analysis-reads">
+          {message.read.map(([k, v]) => (
+            <div key={k} className="coach-analysis-read">
+              <span className="coach-analysis-read-k">{k}</span>
+              <span className="coach-analysis-read-v">{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {message.readNote && (
+        /* M13: honest state when the coach's read is unavailable — the
+           computed section above still rendered in full. */
+        <div className="coach-analysis-read-note" data-testid="coach-read-unavailable">
+          {message.readNote}
+        </div>
+      )}
+      {message.takeaway && <div className="coach-analysis-takeaway">{message.takeaway}</div>}
       {message.drill && <DrillFooter drill={message.drill} />}
     </div>
   );

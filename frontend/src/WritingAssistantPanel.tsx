@@ -108,6 +108,10 @@ interface Props {
    * card messages collapse to `title — text` in this mini view.
    */
   sessionStore?: UseAgentSessionsResult;
+  /** SKY-7076: fires whenever a coach reply is in flight, so a parent hosting
+   *  the session picker (e.g. AgentHubPanel) can disable session switching for
+   *  the duration — pinning already keeps data correct even if this is missed. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 function isBetaReadRequest(prompt: string) {
@@ -183,6 +187,7 @@ export default function WritingAssistantPanel({
   onAutoApplyCategoriesChange,
   displayName = 'Writing Coach',
   sessionStore,
+  onBusyChange,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -252,6 +257,22 @@ export default function WritingAssistantPanel({
 
   const renderedMessages = sessionStore ? [...storeMessages, ...messages] : messages;
 
+  // SKY-7076: the local buffer only ever holds THIS session's in-flight
+  // exchange. Without this, a failed/still-generating exchange's bubbles
+  // (and their turnSuggestions decorations) would visually follow the user
+  // into whatever session they switch to next ("+ New chat" included).
+  const activeSessionIdForReset = sessionStore?.activeSessionId ?? null;
+  useEffect(() => {
+    setMessages([]);
+    setTurnSuggestions({});
+  }, [activeSessionIdForReset]);
+
+  // SKY-7076: let a parent hosting the session picker (AgentHubPanel) disable
+  // session switching while a reply is generating.
+  useEffect(() => {
+    onBusyChange?.(loading);
+  }, [loading, onBusyChange]);
+
   const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
     ? initialScanIntervalSeconds
@@ -315,6 +336,23 @@ export default function WritingAssistantPanel({
       clearStreamResources();
     };
   }, [clearStreamResources]);
+
+  // SKY-7113: switching the active Coach session (or starting a new chat)
+  // must not leak this panel's in-flight local buffer into the newly active
+  // session's view, and a reply that was still streaming for the PREVIOUS
+  // session must never be flushed onto the session the user switched to.
+  // Bumping requestIdRef aborts any in-flight `ask()` at its next await point
+  // (see the `requestIdRef.current !== requestId` guards below), so a stale
+  // response is dropped instead of being persisted to the wrong session.
+  useEffect(() => {
+    requestIdRef.current += 1;
+    clearStreamResources();
+    setMessages([]);
+    setTurnSuggestions({});
+    setLoading(false);
+    setStalled(false);
+    setError(null);
+  }, [sessionStore?.activeSessionId, clearStreamResources]);
 
   // Collapse when panel root width < 280px (AC-WA-20)
   useEffect(() => {
@@ -445,6 +483,10 @@ export default function WritingAssistantPanel({
     const requestId = requestIdRef.current;
     lastPromptRef.current = trimmed;
     const userAt = new Date().toISOString();
+    // SKY-7076: pin this exchange to whatever session is active RIGHT NOW —
+    // if the user switches away before the reply resolves, it must still be
+    // written to the session it was asked from, not wherever they land.
+    const originSessionId = sessionStore?.activeSessionId ?? undefined;
 
     setLoading(true);
     setStalled(false);
@@ -519,7 +561,7 @@ export default function WritingAssistantPanel({
           await sessionStore.appendTurns([
             { role: 'user', text: trimmed, at: userAt },
             { role: 'agent', text: response.text, at: suggestion.timestamp },
-          ]);
+          ], originSessionId);
           if (requestIdRef.current === requestId) setMessages([]);
         } catch {
           // Vault unavailable — keep the local bubbles as a fallback.

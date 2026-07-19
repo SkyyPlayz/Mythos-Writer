@@ -1,8 +1,10 @@
 // SKY-6228: M15 — Right panel agent hub (§5.6).
 // Tabs: Assistant · Scenes · Notes · References
 // Assistant tab: AGENTS card (compact rows → in-panel chat), Suggestions card, Scene Analysis card.
+// Beta 4 M13 (§5.4): the Scene Analysis card computes local metrics for the
+// open scene and `View Full Analysis` posts the full card into the Coach page.
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Scene } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
@@ -11,6 +13,18 @@ import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
 import { AGENT_LABELS, type UnifiedSuggestion } from './SuggestionDetailPane';
+import {
+  computeSceneMetrics,
+  formatWordCount,
+  formatReadTime,
+  sceneBalanceNote,
+} from './analysis/computedSceneMetrics';
+import {
+  runFullSceneAnalysis,
+  latestAnalysisCardForScene,
+  compactReadValue,
+} from './coach/sceneAnalysis';
+import { showLnToast } from './theme/lnToast';
 import './AgentHubPanel.css';
 
 const SUGGESTION_POLL_MS = 30_000;
@@ -87,6 +101,8 @@ interface Props {
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
   onOpenSuggestionInbox?: () => void;
+  /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
+  onOpenCoachPage?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -108,6 +124,7 @@ export default function AgentHubPanel({
   onAutoApplyCategoriesChange,
   agentNames,
   onOpenSuggestionInbox,
+  onOpenCoachPage,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
@@ -181,6 +198,7 @@ export default function AgentHubPanel({
                 onAgentClick={handleAgentClick}
                 scene={scene}
                 onOpenSuggestionInbox={onOpenSuggestionInbox}
+                onOpenCoachPage={onOpenCoachPage}
               />
         )}
         {activeTab === 'scenes' && <ScenesTab scene={scene} />}
@@ -199,9 +217,10 @@ interface AgentHubViewProps {
   onAgentClick: (id: ActiveAgent) => void;
   scene: Scene | null;
   onOpenSuggestionInbox?: () => void;
+  onOpenCoachPage?: () => void;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick, onOpenSuggestionInbox }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage }: AgentHubViewProps) {
   return (
     <div className="ahp-hub">
       {/* AGENTS card */}
@@ -224,8 +243,8 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, onOpenSuggestionInb
       {/* Suggestions card — preview 3 rows + See All */}
       <SuggestionPreviewCard onOpenSuggestionInbox={onOpenSuggestionInbox} />
 
-      {/* Scene Analysis card — surface only (computation is M13) */}
-      <SceneAnalysisCard />
+      {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
+      <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
     </div>
   );
 }
@@ -344,17 +363,89 @@ function SuggestionPreviewCard({ onOpenSuggestionInbox }: { onOpenSuggestionInbo
   );
 }
 
-// ── Scene Analysis card (surface only — M13 provides computation) ──────────
+// ── Scene Analysis card (M13 — §5.4) ────────────────────────────────────────
+//
+// Rows per prototype 5848: Purpose · Tension · Pacing · POV · Word Count ·
+// Read Time. Word count / read time / pacing / POV are computed locally and
+// always available. Purpose and Tension are judgment calls — they surface the
+// newest Coach's Read for this scene (shared coach session) and honestly show
+// a dash until a Full Analysis has run.
 
-function SceneAnalysisCard() {
+/** Prototype toast (HTML 7266). */
+const FULL_ANALYSIS_TOAST =
+  'Full analysis — computed stats are free & local; the coach’s read uses AI';
+
+function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; onOpenCoachPage?: () => void }) {
+  const coachStore = useAgentSessions('coach');
+
+  const metrics = useMemo(() => (scene ? computeSceneMetrics(scene) : null), [scene]);
+  const aiRead = useMemo(() => {
+    const card = latestAnalysisCardForScene(coachStore.activeSession?.turns, scene);
+    const map = new Map<string, string>();
+    for (const [label, clause] of card?.read ?? []) map.set(label, compactReadValue(clause));
+    return map;
+  }, [coachStore.activeSession, scene]);
+
+  const handleViewFullAnalysis = useCallback(() => {
+    if (!scene) return;
+    // Fire-and-forget: the card lands in the shared coach conversation when
+    // the computed metrics (instant) + AI read (or its honest unavailable
+    // state) are assembled. Navigation happens immediately.
+    void runFullSceneAnalysis(scene);
+    showLnToast(FULL_ANALYSIS_TOAST);
+    onOpenCoachPage?.();
+  }, [scene, onOpenCoachPage]);
+
+  const rows: Array<{ k: string; v: string; hot?: boolean; ai?: boolean }> = metrics
+    ? [
+        { k: 'Purpose', v: aiRead.get('Purpose') ?? '—', ai: !aiRead.has('Purpose') },
+        { k: 'Tension', v: aiRead.get('Tension') ?? '—', ai: !aiRead.has('Tension'), hot: aiRead.has('Tension') },
+        { k: 'Pacing', v: aiRead.get('Pacing') ?? metrics.pacing },
+        { k: 'POV', v: aiRead.get('POV') ?? metrics.pov },
+        { k: 'Word Count', v: formatWordCount(metrics.words) },
+        { k: 'Read Time', v: formatReadTime(metrics) },
+      ]
+    : [];
+
   return (
     <section className="ahp-card" aria-label="Scene Analysis">
       <header className="ahp-card-header">
-        <span className="ahp-card-eyebrow">SCENE ANALYSIS</span>
+        <span className="ahp-card-eyebrow">
+          SCENE ANALYSIS
+          <span className="ahp-badge ahp-badge--beta">BETA</span>
+        </span>
       </header>
-      <p className="ahp-analysis-placeholder">
-        Open a scene to see analysis.
-      </p>
+      {!scene || !metrics ? (
+        <p className="ahp-analysis-placeholder">
+          Open a scene to see analysis.
+        </p>
+      ) : (
+        <>
+          <div className="ahp-analysis-rows" data-testid="scene-analysis-rows">
+            {rows.map((row) => (
+              <div key={row.k} className="ahp-analysis-row">
+                <span className="ahp-analysis-row-k">{row.k}</span>
+                <span
+                  className={`ahp-analysis-row-v${row.hot ? ' ahp-analysis-row-v--hot' : ''}`}
+                  title={row.v === '—' && row.ai ? 'A judgment call — run View Full Analysis for the coach’s read' : undefined}
+                >
+                  {row.v}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="ahp-analysis-note">{sceneBalanceNote(metrics)}</p>
+          <button
+            type="button"
+            className="ahp-view-analysis-btn"
+            data-testid="view-full-analysis"
+            title="Opens a full breakdown in the Writing Coach"
+            onClick={handleViewFullAnalysis}
+          >
+            View Full Analysis
+          </button>
+        </>
+      )}
     </section>
   );
 }
@@ -409,6 +500,9 @@ function AgentChatView({
   onAutoApplyCategoriesChange,
 }: AgentChatViewProps) {
   const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
+  // SKY-7076: mirror WritingAssistantPanel's generation state so this
+  // surface's picker is disabled during generation too, not just Coach's.
+  const [coachBusy, setCoachBusy] = useState(false);
 
   return (
     <div className="ahp-chat-view">
@@ -429,7 +523,7 @@ function AgentChatView({
           <AgentIcon agentId={agentId} />
         </span>
         <span className="ahp-chat-agent-name">{displayName}</span>
-        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" />
+        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={agentId === 'writing-assistant' && coachBusy} />
       </div>
 
       {/* Writing Coach uses the existing panel; M12 wires it onto the SHARED
@@ -455,6 +549,7 @@ function AgentChatView({
           autoApplyCategories={autoApplyCategories}
           onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
           displayName={displayName}
+          onBusyChange={setCoachBusy}
         />
       )}
 

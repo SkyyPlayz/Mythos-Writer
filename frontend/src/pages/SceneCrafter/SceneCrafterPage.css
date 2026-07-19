@@ -298,6 +298,7 @@
 }
 
 .sc-field input,
+.sc-field select,
 .sc-field textarea {
   width: 100%;
   background: rgba(255, 255, 255, 0.05);
@@ -307,7 +308,8 @@
   font-size: 12px;
 }
 
-.sc-field input {
+.sc-field input,
+.sc-field select {
   height: 30px;
   padding: 0 10px;
 }
@@ -320,7 +322,29 @@
 }
 
 .sc-field input:focus,
+.sc-field select:focus,
 .sc-field textarea:focus {
+  outline: none;
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.sc-pov-custom {
+  margin-top: 6px;
+}
+
+.sc-len-custom {
+  width: 100%;
+  height: 28px;
+  margin-top: 6px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 9px;
+  color: #dbe4f5;
+  font-size: 11px;
+}
+
+.sc-len-custom:focus {
   outline: none;
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
 }
@@ -341,12 +365,39 @@
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.07);
   margin-bottom: 4px;
+  cursor: grab;
 }
 
 .sc-beat > span {
   flex: 1;
   font-size: 11.5px;
   color: #cdd8ea;
+}
+
+.scene-crafter-page button.sc-beat-move {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+  color: #7686a2;
+  background: none;
+  cursor: pointer;
+}
+
+.scene-crafter-page button.sc-beat-move:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.scene-crafter-page button.sc-beat-move:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .scene-crafter-page button.sc-beat-remove {
@@ -649,6 +700,12 @@
   animation-delay: 0.2s;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sc-skel {
+    animation: none;
+  }
+}
+
 .sc-draft-busy-label {
   font-size: 10.5px;
   color: var(--n2, #9b5fff);
@@ -669,6 +726,115 @@
   font-size: 10px;
   color: var(--warning, #ffd319);
   padding: 2px;
+}
+
+/* AI first-pass generation (Beta 4/M19, §7.1) — Generate/Retry/Discard/Add. */
+.sc-generate-copy {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: #8e9db8;
+}
+
+.sc-draft-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  color: #f4c7d8;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  border: 1px solid color-mix(in srgb, var(--danger, #ff4d88) 65%, rgba(255, 255, 255, 0.08));
+}
+
+.sc-draft-live-preview {
+  max-height: 110px;
+  overflow-y: auto;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #cdd8ea;
+  white-space: pre-wrap;
+}
+
+.scene-crafter-page button.sc-draft-cancel {
+  display: block;
+  margin-top: 10px;
+  font-size: 10.5px;
+  padding: 4px 10px;
+}
+
+.sc-draft-card {
+  padding: 13px;
+  border-radius: 13px;
+  background: var(--gs2, rgba(155, 95, 255, 0.08));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 20px -6px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.sc-draft-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sc-draft-card-av {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--n2, #9b5fff);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sc-draft-card-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #f0f3fc;
+}
+
+.sc-draft-card-body {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #cdd8ea;
+  white-space: pre-wrap;
+}
+
+.sc-draft-card-meta {
+  margin-top: 8px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: #8e9db8;
+}
+
+.sc-draft-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.scene-crafter-page button.sc-draft-add {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.scene-crafter-page button.sc-draft-add:hover {
+  transform: scale(1.03);
 }
 
 /* Canvas board view header (prototype lines 1007–1015). */
@@ -719,6 +885,55 @@
 .sc-canvas-view {
   padding: 0;
   gap: 0;
+}
+
+/* Right kanban: beats / cast / places (Beta 4/M19, §7.1, AC8). */
+.sc-right-kanban {
+  display: flex;
+  flex: 0 0 200px;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 12px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sc-right-kanban-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sc-right-kanban-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #7686a2;
+  padding: 0 2px;
+}
+
+.sc-right-kanban-card {
+  padding: 7px 9px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #cdd8ea;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  text-align: left;
+}
+
+.scene-crafter-page button.sc-right-kanban-card--linked {
+  cursor: pointer;
+  border-radius: 9px;
+}
+
+.scene-crafter-page button.sc-right-kanban-card--linked:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: #f0f3fc;
 }
 
 /* ── Kanban lanes (Beta-2 selectors, prototype vault-column look) ─────────── */

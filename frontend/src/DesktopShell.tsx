@@ -129,6 +129,7 @@ import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import SceneNotesPanel from './SceneNotesPanel';
 import ScenePropertiesPanel from './ScenePropertiesPanel';
+import ScenesPanel from './ScenesPanel';
 import OutlinePlanningPanel from './OutlinePlanningPanel';
 import StoryTimeline from './StoryTimeline';
 import WindowChrome from './components/ui/WindowChrome';
@@ -2127,6 +2128,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistTabShell(next);
   }, [persistTabShell]);
 
+  // Beta 4 M13 (§5.4): "View Full Analysis" (Scene Analysis card) opens the
+  // Writing Coach page, where the analysis card lands in the shared feed.
+  const handleOpenCoachPage = useCallback(() => {
+    handleSetView('coach');
+  }, [handleSetView]);
+
   // SKY-2096: Switch Notes sub-view and persist.
   const handleNotesSubViewChange = useCallback((sv: NotesSubView) => {
     const next = { ...tabShellRef.current, notesSubView: sv };
@@ -3727,6 +3734,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             voicePrefs={appSettings?.voice}
             agentNames={appSettings?.agentNames}
             onOpenSuggestionInbox={handleOpenSuggestionInbox}
+            onOpenCoachPage={handleOpenCoachPage}
           />
         );
       case 'archive-continuity':
@@ -3769,6 +3777,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
           />
         );
+      case 'scenes':
+        return (
+          <ScenesPanel
+            story={selectedStory}
+            onOpenNote={handleOpenSceneByPath}
+            onOpenFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+          />
+        );
       case 'brainstorm':
         return (
           <BrainstormPage
@@ -3797,6 +3813,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
     betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
+    handleOpenCoachPage,
+    handleNavSectionChange, handleSetView,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {

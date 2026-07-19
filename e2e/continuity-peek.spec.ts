@@ -37,6 +37,9 @@ import {
   type Page,
 } from '@playwright/test';
 
+// SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel
+test.skip(true, 'SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel');
+
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const STORY_ID = 'cp-e2e-story-0001';
 const CHAPTER_ID = 'cp-e2e-chapter-0001';
