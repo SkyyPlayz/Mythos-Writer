@@ -1567,6 +1567,20 @@ describe('scaffoldNotesVault', () => {
     // .gitkeep should NOT be re-added because the directory already exists.
     expect(fs.existsSync(path.join(tmpDir, 'Universes', '.gitkeep'))).toBe(false);
   });
+
+  // SKY-7473 (M29 welcome wizard AC-5): Templates + Personas notes seeded on
+  // completion, in default mode only — Blank Slate stays truly empty.
+  it('seeds Templates.md at the notes vault root and Personas.md in the example universe (default mode)', () => {
+    scaffoldNotesVault(tmpDir, 'default');
+    expect(fs.existsSync(path.join(tmpDir, 'Templates.md'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'Universes', 'My First Universe', 'Personas.md'))).toBe(true);
+  });
+
+  it('does not seed Templates.md or Personas.md in blank mode', () => {
+    scaffoldNotesVault(tmpDir, 'blank');
+    expect(fs.existsSync(path.join(tmpDir, 'Templates.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'Universes', 'My First Universe', 'Personas.md'))).toBe(false);
+  });
 });
 
 // ─── scaffoldStoryVault ───
@@ -1584,12 +1598,14 @@ describe('scaffoldStoryVault — SKY-15 per-story default layout', () => {
 
   // SKY-15 item 3: per-story → Manuscript/ → numbered chapter folders →
   // numbered scene files, plus Outline.md and Synopsis.md at the story root.
-  it('seeds My First Story/Manuscript/<chapter>/<scene>.md + Outline.md + Synopsis.md', () => {
+  it('seeds My First Story/Manuscript/<chapter>/<scene>.md + Outline.md + Synopsis.md + Beat Sheet.md', () => {
     scaffoldStoryVault(tmpDir);
     const story = path.join(tmpDir, 'My First Story');
     expect(fs.existsSync(path.join(story, 'Manuscript', '01 - Opening', '01 - Scene One.md'))).toBe(true);
     expect(fs.existsSync(path.join(story, 'Outline.md'))).toBe(true);
     expect(fs.existsSync(path.join(story, 'Synopsis.md'))).toBe(true);
+    // SKY-7473 (M29 welcome wizard AC-5): Beat Sheet note seeded on completion.
+    expect(fs.existsSync(path.join(story, 'Beat Sheet.md'))).toBe(true);
   });
 
   it('seeded files carry seeded_by: SKY-9 frontmatter so future tools can spot pristine seeds', () => {

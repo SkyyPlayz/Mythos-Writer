@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LayoutGrid } from 'lucide-react';
 import type { Story } from './types';
 import type { CanvasBoardData } from './canvas/canvasTypes';
 import CanvasBoard from './canvas/CanvasBoard';
@@ -60,6 +61,7 @@ export default function ScenesPanel({ story, onOpenFull, onOpenNote }: Props) {
         </div>
       ) : (
         <div className="scenes-panel-empty">
+          <LayoutGrid className="scenes-panel-empty-icon" size={32} aria-hidden="true" />
           <p>No scene boards yet.</p>
           <p className="scenes-panel-empty-sub">Draft one in Scene Crafter — it&apos;ll show up here.</p>
         </div>

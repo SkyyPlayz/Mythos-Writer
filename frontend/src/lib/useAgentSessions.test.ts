@@ -242,6 +242,113 @@ describe('useAgentSessions', () => {
     expect(result.current.activeSessionId).toBe('s1');
     expect(result.current.activeSession).toBeNull();
   });
+
+  // SKY-7076 (gh-960 gap): switchSession/appendTurns must never misattribute
+  // an in-flight exchange to the wrong session, and the feed must reflect
+  // whichever session is CURRENTLY selected, never a stale one.
+  describe('SKY-7076: session switching', () => {
+    it('hydrates the newly selected session via read() on switch', async () => {
+      const s1 = makeMockSession({ id: 's1', turns: [{ role: 'user', text: 'in s1', at: 't1' }] });
+      const s2 = makeMockSession({ id: 's2', turns: [{ role: 'user', text: 'in s2', at: 't2' }] });
+      const mockApi = setupMockApi([s1, s2]);
+      const readMock = vi.fn().mockImplementation(
+        async (id: string) => ({ session: [s1, s2].find((s) => s.id === id) }),
+      );
+      (mockApi as unknown as Record<string, unknown>).read = readMock;
+
+      const { result } = renderHook(() => useAgentSessions('coach'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(result.current.activeSessionId).toBe('s1');
+
+      await act(async () => {
+        await result.current.switchSession('s2');
+      });
+
+      expect(readMock).toHaveBeenCalledWith('s2');
+      expect(result.current.activeSessionId).toBe('s2');
+      expect(result.current.activeSession?.turns.map((t) => t.text)).toEqual(['in s2']);
+    });
+
+    it('pins an in-flight appendTurns to the origin session, not wherever the user has switched to by the time it resolves', async () => {
+      const s1 = makeMockSession({ id: 's1' });
+      const s2 = makeMockSession({ id: 's2' });
+      const mockApi = setupMockApi([s1, s2]);
+      (mockApi as unknown as Record<string, unknown>).read = vi.fn().mockImplementation(
+        async (id: string) => ({ session: [s1, s2].find((s) => s.id === id) }),
+      );
+
+      let resolveAppend!: (v: { session: AgentSessionFile }) => void;
+      mockApi.appendTurns.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveAppend = resolve; }),
+      );
+
+      const { result } = renderHook(() => useAgentSessions('coach'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(result.current.activeSessionId).toBe('s1');
+
+      const turn: AgentSessionTurn = { role: 'user', text: 'Asked from s1', at: '2026-01-01T02:00:00.000Z' };
+      let appendPromise!: Promise<void>;
+      act(() => {
+        appendPromise = result.current.appendTurns([turn], 's1');
+      });
+
+      // The user switches away before the reply resolves.
+      await act(async () => {
+        await result.current.switchSession('s2');
+      });
+      expect(result.current.activeSessionId).toBe('s2');
+
+      await act(async () => {
+        resolveAppend({ session: { ...s1, turns: [...s1.turns, turn] } });
+        await appendPromise;
+      });
+
+      // The write must land on the session it was asked from...
+      expect(mockApi.appendTurns).toHaveBeenCalledWith('s1', [turn]);
+      const s1Summary = result.current.sessions.find((s) => s.id === 's1');
+      expect(s1Summary?.turnCount).toBe(1);
+      // ...and must not clobber whatever the user is now looking at.
+      expect(result.current.activeSessionId).toBe('s2');
+      expect(result.current.activeSession?.id).not.toBe('s1');
+    });
+
+    it('rapid successive switches: a late-resolving stale read never clobbers the latest switch', async () => {
+      const s1 = makeMockSession({ id: 's1', turns: [{ role: 'user', text: 's1 content', at: 't1' }] });
+      const s2 = makeMockSession({ id: 's2', turns: [{ role: 'user', text: 's2 content', at: 't2' }] });
+      const s3 = makeMockSession({ id: 's3', turns: [{ role: 'user', text: 's3 content', at: 't3' }] });
+      const mockApi = setupMockApi([s1, s2, s3]);
+
+      const pendingReads: Record<string, (v: { session: AgentSessionFile }) => void> = {};
+      (mockApi as unknown as Record<string, unknown>).read = vi.fn().mockImplementation(
+        (id: string) => new Promise((resolve) => { pendingReads[id] = resolve; }),
+      );
+
+      const { result } = renderHook(() => useAgentSessions('coach'));
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(result.current.activeSessionId).toBe('s1');
+
+      // Switch s1 -> s2 -> s3 before either read has resolved.
+      let switchToS3!: Promise<void>;
+      act(() => { void result.current.switchSession('s2'); });
+      act(() => { switchToS3 = result.current.switchSession('s3'); });
+
+      // s2's read resolves late, after s3 was already requested — must be dropped.
+      await act(async () => {
+        pendingReads.s2({ session: s2 });
+        await Promise.resolve();
+      });
+      expect(result.current.activeSession?.id).not.toBe('s2');
+      expect(result.current.activeSessionId).toBe('s3');
+
+      await act(async () => {
+        pendingReads.s3({ session: s3 });
+        await switchToS3;
+      });
+
+      expect(result.current.activeSessionId).toBe('s3');
+      expect(result.current.activeSession?.turns.map((t) => t.text)).toEqual(['s3 content']);
+    });
+  });
 });
 
 // CF-10 ("dismissed suggestions never resurface") is a Suggestion Inbox

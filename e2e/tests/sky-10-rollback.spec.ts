@@ -83,11 +83,17 @@ test('TC-SK10-01: edit → save → rollback restores prior text and snapshots t
     // Resolve sceneId via IPC: vault:manifest:read triggers reindexVault, which
     // populates manifest.scenes (the flat orphan list) from the scaffolded files.
     // The nested stories[].chapters[].scenes[] structure is NOT populated on a
-    // fresh vault — use manifest.scenes[0] which is where new scene files land.
+    // fresh vault. The flat list also adopts the story-root planning docs
+    // (Outline.md, Synopsis.md, Beat Sheet.md) as orphan "scenes" — their
+    // relative order versus the real Manuscript scene depends on directory
+    // read order, which is not stable — so pick the one actually under
+    // Manuscript/ rather than assuming index [0].
     const manifest = await page.evaluate(() => (window as never as { api: { readManifest: () => Promise<unknown> } }).api.readManifest()) as {
-      scenes: Array<{ id: string }>;
+      scenes: Array<{ id: string; path: string }>;
     };
-    const sceneId = manifest.scenes[0].id;
+    const scene = manifest.scenes.find((s) => s.path.split(path.sep).join('/').includes('Manuscript/'));
+    expect(scene).toBeDefined();
+    const sceneId = scene!.id;
 
     // Drive the renderer-facing IPC bridge directly via `window.api`.
     const saveOne = (prose: string): Promise<unknown> =>

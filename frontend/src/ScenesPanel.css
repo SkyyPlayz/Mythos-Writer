@@ -44,6 +44,11 @@
   color: var(--text-muted);
 }
 
+.scenes-panel-empty-icon {
+  margin-bottom: var(--space-3);
+  opacity: 0.5;
+}
+
 .scenes-panel-empty p {
   margin: 0 0 var(--space-2);
   font-size: var(--text-sm);

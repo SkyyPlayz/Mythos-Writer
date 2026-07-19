@@ -34,6 +34,12 @@ export interface CoachAnalysisCard {
   computed: Array<[string, string]>;
   /** COACH'S READ · AI rows — [label, teaching clause] pairs. */
   read: Array<[string, string]>;
+  /**
+   * M13: honest state note for the AI section — set when the coach's read is
+   * unavailable (AI disabled/unconfigured/errored) so the computed section can
+   * still render alone (§5.4 split).
+   */
+  readNote?: string;
   takeaway: string;
   drill?: string;
 }
@@ -85,6 +91,7 @@ export function decodeCoachCard(text: string): CoachCard | null {
         title: obj.title,
         computed: isPairArray(obj.computed) ? obj.computed : [],
         read: isPairArray(obj.read) ? obj.read : [],
+        ...(typeof obj.readNote === 'string' && obj.readNote ? { readNote: obj.readNote } : {}),
         takeaway: obj.takeaway,
         ...(typeof obj.drill === 'string' && obj.drill ? { drill: obj.drill } : {}),
       };
@@ -114,6 +121,9 @@ export function decodeCoachTurns(turns: readonly AgentSessionTurn[]): CoachMessa
  */
 export function collapseCoachMessage(msg: CoachMessage): string {
   if (msg.kind === 'lesson') return `${msg.title} — ${msg.text}`;
-  if (msg.kind === 'analysis') return `${msg.title} — ${msg.takeaway}`;
+  if (msg.kind === 'analysis') {
+    const tail = msg.takeaway || msg.readNote;
+    return tail ? `${msg.title} — ${tail}` : msg.title;
+  }
   return msg.text;
 }
