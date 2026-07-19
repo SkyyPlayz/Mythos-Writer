@@ -1190,8 +1190,14 @@ jobs:
     # actions: read is required for gh run list / gh run view used by the
     # repo-wide failure detection in notify-board.sh (SKY-3907).
     needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
+    # DISABLED while the repo is PUBLIC (owner directive 2026-07-19): self-hosted
+    # runners are OFF until we go private again, and NOTHING may assign to them.
+    # This is the only self-hosted job in CI. Board pings fall back to
+    # GitHubManager's hourly poll sweep (poll-only mode). To re-enable when we go
+    # private: restore `if: always() && github.event_name == 'pull_request'` and
+    # bring the runners back (systemctl --user enable --now actions-runner{,2,3}).
     runs-on: self-hosted
-    if: always() && github.event_name == 'pull_request'
+    if: false
     permissions:
       contents: read
       actions: read
