@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" data-ln-density="comfortable">
+<head>
+<meta charset="UTF-8">
+<title>SKY-7253 — Timeline views harness</title>
+<style>
+:root{
+  /* Liquid Neon slot tokens — verbatim defaults from frontend/src/tokens.css */
+  --n1:#00f0ff; --n2:#9b5fff; --n3:#ff4dff; --n4:#ff9a3d; --n5:#2fe6c8; --n6:#3d9bff;
+  --b1:rgba(0,240,255,1); --b2:rgba(155,95,255,1); --b3:rgba(255,77,255,1);
+  --b4:rgba(255,154,61,1); --b5:rgba(47,230,200,1); --b6:rgba(61,155,255,1);
+  --g1:rgba(0,240,255,1); --g2:rgba(155,95,255,1); --g4:rgba(255,154,61,1);
+  --g5:rgba(47,230,200,1); --g6:rgba(61,155,255,1);
+  --gs1:rgba(0,240,255,.31); --gs2:rgba(155,95,255,.31); --gs4:rgba(255,154,61,.31);
+  --gs5:rgba(47,230,200,.31); --gs6:rgba(61,155,255,.31);
+  --glass:rgba(13,16,28,.20); --glass2:rgba(21,26,45,.50);
+  --bw:1px; --blur:1px;
+  --txH:#f0f3fc; --txB:#c8d3e7;
+  /* App semantic tokens reused as-is (ArchivePanel.css) */
+  --state-warning:#ffb020; --state-danger:#ff5a6b;
+  --color-warning-bg:rgba(255,176,32,.12); --color-warning-border:rgba(255,176,32,.4);
+  --text-muted:#8e9db8; --surface-2:rgba(255,255,255,.04); --border:rgba(255,255,255,.09);
+  --accent:#00f0ff; --text-on-accent:#03151a; --accent-soft:rgba(0,240,255,.12); --accent-violet:#9b5fff;
+  /* density — comfortable defaults, cozy/compact override below (tokens.css) */
+  --space-4:16px; --space-5:20px; --space-6:24px; --ln-card-pad-y:16px; --ln-card-pad-x:18px;
+}
+html[data-ln-density="cozy"]{ --space-4:13px; --space-5:16px; --space-6:20px; --ln-card-pad-y:12px; --ln-card-pad-x:14px; }
+html[data-ln-density="compact"]{ --space-4:11px; --space-5:13px; --space-6:16px; --ln-card-pad-y:9px; --ln-card-pad-x:11px; }
+html[data-reduced-motion="true"] *{ animation:none!important; transition:none!important; }
+
+*{box-sizing:border-box}
+body{margin:0;background:#07090f;background-image:radial-gradient(120% 100% at 20% 0%,rgba(61,155,255,.08),transparent 60%);font-family:'Inter',system-ui,sans-serif;color:var(--txB);height:100vh;overflow:hidden}
+h1,h2,h3,.serif{font-family:'Lora',Georgia,serif}
+.shell{display:flex;height:100vh}
+.rail{width:56px;flex:none;background:rgba(10,12,20,.7);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:16px}
+.rail .dot{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#8e9db8;font-size:15px}
+.rail .active{background:var(--gs6);color:var(--n6);border:1px solid var(--b6);box-shadow:0 0 14px var(--g6)}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.devbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:rgba(0,0,0,.35);border-bottom:1px solid var(--border);font-size:10.5px;color:var(--text-muted)}
+.devbar label{display:flex;align-items:center;gap:5px}
+.devbar select{background:rgba(255,255,255,.06);color:var(--txB);border:1px solid var(--border);border-radius:6px;font-size:10.5px;padding:2px 5px}
+.devbar b{color:var(--txH)}
+
+.tl-header{display:flex;align-items:center;gap:12px;padding:14px 20px 12px}
+.tl-title{font-size:21px;font-weight:600;color:var(--txH)}
+.seg{display:flex;padding:3px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--b6);box-shadow:0 0 16px -6px var(--g6);gap:2px}
+.seg .opt{padding:6px 12px;border-radius:8px;font-size:11.5px;font-weight:600;color:#aebad0;cursor:pointer;white-space:nowrap}
+.seg .opt.on{background:var(--gs6);color:#fff;box-shadow:0 0 10px -2px var(--g6)}
+.flagbadge{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:8px;border:1px solid var(--color-warning-border);background:var(--color-warning-bg);color:var(--state-warning);font-size:11px;font-weight:600;cursor:pointer}
+.flagbadge .n{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--state-warning);color:#1a1200;font-size:10px;font-weight:800}
+.spacer{flex:1}
+select.filt{height:26px;max-width:120px;background:rgba(255,255,255,.05);border:1px solid var(--b1);border-radius:8px;color:#dbe4f5;font-size:10.5px;padding:0 6px}
+.today{padding:4px 12px;border-radius:8px;font-size:11.5px;color:#dbe4f5;border:1px solid rgba(255,255,255,.1)}
+
+.body{flex:1;display:flex;min-height:0}
+.viewport{flex:1;min-width:0;overflow:auto;padding:4px 20px 20px;display:flex;flex-direction:column;gap:13px}
+
+/* ── Sync strip: non-blocking, sits above content, never covers it ── */
+.syncstrip{display:none;align-items:center;gap:8px;font-size:10.5px;color:var(--n6);background:var(--gs6);border:1px solid var(--b6);border-radius:8px;padding:6px 10px}
+[data-state="syncing"] .syncstrip{display:flex}
+[data-state="syncing"] .synclive::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--n6);box-shadow:0 0 6px var(--g6);display:inline-block;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+
+.errbanner{display:none;align-items:center;gap:10px;font-size:11.5px;color:var(--state-danger);background:color-mix(in srgb, var(--state-danger) 12%, transparent);border:1px solid color-mix(in srgb, var(--state-danger) 40%, transparent);border-radius:8px;padding:9px 12px}
+[data-state="error"] .errbanner{display:flex}
+.errbanner button{margin-left:auto;background:none;border:1px solid var(--state-danger);color:var(--state-danger);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer}
+
+.emptystate{display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:70px 20px;border-radius:14px;border:1px dashed var(--border);background:rgba(255,255,255,.02);color:var(--text-muted)}
+[data-state="empty"] .emptystate{display:flex}
+[data-state="empty"] .liveview,[data-state="loading"] .liveview{display:none}
+/* error state deliberately keeps .liveview visible beneath the banner — it shows
+   the last successfully synced timeline, not a blank canvas (non-blocking) */
+.emptystate .big{font-size:15px;color:var(--txH);font-weight:600}
+.emptystate button{margin-top:4px;padding:8px 16px;border-radius:9px;border:1px solid var(--b6);color:#fff;background:var(--gs6);font-size:12px;font-weight:600;cursor:pointer}
+
+.skel{display:none;flex-direction:column;gap:10px}
+[data-state="loading"] .skel{display:flex}
+.skel .bar{height:52px;border-radius:10px;background:linear-gradient(100deg,rgba(255,255,255,.03) 30%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.03) 70%);background-size:200% 100%;animation:shimmer 1.6s ease-in-out infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+.hint{font-size:10px;color:#7686a2}
+
+/* ── Progress / Structure lane rows ── */
+.lanes{display:flex;flex-direction:column;gap:9px;border-radius:13px;border:1px solid rgba(255,255,255,.06);padding:12px 4px;background:rgba(8,10,18,.3)}
+.lane{display:flex;gap:10px;align-items:center;padding:0 12px}
+.lane .lbl{width:110px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.1em;color:#7686a2}
+.lane .track{flex:1;min-width:0;height:30px;position:relative;border-top:1px dashed rgba(255,255,255,.05)}
+.item{position:absolute;top:3px;height:24px;border-radius:6px;display:flex;align-items:center;padding:0 8px;font-size:10.5px;color:#e6ecf9;white-space:nowrap;overflow:hidden;cursor:grab}
+.item.written{background:var(--gs2);border:1px solid var(--b2)}
+.item.planned{background:rgba(150,150,160,.18);border:1px dashed rgba(180,180,190,.4);color:#aebad0}
+.item.era{background:var(--gs6);border:1px solid var(--b6);height:16px;top:7px;font-size:9px;font-weight:700;letter-spacing:.06em}
+.item.here{outline:2px solid var(--n6);box-shadow:0 0 10px var(--g6)}
+.legend{display:flex;gap:14px;font-size:10px;color:#8e9db8;padding-left:12px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:14px;height:7px;border-radius:3px;display:inline-block}
+
+/* ── Spreadsheet ── */
+.sheet{border-radius:13px;border:1px solid rgba(255,255,255,.08);overflow:hidden}
+.sheet .row{display:grid;grid-template-columns:2fr .5fr 1.1fr 1fr 1fr 1fr;gap:8px;padding:9px 14px;font-size:11px;color:#c3cee2;border-top:1px solid rgba(255,255,255,.05)}
+.sheet .head{font-size:9px;font-weight:700;letter-spacing:.1em;color:#7686a2;background:rgba(255,255,255,.04);border-top:none}
+.sheet .grp{font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--n2);background:rgba(255,255,255,.025)}
+.badge-flash{font-size:8px;font-weight:800;letter-spacing:.08em;padding:1.5px 6px;border-radius:5px;color:#ffd319;background:rgba(255,211,25,.1);border:1px solid rgba(255,211,25,.4);margin-left:6px}
+.sheet .row:not(.head):not(.grp):hover{background:var(--gs6)}
+
+/* ── Relationships ── */
+.relhead{display:flex;gap:10px;align-items:center;padding:0 0 4px}
+.relhead .sp{width:110px;flex:none}
+.relhead .ev{flex:1;display:flex}
+.relhead .ev span{flex:1;text-align:center;font-size:9px;color:#8e9db8}
+.relrow{display:flex;gap:10px;align-items:center}
+.relrow .nm{width:110px;flex:none;font-size:11px;font-weight:600;text-align:right}
+.relrow .lane{flex:1;display:flex;position:relative;height:26px;align-items:center}
+.relrow .line{position:absolute;left:0;right:0;height:2px;background:rgba(255,255,255,.08)}
+.relrow .dot{flex:1;display:flex;justify-content:center;position:relative;z-index:1}
+.relrow .dot i{width:9px;height:9px;border-radius:50%;display:block}
+
+/* ── Subway ── */
+.subway{position:relative;border-radius:14px;background:radial-gradient(90% 90% at 50% 40%,rgba(20,26,48,.35),rgba(6,8,15,.55));border:1px solid rgba(255,255,255,.05);padding:14px 10px 8px}
+.subway .stops{display:flex;margin-bottom:6px}
+.subway .stops div{flex:1;text-align:center;font-size:9px;color:#aebad0}
+.subway svg{display:block;width:100%;height:180px}
+.subway .lgd{display:flex;gap:14px;padding:8px 10px 2px;flex-wrap:wrap;font-size:10px;color:#aebad0}
+.subway .lgd span{display:inline-flex;align-items:center;gap:6px}
+
+/* ── Right panel: Inspector / Archive flags ── */
+.right{width:300px;flex:none;border-left:1px solid var(--border);background:rgba(10,12,20,.5);display:none;flex-direction:column}
+.right.open{display:flex}
+.right .tabs{display:flex;gap:2px;padding:10px 10px 0}
+.right .tabs .t{flex:1;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.05em;color:#7686a2;padding:8px 0;border-bottom:2px solid transparent}
+.right .tabs .t.on{color:var(--n4);border-color:var(--n4)}
+.right .content{flex:1;overflow:auto;padding:12px}
+.blurb{font-size:11px;color:#cdb98f;background:var(--gs4);border:1px solid var(--b4);border-radius:9px;padding:10px}
+.ap-section-header{display:flex;align-items:center;gap:7px;margin:12px 0 8px}
+.ap-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:0}
+.ap-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 5px;border-radius:8px;background:var(--state-warning);color:#1a1200;font-size:10px;font-weight:700}
+.ap-card{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:7px;margin-bottom:7px}
+.ap-card.warn{border-left:3px solid var(--state-warning)}
+.ap-card p{margin:0;font-size:11.5px;color:#dbe4f5}
+.ap-card .anchor{font-size:10.5px;color:#8e9db8}
+.ap-actions{display:flex;gap:8px}
+.ap-btn{font-size:10.5px;font-weight:600;padding:5px 9px;border-radius:6px;border:1px solid var(--border);color:#cdd8ea;cursor:pointer;background:transparent}
+.ap-btn-resolve{color:var(--state-warning);border-color:var(--color-warning-border)}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="rail">
+    <div class="dot">≡</div><div class="dot">✎</div><div class="dot">◧</div><div class="dot">✳</div>
+    <div class="dot active">◷</div><div class="dot">◍</div>
+  </div>
+  <div class="main">
+    <div class="devbar">
+      <span><b>Harness controls</b> (not app UI) — demonstrates states, density, motion for redline capture</span>
+      <span class="spacer"></span>
+      <label>State
+        <select id="stateSel">
+          <option value="live">Live</option>
+          <option value="empty">Empty</option>
+          <option value="loading">Loading</option>
+          <option value="syncing">Syncing</option>
+          <option value="error">Error</option>
+        </select>
+      </label>
+      <label>Density
+        <select id="densSel">
+          <option value="comfortable">Comfortable</option>
+          <option value="cozy">Cozy</option>
+          <option value="compact">Compact</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="motionChk"> Reduced motion</label>
+    </div>
+
+    <div class="tl-header">
+      <span class="tl-title">Timeline</span>
+      <div class="seg" id="modeSeg">
+        <div class="opt on" data-mode="progress">Progress</div>
+        <div class="opt" data-mode="structure">Structure</div>
+        <div class="opt" data-mode="sheet">Spreadsheet</div>
+        <div class="opt" data-mode="rel">Relationships</div>
+        <div class="opt" data-mode="subway">Subway</div>
+      </div>
+      <div class="flagbadge" id="flagBadge"><span class="n">3</span> flags</div>
+      <div class="spacer"></div>
+      <select class="filt"><option>Story Structure</option></select>
+      <select class="filt"><option>Arc</option></select>
+      <select class="filt"><option>All Events</option></select>
+      <div class="today">Today</div>
+    </div>
+
+    <div class="body">
+      <div class="viewport" id="viewport" data-state="live">
+        <div class="syncstrip"><span class="synclive"></span>Archive Agent is syncing this timeline from your manuscript — content stays interactive while it works.</div>
+        <div class="errbanner">Couldn't reach the Archive Agent — showing the last synced timeline. <button>Retry</button></div>
+        <div class="emptystate">
+          <div class="big">No events yet</div>
+          <div>The Archive Agent builds this timeline from your notes and written scenes.</div>
+          <button>Run Archive Agent now</button>
+        </div>
+        <div class="skel"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+
+        <div class="liveview" id="view-progress">
+          <div class="legend">
+            <span><span class="sw" style="background:var(--gs2);border:1px solid var(--b2)"></span>written</span>
+            <span><span class="sw" style="background:rgba(150,150,160,.18);border:1px dashed rgba(180,180,190,.4)"></span>planned from your notes</span>
+            <span><span class="sw" style="width:9px;height:9px;border-radius:3px;outline:2px solid var(--n6);box-shadow:0 0 8px var(--g6)"></span>you are here · Ch 17</span>
+          </div>
+          <div class="lanes">
+            <div class="lane"><div class="lbl">ERAS +</div><div class="track"><div class="item era" style="left:2%;width:40%">THE LONG PEACE</div><div class="item era" style="left:44%;width:54%;background:var(--gs4);border-color:var(--b4)">THE SUNDERING</div></div></div>
+            <div class="lane"><div class="lbl">BOOKS</div><div class="track"><div class="item written" style="left:2%;width:38%">Book I — Ashfall</div><div class="item planned" style="left:42%;width:30%">Book II — Verge</div></div></div>
+            <div class="lane"><div class="lbl">ARCS</div><div class="track"><div class="item written" style="left:5%;width:20%;background:var(--gs5);border-color:var(--b5)">Arc I</div><div class="item written here" style="left:27%;width:22%;background:var(--gs5);border-color:var(--b5)">Arc II</div><div class="item planned" style="left:51%;width:24%">Arc III</div></div></div>
+            <div class="lane"><div class="lbl">CHAPTERS</div><div class="track"><div class="item written" style="left:6%;width:6%">Ch 12</div><div class="item written here" style="left:14%;width:6%">Ch 17</div><div class="item planned" style="left:22%;width:6%">Ch 19</div></div></div>
+            <div class="lane"><div class="lbl">PLOTLINES</div><div class="track"><div class="item written" style="left:8%;width:14%;background:var(--gs1);border-color:var(--b1)">The Signet</div><div class="item planned" style="left:30%;width:12%">Blood Debt</div></div></div>
+            <div class="lane"><div class="lbl">KEY EVENTS</div><div class="track"><div class="item written" style="left:12%;width:16%;background:var(--gs4);border-color:var(--b4)">⚔ The Sunken Gate</div></div></div>
+            <div class="lane"><div class="lbl">CHARACTERS</div><div class="track"><div class="item written" style="left:2%;width:70%;height:3px;top:13px;border-radius:2px;background:var(--n1);box-shadow:0 0 6px var(--g1)"></div><div class="item written" style="left:18%;width:40%;height:3px;top:20px;border-radius:2px;background:var(--n3);box-shadow:0 0 6px rgba(255,77,255,.6)"></div></div></div>
+            <div class="lane"><div class="lbl">WORLD</div><div class="track"><div class="item written" style="left:20%;width:10%;background:var(--gs5);border-color:var(--b5);font-size:9px">Y871 · Eclipse</div></div></div>
+            <div class="lane"><div class="lbl">THEMES</div><div class="track"><div class="item written" style="left:2%;width:96%;background:var(--gs2);border-color:var(--b2);opacity:.6">Legacy vs. Freedom</div></div></div>
+          </div>
+          <div class="hint">Progress mode — planned items render dim/greyscale until written; the ring marks the current writing position. Every row plots from <code>timelines.json</code> live.</div>
+        </div>
+
+        <div class="liveview" id="view-structure" style="display:none">
+          <div class="lanes">
+            <div class="lane"><div class="lbl">ERAS +</div><div class="track"><div class="item era" style="left:2%;width:40%">THE LONG PEACE</div><div class="item era" style="left:44%;width:54%;background:var(--gs4);border-color:var(--b4)">THE SUNDERING</div></div></div>
+            <div class="lane"><div class="lbl">BOOKS</div><div class="track"><div class="item written" style="left:2%;width:38%">Book I — Ashfall</div><div class="item written" style="left:42%;width:30%">Book II — Verge</div></div></div>
+            <div class="lane"><div class="lbl">ARCS</div><div class="track"><div class="item written here" style="left:27%;width:22%;background:var(--gs5);border-color:var(--b5)">Arc II</div></div></div>
+            <div class="lane"><div class="lbl">CHAPTERS</div><div class="track"><div class="item written here" style="left:14%;width:6%">Ch 17</div></div></div>
+            <div class="lane"><div class="lbl">PLOTLINES</div><div class="track"><div class="item written" style="left:8%;width:14%;background:var(--gs1);border-color:var(--b1)">The Signet</div></div></div>
+          </div>
+          <div class="hint">Structure mode — identical lane engine to Progress, no written/planned styling or legend: a neutral read of story shape (beats, pacing) without draft-status noise.</div>
+        </div>
+
+        <div class="liveview" id="view-sheet" style="display:none">
+          <div class="sheet">
+            <div class="row head"><span>EVENT</span><span>CH</span><span>DATE / ERA</span><span>POV</span><span>LOCATION</span><span>IMPACT</span></div>
+            <div class="row grp">ARC II — THE SUNKEN GATE</div>
+            <div class="row"><span>⚔ The Sunken Gate<span class="badge-flash">FLASHBACK</span></span><span>Ch 18</span><span>Y873 EC</span><span>Kaelen</span><span>Veynn Docks</span><span style="color:var(--n2)">High</span></div>
+            <div class="row"><span>🗝 The Signet is stolen</span><span>Ch 17</span><span>Y871.2 EC</span><span>Mira</span><span>Ashfall Keep</span><span style="color:var(--n2)">High</span></div>
+            <div class="row grp">ARC III — VERGE</div>
+            <div class="row"><span>🕯 The festival at Ch. 4</span><span>Ch 19</span><span>Y871.4 EC</span><span>Kaelen</span><span>Verge</span><span style="color:var(--n2)">Medium</span></div>
+          </div>
+          <div class="hint">Aeon-style spreadsheet — every event as data. Narrative ⇄ Chronological toggle re-sorts by in-world date; Chronological surfaces FLASHBACK rows out of narrative order. Grouped by the Group By filter; click a row to open it in Inspector.</div>
+        </div>
+
+        <div class="liveview" id="view-rel" style="display:none">
+          <div class="relhead"><div class="sp"></div><div class="ev"><span>⚔ Sunken Gate</span><span>🗝 Signet stolen</span><span>🕯 Festival</span><span>🌘 Eclipse</span></div></div>
+          <div class="relrow"><div class="nm" style="color:var(--n1)">Kaelen</div><div class="lane"><div class="line"></div><div class="dot"><i style="background:var(--n1);box-shadow:0 0 6px var(--g1)"></i></div><div class="dot"><i style="background:var(--n1);box-shadow:0 0 6px var(--g1)"></i></div><div class="dot"></div><div class="dot"><i style="background:var(--n1);box-shadow:0 0 6px var(--g1)"></i></div></div></div>
+          <div class="relrow"><div class="nm" style="color:var(--n3)">Mira</div><div class="lane"><div class="line"></div><div class="dot"></div><div class="dot"><i style="background:var(--n3)"></i></div><div class="dot"><i style="background:var(--n3)"></i></div><div class="dot"></div></div></div>
+          <div class="relrow"><div class="nm" style="color:var(--n5)">Ordath</div><div class="lane"><div class="line"></div><div class="dot"><i style="background:var(--n5)"></i></div><div class="dot"></div><div class="dot"></div><div class="dot"><i style="background:var(--n5)"></i></div></div></div>
+          <div class="hint">Relationship view — who is present at every beat of the story. A filled dot = present; a gap in the row reads as "sat this beat out."</div>
+        </div>
+
+        <div class="liveview" id="view-subway" style="display:none">
+          <div class="subway">
+            <div class="stops"><div>⚔ Gate</div><div>🗝 Signet</div><div>🕯 Festival</div><div>🌘 Eclipse</div></div>
+            <svg viewBox="0 0 400 100" preserveAspectRatio="none">
+              <path d="M20,20 L140,20 L260,50 L380,20" fill="none" stroke="var(--n1)" stroke-width="4" stroke-linecap="round" style="filter:drop-shadow(0 0 6px var(--g1))"/>
+              <path d="M20,70 L140,40 L260,40 L380,70" fill="none" stroke="var(--n3)" stroke-width="4" stroke-linecap="round" style="filter:drop-shadow(0 0 6px rgba(255,77,255,.6))"/>
+              <circle cx="20" cy="20" r="7" fill="#0b0d17" stroke="var(--n1)" stroke-width="3"/><circle cx="140" cy="20" r="7" fill="#0b0d17" stroke="var(--n1)" stroke-width="3"/><circle cx="380" cy="20" r="7" fill="#0b0d17" stroke="var(--n1)" stroke-width="3"/>
+              <circle cx="140" cy="40" r="7" fill="#0b0d17" stroke="var(--n3)" stroke-width="3"/><circle cx="260" cy="40" r="7" fill="#0b0d17" stroke="var(--n3)" stroke-width="3"/>
+            </svg>
+            <div class="lgd"><span><span class="sw" style="background:var(--n1)"></span>Kaelen</span><span><span class="sw" style="background:var(--n3)"></span>Mira</span></div>
+          </div>
+          <div class="hint">Aeon-style subway — each character is a line; stations are the events they're part of. A dip in a line means that character sits that beat out.</div>
+        </div>
+      </div>
+
+      <div class="right open">
+        <div class="tabs"><div class="t">Inspector</div><div class="t">Brainstorm</div><div class="t on">Archive</div></div>
+        <div class="content">
+          <div class="blurb"><b>Archive Agent — timeline builder.</b> Auto-builds this timeline from your manuscript and vault.</div>
+          <div class="ap-section-header"><h3 class="ap-section-title" style="margin:0">Flags</h3><span class="ap-badge">3</span></div>
+          <div class="ap-card warn"><p>Contradiction: Kaelen is "24" in Ch. 12 and "26" in Ch. 17, three weeks later.</p><div class="anchor">Near: Ch. 17, ¶3</div><div class="ap-actions"><button class="ap-btn">Jump to scene</button><button class="ap-btn ap-btn-resolve">Resolve…</button></div></div>
+          <div class="ap-card warn"><p>Gap: no dated events between Y871.2 and Y871.9 — seven months unaccounted for.</p><div class="anchor">Between Ch. 17 and Ch. 18</div><div class="ap-actions"><button class="ap-btn">Jump to scene</button><button class="ap-btn ap-btn-resolve">Resolve…</button></div></div>
+          <div class="ap-card warn"><p>Skip: "The Sunken Gate" is tagged Ch. 18 but plotted before Ch. 17 on the axis.</p><div class="anchor">Ch. 18</div><div class="ap-actions"><button class="ap-btn">Jump to scene</button><button class="ap-btn ap-btn-resolve">Resolve…</button></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.querySelectorAll('#modeSeg .opt').forEach(o=>o.addEventListener('click',()=>{
+  document.querySelectorAll('#modeSeg .opt').forEach(x=>x.classList.remove('on'));
+  o.classList.add('on');
+  document.querySelectorAll('.liveview').forEach(v=>v.style.display='none');
+  const map={progress:'view-progress',structure:'view-structure',sheet:'view-sheet',rel:'view-rel',subway:'view-subway'};
+  document.getElementById(map[o.dataset.mode]).style.display='';
+}));
+document.getElementById('stateSel').addEventListener('change',e=>{document.getElementById('viewport').dataset.state=e.target.value});
+document.getElementById('densSel').addEventListener('change',e=>{document.documentElement.dataset.lnDensity=e.target.value});
+document.getElementById('motionChk').addEventListener('change',e=>{document.documentElement.dataset.reducedMotion=e.target.checked?'true':'false'});
+document.getElementById('flagBadge').addEventListener('click',()=>{
+  const r=document.querySelector('.right'); r.classList.toggle('open');
+});
+</script>
+</body>
+</html>
