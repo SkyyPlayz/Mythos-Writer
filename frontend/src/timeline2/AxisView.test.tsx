@@ -2,7 +2,6 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import AxisView, { type AxisChapterCell } from './AxisView';
 import type { TimelinesStore } from '../timelinesTypes';
-import { safeEncodeWhen } from './axis/calendarCodec';
 import { ARC_LANE, CHARACTER_LANE, THEME_LANE, WORLD_LANE } from './axis/storyLanes';
 
 const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
@@ -196,7 +195,8 @@ describe('AxisView — direct manipulation', () => {
   });
 
   it('dragging an event past the threshold moves it in time and toasts (§14.4 step 1)', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     mockRowRect('ax-events-row');
     const card = screen.getByTestId('ax-event-ev-1');
     fireEvent.mouseDown(card, { button: 0, clientX: 100 });
@@ -211,12 +211,13 @@ describe('AxisView — direct manipulation', () => {
     expect(screen.getByTestId('app-toast')).toHaveTextContent(
       'Rough time set — fine-tune with the exact-time picker',
     );
-    // a real drag must not open the inspector
-    expect(screen.queryByTestId('ax-inspector')).toBeNull();
+    // a real drag must not select the item
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it('sub-threshold jitter is a click, not a drag', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     mockRowRect('ax-events-row');
     const card = screen.getByTestId('ax-event-ev-1');
     fireEvent.mouseDown(card, { button: 0, clientX: 100 });
@@ -225,7 +226,7 @@ describe('AxisView — direct manipulation', () => {
     fireEvent.click(card);
     await flush();
     expect(api.timelinesUpsertItem).not.toHaveBeenCalled();
-    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'event', id: 'ev-1' });
   });
 
   it('resizing a book span by its edge changes only that edge (§14.4 step 2)', async () => {

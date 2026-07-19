@@ -58,6 +58,7 @@ import {
   type EntityRelationshipsDeletePayload,
   type AgentWritingAssistantPayload,
   type AgentBrainstormPayload,
+  type AgentArchivePayload,
   type VaultCheckPayload,
   type VaultIndexEntry,
   type VaultCheckInconsistency,
@@ -594,6 +595,7 @@ function registerAgentCancelHandlers(): void {
   for (const channel of [
     'agent:writing-assistant:stream-cancel',
     'agent:brainstorm:stream-cancel',
+    'agent:archive:stream-cancel',
     'agent:vault-check:stream-cancel',
   ] as const) {
     ipcMain.on(channel, (event, { requestId }: { requestId: string }) => {
@@ -7737,6 +7739,130 @@ function registerBrainstormHandler() {
   }));
 }
 
+
+// ─── Archive Agent chat handler (Beta 4 M25 — timeline side-chat; the
+// quick-add dating prompt also runs through here). Mirrors the Brainstorm
+// streaming handler: invoke resolves the full text, chunk events stream. ───
+function registerArchiveChatHandler() {
+  ipcMain.handle(IPC_CHANNELS.AGENT_ARCHIVE, wrapIpcHandler(IPC_CHANNELS.AGENT_ARCHIVE, async (event, payload: AgentArchivePayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    // RISK-4: pre-flight payload size cap and role validation
+    if (!payload || Buffer.byteLength(JSON.stringify(payload)) > MAX_PAYLOAD_BYTES) {
+      throw new Error('Payload too large');
+    }
+    if (Array.isArray(payload.history)) {
+      if (payload.history.length > MAX_AGENT_HISTORY_TURNS) {
+        throw new Error('History too long');
+      }
+      if (payload.history.some((m) => !VALID_AGENT_ROLES.has(m.role as string))) {
+        throw new Error('Invalid role in history');
+      }
+    }
+    if (typeof payload.prompt !== 'string' || payload.prompt.length > MAX_AGENT_PROMPT_LENGTH) {
+      throw new Error('Prompt invalid or too long');
+    }
+    const agentSettings = loadAppSettings().agents.archive;
+    if (!agentSettings.enabled) {
+      throw new Error('Archive agent is disabled in settings.');
+    }
+    const budgetCheck = checkCallBudget('archive', agentSettings, getDb());
+    if (!budgetCheck.allowed) {
+      const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
+      if (mainWindow) {
+        mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+          agent: 'archive',
+          agentLabel: 'Archive Agent',
+          reason: budgetCheck.reason,
+        });
+      }
+      throw new Error(`Archive Agent paused: ${capLabel} reached. Try again next window.`);
+    }
+    const providerConfig = getProviderConfigForAgent('archive');
+
+    const systemPrompt = buildAgentSystemPrompt(app.getPath('userData'), 'archive');
+
+    const { text: cappedPrompt, truncated: archiveTruncated } = truncateContext(
+      payload.prompt,
+      BRAINSTORM_MAX_PROMPT_CHARS,
+    );
+
+    const messages = [
+      ...(payload.history ?? []).map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user' as const, content: cappedPrompt },
+    ];
+
+    const archiveContextChars =
+      messages.reduce((acc, m) => acc + m.content.length, 0) + systemPrompt.length;
+
+    const requestId = crypto.randomUUID();
+    let fullText = '';
+    let genError: string | null = null;
+    const startedAt = Date.now();
+
+    const controller = new AbortController();
+    agentControllers.set(requestId, controller);
+    const onDestroyed = () => controller.abort();
+    event.sender.once('destroyed', onDestroyed);
+
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('agent:archive:stream-start', { requestId });
+    }
+
+    try {
+      for await (const token of streamFromProvider(providerConfig, {
+        system: systemPrompt,
+        messages,
+        maxTokens: 1024,
+        signal: controller.signal,
+      })) {
+        fullText += token;
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:archive:chunk', { chunk: token });
+        }
+      }
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== 'AbortError') {
+        genError = (err as Error).message ?? 'unknown error';
+        const category = categorizeStreamError(err);
+        const userMessage = streamErrorUserMessage(category);
+        if (!event.sender.isDestroyed()) {
+          event.sender.send('agent:archive:error', { requestId, category, message: userMessage });
+        }
+        throw new Error(userMessage);
+      }
+    } finally {
+      agentControllers.delete(requestId);
+      event.sender.off('destroyed', onDestroyed);
+      const promptText = cappedPrompt;
+      const payloadDigest = process.env.PERSIST_PROMPTS === '1'
+        ? promptText
+        : crypto.createHash('sha256').update(promptText).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: 'archive',
+          model: providerConfig.model,
+          endpoint: 'messages.stream',
+          request_id: requestId,
+          tokens_in: null,
+          tokens_out: null,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: payloadDigest,
+          context_chars: archiveContextChars,
+          truncated: archiveTruncated,
+        });
+      } catch { /* non-fatal — logging must not break agent response */ }
+    }
+
+    return { text: fullText, requestId };
+  }));
+}
+
 // ─── Entry quick-enrich handler (SKY-324) ───
 // One-shot (non-streaming) Claude call: generate a description for a newly
 // created entity and write it to the Notes Vault using the standard routing logic.
@@ -8988,6 +9114,7 @@ app.whenReady().then(async () => {
   registerAgentCancelHandlers();
   registerBrainstormExtractionHandlers();
   registerBrainstormHandler();
+  registerArchiveChatHandler();
   registerBrainstormEnrichHandler();
   registerWritingAssistantHandler();
   setupAgentPersonaIpc();
