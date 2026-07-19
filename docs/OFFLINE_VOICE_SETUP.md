@@ -37,29 +37,24 @@ Whisper.cpp supports multiple model sizes. **For Beta 2, recommend `tiny` or `ba
    ```bash
    mkdir -p ~/.mythos/engines/whisper
    tar xzf whisper-bin-*.tar.gz -C ~/.mythos/engines/whisper
-   chmod +x ~/.mythos/engines/whisper/whisper
+   chmod +x ~/.mythos/engines/whisper/whisper-cli
    ```
 
-3. **Download a model** using the `models.sh` script in the whisper.cpp repo:
+3. **Download a model:**
    ```bash
-   cd ~/.mythos/engines/whisper
-   # If whisper.cpp was built from source:
-   ./models.sh <model-name>  # e.g., tiny, base, small
-   
-   # Or download the GGML-quantized model directly:
    curl -fsSL https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin \
-     -o ggml-tiny.en.bin
+     -o ~/.mythos/engines/whisper/ggml-tiny.en.bin
    ```
 
 4. **Verify the binary:**
    ```bash
-   ~/.mythos/engines/whisper/whisper --help
+   ~/.mythos/engines/whisper/whisper-cli --help
    ```
 
 5. **In Mythos Writer Settings:**
-   - Settings → Voice → STT Provider: `Local`
-   - STT Binary Path: `/home/YOUR_USER/.mythos/engines/whisper/whisper`
-   - (Mythos will show a file picker; select the binary from the above path)
+   - Settings → Voice → STT Binary: click **Browse…** and select `~/.mythos/engines/whisper/whisper-cli`
+   - Settings → Voice → STT Model: click **Browse…** and select `~/.mythos/engines/whisper/ggml-tiny.en.bin`
+   - (Both fields are required for offline transcription)
 
 ### macOS Setup
 
@@ -72,29 +67,27 @@ Whisper.cpp supports multiple model sizes. **For Beta 2, recommend `tiny` or `ba
    ```bash
    mkdir -p ~/Library/Application\ Support/Mythos/engines/whisper
    tar xzf whisper-bin-*.tar.gz -C ~/Library/Application\ Support/Mythos/engines/whisper
-   chmod +x ~/Library/Application\ Support/Mythos/engines/whisper/whisper
+   chmod +x ~/Library/Application\ Support/Mythos/engines/whisper/whisper-cli
    ```
 
 3. **Download a model:**
    ```bash
-   cd ~/Library/Application\ Support/Mythos/engines/whisper
-   # Using curl (or the whisper.cpp models.sh if the repo is present):
    curl -fsSL https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin \
-     -o ggml-tiny.en.bin
+     -o ~/Library/Application\ Support/Mythos/engines/whisper/ggml-tiny.en.bin
    ```
 
 4. **If the binary is notarized, verify or bypass Gatekeeper** (depending on macOS version):
    ```bash
    # Check if it runs:
-   ~/Library/Application\ Support/Mythos/engines/whisper/whisper --help
+   ~/Library/Application\ Support/Mythos/engines/whisper/whisper-cli --help
    
    # If blocked by Gatekeeper, remove the quarantine flag:
-   xattr -d com.apple.quarantine ~/Library/Application\ Support/Mythos/engines/whisper/whisper
+   xattr -d com.apple.quarantine ~/Library/Application\ Support/Mythos/engines/whisper/whisper-cli
    ```
 
 5. **In Mythos Writer Settings:**
-   - Settings → Voice → STT Provider: `Local`
-   - STT Binary Path: `~/Library/Application Support/Mythos/engines/whisper/whisper`
+   - Settings → Voice → STT Binary: click **Browse…** and select the `whisper-cli` binary
+   - Settings → Voice �� STT Model: click **Browse…** and select `ggml-tiny.en.bin`
 
 ### Windows Setup
 
@@ -120,12 +113,12 @@ Whisper.cpp supports multiple model sizes. **For Beta 2, recommend `tiny` or `ba
 4. **Verify the binary:**
    - Open PowerShell and run:
      ```powershell
-     & "C:\Users\<YourUser>\AppData\Local\Mythos\engines\whisper\whisper.exe" --help
+     & "C:\Users\<YourUser>\AppData\Local\Mythos\engines\whisper\whisper-cli.exe" --help
      ```
 
 5. **In Mythos Writer Settings:**
-   - Settings → Voice → STT Provider: `Local`
-   - STT Binary Path: `C:\Users\<YourUser>\AppData\Local\Mythos\engines\whisper\whisper.exe`
+   - Settings → Voice → STT Binary: click **Browse…** and select `whisper-cli.exe`
+   - Settings → Voice → STT Model: click **Browse…** and select `ggml-tiny.en.bin`
 
 ### Integrity Verification
 
