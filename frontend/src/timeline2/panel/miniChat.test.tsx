@@ -60,7 +60,7 @@ function installMockApi(opts: MockOptions) {
   };
   let resolveReply: (() => void) | undefined;
   const text = opts.replyText ?? 'The agent answers.';
-  const invoke = vi.fn(() => {
+  const invoke = vi.fn((_prompt?: string) => {
     if (opts.deferReply) {
       return new Promise<{ text: string }>((resolve) => {
         resolveReply = () => resolve({ text });
@@ -126,7 +126,7 @@ describe('Brainstorm tab (AC4, AC8)', () => {
     await flush();
 
     expect(props.showToast).toHaveBeenCalledWith('Asked the Brainstorm agent to structure the timeline into notes');
-    const [prompt] = mock.invoke.mock.calls[0] as [string];
+    const prompt = String(mock.invoke.mock.calls[0]?.[0]);
     expect(prompt).toContain('structure it into vault notes');
     expect(prompt).toContain('Timeline: Story');
     expect(prompt).toContain('Era: DAWN');
