@@ -21,11 +21,23 @@ import {
 import type { PresetAxes, RefinementChip } from './presets';
 import EntriesQuickAdd from './EntriesQuickAdd';
 import {
-  IDEA_GROUP_DEFS,
-  buildIdeaGroups,
-  buildMapLayout,
-  type BrainstormIdea,
-} from './brainstormCenter';
+  COLLECTION_ORDER,
+  FACT_CATEGORY,
+  STARTER_LIBRARY,
+  createBoardCard,
+  createEmptyBoard,
+  extractOpenQuestions,
+  migrateDraftFactsToBoard,
+  type BrainstormBoardData,
+  type LegacyDraftFact,
+} from './brainstormBoard';
+import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
+import BoardCanvas from './components/BrainstormBoard/BoardCanvas';
+import IdeaCollectionsPanel, {
+  type CollectionIdea,
+} from './components/BrainstormBoard/IdeaCollectionsPanel';
+import AgentSessionPicker from './components/AgentSessionPicker';
+import { useAgentSessions } from './lib/useAgentSessions';
 import { PROMPT_MAX_CHARS } from './promptConstants';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
@@ -50,6 +62,9 @@ export const HARD_TIMEOUT_MS = 90_000;
 
 const DRAFT_KEY = 'brainstorm:draft';
 const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
+// M20 (SKY-6663): one-shot marker — the legacy draft transcript has been
+// copied into the shared agent-session store (never orphan chat history).
+const SESSION_MIGRATED_KEY = 'brainstorm:session-migrated';
 
 // Sentinel value used when the user explicitly picks "Vault root" in the
 // routing-prompt select. Empty string is reserved for "nothing selected yet"
@@ -89,18 +104,17 @@ interface DetectedFact {
 type SortOrder = 'newest' | 'oldest' | 'by-type' | 'by-status' | 'custom';
 type FilterType = 'all' | 'character' | 'location' | 'item' | 'note';
 
-// M19: Brainstorm center view modes. Chat is the load-bearing default; the
-// Board / Map / Clusters modes visualize the same session ideas (facts).
-type BrainstormMode = 'chat' | 'board' | 'map' | 'clusters';
+// M20 (§7.2): TWO pages — Agent Chat (default) and ONE Board. The old
+// Board/Map/Clusters visual modes were unified per B4-4; their data (facts +
+// type collections + custom order) migrates into the board model on load.
+type BrainstormMode = 'chat' | 'board';
 
 const MODE_LABELS: Record<BrainstormMode, string> = {
-  chat: 'Chat',
+  chat: 'Agent Chat',
   board: 'Board',
-  map: 'Map',
-  clusters: 'Clusters',
 };
 
-const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board', 'map', 'clusters'];
+const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board'];
 
 // M19: composer suggestion chips (prototype bsChips, line 4330). The prototype
 // ships demo-story chips; these are story-agnostic starters sent through the
@@ -111,14 +125,21 @@ const SUGGESTION_CHIPS = [
   'Suggest a plot twist for the next chapter',
 ];
 
-// M19: board canvas tools (prototype bsTools, line 4856) — exact SVG paths.
-const BOARD_TOOLS = [
-  { key: 'select', title: 'Select', path: 'M5 3l14 8-7 1.5L9.5 20z' },
-  { key: 'connect', title: 'Connect ideas', path: 'M9.5 14.5l5-5M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M8 12l-1.5 1.5a3.5 3.5 0 0 0 5 5L13 17' },
-  { key: 'frame', title: 'Frame', path: 'M4 4h16v16H4z' },
-  { key: 'text', title: 'Text', path: 'M6 6h12M12 6v13' },
+// M20: board-page right-panel explore buttons (prototype aiButtons) — each is
+// a real prompt sent through the same streaming chat path.
+const EXPLORE_PROMPTS: ReadonlyArray<readonly [string, string]> = [
+  ['Generate Story Beats', 'Give me 3 story beat ideas for the next chapter.'],
+  ['Explore a Theme', 'Help me explore a central theme for my story — suggest three directions.'],
+  ['Character Dynamics', 'Suggest an interesting dynamic between two of my characters.'],
+  ['Worldbuilding Prompts', 'Give me a worldbuilding prompt to deepen my setting.'],
+  ['What If Scenarios', 'Give me three “what if” scenarios that could raise the stakes.'],
+  ['Surprise Me', 'Surprise me with an unexpected story idea.'],
 ] as const;
-type BoardTool = (typeof BOARD_TOOLS)[number]['key'];
+
+// M20: chat-stacked board height limits (prototype bsBoardResizeH clamp).
+const CHAT_BOARD_MIN_H = 150;
+const CHAT_BOARD_MAX_H = 720;
+const CHAT_BOARD_DEFAULT_H = 380;
 
 // M19: agent activity feed (prototype right panel, lines 2468–2496). Entries
 // mirror real events only — fact extraction, note filing, routing, proposals.
@@ -393,13 +414,52 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [filterType, setFilterType] = useState<FilterType>('all');
-  // M19: Brainstorm center mode — chat (default), board, map, or clusters.
+  // M20: Brainstorm page — Agent Chat (default) or the ONE Board.
   const [mode, setMode] = useState<BrainstormMode>('chat');
-  // M19: board canvas tool + zoom (prototype bsTool/bsZoom, lines 4852–4856)
-  // and the shared idea search that filters Board / Map / Clusters.
-  const [boardTool, setBoardTool] = useState<BoardTool>('select');
-  const [boardZoom, setBoardZoom] = useState(100);
+  // M20: board search ("Search ideas…" in the Board-page header).
   const [ideaQuery, setIdeaQuery] = useState('');
+  // M20 (B4-4): capture the legacy draft ONCE, synchronously, before any
+  // effect runs — the draft-persist effect deletes/overwrites the key on
+  // mount while state is still empty, so later reads would lose the data the
+  // migration must preserve.
+  const [legacyDraft] = useState<{ facts: LegacyDraftFact[]; customOrder?: string[]; messages: Message[] }>(() => {
+    let draftFacts: LegacyDraftFact[] = [];
+    let draftOrder: string[] | undefined;
+    let draftMessages: Message[] = [];
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as { facts?: LegacyDraftFact[]; customOrder?: string[]; messages?: Message[] };
+        if (Array.isArray(draft?.facts)) draftFacts = draft.facts;
+        if (Array.isArray(draft?.customOrder)) draftOrder = draft.customOrder;
+        if (Array.isArray(draft?.messages)) draftMessages = draft.messages;
+      }
+    } catch { /* malformed draft — nothing to migrate */ }
+    return { facts: draftFacts, customOrder: draftOrder, messages: draftMessages };
+  });
+  // M20: the unified board (persisted on M5 vault storage; null until loaded).
+  const [board, setBoard] = useState<BrainstormBoardData | null>(null);
+  const [boardSynced, setBoardSynced] = useState(true);
+  const boardLoadedRef = useRef(false);
+  const boardSaveTimerRef = useRef<number | null>(null);
+  const lastPersistedBoardRef = useRef<string | null>(null);
+  // M20: chat-page Board toggle — canvas stacked under the chat, drag-bar height.
+  const [chatBoardOpen, setChatBoardOpen] = useState(false);
+  const [chatBoardHeight, setChatBoardHeight] = useState(CHAT_BOARD_DEFAULT_H);
+  // M20: vault-note titles on cards underline + open the note.
+  const [noteIndex, setNoteIndex] = useState<Map<string, string>>(new Map());
+  // M20: board-page right panel QUICK GENERATE box.
+  const [quickGenText, setQuickGenText] = useState('');
+  // M20 (SKY-6663): Brainstorm chat lives on the shared M15 agent-session store.
+  // autoCreate: enabled — don't silently write a Sessions/*.md note into the
+  // vault for a disabled agent, or from a hidden/background mount before the
+  // user has ever opened Brainstorm (SKY-6945).
+  const sessionStore = useAgentSessions('brainstorm', { autoCreate: enabled });
+  const sessionStoreRef = useRef(sessionStore);
+  sessionStoreRef.current = sessionStore;
+  const syncedSessionIdRef = useRef<string | null>(null);
+  const hadDraftMessagesRef = useRef(false);
+  const pendingUserTextRef = useRef('');
   // M19: agent activity feed — newest entry first, capped.
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -473,33 +533,105 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     [filterType],
   );
 
-  // M19: session ideas feeding the Board / Map / Clusters modes — same data
-  // source as the Detected Facts panel, so the chat's vault filing is reused.
-  const ideas: BrainstormIdea[] = useMemo(
-    () => facts.map((f) => ({ id: f.id, title: f.name, body: f.content, type: f.type })),
-    [facts],
-  );
-  // M19: idea search ("Search ideas…", prototype header line 1326–1328) —
-  // filters all three visual modes by title/body, case-insensitive.
-  const visibleIdeas = useMemo(() => {
-    const q = ideaQuery.trim().toLowerCase();
-    if (!q) return ideas;
-    return ideas.filter(
-      (idea) => idea.title.toLowerCase().includes(q) || idea.body.toLowerCase().includes(q),
+  // M20: left IDEA COLLECTIONS pool — agent-filed session facts first, then
+  // the preloaded starter library (prototype bsPool `Starter` entries).
+  const collectionsPool: CollectionIdea[] = useMemo(() => {
+    const factIdeas: CollectionIdea[] = facts.map((f) => ({
+      key: `fact-${f.id}`,
+      cat: FACT_CATEGORY[f.type] ?? 'loose',
+      title: f.name,
+      desc: f.content,
+      chips: [FACT_TYPE_LABELS[f.type]],
+      ...(f.type === 'character' ? { av: ideaInitials(f.name) } : {}),
+      factId: f.id,
+    }));
+    const starters: CollectionIdea[] = COLLECTION_ORDER.flatMap((cat) =>
+      STARTER_LIBRARY[cat].map((s, i) => ({
+        key: `starter-${cat}-${i}`,
+        cat,
+        title: s.title,
+        desc: s.desc,
+        chips: [...s.chips],
+      })),
     );
-  }, [ideas, ideaQuery]);
-  const ideaGroups = useMemo(() => buildIdeaGroups(visibleIdeas), [visibleIdeas]);
-  const mapLayout = useMemo(() => buildMapLayout(ideaGroups), [ideaGroups]);
-  const clusterCount = useMemo(
-    () => ideaGroups.filter((group) => group.ideas.length > 0).length,
-    [ideaGroups],
+    return [...factIdeas, ...starters];
+  }, [facts]);
+
+  // Lowercase card titles already on the board — drives the `+` / `✓` glyphs.
+  const placedTitles = useMemo(
+    () => new Set((board?.cards ?? []).map((c) => c.title.trim().toLowerCase())),
+    [board],
   );
-  // M19: activity stats row (prototype bsStatsRow, line 4340) — real counters:
-  // notes actually written to the vault, ideas detected, proposals queued.
+
+  // ── M20 board mutators (persisted via the debounced save effect below) ──
+  const moveBoardCard = useCallback((id: string, x: number, y: number) => {
+    setBoard((b) => (b ? { ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, x, y } : c)) } : b));
+  }, []);
+
+  const editBoardCard = useCallback((id: string, updates: { title: string; desc: string }) => {
+    setBoard((b) => (b
+      ? { ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, title: updates.title, desc: updates.desc } : c)) }
+      : b));
+  }, []);
+
+  const addBoardLink = useCallback((from: string, to: string) => {
+    setBoard((b) => {
+      if (!b) return b;
+      const exists = b.links.some(
+        (l) => (l.from === from && l.to === to) || (l.from === to && l.to === from),
+      );
+      return exists ? b : { ...b, links: [...b.links, { from, to }] };
+    });
+  }, []);
+  // M20: activity stats row (prototype bsStatsRow: Notes / Links / Props) —
+  // real counters: notes written to the vault, board connections, proposals.
   const savedNoteCount = useMemo(
     () => facts.filter((f) => f.savedStatus === 'saved').length,
     [facts],
   );
+
+  // M20: QUESTIONS FOR YOU — open questions from the latest agent reply;
+  // clicking one sends it into the chat (§7.2).
+  const openQuestions = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'assistant' && !msg.streaming && msg.text.trim()) {
+        return extractOpenQuestions(msg.text);
+      }
+    }
+    return [];
+  }, [messages]);
+
+  // M20: SAVED PROMPTS (board-page right panel) — the last three distinct
+  // prompts the user actually sent; clicking one re-sends it in the chat.
+  const savedPrompts = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (let i = messages.length - 1; i >= 0 && out.length < 3; i--) {
+      const msg = messages[i];
+      if (msg.role !== 'user') continue;
+      const text = msg.text.trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+    }
+    return out;
+  }, [messages]);
+
+  // M20: NOTES THAT NEED WORK — captured ideas without a vault note yet
+  // (MISSING) and saved notes that are still stubs (NEEDS WORK).
+  const needsWorkRows = useMemo(() => {
+    const rows: Array<{ id: string; title: string; sub: string; kind: 'MISSING' | 'NEEDS WORK' }> = [];
+    for (const fact of facts) {
+      if (rows.length === 4) break;
+      if (fact.savedStatus === 'error' || fact.savedStatus === 'needs_routing' || fact.savedStatus === 'unsaved') {
+        rows.push({ id: fact.id, title: fact.name, sub: 'captured in chat — no note yet', kind: 'MISSING' });
+      } else if (fact.savedStatus === 'saved' && fact.content.trim().length < 80) {
+        rows.push({ id: fact.id, title: fact.name, sub: 'stub note — a few words so far', kind: 'NEEDS WORK' });
+      }
+    }
+    return rows;
+  }, [facts]);
 
   // M19: append to the agent activity feed (newest first, capped) — every
   // entry corresponds to a real vault/proposal event, never mocked.
@@ -541,6 +673,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         const draftPrompt = typeof draft.prompt === 'string' ? draft.prompt : '';
 
         if ((draft.v === 1 || draft.v === 2) && (draftMessages.length > 0 || draftFacts.length > 0 || draftPrompt.trim())) {
+          hadDraftMessagesRef.current = draftMessages.length > 0;
           setMessages(draftMessages);
           setFacts(draftFacts);
           setExpandedFactIds(new Set(draftFacts.map((f) => f.id)));
@@ -588,21 +721,199 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, messages, facts, sortOrder, customOrder]);
 
+  // M20: load the unified board from the vault. B4-4: before the old
+  // Board/Map/Clusters views were deleted, their data — the draft's facts with
+  // their type collections and custom order — migrates into the board model
+  // exactly once (the one-shot flag lives in the board file itself).
+  useEffect(() => {
+    let cancelled = false;
+    const finish = (loaded: BrainstormBoardData | null) => {
+      if (cancelled) return;
+      let next = loaded ?? createEmptyBoard();
+      if (!next.draftMigrated) {
+        next = migrateDraftFactsToBoard(next, legacyDraft.facts, legacyDraft.customOrder);
+        lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
+        void saveBrainstormBoard(next);
+      } else {
+        lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
+      }
+      setBoard(next);
+      boardLoadedRef.current = true;
+    };
+    if (typeof window.api?.readNotesVault !== 'function') {
+      // No vault bridge (unit tests / degraded startup): resolve synchronously
+      // so the mount stays act-clean; the board lives in memory only.
+      finish(null);
+    } else {
+      void loadBrainstormBoard().then(finish);
+    }
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // M20: debounced write-back — positions survive restart (M5 vault storage).
+  useEffect(() => {
+    if (!board || !boardLoadedRef.current) return;
+    // No vault bridge (unit tests / degraded startup): the board lives in
+    // memory only, so skip the timer + sync-state churn entirely.
+    if (typeof window.api?.writeNotesVault !== 'function') return;
+    const serialized = JSON.stringify(board, null, 2);
+    if (serialized === lastPersistedBoardRef.current) return;
+    setBoardSynced(false);
+    if (boardSaveTimerRef.current !== null) window.clearTimeout(boardSaveTimerRef.current);
+    boardSaveTimerRef.current = window.setTimeout(() => {
+      boardSaveTimerRef.current = null;
+      lastPersistedBoardRef.current = serialized;
+      void saveBrainstormBoard(board).then(() => setBoardSynced(true));
+    }, 400);
+    return () => {
+      if (boardSaveTimerRef.current !== null) {
+        window.clearTimeout(boardSaveTimerRef.current);
+        boardSaveTimerRef.current = null;
+      }
+    };
+  }, [board]);
+
+  // M20: vault-note titles on board cards underline → open the note. Load the
+  // entity index lazily whenever a canvas is visible.
+  useEffect(() => {
+    if (mode !== 'board' && !chatBoardOpen) return;
+    if (typeof window.api?.entityList !== 'function') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { entities } = await window.api.entityList();
+        // Skip the no-op update — an empty vault should not churn state.
+        if (!cancelled && entities.length > 0) {
+          setNoteIndex(new Map(entities.map((e) => [e.name.trim().toLowerCase(), e.id])));
+        }
+      } catch { /* vault unavailable — titles just render un-linked */ }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, chatBoardOpen]);
+
+  // M20 (SKY-6663): sync the chat feed with the shared agent-session store.
+  // First adoption keeps a restored draft (and migrates it into the session so
+  // no chat history is ever orphaned); later id changes = real session
+  // switches, which replace the feed with the session's turns.
+  useEffect(() => {
+    const active = sessionStore.activeSession;
+    const activeId = sessionStore.activeSessionId;
+    if (!activeId) return;
+    if (!active || active.id !== activeId) return;
+    if (syncedSessionIdRef.current === active.id) return;
+    const firstAdoption = syncedSessionIdRef.current === null;
+    syncedSessionIdRef.current = active.id;
+
+    if (firstAdoption && hadDraftMessagesRef.current) {
+      // The restored draft is the working transcript. Migrate it into the
+      // session store once so the history survives localStorage loss.
+      try {
+        if (localStorage.getItem(SESSION_MIGRATED_KEY) !== '1' && active.turns.length <= 1) {
+          const at = new Date().toISOString();
+          const turns = legacyDraft.messages
+            .filter((m) => m.text.trim())
+            .map((m) => ({
+              role: m.role === 'user' ? ('user' as const) : ('agent' as const),
+              text: m.text,
+              at,
+            }));
+          if (turns.length > 0) void sessionStoreRef.current.appendTurns(turns);
+          localStorage.setItem(SESSION_MIGRATED_KEY, '1');
+        }
+      } catch { /* draft unreadable — nothing to migrate */ }
+      return;
+    }
+
+    // Fresh mount without a draft, or a real session switch: hydrate the feed.
+    if (streamIdRef.current) void window.api.streamCancel(streamIdRef.current);
+    cleanupStreamRef.current?.();
+    setLoading(false);
+    setStreamPhase('idle');
+    setError(null);
+    setMessages(active.turns.map((t) => ({
+      role: t.role === 'user' ? ('user' as const) : ('assistant' as const),
+      text: t.text,
+    })));
+  }, [sessionStore.activeSession, sessionStore.activeSessionId, legacyDraft]);
+
+  // M20: place a collection idea (starter or agent-filed fact) on the board.
+  const placeIdeaOnBoard = useCallback((idea: CollectionIdea) => {
+    setBoard((b) => {
+      const base = b ?? createEmptyBoard();
+      return {
+        ...base,
+        cards: [...base.cards, createBoardCard(base.cards, {
+          cat: idea.cat,
+          title: idea.title,
+          desc: idea.desc,
+          chips: idea.chips,
+          ...(idea.av ? { av: idea.av } : {}),
+          ...(idea.factId ? { factId: idea.factId } : {}),
+        })],
+      };
+    });
+    setMode('board');
+    showToast(`“${idea.title}” added to the board`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // M20: `+ Idea` header button (prototype bsAddIdea) — lands near Loose Ideas.
+  const addLooseIdea = useCallback(() => {
+    setBoard((b) => {
+      const base = b ?? createEmptyBoard();
+      return {
+        ...base,
+        cards: [...base.cards, createBoardCard(base.cards, {
+          cat: 'loose',
+          title: 'New idea',
+          desc: 'Drag me anywhere — expand me with the Agent chat.',
+          chips: ['New'],
+        })],
+      };
+    });
+    showToast('Idea captured — landed near Loose Ideas');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // M20: chat-page stacked board drag-bar (prototype bsBoardResizeH).
+  const handleChatBoardResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = chatBoardHeight;
+    const move = (ev: MouseEvent) => {
+      setChatBoardHeight(Math.max(
+        CHAT_BOARD_MIN_H,
+        Math.min(CHAT_BOARD_MAX_H, startHeight - (ev.clientY - startY)),
+      ));
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }, [chatBoardHeight]);
+
   // SKY-1485: keep proposalsRef in sync so async confirm/reject callbacks read latest state
   useEffect(() => {
     proposalsRef.current = proposals;
   }, [proposals]);
 
-  // Warn before window close when there is an active session
+  // Warn before window close when there is unsaved user work. M20: the shared
+  // session store (SKY-6663) hydrates `messages` with the agent's auto-greeting
+  // on mount — a passive panel open with zero user interaction must not count
+  // as "an active session", or the window can never close (SKY-6930).
   useEffect(() => {
+    const hasUserMessage = messages.some((m) => m.role === 'user');
     const handler = (e: BeforeUnloadEvent) => {
-      if (messages.length > 0 || facts.length > 0 || prompt.trim()) {
+      if (hasUserMessage || facts.length > 0 || prompt.trim()) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [messages.length, facts.length, prompt]);
+  }, [messages, facts.length, prompt]);
 
   // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
   // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
@@ -702,6 +1013,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     dragSourceIdRef.current = null;
     contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
+    // M20 (SKY-6663): a fresh chat is a fresh shared-store session; the old
+    // one stays in the session dropdown. The sync effect hydrates its greeting.
+    hadDraftMessagesRef.current = false;
+    void sessionStoreRef.current.newSession();
   }, []);
 
   const handleDownload = useCallback(() => {
@@ -733,6 +1048,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     cleanupStreamRef.current?.();
 
     lastApiMessagesRef.current = apiMessages;
+    // M20 (SKY-6663): remember the user turn so the completed exchange can be
+    // appended to the shared agent-session store when the stream ends.
+    const lastApi = apiMessages[apiMessages.length - 1];
+    pendingUserTextRef.current = lastApi?.role === 'user' ? lastApi.content : '';
     streamingTextRef.current = '';
     lastTokenAtRef.current = Date.now();
     setStreamPhase('streaming');
@@ -808,6 +1127,20 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           ? `Response ready. ${factCount} fact${factCount !== 1 ? 's' : ''} detected.`
           : 'Response ready.',
       );
+
+      // M20 (SKY-6663): persist the completed exchange to the shared session
+      // store (fire-and-forget — the localStorage draft still covers crashes).
+      const userText = pendingUserTextRef.current;
+      const agentText = stripFactTags(fullText) || fullText;
+      pendingUserTextRef.current = '';
+      if (agentText.trim()) {
+        const at = new Date().toISOString();
+        void sessionStoreRef.current.appendTurns([
+          ...(userText.trim() ? [{ role: 'user' as const, text: userText, at }] : []),
+          { role: 'agent' as const, text: agentText, at },
+        ]);
+      }
+
       setLoading(false);
     });
 
@@ -1360,28 +1693,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     announce('New idea — edit details in the drawer.');
   }, [announce]);
 
-  // M19: Board mode add-idea row — prototype bsCols `add` (line 4244): a new
-  // "New idea" card captured to the column, announced with a toast. The card
-  // joins `facts`, so it flows into the draft, the facts panel, and the modes.
-  const addBoardIdea = useCallback((type: DetectedFact['type'], columnTitle: string) => {
-    const nowMs = Date.now();
-    const newFact: DetectedFact = {
-      id: `idea-${nowMs}-${Math.random().toString(36).slice(2)}`,
-      type,
-      name: 'New idea',
-      content: `Captured to ${columnTitle.toLowerCase()} — expand me later.`,
-      savedStatus: 'unsaved',
-      createdAt: nowMs,
-    };
-    setFacts((prev) => [...prev, newFact]);
-    setExpandedFactIds((prev) => {
-      const next = new Set(prev);
-      next.add(newFact.id);
-      return next;
-    });
-    showToast('Idea captured');
-  }, [showToast]);
-
   const handleDeleteFocused = useCallback(() => {
     const focused = document.activeElement;
     if (!focused) return;
@@ -1681,7 +1992,15 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             ← Back
           </button>
         }
-        title={mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'}
+        title={
+          mode === 'chat' && !compact ? (
+            <span className="bs-title-row">
+              Brainstorm Agent
+              {/* M20 (§7.2 + §11): session dropdown pill on the shared store. */}
+              <AgentSessionPicker store={sessionStore} className="bs-session-pill" />
+            </span>
+          ) : mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'
+        }
         subtitle={
           mode === 'chat'
             ? (curatorGreeting
@@ -1691,11 +2010,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         }
         actions={
           <>
-            {/* M19: mode segment — chat plus the Board/Map/Clusters visual modes
-                (prototype segMk styling, line 4221). Hidden in compact sidebar
-                contexts where only the chat fits. */}
+            {/* M20: page segment — Agent Chat (default) | Board (prototype
+                bsPages). Hidden in compact sidebar contexts where only the
+                chat fits. */}
             {!compact && (
-              <div className="bsc-seg" role="group" aria-label="Brainstorm view mode">
+              <div className="bsc-seg" role="group" aria-label="Brainstorm page">
                 {BRAINSTORM_MODES.map((m) => (
                   <button
                     key={m}
@@ -1710,6 +2029,24 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 ))}
               </div>
             )}
+            {/* M20: chat-page Board toggle — stacks the canvas under the chat
+                with a drag-bar height (prototype bsBoardToggle). */}
+            {!compact && mode === 'chat' && (
+              <div className="bs-board-toggle-wrap" title="Show the idea board below the chat">
+                <span>Board</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={chatBoardOpen}
+                  aria-label="Show board under chat"
+                  className={`bs-board-toggle${chatBoardOpen ? ' bs-board-toggle--on' : ''}`}
+                  onClick={() => setChatBoardOpen((v) => !v)}
+                  data-testid="bs-chat-board-toggle"
+                >
+                  <span className="bs-board-toggle-knob" aria-hidden="true" />
+                </button>
+              </div>
+            )}
             {/* M19: live extraction badge (prototype lines 1330–1335) — shown
                 while a reply is streaming and facts may be extracted. */}
             {mode === 'chat' && loading && (
@@ -1718,22 +2055,34 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 Extracting facts to vault
               </div>
             )}
-            {/* M19: idea search (prototype lines 1325–1328) — filters the
-                Board / Map / Clusters modes by idea title or body. */}
-            {!compact && mode !== 'chat' && (
-              <div className="bsc-search">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="6.5" />
-                  <path d="M20.5 20.5L16 16" />
-                </svg>
-                <input
-                  value={ideaQuery}
-                  onChange={(e) => setIdeaQuery(e.target.value)}
-                  placeholder="Search ideas…"
-                  aria-label="Search ideas"
-                  data-testid="bsc-search-input"
-                />
-              </div>
+            {/* M20: Board page adds `+ Idea` + `Search ideas…` (§7.2). */}
+            {!compact && mode === 'board' && (
+              <>
+                <button
+                  type="button"
+                  className="bsc-add-idea-btn"
+                  onClick={addLooseIdea}
+                  data-testid="bsc-add-idea"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Idea
+                </button>
+                <div className="bsc-search">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path d="M20.5 20.5L16 16" />
+                  </svg>
+                  <input
+                    value={ideaQuery}
+                    onChange={(e) => setIdeaQuery(e.target.value)}
+                    placeholder="Search ideas…"
+                    aria-label="Search ideas"
+                    data-testid="bsc-search-input"
+                  />
+                </div>
+              </>
             )}
             <div className="brainstorm-header-preset">
               <PresetSelector
@@ -1796,6 +2145,17 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       )}
 
       {mode === 'chat' && (
+      <div className={`brainstorm-layout${compact ? ' brainstorm-layout--compact' : ''}`}>
+        {/* M20: left IDEA COLLECTIONS panel (§7.2) — starter library + the
+            agent's captured ideas, placeable onto the board. */}
+        {!compact && (
+          <IdeaCollectionsPanel
+            pool={collectionsPool}
+            placedTitles={placedTitles}
+            onPlace={placeIdeaOnBoard}
+            showToast={showToast}
+          />
+        )}
       <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
         <div className="brainstorm-chat-col">
           <div className="brainstorm-messages">
@@ -2089,6 +2449,32 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               onBrowseFolder={handleBrowseFolder}
             />
           )}
+          {/* M20: Board toggle — the ONE canvas stacked under the chat with a
+              drag-bar height (prototype bsChatBoard / bsBoardResizeH). */}
+          {!compact && chatBoardOpen && board && (
+            <>
+              <div
+                className="bs-board-resize"
+                onMouseDown={handleChatBoardResize}
+                title="Drag to resize the board"
+                data-testid="bs-board-resize"
+              >
+                <div className="bs-board-resize-grip" aria-hidden="true" />
+              </div>
+              <BoardCanvas
+                cards={board.cards}
+                links={board.links}
+                onMoveCard={moveBoardCard}
+                onEditCard={editBoardCard}
+                onAddLink={addBoardLink}
+                noteIndex={noteIndex}
+                onOpenNote={onNavigateToEntity}
+                showToast={showToast}
+                synced={boardSynced}
+                stackedHeight={chatBoardHeight}
+              />
+            </>
+          )}
         </div>
 
         <div className="brainstorm-facts-col">
@@ -2106,12 +2492,12 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 <span className="bs-activity-stat-k">Notes</span>
               </div>
               <div className="bs-activity-stat">
-                <span className="bs-activity-stat-v" data-testid="bs-stat-ideas">{facts.length}</span>
-                <span className="bs-activity-stat-k">Ideas</span>
+                <span className="bs-activity-stat-v" data-testid="bs-stat-links">{board?.links.length ?? 0}</span>
+                <span className="bs-activity-stat-k">Links</span>
               </div>
               <div className="bs-activity-stat">
-                <span className="bs-activity-stat-v" data-testid="bs-stat-queued">{proposals.length}</span>
-                <span className="bs-activity-stat-k">Queued</span>
+                <span className="bs-activity-stat-v" data-testid="bs-stat-props">{proposals.length}</span>
+                <span className="bs-activity-stat-k">Props</span>
               </div>
             </div>
             <div className="bs-activity-label">BEHIND THE SCENES</div>
@@ -2134,6 +2520,53 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               )}
             </div>
           </div>
+
+          {/* M20 (§7.2): QUESTIONS FOR YOU — click sends the question to the chat. */}
+          {openQuestions.length > 0 && (
+            <div className="bs-questions-section" data-testid="bs-questions-section">
+              <div className="bs-side-label">QUESTIONS FOR YOU</div>
+              {openQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  className="bs-question-row"
+                  title="Answer it in the chat"
+                  onClick={() => void submitText(question)}
+                  disabled={loading}
+                  data-testid="bs-question-row"
+                >
+                  <span className="bs-question-mark" aria-hidden="true">?</span>
+                  <span>{question}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* M20 (§7.2): NOTES THAT NEED WORK — MISSING / NEEDS WORK chips;
+              clicking sends a drafting prompt into the chat. */}
+          {needsWorkRows.length > 0 && (
+            <div className="bs-needs-section" data-testid="bs-needs-section">
+              <div className="bs-side-label">NOTES THAT NEED WORK</div>
+              {needsWorkRows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  className="bs-needs-row"
+                  onClick={() => void submitText(`Let’s flesh out “${row.title}” — what do we know so far, and what’s missing?`)}
+                  disabled={loading}
+                  data-testid={`bs-needs-row-${row.id}`}
+                >
+                  <span className="bs-needs-main">
+                    <span className="bs-needs-title">{row.title}</span>
+                    <span className="bs-needs-sub">{row.sub}</span>
+                  </span>
+                  <span className={`bs-needs-chip${row.kind === 'MISSING' ? ' bs-needs-chip--missing' : ' bs-needs-chip--work'}`}>
+                    {row.kind}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* SKY-2585/SKY-2588: ContinuityPanel always rendered; enabled prop gates disabled state */}
           <div className="brainstorm-continuity-section">
@@ -2493,196 +2926,116 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           )}
         </div>
       </div>
+      </div>
       )}
 
-      {/* M19: Board / Map / Clusters modes — visualize the session's vault
-          ideas (prototype template lines 1371–1439 + renderVals 4230–4255). */}
-      {mode !== 'chat' && (
+      {/* M20 (§7.2): the ONE Board page — collections, canvas, agent side panel. */}
+      {mode === 'board' && (
+      <div className="brainstorm-layout">
+        {/* M20: left IDEA COLLECTIONS panel — shared with the chat page. */}
+        {!compact && (
+          <IdeaCollectionsPanel
+            pool={collectionsPool}
+            placedTitles={placedTitles}
+            onPlace={placeIdeaOnBoard}
+            showToast={showToast}
+          />
+        )}
         <div className="bsc-body">
-          {mode === 'board' && (
-            <>
-            <div className="bsc-board" data-testid="bsc-board">
-              {/* Zoom is a scale transform from top-left, prototype bsBoardSt line 4855. */}
-              <div
-                className="bsc-board-cols"
-                style={boardZoom !== 100 ? { transform: `scale(${boardZoom / 100})` } : undefined}
-              >
-                {IDEA_GROUP_DEFS.map((def) => {
-                  const columnIdeas = visibleIdeas.filter((idea) => idea.type === def.key);
-                  return (
-                    <div key={def.key} className="bsc-col" data-testid={`bsc-col-${def.key}`}>
-                      <div className={`bsc-col-head bsc-s${def.color + 1}`}>{def.title}</div>
-                      {columnIdeas.map((idea) => (
-                        <button
-                          key={idea.id}
-                          type="button"
-                          className={`bsc-card bsc-s${def.color + 1}`}
-                          onClick={() => openIdeaDetail(idea.id)}
-                          data-testid={`bsc-card-${idea.id}`}
-                        >
-                          <span className="bsc-card-row">
-                            {def.key === 'character' && (
-                              <span className="bsc-av" aria-hidden="true">
-                                {ideaInitials(idea.title)}
-                              </span>
-                            )}
-                            <span className="bsc-card-main">
-                              <span className="bsc-card-title">{idea.title}</span>
-                              {idea.body && <span className="bsc-card-desc">{idea.body}</span>}
-                            </span>
-                          </span>
-                          <span className="bsc-card-chips">
-                            <span className="bsc-chip">{FACT_TYPE_LABELS[idea.type]}</span>
-                          </span>
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        className={`bsc-add bsc-s${def.color + 1}`}
-                        onClick={() => addBoardIdea(def.key, def.title)}
-                        data-testid={`bsc-add-${def.key}`}
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Add idea
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+          {board && (
+            <BoardCanvas
+              cards={board.cards}
+              links={board.links}
+              query={ideaQuery}
+              onMoveCard={moveBoardCard}
+              onEditCard={editBoardCard}
+              onAddLink={addBoardLink}
+              noteIndex={noteIndex}
+              onOpenNote={onNavigateToEntity}
+              showToast={showToast}
+              synced={boardSynced}
+            />
+          )}
+        </div>
+        {/* M20 (§7.2): board-page right panel — explore buttons, saved
+            prompts, quick-generate. Every action runs through the real chat
+            streaming path. */}
+        {!compact && (
+          <aside className="bs-board-side" data-testid="bs-board-side">
+            <div className="bs-board-side-head">
+              <span className="bs-activity-dot" aria-hidden="true" />
+              <span className="bs-board-side-title">Brainstorm Agent</span>
+              <span className="bs-activity-live">LIVE</span>
             </div>
-            {/* M19: floating canvas tools + zoom (prototype lines 1420–1433,
-                bsTools line 4856). Zoom is functional; connect/frame/text are
-                staged for the M17 canvas engine integration. */}
-            <div className="bsc-tools" role="toolbar" aria-label="Board tools">
-              {BOARD_TOOLS.map((tool) => (
+            <div className="bs-board-side-scroll">
+              <div className="bs-side-label">WHAT WOULD YOU LIKE TO EXPLORE?</div>
+              {EXPLORE_PROMPTS.map(([label, promptText]) => (
                 <button
-                  key={tool.key}
+                  key={label}
                   type="button"
-                  title={tool.title}
-                  aria-label={tool.title}
-                  aria-pressed={boardTool === tool.key}
-                  className={`bsc-tool${boardTool === tool.key ? ' bsc-tool--active' : ''}`}
-                  onClick={() => {
-                    setBoardTool(tool.key);
-                    if (tool.key !== 'select') showToast(`${tool.title} tool — coming soon`);
-                  }}
-                  data-testid={`bsc-tool-${tool.key}`}
+                  className="bs-explore-btn"
+                  onClick={() => { setMode('chat'); void submitText(promptText); }}
+                  disabled={loading}
+                  data-testid="bs-explore-btn"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d={tool.path} />
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 4l1.5 4L17.5 9.5l-4 1.5L12 15l-1.5-4-4-1.5 4-1.5z" />
+                  </svg>
+                  {label}
+                </button>
+              ))}
+              <div className="bs-side-label">SAVED PROMPTS</div>
+              {savedPrompts.length === 0 ? (
+                <div className="bs-side-empty">Prompts you send in the chat reappear here.</div>
+              ) : (
+                savedPrompts.map((saved) => (
+                  <button
+                    key={saved}
+                    type="button"
+                    className="bs-saved-prompt"
+                    onClick={() => { setMode('chat'); void submitText(saved); }}
+                    disabled={loading}
+                    data-testid="bs-saved-prompt"
+                  >
+                    {saved}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="bs-quick-gen">
+              <div className="bs-side-label">QUICK GENERATE</div>
+              <div className="bs-quick-gen-row">
+                <textarea
+                  value={quickGenText}
+                  onChange={(e) => setQuickGenText(e.target.value)}
+                  placeholder="Give me 3 story beat ideas for the next chapter."
+                  aria-label="Quick generate prompt"
+                  data-testid="bs-quick-gen-input"
+                />
+                <button
+                  type="button"
+                  className="bs-quick-gen-send"
+                  aria-label="Send quick generate prompt"
+                  disabled={loading || !quickGenText.trim()}
+                  onClick={() => {
+                    const text = quickGenText.trim();
+                    if (!text) return;
+                    setQuickGenText('');
+                    setMode('chat');
+                    void submitText(text);
+                  }}
+                  data-testid="bs-quick-gen-send"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
                   </svg>
                 </button>
-              ))}
-              <div className="bsc-tools-sep" aria-hidden="true" />
-              <button
-                type="button"
-                className="bsc-zoom-btn"
-                onClick={() => setBoardZoom((z) => Math.max(50, z - 25))}
-                aria-label="Zoom out"
-                data-testid="bsc-zoom-out"
-              >
-                −
-              </button>
-              <span className="bsc-zoom-pct" data-testid="bsc-zoom-pct">{boardZoom}%</span>
-              <button
-                type="button"
-                className="bsc-zoom-btn"
-                onClick={() => setBoardZoom((z) => Math.min(200, z + 25))}
-                aria-label="Zoom in"
-                data-testid="bsc-zoom-in"
-              >
-                +
-              </button>
-            </div>
-            </>
-          )}
-
-          {mode === 'map' && (
-            <div className="bsc-map" data-testid="bsc-map" aria-label="Brainstorm mind map">
-              <svg className="bsc-map-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                {mapLayout.lines.map((line, i) => (
-                  <line
-                    key={i}
-                    x1={line.x1}
-                    y1={line.y1}
-                    x2={line.x2}
-                    y2={line.y2}
-                    className={`bsc-map-line bsc-s${line.color + 1}`}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-              </svg>
-              {mapLayout.hubs.map((hub) => (
-                <div
-                  key={hub.key}
-                  className={`bsc-map-hub bsc-s${hub.color + 1}`}
-                  style={{ left: `${hub.x}%`, top: `${hub.y}%` }}
-                  data-testid={`bsc-hub-${hub.key}`}
-                >
-                  {hub.title}
-                </div>
-              ))}
-              {mapLayout.nodes.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  className={`bsc-map-node bsc-s${node.color + 1}`}
-                  style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                  onClick={() => openIdeaDetail(node.id)}
-                  data-testid={`bsc-map-node-${node.id}`}
-                >
-                  {node.title}
-                </button>
-              ))}
-              <div className="bsc-map-legend">Mind-map of every idea, clustered by collection</div>
-            </div>
-          )}
-
-          {mode === 'clusters' && (
-            <div className="bsc-clusters" data-testid="bsc-clusters">
-              <div className="bsc-cluster-row">
-                {ideaGroups.map((group) => (
-                  <div
-                    key={group.key}
-                    className={`bsc-cluster bsc-s${group.color + 1}`}
-                    data-testid={`bsc-cluster-${group.key}`}
-                  >
-                    <div className="bsc-cluster-head">{group.title}</div>
-                    <div className="bsc-cluster-count">{group.ideas.length} ideas</div>
-                    <div className="bsc-cluster-chips">
-                      {group.ideas.map((idea) => (
-                        <button
-                          key={idea.id}
-                          type="button"
-                          className="bsc-cluster-chip"
-                          onClick={() => openIdeaDetail(idea.id)}
-                          data-testid={`bsc-cluster-chip-${idea.id}`}
-                        >
-                          {idea.title}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
               </div>
-              <div className="bsc-clusters-hint">
-                Clusters group ideas by gravity — the Brainstorm Agent re-clusters as your vault grows.
-              </div>
+              <div className="bs-quick-gen-note">AI responses may vary. Review for accuracy.</div>
             </div>
-          )}
-
-          <div className="bsc-statusbar">
-            <span>
-              {ideaQuery.trim() && visibleIdeas.length !== ideas.length
-                ? `${visibleIdeas.length} of ${ideas.length} ideas`
-                : `${visibleIdeas.length} ideas`}
-            </span>
-            <span className="bsc-statusbar-dot" aria-hidden="true">·</span>
-            <span>{clusterCount} clusters</span>
-          </div>
-        </div>
+          </aside>
+        )}
+      </div>
       )}
 
       {showPresetEditor && (
