@@ -498,13 +498,17 @@ describe('Obsidian-compatible scene files', () => {
   // SKY-5705 (GH #642): the vault I/O layer must never mangle prose — it only
   // ever splits/rejoins YAML frontmatter around an opaque prose string. These
   // tests pin that a full Word-like-formatting document (headings, lists,
-  // bold/italic/underline/strike, blockquote, code block, wiki-links) written
-  // through the Story persistence path comes back out byte-identical.
+  // bold/italic/underline/strike, blockquote, code block, wiki-links, and the
+  // SKY-5747 `{.center}`/`{.right}`/`{.justify}` block-alignment markers)
+  // written through the Story persistence path comes back out byte-identical.
   const FULL_MARK_SET_PROSE =
     '# Heading One\n\n' +
     '## Heading Two\n\n' +
+    '## Centered Heading {.center}\n\n' +
     'Some **bold**, *italic*, <u>underlined</u>, ~~struck~~ and `code` text, ' +
     'plus a [[Character: Elara]] link.\n\n' +
+    'A right-aligned paragraph. {.right}\n\n' +
+    'A justified paragraph. {.justify}\n\n' +
     '- bullet one\n' +
     '- bullet two\n\n' +
     '1. ordered one\n' +
