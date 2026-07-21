@@ -406,6 +406,7 @@ import {
   suggestMigrationTarget,
 } from './migration/mythosVaultMigrator.js';
 import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
+import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
 import {
@@ -7317,6 +7318,9 @@ function loadAppSettings(): AppSettings {
       if (!('waCadenceTrigger' in rawRecord)) base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
       if (!('waIdleHeartbeatConstantInterval' in rawRecord)) base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
       if (!('waIdleDebounceSeconds' in rawRecord)) base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
+      // SKY-7771: back-fill voice.voiceMode from the legacy pushToTalkMode
+      // checkbox and drop the duplicate key (see voiceSettingsMigration.ts).
+      base.voice = migrateVoicePushToTalk(base.voice as LegacyVoiceSettings | undefined);
     } catch {
       base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
