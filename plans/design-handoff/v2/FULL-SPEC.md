@@ -162,6 +162,7 @@ Left panel top: **timeline picker** (purple card: chart icon, current name + kin
 - **Spreadsheet:** table EVENT/CH/DATE·ERA/POV/LOCATION/IMPACT + **Narrative ⇄ Chronological** seg (`Chronological re-sorts by in-world date — flashbacks surface out of narrative order`, FLASHBACK badges) + group header rows per Group-By filter.
 - **Tension:** SVG dramatic-arc curve, one draggable point per chapter (ns-resize) vs dashed classic-arc reference, ACT separators, legend `your story / classic arc`.
 - **Relationships:** character rows × event columns presence dots. **Subway:** colored character lines through event stations.
+- Redlines/theming/states for Progress·Structure·Spreadsheet·Relationships·Subway: `docs/TIMELINE-VIEWS-DESIGN-SPEC.md` (SKY-7253). Plotlines+Tension layout plus the full keyboard-nav/a11y layer for all 5 view modes named in M24 (built ahead of SKY-6980): `docs/TIMELINE-VIEW-MODES-A11Y-SPEC.md` (SKY-7770).
 
 ### 8.6 Right panel — tabs **Inspector · Brainstorm · Archive**
 - **Inspector** (any click anywhere selects into it): Event editor (pencil toggles edit: TITLE, CHAPTER, **DATE/TIME button → picker**, LOCATION, POV, SUMMARY, Done/Delete; static view shows rows + KEY EVENT badge + impact chips). Lane-item editor (kind label Era/Span/Arc/Journey/World/Custom: TITLE, STARTS/ENDS (or APPEARS/UNTIL, or DAY+YEAR), `Set exact time…`, EMBEDS TIMELINE (spans only), COLOR swatch row, Delete). Plotline-card editor (title/plotline/chapter/what happens/written toggle/delete). All numeric fields use draft-commit (§1.4).
