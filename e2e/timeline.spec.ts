@@ -492,9 +492,14 @@ test('TC-TL-07: Tab cycles chronologically, Enter opens the editor, Delete remov
   // TC-TL-06 can leave the date-from input with a dirty DOM focus state after
   // dispatching synthetic events; clicking SCENE_1 here resets that focus and
   // pins focusedSceneId to SCENE_1 before we exercise Tab cycling.
+  // SCENE_1 is also TC-TL-03's own selection target, so by this point in the
+  // suite it's already selected and its SKY-793 detail card (anchored
+  // top-right, same corner the row occupies) is already showing over the row
+  // — force the click through it rather than a real-user coordinate click,
+  // same root cause TC-TL-06 routes around via a keyboard path above.
   const row1 = page.locator(`[data-testid="row-${SCENE_1.id}"]`);
   await expect(row1).toBeVisible({ timeout: 4_000 });
-  await row1.click();
+  await row1.click({ force: true });
   await expect(row1).toHaveClass(/tls-row--selected/, { timeout: 4_000 });
 
   const root = page.locator('[data-testid="timeline-spreadsheet-root"]');
