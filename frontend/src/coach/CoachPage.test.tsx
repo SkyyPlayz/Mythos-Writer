@@ -203,6 +203,33 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.getByText(/Pacing is rhythm/)).toBeInTheDocument();
   });
 
+  // SKY-7076 (gh-960 gap): the session picker must refuse to switch/new-chat
+  // while a reply is generating — pinning keeps persisted data correct
+  // regardless, but this closes the confusing-UX half of the gap too.
+  it('disables the session picker while a reply is generating, re-enables once it resolves', async () => {
+    const mock = installMockApi({ deferChat: true });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+
+    const input = screen.getByTestId('coach-input');
+    fireEvent.change(input, { target: { value: 'Why does this scene drag?' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+    expect(screen.getByTestId('coach-typing')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Session:/ }));
+    expect(screen.getByText('+ New chat')).toBeDisabled();
+
+    // The dropdown stays open across the resolution — re-check the SAME
+    // rendered button rather than re-toggling (a second click would just
+    // close the dropdown again).
+    await act(async () => { mock.resolveChat(); });
+    await flush();
+
+    expect(screen.getByText('+ New chat')).not.toBeDisabled();
+  });
+
   it('passes the open scene as teaching context', async () => {
     const { api } = installMockApi();
     const scene = story.chapters[1].scenes[0];
@@ -232,6 +259,81 @@ describe('CoachPage (§5.2)', () => {
     await flush();
     expect(agentSessions.appendTurns).toHaveBeenCalled();
     expect(agentSessions.appendTurns.mock.calls[0][1][0].text).toBe('Teach me pacing with my own text');
+  });
+
+  it('M13 §14.7: renders a persisted analysis card with COMPUTED vs COACH’S READ sections', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'analysis',
+            title: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
+            computed: [
+              ['Words', '1,842'], ['Read time', '~7 min'], ['Avg sentence length', '16.4 words'],
+              ['Dialogue · Description · Action', '38% · 47% · 15%'],
+              ['Filter words (felt, saw, heard)', '9 — clustered in ¶2'], ['Adverb dialogue tags', '3'],
+            ],
+            read: [
+              ['Purpose', 'Story progression — the descent commits Mira to the Undercity'],
+              ['Tension', 'Rising — steady climb after the token beat'],
+              ['Pacing', 'Medium — slows at the market crowd'],
+              ['POV', 'Third limited (Mira) — drifts once in the patrol paragraph'],
+            ],
+            takeaway: 'Strongest scene so far on atmosphere.',
+            drill: 'Drill: mark every paragraph D, A or T. 5 minutes.',
+          }),
+          at: AT,
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+
+    const card = screen.getByTestId('coach-analysis-card');
+    expect(card).toHaveTextContent('Full Scene Analysis — Sc. 2 · Into the Undercity');
+    expect(card).toHaveTextContent('COMPUTED · LOCAL · FREE');
+    expect(card).toHaveTextContent('no AI needed');
+    expect(card).toHaveTextContent('1,842');
+    expect(card).toHaveTextContent('9 — clustered in ¶2');
+    expect(card).toHaveTextContent("COACH'S READ · AI");
+    expect(card).toHaveTextContent('judgment calls — needs a model');
+    expect(card).toHaveTextContent('Rising — steady climb after the token beat');
+    expect(card).toHaveTextContent('Strongest scene so far on atmosphere.');
+    expect(screen.getByTestId('coach-drill')).toHaveTextContent(/5 minutes/);
+    expect(screen.queryByTestId('coach-read-unavailable')).not.toBeInTheDocument();
+  });
+
+  it('M13 acceptance: with AI disabled the computed section renders and the AI section is honest', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'analysis',
+            title: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
+            computed: [['Words', '1,842'], ['Read time', '~7 min']],
+            read: [],
+            readNote: "Coach's read unavailable — the computed stats above are local and always free.",
+            takeaway: '',
+          }),
+          at: AT,
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+
+    const card = screen.getByTestId('coach-analysis-card');
+    expect(card).toHaveTextContent('COMPUTED · LOCAL · FREE');
+    expect(card).toHaveTextContent('1,842');
+    // Both §5.4 sections are present — the AI one shows its honest state.
+    expect(card).toHaveTextContent("COACH'S READ · AI");
+    expect(screen.getByTestId('coach-read-unavailable'))
+      .toHaveTextContent(/Coach's read unavailable/);
+    // No empty takeaway box, no drill footer.
+    expect(card.querySelector('.coach-analysis-takeaway')).toBeNull();
+    expect(screen.queryByTestId('coach-drill')).not.toBeInTheDocument();
   });
 
   it('runtime lock (§14.6): the send flow touches only allowlisted APIs — never a scene write', async () => {

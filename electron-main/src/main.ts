@@ -726,12 +726,13 @@ const getNotesVaultRoot = () =>
  * per-story book.md spines) are re-synced so the FILES stay the source of
  * truth — copying the vault folder carries all structure (the storage rule).
  */
-function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): void {
-  writeManifestRaw(manifestPath, manifest);
+function writeManifest(manifestPath: string, manifest: import('./ipc.js').Manifest): number {
+  const bytes = writeManifestRaw(manifestPath, manifest);
   const mythosRoot = mythosRootForStoryVault(getVaultRoot());
   if (mythosRoot !== null && manifestPath === getManifestPath()) {
     syncCanonicalFromManifest(mythosRoot, manifest);
   }
+  return bytes;
 }
 
 // W0.1: settings-backed half of the seed-once marker (see vaultSeeding.ts).
@@ -1533,8 +1534,10 @@ const handlers: IpcHandlers = {
     // ManifestValidationError on the first invalid field; setupIpcMain's
     // try/catch converts it into { error } for the renderer.
     assertValidManifest(payload?.manifest);
-    writeManifest(getManifestPath(), payload.manifest);
-    const bytes = Buffer.byteLength(JSON.stringify(payload.manifest, null, 2), 'utf-8');
+    // SKY-6195: writeManifest returns the byte length of what was actually
+    // written (the structure-only, prose-stripped, compact-JSON form) — no
+    // second stringify just to report a size.
+    const bytes = writeManifest(getManifestPath(), payload.manifest);
     return { path: getManifestPath(), bytes };
   },
   [IPC_CHANNELS.VAULT_OPEN_FOLDER]: async () => {
@@ -2634,6 +2637,7 @@ const handlers: IpcHandlers = {
       current.tts,
       {
         sttBinaryToken: payload.sttBinaryToken,
+        sttModelToken: payload.sttModelToken,
         ttsBinaryToken: payload.ttsBinaryToken,
         ttsModelToken: payload.ttsModelToken,
       },
@@ -3063,13 +3067,16 @@ const handlers: IpcHandlers = {
     return { ok: false, error: `Unknown startMode: ${startMode}` };
   },
 
-  // SKY-12.4: debug reset — clears vault paths and onboardingComplete so the
-  // wizard re-appears on next boot. Only available when MYTHOS_DEV=1 is set.
-  [IPC_CHANNELS.ONBOARDING_RESET]: () => {
-    if (process.env.MYTHOS_DEV !== '1') {
-      return { ok: true as const };
+  // SKY-12.4 / SKY-7473: soft reset (default) only re-arms the onboarding
+  // gate (onboardingComplete: false) — safe in production, never touches an
+  // existing vault. Powers the user-facing "Replay onboarding" (WindowChrome)
+  // and "Replay welcome tour" (AboutSection) actions. `hard: true` additionally
+  // clears vault paths back to defaults for local from-scratch dev testing —
+  // still gated behind MYTHOS_DEV=1, unchanged from the original debug reset.
+  [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => {
+    if (payload?.hard && process.env.MYTHOS_DEV === '1') {
+      saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
     }
-    saveVaultSettings({ vaultRoot: defaultVaultRoot(), notesVaultRoot: undefined, layoutMode: undefined });
     const current = loadAppSettings();
     saveAppSettings({ ...current, onboardingComplete: false });
     return { ok: true as const };
@@ -4525,17 +4532,21 @@ const handlers: IpcHandlers = {
   // path. settings:set requires this token to change stt.localBinaryPath,
   // tts.localBinaryPath, or tts.localModelPath, so a renderer can never
   // promote an arbitrary local executable into the spawn surface.
-  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'tts-binary' | 'tts-model' }) => {
+  [IPC_CHANNELS.VOICE_PICK_BINARY]: async (payload: { kind: 'stt-binary' | 'stt-model' | 'tts-binary' | 'tts-model' }) => {
     const title =
       payload?.kind === 'tts-model'
         ? 'Select Local TTS Voice Model (.onnx)'
         : payload?.kind === 'tts-binary'
           ? 'Select Local TTS Binary (Piper)'
-          : 'Select Local STT Binary (whisper.cpp)';
+          : payload?.kind === 'stt-model'
+            ? 'Select Local STT Model File (ggml-*.bin)'
+            : 'Select Local STT Binary (whisper-cli)';
     const filters =
       payload?.kind === 'tts-model'
         ? [{ name: 'Piper voice model', extensions: ['onnx'] }, { name: 'All files', extensions: ['*'] }]
-        : [{ name: 'All files', extensions: ['*'] }];
+        : payload?.kind === 'stt-model'
+          ? [{ name: 'whisper.cpp GGML model', extensions: ['bin'] }, { name: 'All files', extensions: ['*'] }]
+          : [{ name: 'All files', extensions: ['*'] }];
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       title,

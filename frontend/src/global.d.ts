@@ -557,6 +557,7 @@ interface AppSettings {
     enabled: boolean;
     provider: 'local' | 'cloud' | 'auto';
     localBinaryPath?: string;
+    localModelPath?: string;
     cloudEndpoint?: string;
     cloudApiKey?: string;
   };
@@ -994,7 +995,7 @@ interface Window {
      */
     settingsSet: (
       settings: AppSettings,
-      tokens?: { sttBinaryToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
+      tokens?: { sttBinaryToken?: string; sttModelToken?: string; ttsBinaryToken?: string; ttsModelToken?: string },
     ) => Promise<{ saved: boolean; error?: string }>;
     /** Test connection to an AI provider (MYT-779). */
     settingsTestConnection: (provider: { kind: string; apiKey?: string; baseUrl?: string; model: string }) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
@@ -1002,7 +1003,7 @@ interface Window {
     providerListModels: (payload: { kind: string; baseUrl?: string }) => Promise<{ ok: true; models: string[] } | { ok: false; error: string }>;
     /** Main-process file picker for local voice binary / model selection (MYT-788). */
     voicePickBinary: (
-      kind: 'stt-binary' | 'tts-binary' | 'tts-model',
+      kind: 'stt-binary' | 'stt-model' | 'tts-binary' | 'tts-model',
     ) => Promise<{ path: string | null; cancelled: boolean; registrationToken: string | null }>;
     getAgentConfig: () => Promise<unknown>;
     setAgentConfig: (agent: string, config: unknown) => Promise<unknown>;
@@ -1272,8 +1273,9 @@ interface Window {
       sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
       customTemplate?: 'recommended' | 'blank';
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
-    // SKY-12.4: debug reset (MYTHOS_DEV=1 only) — clears vault paths so wizard re-appears
-    onboardingReset: () => Promise<{ ok: boolean }>;
+    // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
+    // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
+    onboardingReset: (payload?: { hard?: boolean }) => Promise<{ ok: boolean }>;
     // SKY-2971: Word (.docx) → Story Vault importer
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
     // SKY-2993: Obsidian vault importer

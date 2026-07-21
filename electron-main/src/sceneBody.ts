@@ -29,13 +29,34 @@ const HEADING_PREFIX_RE = /^#{1,6}(?=\s|$)/;
 /** Blank line between serialized segments (see blocksToMarkdownBody). */
 export const SEGMENT_SEPARATOR = '\n\n';
 
+// Non-allocating whitespace helpers — used in the manifest-write hot path
+// (computeSceneBodyLayout) where .trim()/.trimEnd() would allocate a new copy
+// of every block's prose string (3000 × 8KB = 24MB+ of GC pressure per write).
+function isWhitespaceChar(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+function isAllWhitespace(s: string): boolean {
+  for (let i = 0; i < s.length; i++) if (!isWhitespaceChar(s.charCodeAt(i))) return false;
+  return true;
+}
+function leadingWsLen(s: string): number {
+  let i = 0;
+  while (i < s.length && isWhitespaceChar(s.charCodeAt(i))) i++;
+  return i;
+}
+function trailingWsLen(s: string): number {
+  let i = s.length - 1;
+  while (i >= 0 && isWhitespaceChar(s.charCodeAt(i))) i--;
+  return s.length - 1 - i;
+}
+
 /**
  * Serialize one block to its `.md`-body segment, or null when the block
  * contributes no segment (empty / whitespace-only content is skipped, exactly
  * as the frontend serializer skips it).
  */
 export function serializeBlockSegment(block: SerializableBlock): string | null {
-  if (!block.content.trim()) return null;
+  if (isAllWhitespace(block.content)) return null;
   switch (block.type) {
     case 'heading':
       return HEADING_PREFIX_RE.test(block.content) ? block.content : `# ${block.content}`;
@@ -104,7 +125,7 @@ export function computeSceneBodyLayout(blocks: SerializableBlock[]): SceneBodyLa
   const raw: Array<{ index: number; length: number; leadWs: number; tailWs: number }> = [];
   for (const index of orderIdx) {
     const { type, content } = blocks[index];
-    if (!content.trim()) continue;
+    if (isAllWhitespace(content)) continue;
     let length: number;
     let leadWs = 0;
     let tailWs = 0;
@@ -112,11 +133,11 @@ export function computeSceneBodyLayout(blocks: SerializableBlock[]): SceneBodyLa
       case 'heading':
         // Verbatim when it already carries a `#` run, else prefixed with '# '.
         length = HEADING_PREFIX_RE.test(content) ? content.length : content.length + 2;
-        tailWs = content.length - content.trimEnd().length;
+        tailWs = trailingWsLen(content);
         break;
       case 'dialogue': // '> ' + content
         length = content.length + 2;
-        tailWs = content.length - content.trimEnd().length;
+        tailWs = trailingWsLen(content);
         break;
       case 'action': // '**' + content + '**' — marker-terminated on both ends
         length = content.length + 4;
@@ -129,8 +150,8 @@ export function computeSceneBodyLayout(blocks: SerializableBlock[]): SceneBodyLa
         break;
       default: // prose: content verbatim
         length = content.length;
-        leadWs = content.length - content.trimStart().length;
-        tailWs = content.length - content.trimEnd().length;
+        leadWs = leadingWsLen(content);
+        tailWs = trailingWsLen(content);
     }
     raw.push({ index, length, leadWs, tailWs });
   }

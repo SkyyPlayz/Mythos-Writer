@@ -152,6 +152,27 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [modelListError, setModelListError] = useState<string | null>(null);
   const [useCustomInput, setUseCustomInput] = useState(false);
 
+  // SKY-7422: registration tokens for voice local-engine path changes (MYT-788).
+  const [sttBinaryToken, setSttBinaryToken] = useState<string | null>(null);
+  const [sttModelToken, setSttModelToken] = useState<string | null>(null);
+
+  // SKY-7422: browse handlers for STT local binary / model.
+  const handlePickSttBinary = useCallback(async () => {
+    const result = await window.api.voicePickBinary('stt-binary');
+    if (result.cancelled || !result.path) return;
+    setSttBinaryToken(result.registrationToken);
+    setSettings((p) => ({ ...p, stt: { enabled: true, provider: 'local', ...p.stt, localBinaryPath: result.path! } }));
+    setSavedOk(false);
+  }, []);
+
+  const handlePickSttModel = useCallback(async () => {
+    const result = await window.api.voicePickBinary('stt-model');
+    if (result.cancelled || !result.path) return;
+    setSttModelToken(result.registrationToken);
+    setSettings((p) => ({ ...p, stt: { enabled: true, provider: 'local', ...p.stt, localModelPath: result.path! } }));
+    setSavedOk(false);
+  }, []);
+
   // SKY-1501: fetch available models from the selected provider endpoint.
   // Defined before the settings useEffect that calls it to avoid TDZ errors.
   const fetchModels = useCallback(async (kind: ProviderKind, baseUrl: string) => {
@@ -482,7 +503,17 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
         },
       };
-      await window.api.settingsSet(payload);
+      const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
+        ...(sttBinaryToken ? { sttBinaryToken } : {}),
+        ...(sttModelToken ? { sttModelToken } : {}),
+      };
+      if (Object.keys(voiceTokens).length > 0) {
+        await window.api.settingsSet(payload, voiceTokens);
+      } else {
+        await window.api.settingsSet(payload);
+      }
+      setSttBinaryToken(null);
+      setSttModelToken(null);
       setSavedOk(true);
       applyLiquidNeonTokens(lg, bgPreviewUrl);
       applyPageBackgroundTokens(pageBg);
@@ -492,7 +523,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -869,6 +900,179 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {/* Beta 3 M24: vault + story import (prototype Vault & Files page) */}
               <ImportVaultSection notesVaultPath={vaults.notesVaultPath} />
 
+              {/* ── Local STT engine (whisper.cpp) ── */}
+              <div className="settings-field">
+                <span className="settings-label" style={{ fontWeight: 600 }}>Local STT engine (whisper.cpp)</span>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-stt-binary">STT Binary</label>
+                <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                  <input
+                    id="voice-stt-binary"
+                    className="settings-input"
+                    type="text"
+                    readOnly
+                    value={settings.stt?.localBinaryPath ?? ''}
+                    placeholder="e.g. /usr/local/bin/whisper-cli"
+                    spellCheck={false}
+                    aria-label="STT binary path"
+                    aria-describedby="voice-stt-binary-hint"
+                  />
+                  <button
+                    type="button"
+                    className="settings-btn"
+                    onClick={handlePickSttBinary}
+                    aria-label="Browse for STT binary"
+                  >
+                    Browse…
+                  </button>
+                </div>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-stt-model">STT Model</label>
+                <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                  <input
+                    id="voice-stt-model"
+                    className="settings-input"
+                    type="text"
+                    readOnly
+                    value={settings.stt?.localModelPath ?? ''}
+                    placeholder="e.g. ~/models/ggml-tiny.en.bin"
+                    spellCheck={false}
+                    aria-label="STT model path"
+                    aria-describedby="voice-stt-model-hint"
+                  />
+                  <button
+                    type="button"
+                    className="settings-btn"
+                    onClick={handlePickSttModel}
+                    aria-label="Browse for STT model"
+                  >
+                    Browse…
+                  </button>
+                </div>
+              </div>
+              <p className="settings-hint" id="voice-stt-binary-hint">
+                Download whisper-cli from <strong>github.com/ggml-org/whisper.cpp/releases</strong> and a GGML model (e.g. ggml-tiny.en.bin) from the same release assets. Both paths are required for offline transcription.
+              </p>
+
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-language">Input language</label>
+                <select
+                  id="voice-language"
+                  className="settings-input settings-select"
+                  value={settings.voice?.inputLanguage ?? ''}
+                  aria-label="STT input language"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setSettings((p) => {
+                      const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                      return { ...p, voice: { ...voiceBase, inputLanguage: val } };
+                    });
+                    setSavedOk(false);
+                  }}
+                >
+                  <option value="">Auto-detect</option>
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                  <option value="es-ES">Spanish (Spain)</option>
+                  <option value="es-MX">Spanish (Mexico)</option>
+                  <option value="fr-FR">French</option>
+                  <option value="de-DE">German</option>
+                  <option value="pt-BR">Portuguese (Brazil)</option>
+                  <option value="ja-JP">Japanese</option>
+                  <option value="zh-CN">Chinese (Simplified)</option>
+                </select>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-voice">TTS voice</label>
+                <input
+                  id="voice-tts-voice"
+                  className="settings-input"
+                  type="text"
+                  value={settings.voice?.ttsVoiceId ?? ''}
+                  placeholder="e.g. alloy, nova, en_US/vctk_low"
+                  spellCheck={false}
+                  aria-label="TTS voice identifier"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setSettings((p) => {
+                      const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                      return { ...p, voice: { ...voiceBase, ttsVoiceId: val } };
+                    });
+                    setSavedOk(false);
+                  }}
+                />
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-volume">TTS volume</label>
+                <div className="settings-slider-row">
+                  <input
+                    id="voice-tts-volume"
+                    className="settings-slider"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={settings.voice?.ttsVolume ?? 1}
+                    aria-label="TTS volume"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, ttsVolume: val } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-slider-value">{Math.round((settings.voice?.ttsVolume ?? 1) * 100)}%</span>
+                </div>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-label" htmlFor="voice-tts-rate">TTS rate</label>
+                <div className="settings-slider-row">
+                  <input
+                    id="voice-tts-rate"
+                    className="settings-slider"
+                    type="range"
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={settings.voice?.ttsRate ?? 1}
+                    aria-label="TTS speech rate"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, ttsRate: val } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-slider-value">{(settings.voice?.ttsRate ?? 1).toFixed(1)}×</span>
+                </div>
+              </div>
+              <div className="settings-field settings-field-inline">
+                <label className="settings-toggle" htmlFor="voice-persistent-mute">
+                  <input
+                    id="voice-persistent-mute"
+                    type="checkbox"
+                    aria-label="Start microphone muted"
+                    checked={settings.voice?.persistentMute ?? false}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSettings((p) => {
+                        const voiceBase = { enabled: false, cloudFallback: false, ...p.voice };
+                        return { ...p, voice: { ...voiceBase, persistentMute: checked } };
+                      });
+                      setSavedOk(false);
+                    }}
+                  />
+                  <span className="settings-toggle-track" />
+                </label>
+                <span className="settings-label">Start microphone muted</span>
+              </div>
+
               <ImportStorySection />
 
               <VaultHealthSection />
@@ -1000,7 +1204,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 data-testid="reset-onboarding"
                 onClick={() => {
                   if (window.confirm('Reset onboarding? The wizard will re-appear on next boot.')) {
-                    window.api.onboardingReset().then(() => {
+                    window.api.onboardingReset({ hard: true }).then(() => {
                       window.location.reload();
                     }).catch(() => {});
                   }
