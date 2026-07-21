@@ -1241,8 +1241,17 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('listContinuityIssues(status) p95 < 100ms with 5000 rows', () => {
-    const RUNS = 20;
+  // Shared CI runners see occasional scheduling/GC jitter that can push a single
+  // sample well past its steady-state cost (SKY-1745 flaked twice on unrelated PRs,
+  // both times on one slow p95 sample under fleet load, not a real regression).
+  // Median is robust to that jitter while still catching a real regression, which
+  // shifts the whole distribution rather than one tail sample. p95 stays as a loose
+  // outlier guard.
+  const WARMUP_RUNS = 3;
+
+  it('listContinuityIssues(status) median < 100ms with 5000 rows', () => {
+    const RUNS = 30;
+    for (let w = 0; w < WARMUP_RUNS; w++) listContinuityIssues('open');
     const times: number[] = [];
     for (let r = 0; r < RUNS; r++) {
       const start = performance.now();
@@ -1250,21 +1259,26 @@ describe('archive query perf — 5000 rows (SKY-1745)', () => {
       times.push(performance.now() - start);
     }
     times.sort((a, b) => a - b);
+    const median = times[Math.floor(RUNS / 2)];
     const p95 = times[Math.ceil(RUNS * 0.95) - 1];
-    expect(p95).toBeLessThan(100);
+    expect(median).toBeLessThan(100);
+    expect(p95).toBeLessThan(300);
   });
 
-  it('listContinuityIssuesByScene(sceneId, status) p95 < 10ms with 5000 rows', () => {
-    const RUNS = 10;
+  it('listContinuityIssuesByScene(sceneId, status) median < 10ms with 5000 rows', () => {
+    const RUNS = 20;
+    for (let w = 0; w < WARMUP_RUNS; w++) listContinuityIssuesByScene('scene-0', 'ignored');
     const times: number[] = [];
     for (let r = 0; r < RUNS; r++) {
-      const start = Date.now();
+      const start = performance.now();
       listContinuityIssuesByScene('scene-0', 'ignored');
-      times.push(Date.now() - start);
+      times.push(performance.now() - start);
     }
     times.sort((a, b) => a - b);
+    const median = times[Math.floor(RUNS / 2)];
     const p95 = times[Math.ceil(RUNS * 0.95) - 1];
-    expect(p95).toBeLessThan(10);
+    expect(median).toBeLessThan(10);
+    expect(p95).toBeLessThan(50);
   });
 });
 
