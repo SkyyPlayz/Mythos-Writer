@@ -284,8 +284,12 @@ async function openAssistantPanel(page: Page): Promise<void> {
   // The Assist click only uncollapses the agent-hub panel's list view (the
   // AGENTS list: Writing Coach / Brainstorm Agent / Archive Agent / Beta
   // Reader). Drill into the Writing Coach row to reach the chat surface.
+  // isVisible() alone doesn't poll, so pair it with waitFor() first - without
+  // it, this race against the panel's re-render and flakily skip a needed
+  // click depending on prior test state (shared Electron app across tests).
   const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
-  if (await agentRow.isVisible({ timeout: 4_000 }).catch(() => false)) {
+  await agentRow.waitFor({ state: 'visible', timeout: 4_000 }).catch(() => {});
+  if (await agentRow.isVisible()) {
     await agentRow.click();
   }
 
@@ -295,7 +299,8 @@ async function openAssistantPanel(page: Page): Promise<void> {
   // by default. Click through the icon button to force overlayOpen, which
   // renders the full .writing-assistant-panel regardless of width.
   const openCoachBtn = page.getByRole('button', { name: /^Open Writing Coach/ });
-  if (await openCoachBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+  await openCoachBtn.waitFor({ state: 'visible', timeout: 4_000 }).catch(() => {});
+  if (await openCoachBtn.isVisible()) {
     await openCoachBtn.click();
   }
 
