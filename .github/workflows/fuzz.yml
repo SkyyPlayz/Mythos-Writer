@@ -19,13 +19,11 @@ on:
       - '.github/workflows/fuzz.yml'
   workflow_dispatch:
 
+# PR runs share a per-PR group with cancel-in-progress (SKY-7338); nightly and
+# manual runs fall back to a unique per-run group so they never cancel each other.
 concurrency:
   group: fuzz-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-concurrency:
-  group: fuzz-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   property-tests-and-fuzz:
