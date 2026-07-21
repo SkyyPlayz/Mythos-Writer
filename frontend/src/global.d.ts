@@ -1639,6 +1639,8 @@ interface Window {
     // SKY-6228: M15 — agent chat sessions
     agentSessions?: {
       list: (agent?: string) => Promise<{ sessions: AgentSessionSummary[] }>;
+      /** M20: hydrate one session's full turn history (session switch). */
+      read: (sessionId: string) => Promise<{ session: AgentSessionFile | null }>;
       create: (agent: string, title?: string, greeting?: string) => Promise<AgentSessionCreateResult>;
       rename: (sessionId: string, title: string) => Promise<{ ok: boolean }>;
       duplicate: (sessionId: string) => Promise<AgentSessionCreateResult>;

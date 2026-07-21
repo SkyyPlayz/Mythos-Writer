@@ -190,22 +190,22 @@ import {
   type OutlineSavePayload,
   type OutlineSaveResponse,
   type AgentSessionListPayload,
+  type AgentSessionReadPayload,
   type AgentSessionCreatePayload,
   type AgentSessionRenamePayload,
   type AgentSessionDuplicatePayload,
   type AgentSessionDeletePayload,
   type AgentSessionAppendTurnsPayload,
-  type AgentSessionReadPayload,
 } from './ipc.js';
 import { loadOutline, saveOutline } from './outline.js';
 import {
   handleAgentSessionList,
+  handleAgentSessionRead,
   handleAgentSessionCreate,
   handleAgentSessionRename,
   handleAgentSessionDuplicate,
   handleAgentSessionDelete,
   handleAgentSessionAppendTurns,
-  handleAgentSessionRead,
 } from './agentSessionsIpc.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
@@ -6678,6 +6678,9 @@ const handlers: IpcHandlers = {
   // (PR #917 review, B1/B2).
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
     handleAgentSessionList(getNotesVaultRoot(), payload),
+  // M20: hydrate one session’s full turn history (Brainstorm session switch)
+  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
+    handleAgentSessionRead(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
     handleAgentSessionCreate(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
@@ -6688,8 +6691,6 @@ const handlers: IpcHandlers = {
     handleAgentSessionDelete(getNotesVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
     handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
-  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
-    handleAgentSessionRead(getNotesVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───

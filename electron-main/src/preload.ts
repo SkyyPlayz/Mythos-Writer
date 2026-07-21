@@ -1003,6 +1003,7 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {
     list: (agent?: string) => ipcRenderer.invoke('agentSession:list', { agent }),
+    read: (sessionId: string) => ipcRenderer.invoke('agentSession:read', { sessionId }),
     create: (agent: string, title?: string, greeting?: string) =>
       ipcRenderer.invoke('agentSession:create', { agent, title, greeting }),
     rename: (sessionId: string, title: string) =>
@@ -1013,9 +1014,6 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('agentSession:delete', { sessionId }),
     appendTurns: (sessionId: string, turns: Array<{ role: 'user' | 'agent'; text: string; at: string }>) =>
       ipcRenderer.invoke('agentSession:appendTurns', { sessionId, turns }),
-    // M12 — hydrate a full session (turns included) on mount / switch.
-    read: (sessionId: string) =>
-      ipcRenderer.invoke('agentSession:read', { sessionId }),
   },
 
   // SKY-3189 (G3): true when running in a packaged Electron build.
