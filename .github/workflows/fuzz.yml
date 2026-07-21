@@ -19,13 +19,12 @@ on:
       - '.github/workflows/fuzz.yml'
   workflow_dispatch:
 
+# Single concurrency block (SKY-7775): a second duplicate `concurrency:` key
+# (left behind when #977 layered onto SKY-7338's block) made this workflow file
+# invalid YAML, so every run since 2026-07-18 failed with zero jobs.
 concurrency:
   group: fuzz-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-concurrency:
-  group: fuzz-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   property-tests-and-fuzz:
