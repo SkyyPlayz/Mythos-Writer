@@ -23,10 +23,6 @@ concurrency:
   group: fuzz-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-concurrency:
-  group: fuzz-pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   property-tests-and-fuzz:
     runs-on: ubuntu-latest
