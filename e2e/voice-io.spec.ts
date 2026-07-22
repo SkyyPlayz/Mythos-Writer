@@ -16,7 +16,7 @@
  * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 ✓                  |
  * | AC-V-07 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-07 (skip — needs card)|
  * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 ✓                  |
- * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E); 09b (skip — product q, SKY-7540) |
+ * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E); TC-V-09b ✓ |
  * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10a-e ✓               |
  * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 real               |
  * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 (skip — needs STT) |
@@ -46,9 +46,9 @@
  * - TC-V-09b: the Settings `#voice-enabled` toggle (appSettings.voice.enabled)
  *   no longer maps to the flag that gates the Brainstorm mic
  *   (agents.brainstorm.voiceEnabled — a separate, independent flag; the two
- *   have diverged). This needs a product call (cascade the global toggle to
- *   all per-embedding voice flags, or point the test at a per-embedding
- *   control), so it stays skipped pending that decision on SKY-7540.
+ *   had diverged). SKY-7891 made the product call: no cascade — each agent
+ *   keeps its own voice flag, matching the existing per-agent settings model.
+ *   The test now targets `#brainstorm-voice-enabled` and is un-skipped.
  *
  * TC-V-09 is a smoke E2E test — the primary assertion coverage lives in the
  * corresponding unit test file above. It verifies the surface renders in a
@@ -564,7 +564,17 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
   await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 });
 
-test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (SKY-7540 — #voice-enabled maps to appSettings.voice.enabled, but the Brainstorm mic reads the separate agents.brainstorm.voiceEnabled; the two have diverged, see follow-up)', async () => {
+// SKY-7891 product decision: the global Settings > Voice toggle (`#voice-enabled`,
+// appSettings.voice.enabled) governs dictation/TTS for the Notes and Writing
+// Assistant surfaces. It does NOT cascade to per-agent voice flags — each agent
+// (currently just Brainstorm, per SKY-2597) owns its own `voiceEnabled` + mic
+// device selection under Settings > Agents, matching the existing per-agent
+// settings model (model/provider/budgets are already per-agent, not global).
+// Cascading would make the dedicated Brainstorm voice toggle a redundant,
+// confusing second control over the same behavior, and would break down once a
+// second voice-capable agent is added. TC-V-09b is retargeted to the control
+// that actually gates Brainstorm mic visibility, per DesktopShell.tsx.
+test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', async () => {
   await openBrainstorm(page);
   await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toBeVisible({ timeout: 4_000 });
 
@@ -574,10 +584,10 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  const voiceToggle = page.locator('#voice-enabled');
-  await expect(voiceToggle).toBeChecked({ timeout: 6_000 });
-  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
-  await expect(voiceToggle).not.toBeChecked();
+  const brainstormVoiceToggle = page.locator('#brainstorm-voice-enabled');
+  await expect(brainstormVoiceToggle).toBeChecked({ timeout: 6_000 });
+  await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
+  await expect(brainstormVoiceToggle).not.toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
   await page.getByRole('button', { name: /^cancel$/i }).click();
@@ -588,8 +598,8 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  await page.locator('label[for="voice-enabled"] .settings-toggle-track').click();
-  await expect(voiceToggle).toBeChecked();
+  await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
+  await expect(brainstormVoiceToggle).toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
   await page.getByRole('button', { name: /^cancel$/i }).click();

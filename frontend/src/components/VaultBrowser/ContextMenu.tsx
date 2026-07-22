@@ -48,6 +48,8 @@ export default function ContextMenu({
   // Neon prototype): Open in new tab / Beta read / Continuity check / Rename… /
   // Delete. New Note / New Folder stay below a separator so the pre-existing
   // creation flows remain reachable from the same menu.
+  // SKY-7995: folder rows get Rename…/Delete too (Obsidian parity) — just
+  // without the file-only actions (open-tab, beta-read, continuity-check).
   const items: MenuItemDef[] = [
     ...(isFile
       ? [
@@ -58,7 +60,11 @@ export default function ContextMenu({
           { id: 'delete', label: 'Delete', destructive: true, disabled: !onDelete } as MenuItemDef,
           { id: 'new-note', label: 'New Note', separator: true } as MenuItemDef,
         ]
-      : [{ id: 'new-note', label: 'New Note' } as MenuItemDef]),
+      : [
+          ...(onRename ? [{ id: 'rename', label: 'Rename…' } as MenuItemDef] : []),
+          { id: 'delete', label: 'Delete', destructive: true, disabled: !onDelete } as MenuItemDef,
+          { id: 'new-note', label: 'New Note', separator: true } as MenuItemDef,
+        ]),
     { id: 'new-folder', label: 'New Folder' },
   ];
 
