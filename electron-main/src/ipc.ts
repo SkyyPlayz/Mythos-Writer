@@ -1814,6 +1814,17 @@ export interface AgentBrainstormResponse {
   text: string;
 }
 
+// ─── Archive Agent chat types (Beta 4 M25 — timeline side-chat + quick-add) ───
+
+export interface AgentArchivePayload {
+  prompt: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}
+
+export interface AgentArchiveResponse {
+  text: string;
+}
+
 // ─── Writing Assistant agent types (Epic 5) ───
 
 export interface AgentWritingAssistantPayload {

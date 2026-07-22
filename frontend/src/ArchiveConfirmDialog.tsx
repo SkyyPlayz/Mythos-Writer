@@ -10,6 +10,9 @@ export interface ArchiveConfirmDialogProps {
   anchorText: string;
   onClose: () => void;
   onResolved: (action: ArchiveConfirmAction) => void;
+  /** M25: override the default `archiveConfirm` backend — the timeline Flags
+   *  section resolves continuity items instead of scan suggestions. */
+  resolve?: (action: ArchiveConfirmAction) => Promise<void>;
 }
 
 export default function ArchiveConfirmDialog({
@@ -18,6 +21,7 @@ export default function ArchiveConfirmDialog({
   anchorText,
   onClose,
   onResolved,
+  resolve,
 }: ArchiveConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,18 +31,22 @@ export default function ArchiveConfirmDialog({
     setBusy(true);
     setError(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).api;
-      if (typeof api?.archiveConfirm === 'function') {
-        const result = await api.archiveConfirm(suggestionId, action);
-        if (result?.error) throw new Error(result.error);
+      if (resolve) {
+        await resolve(action);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).api;
+        if (typeof api?.archiveConfirm === 'function') {
+          const result = await api.archiveConfirm(suggestionId, action);
+          if (result?.error) throw new Error(result.error);
+        }
       }
       onResolved(action);
     } catch (err) {
       setError((err as Error).message ?? 'An unexpected error occurred.');
       setBusy(false);
     }
-  }, [suggestionId, onResolved]);
+  }, [suggestionId, onResolved, resolve]);
 
   return (
     <Dialog open onClose={onClose} aria-labelledby={titleId}>
