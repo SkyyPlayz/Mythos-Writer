@@ -41,6 +41,8 @@ JOB_TIMEOUTS = {
 # Thresholds
 RUN_TIMEOUT_THRESHOLD = 120  # 2 hours for any run
 JOB_TIMEOUT_MULTIPLIER = 2.0  # jobs stuck for 2× their declared timeout
+DISPATCH_WEDGE_THRESHOLD_MINUTES = 5  # a queued run with 0 jobs after this long is wedged
+DISPATCH_WEDGE_WORKFLOW_FILE = "ci.yml"
 
 
 def log(msg: str):
@@ -249,6 +251,84 @@ def detect_wedged_runners(stuck_jobs):
     return wedged
 
 
+def get_wedged_dispatch_runs():
+    """
+    Detect pull_request-triggered runs that GitHub accepted (status=queued)
+    but never dispatched any jobs to (0 jobs after DISPATCH_WEDGE_THRESHOLD_MINUTES).
+
+    Distinct from get_stuck_jobs()/get_stuck_runs(), which only look at
+    status=in_progress runs. A dispatch-wedged run never reaches in_progress
+    at all, so it is invisible to the other checks.
+    """
+    runs = gh_api(f"/repos/{REPO}/actions/runs?per_page=30&status=queued")
+    if not runs or "workflow_runs" not in runs:
+        return []
+
+    wedged = []
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    for run in runs["workflow_runs"]:
+        if run.get("event") != "pull_request":
+            continue
+
+        run_id = run["id"]
+        created_at = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+        created_at = created_at.replace(tzinfo=None)
+        elapsed_minutes = (now - created_at).total_seconds() / 60
+
+        if elapsed_minutes < DISPATCH_WEDGE_THRESHOLD_MINUTES:
+            continue
+
+        jobs = gh_api(f"/repos/{REPO}/actions/runs/{run_id}/jobs")
+        job_count = len(jobs["jobs"]) if jobs and "jobs" in jobs else 0
+
+        if job_count == 0:
+            head_branch = run.get("head_branch")
+            log(
+                f"DISPATCH-WEDGED RUN: run_id={run_id} branch={head_branch} "
+                f"queued for {elapsed_minutes:.1f}m with 0 jobs dispatched"
+            )
+            wedged.append(
+                {
+                    "run_id": run_id,
+                    "head_branch": head_branch,
+                    "elapsed_minutes": elapsed_minutes,
+                }
+            )
+
+    return wedged
+
+
+def force_cancel_run(run_id: int) -> bool:
+    """
+    Cancel a run that never dispatched jobs. A plain /cancel is a documented
+    no-op for 0-job queued runs, so issue it twice: GitHub Actions treats the
+    second call (once the run is already marked cancelling) as the forcing
+    action that actually clears the queue slot.
+    """
+    gh_api(f"/repos/{REPO}/actions/runs/{run_id}/cancel", method="POST", body={})
+    result = gh_api(f"/repos/{REPO}/actions/runs/{run_id}/cancel", method="POST", body={})
+    if result is not None:
+        log(f"✓ Force-cancelled dispatch-wedged run {run_id}")
+        return True
+    log(f"✗ Force-cancel failed for run {run_id}")
+    return False
+
+
+def retrigger_workflow(branch: str) -> bool:
+    """Re-dispatch ci.yml for the branch via workflow_dispatch."""
+    result = gh_api(
+        f"/repos/{REPO}/actions/workflows/{DISPATCH_WEDGE_WORKFLOW_FILE}/dispatches",
+        method="POST",
+        body={"ref": branch},
+    )
+    if result is not None:
+        log(f"✓ Re-triggered {DISPATCH_WEDGE_WORKFLOW_FILE} on {branch}")
+        return True
+    log(f"✗ Re-trigger failed for {branch}")
+    return False
+
+
 def main():
     if not GITHUB_TOKEN:
         log("ERROR: GITHUB_TOKEN not set")
@@ -274,10 +354,23 @@ def main():
     # Detect wedged runners (correlate with stuck jobs)
     wedged_runners = detect_wedged_runners(stuck_jobs)
 
+    # Detect dispatch-wedged pull_request runs (queued, 0 jobs, distinct from
+    # the above which only cover status=in_progress runs)
+    dispatch_wedged = get_wedged_dispatch_runs()
+    resolved_dispatch_wedges = 0
+    for run in dispatch_wedged:
+        if force_cancel_run(run["run_id"]) and run["head_branch"]:
+            if retrigger_workflow(run["head_branch"]):
+                resolved_dispatch_wedges += 1
+
     log("=== Summary ===")
     log(f"Stuck runs detected: {len(stuck_runs)}, cancelled: {cancelled_runs}")
     log(f"Stuck jobs detected: {len(stuck_jobs)}, cancelled: {cancelled_jobs}")
     log(f"Wedged runners detected: {len(wedged_runners)}")
+    log(
+        f"Dispatch-wedged PR runs detected: {len(dispatch_wedged)}, "
+        f"force-cancelled+retriggered: {resolved_dispatch_wedges}"
+    )
 
     if wedged_runners:
         log("WARNING: Wedged runners detected. Manual restart may be needed:")
