@@ -102,8 +102,8 @@ async function renderPage() {
   return result;
 }
 
-describe('SceneCrafterPage — board loading and empty state', () => {
-  it('auto-creates a board when none exists and renders the 5 canonical lanes', async () => {
+describe('SceneCrafterPage — board loading (SKY-7601: no more lanes Kanban)', () => {
+  it('auto-creates a board when none exists and renders without the retired lanes UI', async () => {
     const api = makeApi({
       sceneCrafterGetBoard: vi.fn().mockResolvedValue(null),
       sceneCrafterCreateBoard: vi.fn().mockResolvedValue(cloneBoard()),
@@ -114,147 +114,40 @@ describe('SceneCrafterPage — board loading and empty state', () => {
 
     expect(api.sceneCrafterGetBoard).toHaveBeenCalledWith('story-1', 'Skyfall Chronicles');
     expect(api.sceneCrafterCreateBoard).toHaveBeenCalledWith('story-1', 'Skyfall Chronicles');
-    for (const lane of ['Idea', 'Outline', 'Draft', 'Revision', 'Done']) {
-      expect(screen.getByTestId(`scene-crafter-lane-${lane}`)).toBeInTheDocument();
-    }
+    expect(document.querySelector('.scene-crafter-lanes')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add lane/i })).not.toBeInTheDocument();
   });
 
-  it('shows the empty-board CTA only while the board has no cards', async () => {
-    const emptyBoard = cloneBoard();
-    emptyBoard.lanes.forEach((lane) => { lane.cards = []; });
-    (window as unknown as { api: unknown }).api = makeApi({ sceneCrafterGetBoard: vi.fn().mockResolvedValue(emptyBoard) });
-
+  it('does not render the legacy per-card checkbox/lane UI even when the on-disk board still has lanes', async () => {
     await renderPage();
 
-    expect(screen.getByText(/drag a vault note here/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('scene-crafter-lane-Idea')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('scene-crafter-card-Notes/Opening Beat')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /mark Opening Beat done/i })).not.toBeInTheDocument();
   });
 });
 
-describe('SceneCrafterPage — card rendering and mutations', () => {
-  it('renders card title, visible tags, and hides #manuscript tags from chips', async () => {
-    await renderPage();
+describe('SceneCrafterPage — SKY-7601 Linked scenes (manuscriptSceneId/"Go to scene" preserved)', () => {
+  it('shows a Linked scenes list with "Go to scene" for a board card carrying a manuscript/ tag', async () => {
+    const onOpenScene = vi.fn();
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={onOpenScene} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
 
-    const card = screen.getByTestId('scene-crafter-card-Notes/Opening Beat');
-    expect(within(card).getByText('Opening Beat')).toBeInTheDocument();
-    expect(within(card).getByText('#character')).toBeInTheDocument();
-    expect(within(card).getByText('#urgent')).toBeInTheDocument();
-    expect(within(card).queryByText('#manuscript/scene-1')).not.toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: /go to scene/i })).toBeInTheDocument();
+    const linked = screen.getByTestId('crafter-linked-scenes');
+    expect(within(linked).getByText('Opening Beat')).toBeInTheDocument();
+
+    fireEvent.click(within(linked).getByRole('button', { name: /go to scene/i }));
+    expect(onOpenScene).toHaveBeenCalledWith('scene-1');
   });
 
-  it('toggles a card checkbox through the Scene Crafter IPC handler', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
+  it('omits the Linked scenes section when no board card has a manuscript/ tag', async () => {
+    const board = cloneBoard();
+    board.lanes[0].cards[0].tags = ['character', 'urgent'];
+    (window as unknown as { api: unknown }).api = makeApi({ sceneCrafterGetBoard: vi.fn().mockResolvedValue(board) });
+
     await renderPage();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /mark Opening Beat done/i }));
-
-    await waitFor(() => {
-      expect(api.sceneCrafterToggleCardDone).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        laneIndex: 0,
-        cardIndex: 0,
-      });
-    });
-  });
-
-  it('moves a card between lanes and persists by calling sceneCrafterMoveCard', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.dragStart(screen.getByTestId('scene-crafter-card-Notes/Opening Beat'));
-    fireEvent.dragOver(screen.getByTestId('scene-crafter-lane-Draft'));
-    fireEvent.drop(screen.getByTestId('scene-crafter-lane-Draft'));
-
-    await waitFor(() => {
-      expect(api.sceneCrafterMoveCard).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        fromLane: 0,
-        fromIndex: 0,
-        toLane: 2,
-        toIndex: 0,
-      });
-    });
-  });
-
-  it('creates a card from a dropped vault note path', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.drop(screen.getByTestId('scene-crafter-lane-Outline'), {
-      dataTransfer: {
-        getData: (type: string) => type === 'application/x-mythos-note-path' ? 'Characters/Lyra.md' : '',
-      },
-    });
-
-    await waitFor(() => {
-      expect(api.sceneCrafterAddCard).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        laneIndex: 1,
-        card: { wikilink: 'Characters/Lyra', title: 'Lyra', done: false, tags: [] },
-      });
-    });
-  });
-});
-
-describe('SceneCrafterPage — lane management and error states', () => {
-  it('renames a lane through IPC after double-click edit', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.doubleClick(screen.getByText('Idea'));
-    const input = screen.getByRole('textbox', { name: /rename lane Idea/i });
-    fireEvent.change(input, { target: { value: 'Spark' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(api.sceneCrafterRenameLane).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        laneIndex: 0,
-        name: 'Spark',
-      });
-    });
-  });
-
-  it('requires confirmation before deleting a non-empty lane', async () => {
-    const api = makeApi({
-      sceneCrafterDeleteLane: vi.fn()
-        .mockResolvedValueOnce({ ok: false, cardCount: 1 })
-        .mockResolvedValueOnce({ ok: true, cardCount: 1 }),
-    });
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: /delete lane Idea/i }));
-    expect(await screen.findByText(/lane has 1 card/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /delete anyway/i }));
-
-    await waitFor(() => {
-      expect(api.sceneCrafterDeleteLane).toHaveBeenLastCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        laneIndex: 0,
-        force: true,
-      });
-    });
-  });
-
-  it('shows a write-error toast and retries the failed mutation', async () => {
-    const api = makeApi({
-      sceneCrafterToggleCardDone: vi.fn()
-        .mockRejectedValueOnce(new Error('disk full'))
-        .mockResolvedValueOnce({ ok: true }),
-    });
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.click(screen.getByRole('checkbox', { name: /mark Opening Beat done/i }));
-    expect(await screen.findByText(/could not save scene crafter board/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /retry save/i }));
-
-    await waitFor(() => expect(api.sceneCrafterToggleCardDone).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('crafter-linked-scenes')).not.toBeInTheDocument();
   });
 });
 
@@ -267,38 +160,6 @@ describe('SceneCrafterPage — SKY-1805 post-merge bug fixes', () => {
     expect(api.sceneCrafterClose).toHaveBeenCalledWith('Skyfall Chronicles');
   });
 
-  it('blocks mutations while conflicted — IPC handlers not called after external-edit signal', async () => {
-    let externalEditHandler: ((storySlug: string) => void) | undefined;
-    const api = makeApi({
-      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
-        externalEditHandler = cb;
-        return vi.fn();
-      }),
-    });
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
-
-    fireEvent.click(screen.getByRole('button', { name: /add lane/i }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /mark Opening Beat done/i }));
-    await act(async () => {});
-
-    expect(api.sceneCrafterAddLane).not.toHaveBeenCalled();
-    expect(api.sceneCrafterToggleCardDone).not.toHaveBeenCalled();
-  });
-
-  it('empty-state copy does not reference a non-existent "Add card" button', async () => {
-    const emptyBoard = cloneBoard();
-    emptyBoard.lanes.forEach((lane) => { lane.cards = []; });
-    (window as unknown as { api: unknown }).api = makeApi({
-      sceneCrafterGetBoard: vi.fn().mockResolvedValue(emptyBoard),
-    });
-
-    await renderPage();
-
-    expect(screen.queryByText(/add card/i)).not.toBeInTheDocument();
-  });
 });
 
 describe('SceneCrafterPage — conflict banner', () => {
@@ -326,70 +187,6 @@ describe('SceneCrafterPage — conflict banner', () => {
       board,
     }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-});
-
-describe('SceneCrafterPage — keyboard card move (M1 a11y)', () => {
-  it('moves a card via "Move to…" button menu without a pointing device', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    const card = screen.getByTestId('scene-crafter-card-Notes/Opening Beat');
-    fireEvent.click(within(card).getByRole('button', { name: /move Opening Beat to lane/i }));
-
-    const menu = screen.getByRole('menu', { name: /choose lane for Opening Beat/i });
-    expect(menu).toBeInTheDocument();
-
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Draft' }));
-
-    await waitFor(() => {
-      expect(api.sceneCrafterMoveCard).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        fromLane: 0,
-        fromIndex: 0,
-        toLane: 2,
-        toIndex: 0,
-      });
-    });
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-  });
-
-  it('closes the "Move to…" menu on Escape and does not move the card', async () => {
-    await renderPage();
-
-    const card = screen.getByTestId('scene-crafter-card-Notes/Opening Beat');
-    fireEvent.click(within(card).getByRole('button', { name: /move Opening Beat to lane/i }));
-    expect(screen.getByRole('menu')).toBeInTheDocument();
-
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
-
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-  });
-
-  it('reorders lanes left/right via keyboard buttons', async () => {
-    const api = makeApi();
-    (window as unknown as { api: unknown }).api = api;
-    await renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: /move lane Outline right/i }));
-
-    await waitFor(() => {
-      expect(api.sceneCrafterReorderLanes).toHaveBeenCalledWith({
-        storySlug: 'Skyfall Chronicles',
-        fromIndex: 1,
-        toIndex: 2,
-      });
-    });
-  });
-
-  it('disables move-left on first lane and move-right on last lane', async () => {
-    await renderPage();
-
-    expect(screen.getByRole('button', { name: /move lane Idea left/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /move lane Done right/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /move lane Idea right/i })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /move lane Done left/i })).not.toBeDisabled();
   });
 });
 
@@ -537,6 +334,56 @@ describe('SceneCrafterPage — M19 right kanban: beats/cast/places (§7.1, AC8)'
 
     const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
     expect(within(kanban).getByText('Cold open on the sealed door')).toBeInTheDocument();
+  });
+});
+
+describe('SceneCrafterPage — SKY-7601 suggested-card selection (rewired off the retired lanes board)', () => {
+  async function renderWithSuggested() {
+    const api = streamingApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+    return api;
+  }
+
+  it('clicking a suggested card marks it selected without writing to the Scene Crafter board', async () => {
+    const api = await renderWithSuggested();
+    const suggested = screen.getByLabelText('Suggested cards');
+    const card = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+
+    expect(card).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(card);
+
+    expect(card).toHaveAttribute('aria-pressed', 'true');
+    expect(api.sceneCrafterAddCard).not.toHaveBeenCalled();
+  });
+
+  it('clicking a selected suggested card again deselects it', async () => {
+    await renderWithSuggested();
+    const suggested = screen.getByLabelText('Suggested cards');
+    const card = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+
+    fireEvent.click(card);
+    fireEvent.click(card);
+
+    expect(card).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('a selected suggested card is included as context in the AI draft prompt', async () => {
+    const api = await renderWithSuggested();
+    const suggested = screen.getByLabelText('Suggested cards');
+    fireEvent.click(within(suggested).getByRole('button', { name: /Mira Veynn/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate ✦' }));
+
+    await waitFor(() => expect(api.streamStart).toHaveBeenCalledTimes(1));
+    const [{ messages }] = (api.streamStart as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(messages[0].content).toContain('Mira Veynn');
   });
 });
 

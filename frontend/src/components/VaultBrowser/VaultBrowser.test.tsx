@@ -1183,15 +1183,20 @@ describe('NotesVault context menu (M15)', () => {
     expect(screen.getByTestId('ln-menu-separator')).toBeInTheDocument();
   });
 
-  it('directory rows keep the creation-only menu (no prototype file actions)', async () => {
+  // SKY-7995: directories get Obsidian-parity Rename/Delete now — they just
+  // don't get the file-only actions (open-tab / beta-read / continuity-check).
+  it('directory rows get Rename/Delete but not the file-only actions', async () => {
     render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
     await waitFor(() => expect(screen.getByTestId('vb-row-folder')).toBeInTheDocument());
     fireEvent.contextMenu(screen.getByTestId('vb-row-folder'));
     await screen.findByTestId('vb-context-menu');
     expect(screen.getByTestId('menu-item-new-note')).toBeInTheDocument();
     expect(screen.getByTestId('menu-item-new-folder')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-item-rename')).toBeInTheDocument();
+    expect(screen.getByTestId('menu-item-delete')).toBeInTheDocument();
     expect(screen.queryByTestId('menu-item-open-tab')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('menu-item-delete')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('menu-item-beta-read')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('menu-item-continuity-check')).not.toBeInTheDocument();
   });
 
   it('"Open in new tab" falls back to onOpenFile with the note path', async () => {

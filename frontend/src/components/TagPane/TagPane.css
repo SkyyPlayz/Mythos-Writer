@@ -201,6 +201,11 @@
   outline: none;
 }
 
+.tp-rename-input:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
 .tp-rename-error {
   font-size: 0.65rem;
   color: var(--neon-magenta, #ff3dbb);
