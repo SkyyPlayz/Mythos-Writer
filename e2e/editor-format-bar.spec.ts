@@ -192,6 +192,12 @@ test('FB-04: heading select offers H1-H6 and each level round-trips through the 
     for (let level = 1; level <= 6; level++) {
       await editor.click();
       await page.keyboard.press('Control+End');
+      // Ctrl+End moves the native DOM selection synchronously, but Tiptap/ProseMirror
+      // resyncs its own internal selection from `selectionchange` on the next frame.
+      // Pressing Enter before that resync lands, ProseMirror still has the PREVIOUS
+      // selection (the just-created heading's full text) and Enter's default
+      // deleteSelection+split wipes that heading's text (SKY-7550).
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await page.keyboard.press('Enter');
       await page.keyboard.type(`Heading Level ${level}`);
       await headingSelect.selectOption(`h${level}`);

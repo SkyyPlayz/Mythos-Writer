@@ -1976,8 +1976,6 @@ export interface VoiceSettings {
   toggleShortcut?: string;
   /** Hold key for push-to-talk mode (e.g. 'alt+v'). Default: 'alt+v'. */
   pttKey?: string;
-  /** When true, Ctrl+Shift+M starts recording on keydown and stops on keyup (hold-to-talk). */
-  pushToTalkMode?: boolean;
   /** STT input language code, e.g. 'en-US'. Absent = auto-detect. */
   inputLanguage?: string;
   /** TTS voice identifier (Piper model voice or OpenAI voice name, e.g. 'alloy'). */
