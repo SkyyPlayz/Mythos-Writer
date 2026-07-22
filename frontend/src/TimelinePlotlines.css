@@ -1,0 +1,203 @@
+/* Beta 4 M24 — Plotlines (Plottr grid, §8.5). */
+
+.tlp-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 20px 20px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tlp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.tlp-toolbar-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8e9db8;
+  text-transform: uppercase;
+}
+
+.tlp-zoom-seg {
+  display: flex;
+  gap: 2px;
+  border-radius: 8px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tlp-zoom-btn {
+  border: none;
+  background: none;
+  color: #8e9db8;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tlp-zoom-btn--active {
+  background: rgba(0, 240, 255, 0.14);
+  color: var(--n1, #00f0ff);
+}
+
+.tlp-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.tlp-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.tlp-header-row,
+.tlp-row {
+  display: flex;
+}
+
+.tlp-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 150px;
+  flex: none;
+  background: var(--color-panel-bg, #0f1420);
+}
+
+.tlp-corner {
+  height: 34px;
+}
+
+.tlp-col-head {
+  flex: none;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8e9db8;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tlp-here {
+  position: absolute;
+  bottom: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--n1, #00f0ff);
+  white-space: nowrap;
+}
+
+.tlp-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-height: 74px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tlp-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.tlp-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6ecf9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.tlp-count {
+  font-size: 10px;
+  color: #586a88;
+  flex: none;
+}
+
+.tlp-cell {
+  flex: none;
+  min-height: 74px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.tlp-card {
+  width: 100%;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 10.5px;
+  color: #e6ecf9;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: grab;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlp-add-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: none;
+  color: #586a88;
+  font-size: 12px;
+  cursor: pointer;
+  align-self: center;
+}
+
+.tlp-add-btn:hover {
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+/* ── Empty state ── */
+
+.tlp-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+}
+
+.tlp-empty h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text, #e6ecf9);
+  margin: 0;
+}
+
+.tlp-empty p {
+  font-size: 0.8rem;
+  color: #8e9db8;
+  margin: 0;
+}

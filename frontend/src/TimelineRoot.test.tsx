@@ -102,6 +102,14 @@ vi.mock('./TimelineSubway', () => ({
   default: () => <div data-testid="mock-subway">Subway</div>,
 }));
 
+vi.mock('./TimelinePlotlines', () => ({
+  default: (props: { chapters?: unknown[] }) => (
+    <div data-testid="mock-plotlines" data-chapter-count={props.chapters?.length ?? 0}>
+      Plotlines
+    </div>
+  ),
+}));
+
 // ─── Fixtures ───
 
 const STORY: Story = {
@@ -216,10 +224,10 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
   });
 
-  it('Plotlines and Tension explain themselves until M24', async () => {
+  it('Plotlines renders the Plottr grid (M24); Tension explains itself until M24', async () => {
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-plot'));
-    expect(screen.getByTestId('tlr-plot-stub')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-plotlines')).toBeInTheDocument();
     expect(screen.queryByTestId('mock-axis')).toBeNull();
     fireEvent.click(screen.getByTestId('view-mode-tension'));
     expect(screen.getByTestId('tlr-tension-stub')).toBeInTheDocument();

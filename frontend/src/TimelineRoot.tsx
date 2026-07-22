@@ -5,7 +5,8 @@
 // as the DEFAULT mode. Progress/Structure render the M22/M23 axis lane rows
 // straight from the M21 timelines store; Spreadsheet / Relationships / Subway
 // keep their legacy surfaces until M24 rebuilds them; Plotlines (Plottr grid)
-// and Tension (SVG curve) land with M24 and explain themselves until then.
+// reads/writes the M21 store directly (M24, see TimelinePlotlines.tsx);
+// Tension (SVG curve) lands with M24 and explains itself until then.
 //
 // Beta 4 M25 (SKY-6981, §8.6): owns the cross-view TimelineSelection and the
 // right panel (Inspector · Brainstorm · Archive) — any click on a timeline
@@ -53,6 +54,7 @@ import { planNotesFromVault } from './pages/SceneCrafter/crafterState';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineRelationships from './TimelineRelationships';
 import TimelineSubway from './TimelineSubway';
+import TimelinePlotlines from './TimelinePlotlines';
 import AxisView, { type AxisChapterCell } from './timeline2/AxisView';
 import CalendarEditorModal from './timeline2/CalendarEditorModal';
 import TimelineRightPanel, { type TimelineRightTab } from './timeline2/panel/TimelineRightPanel';
@@ -1182,22 +1184,17 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             </div>
           )}
 
-          {/* ── M24 surfaces (explain themselves until then) ── */}
-          {viewMode === 'plot' && (
-            <div className="tlr-state" data-testid="tlr-plot-stub">
-              <h2>Plotlines grid</h2>
-              <p>
-                The Plottr-style grid lands with the next timeline milestone. Your plotlines and
-                their cards already plot on the Progress and Structure views.
-              </p>
-            </div>
+          {/* ── M24: Plotlines (Plottr grid, §8.5) — reads/writes timelines.json ── */}
+          {viewMode === 'plot' && timelinesStore && (
+            <TimelinePlotlines
+              store={timelinesStore}
+              onStoreChange={setTimelinesStore}
+              chapters={axisChapters}
+            />
           )}
-          {viewMode === 'tension' && (
-            <div className="tlr-state" data-testid="tlr-tension-stub">
-              <h2>Tension curve</h2>
-              <p>
-                The draggable dramatic-arc curve lands with the next timeline milestone.
-              </p>
+          {viewMode === 'plot' && !timelinesStore && (
+            <div className="tlr-state" data-testid="tlr-plot-unavailable">
+              <h2>Timeline store unavailable.</h2>
             </div>
           )}
 
