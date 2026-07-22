@@ -1,0 +1,518 @@
+/* Beta 4 / M20 — unified brainstorm board: canvas, dock, status line, and the
+   left IDEA COLLECTIONS panel. Values ported from the Liquid Neon prototype
+   (bsCanvasCards / bsCatLabels / bsTools / bsCollections). */
+
+/* Liquid Neon color slots (colHex = [c1, c2, c3, c4]). */
+.bsb-card.bsc-s1,
+.bsb-cat-label.bsc-s1 { --bsc-c: var(--n1, #00f0ff); --bsc-cn: var(--n2, #9b5fff); }
+.bsb-card.bsc-s2,
+.bsb-cat-label.bsc-s2 { --bsc-c: var(--n2, #9b5fff); --bsc-cn: var(--n3, #ff4dff); }
+.bsb-card.bsc-s3,
+.bsb-cat-label.bsc-s3 { --bsc-c: var(--n3, #ff4dff); --bsc-cn: var(--n4, #ff9a3d); }
+.bsb-card.bsc-s4,
+.bsb-cat-label.bsc-s4 { --bsc-c: var(--n4, #ff9a3d); --bsc-cn: var(--n1, #00f0ff); }
+
+/* ── Canvas ── */
+
+.bsb-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.bsb-root--stacked {
+  flex: none;
+}
+
+.bsb-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 4px 12px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, 0.35), rgba(6, 8, 15, 0.55));
+  overflow: hidden;
+}
+
+.bsb-pan-layer {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+
+.bsb-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.bsb-links {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.bsb-links line {
+  stroke: rgba(155, 95, 255, 0.45);
+  stroke-width: 1.5;
+}
+
+.bsb-cat-label {
+  position: absolute;
+  padding: 7px 13px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bsc-c) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  box-shadow: 0 0 14px -6px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--bsc-c);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* 216px glass idea card (prototype bsCanvasCards st, line 6015). */
+.bsb-card {
+  position: absolute;
+  width: 216px;
+  padding: 12px 13px;
+  border-radius: 13px;
+  background: var(--glass2, rgba(21, 26, 45, 0.92));
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 38%, transparent);
+  box-shadow: 0 0 14px -8px color-mix(in srgb, var(--bsc-c) 50%, transparent);
+  cursor: grab;
+  user-select: none;
+}
+
+.bsb-card:hover {
+  border-color: color-mix(in srgb, var(--bsc-c) 75%, transparent);
+  box-shadow: 0 0 22px -6px color-mix(in srgb, var(--bsc-c) 60%, transparent);
+}
+
+.bsb-card--connectable {
+  cursor: crosshair;
+}
+
+.bsb-card--linking {
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, var(--bsc-c) 95%, transparent);
+}
+
+.bsb-card-row {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+
+.bsb-av {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--bsc-c) 80%, transparent),
+    color-mix(in srgb, var(--bsc-cn) 80%, transparent)
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0b0d17;
+}
+
+.bsb-card-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.bsb-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef2fb;
+  text-align: left;
+}
+
+button.bsb-card-title--note {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--bsc-c) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.bsb-card-desc {
+  font-size: 11px;
+  color: #9cabc4;
+  line-height: 1.5;
+  margin-top: 3px;
+}
+
+.bsb-card-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.bsb-chip {
+  font-size: 9.5px;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--bsc-c) 10%, transparent);
+  color: var(--bsc-c);
+  border: 1px solid color-mix(in srgb, var(--bsc-c) 32%, transparent);
+}
+
+/* Inline edit (prototype bsEditKey block). */
+.bsb-card-edit {
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+
+.bsb-edit-title {
+  width: 100%;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.5));
+  border-radius: 7px;
+  color: #eef2fb;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 8px;
+  margin-bottom: 6px;
+}
+
+.bsb-edit-desc {
+  width: 100%;
+  height: 46px;
+  resize: none;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 7px;
+  color: #c8d3e7;
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 5px 8px;
+}
+
+.bsb-edit-done {
+  margin-top: 5px;
+  align-self: flex-start;
+  display: inline-flex;
+  padding: 3px 12px;
+  border-radius: 7px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bsb-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-size: 9.5px;
+  color: #7686a2;
+  background: rgba(8, 10, 18, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 9px;
+  pointer-events: none;
+}
+
+/* ── Dock (Select / Connect / Frame / Text + zoom) ── */
+
+.bsb-dock {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 13px;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 10px 34px rgba(3, 5, 12, 0.55), 0 0 20px -6px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.bsb-dock .bsc-tool {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: none;
+  color: #aebad0;
+}
+
+.bsb-dock .bsc-tool:hover:not(.bsc-tool--active) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.bsb-dock .bsc-tool--active {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.bsb-dock-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 3px;
+}
+
+.bsb-dock .bsc-zoom-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aebad0;
+  cursor: pointer;
+  font-size: 13px;
+  border: none;
+  background: none;
+}
+
+.bsb-dock .bsc-zoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.bsb-dock .bsc-zoom-pct {
+  font-size: 11px;
+  color: #aebad0;
+  padding: 0 3px;
+  width: 36px;
+  text-align: center;
+}
+
+/* ── Status line ── */
+
+.bsb-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  color: #8195b2;
+  flex: none;
+}
+
+.bsb-status-dot {
+  opacity: 0.4;
+}
+
+.bsb-status-spacer {
+  flex: 1;
+}
+
+/* ── Left IDEA COLLECTIONS panel ── */
+
+.bs-collections {
+  width: 232px;
+  flex: none;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bs-collections-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #7686a2;
+  margin: 0 0 8px;
+}
+
+.bs-collections-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bh, rgba(0, 240, 255, 0.2));
+  margin-bottom: 6px;
+  color: #8e9db8;
+  flex: none;
+}
+
+.bs-collections-search:focus-within {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.bs-collections-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #dbe4f5;
+  font-size: 11px;
+  min-width: 0;
+  outline: none;
+}
+
+.bs-collections-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.bs-coll-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font-size: 12px;
+  color: #aebad0;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.bs-coll-head:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.bs-coll-chev {
+  flex: none;
+  display: flex;
+  transition: transform 0.18s ease;
+  opacity: 0.6;
+}
+
+.bs-coll-chev--open {
+  transform: rotate(90deg);
+}
+
+.bs-coll-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.bs-coll-label {
+  flex: 1;
+}
+
+.bs-coll-count {
+  font-size: 10.5px;
+  color: #7686a2;
+}
+
+.bs-coll-idea {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 8px 6px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.bs-coll-idea:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bs-coll-idea--placed {
+  opacity: 0.45;
+}
+
+.bs-coll-glyph {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  margin-top: 1px;
+  color: var(--n1, #00f0ff);
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.4));
+}
+
+.bs-coll-glyph--placed {
+  color: #4ade80;
+  border: none;
+}
+
+.bs-coll-idea-main {
+  min-width: 0;
+}
+
+.bs-coll-idea-title {
+  display: block;
+  font-size: 11px;
+  color: #dbe4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bs-coll-starter-chip {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--n2, #9b5fff);
+  border: 1px solid var(--b2, rgba(155, 95, 255, 0.4));
+  vertical-align: 1px;
+}
+
+.bs-coll-idea-desc {
+  display: block;
+  font-size: 9.5px;
+  color: #7686a2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bs-collections-foot {
+  font-size: 9px;
+  color: #586a88;
+  padding: 6px 10px 0;
+  line-height: 1.5;
+  flex: none;
+}

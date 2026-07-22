@@ -189,6 +189,42 @@ describe('getGraphNodes and getGraphEdges', () => {
   });
 });
 
+// ─── SKY-6930: agent chat sessions must not appear as graph nodes ───
+// A passive Brainstorm-panel mount (frontend/src/BrainstormPage.tsx) silently
+// persists a Sessions/*.md transcript on first render — without this
+// exclusion, that turns an otherwise-empty vault into a 1-node graph.
+
+describe('getGraphNodes excludes Sessions/', () => {
+  it('drops top-level Sessions/*.md files from nodes', () => {
+    resetFiles([
+      { path: 'Sessions/2026-07-17 brainstorm f037fe39.md', content: '# brainstorm session' },
+    ]);
+    expect(getGraphNodes('/vault')).toEqual([]);
+  });
+
+  it('drops nested Sessions/ files but keeps sibling user notes', () => {
+    resetFiles([
+      { path: 'Sessions/2026-07-17 coach ab12cd34.md', content: '[[Real Note]]' },
+      { path: 'Real Note.md', content: 'No links here.' },
+    ]);
+    const ids = getGraphNodes('/vault').map((n) => n.id);
+    expect(ids).toEqual(['Real Note.md']);
+  });
+
+  it('does not treat a session transcript link as a real edge', () => {
+    resetFiles([
+      { path: 'Sessions/2026-07-17 brainstorm f037fe39.md', content: '[[Real Note]]' },
+      { path: 'Real Note.md', content: '' },
+    ]);
+    expect(getGraphEdges('/vault')).toEqual([]);
+  });
+
+  it('does not exclude a genuine note merely named "Sessions.md"', () => {
+    resetFiles([{ path: 'Sessions.md', content: '' }]);
+    expect(getGraphNodes('/vault').map((n) => n.id)).toEqual(['Sessions.md']);
+  });
+});
+
 // ─── Category on nodes ───
 
 describe('node categories', () => {

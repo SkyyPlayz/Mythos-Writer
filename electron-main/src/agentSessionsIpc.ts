@@ -17,6 +17,8 @@ import { writeFileAtomic } from './vault.js';
 import type {
   AgentSessionListPayload,
   AgentSessionListResponse,
+  AgentSessionReadPayload,
+  AgentSessionReadResponse,
   AgentSessionCreatePayload,
   AgentSessionCreateResponse,
   AgentSessionRenamePayload,
@@ -27,8 +29,6 @@ import type {
   AgentSessionDeleteResponse,
   AgentSessionAppendTurnsPayload,
   AgentSessionAppendTurnsResponse,
-  AgentSessionReadPayload,
-  AgentSessionReadResponse,
 } from './ipc.js';
 
 export function handleAgentSessionList(
@@ -38,6 +38,17 @@ export function handleAgentSessionList(
   let sessions = listSessions(notesRoot);
   if (payload?.agent) sessions = sessions.filter((s) => s.agent === payload.agent);
   return { sessions };
+}
+
+// M20 (SKY-6663) / M12: hydrate one session's full turn history — used by the
+// Brainstorm chat when switching sessions, and by Coach page ↔ Coach panel so
+// both surfaces render the same conversation. Lookup is by the PARSED
+// frontmatter id (readSession), never a substring scan (B1 contract).
+export function handleAgentSessionRead(
+  notesRoot: string,
+  payload: AgentSessionReadPayload,
+): AgentSessionReadResponse {
+  return { session: readSession(notesRoot, payload.sessionId) };
 }
 
 export function handleAgentSessionCreate(
@@ -110,16 +121,5 @@ export function handleAgentSessionAppendTurns(
   payload: AgentSessionAppendTurnsPayload,
 ): AgentSessionAppendTurnsResponse {
   const session = appendTurns(notesRoot, payload.sessionId, payload.turns);
-  return { session };
-}
-
-// M12 — hydrate one full session (turns included). Coach page ↔ Coach panel
-// render the same conversation, so a surface mounting onto an existing
-// session needs its stored turns, not just the list summary.
-export function handleAgentSessionRead(
-  notesRoot: string,
-  payload: AgentSessionReadPayload,
-): AgentSessionReadResponse {
-  const session = readSession(notesRoot, payload.sessionId);
   return { session };
 }

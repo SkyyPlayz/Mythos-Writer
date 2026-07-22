@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SKY-7255 — M29 Welcome Wizard redlines</title>
+<style>
+  :root{
+    --glass: rgba(13,16,28,.86);
+    --bw: 1px;
+    --n1: #00f0ff; --b1: rgba(0,240,255,.5); --g1: rgba(0,240,255,.4); --gs1: rgba(0,240,255,.12);
+    --n3: #ff4dff; --b3: rgba(255,77,255,.5); --g3: rgba(255,77,255,.4);
+    --grad: linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff);
+    --txH:#f0f3fc; --txB:#c8d3e7; --txM:#8e9db8; --txF:#7686a2;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:28px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,-apple-system,system-ui,sans-serif;background:#0b0d17;color:var(--txB)}
+  .frame{
+    width:1440px;height:900px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(1200px 700px at 20% 0%, rgba(0,240,255,.08), transparent 60%),
+      radial-gradient(1000px 700px at 90% 100%, rgba(155,95,255,.10), transparent 60%),
+      #05070d;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border-bottom:6px solid #222;
+  }
+  .frame-label{
+    position:absolute;top:18px;left:24px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:#5fe8ff;font-weight:700;background:rgba(0,0,0,.4);padding:6px 12px;border-radius:8px;
+  }
+  .brand{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:22px}
+  .brand__logo{width:56px;height:56px;border-radius:15px;background:linear-gradient(135deg,#00f0ff,#9b5fff);box-shadow:0 0 34px -4px var(--g1);border:1px solid rgba(255,255,255,.2)}
+  .brand__name{font-family:Georgia,'Lora',serif;font-size:26px;font-weight:600;color:var(--txH);margin-top:12px}
+  .brand__tag{font-size:12.5px;color:var(--txM);margin-top:4px}
+
+  .modal{
+    background:var(--glass);
+    border:var(--bw) solid var(--b1);
+    border-radius:18px;
+    box-shadow:0 0 30px -8px var(--g1);
+    padding:28px 36px 32px;
+    width:100%;
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+  .modal--paths{max-width:1080px}
+  .modal--tail{max-width:640px}
+  .modal--themes{max-width:920px}
+  .eyebrow{font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--txM);margin:0 0 6px}
+  h2{font-family:Georgia,'Lora',serif;font-weight:600;color:var(--txH);font-size:19px;margin:0 0 6px}
+  .sub{font-size:12.5px;color:var(--txM);line-height:1.6;margin:0 0 20px;max-width:56ch}
+
+  /* path cards */
+  .path-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .path-card{position:relative;padding:18px 16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);text-align:left}
+  .path-card--chosen{border-color:var(--b1);box-shadow:0 0 26px -6px var(--g1)}
+  .path-chip{position:absolute;top:13px;right:13px;font-size:8.5px;font-weight:700;letter-spacing:.08em;color:#0b0d17;background:var(--n1);border-radius:99px;padding:3px 9px}
+  .path-icon{width:30px;height:30px;border-radius:9px;background:var(--gs1);display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:15px;margin-bottom:10px}
+  .path-title{font-size:14px;font-weight:600;color:var(--txH);margin-bottom:6px}
+  .path-desc{font-size:11px;color:var(--txM);line-height:1.6;min-height:44px}
+  .path-act{font-size:11.5px;font-weight:600;color:var(--n1);margin-top:10px}
+  .skip-link{margin-top:26px;font-size:11.5px;color:var(--txM);text-decoration:underline;text-underline-offset:3px}
+
+  /* two-vault promise */
+  .vault-promise{display:flex;gap:12px;margin-bottom:20px}
+  .vp-card{flex:1;padding:14px;border-radius:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);display:flex;gap:10px;align-items:flex-start}
+  .vp-ic{width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .vp-ic--story{background:var(--gs1);color:var(--n1)}
+  .vp-ic--notes{background:rgba(255,77,255,.12);color:var(--n3)}
+  .vp-t{font-size:12.5px;font-weight:600;color:var(--txH)}
+  .vp-d{font-size:11px;color:var(--txM);margin-top:3px;line-height:1.55}
+
+  .field-label{font-size:12px;font-weight:600;color:var(--txH);margin-bottom:6px}
+  .field-row{display:flex;gap:8px;margin-bottom:18px}
+  .field-input{flex:1;font-size:11.5px;color:#dbe4f5;font-family:ui-monospace,monospace;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px 12px}
+  .field-btn{padding:0 14px;border-radius:9px;border:1px solid rgba(155,95,255,.4);color:#c3cee2;font-size:11.5px;display:flex;align-items:center}
+  .field-hint{font-size:10.5px;color:#4ade80;margin:-12px 0 18px}
+
+  .genre-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:22px}
+  .genre-chip{font-size:12px;padding:9px 10px;border-radius:11px;text-align:center;color:var(--txM);border:1px solid var(--b1)}
+  .genre-chip--on{color:var(--n1);background:var(--gs1);box-shadow:0 0 12px -4px var(--g1);font-weight:600;border-color:var(--b1)}
+
+  /* theme grid — 10 themes */
+  .theme-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:6px}
+  .theme-card{padding:12px;border-radius:13px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);min-height:44px}
+  .theme-card--on{box-shadow:0 0 18px -5px var(--g1)}
+  .slot-strip{display:flex;height:16px;border-radius:6px;overflow:hidden;margin-bottom:9px}
+  .slot-strip span{flex:1}
+  .theme-name{font-size:11.5px;font-weight:600;color:#e6ecf9}
+  .theme-check{float:right;color:var(--n1);font-size:12px}
+  .legend{display:flex;gap:14px;margin-top:14px;flex-wrap:wrap}
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--txM)}
+  .legend-dot{width:9px;height:9px;border-radius:3px}
+
+  /* provider step */
+  .provider-card{border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:16px;margin-bottom:14px;background:rgba(255,255,255,.03)}
+  .seg{display:inline-flex;border:1px solid var(--b1);border-radius:9px;overflow:hidden;margin-bottom:14px}
+  .seg span{padding:7px 16px;font-size:11.5px;color:var(--txM)}
+  .seg span.on{color:#0b0d17;background:var(--n1);font-weight:600}
+  .oauth-btn{padding:9px 18px;border-radius:10px;background:var(--grad);color:#0b0d17;font-size:12px;font-weight:700;display:inline-block}
+  .stored-note{font-size:10.5px;color:var(--txM);margin-left:10px}
+  .provider-skip{margin-top:4px;font-size:12px;color:var(--txM);line-height:1.6}
+
+  .nav-bar{display:flex;align-items:center;gap:14px;margin-top:22px}
+  .nav-back{font-size:11.5px;color:var(--txM)}
+  .dots{display:flex;gap:5px}
+  .dot{width:22px;height:5px;border-radius:4px;background:rgba(255,255,255,.12)}
+  .dot--on{background:var(--n1);box-shadow:0 0 8px var(--g1)}
+  .btn-primary{margin-left:auto;padding:8px 20px;border-radius:10px;background:var(--grad);color:#0b0d17;font-size:12px;font-weight:700}
+  .step-label{font-size:11px;color:var(--txM);margin-left:8px}
+</style>
+</head>
+<body>
+
+<div class="frame surface-wrap" data-shot="A-welcome-paths">
+  <div class="frame-label">A · Welcome — 4 entry paths (promoted "Open sample project")</div>
+  <div class="brand">
+    <div class="brand__logo"></div>
+    <div class="brand__name">Mythos Writer</div>
+    <div class="brand__tag">Write the world before you write the book.</div>
+  </div>
+  <div class="modal modal--paths">
+    <div class="path-grid">
+      <div class="path-card path-card--chosen">
+        <span class="path-chip">RECOMMENDED</span>
+        <div class="path-icon">✦</div>
+        <div class="path-title">Open sample project</div>
+        <div class="path-desc">See how it works with a small demo: characters, lore, and one drafted chapter.</div>
+        <div class="path-act">Open sample →</div>
+      </div>
+      <div class="path-card">
+        <div class="path-icon">📄</div>
+        <div class="path-title">Start blank</div>
+        <div class="path-desc">Create an empty vault. Choose where to save it on the next screen.</div>
+        <div class="path-act">Choose location →</div>
+      </div>
+      <div class="path-card">
+        <div class="path-icon">📁</div>
+        <div class="path-title">Import Obsidian vault</div>
+        <div class="path-desc">Point at an existing vault. You'll see every change before anything is saved.</div>
+        <div class="path-act">Pick folder →</div>
+      </div>
+      <div class="path-card">
+        <div class="path-icon">🗂</div>
+        <div class="path-title">Open existing vault</div>
+        <div class="path-desc">Already have a Mythos vault on this computer? Open it here.</div>
+        <div class="path-act">Browse →</div>
+      </div>
+    </div>
+    <div class="skip-link">Skip — continue to the app →</div>
+  </div>
+</div>
+
+<div class="frame surface-wrap" data-shot="B-vault-setup-two-vault-promise">
+  <div class="frame-label">B · Vault setup — two-vault promise + genre (Blank path)</div>
+  <div class="modal modal--tail">
+    <div class="eyebrow">Step 1 of 3 · Vault</div>
+    <h2>Your world needs two homes</h2>
+    <p class="sub">We'll set up two vaults together. You'll never have to think about this again.</p>
+    <div class="vault-promise">
+      <div class="vp-card">
+        <div class="vp-ic vp-ic--story">📖</div>
+        <div>
+          <div class="vp-t">Story Vault</div>
+          <div class="vp-d">Your manuscript. Chapters and scenes.</div>
+        </div>
+      </div>
+      <div class="vp-card">
+        <div class="vp-ic vp-ic--notes">🗒</div>
+        <div>
+          <div class="vp-t">Notes Vault</div>
+          <div class="vp-d">Characters, places, and research.</div>
+        </div>
+      </div>
+    </div>
+    <div class="field-label">Where should this live?</div>
+    <div class="field-row">
+      <div class="field-input">~/Documents/Mythos Vault</div>
+      <div class="field-btn">Browse…</div>
+    </div>
+    <div class="field-hint">✓ This folder is ready to use.</div>
+    <div class="field-label">Pick a genre preset</div>
+    <p class="sub" style="margin-bottom:12px">This sets your starter templates and story tools. Change it anytime.</p>
+    <div class="genre-grid">
+      <div class="genre-chip genre-chip--on">Epic Fantasy</div>
+      <div class="genre-chip">Dark Fantasy</div>
+      <div class="genre-chip">Sci-Fi</div>
+      <div class="genre-chip">Urban Fantasy</div>
+      <div class="genre-chip">Thriller</div>
+      <div class="genre-chip">Romance</div>
+      <div class="genre-chip">Literary</div>
+      <div class="genre-chip">Historical</div>
+    </div>
+    <div class="nav-bar">
+      <div class="nav-back">‹ Back</div>
+      <div class="dots"><span class="dot dot--on"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="btn-primary">Continue</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame surface-wrap" data-shot="C-theme-grid-10themes">
+  <div class="frame-label">C · Theme pick — all 10 Liquid Neon presets, 6 colour slots each</div>
+  <div class="modal modal--themes">
+    <div class="eyebrow">Step 2 of 3 · Theme</div>
+    <h2>Choose your neon</h2>
+    <p class="sub">Every border in the app glows with these colours. You can change this later in Settings.</p>
+    <div class="theme-grid" id="theme-grid"></div>
+    <div class="legend" id="legend"></div>
+    <div class="nav-bar">
+      <div class="nav-back">‹ Back</div>
+      <div class="dots"><span class="dot dot--on"></span><span class="dot dot--on"></span><span class="dot"></span></div>
+      <div class="btn-primary">Continue</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame surface-wrap" data-shot="D-provider-optional">
+  <div class="frame-label">D · Optional AI provider — skippable, never forced</div>
+  <div class="modal modal--tail">
+    <div class="eyebrow">Step 3 of 3 · AI helpers (optional)</div>
+    <h2>Want writing help from an AI agent?</h2>
+    <p class="sub">This is optional. Skip it and set it up later — nothing here is required to start writing.</p>
+    <div class="provider-card">
+      <div class="field-label">Provider</div>
+      <div class="seg"><span class="on">Claude API</span><span>Local model</span></div>
+      <div>
+        <span class="oauth-btn">Log in with Claude</span>
+        <span class="stored-note">Key stored locally</span>
+      </div>
+    </div>
+    <p class="provider-skip">You can write, take notes, and build your timeline with zero AI set up.</p>
+    <div class="nav-bar">
+      <div class="nav-back">‹ Back</div>
+      <div class="dots"><span class="dot dot--on"></span><span class="dot dot--on"></span><span class="dot dot--on"></span></div>
+      <div class="btn-primary">Open my vault ✦</div>
+    </div>
+    <div class="skip-link" style="margin-top:6px;text-align:center">Skip for now — I'll set this up later</div>
+  </div>
+</div>
+
+<script>
+  const SETS = [
+    ['Neon Classic', ['#00f0ff','#9b5fff','#ff4dff','#ff9a3d','#2fe6c8','#3d9bff']],
+    ['Aurora',       ['#34ffc8','#00d4ff','#a78bfa','#ffd97a','#5f8bff','#8ad9ff']],
+    ['Cyberpunk',    ['#ff2d95','#ffd319','#00e5ff','#b4ff39','#8a5cff','#ff6b4d']],
+    ['Sunset Coast', ['#ff9a3d','#ff4d88','#b06bff','#ffd319','#ff6b4d','#ffe680']],
+    ['Ice Mono',     ['#7ae7ff','#00c8f0','#3d9bff','#9fd0ff','#5f7dff','#c9e6ff']],
+    ['Emberfall',    ['#ff6b4d','#ffd319','#ff2d95','#ff9a3d','#b06bff','#ffe680']],
+    ['Verdant Reach',['#a3ff57','#2fe6c8','#00d4ff','#ffd97a','#57ff9a','#8ad9ff']],
+    ['Royal Arcana', ['#c86bff','#7a5cff','#ff4dff','#ffd319','#5f8bff','#ff9ad5']],
+    ['Noir Rose',    ['#ff5f8f','#8a9bff','#ffd319','#ff9a3d','#5fffe0','#c86bff']],
+    ['Winterlight',  ['#eaf6ff','#9fd4ff','#6fa8ff','#cfeaff','#8fc0f0','#dff0ff']],
+  ];
+  const grid = document.getElementById('theme-grid');
+  SETS.forEach(([name, c], i) => {
+    const card = document.createElement('div');
+    card.className = 'theme-card' + (i === 9 ? ' theme-card--on' : '');
+    if (i === 9) card.style.borderColor = 'rgba(234,246,255,.6)';
+    card.innerHTML = `
+      <div class="slot-strip">${c.map(h => `<span style="background:${h}"></span>`).join('')}</div>
+      <div class="theme-name">${name}${i === 9 ? '<span class="theme-check">✓</span>' : ''}</div>
+    `;
+    grid.appendChild(card);
+  });
+  const roles = ['A · Left panel','B · Center / wiki-links','C · Right panel / agents','D · Warm data','E · Cool data','F · Nav rail / frame'];
+  const legend = document.getElementById('legend');
+  const swatchColors = ['#00f0ff','#9b5fff','#ff4dff','#ff9a3d','#2fe6c8','#3d9bff'];
+  roles.forEach((r, i) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-dot" style="background:${swatchColors[i]}"></span>${r}`;
+    legend.appendChild(item);
+  });
+</script>
+</body>
+</html>
