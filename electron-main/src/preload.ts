@@ -142,6 +142,9 @@ contextBridge.exposeInMainWorld('api', {
   },
   agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     ipcRenderer.invoke('agent:brainstorm', { prompt, history }),
+  // Beta 4 M25 — Archive Agent chat (timeline side-chat + quick-add dating).
+  agentArchive: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+    ipcRenderer.invoke('agent:archive', { prompt, history }),
   onBrainstormChunk: (cb: (chunk: string) => void) => {
     const handler = (_: unknown, data: { chunk: string }) => cb(data.chunk);
     ipcRenderer.on('agent:brainstorm:chunk', handler);

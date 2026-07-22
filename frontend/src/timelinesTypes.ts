@@ -12,7 +12,7 @@ export type CalendarPreset = 'standard' | 'aeon-13' | 'custom';
  * timelines carrying it so demo content is always distinguishable from the
  * user's own work.
  */
-export type TimelineItemSource = 'migration' | 'seed' | 'manual';
+export type TimelineItemSource = 'migration' | 'seed' | 'manual' | 'agent';
 
 export interface TimelineCalendar {
   preset: CalendarPreset;
@@ -53,6 +53,13 @@ export interface TimelineEvent {
   summary?: string;
   /** Key-event icon glyph (prototype tlEvents icons). */
   icon?: string;
+  // ── Beta 4 M25 (§8.6) — optional Inspector event-editor fields ──
+  /** Point-of-view character name (event editor POV field). */
+  pov?: string;
+  /** Where the event happens (event editor LOCATION field). */
+  location?: string;
+  /** Impact tags, comma-separated; rendered as chips in the static view. */
+  impact?: string;
 }
 
 // M22: era / span / row item shapes (mirrors model.ts — kept `unknown[]`

@@ -75,16 +75,11 @@ import {
 } from './axis/storyLanes';
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast/Toast';
-import ExactTimeModal from './ExactTimeModal';
-import CalendarEditorModal from './CalendarEditorModal';
+import type { TimelineSelection, TimelineSelectableType } from './panel/selection';
 import './AxisView.css';
 
-type SelectableType = 'era' | 'span' | 'event';
-
-interface AxisSelection {
-  type: SelectableType;
-  id: string;
-}
+type SelectableType = TimelineSelectableType;
+type AxisSelection = TimelineSelection;
 
 export type AxisViewMode = 'progress' | 'structure';
 
@@ -113,6 +108,16 @@ export interface AxisViewProps {
   showFilter?: TimelineShowFilter;
   /** Bumped by the toolbar's Today — selects/scrolls to the current position. */
   todaySignal?: number;
+  // ── M25 (§8.6): selection is owned by TimelineRoot so the right-panel
+  //    Inspector can edit the selected item; omit both to stay uncontrolled.
+  selection?: TimelineSelection | null;
+  onSelectionChange?: (selection: TimelineSelection | null) => void;
+  /** Archive-flag targets (event/scene/chapter ids) — flagged canvas items get
+   *  a 2px warning outline (design spec §2, non-blocking). */
+  flaggedItemIds?: ReadonlySet<string>;
+  /** Flag-card "Jump" — scrolls the canvas to the item with this id; `n`
+   *  bumps so repeated jumps to the same id still fire. */
+  jumpTarget?: { id: string; n: number } | null;
 }
 
 function newItemId(prefix: string): string {
@@ -135,6 +140,10 @@ export default function AxisView({
   bookFocus = null,
   showFilter = 'All Events',
   todaySignal = 0,
+  selection: selectionProp,
+  onSelectionChange,
+  flaggedItemIds,
+  jumpTarget = null,
 }: AxisViewProps) {
   // Local working copy: dragging mutates this for 60fps feedback; persistence
   // flows through IPC and comes back via onStoreChange → props.
@@ -143,9 +152,19 @@ export default function AxisView({
 
   const [zoomSeg, setZoomSeg] = useState<AxisZoomSeg>('Year');
   const [zoomX, setZoomX] = useState(1);
-  const [selection, setSelection] = useState<AxisSelection | null>(null);
-  const [exactTimeOpen, setExactTimeOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  // M25: controlled when TimelineRoot passes `selection` (the right-panel
+  // Inspector edits it); the internal state keeps older callers working.
+  const [internalSelection, setInternalSelection] = useState<AxisSelection | null>(null);
+  const selection = selectionProp !== undefined ? selectionProp : internalSelection;
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const setSelection = useCallback(
+    (next: AxisSelection | null) => {
+      setInternalSelection(next);
+      onSelectionChange?.(next);
+    },
+    [onSelectionChange],
+  );
 
   const { toast, showToast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -174,14 +193,51 @@ export default function AxisView({
   );
   const storeRef = useRef(localStore);
   storeRef.current = localStore;
+  const prevActiveIdRef = useRef(activeId);
   useEffect(() => {
     const cal = safeCalendar(
       storeRef.current.timelines.find((t) => t.id === activeId)?.calendar,
     );
     setDomain(deriveAxisDomain(storeRef.current, activeId, cal));
-    setSelection(null);
-  }, [activeId]);
+    // Clear only on a REAL timeline switch — a mount must not null out the
+    // owner's selection (a mode-switch jump sets it right before mounting).
+    if (prevActiveIdRef.current !== activeId) setSelection(null);
+    prevActiveIdRef.current = activeId;
+  }, [activeId, setSelection]);
   const [t0, t1] = domain;
+
+  // ── M25: flag-card Jump — scroll the flagged item into view (design §2).
+  //    Items carry `data-ax-id`; events also match by sceneId via the
+  //    flagged-id mapping below, so the jump id can be a scene/chapter id.
+  useEffect(() => {
+    if (!jumpTarget) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    // The jump id may be a scene id — resolve it to the plotted event's id.
+    const byScene = storeRef.current.events.find((e) => e.sceneId === jumpTarget.id);
+    const canvasId = scroller.querySelector(`[data-ax-id="${CSS.escape(jumpTarget.id)}"]`)
+      ? jumpTarget.id
+      : byScene?.id;
+    if (!canvasId) return;
+    const el = scroller.querySelector(`[data-ax-id="${CSS.escape(canvasId)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [jumpTarget]);
+
+  // M25: canvas ids that carry an Archive flag (design §2 per-item cue).
+  // Flags anchor to scene/chapter ids — events match by own id OR sceneId.
+  const flaggedCanvasIds = useMemo(() => {
+    if (!flaggedItemIds || flaggedItemIds.size === 0) return null;
+    const out = new Set<string>();
+    for (const e of localStore.events) {
+      if (flaggedItemIds.has(e.id) || (e.sceneId && flaggedItemIds.has(e.sceneId))) out.add(e.id);
+    }
+    for (const s of localStore.spans) if (flaggedItemIds.has(s.id)) out.add(s.id);
+    return out;
+  }, [flaggedItemIds, localStore.events, localStore.spans]);
+  const flagCls = useCallback(
+    (id: string) => (flaggedCanvasIds?.has(id) ? ' ax-item--flagged' : ''),
+    [flaggedCanvasIds],
+  );
 
   // ── Ctrl+scroll zoom (native listener: React wheel handlers are passive) ──
   useEffect(() => {
@@ -437,8 +493,9 @@ export default function AxisView({
       suppressClickRef.current = false;
       return;
     }
-    setSelection((prev) => (prev && prev.type === type && prev.id === id ? null : { type, id }));
-  }, []);
+    const prev = selectionRef.current;
+    setSelection(prev && prev.type === type && prev.id === id ? null : { type, id });
+  }, [setSelection]);
 
   const openEmbeddedTimeline = useCallback(
     (e: React.MouseEvent, span: TimelineSpan) => {
@@ -476,7 +533,7 @@ export default function AxisView({
     persistItem('era', era);
     setSelection({ type: 'era', id: era.id });
     showToast('Era added — name it and set its dates in the inspector');
-  }, [t0, t1, activeId, eras.length, updateLocalItem, persistItem, showToast]);
+  }, [t0, t1, activeId, eras.length, updateLocalItem, persistItem, setSelection, showToast]);
 
   const addSpan = useCallback(() => {
     const q = (t1 - t0) / 4;
@@ -492,7 +549,7 @@ export default function AxisView({
     persistItem('span', span);
     setSelection({ type: 'span', id: span.id });
     showToast('Span added — set its start & end in the inspector, or embed an existing timeline');
-  }, [t0, t1, activeId, stackedSpans.items.length, updateLocalItem, persistItem, showToast]);
+  }, [t0, t1, activeId, stackedSpans.items.length, updateLocalItem, persistItem, setSelection, showToast]);
 
   const addEvent = useCallback(() => {
     const event: TimelineEvent = {
@@ -508,7 +565,7 @@ export default function AxisView({
     persistItem('event', event);
     setSelection({ type: 'event', id: event.id });
     showToast('Event added — fill it in on the right');
-  }, [t0, t1, activeId, updateLocalItem, persistItem, showToast]);
+  }, [t0, t1, activeId, updateLocalItem, persistItem, setSelection, showToast]);
 
   // ── M23: story-lane adds (prototype laneAdd, 6047) ──
   const addLaneSpan = useCallback(
@@ -528,7 +585,7 @@ export default function AxisView({
       setSelection({ type: 'span', id: span.id });
       showToast('Added — edit it in the inspector on the right');
     },
-    [t0, t1, activeId, updateLocalItem, persistItem, showToast],
+    [t0, t1, activeId, updateLocalItem, persistItem, setSelection, showToast],
   );
 
   const addWorldEvent = useCallback(() => {
@@ -545,7 +602,7 @@ export default function AxisView({
     persistItem('event', event);
     setSelection({ type: 'event', id: event.id });
     showToast('Added — edit it in the inspector on the right');
-  }, [t0, t1, activeId, updateLocalItem, persistItem, showToast]);
+  }, [t0, t1, activeId, updateLocalItem, persistItem, setSelection, showToast]);
 
   const addTheme = useCallback(() => {
     const event: TimelineEvent = {
@@ -560,7 +617,7 @@ export default function AxisView({
     persistItem('event', event);
     setSelection({ type: 'event', id: event.id });
     showToast('Added — edit it in the inspector on the right');
-  }, [t0, activeId, updateLocalItem, persistItem, showToast]);
+  }, [t0, activeId, updateLocalItem, persistItem, setSelection, showToast]);
 
   // ── M23: Today → select + scroll to the current position (accept:
   //    "Today selects current"; prototype tlToday 6838) ──
@@ -588,7 +645,7 @@ export default function AxisView({
     }
     const hereLabel = hereIndex >= 0 ? chapters[hereIndex]?.label : '';
     showToast(hereLabel ? `Jumped to today — ${hereLabel}` : 'Jumped to today');
-  }, [todaySignal, hereWhen, hereIndex, chapters, visibleKeyEvents, t0, t1, showToast]);
+  }, [todaySignal, hereWhen, hereIndex, chapters, visibleKeyEvents, t0, t1, setSelection, showToast]);
 
   const addCustomRow = useCallback(() => {
     const row: TimelineRow = {
@@ -618,7 +675,7 @@ export default function AxisView({
       persistItem('span', span);
       setSelection({ type: 'span', id: span.id });
     },
-    [t0, t1, activeId, rowItems, updateLocalItem, persistItem],
+    [t0, t1, activeId, rowItems, updateLocalItem, persistItem, setSelection],
   );
 
   const removeRow = useCallback(
@@ -628,109 +685,11 @@ export default function AxisView({
       setSelection(null);
       showToast('Row removed');
     },
-    [removeLocalItem, deleteItem, showToast],
+    [removeLocalItem, deleteItem, setSelection, showToast],
   );
 
-  // ── Selection helpers ──
-  const selectedItem: TimelineEra | TimelineSpan | TimelineEvent | null = useMemo(() => {
-    if (!selection) return null;
-    if (selection.type === 'era') return eras.find((e) => e.id === selection.id) ?? null;
-    if (selection.type === 'span')
-      return localStore.spans.find((s) => s.id === selection.id) ?? null;
-    return localStore.events.find((e) => e.id === selection.id) ?? null;
-  }, [selection, eras, localStore.spans, localStore.events]);
-
-  const selectedKindLabel = useMemo(() => {
-    if (!selection || !selectedItem) return '';
-    if (selection.type === 'era') return 'Era';
-    if (selection.type === 'event') {
-      const rowId = (selectedItem as TimelineEvent).rowId;
-      if (rowId === WORLD_LANE) return 'World event';
-      if (rowId === THEME_LANE) return 'Theme';
-      if (rowId && localStore.rows.some((r) => r.id === rowId && r.kind === 'plotline')) {
-        return 'Plotline card';
-      }
-      return 'Event';
-    }
-    const rowId = (selectedItem as TimelineSpan).rowId;
-    if (rowId === ARC_LANE) return 'Story arc';
-    if (rowId === CHARACTER_LANE) return 'Character journey';
-    return rowId ? 'Custom row item' : 'Timeline span';
-  }, [selection, selectedItem, localStore.rows]);
-
-  const renameSelected = useCallback(
-    (name: string) => {
-      if (!selection || !selectedItem) return;
-      updateLocalItem(selection.type, { ...selectedItem, name });
-    },
-    [selection, selectedItem, updateLocalItem],
-  );
-
-  const commitSelected = useCallback(() => {
-    if (!selection || !selectedItem) return;
-    persistItem(selection.type, selectedItem);
-  }, [selection, selectedItem, persistItem]);
-
-  const deleteSelected = useCallback(() => {
-    if (!selection) return;
-    removeLocalItem(selection.type, selection.id);
-    deleteItem(selection.type, selection.id);
-    setSelection(null);
-    showToast('Deleted');
-  }, [selection, removeLocalItem, deleteItem, showToast]);
-
-  const setEmbed = useCallback(
-    (timelineId: string) => {
-      if (!selection || selection.type !== 'span' || !selectedItem) return;
-      const span = { ...(selectedItem as TimelineSpan) };
-      if (timelineId) span.opensTimelineId = timelineId;
-      else delete span.opensTimelineId;
-      updateLocalItem('span', span);
-      persistItem('span', span);
-      if (timelineId) showToast('Timeline embedded — clicking this span now opens it');
-    },
-    [selection, selectedItem, updateLocalItem, persistItem, showToast],
-  );
-
-  const applyExactTime = useCallback(
-    (result: { when?: number; startWhen?: number; endWhen?: number }) => {
-      if (!selection || !selectedItem) return;
-      if (selection.type === 'event' && result.when != null) {
-        const next = { ...(selectedItem as TimelineEvent), when: result.when };
-        updateLocalItem('event', next);
-        persistItem('event', next);
-      } else if (selection.type !== 'event' && result.startWhen != null && result.endWhen != null) {
-        // The store rejects end ≤ start — keep at least one tick apart.
-        const endWhen = result.endWhen > result.startWhen ? result.endWhen : roundWhen(result.startWhen + 0.1);
-        const next = {
-          ...(selectedItem as TimelineEra | TimelineSpan),
-          startWhen: result.startWhen,
-          endWhen,
-        };
-        updateLocalItem(selection.type, next);
-        persistItem(selection.type, next);
-      }
-      setExactTimeOpen(false);
-      showToast('Exact time set — replotted on the axis');
-    },
-    [selection, selectedItem, updateLocalItem, persistItem, showToast],
-  );
-
-  const persistCalendar = useCallback(
-    (nextCalendar: { preset: string; monthsPerYear: number; daysPerMonth: number; hoursPerDay: number }, presetLabel?: string) => {
-      if (!active) return;
-      const api = window.api;
-      if (typeof api?.timelinesUpsert !== 'function') return;
-      api
-        .timelinesUpsert({ id: active.id, name: active.name, kind: active.kind, calendar: nextCalendar })
-        .then((res) => {
-          if (res.ok) onStoreChange(res.store);
-          if (presetLabel) showToast(`Calendar set — ${presetLabel}`);
-        })
-        .catch(() => {});
-    },
-    [active, onStoreChange, showToast],
-  );
+  // M25 (§8.6): selection editing moved to the right-panel Inspector
+  // (TimelineRightPanel) — the M22 mini inspector and its modal hosting are gone.
 
   const setRowRef = useCallback((key: string) => (el: HTMLDivElement | null) => {
     if (el) rowRefs.current.set(key, el);
@@ -823,6 +782,7 @@ export default function AxisView({
                         title="Drag to move · drag edges to resize · click to rename"
                         onClick={(e) => handleSelect(e, 'era', era.id)}
                         onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'era', era, 'eras')}
+                        data-ax-id={era.id}
                         data-testid={`ax-era-${era.id}`}
                       >
                         {era.name}
@@ -884,7 +844,7 @@ export default function AxisView({
                   return (
                     <div
                       key={span.id}
-                      className="ax-span"
+                      className={`ax-span${flagCls(span.id)}`}
                       style={{
                         left: `${leftPct}%`,
                         width: `${Math.max(4, rightPct - leftPct)}%`,
@@ -904,6 +864,7 @@ export default function AxisView({
                         embedded ? openEmbeddedTimeline(e, span) : handleSelect(e, 'span', span.id)
                       }
                       onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'span', span, 'spans')}
+                      data-ax-id={span.id}
                       data-testid={`ax-span-${span.id}`}
                       data-embedded={embedded || undefined}
                     >
@@ -993,6 +954,7 @@ export default function AxisView({
                         title="Drag to move · drag edges to resize · click to edit"
                         onClick={(e) => handleSelect(e, 'span', arc.id)}
                         onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'span', arc, 'arcs')}
+                        data-ax-id={arc.id}
                         data-testid={`ax-arc-${arc.id}`}
                       >
                         {arc.name}
@@ -1082,7 +1044,7 @@ export default function AxisView({
                               <button
                                 type="button"
                                 key={card.id}
-                                className="ax-plotcard"
+                                className={`ax-plotcard${flagCls(card.id)}`}
                                 style={{
                                   left: `${axisPct(when, t0, t1)}%`,
                                   color: '#e6ecf9',
@@ -1094,7 +1056,8 @@ export default function AxisView({
                                 }}
                                 title={card.summary || card.name}
                                 onClick={(e) => handleSelect(e, 'event', card.id)}
-                                data-testid={`ax-plotcard-${card.id}`}
+                                data-ax-id={card.id}
+                          data-testid={`ax-plotcard-${card.id}`}
                                 data-beat={card.beat || undefined}
                               >
                                 {card.name}
@@ -1132,7 +1095,7 @@ export default function AxisView({
                   return (
                     <div
                       key={event.id}
-                      className={`ax-event${selected ? ' ax-event--selected' : ''}`}
+                      className={`ax-event${selected ? ' ax-event--selected' : ''}${flagCls(event.id)}`}
                       style={{
                         left: `${leftPct}%`,
                         top: `${lane * 92}px`,
@@ -1144,6 +1107,7 @@ export default function AxisView({
                       title="Drag to set roughly when it happens — fine-tune in the exact-time picker"
                       onClick={(e) => handleSelect(e, 'event', event.id)}
                       onMouseDown={(e) => beginEventDrag(e, event, 'events')}
+                      data-ax-id={event.id}
                       data-testid={`ax-event-${event.id}`}
                       data-lane={lane}
                       data-flash={flash || undefined}
@@ -1214,7 +1178,8 @@ export default function AxisView({
                         title={`${journey.name} — drag to move · drag edges to resize`}
                         onClick={(e) => handleSelect(e, 'span', journey.id)}
                         onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'span', journey, 'chars')}
-                        data-testid={`ax-char-${journey.id}`}
+                        data-ax-id={journey.id}
+                      data-testid={`ax-char-${journey.id}`}
                         data-lane={lane}
                       >
                         <span
@@ -1277,7 +1242,7 @@ export default function AxisView({
                     return (
                       <div
                         key={event.id}
-                        className="ax-world-chip"
+                        className={`ax-world-chip${flagCls(event.id)}`}
                         style={{
                           left: `${leftPct}%`,
                           top: `${lane * 56}px`,
@@ -1287,7 +1252,8 @@ export default function AxisView({
                         title="Drag to set roughly when · click to edit"
                         onClick={(e) => handleSelect(e, 'event', event.id)}
                         onMouseDown={(e) => beginEventDrag(e, event, 'world')}
-                        data-testid={`ax-world-${event.id}`}
+                        data-ax-id={event.id}
+                      data-testid={`ax-world-${event.id}`}
                         data-lane={lane}
                       >
                         <div className="ax-world-day" style={{ color: col }}>
@@ -1320,7 +1286,8 @@ export default function AxisView({
                         }}
                         title="Click to edit this theme"
                         onClick={(e) => handleSelect(e, 'event', theme.id)}
-                        data-testid={`ax-theme-${theme.id}`}
+                        data-ax-id={theme.id}
+                      data-testid={`ax-theme-${theme.id}`}
                       >
                         {theme.name}
                       </button>
@@ -1373,7 +1340,7 @@ export default function AxisView({
                     return (
                       <div
                         key={item.id}
-                        className="ax-crow-item"
+                        className={`ax-crow-item${flagCls(item.id)}`}
                         style={{
                           left: `${l}%`,
                           width: `${Math.max(3, r - l)}%`,
@@ -1384,7 +1351,8 @@ export default function AxisView({
                         title="Drag to move · drag edges to resize · click to edit"
                         onClick={(e) => handleSelect(e, 'span', item.id)}
                         onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'span', item, `crow:${row.id}`)}
-                        data-testid={`ax-crow-item-${item.id}`}
+                        data-ax-id={item.id}
+                          data-testid={`ax-crow-item-${item.id}`}
                       >
                         {item.name}
                         <span
@@ -1419,93 +1387,7 @@ export default function AxisView({
           </div>
         </div>
 
-        {/* ── Mini inspector (M25 replaces this with the right-panel Inspector) ── */}
-        {selection && selectedItem && (
-          <aside className="ax-inspector" data-testid="ax-inspector" aria-label="Timeline item inspector">
-            <div className="ax-insp-kind">{selectedKindLabel}</div>
-            <label className="ax-insp-label" htmlFor="ax-insp-title">TITLE</label>
-            <input
-              id="ax-insp-title"
-              className="ax-insp-title"
-              value={selectedItem.name}
-              onChange={(e) => renameSelected(e.target.value)}
-              onBlur={commitSelected}
-              data-testid="ax-insp-title"
-            />
-            {selection.type === 'event' ? (
-              <div className="ax-insp-when" data-testid="ax-insp-when">
-                {formatWhen((selectedItem as TimelineEvent).when, calendar, t0)}
-              </div>
-            ) : (
-              <div className="ax-insp-when" data-testid="ax-insp-when">
-                <span>STARTS {formatWhen((selectedItem as TimelineEra | TimelineSpan).startWhen, calendar, t0)}</span>
-                <span>ENDS {formatWhen((selectedItem as TimelineEra | TimelineSpan).endWhen, calendar, t0)}</span>
-              </div>
-            )}
-            <button
-              type="button"
-              className="ax-insp-exact"
-              onClick={() => setExactTimeOpen(true)}
-              title="Set year, month, day and hour — uses this timeline's calendar"
-              data-testid="ax-insp-exact"
-            >
-              Set exact time…
-            </button>
-            {selection.type === 'span' && !(selectedItem as TimelineSpan).rowId && (
-              <>
-                <label className="ax-insp-label" htmlFor="ax-insp-embed">EMBEDS TIMELINE</label>
-                <select
-                  id="ax-insp-embed"
-                  className="ax-insp-embed"
-                  value={(selectedItem as TimelineSpan).opensTimelineId ?? ''}
-                  onChange={(e) => setEmbed(e.target.value)}
-                  data-testid="ax-insp-embed"
-                >
-                  <option value="">Nothing — plain span</option>
-                  {localStore.timelines
-                    .filter((t) => t.id !== activeId)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                </select>
-              </>
-            )}
-            <button type="button" className="ax-insp-delete" onClick={deleteSelected} data-testid="ax-insp-delete">
-              Delete
-            </button>
-          </aside>
-        )}
       </div>
-
-      {exactTimeOpen && selectedItem && selection && (
-        <ExactTimeModal
-          calendar={calendar}
-          target={
-            selection.type === 'event'
-              ? { kind: 'single', when: (selectedItem as TimelineEvent).when }
-              : {
-                  kind: 'dual',
-                  startWhen: (selectedItem as TimelineEra | TimelineSpan).startWhen,
-                  endWhen: (selectedItem as TimelineEra | TimelineSpan).endWhen,
-                }
-          }
-          fallbackWhen={t0}
-          onApply={applyExactTime}
-          onClose={() => setExactTimeOpen(false)}
-          onEditCalendar={() => setCalendarOpen(true)}
-        />
-      )}
-
-      {calendarOpen && (
-        <CalendarEditorModal
-          timelineName={active.name}
-          calendar={calendar}
-          onChange={persistCalendar}
-          onClose={() => setCalendarOpen(false)}
-        />
-      )}
 
       <Toast message={toast?.message ?? null} level={toast?.level} />
     </div>
