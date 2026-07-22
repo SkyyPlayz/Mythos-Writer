@@ -877,7 +877,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ─── Voice session state (SKY-896) ───
   const [voiceListening, setVoiceListening] = useState(false);
   const voiceRecognitionRef = useRef<SpeechRecognition | null>(null);
-  const voicePttActiveRef = useRef(false);
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1184,7 +1183,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const sessionId = voiceSessionRef.current;
     voiceSessionRef.current = null;
     pttDownRef.current = false;
-    voicePttActiveRef.current = false;
     setVoiceActive(false);
     setVoiceListening(false);
     if (sessionId) {
@@ -3067,41 +3065,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // Beta 4 M1: the SKY-127 data-context window-ring effect is deleted with the
   // html frame ring (§3: no neon window frame ring around the app).
-
-  // Voice toggle / push-to-talk keyboard shortcut: Ctrl+Shift+M
-  useEffect(() => {
-    if (!appSettings?.voice?.enabled) return;
-    const pttMode = appSettings.voice.pushToTalkMode ?? false;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod || !e.shiftKey || (e.key !== 'M' && e.key !== 'm')) return;
-      e.preventDefault();
-      if (pttMode) {
-        if (!voicePttActiveRef.current) {
-          voicePttActiveRef.current = true;
-          startVoice();
-        }
-      } else {
-        if (voiceSessionRef.current) stopVoice(); else startVoice();
-      }
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (!pttMode || !voicePttActiveRef.current) return;
-      // Stop on release of any key in the combo
-      if (e.key === 'M' || e.key === 'm' || e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift') {
-        stopVoice();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-    };
-  }, [appSettings?.voice?.enabled, appSettings?.voice?.pushToTalkMode, startVoice, stopVoice]);
 
   // Cleanup any active voice session on unmount
   useEffect(() => () => { stopVoice(); }, [stopVoice]);

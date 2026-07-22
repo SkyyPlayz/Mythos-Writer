@@ -141,27 +141,6 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
           </>
         )}
 
-        <div className="settings-agent-header" style={{ marginTop: '8px' }}>
-          <span className="settings-label">Push-to-talk mode</span>
-          <label className="settings-toggle" htmlFor="voice-ptt">
-            <input
-              id="voice-ptt"
-              type="checkbox"
-              aria-label="Push-to-talk mode"
-              checked={settings.voice?.pushToTalkMode ?? false}
-              onChange={(e) => {
-                const pushToTalkMode = e.target.checked;
-                setSettings((p) => ({
-                  ...p,
-                  voice: { ...(p.voice ?? { enabled: false, cloudFallback: false }), pushToTalkMode },
-                }));
-                setSavedOk(false);
-              }}
-            />
-            <span className="settings-toggle-track" />
-          </label>
-        </div>
-
         {shouldShowVoiceProviderSelector && (
           <>
             <div className="settings-field settings-field-inline">
@@ -314,8 +293,8 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
         </div>
 
         <p className="settings-hint">
-          When push-to-talk is on, hold <kbd>Ctrl+Shift+M</kbd> to record and release to stop.
-          When off, <kbd>Ctrl+Shift+M</kbd> toggles recording on/off.
+          Capture mode above controls the shortcut behavior: toggle mode presses
+          <kbd> Ctrl+Shift+V</kbd> to start/stop, push-to-talk holds <kbd>Alt+V</kbd> while speaking.
           Requires microphone permission.
         </p>
       </div>

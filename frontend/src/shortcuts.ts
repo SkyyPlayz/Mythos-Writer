@@ -33,7 +33,8 @@ export function buildShortcutGroups(mod: string): ShortcutGroup[] {
         { keys: [`${mod}+,`], action: 'Open Settings' },
         { keys: ['?', `${mod}+/`], action: 'Open Keyboard Shortcuts help' },
         { keys: ['Escape'], action: 'Close modal / dismiss overlay' },
-        { keys: [`${mod}+Shift+M`], action: 'Toggle voice input (hold for push-to-talk)' },
+        { keys: [`${mod}+Shift+V`], action: 'Toggle voice input' },
+        { keys: ['Alt+V'], action: 'Hold to talk (push-to-talk capture mode)' },
         // Beta 4 M2 (§1 keyboard map): Ctrl+K = command palette / vault search.
         // Scene Crafter stays reachable via the nav rail + Insert menu.
         { keys: [`${mod}+K`], action: 'Search vault (command palette)' },
