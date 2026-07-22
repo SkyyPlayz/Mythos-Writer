@@ -1,23 +1,36 @@
 /**
- * sceneCrafter.spec.ts — SKY-1766
+ * sceneCrafter.spec.ts — SKY-1766, retired lanes UI per SKY-7601
  *
- * Playwright E2E coverage for Scene Crafter Kanban v0.
+ * Playwright E2E coverage for the Scene Crafter M18/M19 Canvas view.
  *
- * Acceptance criteria:
- *   AC-SC-01  Board file created with 5 canonical lanes
- *   AC-SC-02  Vault note drag creates a card in the target lane
- *   AC-SC-03  Card drag moves card between lanes
- *   AC-SC-04  Checkbox toggle marks a card done / undone
- *   AC-SC-05  Lane management — add / rename / delete (empty + force)
- *   AC-SC-06  Card delete removes the card from the board
+ * SKY-7601: the pre-M18 Kanban lanes board (5 fixed lanes, per-card
+ * checkboxes, add/rename/delete lane, drag-and-drop) is retired from the UI.
+ * `board.lanes` still exists on disk (B4-3, no destructive data migration),
+ * so the on-disk format (AC-SC-07) and any lane card carrying a
+ * `manuscript/<sceneId>` tag (surfaced read-only as "Go to scene", AC-SC-10)
+ * still round-trip — only the lanes UI itself, and the ACs that exercised it
+ * (former AC-SC-01 through 06, AC-SC-11), are gone with no UI replacement.
+ *
+ * Acceptance criteria (current):
  *   AC-SC-07  Obsidian round-trip — serialized board.md matches format spec
- *   AC-SC-08  Brainstorm accept adds card to Scene Crafter
+ *   AC-SC-08  Brainstorm accept writes a scene_crafter_card onto the board
+ *             (verified via IPC read — the lanes surface that displayed
+ *             these cards is retired; see "known gap" note below)
  *   AC-SC-09  Brainstorm reject removes proposal from list
- *   AC-SC-10  Manuscript deep link — "Go to scene" button visible for tagged card
- *   AC-SC-11  Empty board CTA shown when no cards
+ *   AC-SC-10  Manuscript deep link — "Go to scene" shown for a tagged card
  *   AC-SC-12  External edit conflict alert surfaced
  *   AC-SC-13  Write error banner shown — SKIPPED (platform-specific lock simulation)
  *   AC-SC-14  Per-story isolation — boards are independent across stories
+ *   AC-SC-15  Suggested-card click selects it as draft context (SKY-7601)
+ *   AC-SC-16  A card tagged manuscript/<id> with no scene link is silent —
+ *             the Linked scenes section only appears when one exists
+ *
+ * Known gap (not fixed here, out of scope for SKY-7601 per its own ticket
+ * text): accepting a scene_crafter_card Brainstorm proposal still writes
+ * into board.lanes[0] via sceneCrafterAddCard (BrainstormPage.tsx), which is
+ * now an invisible surface unless the card happens to carry a manuscript/
+ * tag. Tracked for a follow-up — SKY-7601 scoped only the Scene Crafter
+ * page's own UI, not the Brainstorm accept path.
  */
 
 import path from 'path';
@@ -127,9 +140,10 @@ async function selectStory(pg: Page, title: string): Promise<void> {
 async function openBoardView(pg: Page): Promise<void> {
   await clickStoryNav(pg);
   await pg.locator('[data-testid="story-subview-kanban"]').click();
-  // Wait for the lanes container, which is only rendered once the board has fully loaded.
-  // (The loading state renders .scene-crafter-page but not .scene-crafter-lanes.)
-  await expect(pg.locator('.scene-crafter-lanes')).toBeVisible({ timeout: 8_000 });
+  // Wait for the M18/M19 Scene Setup column, which only renders once the
+  // board has fully loaded (the loading state renders .scene-crafter-page
+  // but not .sc-columns). The lanes board is retired — see SKY-7601.
+  await expect(pg.locator('.sc-columns')).toBeVisible({ timeout: 8_000 });
 }
 
 /**
@@ -146,6 +160,19 @@ async function reloadBoardView(pg: Page): Promise<void> {
 /** Return the absolute path to a story's board.md in the notes vault. */
 function boardPath(notesVaultDir: string, storySlug: string): string {
   return path.join(notesVaultDir, 'scenes', storySlug, 'board.md');
+}
+
+type SceneCrafterCard = { wikilink: string; title: string; done: boolean; tags: string[] };
+type SceneCrafterBoardShape = { lanes: Array<{ name: string; cards: SceneCrafterCard[] }> };
+
+/** Read the board straight from IPC — the source of truth now that lanes have no UI. */
+async function readBoard(pg: Page, slug: string): Promise<SceneCrafterBoardShape | null> {
+  return pg.evaluate(
+    (s) => (window as Window & typeof globalThis & {
+      api: { sceneCrafterGetBoard: (id: string, slug: string) => Promise<SceneCrafterBoardShape | null> };
+    }).api.sceneCrafterGetBoard(s, s),
+    slug,
+  );
 }
 
 // ─── Suite state ──────────────────────────────────────────────────────────────
@@ -198,218 +225,6 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-// ─── AC-SC-01: Board created with 5 canonical lanes ──────────────────────────
-
-test('AC-SC-01: board file created with 5 canonical lanes', async () => {
-  await openBoardView(page);
-
-  const lanes = ['Idea', 'Outline', 'Draft', 'Revision', 'Done'];
-  for (const lane of lanes) {
-    await expect(page.locator(`[data-testid="scene-crafter-lane-${lane}"]`))
-      .toBeVisible({ timeout: 6_000 });
-  }
-
-  // Verify lane count label in header
-  await expect(page.locator('.scene-crafter-actions')).toContainText('5 lanes');
-});
-
-// ─── AC-SC-02: Vault note drag creates a card ────────────────────────────────
-
-test('AC-SC-02: dragging a vault note path into a lane creates a card', async () => {
-  await openBoardView(page);
-
-  const NOTE_PATH = 'worldbuilding/act-one-notes';
-  const ideaLane = page.locator('[data-testid="scene-crafter-lane-Idea"]');
-
-  // Simulate drag-drop by firing DragEvent on the lane with the note MIME type set.
-  await ideaLane.dispatchEvent('dragover', {});
-  await ideaLane.evaluate((el, notePath) => {
-    const dt = new DataTransfer();
-    dt.setData('application/x-mythos-note-path', notePath);
-    const event = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt });
-    el.dispatchEvent(event);
-  }, NOTE_PATH);
-
-  await expect(
-    page.locator(`[data-testid="scene-crafter-card-${NOTE_PATH}"]`),
-  ).toBeVisible({ timeout: 8_000 });
-});
-
-// ─── AC-SC-03: Card drag moves card between lanes ────────────────────────────
-
-test('AC-SC-03: moving a card to another lane updates the board', async () => {
-  await openBoardView(page);
-
-  // Ensure a card exists in the Idea lane via IPC to avoid relying on AC-SC-02 ordering.
-  const WIKILINK = 'worldbuilding/scene-to-move';
-  await page.evaluate(
-    ({ slug, wikilink }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddCard({
-          storySlug: slug,
-          laneIndex: 0,
-          card: { wikilink, title: 'Scene To Move', done: false, tags: [] },
-        }),
-    { slug: storySlug, wikilink: WIKILINK },
-  );
-  await reloadBoardView(page);
-
-  const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
-  await expect(card).toBeVisible({ timeout: 6_000 });
-
-  // Find the actual index of the card in lane 0; earlier tests may have left
-  // cards there (e.g. AC-SC-02 adds act-one-notes at index 0).
-  const fromIndex = await page.evaluate(
-    async ({ slug, wikilink }) => {
-      type Api = { sceneCrafterGetBoard: (id: string, slug: string) => Promise<{ lanes: Array<{ cards: Array<{ wikilink: string }> }> } | null> };
-      const board = await (window as Window & typeof globalThis & { api: Api }).api.sceneCrafterGetBoard(slug, slug);
-      return board?.lanes[0].cards.findIndex((c) => c.wikilink === wikilink) ?? -1;
-    },
-    { slug: storySlug, wikilink: WIKILINK },
-  );
-  expect(fromIndex, `Card ${WIKILINK} not found in lane 0`).toBeGreaterThanOrEqual(0);
-
-  // Move via IPC (lane 0 → lane 1).
-  await page.evaluate(
-    ({ slug, fromIdx }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterMoveCard({ storySlug: slug, fromLane: 0, fromIndex: fromIdx, toLane: 1, toIndex: 0 }),
-    { slug: storySlug, fromIdx: fromIndex },
-  );
-  await reloadBoardView(page);
-
-  // Card now lives inside the Outline lane.
-  const outlineLane = page.locator('[data-testid="scene-crafter-lane-Outline"]');
-  await expect(outlineLane.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`))
-    .toBeVisible({ timeout: 6_000 });
-});
-
-// ─── AC-SC-04: Checkbox toggle marks a card done ─────────────────────────────
-
-test('AC-SC-04: checking the checkbox marks a card done', async () => {
-  await openBoardView(page);
-
-  const WIKILINK = 'worldbuilding/toggle-test';
-
-  // Seed a card in lane 0.
-  await page.evaluate(
-    ({ slug, wikilink }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddCard({
-          storySlug: slug,
-          laneIndex: 0,
-          card: { wikilink, title: 'Toggle Test', done: false, tags: [] },
-        }),
-    { slug: storySlug, wikilink: WIKILINK },
-  );
-  await reloadBoardView(page);
-
-  const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
-  const checkbox = card.locator('input[type="checkbox"]');
-
-  await expect(checkbox).not.toBeChecked({ timeout: 6_000 });
-  await checkbox.check();
-  await expect(checkbox).toBeChecked({ timeout: 4_000 });
-
-  // Verify persistence: navigate away and back to force a fresh board read from disk.
-  await reloadBoardView(page);
-  await expect(
-    page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`).locator('input[type="checkbox"]'),
-  ).toBeChecked({ timeout: 6_000 });
-});
-
-// ─── AC-SC-05: Lane management — add / rename / delete ───────────────────────
-
-test('AC-SC-05: add lane, rename it, delete empty lane', async () => {
-  await openBoardView(page);
-
-  // Add a new lane.
-  await page.locator('.scene-crafter-actions button', { hasText: 'Add lane' }).click();
-  const newLane = page.locator('[data-testid="scene-crafter-lane-New Lane"]');
-  await expect(newLane).toBeVisible({ timeout: 6_000 });
-
-  // Rename by double-clicking the lane header h3.
-  await newLane.locator('h3').dblclick();
-  const renameInput = newLane.locator('input[aria-label^="Rename lane"]');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-  await renameInput.fill('Planning');
-  await renameInput.press('Enter');
-
-  const planningLane = page.locator('[data-testid="scene-crafter-lane-Planning"]');
-  await expect(planningLane).toBeVisible({ timeout: 6_000 });
-
-  // Delete the empty lane (no confirm dialog for empty lanes).
-  await planningLane.locator('button[aria-label^="Delete lane"]').click();
-  await expect(planningLane).not.toBeVisible({ timeout: 6_000 });
-
-  // Board should be back to 5 canonical lanes.
-  await expect(page.locator('.scene-crafter-actions')).toContainText('5 lanes');
-});
-
-test('AC-SC-05b: delete non-empty lane shows confirmation, force-delete removes it', async () => {
-  await openBoardView(page);
-
-  // Add a lane with a card.
-  await page.evaluate(
-    (slug) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddLane(slug, 'ToDelete'),
-    storySlug,
-  );
-  await reloadBoardView(page);
-
-  const laneCount = await page.locator('.scene-crafter-lane').count();
-
-  await page.evaluate(
-    ({ slug, laneIndex }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddCard({
-          storySlug: slug,
-          laneIndex,
-          card: { wikilink: 'wl/card-in-lane-to-delete', title: 'Card', done: false, tags: [] },
-        }),
-    { slug: storySlug, laneIndex: laneCount - 1 },
-  );
-  await reloadBoardView(page);
-
-  const toLaneLoc = page.locator('[data-testid="scene-crafter-lane-ToDelete"]');
-  await toLaneLoc.locator('button[aria-label^="Delete lane"]').click();
-
-  // Confirmation dialog should appear.
-  const confirm = page.locator('.scene-crafter-confirm');
-  await expect(confirm).toBeVisible({ timeout: 4_000 });
-  await expect(confirm).toContainText('1 card');
-
-  // Force delete.
-  await confirm.locator('button', { hasText: 'Delete anyway' }).click();
-  await expect(toLaneLoc).not.toBeVisible({ timeout: 6_000 });
-});
-
-// ─── AC-SC-06: Card delete ────────────────────────────────────────────────────
-
-test('AC-SC-06: deleting a card removes it from the board', async () => {
-  await openBoardView(page);
-
-  const WIKILINK = 'worldbuilding/card-to-delete';
-
-  await page.evaluate(
-    ({ slug, wikilink }) =>
-      (window as Window & typeof globalThis & { api: Record<string, (...a: unknown[]) => Promise<unknown>> })
-        .api.sceneCrafterAddCard({
-          storySlug: slug,
-          laneIndex: 0,
-          card: { wikilink, title: 'Card To Delete', done: false, tags: [] },
-        }),
-    { slug: storySlug, wikilink: WIKILINK },
-  );
-  await reloadBoardView(page);
-
-  const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
-  await expect(card).toBeVisible({ timeout: 6_000 });
-  await card.locator('button[aria-label^="Delete card"]').click();
-  await expect(card).not.toBeVisible({ timeout: 6_000 });
-});
-
 // ─── AC-SC-07: Obsidian round-trip ───────────────────────────────────────────
 
 test('AC-SC-07: board.md round-trips through the Obsidian Kanban format spec', async () => {
@@ -427,7 +242,8 @@ test('AC-SC-07: board.md round-trips through the Obsidian Kanban format spec', a
   expect(content).toContain('story-id:');
   expect(content).toContain('last-modified:');
 
-  // Must have the 5 canonical lane headings.
+  // Must have the 5 canonical lane headings — the *data* format is unchanged
+  // by SKY-7601 (B4-3: no destructive migration), only the lanes UI is gone.
   for (const lane of ['Idea', 'Outline', 'Draft', 'Revision', 'Done']) {
     expect(content).toContain(`## ${lane}`);
   }
@@ -436,6 +252,17 @@ test('AC-SC-07: board.md round-trips through the Obsidian Kanban format spec', a
   expect(content).toContain('%% kanban:settings');
   expect(content).toContain('{"kanban-plugin":"board"}');
   expect(content).toContain('\n%%');
+});
+
+// ─── AC-SC-16: Linked scenes section hidden when no card is manuscript-tagged ─
+
+test('AC-SC-16: Linked scenes section is absent when no board card carries a manuscript/ tag', async () => {
+  await openBoardView(page);
+
+  // At this point in the suite the board has not yet had a manuscript/-tagged
+  // card written to it (that happens in AC-SC-10, later in file order) — so
+  // the read-only "Linked scenes" section should not render at all.
+  await expect(page.locator('[data-testid="crafter-linked-scenes"]')).not.toBeAttached();
 });
 
 // ─── AC-SC-08 / AC-SC-09: Brainstorm integration ─────────────────────────────
@@ -476,7 +303,7 @@ async function injectProposal(
   );
 }
 
-test('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', async () => {
+test('AC-SC-08: accepting a Brainstorm proposal writes a card onto the Scene Crafter board', async () => {
   const PROPOSAL_ID = 'e2e-sc08-proposal';
   const CARD_TITLE = 'HeroArrivesAtVillage';
 
@@ -498,13 +325,12 @@ test('AC-SC-08: accepting a Brainstorm proposal adds a card to Scene Crafter', a
   // The ProposalCard should disappear (proposals list becomes empty).
   await expect(proposalRegion).not.toBeVisible({ timeout: 4_000 });
 
-  // Navigate to Scene Crafter and reload the board from disk.
-  await reloadBoardView(page);
-
-  // Verify the new card appears on the board (Idea lane, index 0).
-  await expect(
-    page.locator(`[data-testid="scene-crafter-card-${CARD_TITLE}"]`),
-  ).toBeVisible({ timeout: 8_000 });
+  // Scene Crafter's lanes UI is retired (SKY-7601) — verify the card landed
+  // on the board via IPC instead of a DOM testid that no longer exists.
+  await expect.poll(async () => {
+    const board = await readBoard(page, storySlug);
+    return board?.lanes[0]?.cards.some((c) => c.title === CARD_TITLE) ?? false;
+  }, { timeout: 8_000 }).toBe(true);
 });
 
 test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal list', async () => {
@@ -529,16 +355,14 @@ test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal lis
   // ProposalCard unmounts when the queue is empty.
   await expect(proposalRegion).not.toBeVisible({ timeout: 4_000 });
 
-  // Navigate to Scene Crafter and verify no card was added.
-  await reloadBoardView(page);
-  await expect(
-    page.locator(`[data-testid="scene-crafter-card-${CARD_TITLE}"]`),
-  ).not.toBeVisible({ timeout: 4_000 });
+  // No card with this title should have been written to the board.
+  const board = await readBoard(page, storySlug);
+  expect(board?.lanes[0]?.cards.some((c) => c.title === CARD_TITLE) ?? false).toBe(false);
 });
 
 // ─── AC-SC-10: Manuscript deep link ──────────────────────────────────────────
 
-test('AC-SC-10: card with manuscript/ tag shows "Go to scene" deep-link button', async () => {
+test('AC-SC-10: a board card with a manuscript/ tag shows "Go to scene" under Linked scenes', async () => {
   await openBoardView(page);
 
   const SCENE_ID = 'abc123';
@@ -561,37 +385,10 @@ test('AC-SC-10: card with manuscript/ tag shows "Go to scene" deep-link button',
   );
   await reloadBoardView(page);
 
-  const card = page.locator(`[data-testid="scene-crafter-card-${WIKILINK}"]`);
-  await expect(card.locator('button', { hasText: 'Go to scene' })).toBeVisible({ timeout: 6_000 });
-});
-
-// ─── AC-SC-11: Empty board CTA ───────────────────────────────────────────────
-
-test('AC-SC-11: empty board shows "Plan your next scene" CTA', async () => {
-  // Create a fresh story with no cards so we reliably see the empty state.
-  const tempUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-empty-'));
-  const tempVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-empty-story-'));
-  const tempNotes = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-empty-notes-'));
-  seedUserData(tempUserData, tempVault, tempNotes);
-
-  const emptyApp = await launchApp(tempUserData);
-  const emptyPage = await firstWindow(emptyApp);
-
-  try {
-    await expect(emptyPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-    await createStory(emptyPage, 'Empty Story');
-    await selectStory(emptyPage, 'Empty Story');
-    await openBoardView(emptyPage);
-
-    const empty = emptyPage.locator('.scene-crafter-empty');
-    await expect(empty).toBeVisible({ timeout: 6_000 });
-    await expect(empty).toContainText('Plan your next scene');
-  } finally {
-    await emptyApp.close().catch(() => {});
-    fs.rmSync(tempUserData, { recursive: true, force: true });
-    fs.rmSync(tempVault, { recursive: true, force: true });
-    fs.rmSync(tempNotes, { recursive: true, force: true });
-  }
+  const linked = page.locator('[data-testid="crafter-linked-scenes"]');
+  await expect(linked).toBeVisible({ timeout: 6_000 });
+  await expect(linked).toContainText('Deep Link Scene');
+  await expect(linked.locator('button', { hasText: 'Go to scene' }).first()).toBeVisible();
 });
 
 // ─── AC-SC-12: External edit conflict alert ───────────────────────────────────
@@ -617,17 +414,6 @@ test('AC-SC-12: writing board.md from outside the app surfaces the conflict aler
   await expect(conflictAlert).not.toBeVisible({ timeout: 4_000 });
 });
 
-// ─── AC-SC-13: Write error banner ────────────────────────────────────────────
-
-test.skip('AC-SC-13: I/O error during board save surfaces the write-error banner', async () => {
-  // Simulating a file-lock or EPERM at the filesystem layer requires platform-specific
-  // tooling (chattr +i on Linux, SetFileAttributes on Windows) which is unreliable in
-  // headless CI across Ubuntu and macOS. This AC is instead covered by the IPC unit test
-  // in electron-main/src/sceneCrafterIpc.test.ts which throws from writeFileAtomic and
-  // asserts the handler propagates the error. Re-enable when a reliable cross-platform
-  // mock approach is identified (tracked in SKY-1766 thread).
-});
-
 // ─── AC-SC-14: Per-story isolation ───────────────────────────────────────────
 
 test('AC-SC-14: each story has an independent board that does not share cards', async () => {
@@ -643,16 +429,62 @@ test('AC-SC-14: each story has an independent board that does not share cards', 
   await openBoardView(page);
 
   // Board for story B should have 5 empty lanes — none of story A's cards.
-  const cardCount = await page.locator('.scene-crafter-card').count();
-  expect(cardCount, 'Story B board must have no cards from Story A').toBe(0);
-
-  // board.md files are in separate slug directories.
+  // storySlug at this point still refers to story A; find story B's slug
+  // as the scenes-dir entry that is not storySlug.
   const scenesDir = path.join(notesVaultDir, 'scenes');
   const slugDirs = fs.existsSync(scenesDir)
     ? fs.readdirSync(scenesDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name)
     : [];
-
   expect(slugDirs.length, 'Two stories must produce two separate scene directories').toBeGreaterThanOrEqual(2);
+
+  const storyBSlug = slugDirs.find((slug) => slug !== storySlug);
+  expect(storyBSlug, 'Story B must have its own scenes/<slug> directory').toBeTruthy();
+
+  const boardB = await readBoard(page, storyBSlug as string);
+  const totalCardsB = boardB?.lanes.reduce((sum, lane) => sum + lane.cards.length, 0) ?? -1;
+  expect(totalCardsB, 'Story B board must have no cards from Story A').toBe(0);
+});
+
+// ─── AC-SC-13: Write error banner ────────────────────────────────────────────
+
+test.skip('AC-SC-13: I/O error during board save surfaces the write-error banner', async () => {
+  // Simulating a file-lock or EPERM at the filesystem layer requires platform-specific
+  // tooling (chattr +i on Linux, SetFileAttributes on Windows) which is unreliable in
+  // headless CI across Ubuntu and macOS. This AC is instead covered by the IPC unit test
+  // in electron-main/src/sceneCrafterIpc.test.ts which throws from writeFileAtomic and
+  // asserts the handler propagates the error. Re-enable when a reliable cross-platform
+  // mock approach is identified (tracked in SKY-1766 thread).
+});
+
+// ─── AC-SC-15: Suggested-card selection feeds draft context (SKY-7601) ───────
+
+test('AC-SC-15: clicking a suggested card selects it instead of writing to the retired lanes board', async () => {
+  // Suggested cards come from the notes vault (crafterState.suggestedFromVault),
+  // not from board.lanes — seed one note so the Suggested cards panel is non-empty.
+  fs.mkdirSync(path.join(notesVaultDir, 'Locations'), { recursive: true });
+  fs.writeFileSync(path.join(notesVaultDir, 'Locations', 'Ward Violet.md'), 'A quiet ward at the city\'s edge.');
+
+  await reloadBoardView(page);
+
+  const suggested = page.locator('.sc-suggest');
+  const before = await readBoard(page, storySlug);
+  const cardsBefore = before?.lanes.reduce((sum, lane) => sum + lane.cards.length, 0) ?? -1;
+
+  const firstCard = suggested.locator('.sc-sugg-card').first();
+  await firstCard.waitFor({ state: 'visible', timeout: 8_000 });
+  await expect(firstCard).toHaveAttribute('aria-pressed', 'false');
+
+  await firstCard.click();
+  await expect(firstCard).toHaveAttribute('aria-pressed', 'true');
+
+  // No lane card is created by this click — it only toggles selection state.
+  const after = await readBoard(page, storySlug);
+  const cardsAfter = after?.lanes.reduce((sum, lane) => sum + lane.cards.length, 0) ?? -1;
+  expect(cardsAfter).toBe(cardsBefore);
+
+  // Toggling again deselects it.
+  await firstCard.click();
+  await expect(firstCard).toHaveAttribute('aria-pressed', 'false');
 });
