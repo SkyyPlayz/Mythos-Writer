@@ -97,6 +97,7 @@
     "test:e2e:settings-category-subnav": "playwright test e2e/settings-category-subnav.spec.ts --reporter=list",
     "test:e2e:v1-vault-migration": "playwright test e2e/v1-vault-migration.spec.ts --reporter=list",
     "test:e2e:voice-io": "playwright test e2e/voice-io.spec.ts --reporter=list",
+    "test:e2e:voice-real-binary": "playwright test e2e/voice-real-binary.spec.ts --reporter=list",
     "test:e2e:inline-scene-rename": "playwright test e2e/tests/inline-scene-rename.spec.ts --reporter=list",
     "test:e2e:note-templates": "playwright test e2e/tests/note-templates.spec.ts --reporter=list",
     "test:e2e:scene-editor-empty-states": "playwright test e2e/tests/scene-editor-empty-states.spec.ts --reporter=list",
