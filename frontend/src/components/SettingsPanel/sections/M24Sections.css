@@ -102,6 +102,16 @@
   width: 100%;
 }
 
+.m24-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.m24-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
 .m24-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;

@@ -54,6 +54,16 @@
   outline: none;
 }
 
+.lnas-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 2px;
+}
+
+.lnas-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 2px;
+}
+
 .lnas-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
