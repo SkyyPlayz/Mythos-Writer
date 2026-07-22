@@ -87,7 +87,8 @@ function Row({
   }
 
   function handleDoubleClick(e: React.MouseEvent) {
-    if (!node.isDirectory && onStartRename) {
+    // SKY-7995: folders are renamable too now — only skip when there's no handler.
+    if (onStartRename) {
       e.preventDefault();
       e.stopPropagation();
       onStartRename(row);

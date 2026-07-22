@@ -11,12 +11,15 @@ import {
   isStoryInternalTreeItem,
   mapUuidNamesToTitles,
 } from './treeUtils';
-import type { FlatRow, TreeSortMode, VaultListItem } from './treeUtils';
+import type { FlatRow, TreeNode, TreeSortMode, VaultListItem } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
 import NoteTemplateDialog from '../NoteTemplateDialog';
 import TagPane from '../TagPane';
+import { useToast } from '../../hooks/useToast';
+import { useTextPrompt } from '../../useTextPrompt';
+import { Toast } from '../Toast/Toast';
 import './VaultBrowser.css';
 
 // ─── Filters ───
@@ -27,6 +30,16 @@ import './VaultBrowser.css';
 
 const INTERNAL_PREFIXES = ['.versions', '.snapshots', '.git'];
 const INTERNAL_FILES = new Set(['manifest.json', 'manifest.json.bak']);
+
+// SKY-7995: recursively count files+folders under a directory node, for the
+// delete-folder confirm dialog's item count.
+function countDescendants(node: TreeNode): number {
+  let count = 0;
+  for (const child of node.children) {
+    count += 1 + countDescendants(child);
+  }
+  return count;
+}
 
 function isNotesItem(item: { path: string; name: string; isDirectory: boolean }): boolean {
   if (item.name.startsWith('.')) return false;
@@ -508,6 +521,8 @@ interface NotesVaultProps {
   onTagFilter: (tag: string | null) => void;
   iconMap?: Record<string, string>;
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
+  /** SKY-7995: drop target for dragging an item back out to the vault root. */
+  onMoveToRoot?: (fromPath: string) => void;
   /** M15: dedicated open-in-new-tab handler; falls back to onOpenFile. */
   onOpenInNewTab?: (path: string) => void;
   /** M15: queue the Beta Reader agent on a note (context menu). */
@@ -558,7 +573,7 @@ function addRecent(current: string[], path: string): string[] {
   return deduped.slice(0, RECENT_MAX);
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onMoveToRoot, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
@@ -613,6 +628,8 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
 
   const [ctxRow, setCtxRow] = useState<FlatRow | null>(null);
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
+  // SKY-7995: root drop zone hover highlight.
+  const [rootDropActive, setRootDropActive] = useState(false);
 
   // ─── Template dialog state ───
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -664,21 +681,32 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [select, onOpenInNewTab, onOpenFile, onContextChange],
   );
 
+  const { toast, showToast } = useToast();
+
   // M15: context-menu Delete — confirm, then remove via the notes-vault IPC.
+  // SKY-7995: directories get an item-count confirm so deleting a folder
+  // doesn't read like deleting a single file, and failures surface as a
+  // toast instead of a silently-swallowed console.error.
   const handleDelete = useCallback(
     async (row: FlatRow) => {
       const path = row.node.path;
       const name = row.node.name.endsWith('.md') ? row.node.name.slice(0, -3) : row.node.name;
-      if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
+      const confirmMsg = row.node.isDirectory
+        ? (() => {
+            const n = countDescendants(row.node);
+            return `Delete "${name}" and everything inside it (${n} item${n === 1 ? '' : 's'})? This cannot be undone.`;
+          })()
+        : `Delete "${name}"? This cannot be undone.`;
+      if (!window.confirm(confirmMsg)) return;
       try {
         const res = await window.api.deleteNotesVault(path);
         if (res && 'error' in res) throw new Error(res.error);
         onReload();
       } catch (e) {
-        console.error('Delete failed:', e);
+        showToast((e as Error).message || 'Delete failed', 'error');
       }
     },
-    [onReload],
+    [onReload, showToast],
   );
 
   const handleBetaRead = useCallback(
@@ -691,12 +719,13 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [onContinuityCheck],
   );
 
+  // SKY-7995: folders are renamable now — a folder name has no extension to
+  // strip, so only do the dot-splitting for files.
   const handleStartRename = useCallback((row: FlatRow) => {
-    if (row.node.isDirectory) return;
     setEditingPath(row.node.path);
     const name = row.node.name;
     const lastDot = name.lastIndexOf('.');
-    setEditValue(lastDot > 0 ? name.slice(0, lastDot) : name);
+    setEditValue(row.node.isDirectory || lastDot <= 0 ? name : name.slice(0, lastDot));
     setEditError(null);
   }, []);
 
@@ -708,12 +737,15 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     const slash = editingPath.lastIndexOf('/');
     const dir = slash > 0 ? editingPath.slice(0, slash + 1) : '';
     const origName = editingPath.split('/').pop()!;
+    // SKY-7995: a directory name has no extension to preserve — "v1.2" is the
+    // whole name, not a stem + ".2" extension.
+    const isDir = notesItems.some((item) => item.path === editingPath && item.isDirectory);
     const lastDot = origName.lastIndexOf('.');
-    const ext = lastDot > 0 ? origName.slice(lastDot) : '';
+    const ext = !isDir && lastDot > 0 ? origName.slice(lastDot) : '';
     const newPath = dir + trimmed + ext;
     if (newPath === editingPath) { setEditingPath(null); return; }
     const pathExists = notesItems.some((item) => item.path === newPath);
-    if (pathExists) { setEditError('A file with that name already exists'); return; }
+    if (pathExists) { setEditError('An item with that name already exists'); return; }
     try {
       await window.api.moveNotesVault(editingPath, newPath);
       setEditingPath(null);
@@ -747,9 +779,14 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [onReload, select, onOpenFile],
   );
 
+  // SKY-7995: window.prompt() throws "prompt() is not supported" in Electron's
+  // renderer — this silently broke folder creation in every packaged build.
+  // useTextPrompt is the same promise-based modal DesktopShell already uses.
+  const { requestText, promptModal } = useTextPrompt();
+
   const handleNewFolder = useCallback(
     async (dirPath: string) => {
-      const name = prompt('Folder name:');
+      const name = await requestText('Folder name:');
       if (!name?.trim()) return;
       const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
       const rel = dirPath ? `${dirPath}/${slug || 'folder'}` : `${slug || 'folder'}`;
@@ -757,10 +794,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         await window.api.mkdirNotesVault(rel);
         await onReload();
       } catch (e) {
-        console.error('Failed to create folder:', e);
+        showToast((e as Error).message || 'Failed to create folder', 'error');
       }
     },
-    [onReload],
+    [onReload, showToast, requestText],
   );
 
   // ─── M16: toolbar handlers ───
@@ -952,6 +989,30 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           scrollToPath={revealPath}
         />
       )}
+      {/* SKY-7995: root drop zone — the only way to drag an item out of a
+          nested folder back to the vault root; row-level drop targets can
+          only move *into* a specific row. */}
+      {onMoveToRoot && allNotesItems.length > 0 && (
+        <div
+          className={`vb-root-drop-zone${rootDropActive ? ' vb-root-drop-zone--active' : ''}`}
+          data-testid="vb-root-drop-zone"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setRootDropActive(true);
+          }}
+          onDragLeave={() => setRootDropActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setRootDropActive(false);
+            const from = e.dataTransfer.getData('text/plain');
+            // Already at root (no '/') — nothing to move.
+            if (from && from.includes('/')) onMoveToRoot(from);
+          }}
+        >
+          Drop here to move to vault root
+        </div>
+      )}
       <ContextMenu
         row={ctxRow}
         x={ctxPos.x}
@@ -974,6 +1035,8 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
       )}
+      <Toast message={toast?.message ?? null} level={toast?.level} />
+      {promptModal}
     </div>
   );
 }
@@ -1118,7 +1181,19 @@ export default function VaultBrowser({
     if (result && 'error' in result) throw new Error((result as { error: string }).error);
   }, []);
 
-  const handleMove = useCallback(async (fromPath: string, targetRow: FlatRow) => {
+  const { toast: notesToast, showToast: showNotesToast } = useToast();
+
+  const moveNotesItem = useCallback(async (fromPath: string, toPath: string) => {
+    if (toPath === fromPath) return;
+    try {
+      await window.api.moveNotesVault(fromPath, toPath);
+      notesReload();
+    } catch (e) {
+      showNotesToast((e as Error).message || 'Move failed', 'error');
+    }
+  }, [notesReload, showNotesToast]);
+
+  const handleMove = useCallback((fromPath: string, targetRow: FlatRow) => {
     const targetDir = targetRow.node.isDirectory
       ? targetRow.node.path
       : (() => {
@@ -1127,14 +1202,16 @@ export default function VaultBrowser({
         })();
     const fileName = fromPath.split('/').pop()!;
     const toPath = targetDir ? `${targetDir}/${fileName}` : fileName;
-    if (toPath === fromPath) return;
-    try {
-      await window.api.moveNotesVault(fromPath, toPath);
-      notesReload();
-    } catch (e) {
-      console.error('Move failed:', e);
-    }
-  }, [notesReload]);
+    return moveNotesItem(fromPath, toPath);
+  }, [moveNotesItem]);
+
+  // SKY-7995: root drop zone — lets you drag a note/folder out of nested
+  // folders back to the vault root, the one direction the row-level onDrop
+  // (which always targets a specific row) couldn't reach.
+  const handleMoveToRoot = useCallback((fromPath: string) => {
+    const fileName = fromPath.split('/').pop()!;
+    return moveNotesItem(fromPath, fileName);
+  }, [moveNotesItem]);
 
   return (
     <div className="vault-browser" data-testid="vault-browser">
@@ -1220,6 +1297,7 @@ export default function VaultBrowser({
                 onTagFilter={setActiveTag}
                 iconMap={notesIconMap}
                 onMove={handleMove}
+                onMoveToRoot={handleMoveToRoot}
                 onOpenInNewTab={onOpenInNewTab}
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
@@ -1230,6 +1308,7 @@ export default function VaultBrowser({
           </div>
         )}
       </div>
+      <Toast message={notesToast?.message ?? null} level={notesToast?.level} />
     </div>
   );
 }
