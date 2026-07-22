@@ -10,6 +10,13 @@
 //     "Mythos Writer - Liquid Neon.dc.html" 4703–4709),
 //   - the minimap scrubber scroll math,
 //   - the Plan-vs-Progress grey filter constants (prototype 4259).
+//
+// SKY-7935 — Relationships/Subway character line colors now come from the
+// shared hue-separation algorithm in lib/characterHue.ts (see `lines` below),
+// not the fixed 6-slot cycle used elsewhere on this page (journeys, chapter
+// cells, world/theme cards keep the original palette).
+
+import { assignCharacterHues } from './lib/characterHue';
 
 // ─── View modes ───
 
@@ -435,13 +442,20 @@ export function deriveAeonTimeline(input: AeonDeriveInput): AeonTimelineData {
   });
 
   const sceneById = new Map(scenes.map(s => [s.id, s]));
+  // SKY-7935 — Relationships/Subway character colors use the shared
+  // hue-separation algorithm (hash id → hue bucket, skip buckets adjacent to
+  // an already-assigned character) instead of the fixed 6-slot palette
+  // cycle, so two characters are never adjacent-hue neighbors regardless of
+  // how many are on screen.
+  const hueAssignments = assignCharacterHues(rankedCharacters.slice(0, MAX_LINES).map(c => c.id));
+  const hueByCharId = new Map(hueAssignments.map(a => [a.id, a]));
   const lines: AeonCharacterLine[] = rankedCharacters.slice(0, MAX_LINES)
-    .map((c, i) => {
-      const slot = CHARACTER_SLOT_ORDER[i % CHARACTER_SLOT_ORDER.length];
+    .map((c) => {
+      const hue = hueByCharId.get(c.id);
       const presentAt = events
         .map((e, idx) => (sceneById.get(e.sceneId)?.characterIds.includes(c.id) ? idx : -1))
         .filter(idx => idx >= 0);
-      return { id: c.id, name: c.name, slot, color: SLOT_HEX[slot - 1], presentAt };
+      return { id: c.id, name: c.name, slot: (hue?.bucket ?? 0) + 1, color: hue?.color ?? SLOT_HEX[0], presentAt };
     })
     .filter(line => line.presentAt.length > 0);
 

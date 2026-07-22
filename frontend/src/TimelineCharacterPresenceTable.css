@@ -1,0 +1,62 @@
+/* SKY-7935 — shared native-table presence markup (Relationships + Subway toggle). */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tcpt-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+
+.tcpt-th-name,
+.tcpt-th-event {
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  color: #aebad0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.tcpt-th-event {
+  text-align: center;
+  font-size: 9px;
+}
+
+tbody .tcpt-th-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tcpt-cell {
+  text-align: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.tcpt-empty {
+  color: #566079;
+}
+
+.tcpt-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tcpt-dot:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}

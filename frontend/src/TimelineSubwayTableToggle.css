@@ -1,0 +1,38 @@
+/* SKY-7935 — Subway "View as table" toggle + table view wrapper. */
+
+.tstt-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #aebad0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.tstt-toggle-btn--active {
+  color: #e6ecf9;
+  background: rgba(0, 240, 255, 0.12);
+  border-color: var(--neon-cyan, #00f0ff);
+}
+
+.tstt-toggle-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: 2px;
+}
+
+.tstt-table-wrap {
+  padding: 4px 20px 20px;
+}
+
+.tstt-no-lines {
+  font-size: 11px;
+  color: #8e9db8;
+  text-align: center;
+  padding: 32px 12px;
+  margin: 0;
+}
