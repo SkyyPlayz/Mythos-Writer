@@ -170,7 +170,9 @@ const STATUS_TIP: Record<SceneStatus, string> = {
   todo: 'Not started',
 };
 
-// ── Toolbar v2 vocab (prototype 744–764, alignIc/listIcs 2967–2977) ──────────
+// ── Toolbar v2 vocab (prototype 744–764, alignIc 2967–2977). SKY-7930: the
+//    prototype's list/indent buttons had no data model to act on (manuscript
+//    paragraphs are plain text — no list/indent markup) and were removed.
 
 const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quote'];
 const FONT_OPTIONS = ['Lora', 'Georgia', 'Palatino Linotype', 'Inter'];
@@ -195,13 +197,6 @@ const ALIGN_PATHS: Array<{ k: AlignKey; label: string; p: string }> = [
   { k: 'center', label: 'Align center', p: 'M4 7h16M7 12h10M6 17h12' },
   { k: 'right', label: 'Align right', p: 'M4 7h16M10 12h10M7 17h13' },
   { k: 'justify', label: 'Justify', p: 'M4 7h16M4 12h16M4 17h16' },
-];
-
-const LIST_PATHS: Array<{ k: string; label: string; p: string }> = [
-  { k: 'ul', label: 'Bulleted list', p: 'M9 7h11M9 12h11M9 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01' },
-  { k: 'ol', label: 'Numbered list', p: 'M10 7h10M10 12h10M10 17h10M4 5.5h1.5v3M4 11h2l-2 2.6h2M4.2 16h1.6a.9.9 0 0 1 0 1.8H5a.9.9 0 0 0 0 1.8h1.8' },
-  { k: 'indent', label: 'Indent', p: 'M13 7h7M13 12h7M13 17h7M4 9l3 3-3 3' },
-  { k: 'outdent', label: 'Outdent', p: 'M13 7h7M13 12h7M13 17h7M7 9l-3 3 3 3' },
 ];
 
 /** Prototype fam mapping (4117). */
@@ -1219,12 +1214,6 @@ export default function ManuscriptView({
             aria-pressed={align === k}
             onClick={() => setAlign(k)}
           >
-            {TB_ICON(p)}
-          </button>
-        ))}
-        <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
-        {LIST_PATHS.map(({ k, label, p }) => (
-          <button key={k} type="button" className="msv-tb-btn" aria-label={label} title={label}>
             {TB_ICON(p)}
           </button>
         ))}
