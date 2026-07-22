@@ -202,6 +202,65 @@ describe('IPC vault round-trip', () => {
     expect(deleteVaultFile(tmpDir, 'nonexistent.txt').deleted).toBe(false);
   });
 
+  // SKY-7995: deleteVaultFile must handle directories (unlinkSync throws
+  // EISDIR for a directory target — this is how folder-delete silently
+  // failed before).
+  it('deleteVaultFile removes a directory and everything inside it', () => {
+    fs.mkdirSync(path.join(tmpDir, 'folder', 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'folder', 'a.txt'), 'a');
+    fs.writeFileSync(path.join(tmpDir, 'folder', 'nested', 'b.txt'), 'b');
+    const result = deleteVaultFile(tmpDir, 'folder');
+    expect(result.deleted).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'folder'))).toBe(false);
+  });
+
+  it('deleteVaultFile on an empty directory reports deleted=true', () => {
+    fs.mkdirSync(path.join(tmpDir, 'empty-folder'));
+    expect(deleteVaultFile(tmpDir, 'empty-folder').deleted).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'empty-folder'))).toBe(false);
+  });
+
+  // SKY-7995: moveVaultFile is also the rename primitive — cover directory
+  // move/rename with real fs + a descendant-safety guard against orphaning.
+  it('moveVaultFile relocates a directory and its contents', () => {
+    fs.mkdirSync(path.join(tmpDir, 'src-folder'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src-folder', 'note.md'), 'hi');
+    fs.mkdirSync(path.join(tmpDir, 'dest'), { recursive: true });
+    const result = moveVaultFile(tmpDir, 'src-folder', 'dest/src-folder');
+    expect(result.moved).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'src-folder'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, 'dest', 'src-folder', 'note.md'), 'utf-8')).toBe('hi');
+  });
+
+  it('moveVaultFile renames a directory in place', () => {
+    fs.mkdirSync(path.join(tmpDir, 'old-name'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'old-name', 'note.md'), 'hi');
+    const result = moveVaultFile(tmpDir, 'old-name', 'new-name');
+    expect(result.moved).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'old-name'))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, 'new-name', 'note.md'), 'utf-8')).toBe('hi');
+  });
+
+  it('moveVaultFile rejects moving a directory into itself', () => {
+    fs.mkdirSync(path.join(tmpDir, 'folder'), { recursive: true });
+    expect(() => moveVaultFile(tmpDir, 'folder', 'folder')).not.toThrow();
+    // fromFull === toFull short-circuits to a no-op, not an error; the real
+    // orphan hazard is moving into a *descendant*:
+    fs.mkdirSync(path.join(tmpDir, 'folder', 'child'), { recursive: true });
+    expect(() => moveVaultFile(tmpDir, 'folder', 'folder/child/folder')).toThrow(
+      /into itself or one of its own subfolders/
+    );
+  });
+
+  it('moveVaultFile rejects renaming a directory into one of its own descendants', () => {
+    fs.mkdirSync(path.join(tmpDir, 'parent', 'child'), { recursive: true });
+    expect(() => moveVaultFile(tmpDir, 'parent', 'parent/child')).toThrow(
+      /into itself or one of its own subfolders/
+    );
+    // Original directory must be untouched.
+    expect(fs.existsSync(path.join(tmpDir, 'parent', 'child'))).toBe(true);
+  });
+
   it('readVaultFile rejects path traversal', () => {
     expect(() => readVaultFile(tmpDir, '../../../etc/passwd')).toThrow('Path traversal denied');
   });
