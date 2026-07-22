@@ -228,7 +228,8 @@
 }
 
 .pct-drag-handle:focus-visible {
-  outline: none;
+  outline: 2px solid var(--focus-ring, var(--neon-cyan, #00f0ff));
+  outline-offset: -2px;
 }
 
 /* High-contrast: ensure controls remain visible */

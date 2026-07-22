@@ -370,6 +370,7 @@ button.bsb-card-title--note {
 
 .bs-collections-search:focus-within {
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 0 2px var(--focus-ring, rgba(0, 240, 255, 0.35));
 }
 
 .bs-collections-search input {

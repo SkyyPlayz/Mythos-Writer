@@ -3,8 +3,9 @@
 > **Source of truth:** [`plans/design-handoff/v2/FULL-SPEC.md`](../../plans/design-handoff/v2/FULL-SPEC.md)
 > and the interactive prototype [`plans/design-handoff/v2/prototype/Mythos Writer - Liquid Neon.dc.html`](../../plans/design-handoff/v2/prototype/)
 > (**the prototype wins every disagreement**). Companions: `GAP-REPORT-v2.md`
-> (what the shipped v0.4.0-beta.1 gets wrong), `PERFORMANCE.md` (why it's slow and
-> the fix order). Owner decisions B4-1…B4-7 in
+> (what the shipped v0.4.0-beta.1 gets wrong), [`plans/design-handoff/v2/PERFORMANCE.md`](../../plans/design-handoff/v2/PERFORMANCE.md) (why it's slow and
+> the fix order — measured baselines and the packaged-trace procedure are in
+> [`PERFORMANCE.md`](../../PERFORMANCE.md) at repo root). Owner decisions B4-1…B4-7 in
 > [`plans/ProjectGoalOverView/00-decisions-log.md`](../../plans/ProjectGoalOverView/00-decisions-log.md).
 > Product overview: [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](../../plans/ProjectGoalOverView/14-beta4-refine-overview.md).
 
@@ -37,7 +38,7 @@ all of them:
    demo-seeded vault, and the refreshed Settings workspace.
 
 **Definition of done** = FULL-SPEC §14's 10-point acceptance checklist +
-PERFORMANCE.md's acceptance targets (keystroke→paint <16ms with panels open, idle
+[`PERFORMANCE.md`](../../PERFORMANCE.md)'s acceptance targets (keystroke→paint <16ms with panels open, idle
 ≈0% CPU, 60fps ambients, no dropped frames typing with agents live) + all three
 required CI checks green on every merged PR (owner decision B4-5).
 
@@ -66,7 +67,7 @@ left panel 205, center 486 (tab strip 490, Scene Crafter 533+1325, plotline grid
 brainstorm 5969, timeline 6034, graph 6159, agent hub 6252, menus 6814,
 coach 7268, beta 7366.
 
-## Wave 0 — Integrity & performance (GAP P0s + PERFORMANCE.md; ship before anything else)
+## Wave 0 — Integrity & performance (GAP P0s + [`PERFORMANCE.md`](../../PERFORMANCE.md); ship before anything else)
 
 **W0.1 — Seed-once vaults + notes-tree hygiene** *(GAP #1)*
 What: seeding runs exactly once (marker in vault metadata); kill the duplicate
@@ -112,7 +113,7 @@ How: `frontend/src/DesktopShell.tsx` editor header region +
 doc-header + toolbar pair (full parity finished in M7; W0.4 only de-duplicates).
 Accept: exactly one zoom seg, one Read, one Dictate, one Assist in the DOM.
 
-**W0.5 — Performance to targets** *(PERFORMANCE.md §1–6; builds on the July-10 audit PRs #889–#895)*
+**W0.5 — Performance to targets** *([`plans/design-handoff/v2/PERFORMANCE.md`](../../plans/design-handoff/v2/PERFORMANCE.md) §1–6; builds on the July-10 audit PRs #889–#895)*
 What/how, in fix order:
 - **Opaque window** (B4-2): remove `transparent: true` path in
   `electron-main/src/main.ts` window creation; delete the transparency setting.
@@ -138,7 +139,7 @@ What/how, in fix order:
   lazy neighbors.
 - **Electron hygiene:** verify no hidden renderer doing agent work;
   `backgroundThrottling` stays on; production builds without dev source maps.
-Accept: PERFORMANCE.md targets measured in the packaged app (DevTools perf
+Accept: [`PERFORMANCE.md`](../../PERFORMANCE.md) targets measured in the packaged app (DevTools perf
 recording: keystroke main-thread <16ms; idle ≈0; React Profiler shows no shell
 re-render on keystroke). The session's profiling harness
 (Playwright-vs-packaged-runtime) re-runs as the regression gate.
@@ -583,3 +584,9 @@ Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merg
 - W0.6 is a hard gate: no Wave 1+ merges until Skyy confirms the packaged build.
   (Gate PASSED 2026-07-11; owner then authorized building all remaining waves and
   cutting v0.5.0-beta.1 when the full handoff is implemented.)
+- **Perf re-runs at every wave boundary** (added 2026-07-22, SKY-7936
+  premortem): the [`PERFORMANCE.md`](../../PERFORMANCE.md) packaged-build
+  procedure re-runs once each wave merges to `main`, not only at the final
+  W0.6/M30 sign-off — append the result to `PERFORMANCE.md`'s wave-boundary
+  log. A >25% regression on any metric without a documented reason blocks the
+  next wave's merge, same policy as `plans/PERF_BUDGET.md`.
