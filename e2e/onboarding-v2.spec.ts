@@ -66,25 +66,59 @@ async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<
   return page;
 }
 
-/** Click a start-path card, adapting legacy onboarding-v2 test IDs to the v0.3 flow. */
-async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
+/**
+ * Click a start-path card, adapting legacy onboarding-v2 test IDs to the
+ * SKY-7593 flow (design-handoff v2 §1.1, supersedes the earlier Beta 4 M29
+ * flow per CTO ruling SKY-7590):
+ *
+ *  - 'card-quick-start' family → Quick Start moved off step1 onto the
+ *    custom-location screen as the "One-click setup" link (spec §2.2), reached
+ *    via the Start Blank card.
+ *  - 'card-blank' family → M29 deleted the standalone "Blank Slate" card and
+ *    its sub-selector (`card-custom` / `screen-step1b-options`). screen-step2
+ *    (the title/author/save-path form these legacy IDs exist to reach) is now
+ *    only reachable via "Use a Template" (also moved to custom-location, spec
+ *    §2.2), so this stubs a single-item template:list and drives the template
+ *    picker to land on screen-step2. Requires `app` so the IPC stub can be
+ *    installed.
+ *  - 'card-sample' family → "Open sample project" is a real top-level step1
+ *    card again (promoted per spec §1.1), so this clicks it directly.
+ */
+async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronApplication): Promise<void> {
   await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
 
   if (cardTestId === 'card-default-mythos-vault' || cardTestId === 'card-quick-start' || cardTestId === 'card-path-default') {
-    await page.locator('[data-testid="card-quick-start"]').click();
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-quick-start-link"]').click();
     return;
   }
 
   if (cardTestId === 'card-blank' || cardTestId === 'card-path-blank') {
-    await page.locator('[data-testid="card-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="card-blank"]').click();
+    if (!app) throw new Error('clickStep1Card("card-blank", …) requires an ElectronApplication to stub template:list');
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('template:list');
+      ipcMain.handle('template:list', () => ({
+        templates: [{
+          id: 'e2e-step2-stub',
+          name: 'E2E Step 2 Stub',
+          description: 'Stub template routing legacy card-blank e2e coverage through to screen-step2.',
+          story: [],
+          notes: [],
+        }],
+      }));
+    });
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
+    await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="template-card-e2e-step2-stub"]')).toBeVisible({ timeout: 6_000 });
+    await page.locator('[data-testid="template-card-e2e-step2-stub"]').click();
+    await page.locator('[data-testid="template-use-btn"]').click();
     return;
   }
 
   if (cardTestId === 'card-sample' || cardTestId === 'card-path-sample') {
-    await page.locator('[data-testid="card-custom"]').click();
-    await expect(page.locator('[data-testid="screen-step1b-options"]')).toBeVisible({ timeout: 8_000 });
     await page.locator('[data-testid="card-sample"]').click();
     return;
   }
@@ -92,18 +126,31 @@ async function clickStep1Card(page: Page, cardTestId: string): Promise<void> {
   await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
-/** Navigate from step1 to the step2 form via the blank card. */
+/** Navigate from step1 to the step2 form via the (stubbed) template card. */
 async function navigateToStep2(app: ElectronApplication, page: Page): Promise<void> {
   // Stub IPC so step2 can render without side-effects.
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('vault:validate-path');
     ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
   });
-  await clickStep1Card(page, 'card-blank');
+  await clickStep1Card(page, 'card-blank', app);
   await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 }
 
-/** Navigate from step1 to step1c (genre picker) via the sample card. */
+/**
+ * Complete the shared genre → theme mini-flow (M29) from screen-custom-genre,
+ * accepting the default chip/card on each step. Every path that reaches
+ * screen-step2 or clicks card-quick-start now funnels through this before the
+ * vault-creation IPC call fires on "Open my vault ✦" (custom-theme-finish).
+ */
+async function finishGenreThemeFlow(page: Page): Promise<void> {
+  await expect(page.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-genre-continue"]').click();
+  await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-theme-finish"]').click();
+}
+
+/** Navigate from step1 to step1c (genre picker) via the sample footer link. */
 async function navigateToStep1c(page: Page): Promise<void> {
   await clickStep1Card(page, 'card-sample');
   await expect(page.locator('[data-testid="screen-step1c"]')).toBeVisible({ timeout: 8_000 });
@@ -206,6 +253,9 @@ test.describe('AC-OB-01: Default Mythos Vault', () => {
     });
 
     await clickStep1Card(page, 'card-quick-start');
+    // M29: Quick Start no longer creates the vault immediately — it funnels
+    // into the shared genre → theme mini-flow first.
+    await finishGenreThemeFlow(page);
 
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
     // Getting Started panel renders automatically after first onboarding
@@ -503,7 +553,7 @@ test.describe('AC-OB-07: Valid empty-dir path styling', () => {
       });
     });
 
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
     // Clear the path and type a new one to trigger debounced validation
@@ -534,7 +584,7 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-08: blank story completion → Getting Started panel visible in right sidebar', async () => {
+  test('AC-OB-08: template-path story completion → Getting Started panel visible in right sidebar', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
@@ -544,10 +594,13 @@ test.describe('AC-OB-08: Getting Started panel post-onboarding', () => {
       ipcMain.handle('onboarding:complete', () => ({ ok: true }));
     });
 
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
     await page.locator('[data-testid="gs-title-input"]').fill('OB-08 Story');
     await page.locator('[data-testid="gs-create-story"]').click();
+    // M29: gs-create-story no longer creates the vault directly — it funnels
+    // into the shared genre → theme mini-flow first.
+    await finishGenreThemeFlow(page);
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     // The Getting Started panel must be present in the right sidebar
@@ -571,7 +624,7 @@ test.describe('AC-OB-09–12: Path validation states', () => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
   });
 
@@ -659,7 +712,7 @@ test.describe('AC-OB-11: Obsidian path does not surface import link inline', () 
       });
     });
 
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
     const pathInput = page.locator('[data-testid="gs-save-path"]');
@@ -700,7 +753,7 @@ test.describe('AC-OB-12: Non-writable path disables Create Story', () => {
       }));
     });
 
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
     const pathInput = page.locator('[data-testid="gs-save-path"]');
@@ -801,7 +854,7 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
       ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
     });
 
-    await clickStep1Card(page, 'card-blank');
+    await clickStep1Card(page, 'card-blank', app);
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
 
     // Wait briefly for the getPaths IPC to resolve and update the wizard's pathOptions

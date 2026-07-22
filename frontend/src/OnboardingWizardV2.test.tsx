@@ -158,12 +158,12 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
     await act(async () => {});
   });
 
-  it('Quick Start card carries the prototype Recommended chip; step1 still has exactly 3 cards', async () => {
+  it('Open sample project card carries the spec Recommended chip; step1 has exactly 4 cards (SKY-7593)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    const quickStart = screen.getByTestId('card-quick-start');
-    expect(quickStart.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
-    // AC-OB-01 landing contract: 3 top-level cards (quick start / custom / import)
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(3);
+    const sampleCard = screen.getByTestId('card-sample');
+    expect(sampleCard.querySelector('.gs-card__chip')).toHaveTextContent('Recommended');
+    // SKY-7593: 4 top-level cards (sample / start blank / import obsidian / open existing)
+    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
     await act(async () => {});
   });
 
@@ -189,13 +189,11 @@ describe('OnboardingWizard v2 — prototype restyle (Beta 3 M25)', () => {
 // ─── Guided setup: navigation ─────────────────────────────────────────────────
 
 describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
-  it('step1b offers a Guided Setup card that opens the custom-location step', async () => {
+  it('step1 offers a Start Blank card that opens the custom-location step (SKY-7593)', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await click('card-custom');
-    expect(screen.getByTestId('screen-step1b-options')).toBeInTheDocument();
-    await click('card-guided-setup');
+    await click('card-start-blank');
     expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 1 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 1 of 4')).toBeInTheDocument();
   });
 
   it('shows 4 progress dots with the current step filled', async () => {
@@ -214,7 +212,7 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-template-continue');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 3 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 3 of 4')).toBeInTheDocument();
     await click('custom-genre-back');
     expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
   });
@@ -225,7 +223,7 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-genre-continue');
     expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument();
-    expect(screen.getByText('Custom Setup · 4 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 4 of 4')).toBeInTheDocument();
     await click('custom-theme-back');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
   });
@@ -273,30 +271,36 @@ describe('OnboardingWizard v2 — genre step (Beta 3 M25)', () => {
 
 // ─── Guided setup: theme step ─────────────────────────────────────────────────
 
-describe('OnboardingWizard v2 — theme step (Beta 3 M25 / M29 SKY-7473)', () => {
-  it('renders all 10 Liquid Neon presets from the real preset engine', async () => {
+describe('OnboardingWizard v2 — theme step (M29 spec §3, SKY-7593: all 10 presets, 5×2 grid)', () => {
+  it('renders all 10 presets from the real preset engine, Winterlight selected by default', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
     );
     // Names come from LIQUID_NEON_PRESETS — the M2 preset engine, not copies.
     for (const key of Object.keys(LIQUID_NEON_PRESETS) as Array<keyof typeof LIQUID_NEON_PRESETS>) {
-      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
       expect(screen.getByText(LIQUID_NEON_PRESETS[key].name)).toBeInTheDocument();
+      expect(screen.getByTestId(`wiz-theme-${key}`)).toBeInTheDocument();
     }
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'true');
-    // Each card carries a 6-segment colour strip, one solid block per preset slot.
-    // jsdom normalizes inline hex colors to rgb() — round-trip the expected
-    // value through a probe element so the comparison isn't format-sensitive.
-    const probe = document.createElement('span');
-    const toRgb = (hex: string) => { probe.style.background = hex; return probe.style.background; };
-    const segs = screen.getByTestId('wiz-theme-cyber-strip').querySelectorAll('.wiz-theme-strip__seg');
-    expect(segs).toHaveLength(6);
-    segs.forEach((seg, i) => {
-      expect((seg as HTMLElement).style.background).toBe(toRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'true');
+    // Each card carries a 6-segment colour strip, one block per preset slot.
+    const slots = screen.getByTestId('wiz-theme-cyber').querySelectorAll('.wiz-theme-card__slot');
+    expect(slots).toHaveLength(6);
+    const hexToRgb = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+    };
+    slots.forEach((slot, i) => {
+      expect((slot as HTMLElement).style.background).toBe(hexToRgb(LIQUID_NEON_PRESETS.cyber.c[i]));
     });
-    // Selected card shows a redundant checkmark (not colour alone — WCAG).
-    expect(screen.getByTestId('wiz-theme-classic').querySelector('.wiz-theme-card__check')).toBeInTheDocument();
-    expect(screen.getByTestId('wiz-theme-cyber').querySelector('.wiz-theme-card__check')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('shows the 6-slot legend in plain reading order', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
+    );
+    expect(screen.getByText(/A · Left panel/)).toBeInTheDocument();
+    expect(screen.getByText(/F · Nav rail/)).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -306,7 +310,7 @@ describe('OnboardingWizard v2 — theme step (Beta 3 M25 / M29 SKY-7473)', () =>
     );
     await click('wiz-theme-cyber');
     expect(screen.getByTestId('wiz-theme-cyber')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('wiz-theme-classic')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('wiz-theme-winter')).toHaveAttribute('aria-checked', 'false');
   });
 });
 
@@ -331,7 +335,7 @@ describe('OnboardingWizard v2 — guided finish persists genre + theme (Beta 3 M
     await runGuidedFlow(onComplete);
     expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({
-        startMode: 'blank',
+        startMode: 'start-fresh',
         customTemplate: 'recommended',
         vaultName: 'MythosWriter',
       }),

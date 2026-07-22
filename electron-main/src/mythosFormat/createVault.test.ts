@@ -99,6 +99,32 @@ describe('createMythosVault + Veynn seed', () => {
     expect(listSessions(notesVaultRootFor(result.mythosRoot))).toHaveLength(1);
   });
 
+  it('M29: returns the first demo scene so onboarding lands the editor on prose', () => {
+    const result = createMythosVault(tmp, { name: 'Landing' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.firstScenePath).toBe(`${VEYNN_STORY_FOLDER}/Part 1/Chapter 01/Scene 01.md`);
+    const scene = parseV2SceneFile(
+      fs.readFileSync(path.join(result.storyVaultPath, 'The Last City of Veynn/Part 1/Chapter 01/Scene 01.md'), 'utf-8'),
+    );
+    expect(result.firstSceneId).toBe(scene.id);
+  });
+
+  it('M29: records the wizard theme as the vault default theme', () => {
+    const result = createMythosVault(tmp, { name: 'Themed', defaultTheme: 'aurora' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(readMythosFile(result.mythosRoot).defaultTheme).toBe('aurora');
+  });
+
+  it('M29: blank mode returns no first scene', () => {
+    const result = createMythosVault(tmp, { name: 'NoScene', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.firstSceneId).toBeUndefined();
+    expect(result.firstScenePath).toBeUndefined();
+  });
+
   it('seeds ONCE — a second boot never re-seeds, even after the user deletes content (W0.1)', () => {
     const result = createMythosVault(tmp, { name: 'Once' });
     expect(result.ok).toBe(true);

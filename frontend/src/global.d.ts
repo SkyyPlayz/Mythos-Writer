@@ -520,7 +520,7 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -1264,7 +1264,7 @@ interface Window {
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
@@ -1272,10 +1272,16 @@ interface Window {
       vaultName?: string;
       sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
       customTemplate?: 'recommended' | 'blank';
+      // M29: wizard genre (seeds starter notes) + Liquid Neon preset key
+      // (recorded as the new vault's default theme).
+      genre?: string;
+      themeKey?: string;
     }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
     // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
     // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
     onboardingReset: (payload?: { hard?: boolean }) => Promise<{ ok: boolean }>;
+    // Beta 4 M29 (AC7): user-facing "Replay wizard" — every build, current vault untouched
+    onboardingReplay: () => Promise<{ ok: boolean }>;
     // SKY-2971: Word (.docx) → Story Vault importer
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
     // SKY-2993: Obsidian vault importer

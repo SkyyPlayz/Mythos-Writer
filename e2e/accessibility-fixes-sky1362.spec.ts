@@ -82,12 +82,16 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
     ).count();
     expect(backButtonAriaHiddenCount).toBeGreaterThan(0);
 
-    // Verify the button text is "Back" (not "arrow Back" which would fail accessibility)
-    const buttonText = await page.locator('[data-testid="gs-back-step1b"]').textContent();
-    expect(buttonText?.trim()).toBe('Back');
+    // Verify the accessible name is "Back" (not "← Back") — this is what a
+    // screen reader announces. Plain textContent() would include the arrow
+    // glyph even though it's aria-hidden, since aria-hidden only affects the
+    // accessibility tree, not the DOM text — so this must use the computed
+    // accessible name, not raw textContent().
+    await expect(page.locator('[data-testid="gs-back-step1b"]')).toHaveAccessibleName('Back');
 
-    // Navigate to step 2
-    await page.locator('[data-testid="card-template"]').click();
+    // Navigate to step 2 — already on the template picker (screen-step1b) from
+    // the click above; select the template directly instead of re-clicking
+    // card-template (which only exists on the step1 landing screen).
     await page.locator('[data-testid="template-card-test-template"]').click();
     await page.locator('[data-testid="template-use-btn"]').click();
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
@@ -98,9 +102,8 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
     ).count();
     expect(step2BackAriaHiddenCount).toBeGreaterThan(0);
 
-    // Verify step2 button text is also "Back"
-    const step2ButtonText = await page.locator('[data-testid="gs-back-step2"]').textContent();
-    expect(step2ButtonText?.trim()).toBe('Back');
+    // Verify step2 button's accessible name is also "Back" (see note above).
+    await expect(page.locator('[data-testid="gs-back-step2"]')).toHaveAccessibleName('Back');
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(userData, { recursive: true, force: true });

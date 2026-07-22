@@ -527,6 +527,10 @@ export interface VeynnSeedResult {
   sceneCount: number;
   noteCount: number;
   eventCount: number;
+  /** First seeded scene, so onboarding can land the editor on demo prose (M29). */
+  firstSceneId: string;
+  /** Story-Vault-relative path of the first seeded scene (posix). */
+  firstScenePath: string;
 }
 
 /**
@@ -544,7 +548,9 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
   const storyAbs = path.join(storyVaultRoot, VEYNN_STORY_FOLDER);
   const spine: BookSpinePart[] = [];
   let sceneCount = 0;
-  MANUSCRIPT.forEach((part, pi) => {
+  let firstScene: { id: string; relPath: string } | null = null;
+  // for-of (not forEach) so control-flow analysis tracks the firstScene write.
+  for (const [pi, part] of MANUSCRIPT.entries()) {
     const partDir = partDirName(pi + 1);
     const spinePart: BookSpinePart = {
       dir: partDir,
@@ -560,12 +566,19 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
         title: chapter.title,
         ...(chapter.intro ? { intro: chapter.intro } : {}),
       });
-      chapter.scenes.forEach((scene, si) => {
+      for (const [si, scene] of chapter.scenes.entries()) {
         const sceneAbs = path.join(storyAbs, partDir, chapterDir, sceneFileName(si + 1));
+        const sceneId = crypto.randomUUID();
+        if (firstScene === null) {
+          firstScene = {
+            id: sceneId,
+            relPath: [VEYNN_STORY_FOLDER, partDir, chapterDir, sceneFileName(si + 1)].join('/'),
+          };
+        }
         writeFileAtomic(
           sceneAbs,
           serializeV2SceneFile({
-            id: crypto.randomUUID(),
+            id: sceneId,
             title: scene.title,
             status: scene.status,
             ...(scene.pov ? { pov: scene.pov } : {}),
@@ -575,10 +588,10 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
           }),
         );
         sceneCount += 1;
-      });
+      }
     }
     spine.push(spinePart);
-  });
+  }
 
   // book.md — compiled order + metadata.
   writeFileAtomic(
@@ -647,10 +660,14 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
     writeMythosFile(mythosRoot, { ...mythos, stories: [...mythos.stories, storyRef] });
   }
 
+  // MANUSCRIPT is a non-empty constant, so the first scene always exists.
+  if (firstScene === null) throw new Error('Veynn seed wrote no scenes');
   return {
     storyRef,
     sceneCount,
     noteCount: NOTES.length,
     eventCount: TIMELINE_EVENTS.length,
+    firstSceneId: firstScene.id,
+    firstScenePath: firstScene.relPath,
   };
 }

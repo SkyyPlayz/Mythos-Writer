@@ -19,16 +19,21 @@ import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// SKY-2988: custom-location + custom-template are the v0.3 Custom Setup 2-screen path
+// SKY-2988: custom-location + custom-template are the Start Fresh location/template screens
 // SKY-2990: step-import is the 3-section Import/Open picker screen
-// Beta 3 M25: custom-genre + custom-theme extend the Custom Setup path into the
-// prototype's 4-step guided wizard (location → template → genre → neon theme).
-type WizardStep = 'step1' | 'step1b' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'step-import';
-// SKY-2220: 'quick-start' is the one-click first-run path that bypasses the
-// title/save-path form entirely. 'default-mythos-vault' is kept as a legacy
-// backend alias during the onboarding v2.1 transition.
+// Beta 3 M25 / Beta 4 M29: custom-genre + custom-theme are the shared genre and
+// theme pages every creating path funnels through before finishing.
+type WizardStep = 'step1' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'step-import';
+// M29: 'start-fresh' creates a MythosVault v2 (demo-seeded unless Start Blank)
+// at a chosen location; 'quick-start' does the same at the default location.
+// 'default-mythos-vault' is kept as a legacy backend alias.
 // SKY-2007: 'open-existing' opens a pre-existing Mythos vault parent dir.
-type StartMode = 'blank' | 'sample' | 'template' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+type StartMode = 'blank' | 'sample' | 'template' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+
+// M29: which entry path is driving the shared genre → theme pages, so the
+// theme step's finish knows which completion call to dispatch and the genre
+// step's Back knows where it came from.
+type WizardFlow = 'start-fresh' | 'template' | 'quick-start';
 
 // SKY-2007: 7 inline validation states for the save-location path field.
 type PathValidationState =
@@ -98,10 +103,10 @@ const WIZARD_GENRES = [
 ] as const;
 type WizardGenre = (typeof WIZARD_GENRES)[number];
 
-/** M29 (SKY-7473, design-handoff v2 §3): all 10 Liquid Neon presets, 5×2 grid —
- *  expanded from the original 3-card prototype shortlist per this milestone's
- *  acceptance criteria. `theme/presets.ts` stays the single source of truth. */
-const WIZARD_THEME_KEYS: LiquidNeonPresetKey[] = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
+/** M29 spec §3.1 (SKY-7593): all 10 Liquid Neon presets, 5×2 grid —
+ *  `theme/presets.ts` insertion order is already the single source of truth
+ *  (Classic → Winter), so no re-derivation needed. */
+const WIZARD_THEME_KEYS = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
 
 /** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
 function genreTestId(genre: string): string {
@@ -133,7 +138,7 @@ type Api = {
   chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
   onboardingComplete: (payload?: {
-    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
     storyTitle?: string;
     authorName?: string;
     vaultParentPath?: string;
@@ -142,6 +147,10 @@ type Api = {
     /** SKY-2008: genre selected on step1c; required for startMode=sample */
     sampleGenre?: SampleGenreId;
     customTemplate?: 'recommended' | 'blank';
+    /** M29 wizard genre step — seeds the genre starter notes main-side. */
+    genre?: string;
+    /** M29 wizard theme step — recorded as the vault's default theme. */
+    themeKey?: string;
   }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
   templateList: () => Promise<{ templates: TemplateItem[] }>;
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
@@ -306,28 +315,22 @@ function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongsi
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`. */
-function WizardDots({ total, current }: { total: number; current: number }) {
+/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`.
+ *  SKY-7593 (design-handoff v2 §6): optional `labels` names each step so the
+ *  dyslexic-friendly progress indicator doesn't rely on working memory alone.
+ *  The dots stay aria-hidden — the adjacent `gs-step-label` text already gives
+ *  screen readers the equivalent "X of Y" position, so labelling here too
+ *  would double-announce it. */
+function WizardDots({ total, current, labels }: { total: number; current: number; labels?: string[] }) {
   return (
     <div className="wiz-dots" data-testid="wiz-dots" aria-hidden="true">
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
+        <span key={i} className="wiz-dot-group">
+          <span className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
+          {labels?.[i] && <span className="wiz-dot__label">{labels[i]}</span>}
+        </span>
       ))}
     </div>
-  );
-}
-
-/** M29 (SKY-7473, design-handoff v2 §3.1): 6-segment colour strip — one block
- *  per neon slot (A–F), reusing the preset's `c` tuple verbatim. Decorative;
- *  the slot roles are spelled out once in the legend below the grid, not
- *  per-swatch, so it stays glanceable across 10 cards. */
-function ColorSlotStrip({ colors, testId }: { colors: readonly string[]; testId: string }) {
-  return (
-    <span className="wiz-theme-strip" aria-hidden="true" data-testid={testId}>
-      {colors.map((color, i) => (
-        <span key={i} className="wiz-theme-strip__seg" style={{ background: color }} />
-      ))}
-    </span>
   );
 }
 
@@ -367,21 +370,6 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       <span className="gs-card__desc">{description}</span>
       <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
     </button>
-  );
-}
-
-/** M29 (SKY-7473, design-handoff v2 §2.1): static "two-vault promise" card —
- *  informational only, no interaction, sets the mental model that a vault is
- *  really two homes (Story + Notes) before the location field asks for one. */
-function TwoVaultPromiseCard({ icon, title, description, testId }: { icon: string; title: string; description: string; testId: string }) {
-  return (
-    <div className="gs-two-vault-card" data-testid={testId}>
-      <span className="gs-two-vault-card__icon" aria-hidden="true">{icon}</span>
-      <div className="gs-two-vault-card__body">
-        <span className="gs-two-vault-card__title">{title}</span>
-        <span className="gs-two-vault-card__desc">{description}</span>
-      </div>
-    </div>
   );
 }
 
@@ -604,9 +592,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const customVaultNameInputRef = useRef<HTMLInputElement>(null);
   const vaultNameManuallyEditedRef = useRef(false);
 
-  // ─── Beta 3 M25: guided-setup personalization (genre + neon theme) ─────────
+  // ─── Beta 3 M25 / Beta 4 M29: shared genre + theme pages ───────────────────
+  const [wizardFlow, setWizardFlow] = useState<WizardFlow>('start-fresh');
   const [wizGenre, setWizGenre] = useState<WizardGenre>('Epic Fantasy');
-  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('classic');
+  // M29 spec §3.1 (SKY-7593): default to Winterlight so Continue is never
+  // blocked by an unmade choice. NOTE: the spec claims this "matches the
+  // existing app-wide default" — it doesn't (LIQUID_NEON_V2_DEFAULTS.setKey
+  // is 'classic'); the explicit instruction still stands, the justification
+  // is just wrong.
+  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('winter');
   // Non-null once "Open my vault ✦" ran, so Try Again keeps the personalization.
   const guidedPersonalizationRef = useRef<{ genre: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
 
@@ -785,16 +779,41 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     return merged;
   }
 
-  /** "Open my vault ✦" on the theme step — custom finish + personalization. */
+  /** "Open my vault ✦" on the theme step — dispatch the completion call for
+   *  whichever entry path funneled into the shared genre/theme pages (M29). */
   function handleGuidedFinish() {
     guidedPersonalizationRef.current = { genre: wizGenre, theme: wizTheme };
-    void handleCustomFinish();
+    if (wizardFlow === 'quick-start') void handleQuickStartFinish();
+    else if (wizardFlow === 'template') void submitCreateStory();
+    else void handleCustomFinish();
+  }
+
+  /** M29: the shared genre/theme pages render/back-navigate differently
+   *  depending on which of the 3 creating paths funneled into them —
+   *  Quick Start skips location+template, so it's a 2-step mini-flow.
+   *  SKY-7593: Quick Start is now launched from the custom-location screen's
+   *  "One-click setup" link (spec §2.2), so its back-target moved with it. */
+  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep; dotLabels: string[] } {
+    if (wizardFlow === 'quick-start') {
+      return { label: 'Quick Start', totalSteps: 2, genreBack: 'custom-location', dotLabels: ['Genre', 'Theme'] };
+    }
+    if (wizardFlow === 'template') {
+      return { label: 'Use a Template', totalSteps: 4, genreBack: 'step2', dotLabels: ['Template', 'Details', 'Genre', 'Theme'] };
+    }
+    return { label: 'Start Fresh', totalSteps: 4, genreBack: 'custom-template', dotLabels: ['Location', 'Template', 'Genre', 'Theme'] };
+  }
+
+  /** M29: genre + theme sent with every creating completion call. */
+  function personalizationPayload(): { genre?: string; themeKey?: string } {
+    const guided = guidedPersonalizationRef.current;
+    if (!guided) return {};
+    return { genre: guided.genre, themeKey: guided.theme };
   }
 
   async function handleCustomFinish() {
     setScaffoldError('');
     setFromCustomSetup(true);
-    setStartMode('blank');
+    setStartMode('start-fresh');
     setStep('step3');
     setScaffolding(true);
     try {
@@ -804,10 +823,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
         : customVaultPath;
       const res = await api().onboardingComplete({
-        startMode: 'blank',
+        startMode: 'start-fresh',
         customTemplate,
         vaultParentPath: expanded,
         vaultName: customVaultName.trim() || deriveVaultName(expanded),
+        ...personalizationPayload(),
       });
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
@@ -817,7 +837,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       const updated: AppSettings = {
         ...initialSettings,
         onboardingComplete: true,
-        onboardingStartMode: 'blank',
+        onboardingStartMode: 'start-fresh',
         ...(res.firstSceneId && res.firstScenePath
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
@@ -932,6 +952,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   function goToStep2FromMode(mode: StartMode, templateId?: string) {
     setStartMode(mode);
+    setWizardFlow('template');
     if (templateId) setSelectedTemplateId(templateId);
     setTitleError('');
     setSavePathError('');
@@ -942,11 +963,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   function goBackFromStep2() {
     setTitleError('');
     setSavePathError('');
-    if (startMode === 'template') {
-      setStep('step1b-inner');
-    } else {
-      setStep('step1b');
-    }
+    setStep('step1b-inner');
   }
 
   function handleGenreToggleAccordion(genreId: SampleGenreId) {
@@ -965,17 +982,23 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
   // ─── Step 1 actions ─────────────────────────────────────────────────────────
 
-  // SKY-2220: Quick Start. Bypasses the title + save-path form entirely —
-  // main creates the default Mythos vault bundle under app data and seeds a
-  // "My First Story" scene. The backend keeps default-mythos-vault as a
-  // compatibility alias, but new UI reports startMode=quick-start.
-  async function handleQuickStart() {
+  // SKY-2220 / M29: Quick Start. Skips the location + template screens —
+  // only the shared genre and theme pages stand between the card and the
+  // editor. Main creates the default MythosVault v2 with the Veynn demo seed.
+  function handleQuickStart() {
     setStartMode('quick-start');
+    setWizardFlow('quick-start');
+    setScaffoldError('');
+    guidedPersonalizationRef.current = null;
+    setStep('custom-genre');
+  }
+
+  async function handleQuickStartFinish() {
     setScaffoldError('');
     setStep('step3');
     setScaffolding(true);
     try {
-      const res = await api().onboardingComplete({ startMode: 'quick-start' });
+      const res = await api().onboardingComplete({ startMode: 'quick-start', ...personalizationPayload() });
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
         setScaffolding(false);
@@ -989,26 +1012,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      onComplete(withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
       setScaffolding(false);
     }
   }
 
-  function handleCreateCustom() {
-    setStartMode(null);
-    setSelectedTemplateId(null);
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setSampleError('');
-    setScaffoldError('');
-    setStep('step1b');
-  }
-
-  // Beta 3 M25: entry into the 4-step guided setup (location → template →
-  // genre → neon theme), the prototype's welcome-wizard flow.
-  function handleStartGuidedSetup() {
+  // M29: "Start fresh" — location → template → genre → theme, the prototype's
+  // welcome-wizard flow. Creates a demo-seeded MythosVault v2 (or blank).
+  function handleStartFresh() {
+    setStartMode('start-fresh');
+    setWizardFlow('start-fresh');
     setScaffoldError('');
     guidedPersonalizationRef.current = null;
     setStep('custom-location');
@@ -1233,10 +1248,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
 
-  function handleSelectBlank() {
-    goToStep2FromMode('blank');
-  }
-
   function handleSelectSample() {
     // SKY-2008: go to genre picker (step1c) instead of form (step2)
     setStartMode('sample');
@@ -1426,13 +1437,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     validatePathNow(newPath);
   }
 
-  async function handleCreateStory() {
+  /** Step-2 validation (title + save path + conflict). True when clear to proceed. */
+  async function validateStoryDetails(): Promise<boolean> {
     const trimmedTitle = storyTitle.trim();
     const err = validateTitle(storyTitle);
     if (err) {
       setTitleError(err);
       titleInputRef.current?.focus();
-      return;
+      return false;
     }
 
     // Check writable path first
@@ -1441,12 +1453,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       pathValidation = await api().validatePath(savePath);
     } catch {
       setSavePathError(ERR_UNWRITABLE_PATH);
-      return;
+      return false;
     }
 
     if (pathValidation && !pathValidation.writable) {
       setSavePathError(ERR_UNWRITABLE_PATH);
-      return;
+      return false;
     }
 
     // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
@@ -1457,7 +1469,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       if (conflict.exists && !conflict.isEmpty) {
         setTitleError(ERR_TITLE_EXISTS(trimmedTitle));
         titleInputRef.current?.focus();
-        return;
+        return false;
       }
     } catch {
       // can't check — allow to proceed; main process will error if conflict
@@ -1465,6 +1477,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
     setTitleError('');
     setSavePathError('');
+    return true;
+  }
+
+  /** M29: step-2 CTA — validate, then funnel into the shared genre page. */
+  async function handleStoryDetailsNext() {
+    if (!(await validateStoryDetails())) return;
+    setScaffoldError('');
+    setStep('custom-genre');
+  }
+
+  /** Fire the template-path completion call (after the theme step). */
+  async function submitCreateStory() {
     setScaffoldError('');
     setStep('step3');
     setScaffolding(true);
@@ -1472,10 +1496,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     try {
       const res = await api().onboardingComplete({
         startMode: startMode!,
-        storyTitle: trimmedTitle,
+        storyTitle: storyTitle.trim(),
         authorName: authorName.trim() || undefined,
         vaultParentPath: savePath,
         templateId: selectedTemplateId || undefined,
+        ...personalizationPayload(),
       });
 
       if (!res.ok || res.error) {
@@ -1492,7 +1517,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      onComplete(withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
       setScaffolding(false);
@@ -1520,13 +1545,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         : customVaultPath;
       const payload = fromCustomSetup
         ? {
-            startMode: 'blank' as const,
+            startMode: 'start-fresh' as const,
             customTemplate,
             vaultParentPath: customExpanded,
             vaultName: customVaultName.trim() || deriveVaultName(customExpanded),
+            ...personalizationPayload(),
           }
         : startMode === 'quick-start' || startMode === 'default-mythos-vault'
-        ? { startMode: 'quick-start' as const }
+        ? { startMode: 'quick-start' as const, ...personalizationPayload() }
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
         : startMode === 'open-existing'
@@ -1537,6 +1563,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             authorName: authorName.trim() || undefined,
             vaultParentPath: savePath,
             templateId: selectedTemplateId || undefined,
+            ...personalizationPayload(),
           };
       const res = await api().onboardingComplete(payload);
 
@@ -1586,7 +1613,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'step-import') {
+      if (step === 'step1' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'step-import') {
         setShowCancelConfirm(true);
       }
     }
@@ -1736,47 +1763,51 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          <div className="gs-cards" role="group" aria-label="Choose how to get started">
+          {/* SKY-7593: entry paths per design-handoff v2 §1.1 (SKY-7255) — supersedes
+              the SKY-6983 card set per CTO ruling (SKY-7590). "Restore from backup"
+              (prototype's 4th path) is substituted with "Open existing vault" since
+              Sync & Backup hasn't shipped yet — see spec §1.1 deviation note. */}
+          <div className="gs-cards gs-cards--four" role="group" aria-label="Choose how to get started">
             <StartingPointCard
               icon="&#x2728;"
-              title="Quick Start"
-              description="One click — we set everything up for you."
-              ctaLabel="Start &#x2192;"
-              onActivate={handleQuickStart}
-              testId="card-quick-start"
+              title="Open sample project"
+              description="See how it works with a small demo: characters, lore, and one drafted chapter."
+              ctaLabel="Open sample &#x2192;"
+              onActivate={handleSelectSample}
+              testId="card-sample"
               cardRef={quickStartRef}
               chip="Recommended"
             />
             <StartingPointCard
-              icon="&#x270F;&#xFE0F;"
-              title="Custom"
-              description="Choose your own vault location and starting point."
-              ctaLabel="Set up &#x2192;"
-              onActivate={handleCreateCustom}
-              testId="card-custom"
+              icon="&#x1F4DD;"
+              title="Start blank"
+              description="Create an empty vault. Choose where to save it on the next screen."
+              ctaLabel="Choose location &#x2192;"
+              onActivate={handleStartFresh}
+              testId="card-start-blank"
             />
             <StartingPointCard
-              icon="&#x1F4C2;"
-              title="Import / Open Existing"
-              description="Open an existing vault, or bring in Obsidian or Word files."
-              ctaLabel="Import &#x2192;"
+              icon="&#x1F4E5;"
+              title="Import Obsidian vault"
+              description="Point at an existing vault. You'll see every change before anything is saved."
+              ctaLabel="Pick folder &#x2192;"
               onActivate={() => { resetImportState(); setStep('step-import'); }}
-              testId="card-import"
-              isSecondary
+              testId="card-import-obsidian"
+            />
+            <StartingPointCard
+              icon="&#x1F4C1;"
+              title="Open existing vault"
+              description="Already have a Mythos vault on this computer? Open it here."
+              ctaLabel="Browse &#x2192;"
+              onActivate={() => { void handleOpenExistingVault(); }}
+              testId="card-open-existing"
             />
           </div>
 
-          {/* AC-L-07/AC-L-08: footer links */}
+          {/* SKY-7593: "Explore a sample world?" and "Restart an existing project?"
+              are now redundant with the Open sample project / Import Obsidian vault
+              cards above and have been removed. */}
           <div className="gs-landing-footer">
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={() => { resetImportState(); setStep('step-import'); }}
-              data-testid="gs-restart-link"
-            >
-              Restart an existing project?
-            </button>
-            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
             <a
               className="gs-footer-link"
               href="https://mythoswriter.com/help"
@@ -1786,73 +1817,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               Learn more
             </a>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 1b: Create Custom sub-selector ── */}
-      {step === 'step1b' && (
-        <div className="gs-modal" data-testid="screen-step1b-options">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => {
-                setStartMode(null);
-                setSelectedTemplateId(null);
-                setSelectedSampleGenre(null);
-                setStep('step1');
-              }}
-              data-testid="gs-back-step1b-options"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Step 1 of 3</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1b-options"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">Create a custom vault</h2>
-          <p className="gs-modal__subtitle">Choose what you want to start with.</p>
-          <div className="gs-cards gs-cards--four" role="group" aria-label="Choose a custom vault starting point">
-            <StartingPointCard
-              icon="&#x1F4DD;"
-              title="Blank Slate"
-              description="Minimal vault, no pre-seeded content."
-              ctaLabel="Start blank &#x2192;"
-              onActivate={handleSelectBlank}
-              testId="card-blank"
-            />
-            <StartingPointCard
-              icon="&#x1F4DA;"
-              title="Sample Project"
-              description="Pre-loaded story and notes example."
-              ctaLabel="Preview samples &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-sample"
-            />
-            <StartingPointCard
-              icon="&#x1F4CB;"
-              title="From Template"
-              description="Choose a reusable story, notes, or worldbuilding structure."
-              ctaLabel="Browse templates &#x2192;"
-              onActivate={handleSelectTemplate}
-              testId="card-template"
-            />
-            <StartingPointCard
-              icon="&#x2726;"
-              title="Guided Setup"
-              description="Pick a location, genre preset, and neon theme — the full tour."
-              ctaLabel="Start the tour &#x2192;"
-              onActivate={handleStartGuidedSetup}
-              testId="card-guided-setup"
-            />
           </div>
         </div>
       )}
@@ -1871,9 +1835,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               className="btn-ghost btn-back"
               type="button"
               onClick={() => {
-                setStep('step1b');
+                setStep('custom-location');
                 requestAnimationFrame(() => {
-                  const el = document.querySelector('[data-testid="card-template"]') as HTMLElement | null;
+                  const el = document.querySelector('[data-testid="custom-location-use-template-link"]') as HTMLElement | null;
                   el?.focus();
                 });
               }}
@@ -1881,7 +1845,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Step 1 of 3</span>
+            <span className="gs-step-label">Use a Template &#xB7; 1 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2191,7 +2155,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Step 2 of 3</span>
+            <span className="gs-step-label">Use a Template &#xB7; 2 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2222,7 +2186,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 aria-describedby={titleError ? 'gs-title-error' : undefined}
                 onChange={(e) => { setStoryTitle(e.target.value); setTitleError(''); }}
                 onBlur={() => setTitleError(validateTitle(storyTitle))}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateStory(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleStoryDetailsNext(); }}
                 data-testid="gs-title-input"
               />
               {titleError && (
@@ -2245,7 +2209,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 maxLength={AUTHOR_MAX}
                 placeholder='e.g., "Alex Rivera"'
                 onChange={(e) => setAuthorName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateStory(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void handleStoryDetailsNext(); }}
                 data-testid="gs-author-input"
               />
             </div>
@@ -2382,7 +2346,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-primary gs-actions__cta"
               type="button"
-              onClick={handleCreateStory}
+              onClick={() => void handleStoryDetailsNext()}
               disabled={
                 pathValidationState === 'validating' ||
                 pathValidationState === 'not-writable' ||
@@ -2409,7 +2373,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 1 of 4</span>
+            <span className="gs-step-label">Start Fresh · 1 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2420,26 +2384,29 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={1} />
-          <h2 className="gs-modal__title">Your world needs two homes.</h2>
-          <p className="gs-modal__subtitle">We&apos;ll set up two vaults together. You&apos;ll never have to think about this again.</p>
+          <WizardDots total={4} current={1} labels={['Location', 'Template', 'Genre', 'Theme']} />
+          <h2 className="gs-modal__title">Where should your vault live?</h2>
+          <p className="gs-modal__subtitle">Plain text files on your computer. Yours to keep, no lock-in.</p>
 
-          <div className="gs-two-vault-row" data-testid="gs-two-vault-promise" role="group" aria-label="Your two vaults">
-            <TwoVaultPromiseCard
-              icon="&#x1F4D6;"
-              title="Story Vault"
-              description="Your manuscript. Chapters and scenes."
-              testId="gs-two-vault-story"
-            />
-            <TwoVaultPromiseCard
-              icon="&#x1F5C2;&#xFE0F;"
-              title="Notes Vault"
-              description="Characters, places, and research."
-              testId="gs-two-vault-notes"
-            />
+          {/* SKY-7593: two-vault promise (design-handoff v2 §2.1) */}
+          <div className="gs-two-vault-promise" data-testid="two-vault-promise">
+            <h3 className="gs-two-vault-promise__heading">Your world needs two homes.</h3>
+            <p className="gs-two-vault-promise__subhead">
+              We&rsquo;ll set up two vaults together. You&rsquo;ll never have to think about this again.
+            </p>
+            <div className="gs-two-vault-promise__cards">
+              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-story">
+                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F4D6;</span>
+                <span className="gs-two-vault-promise__title">Story Vault</span>
+                <span className="gs-two-vault-promise__desc">Your manuscript. Chapters and scenes.</span>
+              </div>
+              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-notes">
+                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F5C2;</span>
+                <span className="gs-two-vault-promise__title">Notes Vault</span>
+                <span className="gs-two-vault-promise__desc">Characters, places, and research.</span>
+              </div>
+            </div>
           </div>
-
-          <p className="gs-modal__subtitle gs-modal__subtitle--tight">Plain text files on your computer. Yours to keep, no lock-in.</p>
 
           <div className="gs-form">
             <div className="gs-form__field">
@@ -2557,6 +2524,28 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               Next &#x2192;
             </button>
           </div>
+
+          {/* SKY-7593: Use a Template + Quick Start moved here from step1 (spec §2.2) —
+              secondary, low-emphasis links, not top-level cards. */}
+          <div className="gs-landing-footer gs-landing-footer--secondary">
+            <button
+              className="gs-footer-link"
+              type="button"
+              onClick={handleSelectTemplate}
+              data-testid="custom-location-use-template-link"
+            >
+              Use a template instead &#x2192;
+            </button>
+            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
+            <button
+              className="gs-footer-link"
+              type="button"
+              onClick={handleQuickStart}
+              data-testid="custom-location-quick-start-link"
+            >
+              One-click setup &#x2192;
+            </button>
+          </div>
         </div>
       )}
 
@@ -2572,7 +2561,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 2 of 4</span>
+            <span className="gs-step-label">Start Fresh · 2 of 4</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2583,7 +2572,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={2} />
+          <WizardDots total={4} current={2} labels={['Location', 'Template', 'Genre', 'Theme']} />
           <h2 className="gs-modal__title">Choose a starting template</h2>
           <p className="gs-modal__subtitle">You can always change this later.</p>
 
@@ -2661,12 +2650,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-ghost btn-back"
               type="button"
-              onClick={() => setStep('custom-template')}
+              onClick={() => setStep(wizFlowMeta().genreBack)}
               data-testid="custom-genre-back"
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 3 of 4</span>
+            <span className="gs-step-label">
+              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps === 2 ? 1 : 3} of {wizFlowMeta().totalSteps}
+            </span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2677,7 +2668,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={3} />
+          <WizardDots
+            total={wizFlowMeta().totalSteps}
+            current={wizFlowMeta().totalSteps === 2 ? 1 : 3}
+            labels={wizFlowMeta().dotLabels}
+          />
           <h2 className="gs-modal__title">Pick a genre preset</h2>
           <p className="gs-modal__subtitle">This sets your starter templates and story tools. Change it anytime.</p>
 
@@ -2728,7 +2723,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Custom Setup · 4 of 4</span>
+            <span className="gs-step-label">
+              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps} of {wizFlowMeta().totalSteps}
+            </span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2739,16 +2736,24 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               &#x2715;
             </button>
           </div>
-          <WizardDots total={4} current={4} />
-          <h2 className="gs-modal__title">Choose your neon</h2>
+          <WizardDots
+            total={wizFlowMeta().totalSteps}
+            current={wizFlowMeta().totalSteps}
+            labels={wizFlowMeta().dotLabels}
+          />
+          <h2 className="gs-modal__title">Choose your neon.</h2>
           <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
 
+          {/* M29 spec §3 (SKY-7593): all 10 presets, 5×2 grid, 6-slot colour
+              strip + name. No paragraph copy per card — Chunking/Prägnanz
+              stays intact at 10 cards by keeping each card minimal, not by
+              capping the count. */}
           <div
             role="radiogroup"
             aria-label="Neon theme preset"
-            className="wiz-theme-row"
+            className="wiz-theme-grid"
             onKeyDown={handleGridArrowKeys}
-            data-testid="wiz-theme-row"
+            data-testid="wiz-theme-grid"
           >
             {WIZARD_THEME_KEYS.map((k) => {
               const preset = LIQUID_NEON_PRESETS[k];
@@ -2766,7 +2771,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   onClick={() => setWizTheme(k)}
                   data-testid={`wiz-theme-${k}`}
                 >
-                  <ColorSlotStrip colors={preset.c} testId={`wiz-theme-${k}-strip`} />
+                  <span className="wiz-theme-card__strip" aria-hidden="true">
+                    {preset.c.map((hex, i) => (
+                      <span key={i} className="wiz-theme-card__slot" style={{ background: hex }} />
+                    ))}
+                  </span>
                   <span className="wiz-theme-card__name">
                     {preset.name}
                     {/* Redundant with the border/glow for colour-blind users — never rely on colour alone (WCAG). */}
@@ -2776,12 +2785,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               );
             })}
           </div>
-
-          {/* M29 (SKY-7473, design-handoff v2 §3.1): plain-reading-order legend for the 6-segment strip. */}
-          <p className="wiz-theme-legend" data-testid="wiz-theme-legend">
-            {LIQUID_NEON_SLOT_ROLES.map((role, i) => (
-              <span key={role} className="wiz-theme-legend__item">
-                {String.fromCharCode(65 + i)} &middot; {role.split(' · ')[0]}
+          {/* M29 spec §3.1 (SKY-7593): plain-reading-order legend — the strip
+              isn't a decorative abstraction, FULL-SPEC §3 slot-role list verbatim. */}
+          <p className="wiz-theme-legend">
+            {['A', 'B', 'C', 'D', 'E', 'F'].map((letter, i) => (
+              <span key={letter} className="wiz-theme-legend__item">
+                {letter} &#xB7; {LIQUID_NEON_SLOT_ROLES[i]}
               </span>
             ))}
           </p>

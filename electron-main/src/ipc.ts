@@ -389,6 +389,12 @@ export const IPC_CHANNELS = {
   // (MYTHOS_DEV=1 only) additionally clears vaultRoot/notesVaultRoot/layoutMode.
   ONBOARDING_RESET: 'onboarding:reset',
 
+  // Beta 4 M29 (AC7): user-facing "Replay wizard" — flips onboardingComplete
+  // off so the wizard shows on next boot, WITHOUT touching vaultRoot /
+  // notesVaultRoot, so the current vault is still there if the user cancels
+  // out or picks Import/Open-existing back to it. Available in every build.
+  ONBOARDING_REPLAY: 'onboarding:replay',
+
   // SKY-2971: Word (.docx) → Story Vault importer.
   ONBOARDING_IMPORT_DOCX: 'onboarding:importDocxToStoryVault',
 
@@ -847,6 +853,7 @@ export interface IpcHandlers {
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => { ok: true };
+  [IPC_CHANNELS.ONBOARDING_REPLAY]: (payload: never) => { ok: true };
   // SKY-2971: .docx importer
   [IPC_CHANNELS.ONBOARDING_IMPORT_DOCX]: (payload: OnboardingImportDocxPayload) => Promise<OnboardingImportDocxResponse>;
   // SKY-2993: Obsidian vault importer
@@ -2137,7 +2144,7 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -2151,7 +2158,7 @@ export interface AppSettings {
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -2259,7 +2266,9 @@ export interface LastOpenedScene {
  *  with no user input, seeds a first scene, and marks onboarding complete in
  *  a single round-trip. */
 export interface OnboardingCompletePayload {
-  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  /** M29: 'start-fresh' creates a MythosVault v2 with the Veynn demo seed at a
+   *  chosen location; 'quick-start' does the same at the default location. */
+  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Required for blank / sample / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
@@ -2279,8 +2288,16 @@ export interface OnboardingCompletePayload {
   sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-2991: Custom Setup template choice. When startMode='blank', 'recommended'
    *  scaffolds the default quick-start bundle; 'blank' leaves the vault empty.
-   *  Absent for all other startMode values. */
+   *  For startMode='start-fresh' (M29), 'recommended' seeds the Veynn demo and
+   *  'blank' creates an empty v2 vault. Absent for all other startMode values. */
   customTemplate?: 'recommended' | 'blank';
+  /** M29 wizard genre step. Validated main-side against the genre-seed
+   *  allowlist; when present, vault creation seeds the genre starter notes
+   *  (Story Templates / Beat Sheet / Agent Personas) into the Notes Vault. */
+  genre?: string;
+  /** M29 wizard theme step (Liquid Neon preset key). Recorded as the new
+   *  vault's default theme in mythos.json; the renderer applies the tokens. */
+  themeKey?: string;
 }
 
 /** SKY-627: response from the extended onboarding:complete handler. */
