@@ -21,41 +21,33 @@
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import TimelineRoot from './TimelineRoot';
-import { groupScenes } from './TimelineSpreadsheet';
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
 import type { Story } from './types';
 import type { TimelinesStore } from './timelinesTypes';
 
 // ─── Child-view mocks ───
 // The surfaces are mocked so tests exercise TimelineRoot's state ownership
 // (viewMode / groupBy / filters / focus) through the real header controls.
-// importOriginal keeps TimelineSpreadsheet's named exports (groupScenes) real.
-
-vi.mock('./TimelineSpreadsheet', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./TimelineSpreadsheet')>();
-  return {
-    ...actual,
-    default: ({ groupBy, selectedIds, onSelectionChange }: {
-      groupBy?: string;
-      selectedIds?: Set<string>;
-      onSelectionChange?: (ids: Set<string>) => void;
-    }) => (
-      <div
-        data-testid="mock-spreadsheet"
-        data-groupby={groupBy ?? 'unset'}
-        data-selected-count={selectedIds?.size ?? 0}
+vi.mock('./TimelineSpreadsheet', () => ({
+  default: ({ groupBy, selectedIds, onSelectionChange }: {
+    groupBy?: string;
+    selectedIds?: Set<string>;
+    onSelectionChange?: (ids: Set<string>) => void;
+  }) => (
+    <div
+      data-testid="mock-spreadsheet"
+      data-groupby={groupBy ?? 'unset'}
+      data-selected-count={selectedIds?.size ?? 0}
+    >
+      <button
+        type="button"
+        data-testid="mock-select-scene"
+        onClick={() => onSelectionChange?.(new Set(['sc-1']))}
       >
-        <button
-          type="button"
-          data-testid="mock-select-scene"
-          onClick={() => onSelectionChange?.(new Set(['sc-1']))}
-        >
-          select scene
-        </button>
-      </div>
-    ),
-  };
-});
+        select scene
+      </button>
+    </div>
+  ),
+}));
 
 vi.mock('./timeline2/AxisView', () => ({
   default: (props: {
@@ -110,6 +102,14 @@ vi.mock('./TimelinePlotlines', () => ({
   ),
 }));
 
+vi.mock('./TimelineTension', () => ({
+  default: (props: { chapters?: unknown[] }) => (
+    <div data-testid="mock-tension" data-chapter-count={props.chapters?.length ?? 0}>
+      Tension
+    </div>
+  ),
+}));
+
 // ─── Fixtures ───
 
 const STORY: Story = {
@@ -147,22 +147,6 @@ function makeM21Store(): TimelinesStore {
       { id: 'ev-1', timelineId: 'tl-story', name: 'Inciting incident', when: 100 },
       { id: 'card-1', timelineId: 'tl-story', name: 'Opening beat', when: 200, rowId: 'pl-1', chapter: 2 },
     ],
-  };
-}
-
-function makeScene(overrides: Partial<SpreadsheetScene> = {}): SpreadsheetScene {
-  return {
-    id: crypto.randomUUID(),
-    title: 'Scene',
-    chapterId: '',
-    date: '',
-    pov: '',
-    arcIds: [],
-    characterIds: [],
-    wordCount: null,
-    mood: '',
-    locationId: '',
-    ...overrides,
   };
 }
 
@@ -224,13 +208,13 @@ describe('TimelineRoot — view switcher', () => {
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
   });
 
-  it('Plotlines renders the Plottr grid (M24); Tension explains itself until M24', async () => {
+  it('Plotlines renders the Plottr grid; Tension renders the SVG curve (M24)', async () => {
     await renderRoot();
     fireEvent.click(screen.getByTestId('view-mode-plot'));
     expect(screen.getByTestId('mock-plotlines')).toBeInTheDocument();
     expect(screen.queryByTestId('mock-axis')).toBeNull();
     fireEvent.click(screen.getByTestId('view-mode-tension'));
-    expect(screen.getByTestId('tlr-tension-stub')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-tension')).toBeInTheDocument();
   });
 
   it('switches to the spreadsheet / relationships / subway surfaces', async () => {
@@ -842,36 +826,5 @@ describe('TimelineRoot — M25 canvas states (design §4)', () => {
     fireEvent.click(screen.getByTestId('tlr-error-retry'));
     await act(async () => {});
     expect(screen.queryByTestId('tlr-error-banner')).toBeNull();
-  });
-});
-
-// ─── groupScenes F5 extension (real implementation via importOriginal) ───
-
-describe('groupScenes — F5 chapter/location grouping', () => {
-  it('groups by chapter and uses chapter titles', async () => {
-    const s1 = makeScene({ chapterId: 'ch-1' });
-    const s2 = makeScene({ chapterId: 'ch-2' });
-    const groups = groupScenes([s1, s2], 'chapter', [], [], [], [
-      { id: 'ch-1', title: 'Chapter One' },
-      { id: 'ch-2', title: 'Chapter Two' },
-    ]);
-    expect(groups.map(g => g.label)).toEqual(['Chapter One', 'Chapter Two']);
-    expect(groups.find(g => g.key === 'ch-1')!.scenes[0]).toBe(s1);
-  });
-
-  it('creates "No Chapter" group for scenes without a chapterId', async () => {
-    const groups = groupScenes([makeScene({ chapterId: '' })], 'chapter', [], [], [], []);
-    expect(groups[0].key).toBe('__unassigned__');
-    expect(groups[0].label).toBe('No Chapter');
-  });
-
-  it('groups by location and uses location names', async () => {
-    const s1 = makeScene({ locationId: 'loc-1' });
-    const s2 = makeScene({ locationId: '' });
-    const groups = groupScenes([s1, s2], 'location', [], [], [{ id: 'loc-1', name: 'The Keep' }]);
-    const keep = groups.find(g => g.key === 'loc-1')!;
-    expect(keep.label).toBe('The Keep');
-    expect(keep.scenes[0]).toBe(s1);
-    expect(groups.find(g => g.key === '__unassigned__')!.label).toBe('No Location');
   });
 });

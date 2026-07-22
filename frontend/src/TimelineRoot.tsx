@@ -54,6 +54,7 @@ import { planNotesFromVault } from './pages/SceneCrafter/crafterState';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineRelationships from './TimelineRelationships';
 import TimelineSubway from './TimelineSubway';
+import TimelineTension from './TimelineTension';
 import TimelinePlotlines from './TimelinePlotlines';
 import AxisView, { type AxisChapterCell } from './timeline2/AxisView';
 import CalendarEditorModal from './timeline2/CalendarEditorModal';
@@ -1198,10 +1199,23 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             </div>
           )}
 
+          {/* ── M24: Tension (SVG curve, §8.5) — reads/writes timelines.json ── */}
+          {viewMode === 'tension' && timelinesStore && (
+            <TimelineTension
+              store={timelinesStore}
+              onStoreChange={setTimelinesStore}
+              chapters={axisChapters}
+            />
+          )}
+          {viewMode === 'tension' && !timelinesStore && (
+            <div className="tlr-state" data-testid="tlr-tension-unavailable">
+              <h2>Timeline store unavailable.</h2>
+            </div>
+          )}
+
           {viewMode === 'spreadsheet' && (
             <TimelineSpreadsheet
-              story={story}
-              onOpenScene={onOpenScene}
+              store={timelinesStore}
               selectedIds={selectedIds}
               onSelectionChange={handleSheetSelection}
               groupBy={groupBy}
