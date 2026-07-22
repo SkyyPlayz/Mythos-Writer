@@ -18,6 +18,11 @@
   height: 28px;
 }
 
+.search-input-row:focus-within {
+  outline: 2px solid var(--focus-ring, #7c6af7);
+  outline-offset: 1px;
+}
+
 .search-icon {
   font-size: 12px;
   opacity: 0.6;

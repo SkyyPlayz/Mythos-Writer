@@ -142,7 +142,8 @@
   color: var(--text-muted);
   font-size: 0.9rem;
   cursor: pointer;
-  padding: 2px 5px;
+  padding: 6px 8px;
+  margin: -4px -3px;
   border-radius: var(--radius-xs);
   line-height: 1;
   flex-shrink: 0;

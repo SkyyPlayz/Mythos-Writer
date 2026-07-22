@@ -106,7 +106,10 @@
   border-radius: 2px;
 }
 
-.book-preview__story-title:focus { outline: none; }
+.book-preview__story-title:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 4px;
+}
 
 .book-preview__synopsis {
   font-size: 14px;
