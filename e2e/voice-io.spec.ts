@@ -13,11 +13,11 @@
  * | AC-V-03 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-03 (skip — needs STT) |
  * | AC-V-04 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-04a ✓ / TC-V-04b ✓   |
  * | AC-V-05 | SKY-1503       | accessibility.test.tsx ✓                  | TC-V-05a ✓ / TC-V-05b ✓   |
- * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 (skip — SKY-7540)  |
+ * | AC-V-06 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-06 ✓                  |
  * | AC-V-07 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-07 (skip — needs card)|
- * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 (skip — SKY-7540)  |
- * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E)        |
- * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10a-d real / 10e skip |
+ * | AC-V-08 | SKY-1504       | WritingAssistantPanel.test.tsx ✓           | TC-V-08 ✓                  |
+ * | AC-V-09 | SKY-1505       | SettingsPanel.test.tsx ✓                   | TC-V-09 (smoke E2E); 09b (skip — product q, SKY-7540) |
+ * | AC-V-10 | Both           | WritingAssistantPanel.test.tsx + this file | TC-V-10a-e ✓               |
  * | AC-V-11 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-11 real               |
  * | AC-V-12 | SKY-1503       | BrainstormPage.test.tsx ✓                 | TC-V-12 (skip — needs STT) |
  *
@@ -34,12 +34,21 @@
  * TC-V-03/V-12 remain skipped — unrelated to this mic-button surface.
  *
  * Un-skipping the whole file also exposed TC-V-06/08/09b/10e as broken for
- * reasons unrelated to the mic-state work: openAssistantPanel() still uses a
- * stale nav path (its Ctrl+1 partial update reaches the Story tab but the
- * Assistant surface itself moved to a left-sidebar toolbar panel), and
- * TC-V-09b's Settings toggle no longer maps to the flag that gates the
- * Brainstorm mic — re-skipped with a pointer to the SKY-7540 follow-up rather
- * than block this lift on an unrelated nav/product-flag fix.
+ * reasons unrelated to the mic-state work, tracked as SKY-7540:
+ *
+ * - TC-V-06/08/10e: openAssistantPanel() used a stale nav path (Ctrl+1 to a
+ *   Story tab, then a role=tab "Assistant" — pre-SKY-6228 shape). Fixed: the
+ *   Writing Assistant is now the GlobalRightSidebar's "Writing Coach" agent
+ *   hub row, reachable via Story → Editor → open a scene → expand the
+ *   "Writing Coach panel" header (same pattern as writing-assistant.spec.ts's
+ *   openWritingAssistantWithScene()). A scene/story/chapter fixture is now
+ *   seeded so the Editor view has something to open.
+ * - TC-V-09b: the Settings `#voice-enabled` toggle (appSettings.voice.enabled)
+ *   no longer maps to the flag that gates the Brainstorm mic
+ *   (agents.brainstorm.voiceEnabled — a separate, independent flag; the two
+ *   have diverged). This needs a product call (cascade the global toggle to
+ *   all per-embedding voice flags, or point the test at a per-embedding
+ *   control), so it stays skipped pending that decision on SKY-7540.
  *
  * TC-V-09 is a smoke E2E test — the primary assertion coverage lives in the
  * corresponding unit test file above. It verifies the surface renders in a
@@ -59,6 +68,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -67,6 +77,14 @@ const AXE_SOURCE = fs.readFileSync(
   path.resolve(__dirname, '../node_modules/axe-core/axe.min.js'),
   'utf8',
 );
+
+// SKY-7540: a scene to open in the Editor sub-view so openAssistantPanel() has
+// something to mount the manuscript toolbar (and its Writing Coach panel) against.
+const STORY_ID = 'vio-e2e-story-0001';
+const CHAPTER_ID = 'vio-e2e-chapter-0001';
+const SCENE_ID = 'vio-e2e-scene-0001';
+const SCENE_TITLE = 'Voice IO Scene';
+const SCENE_BODY = 'A short scene body, just enough prose for the editor to mount.';
 
 type AxeRunResult = {
   violations: Array<{
@@ -126,6 +144,10 @@ function seedUserData(userData: string, vaultDir: string): void {
       enabled: true,
       cloudFallback: false,
     },
+    // SKY-7540: GRS (GlobalRightSidebar) — home of the "Writing Coach panel"
+    // header openAssistantPanel() expands — only renders when this is an
+    // explicit boolean (see writing-assistant.spec.ts's seedUserData).
+    rightSidebarVisible: true,
   };
   const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: vaultDir };
   fs.writeFileSync(
@@ -136,6 +158,61 @@ function seedUserData(userData: string, vaultDir: string): void {
     path.join(userData, 'vault-settings.json'),
     JSON.stringify(vaultSettings, null, 2),
   );
+
+  // SKY-7540: seed a story/chapter/scene so openAssistantPanel() has a scene to
+  // open in the Editor sub-view (mirrors writing-assistant.spec.ts's fixture).
+  const now = new Date().toISOString();
+  const manifest = {
+    schemaVersion: 1,
+    version: '2.0.0',
+    vaultRoot: vaultDir,
+    stories: [
+      {
+        id: STORY_ID,
+        title: 'Voice IO E2E Story',
+        path: `stories/${STORY_ID}`,
+        chapters: [
+          {
+            id: CHAPTER_ID,
+            title: 'Chapter One',
+            path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}`,
+            order: 0,
+            scenes: [
+              {
+                id: SCENE_ID,
+                title: SCENE_TITLE,
+                path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes/${SCENE_ID}.md`,
+                order: 0,
+                chapterId: CHAPTER_ID,
+                storyId: STORY_ID,
+                blocks: [
+                  { id: 'vio-e2e-block-0001', type: 'prose', content: SCENE_BODY, order: 0, updatedAt: now },
+                ],
+                draftState: 'in-progress',
+                createdAt: now,
+                updatedAt: now,
+              },
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+    entities: [],
+    suggestions: [],
+    scenes: [],
+    chapters: [],
+  };
+  const sceneDir = path.join(vaultDir, `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes`);
+  fs.mkdirSync(sceneDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(sceneDir, `${SCENE_ID}.md`),
+    ['---', `id: ${SCENE_ID}`, `title: "${SCENE_TITLE}"`, `updatedAt: ${now}`, '---', '', SCENE_BODY, ''].join('\n'),
+  );
+  fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
@@ -180,15 +257,40 @@ async function openBrainstorm(page: Page): Promise<void> {
 }
 
 /**
- * Navigate to the Editor sidebar's Assistant tab and wait for it to mount.
+ * Navigate to Story → Editor and open the seeded scene.
+ */
+async function navigateToEditorView(page: Page): Promise<void> {
+  await clickStoryNav(page);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+}
+
+/**
+ * Open the Writing Coach (Writing Assistant) panel and wait for it to mount.
  *
- * SKY-7430: same nav rewrite as openBrainstorm() — Ctrl/Cmd+1 switches to the
- * Story tab (the legacy `.app-menu-view-btn` "Editor" menu no longer renders).
+ * SKY-7540: the pre-SKY-6228 nav (Ctrl+1 to a Story tab, then a `role=tab`
+ * named "Assistant") is stale on two counts — Ctrl+1 lands on the Story
+ * *section*, not a tab-scoped Editor view, and the Assistant surface moved
+ * from a tab to the GlobalRightSidebar's agent hub (SKY-6228): expand the
+ * "Writing Coach panel" header, then click into the "Writing Coach" agent
+ * row. The panel only mounts with a scene open, so open the seeded scene
+ * first (mirrors writing-assistant.spec.ts's openWritingAssistantWithScene()).
  */
 async function openAssistantPanel(page: Page): Promise<void> {
-  await page.keyboard.press('Control+1');
-  await page.getByRole('tab', { name: 'Assistant' }).click();
-  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 5_000 });
+  await navigateToEditorView(page);
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
+  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+
+  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
+  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
+    await waHeader.click();
+  }
+  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
+  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await agentRow.click();
+  }
+  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 type VoiceTranscribeResult = { text: string; confidence?: number } | { error: string };
@@ -283,6 +385,26 @@ test.beforeAll(async () => {
       if (cfg.delayMs) await new Promise((resolve) => setTimeout(resolve, cfg.delayMs));
       return cfg.result;
     });
+
+    // SKY-7540: opening the Writing Coach panel (openAssistantPanel()) fires
+    // writingAssistantSetActiveScene and, once mounted, its scheduler can
+    // invoke a scan — stub these so there's no unhandled-channel rejection.
+    // TC-V-06/08/10e only assert the mute button and live region, not scan
+    // content, so trivial/empty responses are sufficient.
+    for (const ch of [
+      'writing-assistant:set-active-scene',
+      'writing:scan',
+      'writing-assistant:scan-now',
+      'writing-assistant:cadence-change',
+      'writing-assistant:tip-decision',
+    ]) {
+      try { ipcMain.removeHandler(ch); } catch { /* not yet registered */ }
+    }
+    ipcMain.handle('writing-assistant:set-active-scene', async () => ({ ok: true }));
+    ipcMain.handle('writing:scan', async () => ({ tips: [], scannedAt: new Date().toISOString() }));
+    ipcMain.handle('writing-assistant:scan-now', async () => ({ tips: [], scannedAt: new Date().toISOString() }));
+    ipcMain.handle('writing-assistant:cadence-change', async () => ({ ok: true }));
+    ipcMain.handle('writing-assistant:tip-decision', async () => ({ ok: true }));
   });
 });
 
@@ -356,7 +478,7 @@ test('TC-V-10d: Brainstorm mic button listening aria-label is correct', async ()
 // Primary unit coverage: WritingAssistantPanel.test.tsx
 // This E2E test verifies the mute toggle renders in a real Electron window.
 
-test.skip('TC-V-06: Writing Assistant mute toggle renders in Electron (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-06: Writing Assistant mute toggle renders in Electron', async () => {
   await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
   // The WritingAssistantPanel only mounts when the Editor sidebar's Assistant tab is active.
@@ -393,7 +515,7 @@ test.skip('TC-V-07: Hear button renders on WA suggestion card (requires LLM/seed
 // play state."
 // Primary unit coverage: WritingAssistantPanel.test.tsx "AC-V-08:" tests.
 
-test.skip('TC-V-08: mute toggle flips aria-pressed in Electron (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-08: mute toggle flips aria-pressed in Electron', async () => {
   await openAssistantPanel(page);
   const muteBtn = page.locator('.wa-mute-btn');
   await expect(muteBtn).toBeAttached({ timeout: 5_000 });
@@ -480,7 +602,7 @@ test.skip('TC-V-09b: Settings voice toggle controls Brainstorm mic visibility (S
 //
 // AC-V-10: WA panel must also have an always-in-DOM sr-only live region.
 
-test.skip('TC-V-10e: Writing Assistant live region is always in DOM (SKY-7540 — openAssistantPanel() nav is stale, see follow-up)', async () => {
+test('TC-V-10e: Writing Assistant live region is always in DOM', async () => {
   await openAssistantPanel(page);
   const liveRegion = page.locator('.writing-assistant-panel [role="status"][aria-live="polite"]');
   await expect(liveRegion).toBeAttached({ timeout: 5_000 });
