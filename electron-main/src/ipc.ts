@@ -1130,6 +1130,8 @@ export interface VaultGuidedMovePayload {
 export interface VaultGuidedMoveResponse {
   moved: boolean;
   newVaultPath: string;
+  /** Non-empty when post-move verification detected dropped files or stubs. */
+  verificationWarning?: string;
 }
 
 export interface VaultChooseFolderPayload {
@@ -2360,6 +2362,12 @@ export interface OnboardingImportObsidianResponse {
   ok: boolean;
   targetPath?: string;
   error?: string;
+  /** Total files found in the source vault. */
+  sourceCount?: number;
+  /** Files successfully copied. */
+  imported?: number;
+  /** Files skipped (already existed at destination). */
+  skipped?: number;
 }
 
 export interface OnboardingDryRunObsidianPayload {

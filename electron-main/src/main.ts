@@ -209,6 +209,7 @@ import {
   handleAgentSessionAppendTurns,
 } from './agentSessionsIpc.js';
 import { parseDocxBuffer } from './docxImporter.js';
+import { describeFileError } from './migrationVerify.js';
 import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
 // Beta 3 M24 — Settings → Vault & Files import flows
 import {
@@ -3110,7 +3111,13 @@ const handlers: IpcHandlers = {
           errors.push({ filePath, error: 'Only .docx files are supported' });
           continue;
         }
-        const buffer = fs.readFileSync(filePath);
+        let buffer: Buffer;
+        try {
+          buffer = fs.readFileSync(filePath);
+        } catch (readErr) {
+          errors.push({ filePath, error: describeFileError(readErr, filePath) });
+          continue;
+        }
         const baseName = path.basename(filePath, '.docx');
         const parsed = await parseDocxBuffer(buffer, baseName);
 
@@ -3178,10 +3185,17 @@ const handlers: IpcHandlers = {
     }
     const targetRoot = targetVaultKind === 'notes' ? getNotesVaultRoot() : getVaultRoot();
     const result = importObsidianToVaultDir(srcPath, targetRoot);
+    const allErrors = [
+      ...result.errors,
+      ...(result.dropWarning ? [result.dropWarning] : []),
+    ];
     return {
       ok: result.ok,
       targetPath: result.targetPath,
-      error: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+      imported: result.imported,
+      skipped: result.skipped,
+      sourceCount: result.sourceCount,
+      error: allErrors.length > 0 ? allErrors.join('; ') : undefined,
     };
   },
 
@@ -5433,7 +5447,7 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+    const moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
       syncProvider: gate.syncProvider,
       updateSettings: (newPath) => {
         saveVaultSettings({ vaultRoot: newPath });
@@ -5441,7 +5455,10 @@ const handlers: IpcHandlers = {
       },
     });
 
-    return { moved: true, newVaultPath: gate.targetPath };
+    const verificationWarning = !moveResult.verification.ok
+      ? moveResult.verification.message
+      : undefined;
+    return { moved: true, newVaultPath: gate.targetPath, verificationWarning };
   },
 
   // SKY-9: generic folder picker for the Settings panel. Returns the chosen

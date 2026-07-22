@@ -17,6 +17,8 @@
 import fs from 'fs';
 import path from 'path';
 import type { CloudSyncProvider } from './ipc.js';
+import { snapshotDirectory, verifyPostMove } from './migrationVerify.js';
+import type { PostMoveVerification } from './migrationVerify.js';
 
 // ─── Target validation ────────────────────────────────────────────────────────
 
@@ -136,6 +138,11 @@ export interface GuidedMoveOptions {
   syncProvider: CloudSyncProvider;
 }
 
+export interface GuidedMoveResult {
+  /** Post-move file count + checksum verification report. */
+  verification: PostMoveVerification;
+}
+
 /**
  * Atomically moves `srcVaultRoot` to `targetPath` via `fs.promises.rename`.
  *
@@ -153,7 +160,10 @@ export async function moveVaultAtomic(
   srcVaultRoot: string,
   targetPath: string,
   opts: GuidedMoveOptions,
-): Promise<void> {
+): Promise<GuidedMoveResult> {
+  // Snapshot source before rename for post-move verification.
+  const srcSnapshot = snapshotDirectory(srcVaultRoot);
+
   await fs.promises.rename(srcVaultRoot, targetPath);
 
   try {
@@ -189,4 +199,8 @@ export async function moveVaultAtomic(
     // eslint-disable-next-line no-console
     console.error('[vaultGuidedMove] audit log write failed — move itself succeeded');
   }
+
+  // Post-move verification: confirm all files arrived at the destination.
+  const verification = verifyPostMove(srcSnapshot, targetPath);
+  return { verification };
 }

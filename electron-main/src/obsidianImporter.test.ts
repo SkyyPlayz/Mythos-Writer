@@ -330,3 +330,50 @@ describe('constants', () => {
     expect(MAX_IMPORT_FILE_BYTES).toBe(25 * 1024 * 1024);
   });
 });
+
+// ─── importObsidianToVaultDir — verification fields (SKY-7948) ───────────────
+
+describe('importObsidianToVaultDir — post-import verification', () => {
+  let src: string;
+  let dst: string;
+  beforeEach(() => {
+    src = makeTmpDir();
+    dst = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(src, { recursive: true, force: true });
+    fs.rmSync(dst, { recursive: true, force: true });
+  });
+
+  it('returns sourceCount equal to files found in source', () => {
+    writeFile(src, 'a.md', '# A');
+    writeFile(src, 'sub/b.md', '# B');
+    writeBin(src, 'img.png');
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.sourceCount).toBe(3);
+  });
+
+  it('returns dropWarning="" when all files are accounted for', () => {
+    writeFile(src, 'a.md', '# A');
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.dropWarning).toBe('');
+    expect(result.imported).toBe(1);
+    expect(result.sourceCount).toBe(1);
+  });
+
+  it('returns sourceCount=0 and dropWarning="" for non-existent srcPath', () => {
+    const result = importObsidianToVaultDir('/nonexistent/path/here', dst);
+    expect(result.ok).toBe(false);
+    expect(result.sourceCount).toBe(0);
+    expect(result.dropWarning).toBe('');
+  });
+
+  it('counts skipped (already-existing) files in accountedFor — no false drop warning', () => {
+    writeFile(src, 'a.md', '# A');
+    writeFile(dst, 'a.md', '# A already there');
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.skipped).toBe(1);
+    expect(result.imported).toBe(0);
+    expect(result.dropWarning).toBe('');
+  });
+});
