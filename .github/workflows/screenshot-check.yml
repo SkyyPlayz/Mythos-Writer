@@ -33,6 +33,16 @@ jobs:
               return;
             }
 
+            // Grandfather clause: PRs created before screenshot-check was enforced
+            // on main (2026-07-22T13:22:05Z) are exempt to allow existing backlog
+            // to merge. Newer PRs are fully gated per SKY-7941.
+            const grandfatherDate = new Date('2026-07-22T13:22:05Z');
+            const prCreatedAt = new Date(pr.created_at);
+            if (prCreatedAt < grandfatherDate) {
+              core.info('PR created before screenshot-check enforcement (2026-07-22T13:22:05Z) — skipping check per SKY-8049 grandfather clause.');
+              return;
+            }
+
             const files = await github.paginate(
               github.rest.pulls.listFiles,
               { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
