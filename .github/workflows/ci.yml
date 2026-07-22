@@ -1159,6 +1159,16 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm ci
 
+      # SKY-3191: whisper.cpp/Piper spawn (voice.ts) and the MYT-788 trusted-set
+      # gate (voiceGate.ts) have no platform-conditional branches — they rely
+      # entirely on Node's cross-platform child_process.spawn/fs.realpathSync —
+      # but the `unit` job only ever runs on ubuntu-latest, so that claim had
+      # never been empirically checked on native Windows. Scoped to the voice
+      # suite (not the full unit run) to keep this native-Windows job fast.
+      - name: Verify voice spawn/gate suite on native Windows (SKY-3191)
+        if: github.event_name != 'pull_request'
+        run: npm run test -w electron-main -- voice
+
       - name: Build and package (Windows NSIS + ZIP)
         if: github.event_name != 'pull_request'
         env:
