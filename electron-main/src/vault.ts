@@ -25,6 +25,7 @@ export {
   safeVaultJoin,
   safeVaultIpcJoin,
   safeVaultDirIpcJoin,
+  safeVaultEntryIpcJoin,
   VAULT_IPC_ALLOWED_EXTENSIONS,
 } from './vault/safeVaultJoin.js';
 export type { SafeVaultJoinOptions } from './vault/safeVaultJoin.js';
@@ -273,11 +274,23 @@ export function listVaultFiles(
   return { items };
 }
 
+// SKY-7995: delete needs to handle directories too — unlinkSync throws EISDIR
+// for a directory target, which is how folder-delete silently failed before.
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
   const fullPath = realSafePath(vaultRoot, filePath, true);
-  const exists = fs.existsSync(fullPath);
-  if (exists) fs.unlinkSync(fullPath);
-  return { path: filePath, deleted: exists };
+  let stat: fs.Stats | null = null;
+  try {
+    stat = fs.statSync(fullPath);
+  } catch {
+    // does not exist
+  }
+  if (!stat) return { path: filePath, deleted: false };
+  if (stat.isDirectory()) {
+    fs.rmSync(fullPath, { recursive: true, force: true });
+  } else {
+    fs.unlinkSync(fullPath);
+  }
+  return { path: filePath, deleted: true };
 }
 
 // SKY-9: atomic intra-vault rename. Both endpoints resolve under the same
@@ -285,6 +298,11 @@ export function deleteVaultFile(vaultRoot: string, filePath: string): { path: st
 // escape via "../". fs.renameSync is atomic on a single filesystem; cross-
 // device moves throw EXDEV and the caller should retry via copy+delete (not
 // implemented here — both vaults live under userData by default).
+//
+// SKY-7995: also used to move/rename directories, so a descendant guard is
+// required — without it, dragging (or renaming) a folder "into" itself or
+// one of its own children would call fs.renameSync with `to` nested inside
+// `from`, orphaning/deleting data on most filesystems.
 export function moveVaultFile(
   vaultRoot: string,
   fromPath: string,
@@ -295,6 +313,13 @@ export function moveVaultFile(
   if (fromFull === toFull) return { fromPath, toPath, moved: false };
   if (!fs.existsSync(fromFull)) {
     throw new Error(`Source does not exist: ${fromPath}`);
+  }
+  if (fs.statSync(fromFull).isDirectory()) {
+    if (toFull === fromFull || toFull.startsWith(fromFull + path.sep)) {
+      throw new Error(
+        `Cannot move "${fromPath}" into itself or one of its own subfolders.`
+      );
+    }
   }
   fs.mkdirSync(path.dirname(toFull), { recursive: true });
   fs.renameSync(fromFull, toFull);

@@ -861,6 +861,24 @@
   text-align: center;
 }
 
+/* SKY-7995: root drop zone — drag a note/folder here to move it out of any
+   nested folder back to the vault root. */
+.vb-root-drop-zone {
+  margin: 4px 8px 8px;
+  padding: 8px;
+  border: 1px dashed var(--border, rgba(255,255,255,0.18));
+  border-radius: 4px;
+  font-size: var(--text-xs, 0.72rem);
+  color: var(--text-muted, rgba(255,255,255,0.45));
+  text-align: center;
+}
+
+.vb-root-drop-zone--active {
+  border-color: var(--accent, #00f0ff);
+  color: var(--accent, #00f0ff);
+  background: rgba(0, 240, 255, 0.06);
+}
+
 /* SKY-204: Daily Notes banner */
 .vb-daily-banner {
   display: flex;

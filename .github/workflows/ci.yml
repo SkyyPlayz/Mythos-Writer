@@ -354,6 +354,9 @@ jobs:
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
 
+      - name: E2E — Notes Vault folder operations (SKY-7995)
+        run: xvfb-run --auto-servernum npm run test:e2e:folder-ops
+
       - name: E2E — draft version history snapshot and rollback (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:draft-history
 
