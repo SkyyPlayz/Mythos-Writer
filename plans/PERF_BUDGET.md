@@ -1,7 +1,7 @@
 # Performance Budget Report
 
-Generated: `2026-05-24T11:07:39.765Z`
-Status: **✅ PASS**
+Generated: `2026-07-22T13:00:29.840Z`
+Status: **❌ FAIL**
 
 ## Targets
 
@@ -13,15 +13,24 @@ Status: **✅ PASS**
 
 | Metric | Result | Threshold | Status |
 |--------|-------:|----------:|:------:|
-| `db_open_ms` | 4 ms | < 1000 ms | ✅ |
-| `vault_reindex_ms` | 187 ms | < 30000 ms | ✅ |
-| `fts5_build_ms` | 166 ms | < 30000 ms | ✅ |
+| `db_open_ms` | 14 ms | < 1000 ms | ✅ |
+| `vault_reindex_ms` | 265 ms | < 30000 ms | ✅ |
+| `vault_reindex_warm_ms` | 41 ms | < 500 ms | ✅ |
+| `fts5_build_ms` | 237 ms | < 30000 ms | ✅ |
 | `fts5_search_median_ms` | 2 ms | < 500 ms | ✅ |
-| `archive_index_ms` | 112 ms | < 60000 ms | ✅ |
-| `archive_scan_10_ms` | 768 ms | < 10000 ms | ✅ |
+| `archive_index_ms` | 243 ms | < 60000 ms | ✅ |
+| `archive_scan_10_ms` | 719 ms | < 10000 ms | ✅ |
 
-> No baseline on record — this run has been written as the initial baseline.
-> Re-run with `PERF_UPDATE_BASELINE=1 npm run perf` to refresh it intentionally.
+## Regression vs Baseline
+
+Baseline from: `2026-05-24T11:07:39.764Z`
+
+❌ Regressions detected (> 25 % slower than baseline):
+
+- `db_open_ms`: 14 ms vs baseline 4 ms (+257.7%)
+- `vault_reindex_ms`: 265 ms vs baseline 187 ms (+41.5%)
+- `fts5_build_ms`: 237 ms vs baseline 166 ms (+42.8%)
+- `archive_index_ms`: 243 ms vs baseline 112 ms (+117.3%)
 
 ## Notes
 
