@@ -599,7 +599,10 @@
   cursor: pointer;
   color: var(--text-faint);
   font-size: 0.75rem;
-  padding: 1px 4px;
+  /* Visual glyph stays small; padding+negative margin expand the WCAG 2.5.8
+     hit area to ~24×24 without affecting row layout. */
+  padding: 5px 8px;
+  margin: -4px -6px;
   border-radius: 3px;
   opacity: 0;
   transition: opacity 0.1s;
@@ -608,8 +611,14 @@
 }
 
 .vs-sf-item:hover .vs-sf-action,
-.vs-sf-item.vs-sf-active .vs-sf-action {
+.vs-sf-item.vs-sf-active .vs-sf-action,
+.vs-sf-action:focus-visible {
   opacity: 1;
+}
+
+.vs-sf-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .vs-sf-action:hover { color: var(--text-primary); background: var(--bg-surface); }

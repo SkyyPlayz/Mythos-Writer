@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 const LS_PREFIX = 'vb-expanded:';
 
@@ -36,8 +36,17 @@ export function useTreeState(storageKey: string) {
     [storageKey],
   );
 
+  // SKY-7995: this must only seed the expand state once per mount, on the
+  // *first* tree render — not every time the tree shape changes (new/renamed/
+  // deleted files bump treeLen in VaultBrowser's effect). Gating on
+  // `prev.size > 0` alone re-fired after Collapse All (which sets the set to
+  // size 0) and silently re-expanded every folder on the very next tree
+  // change, making "Collapse all" impossible to keep collapsed.
+  const initializedRef = useRef(false);
   const initExpand = useCallback(
     (paths: Iterable<string>) => {
+      if (initializedRef.current) return;
+      initializedRef.current = true;
       setExpanded((prev) => {
         if (prev.size > 0) return prev;
         const next = new Set<string>(paths);

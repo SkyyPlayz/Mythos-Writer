@@ -193,3 +193,18 @@ export function safeVaultDirIpcJoin(vaultRoot: string, relPath: string): string 
     rejectDotfiles: true,
   });
 }
+
+/**
+ * SKY-7995: entry variant for the notesVault:move / notesVault:delete IPC
+ * channels. Move and delete targets can be either files *or* directories, so
+ * (unlike safeVaultIpcJoin) this deliberately has no extension allow-list —
+ * a folder has no `.md`/`.json` extension and would otherwise be rejected by
+ * the IPC boundary before it ever reached moveVaultFile/deleteVaultFile.
+ * Same traversal/dotfile guards as every other IPC-facing join.
+ */
+export function safeVaultEntryIpcJoin(vaultRoot: string, relPath: string): string {
+  return safeVaultJoin(vaultRoot, relPath, {
+    writeMode: true,
+    rejectDotfiles: true,
+  });
+}

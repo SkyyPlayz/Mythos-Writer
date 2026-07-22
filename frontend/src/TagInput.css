@@ -27,11 +27,20 @@
 .tag-chip-remove {
   background: none;
   border: none;
-  padding: 0;
+  /* Visual glyph stays small; padding+negative margin expand the WCAG 2.5.8
+     hit area to ~24×24 without affecting chip layout. */
+  padding: 5px;
+  margin: -5px;
   cursor: pointer;
   color: var(--text-muted, #8c8fa8);
   font-size: 14px;
   line-height: 1;
+}
+
+.tag-chip-remove:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+  border-radius: 3px;
 }
 
 .tag-chip-remove:hover { color: var(--text-body, #e8eaf6); }
@@ -45,6 +54,11 @@
   color: var(--text-body, #e8eaf6);
   font-size: 13px;
   padding: 2px 0;
+}
+
+.tag-input-field:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
 }
 
 .tag-dropdown {
