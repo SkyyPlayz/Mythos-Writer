@@ -1,10 +1,18 @@
 name: Issue Finder
+# Files deduplicated `auto-found` issues for Fuzz workflow failures (SKY-7774).
+# CI failures are deliberately not scanned: they are already routed by
+# GitHubManager and the daily GitHub sync sweep (SKY-7725).
 
 on:
   schedule:
     # Weekly on Monday at 06:00 UTC
     - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log create/comment decisions without writing to GitHub"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -18,109 +26,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Find and create issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -e
-          echo "🔍 Starting issue discovery..."
-
-          # Create a simple Node.js script to query and create issues
-          cat > /tmp/issue-finder.js << 'EOF'
-          const { execSync } = require('child_process');
-
-          function runGhCmd(cmd) {
-            try {
-              return execSync(cmd, { encoding: 'utf-8' });
-            } catch {
-              return '';
-            }
-          }
-
-          const OWNER = process.env.OWNER;
-          const REPO = process.env.REPO_NAME;
-          const REPO_FULL = `${OWNER}/${REPO}`;
-
-          function issueExists(title) {
-            const result = runGhCmd(`gh issue list -R ${REPO_FULL} -l auto-found --state open --json title`);
-            try {
-              return JSON.parse(result).some(i => i.title === title);
-            } catch {
-              return false;
-            }
-          }
-
-          function createIssue(title, body) {
-            if (issueExists(title)) {
-              console.log(`⏭️  Exists: ${title}`);
-              return;
-            }
-            console.log(`✏️  Creating: ${title}`);
-            try {
-              execSync(`gh issue create -R ${REPO_FULL} -t "${title.replace(/"/g, '\\"')}" -b "${body.replace(/"/g, '\\"')}" -l auto-found -l needs-triage`, { stdio: 'pipe' });
-            } catch (e) {
-              console.log(`Error creating issue: ${e.message}`);
-            }
-          }
-
-          let createdCount = 0;
-
-          // Check CI runs
-          console.log('📋 Checking recent CI runs...');
-          const ciRuns = runGhCmd(`gh api repos/${OWNER}/${REPO}/actions/workflows/ci.yml/runs -p per_page=20`);
-          try {
-            const ciData = JSON.parse(ciRuns);
-            ciData.workflow_runs
-              .filter(r => r.status === 'completed' && r.conclusion === 'failure')
-              .forEach(run => {
-                const title = `[auto-found] CI failure on ${run.created_at.split('T')[0]}`;
-                const body = `Auto-discovered CI workflow failure.\n\nRun: ${run.name}\nID: ${run.id}\nDate: ${run.created_at}\n\nhttps://github.com/${REPO_FULL}/actions/runs/${run.id}`;
-                if (!issueExists(title)) {
-                  createIssue(title, body);
-                  createdCount++;
-                }
-              });
-          } catch (e) {
-            console.log(`Error parsing CI runs: ${e.message}`);
-          }
-
-          // Check Fuzz runs
-          console.log('🐛 Checking recent Fuzz runs...');
-          const fuzzRuns = runGhCmd(`gh api repos/${OWNER}/${REPO}/actions/workflows/fuzz.yml/runs -p per_page=20`);
-          try {
-            const fuzzData = JSON.parse(fuzzRuns);
-            fuzzData.workflow_runs
-              .filter(r => r.status === 'completed' && r.conclusion === 'failure')
-              .forEach(run => {
-                const title = `[auto-found] Fuzz failure on ${run.created_at.split('T')[0]}`;
-                const body = `Auto-discovered Fuzz workflow failure.\n\nRun: ${run.name}\nID: ${run.id}\nDate: ${run.created_at}\n\nhttps://github.com/${REPO_FULL}/actions/runs/${run.id}`;
-                if (!issueExists(title)) {
-                  createIssue(title, body);
-                  createdCount++;
-                }
-              });
-          } catch (e) {
-            console.log(`Error parsing Fuzz runs: ${e.message}`);
-          }
-
-          if (createdCount === 0) {
-            console.log('✅ No new issues created');
-          } else {
-            console.log(`✅ Created ${createdCount} new issue(s)`);
-          }
-          EOF
-
-          # Parse owner/repo and run the script
-          IFS='/' read -r OWNER REPO_NAME <<< "$REPO"
-          export OWNER REPO_NAME
-          node /tmp/issue-finder.js
+          DRY_RUN: ${{ inputs.dry_run == true && '1' || '' }}
+        run: node .github/scripts/issue-finder.js
