@@ -7,6 +7,15 @@
 // keep their legacy surfaces until M24 rebuilds them; Plotlines (Plottr grid)
 // and Tension (SVG curve) land with M24 and explain themselves until then.
 //
+// Beta 4 M25 (SKY-6981, §8.6): owns the cross-view TimelineSelection and the
+// right panel (Inspector · Brainstorm · Archive) — any click on a timeline
+// item surfaces the Inspector tab (§14.5). The Archive Agent auto-build now
+// WRITES planned events into timelines.json (`archiveAutoBuild`, replacing
+// the ephemeral M23 merge as the axis's source), quick-add plots agent-dated
+// events, and the header flag badge + canvas outlines surface the SKY-7379
+// TimelineFlag contract. Empty/Loading/Syncing/Error states per the Timeline
+// Views design spec §4.
+//
 // Owns: viewMode, groupBy, the View/Show filter selects (prototype
 // tlFilterSel, 6839), the Templates ▾ dropdown + `+ Plotline` (6598–6600),
 // the left-panel book-focus cards + plotline visibility toggles (399–417),
@@ -14,7 +23,13 @@
 // to localStorage; legacy modes ('aeon', 'track', M22's 'axis') migrate.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Story } from './types';
-import type { TimelinesStore, TimelineRow } from './timelinesTypes';
+import type {
+  TimelinesStore,
+  TimelineEra,
+  TimelineEvent,
+  TimelineRow,
+  TimelineSpan,
+} from './timelinesTypes';
 import TimelinePicker from './TimelinePicker';
 import {
   type TimelineGroupBy,
@@ -31,17 +46,34 @@ import {
   mergePlannedIntoTimeline,
   parsePlanUnits,
   type PlanUnit,
-  type SkippedPlanFlag,
 } from './timelinePlanBuild';
+import type { InconsistencyItem } from './InconsistencyCard';
+import type { TimelineFlag } from './archive/timelineFlags';
 import { planNotesFromVault } from './pages/SceneCrafter/crafterState';
 import TimelineSpreadsheet from './TimelineSpreadsheet';
 import TimelineRelationships from './TimelineRelationships';
 import TimelineSubway from './TimelineSubway';
 import AxisView, { type AxisChapterCell } from './timeline2/AxisView';
 import CalendarEditorModal from './timeline2/CalendarEditorModal';
+import TimelineRightPanel, { type TimelineRightTab } from './timeline2/panel/TimelineRightPanel';
+import type { TimelineSelection, TimelineSelectableType } from './timeline2/panel/selection';
+import type { RecentAutoAdd } from './timeline2/panel/ArchiveTab';
+import {
+  autoBuildSignature,
+  planAutoBuild,
+  type PlannedSceneInput,
+} from './timeline2/archiveAutoBuild';
+import {
+  heuristicQuickAdd,
+  parseAgentQuickAdd,
+  quickAddAgentPrompt,
+  quickAddEvent,
+  quickAddToast,
+  type QuickAddContext,
+} from './timeline2/panel/quickAdd';
 import { deriveAxisDomain } from './timeline2/axis/domain';
-import { safeCalendar, safeDecodeWhen, roundWhen } from './timeline2/axis/calendarCodec';
-import { plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
+import { safeCalendar, safeDecodeWhen, formatWhen, roundWhen } from './timeline2/axis/calendarCodec';
+import { chapterWhen, plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
 import { laneColor } from './timeline2/axis/palette';
 import {
   PLOT_TEMPLATES,
@@ -106,6 +138,18 @@ async function loadPlanUnits(api: Window['api']): Promise<PlanUnit[]> {
   }
 }
 
+/** M25: open continuity flags project onto the timeline as contradictions
+ *  (SKY-7379). Degrades to [] — flags are an affordance, never a gate. */
+async function loadOpenContinuityItems(api: Window['api']): Promise<InconsistencyItem[]> {
+  try {
+    if (typeof api.archiveListContinuity !== 'function') return [];
+    const result = await api.archiveListContinuity({ filter: { status: 'open' } });
+    return (result.items ?? []) as InconsistencyItem[];
+  } catch {
+    return [];
+  }
+}
+
 const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'arc', label: 'Arc' },
@@ -147,6 +191,14 @@ function newItemId(prefix: string): string {
   return `${prefix}:${uuid}`;
 }
 
+type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
+
+/** M25: the auto-build slice of one merged plan pass (planned scenes only). */
+interface PlannedBuild {
+  scenes: PlannedSceneInput[];
+  chapterIndexById: Map<string, number>;
+}
+
 interface Props {
   story: Story | null;
   onOpenScene?: (sceneId: string) => void;
@@ -171,24 +223,57 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
   // ── M21: multi-timeline store ──
   const [timelinesStore, setTimelinesStore] = useState<TimelinesStore | null>(null);
+  const [storeLoading, setStoreLoading] = useState(true);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const { toast, showToast } = useToast();
+  const { toast, showToast, clearToast } = useToast();
+  // M25 (§1 principle 7): destructive actions get an inline Undo on the toast.
+  const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | null>(null);
+  const notify = useCallback(
+    (message: string, level?: 'info' | 'warn' | 'error') => {
+      setToastAction(null);
+      showToast(message, level);
+    },
+    [showToast],
+  );
+
+  // ── M25: cross-view selection + right panel ──
+  const [tlSelection, setTlSelection] = useState<TimelineSelection | null>(null);
+  const [rightTab, setRightTab] = useState<TimelineRightTab>('inspector');
+  const [jumpTarget, setJumpTarget] = useState<{ id: string; n: number } | null>(null);
+  const jumpSeq = useRef(0);
+  const [flags, setFlags] = useState<TimelineFlag[]>([]);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [autoSyncing, setAutoSyncing] = useState(false);
+  const [plannedBuild, setPlannedBuild] = useState<PlannedBuild | null>(null);
+  const lastAutoBuildSig = useRef<string | null>(null);
+  // Empty-state dismissal: "Start empty" reveals the bare axis for hand-adds.
+  const [emptyDismissed, setEmptyDismissed] = useState<ReadonlySet<string>>(new Set());
 
   // ── Shared Aeon data (relations / subway + the chapters row) ──
   const [aeonData, setAeonData] = useState<AeonTimelineData>(EMPTY_AEON_DATA);
   const [aeonLoading, setAeonLoading] = useState(false);
   const [aeonError, setAeonError] = useState<string | null>(null);
-  // M23: planned scenes skipped behind the last written plan position.
-  const [skippedFlags, setSkippedFlags] = useState<SkippedPlanFlag[]>([]);
+  const [aeonRetry, setAeonRetry] = useState(0);
 
   const api = window.api;
 
+  // §14.5: ANY selection surfaces the Inspector tab, even when Brainstorm or
+  // Archive was open.
+  const handleSelectionChange = useCallback((sel: TimelineSelection | null) => {
+    setTlSelection(sel);
+    if (sel) setRightTab('inspector');
+  }, []);
+
   // Load M21 timelines store on mount (vault-scoped, independent of story).
   useEffect(() => {
-    if (typeof api.timelinesGetStore !== 'function') return;
+    if (typeof api.timelinesGetStore !== 'function') {
+      setStoreLoading(false);
+      return;
+    }
     api.timelinesGetStore().then((res: { store: TimelinesStore }) => {
       setTimelinesStore(res.store);
-    }).catch(() => { /* non-fatal: picker hidden */ });
+    }).catch(() => { /* non-fatal: picker hidden */ })
+      .finally(() => setStoreLoading(false));
   }, [api]);
 
   const handleTimelineSelect = useCallback((timelineId: string) => {
@@ -197,6 +282,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       if (res.ok) {
         setTimelinesStore(res.store);
         setBookFocus(null);
+        setTlSelection(null);
       }
     }).catch(() => {});
   }, [api]);
@@ -212,11 +298,11 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
         if (!res.ok) return;
         return setActive(res.id).then((activated) => {
           if (activated.ok) setTimelinesStore(activated.store);
-          showToast('New timeline — add spans, or embed an existing timeline inside it');
+          notify('New timeline — add spans, or embed an existing timeline inside it');
         });
       })
       .catch(() => {});
-  }, [api, showToast]);
+  }, [api, notify]);
 
   const handleEditCalendar = useCallback(() => {
     setShowCalendarModal(true);
@@ -237,18 +323,19 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       })
         .then((res) => {
           if (res.ok) setTimelinesStore(res.store);
-          if (presetLabel) showToast(`Calendar set — ${presetLabel}`);
+          if (presetLabel) notify(`Calendar set — ${presetLabel}`);
         })
         .catch(() => {});
     },
-    [api, activeTimeline, showToast],
+    [api, activeTimeline, notify],
   );
 
   useEffect(() => {
     if (!story) {
       setAeonData(EMPTY_AEON_DATA);
       setAeonError(null);
-      setSkippedFlags([]);
+      setFlags([]);
+      setPlannedBuild(null);
       return;
     }
     let cancelled = false;
@@ -264,8 +351,10 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       entityList('concept').catch(() => ({ entities: [] })),
       // M23: vault Story Plans auto-build the timeline (planned-vs-written).
       loadPlanUnits(api),
+      // M25: open continuity items → contradiction flags (SKY-7379).
+      loadOpenContinuityItems(api),
     ])
-      .then(([scenesResp, arcsResp, charsResp, eventsResp, conceptsResp, planUnits]) => {
+      .then(([scenesResp, arcsResp, charsResp, eventsResp, conceptsResp, planUnits, continuityItems]) => {
         if (cancelled) return;
         const toEntity = (e: { id: string; name: string; tags?: string[] }) => ({
           id: e.id,
@@ -284,10 +373,17 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
           characterIds: s.entityLinks?.characterIds ?? [],
         }));
         const realChapters = (story.chapters ?? []).map(ch => ({ id: ch.id, title: ch.title }));
-        // M23: merge planned units — unmatched ones become greyscale
-        // "planned from your notes" scenes/chapters; skip-backward flags out.
-        const merged = mergePlannedIntoTimeline(realScenes, realChapters, planUnits);
-        setSkippedFlags(merged.skipped);
+        // M23/M25: merge planned units — the Archive Agent auto-build pass.
+        // Flags feed the header badge + Archive tab; planned scenes feed the
+        // timelines.json write-through below.
+        const merged = mergePlannedIntoTimeline(realScenes, realChapters, planUnits, continuityItems);
+        setFlags(merged.flags);
+        setPlannedBuild({
+          scenes: merged.scenes
+            .filter((s) => s.id.startsWith('plan:'))
+            .map((s) => ({ id: s.id, title: s.title, chapterId: s.chapterId })),
+          chapterIndexById: new Map(merged.chapters.map((ch, i) => [ch.id, i])),
+        });
         setAeonData(deriveAeonTimeline({
           storyTitle: story.title,
           scenes: merged.scenes,
@@ -302,12 +398,13 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       .finally(() => { if (!cancelled) setAeonLoading(false); });
 
     return () => { cancelled = true; };
-  }, [story, api]);
+  }, [story, api, aeonRetry]);
 
   const handleViewModeChange = useCallback((mode: TimelineMode) => {
     setViewModeState(mode);
     // Clear the selection on view switch so no stale cross-view state lingers.
     setSelectedIds(new Set());
+    setTlSelection(null);
     try { localStorage.setItem(STORAGE_KEY_MODE, mode); } catch { /* ignore quota errors */ }
   }, []);
 
@@ -321,13 +418,13 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     setViewFilter(v);
     const mode = VIEW_FILTER_MODE[v];
     if (mode) handleViewModeChange(mode);
-    showToast(`View → ${v}`);
-  }, [handleViewModeChange, showToast]);
+    notify(`View → ${v}`);
+  }, [handleViewModeChange, notify]);
 
   const handleShowFilterChange = useCallback((v: TimelineShowFilter) => {
     setShowFilter(v);
-    showToast(`Show → ${v}`);
-  }, [showToast]);
+    notify(`Show → ${v}`);
+  }, [notify]);
 
   // Prototype `tlToday`: the lanes modes jump to Progress; the sheet /
   // relations / subway surfaces keep their mode. The axis view answers the
@@ -378,6 +475,217 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     [aeonData.chapters],
   );
 
+  const calendar = safeCalendar(activeTimeline?.calendar);
+  const domain = useMemo(
+    () => (timelinesStore ? deriveAxisDomain(timelinesStore, activeId, calendar) : ([0, 1] as const)),
+    [timelinesStore, activeId, calendar],
+  );
+
+  // M25: chapter index → axis `when` (chapters distribute across the books).
+  const whenForChapter = useCallback(
+    (chapterIndex: number) =>
+      roundWhen(
+        chapterWhen(chapterIndex + 0.5, Math.max(axisChapters.length, 1), sortedBooks(books), [domain[0], domain[1]]),
+      ),
+    [axisChapters.length, books, domain],
+  );
+
+  // ── M25: Archive Agent auto-build → timelines.json writes (AC7).
+  //    Applies the diff once per distinct plan pass (signature-guarded so the
+  //    store round-trip can't loop); the Syncing strip shows while it runs.
+  useEffect(() => {
+    if (!timelinesStore || !plannedBuild || !isStoryTimeline) return;
+    if (typeof api.timelinesUpsertItem !== 'function' || typeof api.timelinesDeleteItem !== 'function') return;
+    const sig = autoBuildSignature(activeId, plannedBuild.scenes, plannedBuild.chapterIndexById);
+    if (sig === lastAutoBuildSig.current) return;
+    lastAutoBuildSig.current = sig;
+    const plan = planAutoBuild(
+      timelinesStore,
+      activeId,
+      plannedBuild.scenes,
+      plannedBuild.chapterIndexById,
+      whenForChapter,
+    );
+    if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return;
+    let cancelled = false;
+    setAutoSyncing(true);
+    (async () => {
+      try {
+        let latest: TimelinesStore | null = null;
+        for (const item of plan.upserts) {
+          const res = await api.timelinesUpsertItem!({ type: 'event', item });
+          if (res.ok) latest = res.store;
+        }
+        for (const id of plan.deleteIds) {
+          const res = await api.timelinesDeleteItem!({ type: 'event', id });
+          if (res.ok) latest = res.store;
+        }
+        if (latest && !cancelled) setTimelinesStore(latest);
+      } catch { /* next plan pass reconciles */ }
+      finally { if (!cancelled) setAutoSyncing(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [timelinesStore, plannedBuild, isStoryTimeline, activeId, whenForChapter, api]);
+
+  // ── M25: right-panel item actions (optimistic local + IPC persist). ──
+  const mutateLocalItem = useCallback((type: TimelineSelectableType, item: AnyItem) => {
+    setTimelinesStore((prev) => {
+      if (!prev) return prev;
+      const key = ({ era: 'eras', span: 'spans', event: 'events' } as const)[type];
+      const list = prev[key] as { id: string }[];
+      const idx = list.findIndex((existing) => existing.id === item.id);
+      const nextList = idx === -1 ? [...list, item] : list.map((x, i) => (i === idx ? item : x));
+      return { ...prev, [key]: nextList };
+    });
+  }, []);
+
+  const persistTimelineItem = useCallback(
+    (type: TimelineSelectableType, item: AnyItem) => {
+      if (typeof api.timelinesUpsertItem !== 'function') return;
+      api.timelinesUpsertItem({ type, item })
+        .then((res) => { if (res.ok) setTimelinesStore(res.store); })
+        .catch(() => { /* keep the local copy — next load reconciles */ });
+    },
+    [api],
+  );
+
+  const deleteTimelineItem = useCallback(
+    (type: TimelineSelectableType, item: AnyItem, kindLabel: string) => {
+      if (typeof api.timelinesDeleteItem !== 'function') return;
+      api.timelinesDeleteItem({ type, id: item.id })
+        .then((res) => {
+          if (!res.ok) return;
+          setTimelinesStore(res.store);
+          setTlSelection(null);
+          // §1 principle 7: deletes are undoable from the toast.
+          showToast(`${kindLabel} deleted`);
+          setToastAction({
+            label: 'Undo',
+            onClick: () => {
+              setToastAction(null);
+              clearToast();
+              api.timelinesUpsertItem?.({ type, item })
+                .then((restored) => { if (restored.ok) setTimelinesStore(restored.store); })
+                .catch(() => {});
+            },
+          });
+        })
+        .catch(() => {});
+    },
+    [api, showToast, clearToast],
+  );
+
+  // ── M25: flag jump — select the flagged item and scroll it into view. ──
+  const handleJumpTo = useCallback(
+    (itemId: string) => {
+      if (!isLanesMode) handleViewModeChange('progress');
+      const store = timelinesStore;
+      if (store) {
+        const event = store.events.find((e) => e.id === itemId || e.sceneId === itemId);
+        const span = event ? null : store.spans.find((s) => s.id === itemId);
+        const era = event || span ? null : store.eras.find((e) => e.id === itemId);
+        if (event) handleSelectionChange({ type: 'event', id: event.id });
+        else if (span) handleSelectionChange({ type: 'span', id: span.id });
+        else if (era) handleSelectionChange({ type: 'era', id: era.id });
+      }
+      jumpSeq.current += 1;
+      setJumpTarget({ id: itemId, n: jumpSeq.current });
+    },
+    [isLanesMode, handleViewModeChange, timelinesStore, handleSelectionChange],
+  );
+
+  const handleFlagResolved = useCallback((flag: TimelineFlag) => {
+    setFlags((prev) => prev.filter((f) => f.id !== flag.id));
+  }, []);
+
+  // ── M25: Archive quick-add — the agent dates it, heuristics back it up. ──
+  const handleQuickAdd = useCallback(
+    async (text: string) => {
+      if (!timelinesStore || !activeTimeline || typeof api.timelinesUpsertItem !== 'function') return;
+      setArchiveBusy(true);
+      try {
+        const ctx: QuickAddContext = {
+          timelineId: activeId,
+          calendar,
+          domain: [domain[0], domain[1]],
+          chapterCount: axisChapters.length,
+          whenForChapter,
+          newItemId,
+        };
+        let parse = null;
+        if (typeof api.agentArchive === 'function') {
+          try {
+            const reply = await api.agentArchive(quickAddAgentPrompt(text, calendar));
+            parse = parseAgentQuickAdd(reply.text, ctx, text);
+          } catch { /* agent offline / capped — heuristics below */ }
+        }
+        if (!parse) parse = heuristicQuickAdd(text, ctx);
+        const event = quickAddEvent(parse, ctx);
+        const res = await api.timelinesUpsertItem({ type: 'event', item: event });
+        if (res.ok) {
+          setTimelinesStore(res.store);
+          jumpSeq.current += 1;
+          setJumpTarget({ id: event.id, n: jumpSeq.current });
+          notify(quickAddToast(parse));
+        } else {
+          notify(res.error ?? 'Could not add the event', 'error');
+        }
+      } finally {
+        setArchiveBusy(false);
+      }
+    },
+    [timelinesStore, activeTimeline, api, activeId, calendar, domain, axisChapters.length, whenForChapter, notify],
+  );
+
+  // RECENTLY AUTO-ADDED: agent-sourced events on the active timeline, newest
+  // first (append order), capped per §8.6.
+  const recentAutoAdds: RecentAutoAdd[] = useMemo(() => {
+    if (!timelinesStore) return [];
+    return timelinesStore.events
+      .filter((e) => e.timelineId === activeId && e.source === 'agent')
+      .slice(-8)
+      .reverse()
+      .map((e) => ({
+        eventId: e.id,
+        label: `${e.name} — ${formatWhen(e.when, calendar, domain[0])}`,
+      }));
+  }, [timelinesStore, activeId, calendar, domain]);
+
+  const handleUndoAutoAdd = useCallback(
+    (eventId: string) => {
+      if (typeof api.timelinesDeleteItem !== 'function') return;
+      const removed = timelinesStore?.events.find((e) => e.id === eventId);
+      api.timelinesDeleteItem({ type: 'event', id: eventId })
+        .then((res) => {
+          if (!res.ok) return;
+          setTimelinesStore(res.store);
+          setTlSelection((sel) => (sel?.id === eventId ? null : sel));
+          notify(`Removed “${removed?.name ?? 'event'}” from the timeline`);
+        })
+        .catch(() => {});
+    },
+    [api, timelinesStore, notify],
+  );
+
+  // M25: canvas ids carrying a flag (per-item warning outline, design §2).
+  const flaggedItemIds = useMemo(
+    () => new Set(flags.map((f) => f.affectedItemId)),
+    [flags],
+  );
+
+  // M25: legacy spreadsheet rows resolve to store events (id or sceneId)
+  // so a row click surfaces the Inspector like every other mode (§14.5).
+  const handleSheetSelection = useCallback(
+    (ids: Set<string>) => {
+      setSelectedIds(ids);
+      if (ids.size !== 1 || !timelinesStore) return;
+      const [only] = [...ids];
+      const event = timelinesStore.events.find((e) => e.id === only || e.sceneId === only);
+      if (event) handleSelectionChange({ type: 'event', id: event.id });
+    },
+    [timelinesStore, handleSelectionChange],
+  );
+
   // ── M23: + Plotline / Templates ▾ (prototype 6598–6600) ──
   const persistRow = useCallback(
     (row: TimelineRow, after?: (store: TimelinesStore) => void) => {
@@ -404,22 +712,20 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       color: PLOTLINE_PALETTE[plotlines.length % PLOTLINE_PALETTE.length],
     };
     persistRow(row);
-    showToast('Plotline added — rename it in the left panel (right-click)');
-  }, [timelinesStore, activeId, plotlines.length, persistRow, showToast]);
+    notify('Plotline added — rename it in the left panel (right-click)');
+  }, [timelinesStore, activeId, plotlines.length, persistRow, notify]);
 
   const handleApplyTemplate = useCallback(
     (template: PlotTemplate) => {
       setTplOpen(false);
       if (!timelinesStore || typeof api.timelinesUpsertItem !== 'function') return;
-      const calendar = safeCalendar(activeTimeline?.calendar);
-      const domain = deriveAxisDomain(timelinesStore, activeId, calendar);
       const bookRanges = sortedBooks(books);
       const chapterCount = axisChapters.length;
       const application = buildTemplateApplication(
         template,
         activeId,
         plotlines.length,
-        (ch) => roundWhen(plotCardWhen(ch, chapterCount, bookRanges, domain)),
+        (ch) => roundWhen(plotCardWhen(ch, chapterCount, bookRanges, [domain[0], domain[1]])),
         newItemId,
       );
       (async () => {
@@ -431,11 +737,11 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             if (!res.ok) return;
           }
           setTimelinesStore(res.store);
-          showToast(`“${template.name}” laid onto the timeline as a plotline`);
+          notify(`“${template.name}” laid onto the timeline as a plotline`);
         } catch { /* next load reconciles */ }
       })();
     },
-    [timelinesStore, api, activeTimeline, activeId, books, axisChapters.length, plotlines.length, showToast],
+    [timelinesStore, api, activeId, books, axisChapters.length, plotlines.length, domain, notify],
   );
 
   // Left-panel plotline rows: click toggles visibility; right-click renames
@@ -464,17 +770,17 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     (spanId: string, name: string) => {
       setBookFocus((prev) => {
         const next = prev === spanId ? null : spanId;
-        showToast(next ? `Focused on ${name}` : 'Showing the whole series');
+        notify(next ? `Focused on ${name}` : 'Showing the whole series');
         return next;
       });
     },
-    [showToast],
+    [notify],
   );
 
   const handleOverview = useCallback(() => {
     setBookFocus(null);
-    showToast('Showing the whole series');
-  }, [showToast]);
+    notify('Showing the whole series');
+  }, [notify]);
 
   // Esc closes the Templates dropdown (§14 #10: Esc closes the top layer).
   useEffect(() => {
@@ -504,21 +810,33 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             you are here · {aeonData.hereLabel}
           </span>
         )}
-        {skippedFlags.length > 0 && (
-          <span
-            className="tlr-legend-item tlr-legend-item--skipped"
-            data-testid="tl-skip-flags"
-            title={skippedFlags.map(f => f.title).join(' · ')}
-          >
-            ⚑ {skippedFlags.length} planned scene{skippedFlags.length === 1 ? '' : 's'} skipped
-          </span>
-        )}
       </span>
     );
-  }, [viewMode, aeonData.hereLabel, skippedFlags]);
+  }, [viewMode, aeonData.hereLabel]);
 
-  const calendar = safeCalendar(activeTimeline?.calendar);
   const yearOf = (when: number) => safeDecodeWhen(when, calendar, 0).year;
+
+  // ── M25 (design §4): shared canvas states for the lanes viewport. ──
+  const activeTimelineIsEmpty = useMemo(() => {
+    if (!timelinesStore || !activeId) return false;
+    return (
+      !timelinesStore.eras.some((e) => e.timelineId === activeId) &&
+      !timelinesStore.spans.some((s) => s.timelineId === activeId) &&
+      !timelinesStore.events.some((e) => e.timelineId === activeId)
+    );
+  }, [timelinesStore, activeId]);
+  const showEmptyState = activeTimelineIsEmpty && !emptyDismissed.has(activeId);
+
+  const handleRunArchiveNow = useCallback(() => {
+    // Re-run the plan pass; the auto-build effect writes whatever it finds.
+    lastAutoBuildSig.current = null;
+    setAeonRetry((n) => n + 1);
+    notify('Archive Agent is rebuilding this timeline from your notes…');
+  }, [notify]);
+
+  const handleStartEmpty = useCallback(() => {
+    setEmptyDismissed((prev) => new Set(prev).add(activeId));
+  }, [activeId]);
 
   return (
     <div className="tlr-root" data-testid="timeline-root">
@@ -566,6 +884,21 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
         </div>
 
         {legend}
+
+        {/* M25 (design §2): header-level flag badge — reads in every mode,
+            absent when there is nothing to flag. Click reviews in Archive. */}
+        {flags.length > 0 && (
+          <button
+            type="button"
+            className="tlr-flag-badge"
+            onClick={() => setRightTab('archive')}
+            title="Archive Agent flags — contradictions, gaps and order skips. Click to review."
+            data-testid="tl-flag-badge"
+          >
+            <span className="tlr-flag-badge-dot" aria-hidden="true" />
+            {flags.length} flag{flags.length === 1 ? '' : 's'}
+          </button>
+        )}
 
         <div className="tlr-spacer" aria-hidden="true" />
 
@@ -684,165 +1017,256 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
         />
       )}
 
-      <div className="tlr-body">
-        {/* ── M23: Progress / Structure — axis lane rows (§8.4) ── */}
-        {isLanesMode && timelinesStore && (
-          <div className="tlr-lanes-wrap" data-testid="tlr-lanes-wrap">
-            {isStoryTimeline && (
-              <aside className="tlr-aside" data-testid="tlr-aside" aria-label="Timeline focus">
+      <div className="tlr-content-row">
+        <div className="tlr-body">
+          {/* ── M25 (design §4): Error banner — last-known-good stays live. ── */}
+          {isLanesMode && aeonError && (
+            <div className="tlr-error-banner" role="alert" data-testid="tlr-error-banner">
+              <span>Couldn&apos;t reach the Archive Agent — showing the last synced timeline.</span>
+              <button
+                type="button"
+                className="tlr-banner-btn"
+                onClick={() => setAeonRetry((n) => n + 1)}
+                data-testid="tlr-error-retry"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {/* ── M25 (design §4): Syncing strip — never blocks interaction. ── */}
+          {isLanesMode && autoSyncing && (
+            <div className="tlr-sync-strip" data-testid="tlr-sync-strip">
+              <span className="tlr-sync-dot" aria-hidden="true" />
+              <span aria-live="polite">
+                Archive Agent is syncing this timeline from your manuscript — content stays
+                interactive while it works.
+              </span>
+            </div>
+          )}
+
+          {/* ── M23: Progress / Structure — axis lane rows (§8.4) ── */}
+          {isLanesMode && storeLoading && (
+            <div className="tlr-skeleton" role="status" aria-label="Loading timeline" data-testid="tlr-skeleton">
+              <div className="tlr-skeleton-bar" />
+              <div className="tlr-skeleton-bar" />
+              <div className="tlr-skeleton-bar" />
+            </div>
+          )}
+          {isLanesMode && !storeLoading && timelinesStore && showEmptyState && (
+            <div className="tlr-state" data-testid="tlr-empty-state">
+              <h2>No events yet</h2>
+              <p>
+                The Archive Agent builds this timeline from your notes and scenes — or start
+                placing spans and events by hand.
+              </p>
+              <div className="tlr-state-actions">
                 <button
                   type="button"
-                  className={`tlr-book-card${bookFocus == null ? ' tlr-book-card--active' : ''}`}
-                  onClick={handleOverview}
-                  data-testid="tl-overview-card"
+                  className="tlr-state-btn tlr-state-btn--primary"
+                  onClick={handleRunArchiveNow}
+                  data-testid="tlr-run-archive"
                 >
-                  <span className="tlr-book-title">Overview</span>
-                  <span className="tlr-book-sub">All arcs and key events</span>
+                  Run Archive Agent now
                 </button>
-                {books.map((b, i) => (
+                <button
+                  type="button"
+                  className="tlr-state-btn"
+                  onClick={handleStartEmpty}
+                  data-testid="tlr-start-empty"
+                >
+                  Start empty
+                </button>
+              </div>
+            </div>
+          )}
+          {isLanesMode && !storeLoading && timelinesStore && !showEmptyState && (
+            <div className="tlr-lanes-wrap" data-testid="tlr-lanes-wrap">
+              {isStoryTimeline && (
+                <aside className="tlr-aside" data-testid="tlr-aside" aria-label="Timeline focus">
                   <button
                     type="button"
-                    key={b.id}
-                    className={`tlr-book-card${bookFocus === b.id ? ' tlr-book-card--active' : ''}`}
-                    style={bookFocus === b.id ? { borderColor: b.color ?? laneColor(i) } : undefined}
-                    onClick={() => handleBookFocus(b.id, b.name)}
-                    title="Focus the timeline on this book — Overview resets"
-                    data-testid={`tl-book-card-${b.id}`}
+                    className={`tlr-book-card${bookFocus == null ? ' tlr-book-card--active' : ''}`}
+                    onClick={handleOverview}
+                    data-testid="tl-overview-card"
                   >
-                    <span className="tlr-book-title">{b.name}</span>
-                    <span className="tlr-book-sub">
-                      Y{yearOf(b.startWhen)}–Y{yearOf(b.endWhen)}
-                    </span>
+                    <span className="tlr-book-title">Overview</span>
+                    <span className="tlr-book-sub">All arcs and key events</span>
                   </button>
-                ))}
-                <div className="tlr-aside-head">PLOTLINES</div>
-                {plotlines.length === 0 && (
-                  <div className="tlr-aside-hint">+ Plotline in the toolbar adds one</div>
-                )}
-                {plotlines.map((p, i) => {
-                  const col = p.color ?? laneColor(i);
-                  const off = hiddenPlotlines.has(p.id);
-                  return (
-                    <div
-                      key={p.id}
-                      className={`tlr-pl-row${off ? ' tlr-pl-row--off' : ''}`}
-                      data-testid={`tl-pl-row-${p.id}`}
+                  {books.map((b, i) => (
+                    <button
+                      type="button"
+                      key={b.id}
+                      className={`tlr-book-card${bookFocus === b.id ? ' tlr-book-card--active' : ''}`}
+                      style={bookFocus === b.id ? { borderColor: b.color ?? laneColor(i) } : undefined}
+                      onClick={() => handleBookFocus(b.id, b.name)}
+                      title="Focus the timeline on this book — Overview resets"
+                      data-testid={`tl-book-card-${b.id}`}
                     >
-                      {renamingPlotline === p.id ? (
-                        <input
-                          ref={renameRef}
-                          className="tlr-pl-rename"
-                          defaultValue={p.name}
-                          aria-label="Rename plotline"
-                          autoFocus
-                          onBlur={() => commitPlotlineRename(p)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitPlotlineRename(p);
-                            if (e.key === 'Escape') setRenamingPlotline(null);
-                          }}
-                          data-testid={`tl-pl-rename-${p.id}`}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="tlr-pl-btn"
-                          onClick={() => togglePlotline(p.id)}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setRenamingPlotline(p.id);
-                          }}
-                          title="Click to show / hide this plotline · right-click to rename"
-                          data-testid={`tl-pl-toggle-${p.id}`}
-                        >
-                          <span
-                            className="tlr-pl-dot"
-                            style={{ background: col, boxShadow: `0 0 8px ${col}` }}
+                      <span className="tlr-book-title">{b.name}</span>
+                      <span className="tlr-book-sub">
+                        Y{yearOf(b.startWhen)}–Y{yearOf(b.endWhen)}
+                      </span>
+                    </button>
+                  ))}
+                  <div className="tlr-aside-head">PLOTLINES</div>
+                  {plotlines.length === 0 && (
+                    <div className="tlr-aside-hint">+ Plotline in the toolbar adds one</div>
+                  )}
+                  {plotlines.map((p, i) => {
+                    const col = p.color ?? laneColor(i);
+                    const off = hiddenPlotlines.has(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`tlr-pl-row${off ? ' tlr-pl-row--off' : ''}`}
+                        data-testid={`tl-pl-row-${p.id}`}
+                      >
+                        {renamingPlotline === p.id ? (
+                          <input
+                            ref={renameRef}
+                            className="tlr-pl-rename"
+                            defaultValue={p.name}
+                            aria-label="Rename plotline"
+                            autoFocus
+                            onBlur={() => commitPlotlineRename(p)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitPlotlineRename(p);
+                              if (e.key === 'Escape') setRenamingPlotline(null);
+                            }}
+                            data-testid={`tl-pl-rename-${p.id}`}
                           />
-                          <span className="tlr-pl-name">{p.name}</span>
-                          <span className="tlr-pl-count">{cardCountOf(p.id)}</span>
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </aside>
-            )}
-            <AxisView
-              store={timelinesStore}
-              onStoreChange={setTimelinesStore}
-              mode={viewMode as 'progress' | 'structure'}
-              chapters={axisChapters}
-              hiddenPlotlines={hiddenPlotlines}
-              bookFocus={bookFocus}
-              showFilter={showFilter}
-              todaySignal={todaySignal}
+                        ) : (
+                          <button
+                            type="button"
+                            className="tlr-pl-btn"
+                            onClick={() => togglePlotline(p.id)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setRenamingPlotline(p.id);
+                            }}
+                            title="Click to show / hide this plotline · right-click to rename"
+                            data-testid={`tl-pl-toggle-${p.id}`}
+                          >
+                            <span
+                              className="tlr-pl-dot"
+                              style={{ background: col, boxShadow: `0 0 8px ${col}` }}
+                            />
+                            <span className="tlr-pl-name">{p.name}</span>
+                            <span className="tlr-pl-count">{cardCountOf(p.id)}</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </aside>
+              )}
+              <AxisView
+                store={timelinesStore}
+                onStoreChange={setTimelinesStore}
+                mode={viewMode as 'progress' | 'structure'}
+                chapters={axisChapters}
+                hiddenPlotlines={hiddenPlotlines}
+                bookFocus={bookFocus}
+                showFilter={showFilter}
+                todaySignal={todaySignal}
+                selection={tlSelection}
+                onSelectionChange={handleSelectionChange}
+                flaggedItemIds={flaggedItemIds}
+                jumpTarget={jumpTarget}
+              />
+            </div>
+          )}
+          {isLanesMode && !storeLoading && !timelinesStore && (
+            <div className="tlr-state" data-testid="tlr-lanes-unavailable">
+              <h2>Timeline store unavailable.</h2>
+            </div>
+          )}
+
+          {/* ── M24 surfaces (explain themselves until then) ── */}
+          {viewMode === 'plot' && (
+            <div className="tlr-state" data-testid="tlr-plot-stub">
+              <h2>Plotlines grid</h2>
+              <p>
+                The Plottr-style grid lands with the next timeline milestone. Your plotlines and
+                their cards already plot on the Progress and Structure views.
+              </p>
+            </div>
+          )}
+          {viewMode === 'tension' && (
+            <div className="tlr-state" data-testid="tlr-tension-stub">
+              <h2>Tension curve</h2>
+              <p>
+                The draggable dramatic-arc curve lands with the next timeline milestone.
+              </p>
+            </div>
+          )}
+
+          {viewMode === 'spreadsheet' && (
+            <TimelineSpreadsheet
+              story={story}
+              onOpenScene={onOpenScene}
+              selectedIds={selectedIds}
+              onSelectionChange={handleSheetSelection}
+              groupBy={groupBy}
+              onGroupByChange={handleGroupByChange}
             />
-          </div>
-        )}
-        {isLanesMode && !timelinesStore && (
-          <div className="tlr-state" data-testid="tlr-lanes-unavailable">
-            <h2>Timeline store unavailable.</h2>
-          </div>
-        )}
+          )}
 
-        {/* ── M24 surfaces (explain themselves until then) ── */}
-        {viewMode === 'plot' && (
-          <div className="tlr-state" data-testid="tlr-plot-stub">
-            <h2>Plotlines grid</h2>
-            <p>
-              The Plottr-style grid lands with the next timeline milestone. Your plotlines and
-              their cards already plot on the Progress and Structure views.
-            </p>
-          </div>
-        )}
-        {viewMode === 'tension' && (
-          <div className="tlr-state" data-testid="tlr-tension-stub">
-            <h2>Tension curve</h2>
-            <p>
-              The draggable dramatic-arc curve lands with the next timeline milestone.
-            </p>
-          </div>
-        )}
+          {isAeonMode && !story && (
+            <div className="tlr-state" data-testid="tlr-no-story">
+              <h2>Select a story to view its timeline.</h2>
+            </div>
+          )}
+          {isAeonMode && story && aeonLoading && (
+            <div className="tlr-state" role="status" aria-label="Loading timeline">
+              <p>Loading timeline…</p>
+            </div>
+          )}
+          {isAeonMode && story && !aeonLoading && aeonError && (
+            <div className="tlr-state" role="alert">
+              <h2>Timeline unavailable</h2>
+              <p className="tlr-state-error">{aeonError}</p>
+            </div>
+          )}
 
-        {viewMode === 'spreadsheet' && (
-          <TimelineSpreadsheet
-            story={story}
-            onOpenScene={onOpenScene}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
-            groupBy={groupBy}
-            onGroupByChange={handleGroupByChange}
+          {isAeonMode && story && !aeonLoading && !aeonError && (
+            <>
+              {viewMode === 'relations' && <TimelineRelationships data={aeonData} />}
+              {viewMode === 'subway' && (
+                <TimelineSubway data={aeonData} onOpenScene={onOpenScene} />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ── M25: right panel — Inspector · Brainstorm · Archive (§8.6) ── */}
+        {timelinesStore && activeTimeline && (
+          <TimelineRightPanel
+            store={timelinesStore}
+            activeTimeline={activeTimeline}
+            selection={tlSelection}
+            onSelectionChange={handleSelectionChange}
+            tab={rightTab}
+            onTabChange={setRightTab}
+            chapterLabels={axisChapters.map((ch) => ch.label)}
+            whenForChapter={whenForChapter}
+            onLocalMutate={mutateLocalItem}
+            onPersist={persistTimelineItem}
+            onDelete={deleteTimelineItem}
+            onCalendarChange={handleCalendarChange}
+            showToast={notify}
+            onJumpTo={handleJumpTo}
+            flags={flags}
+            recentAutoAdds={recentAutoAdds}
+            onQuickAdd={handleQuickAdd}
+            onUndoAutoAdd={handleUndoAutoAdd}
+            onFlagResolved={handleFlagResolved}
+            archiveBusy={archiveBusy}
           />
-        )}
-
-        {isAeonMode && !story && (
-          <div className="tlr-state" data-testid="tlr-no-story">
-            <h2>Select a story to view its timeline.</h2>
-          </div>
-        )}
-        {isAeonMode && story && aeonLoading && (
-          <div className="tlr-state" role="status" aria-label="Loading timeline">
-            <p>Loading timeline…</p>
-          </div>
-        )}
-        {isAeonMode && story && !aeonLoading && aeonError && (
-          <div className="tlr-state" role="alert">
-            <h2>Timeline unavailable</h2>
-            <p className="tlr-state-error">{aeonError}</p>
-          </div>
-        )}
-
-        {isAeonMode && story && !aeonLoading && !aeonError && (
-          <>
-            {viewMode === 'relations' && <TimelineRelationships data={aeonData} />}
-            {viewMode === 'subway' && (
-              <TimelineSubway data={aeonData} onOpenScene={onOpenScene} />
-            )}
-          </>
         )}
       </div>
 
-      <Toast message={toast?.message ?? null} level={toast?.level} />
+      <Toast message={toast?.message ?? null} level={toast?.level} action={toastAction ?? undefined} />
     </div>
   );
 }

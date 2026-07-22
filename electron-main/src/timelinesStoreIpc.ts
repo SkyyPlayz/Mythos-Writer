@@ -136,6 +136,10 @@ function assertItemValid(store: TimelinesStore, payload: TimelinesUpsertItemPayl
       if (item.written != null && typeof item.written !== 'boolean') throw new Error('event.written must be a boolean');
       if (item.summary != null && typeof item.summary !== 'string') throw new Error('event.summary must be a string');
       if (item.icon != null && typeof item.icon !== 'string') throw new Error('event.icon must be a string');
+      // M25 (§8.6) Inspector event-editor fields — same string discipline.
+      if (item.pov != null && typeof item.pov !== 'string') throw new Error('event.pov must be a string');
+      if (item.location != null && typeof item.location !== 'string') throw new Error('event.location must be a string');
+      if (item.impact != null && typeof item.impact !== 'string') throw new Error('event.impact must be a string');
       break;
     }
     case 'row':

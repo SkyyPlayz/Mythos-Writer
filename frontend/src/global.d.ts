@@ -916,6 +916,7 @@ interface Window {
     agentWritingAssistant: (prompt: string, context?: string) => Promise<{ text: string }>;
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
     agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
+    agentArchive: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
     onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
     agentVaultIndex: () => Promise<{ entities: VaultIndexEntry[] }>;
     agentVaultCheck: (sceneContent: string) => Promise<{ text: string; inconsistencies: VaultCheckInconsistency[] }>;

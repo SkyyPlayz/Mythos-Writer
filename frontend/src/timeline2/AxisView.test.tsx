@@ -2,7 +2,6 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import AxisView, { type AxisChapterCell } from './AxisView';
 import type { TimelinesStore } from '../timelinesTypes';
-import { safeEncodeWhen } from './axis/calendarCodec';
 import { ARC_LANE, CHARACTER_LANE, THEME_LANE, WORLD_LANE } from './axis/storyLanes';
 
 const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
@@ -196,7 +195,8 @@ describe('AxisView — direct manipulation', () => {
   });
 
   it('dragging an event past the threshold moves it in time and toasts (§14.4 step 1)', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     mockRowRect('ax-events-row');
     const card = screen.getByTestId('ax-event-ev-1');
     fireEvent.mouseDown(card, { button: 0, clientX: 100 });
@@ -211,12 +211,13 @@ describe('AxisView — direct manipulation', () => {
     expect(screen.getByTestId('app-toast')).toHaveTextContent(
       'Rough time set — fine-tune with the exact-time picker',
     );
-    // a real drag must not open the inspector
-    expect(screen.queryByTestId('ax-inspector')).toBeNull();
+    // a real drag must not select the item
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it('sub-threshold jitter is a click, not a drag', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     mockRowRect('ax-events-row');
     const card = screen.getByTestId('ax-event-ev-1');
     fireEvent.mouseDown(card, { button: 0, clientX: 100 });
@@ -225,7 +226,7 @@ describe('AxisView — direct manipulation', () => {
     fireEvent.click(card);
     await flush();
     expect(api.timelinesUpsertItem).not.toHaveBeenCalled();
-    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'event', id: 'ev-1' });
   });
 
   it('resizing a book span by its edge changes only that edge (§14.4 step 2)', async () => {
@@ -255,27 +256,20 @@ describe('AxisView — direct manipulation', () => {
     expect(call.item.endWhen - call.item.startWhen).toBeCloseTo(864, 0);
   });
 
-  it('click (no drag) selects into the inspector; rename persists on blur', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+  // M25: renaming / deleting moved to the right-panel Inspector
+  // (TimelineRightPanel.test.tsx). AxisView only reports the selection.
+  it('era click (no drag) reports the selection for the right-panel Inspector (§14.5)', () => {
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     fireEvent.click(screen.getByTestId('ax-era-era-1'));
-    const title = screen.getByTestId('ax-insp-title');
-    expect(title).toHaveValue('OPENING');
-    fireEvent.change(title, { target: { value: 'THE LONG DAWN' } });
-    fireEvent.blur(title);
-    await flush();
-    const call = api.timelinesUpsertItem.mock.calls.at(-1)?.[0];
-    expect(call.type).toBe('era');
-    expect(call.item.name).toBe('THE LONG DAWN');
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'era', id: 'era-1' });
   });
 
-  it('inspector Delete removes the item', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
-    fireEvent.click(screen.getByTestId('ax-event-ev-1'));
-    fireEvent.click(screen.getByTestId('ax-insp-delete'));
-    await flush();
-    expect(api.timelinesDeleteItem).toHaveBeenCalledWith({ type: 'event', id: 'ev-1' });
-    expect(screen.queryByTestId('ax-inspector')).toBeNull();
-    expect(screen.queryByTestId('ax-event-ev-1')).toBeNull();
+  it('a plain (non-embedded) span click reports a span selection', () => {
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
+    fireEvent.click(screen.getByTestId('ax-span-span-a'));
+    expect(onSelectionChange).toHaveBeenLastCalledWith({ type: 'span', id: 'span-a' });
   });
 });
 
@@ -299,17 +293,8 @@ describe('AxisView — embedding (§14.4 step 6)', () => {
     expect(screen.getByTestId('app-toast')).toHaveTextContent('Opened “World context”');
   });
 
-  it('the inspector embed select attaches a timeline to a plain span', async () => {
-    const store = makeStore();
-    const api = setupApi(store);
-    render(<AxisView store={store} onStoreChange={() => {}} />);
-    fireEvent.click(screen.getByTestId('ax-span-span-a'));
-    fireEvent.change(screen.getByTestId('ax-insp-embed'), { target: { value: 'tl-world' } });
-    await flush();
-    const call = api.timelinesUpsertItem.mock.calls.at(-1)?.[0];
-    expect(call.item.opensTimelineId).toBe('tl-world');
-    expect(screen.getByTestId('app-toast')).toHaveTextContent('Timeline embedded');
-  });
+  // M25: the EMBEDS select moved to the right-panel lane-item editor —
+  // covered by TimelineRightPanel.test.tsx ("a main span gets EMBEDS…").
 });
 
 describe('AxisView — adds + custom rows (§14.4 step 9)', () => {
@@ -321,13 +306,14 @@ describe('AxisView — adds + custom rows (§14.4 step 9)', () => {
   });
 
   it('ERAS + adds an era and selects it', async () => {
-    render(<AxisView store={store} onStoreChange={() => {}} />);
+    const onSelectionChange = vi.fn();
+    render(<AxisView store={store} onStoreChange={() => {}} onSelectionChange={onSelectionChange} />);
     fireEvent.click(screen.getByTestId('ax-add-era'));
     await flush();
     const call = api.timelinesUpsertItem.mock.calls[0][0];
     expect(call.type).toBe('era');
     expect(call.item.name).toBe('NEW ERA');
-    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'era', id: call.item.id });
     expect(screen.getByTestId('app-toast')).toHaveTextContent('Era added');
   });
 
@@ -362,53 +348,9 @@ describe('AxisView — adds + custom rows (§14.4 step 9)', () => {
   });
 });
 
-describe('AxisView — exact-time picker (§14.4 step 7)', () => {
-  it('sets an exact time under a 13×28×18 calendar and replots', async () => {
-    const aeon = { preset: 'aeon-13', monthsPerYear: 13, daysPerMonth: 28, hoursPerDay: 18 } as const;
-    const store = makeStore();
-    store.timelines[0].calendar = { ...aeon };
-    const api = setupApi(store);
-    render(<AxisView store={store} onStoreChange={() => {}} />);
-
-    fireEvent.click(screen.getByTestId('ax-event-ev-1'));
-    fireEvent.click(screen.getByTestId('ax-insp-exact'));
-    expect(screen.getByTestId('exact-time-modal')).toBeInTheDocument();
-    expect(screen.getByText(/13 months × 28 days × 18h days/)).toBeInTheDocument();
-
-    fireEvent.change(screen.getByTestId('etm-start-year'), { target: { value: '2' } });
-    fireEvent.change(screen.getByTestId('etm-start-month'), { target: { value: '13' } });
-    fireEvent.change(screen.getByTestId('etm-start-day'), { target: { value: '28' } });
-    fireEvent.change(screen.getByTestId('etm-start-hour'), { target: { value: '17' } });
-    fireEvent.click(screen.getByTestId('etm-apply'));
-    await flush();
-
-    const call = api.timelinesUpsertItem.mock.calls.at(-1)?.[0];
-    expect(call.type).toBe('event');
-    expect(call.item.when).toBe(safeEncodeWhen({ year: 2, month: 13, day: 28, hour: 17 }, { ...aeon }));
-    expect(screen.queryByTestId('exact-time-modal')).toBeNull();
-    expect(screen.getByTestId('app-toast')).toHaveTextContent('Exact time set — replotted on the axis');
-  });
-
-  it('the change link opens the calendar editor above the picker', () => {
-    const store = makeStore();
-    setupApi(store);
-    render(<AxisView store={store} onStoreChange={() => {}} />);
-    fireEvent.click(screen.getByTestId('ax-span-span-a'));
-    fireEvent.click(screen.getByTestId('ax-insp-exact'));
-    fireEvent.click(screen.getByTestId('etm-change-calendar'));
-    expect(screen.getByTestId('calendar-editor-modal')).toBeInTheDocument();
-  });
-
-  it('span targets get START and END field groups', () => {
-    const store = makeStore();
-    setupApi(store);
-    render(<AxisView store={store} onStoreChange={() => {}} />);
-    fireEvent.click(screen.getByTestId('ax-span-span-a'));
-    fireEvent.click(screen.getByTestId('ax-insp-exact'));
-    expect(screen.getByTestId('etm-start-year')).toBeInTheDocument();
-    expect(screen.getByTestId('etm-end-year')).toBeInTheDocument();
-  });
-});
+// M25 (§8.6): the exact-time picker (§14.4 step 7) is opened from the
+// right-panel Inspector's DATE/TIME field now — covered by
+// TimelineRightPanel.test.tsx and ExactTimeModal.test.tsx.
 
 // ═══ Beta 4 M23 — lane rows + Progress/Structure (§8.4) ═══
 
@@ -532,12 +474,15 @@ describe('AxisView — M23 story rows render from timelines.json', () => {
     expect(screen.queryByTestId('ax-plotlane-pl-1')).toBeNull();
   });
 
-  it('clicking a plotline chip selects it into the inspector as a Plotline card', () => {
-    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+  it('clicking a plotline chip reports it for the right-panel Plotline card editor', () => {
+    const onSelectionChange = vi.fn();
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} onSelectionChange={onSelectionChange} />,
+    );
     fireEvent.click(screen.getByTestId('ax-plotcard-card-1'));
-    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
-    expect(screen.getByText('Plotline card')).toBeInTheDocument();
-    expect(screen.getByTestId('ax-insp-title')).toHaveValue('Opening Image');
+    // resolveInspectorTarget maps a plotline-row event to the card editor
+    // (selection.test.ts) — the axis only reports the selection.
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'event', id: 'card-1' });
   });
 });
 
@@ -618,15 +563,16 @@ describe('AxisView — M23 Progress mode extras', () => {
   });
 
   it('Today selects the event nearest the current position and toasts', async () => {
+    const onSelectionChange = vi.fn();
     const { rerender } = render(
-      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={0} />,
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={0} onSelectionChange={onSelectionChange} />,
     );
     rerender(
-      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={1} />,
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} mode="progress" todaySignal={1} onSelectionChange={onSelectionChange} />,
     );
     await flush();
     expect(screen.getByTestId('app-toast')).toHaveTextContent('Jumped to today — Chapter 2');
-    expect(screen.getByTestId('ax-inspector')).toBeInTheDocument();
+    expect(onSelectionChange).toHaveBeenCalledWith(expect.objectContaining({ type: 'event' }));
   });
 
   it('Today explains itself when nothing is written yet', async () => {
