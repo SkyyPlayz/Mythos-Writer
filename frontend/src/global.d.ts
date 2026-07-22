@@ -1646,8 +1646,6 @@ interface Window {
       duplicate: (sessionId: string) => Promise<AgentSessionCreateResult>;
       delete: (sessionId: string) => Promise<AgentSessionDeleteResult>;
       appendTurns: (sessionId: string, turns: AgentSessionTurn[]) => Promise<{ session: AgentSessionFile | null }>;
-      /** M12 — hydrate a full session (turns included); optional for older preloads. */
-      read?: (sessionId: string) => Promise<{ session: AgentSessionFile | null }>;
     };
 
     // SKY-3189 (G3): true when running in a packaged Electron build.
