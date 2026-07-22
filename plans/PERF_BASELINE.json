@@ -1,11 +1,12 @@
 {
-  "timestamp": "2026-05-24T11:07:39.764Z",
+  "timestamp": "2026-07-22T13:00:29.840Z",
   "measurements": {
-    "db_open_ms": 3.968900000000076,
-    "vault_reindex_ms": 187.10799900000006,
-    "fts5_build_ms": 165.67719999999986,
-    "fts5_search_median_ms": 2.1205999999999676,
-    "archive_index_ms": 111.68579999999997,
-    "archive_scan_10_ms": 768.2655029999999
+    "db_open_ms": 14.194799999999987,
+    "vault_reindex_ms": 264.84160199999997,
+    "vault_reindex_warm_ms": 40.803499999999985,
+    "fts5_build_ms": 236.6058019999998,
+    "fts5_search_median_ms": 2.47849999999994,
+    "archive_index_ms": 242.67810200000008,
+    "archive_scan_10_ms": 718.6954050000002
   }
 }

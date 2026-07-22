@@ -1,0 +1,4 @@
+[perf] app:startup → window: 71 ms
+[perf] app:fts-build: 1 ms
+[81311:0722/070225.632124:INFO:CONSOLE:108156] "[perf] renderer:settingsGet IPC: 2 ms", source: file:///home/skyy/Mythos-Writer/out/renderer/assets/index-DeUNuMs_.js (108156)
+[81311:0722/070225.666020:INFO:CONSOLE:108189] "[perf] renderer:interactive", source: file:///home/skyy/Mythos-Writer/out/renderer/assets/index-DeUNuMs_.js (108189)

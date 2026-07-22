@@ -62,29 +62,39 @@ interface Props {
 /** Debounce for persisting canvas edits (drag/resize emit change storms). */
 const BOARD_SAVE_DEBOUNCE_MS = 600;
 
-const NOTE_DRAG_MIME = 'application/x-mythos-note-path';
-
 function storySlugFromStory(story: Story): string {
   const segments = story.path.split(/[\\/]/).filter(Boolean);
   return segments.at(-1) || story.title;
 }
 
-function normalizeWikilink(path: string): string {
-  return path.trim().replace(/\.md$/i, '');
-}
-
-function titleFromPath(path: string): string {
-  const normalized = normalizeWikilink(path);
-  return (normalized.split(/[\\/]/).pop() || normalized).replace(/[-_]+/g, ' ');
-}
-
-function visibleTags(tags: string[]): string[] {
-  return tags.filter((tag) => !tag.toLowerCase().startsWith('manuscript/'));
-}
-
 function manuscriptSceneId(tags: string[]): string | null {
   const tag = tags.find((value) => value.toLowerCase().startsWith('manuscript/'));
   return tag ? tag.slice('manuscript/'.length) : null;
+}
+
+/** A planning card carrying a `manuscript/<sceneId>` tag — see SKY-7601 point 2. */
+interface LinkedSceneCard {
+  key: string;
+  title: string;
+  sceneId: string;
+}
+
+/**
+ * The one signal worth keeping from the retired lanes board (SKY-7601): a
+ * manuscript-wide "this planning card points at a real scene" cross-reference.
+ * `board.lanes` stays on disk per B4-3 (no destructive migration) — this just
+ * reads it for a read-only jump-to-scene list instead of the old Kanban UI.
+ */
+function linkedSceneCards(board: SceneCrafterBoard | null): LinkedSceneCard[] {
+  if (!board) return [];
+  const cards: LinkedSceneCard[] = [];
+  for (const lane of board.lanes) {
+    for (const card of lane.cards) {
+      const sceneId = manuscriptSceneId(card.tags);
+      if (sceneId) cards.push({ key: card.wikilink, title: card.title, sceneId });
+    }
+  }
+  return cards;
 }
 
 export default function SceneCrafterPage({
@@ -96,15 +106,9 @@ export default function SceneCrafterPage({
   const [board, setBoard] = useState<SceneCrafterBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dragCard, setDragCard] = useState<{ laneIndex: number; cardIndex: number } | null>(null);
-  const [dragLane, setDragLane] = useState<number | null>(null);
-  const [editingLane, setEditingLane] = useState<{ laneIndex: number; name: string } | null>(null);
-  const [pendingDeleteLane, setPendingDeleteLane] = useState<{ laneIndex: number; cardCount: number } | null>(null);
   const [conflicted, setConflicted] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [retryAction, setRetryAction] = useState<(() => Promise<void>) | null>(null);
-  const [moveMenuCard, setMoveMenuCard] = useState<{ laneIndex: number; cardIndex: number } | null>(null);
-  const [moveAnnouncement, setMoveAnnouncement] = useState('');
 
   // ── M18 crafter state: scene setup, suggested cards, canvas boards ────────
   const [setup, setSetup] = useState<CrafterSetup>(defaultCrafterSetup);
@@ -128,7 +132,6 @@ export default function SceneCrafterPage({
   const draftStream = useIpcStream(draftStreamId);
 
   const prevFocusRef = useRef<HTMLElement | null>(null);
-  const moveMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<CanvasBoardData | null>(null);
   const draftStreamIdRef = useRef<string | null>(null);
@@ -191,119 +194,6 @@ export default function SceneCrafterPage({
     };
   }, [storySlug]);
 
-  async function runMutation(action: () => Promise<void>) {
-    if (conflicted) return;
-    try {
-      setRetryAction(null);
-      await action();
-      await loadBoard();
-    } catch {
-      setRetryAction(() => action);
-    }
-  }
-
-  function dropNotePath(event: React.DragEvent): string | null {
-    const explicit = event.dataTransfer.getData(NOTE_DRAG_MIME);
-    const text = event.dataTransfer.getData('text/plain');
-    const path = explicit || text;
-    return path ? normalizeWikilink(path) : null;
-  }
-
-  function handleLaneDrop(event: React.DragEvent, toLane: number) {
-    event.preventDefault();
-    if (dragCard) {
-      const toIndex = board?.lanes[toLane]?.cards.length ?? 0;
-      void runMutation(() => window.api.sceneCrafterMoveCard({
-        storySlug,
-        fromLane: dragCard.laneIndex,
-        fromIndex: dragCard.cardIndex,
-        toLane,
-        toIndex,
-      }).then(() => undefined));
-      setDragCard(null);
-      return;
-    }
-
-    if (dragLane !== null && dragLane !== toLane) {
-      void runMutation(() => window.api.sceneCrafterReorderLanes({
-        storySlug,
-        fromIndex: dragLane,
-        toIndex: toLane,
-      }).then(() => undefined));
-      setDragLane(null);
-      return;
-    }
-
-    const notePath = dropNotePath(event);
-    if (!notePath) return;
-    void runMutation(() => window.api.sceneCrafterAddCard({
-      storySlug,
-      laneIndex: toLane,
-      card: { wikilink: notePath, title: titleFromPath(notePath), done: false, tags: [] },
-    }).then(() => undefined));
-  }
-
-  function toggleCard(laneIndex: number, cardIndex: number) {
-    // Optimistic update so the controlled checkbox reflects the new state
-    // immediately — without this, Playwright's `.check()` sees the element
-    // flip back to unchecked before the async IPC round-trip completes.
-    setBoard((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        lanes: prev.lanes.map((lane, li) =>
-          li !== laneIndex
-            ? lane
-            : {
-                ...lane,
-                cards: lane.cards.map((card, ci) =>
-                  ci !== cardIndex ? card : { ...card, done: !card.done, raw: '' },
-                ),
-              },
-        ),
-      };
-    });
-    void runMutation(() => window.api.sceneCrafterToggleCardDone({ storySlug, laneIndex, cardIndex }).then(() => undefined));
-  }
-
-  function deleteCard(laneIndex: number, cardIndex: number) {
-    void runMutation(() => window.api.sceneCrafterDeleteCard({ storySlug, laneIndex, cardIndex }).then(() => undefined));
-  }
-
-  function addLane() {
-    void runMutation(() => window.api.sceneCrafterAddLane(storySlug, 'New Lane').then(() => undefined));
-  }
-
-  function saveLaneName() {
-    if (!editingLane) return;
-    const name = editingLane.name.trim();
-    if (!name) {
-      setEditingLane(null);
-      return;
-    }
-    void runMutation(() => window.api.sceneCrafterRenameLane({
-      storySlug,
-      laneIndex: editingLane.laneIndex,
-      name,
-    }).then(() => undefined));
-    setEditingLane(null);
-  }
-
-  async function requestDeleteLane(laneIndex: number, force = false) {
-    if (conflicted) return;
-    try {
-      const result = await window.api.sceneCrafterDeleteLane({ storySlug, laneIndex, force });
-      if (!result.ok) {
-        setPendingDeleteLane({ laneIndex, cardCount: result.cardCount });
-        return;
-      }
-      setPendingDeleteLane(null);
-      await loadBoard();
-    } catch {
-      setRetryAction(() => () => requestDeleteLane(laneIndex, force));
-    }
-  }
-
   async function keepLocalVersion() {
     if (!board) return;
     try {
@@ -343,56 +233,6 @@ export default function SceneCrafterPage({
     }
   }
 
-  function moveCardToLane(fromLane: number, fromIndex: number, toLane: number) {
-    const laneName = board?.lanes[toLane]?.name ?? '';
-    setMoveMenuCard(null);
-    moveMenuTriggerRef.current?.focus();
-    setMoveAnnouncement(`Card moved to ${laneName}`);
-    const toIndex = board?.lanes[toLane]?.cards.length ?? 0;
-    void runMutation(() => window.api.sceneCrafterMoveCard({
-      storySlug,
-      fromLane,
-      fromIndex,
-      toLane,
-      toIndex,
-    }).then(() => undefined));
-  }
-
-  function moveLane(laneIndex: number, direction: -1 | 1) {
-    const toIndex = laneIndex + direction;
-    if (!board || toIndex < 0 || toIndex >= board.lanes.length) return;
-    const laneName = board.lanes[laneIndex].name;
-    const position = direction === -1 ? 'left' : 'right';
-    setMoveAnnouncement(`Moved lane ${laneName} to the ${position}`);
-    void runMutation(() => window.api.sceneCrafterReorderLanes({
-      storySlug,
-      fromIndex: laneIndex,
-      toIndex,
-    }).then(() => undefined));
-  }
-
-  function handleMoveMenuKeyDown(
-    e: React.KeyboardEvent<HTMLDivElement>,
-  ) {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      setMoveMenuCard(null);
-      moveMenuTriggerRef.current?.focus();
-      return;
-    }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const items = Array.from(
-        (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role="menuitem"]'),
-      );
-      const idx = items.indexOf(document.activeElement as HTMLElement);
-      const next = e.key === 'ArrowDown'
-        ? items[(idx + 1) % items.length]
-        : items[(idx - 1 + items.length) % items.length];
-      next?.focus();
-    }
-  }
-
   // ── M18: suggested cards, plan cards, draft boards ─────────────────────────
   const allSuggested = suggestedFromVault(vaultItems);
   const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
@@ -414,13 +254,15 @@ export default function SceneCrafterPage({
     setBeatInput('');
   }
 
-  /** Suggested-card click: the note lands on the kanban board's first lane. */
+  /**
+   * Suggested-card click: toggles the note into the same selection set as
+   * Plan Cards (`planSel`, keyed by vault path) so it counts as chosen draft
+   * context and the card visibly marks itself selected right where it was
+   * clicked (SKY-7601 — previously this silently wrote into the retired
+   * lanes board's first lane, invisible unless you scrolled to it).
+   */
   function addSuggestedCard(card: SuggestedCard) {
-    void runMutation(() => window.api.sceneCrafterAddCard({
-      storySlug,
-      laneIndex: 0,
-      card: { wikilink: card.nid, title: card.t, done: false, tags: [] },
-    }).then(() => undefined));
+    setPlanSel((prev) => ({ ...prev, [card.nid]: !prev[card.nid] }));
   }
 
   async function persistBoard(next: CanvasBoardData) {
@@ -432,19 +274,25 @@ export default function SceneCrafterPage({
     }
   }
 
-  /** Everything the draft board pulls in: selected plan cards + kanban cards. */
+  /**
+   * Everything the draft board pulls in: selected Plan Cards plus any
+   * selected suggested card (§7.1's real mechanism — see `addSuggestedCard`
+   * above). A note can be both a Plan Card and a suggested card at once
+   * (e.g. a "Plan …" note also shows up grouped under NOTES); `seen` keeps
+   * it from being counted twice.
+   */
   function chosenCards(): ChosenCard[] {
-    const chosen: ChosenCard[] = planNotes
-      .filter((plan) => planSel[plan.id])
-      .map((plan) => ({ title: plan.t, desc: plan.d, nid: plan.id }));
-    for (const lane of board?.lanes ?? []) {
-      for (const card of lane.cards) {
-        chosen.push({
-          title: card.title,
-          desc: visibleTags(card.tags).map((tag) => `#${tag}`).join(' '),
-          nid: card.wikilink,
-        });
-      }
+    const chosen: ChosenCard[] = [];
+    const seen = new Set<string>();
+    for (const plan of planNotes) {
+      if (!planSel[plan.id]) continue;
+      chosen.push({ title: plan.t, desc: plan.d, nid: plan.id });
+      seen.add(plan.id);
+    }
+    for (const card of allSuggested) {
+      if (!planSel[card.nid] || seen.has(card.nid)) continue;
+      chosen.push({ title: card.t, desc: card.d, nid: card.nid });
+      seen.add(card.nid);
     }
     return chosen;
   }
@@ -552,21 +400,17 @@ export default function SceneCrafterPage({
     );
   }
 
-  const cardCount = board.lanes.reduce((sum, lane) => sum + lane.cards.length, 0);
+  const linkedScenes = linkedSceneCards(board);
 
   return (
-    <section className="scene-crafter-page" aria-label="Scene Crafter Kanban board">
+    <section className="scene-crafter-page" aria-label="Scene Crafter">
       <header className="scene-crafter-header">
         <div>
           <p className="scene-crafter-eyebrow">Scene Crafter</p>
           <h2>{story.title} — Board</h2>
           <p className="scene-crafter-tagline">
-            A visual board of the scene you’re writing — every vault note is a card.
+            Set the shape, pull in context from your vault, then let the Writing Coach draft a first pass.
           </p>
-        </div>
-        <div className="scene-crafter-actions">
-          <span>{board.lanes.length} lanes · {cardCount} cards</span>
-          <button onClick={addLane} disabled={conflicted}>Add lane</button>
         </div>
       </header>
 
@@ -583,15 +427,7 @@ export default function SceneCrafterPage({
       {retryAction && (
         <div className="scene-crafter-write-error" role="alert">
           Could not save Scene Crafter board.
-          <button onClick={() => void runMutation(retryAction)}>Retry save</button>
-        </div>
-      )}
-
-      {pendingDeleteLane && (
-        <div className="scene-crafter-confirm" role="alert">
-          Lane has {pendingDeleteLane.cardCount} card{pendingDeleteLane.cardCount === 1 ? '' : 's'}.
-          <button onClick={() => void requestDeleteLane(pendingDeleteLane.laneIndex, true)}>Delete anyway</button>
-          <button onClick={() => setPendingDeleteLane(null)}>Cancel</button>
+          <button onClick={() => void retryAction()}>Retry save</button>
         </div>
       )}
 
@@ -613,16 +449,6 @@ export default function SceneCrafterPage({
           </div>
         </div>
       )}
-
-      {cardCount === 0 && (
-        <div className="scene-crafter-empty">
-          <strong>Plan your next scene.</strong>
-          <span>Drag a vault note here to start the board.</span>
-        </div>
-      )}
-
-      {/* aria-live region announces keyboard moves to screen readers */}
-      <div aria-live="polite" aria-atomic="true" className="sr-only">{moveAnnouncement}</div>
 
       <div className="scene-crafter-body">
         {/* ── Suggested cards panel (prototype lines 355–371) ── */}
@@ -647,15 +473,10 @@ export default function SceneCrafterPage({
                 <button
                   type="button"
                   key={card.nid}
-                  className="sc-sugg-card"
-                  title="Click or drag onto the board"
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData(NOTE_DRAG_MIME, card.nid);
-                    event.dataTransfer.setData('text/plain', card.nid);
-                  }}
+                  className={`sc-sugg-card${planSel[card.nid] ? ' sc-sugg-card--on' : ''}`}
+                  aria-pressed={!!planSel[card.nid]}
+                  title="Click to use as context for your draft"
                   onClick={() => addSuggestedCard(card)}
-                  disabled={conflicted}
                 >
                   <span className="sc-sugg-av">{card.av}</span>
                   <span className="sc-sugg-text">
@@ -667,7 +488,7 @@ export default function SceneCrafterPage({
             </Fragment>
           ))}
           <div className="sc-suggest-hint">
-            Click or drag a card onto the board — the Brainstorm Agent keeps this list stocked from your vault.
+            Click a card to use it as context for your draft — the Brainstorm Agent keeps this list stocked from your vault.
           </div>
         </aside>
 
@@ -835,6 +656,20 @@ export default function SceneCrafterPage({
                 />
               )}
 
+              {linkedScenes.length > 0 && (
+                <>
+                  <div className="sc-field-label sc-section-label">LINKED SCENES</div>
+                  <div className="sc-linked-list" data-testid="crafter-linked-scenes">
+                    {linkedScenes.map((card) => (
+                      <div className="sc-linked-row" key={card.key}>
+                        <span className="sc-linked-row-title">{card.title}</span>
+                        <button type="button" onClick={() => onOpenScene?.(card.sceneId)}>Go to scene</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <div className="sc-field-label sc-section-label">BOARDS</div>
               {boards.length > 0 && (
                 <div className="sc-board-list" data-testid="crafter-board-list">
@@ -959,123 +794,6 @@ export default function SceneCrafterPage({
             )}
             {boardsNote && <div className="sc-boards-note">{boardsNote}</div>}
           </section>
-
-          <div className="scene-crafter-lanes">
-        {board.lanes.map((lane, laneIndex) => (
-          <section
-            key={`${lane.name}-${laneIndex}`}
-            className="scene-crafter-lane"
-            data-testid={`scene-crafter-lane-${lane.name}`}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => handleLaneDrop(event, laneIndex)}
-          >
-            <header
-              className="scene-crafter-lane-header"
-              draggable
-              onDragStart={() => setDragLane(laneIndex)}
-            >
-              {editingLane?.laneIndex === laneIndex ? (
-                <input
-                  aria-label={`Rename lane ${lane.name}`}
-                  value={editingLane.name}
-                  onChange={(event) => setEditingLane({ laneIndex, name: event.target.value })}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') saveLaneName();
-                    if (event.key === 'Escape') setEditingLane(null);
-                  }}
-                  onBlur={saveLaneName}
-                  autoFocus
-                />
-              ) : (
-                <h3 onDoubleClick={() => setEditingLane({ laneIndex, name: lane.name })}>{lane.name}</h3>
-              )}
-              <span>{lane.cards.length}</span>
-              <div className="scene-crafter-lane-reorder">
-                <button
-                  aria-label={`Move lane ${lane.name} left`}
-                  disabled={laneIndex === 0}
-                  onClick={() => moveLane(laneIndex, -1)}
-                >←</button>
-                <button
-                  aria-label={`Move lane ${lane.name} right`}
-                  disabled={laneIndex === board.lanes.length - 1}
-                  onClick={() => moveLane(laneIndex, 1)}
-                >→</button>
-              </div>
-              <button aria-label={`Delete lane ${lane.name}`} onClick={() => void requestDeleteLane(laneIndex)} disabled={conflicted}>×</button>
-            </header>
-
-            <div className="scene-crafter-card-list">
-              {lane.cards.map((card, cardIndex) => {
-                const sceneId = manuscriptSceneId(card.tags);
-                const isMoveMenuOpen =
-                  moveMenuCard?.laneIndex === laneIndex && moveMenuCard?.cardIndex === cardIndex;
-                const firstNonCurrentLane = board.lanes.findIndex((_, i) => i !== laneIndex);
-                return (
-                  <article
-                    key={`${card.wikilink}-${cardIndex}`}
-                    className="scene-crafter-card"
-                    data-testid={`scene-crafter-card-${card.wikilink}`}
-                    draggable
-                    onDragStart={() => setDragCard({ laneIndex, cardIndex })}
-                  >
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={card.done}
-                        aria-label={`Mark ${card.title} done`}
-                        onChange={() => toggleCard(laneIndex, cardIndex)}
-                        disabled={conflicted}
-                      />
-                      <span>{card.title}</span>
-                    </label>
-                    <div className="scene-crafter-card-tags">
-                      {visibleTags(card.tags).map((tag) => <span key={tag}>#{tag}</span>)}
-                    </div>
-                    <div className="scene-crafter-card-actions">
-                      <button onClick={() => onOpenNote?.(card.wikilink)}>Go to note</button>
-                      {sceneId && <button onClick={() => onOpenScene?.(sceneId)}>Go to scene</button>}
-                      <div className="scene-crafter-move-menu">
-                        <button
-                          aria-haspopup="menu"
-                          aria-expanded={isMoveMenuOpen}
-                          aria-label={`Move ${card.title} to lane`}
-                          onClick={(e) => {
-                            moveMenuTriggerRef.current = e.currentTarget;
-                            setMoveMenuCard(isMoveMenuOpen ? null : { laneIndex, cardIndex });
-                          }}
-                        >Move to…</button>
-                        {isMoveMenuOpen && (
-                          <div
-                            role="menu"
-                            aria-label={`Choose lane for ${card.title}`}
-                            className="scene-crafter-move-menu-popover"
-                            onKeyDown={handleMoveMenuKeyDown}
-                          >
-                            {board.lanes.map((targetLane, targetLaneIndex) =>
-                              targetLaneIndex !== laneIndex ? (
-                                <button
-                                  key={targetLaneIndex}
-                                  role="menuitem"
-                                  autoFocus={targetLaneIndex === firstNonCurrentLane}
-                                  onClick={() => moveCardToLane(laneIndex, cardIndex, targetLaneIndex)}
-                                >
-                                  {targetLane.name}
-                                </button>
-                              ) : null,
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <button aria-label={`Delete card ${card.title}`} onClick={() => deleteCard(laneIndex, cardIndex)} disabled={conflicted}>Delete</button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-          </div>
         </div>
 
         {/* ── Right kanban: beats / cast / places (§7.1, AC8) ── */}

@@ -1,0 +1,79 @@
+name: screenshot-check
+
+# Enforces plans/design-handoff/v2/PROCESS.md: "Screenshot every surface
+# against the prototype before calling it done." See SKY-7941/SKY-7939 —
+# the prior convention was unenforced and PRs #1010/#1007/#1031 shipped
+# UI changes with zero images.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+
+permissions:
+  pull-requests: read
+  contents: read
+  issues: read
+
+jobs:
+  screenshot-check:
+    name: screenshot-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify UI-milestone PRs attach a screenshot
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const labels = pr.labels.map((l) => l.name.toLowerCase());
+
+            // Opt-out escape hatch for PRs the heuristic misclassifies
+            // (e.g. CSS token refactors with no visible surface change).
+            if (labels.includes('screenshot-exempt')) {
+              core.info('Label "screenshot-exempt" present — skipping check.');
+              return;
+            }
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
+            );
+
+            // Heuristic: touches renderer/UI source, not just its tests.
+            const uiPathPattern = /^frontend\/src\/(components\/|pages\/|renderer\/|.*\.(tsx|css)$)/;
+            const isUiFile = (path) => uiPathPattern.test(path) && !/\.test\.[jt]sx?$/.test(path);
+            const touchesUi = files.some((f) => isUiFile(f.filename));
+
+            const isUiMilestone = labels.includes('ui-milestone') || labels.includes('frontend') || touchesUi;
+
+            if (!isUiMilestone) {
+              core.info('No UI-milestone label or UI source path touched — screenshot not required.');
+              return;
+            }
+
+            // Evidence: a markdown/HTML image in the PR body, or in any
+            // issue comment on the PR (covers CI-uploaded artifacts and
+            // manually pasted screenshots alike).
+            const imagePattern = /!\[[^\]]*\]\([^)]+\)|<img\s+[^>]*src=/i;
+
+            if (pr.body && imagePattern.test(pr.body)) {
+              core.info('Screenshot/image markdown found in PR body.');
+              return;
+            }
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number }
+            );
+            const commentWithImage = comments.find((c) => c.body && imagePattern.test(c.body));
+
+            if (commentWithImage) {
+              core.info(`Screenshot/image markdown found in comment ${commentWithImage.html_url}.`);
+              return;
+            }
+
+            core.setFailed(
+              'This PR touches UI code (or is labeled ui-milestone/frontend) but has no ' +
+              'attached screenshot or image — neither in the PR body nor in a PR comment. ' +
+              'Add a screenshot (markdown image or pasted attachment) showing the change, ' +
+              'or apply the "screenshot-exempt" label if this change has no visible surface.'
+            );
