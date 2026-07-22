@@ -105,6 +105,7 @@ describe('MythosMigrationCenter', () => {
     const report = await screen.findByTestId('mythos-migration-step-report');
     expect(report.textContent).toContain('Verified');
     expect(report.textContent).toContain('untouched');
+    expect(report.textContent).toContain('/vaults/My Vault/Story Vault');
 
     // Confirm → switched.
     fireEvent.click(screen.getByTestId('mythos-migration-confirm'));
@@ -125,6 +126,7 @@ describe('MythosMigrationCenter', () => {
     fireEvent.click(await screen.findByTestId('mythos-migration-run'));
     const report = await screen.findByTestId('mythos-migration-step-report');
     expect(report.textContent).toContain('untouched');
+    expect(report.textContent).toContain('/vaults/My Vault/Story Vault');
     expect(report.textContent).toContain('scene prose mismatch');
     expect(screen.queryByTestId('mythos-migration-confirm')).toBeNull();
   });
