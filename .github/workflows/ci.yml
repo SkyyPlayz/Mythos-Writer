@@ -584,6 +584,7 @@ jobs:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
     # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, global-search, readme-screenshots,
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
+    # scene-save-perf (SKY-6198)
     needs: [build-electron]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -719,6 +720,8 @@ jobs:
       - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
         run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
 
+      - name: E2E — Scene-save perf regression guard (SKY-6198)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-save-perf
 
       - name: Upload E2E report on failure
         if: failure()
