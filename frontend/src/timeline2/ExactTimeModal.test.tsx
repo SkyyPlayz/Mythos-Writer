@@ -94,4 +94,15 @@ describe('ExactTimeModal', () => {
     expect(props.onClose).toHaveBeenCalledTimes(2);
     expect(props.onApply).not.toHaveBeenCalled();
   });
+
+  it('Escape closes the modal', () => {
+    const props = renderModal();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('autofocuses the first focusable element (close button) on open', () => {
+    renderModal();
+    expect(screen.getByTestId('etm-close')).toHaveFocus();
+  });
 });
