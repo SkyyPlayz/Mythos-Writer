@@ -38,7 +38,7 @@ export default function AboutSection() {
   };
 
   const replayTour = () => {
-    window.api?.onboardingReset?.()
+    window.api?.onboardingReplay?.()
       .then(() => window.location.reload())
       .catch(() => {});
   };

@@ -106,7 +106,7 @@ describe('handleAgentSessionList', () => {
   });
 });
 
-// ─── agentSession:read (M20 / SKY-6663) ──────────────────────────────────────
+// ─── agentSession:read (M20 / SKY-6663 / SKY-7112) ───────────────────────────
 
 describe('handleAgentSessionRead', () => {
   it('returns the full session with its turn history', () => {
@@ -122,10 +122,40 @@ describe('handleAgentSessionRead', () => {
     ]);
   });
 
+  it('returns the full persisted transcript for a known session id', () => {
+    createSession(notesRoot, {
+      agent: 'coach', id: B_ID, title: 'Coaching chat', startedAt: '2026-07-01T10:00:00.000Z',
+      turns: [turn('user', 'Review my scene'), turn('agent', 'Here is a lesson')],
+    });
+
+    const { session } = handleAgentSessionRead(notesRoot, { sessionId: B_ID });
+    expect(session).not.toBeNull();
+    expect(session!.id).toBe(B_ID);
+    expect(session!.title).toBe('Coaching chat');
+    expect(session!.turns.map((t) => t.text)).toEqual(['Review my scene', 'Here is a lesson']);
+  });
+
+  it('round-trips through vault storage: create, append, then read hydrates every turn in order', () => {
+    createSession(notesRoot, { agent: 'coach', id: A_ID, startedAt: '2026-07-01T10:00:00.000Z' });
+    handleAgentSessionAppendTurns(notesRoot, { sessionId: A_ID, turns: [turn('user', 'first')] });
+    handleAgentSessionAppendTurns(notesRoot, { sessionId: A_ID, turns: [turn('agent', 'second')] });
+
+    // Re-read via a fresh call — mirrors app reopen, since nothing but the
+    // on-disk file backs this: no cache to fall through to.
+    const { session } = handleAgentSessionRead(notesRoot, { sessionId: A_ID });
+    expect(session!.turns.map((t) => t.text)).toEqual(['first', 'second']);
+  });
+
   it('returns null for an unknown session id', () => {
     expect(handleAgentSessionRead(notesRoot, { sessionId: B_ID })).toEqual({ session: null });
   });
 
+  it('returns session:null when no Sessions/ dir exists yet', () => {
+    expect(handleAgentSessionRead(notesRoot, { sessionId: A_ID })).toEqual({ session: null });
+  });
+
+  // B1-style isolation check: reading one session must never leak another
+  // session's turns, even when a transcript merely mentions the target id.
   it('B1 contract: resolves by parsed id, not by transcripts that mention the id', () => {
     makePoisonedVault(notesRoot);
     const { session } = handleAgentSessionRead(notesRoot, { sessionId: B_ID });

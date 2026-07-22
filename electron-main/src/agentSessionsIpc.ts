@@ -44,6 +44,9 @@ export function handleAgentSessionList(
 // Brainstorm chat when switching sessions, and by Coach page ↔ Coach panel so
 // both surfaces render the same conversation. Lookup is by the PARSED
 // frontmatter id (readSession), never a substring scan (B1 contract).
+// SKY-7112: also used by the Agent Hub session picker (GH #960 / SKY-7084) —
+// an unknown id is not an error, it just means "nothing to hydrate", so the
+// renderer starts a fresh transcript.
 export function handleAgentSessionRead(
   notesRoot: string,
   payload: AgentSessionReadPayload,

@@ -31,7 +31,7 @@ const mockStoryImportRun = vi.fn();
 const mockBackupAppData = vi.fn();
 const mockRestoreAppData = vi.fn();
 const mockAppCheckForUpdate = vi.fn();
-const mockOnboardingReset = vi.fn();
+const mockOnboardingReplay = vi.fn();
 
 async function flush() {
   await act(async () => {
@@ -51,7 +51,7 @@ beforeEach(() => {
   mockBackupAppData.mockResolvedValue({ path: '/tmp/backup.zip', bytes: 2048, cancelled: false });
   mockRestoreAppData.mockResolvedValue({ restored: false, details: [], requiresConfirmation: true });
   mockAppCheckForUpdate.mockResolvedValue({ available: true, version: '0.4.0', releaseNotes: null });
-  mockOnboardingReset.mockResolvedValue({ ok: true });
+  mockOnboardingReplay.mockResolvedValue({ ok: true });
   (window as unknown as { api: unknown }).api = {
     getAppInfo: mockGetAppInfo,
     chooseVaultFolder: mockChooseVaultFolder,
@@ -62,7 +62,7 @@ beforeEach(() => {
     backupAppData: mockBackupAppData,
     restoreAppData: mockRestoreAppData,
     appCheckForUpdate: mockAppCheckForUpdate,
-    onboardingReset: mockOnboardingReset,
+    onboardingReplay: mockOnboardingReplay,
   };
 });
 
@@ -245,5 +245,18 @@ describe('AboutSection', () => {
     await flush();
     expect(mockAppCheckForUpdate).toHaveBeenCalled();
     expect(screen.getByTestId('about-update-status').textContent).toContain('0.4.0');
+  });
+
+  // Beta 4 M29 (AC7): "Replay welcome tour" must use the every-build replay
+  // channel, not the MYTHOS_DEV-only debug reset that no-ops in production.
+  it('replays the onboarding wizard via onboardingReplay, not the debug reset', async () => {
+    const reload = vi.fn();
+    Object.defineProperty(window, 'location', { value: { ...window.location, reload }, writable: true });
+    render(<AboutSection />);
+    await flush();
+    fireEvent.click(screen.getByTestId('about-replay-tour'));
+    await flush();
+    expect(mockOnboardingReplay).toHaveBeenCalled();
+    expect(reload).toHaveBeenCalled();
   });
 });

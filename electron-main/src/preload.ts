@@ -43,11 +43,13 @@ contextBridge.exposeInMainWorld('api', {
   loadSampleTwoVault: (parentPath: string) =>
     ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
-  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank' }) =>
+  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
   // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
   onboardingReset: (payload?: { hard?: boolean }) => ipcRenderer.invoke('onboarding:reset', payload),
+  // Beta 4 M29 (AC7): user-facing "Replay wizard" — every build, current vault untouched.
+  onboardingReplay: () => ipcRenderer.invoke('onboarding:replay', undefined),
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),

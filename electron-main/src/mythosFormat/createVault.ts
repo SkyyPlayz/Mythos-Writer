@@ -41,6 +41,10 @@ export type CreateMythosVaultResult =
       notesVaultPath: string;
       vaultName: string;
       seeded: boolean;
+      /** First demo scene (seeded vaults only) — lets onboarding land the editor on prose. */
+      firstSceneId?: string;
+      /** Story-Vault-relative path of the first demo scene (posix). */
+      firstScenePath?: string;
     }
   | { ok: false; error: string };
 
@@ -97,15 +101,23 @@ export function createMythosVault(
     writeTimelinesFile(mythosRoot, defaultTimelinesFile());
 
     const seedDemo = opts.seedDemo !== false;
-    if (seedDemo) {
-      writeVeynnSeed(mythosRoot);
-    }
+    const seedResult = seedDemo ? writeVeynnSeed(mythosRoot) : null;
     // Record the seed decision LAST — a crash mid-seed leaves no marker, and
     // the folder is non-empty so a retry lands in a fresh sibling folder
     // instead of double-seeding this one.
     recordSeedDecision(mythosRoot, seedDemo ? 'default' : 'blank');
 
-    return { ok: true, mythosRoot, storyVaultPath, notesVaultPath, vaultName, seeded: seedDemo };
+    return {
+      ok: true,
+      mythosRoot,
+      storyVaultPath,
+      notesVaultPath,
+      vaultName,
+      seeded: seedDemo,
+      ...(seedResult
+        ? { firstSceneId: seedResult.firstSceneId, firstScenePath: seedResult.firstScenePath }
+        : {}),
+    };
   } catch (e) {
     return { ok: false, error: `Could not create MythosVault: ${(e as Error).message}` };
   }
