@@ -3,9 +3,15 @@
 //
 // Exact port of the prototype's Timeline Subway (template 1480–1506, math
 // `subLines` 4703–4709 → buildSubwayLines in timelineAeon.ts). Line/station
-// colors are slot-tinted (`var(--nN, hex)`) so theme slot changes recolor the
-// lines live.
-import { useMemo } from 'react';
+// colors come from the shared hue-separation algorithm (SKY-7935,
+// lib/characterHue.ts via timelineAeon's `lines`).
+//
+// SKY-7935 (Beta4/M24 a11y rebuild, spec §3.3): station row rebuilt onto the
+// roving-tabindex keyboard pattern (role="button", ArrowLeft/ArrowRight move
+// focus, Home/End jump first/last, Enter/Space activates → Inspector); the
+// raw SVG path is `aria-hidden` (decorative — semantics carried by the
+// station buttons + the "View as table" toggle in TimelineRoot).
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   type AeonTimelineData,
   buildSubwayLines,
@@ -27,6 +33,33 @@ export default function TimelineSubway({ data, onOpenScene }: TimelineSubwayProp
     [lines, events.length],
   );
 
+  // Roving tabindex (spec §3.3 / §0): one Tab stop into the station row,
+  // ArrowLeft/ArrowRight move focus station to station, Home/End jump to
+  // first/last, Enter/Space activates (opens the Inspector for that chapter).
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const stationRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const moveFocus = useCallback((index: number) => {
+    const clamped = Math.max(0, Math.min(events.length - 1, index));
+    setFocusedIndex(clamped);
+    stationRefs.current[clamped]?.focus();
+  }, [events.length]);
+
+  const handleStationKeyDown = useCallback((e: React.KeyboardEvent, index: number) => {
+    switch (e.key) {
+      case 'ArrowRight': e.preventDefault(); moveFocus(index + 1); break;
+      case 'ArrowLeft': e.preventDefault(); moveFocus(index - 1); break;
+      case 'Home': e.preventDefault(); moveFocus(0); break;
+      case 'End': e.preventDefault(); moveFocus(events.length - 1); break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        onOpenScene?.(events[index].sceneId);
+        break;
+      default: break;
+    }
+  }, [moveFocus, events, onOpenScene]);
+
   if (events.length === 0) {
     return (
       <div className="tsw-empty" data-testid="timeline-subway-empty">
@@ -39,15 +72,21 @@ export default function TimelineSubway({ data, onOpenScene }: TimelineSubwayProp
   return (
     <div className="tsw-root" data-testid="timeline-subway" role="region" aria-label="Subway timeline">
       <div className="tsw-board" data-screen-label="Timeline Subway">
-        {/* ── Event stations header (1482–1490) ── */}
-        <div className="tsw-events">
-          {events.map(event => (
+        {/* ── Event stations (1482–1490) — roving-tabindex row, role="button" ── */}
+        <div className="tsw-events" role="group" aria-label="Chapters">
+          {events.map((event, i) => (
             <button
               key={event.sceneId}
               type="button"
+              role="button"
               className="tsw-event"
               data-testid="tsw-event"
-              onClick={() => onOpenScene?.(event.sceneId)}
+              aria-label={`Chapter ${i + 1}: ${event.title}`}
+              tabIndex={focusedIndex === i ? 0 : -1}
+              ref={el => { stationRefs.current[i] = el; }}
+              onFocus={() => setFocusedIndex(i)}
+              onKeyDown={e => handleStationKeyDown(e, i)}
+              onClick={() => { setFocusedIndex(i); onOpenScene?.(event.sceneId); }}
             >
               <div className="tsw-event-icon" aria-hidden="true">{event.icon}</div>
               <div className="tsw-event-title">{event.title}</div>
@@ -62,19 +101,20 @@ export default function TimelineSubway({ data, onOpenScene }: TimelineSubwayProp
           </p>
         ) : (
           <>
-            {/* ── Polylines + stations (1491–1499) ── */}
+            {/* ── Polylines + stations (1491–1499) — decorative, aria-hidden;
+                semantics carried by the station buttons above and the table
+                toggle (spec §3.3). ── */}
             <svg
               className="tsw-svg"
               viewBox={`0 0 ${SUBWAY_VIEWBOX_WIDTH} ${SUBWAY_VIEWBOX_HEIGHT}`}
               preserveAspectRatio="none"
-              role="img"
-              aria-label={`Subway lines for ${lines.length} character${lines.length === 1 ? '' : 's'} across ${events.length} events`}
+              aria-hidden="true"
               data-testid="tsw-svg"
             >
               {subwayLines.map(line => {
-                const stroke = `var(--n${line.slot}, ${line.color})`;
+                const stroke = line.color;
                 return (
-                  <g key={line.name} data-testid="tsw-line" aria-label={`Line: ${line.name}`}>
+                  <g key={line.name} data-testid="tsw-line">
                     <path
                       d={line.path}
                       fill="none"
@@ -104,14 +144,17 @@ export default function TimelineSubway({ data, onOpenScene }: TimelineSubwayProp
               })}
             </svg>
 
-            {/* ── Legend (1500–1504) ── */}
+            {/* ── Legend (1500–1504) — color paired with a line-dash pattern
+                per character (spec §0/§3.3 color independence), cycling for
+                >4 characters. ── */}
             <div className="tsw-legend" data-testid="tsw-legend">
-              {subwayLines.map(line => {
-                const color = `var(--n${line.slot}, ${line.color})`;
+              {subwayLines.map((line, i) => {
+                const color = line.color;
+                const dashClass = `tsw-legend-swatch--dash-${i % 4}`;
                 return (
                   <span key={line.name} className="tsw-legend-item">
                     <span
-                      className="tsw-legend-swatch"
+                      className={`tsw-legend-swatch ${dashClass}`}
                       style={{ background: color, boxShadow: `0 0 8px ${color}` }}
                       aria-hidden="true"
                     />
