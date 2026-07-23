@@ -301,13 +301,15 @@ def get_wedged_dispatch_runs():
 
 def force_cancel_run(run_id: int) -> bool:
     """
-    Cancel a run that never dispatched jobs. A plain /cancel is a documented
-    no-op for 0-job queued runs, so issue it twice: GitHub Actions treats the
-    second call (once the run is already marked cancelling) as the forcing
-    action that actually clears the queue slot.
+    Force-cancel a run that never dispatched jobs. A plain /cancel is a
+    documented no-op for 0-job queued runs, so use GitHub's dedicated
+    /force-cancel endpoint (the same manual fix proven on prior wedge
+    incidents, see SKY-7787) instead of calling /cancel twice: /cancel is
+    idempotent, so a second call doesn't escalate it into a force-cancel and
+    can 409 if the first call already flipped the run to "cancelling",
+    which would misreport a successful cancel as a failure.
     """
-    gh_api(f"/repos/{REPO}/actions/runs/{run_id}/cancel", method="POST", body={})
-    result = gh_api(f"/repos/{REPO}/actions/runs/{run_id}/cancel", method="POST", body={})
+    result = gh_api(f"/repos/{REPO}/actions/runs/{run_id}/force-cancel", method="POST", body={})
     if result is not None:
         log(f"✓ Force-cancelled dispatch-wedged run {run_id}")
         return True
