@@ -191,6 +191,10 @@ export interface VaultImportRunResult {
   imported: number;
   skipped: number;
   errors: string[];
+  /** Total files found in the source vault, when the source kind reports it. */
+  sourceCount?: number;
+  /** Non-empty when files were silently dropped (not imported, not errored). */
+  dropWarning?: string;
 }
 
 /** Safe markdown filename for a converted note title. */
@@ -289,7 +293,15 @@ export function convertVaultSource(
   fs.mkdirSync(dstDir, { recursive: true });
   if (kind === 'obsidian' || kind === 'markdown') {
     const res: ObsidianImportResult = importObsidianToVaultDir(srcPath, dstDir);
-    return { ok: res.ok, targetPath: dstDir, imported: res.imported, skipped: res.skipped, errors: res.errors };
+    return {
+      ok: res.ok,
+      targetPath: dstDir,
+      imported: res.imported,
+      skipped: res.skipped,
+      errors: res.errors,
+      sourceCount: res.sourceCount,
+      dropWarning: res.dropWarning || undefined,
+    };
   }
   if (kind === 'notion') return importNotionExport(srcPath, dstDir);
   return importScrivProject(srcPath, dstDir);

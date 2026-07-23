@@ -119,6 +119,23 @@ describe('markdown tree import', () => {
     expect(res.imported).toBe(2);
     expect(fs.existsSync(path.join(dst, 'Lore', 'Tides.md'))).toBe(true);
   });
+
+  // SKY-8151: convertVaultSource used to discard importObsidianToVaultDir's
+  // sourceCount/dropWarning entirely, so the live VAULT_IMPORT_RUN path (the
+  // one Settings → Vault & Files → "Import another vault" actually calls)
+  // could never surface a silent-drop warning to the user. Assert these
+  // fields now flow through convertVaultSource's return value.
+  it('propagates sourceCount and dropWarning from the underlying Obsidian importer', () => {
+    const src = path.join(tmp, 'md-vault-2');
+    fs.mkdirSync(src, { recursive: true });
+    fs.writeFileSync(path.join(src, 'One.md'), '# One\n');
+    fs.writeFileSync(path.join(src, 'Two.md'), '# Two\n');
+
+    const dst = path.join(tmp, 'md-dst-2');
+    const res = convertVaultSource('markdown', src, dst);
+    expect(res.sourceCount).toBe(2);
+    expect(res.dropWarning).toBeUndefined();
+  });
 });
 
 // ── scan + convert: Scrivener ─────────────────────────────────────────────────

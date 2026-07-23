@@ -43,11 +43,15 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // SKY-8151: surfaces convertVaultSource's dropWarning — files silently
+  // dropped during the actual import, not caught by the dry-run scan.
+  const [dropWarning, setDropWarning] = useState<string | null>(null);
 
   const reset = () => {
     setScan(null);
     setError(null);
     setDone(null);
+    setDropWarning(null);
   };
 
   const pickSource = async () => {
@@ -118,6 +122,7 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
           + `${(res.skipped ?? 0) > 0 ? ` (${res.skipped} already present, skipped)` : ''}`
           + ` → ${res.targetPath ?? ''}`,
         );
+        setDropWarning(res.dropWarning || null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed.');
@@ -227,6 +232,11 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
         {done && (
           <p className="settings-saved-msg" role="status" aria-live="polite" data-testid="import-vault-done">
             Vault imported — {done}
+          </p>
+        )}
+        {dropWarning && (
+          <p style={{ fontSize: 10.5, color: '#ffd97a', marginTop: 4 }} role="status" data-testid="import-vault-drop-warning">
+            {dropWarning}
           </p>
         )}
         {error && (
