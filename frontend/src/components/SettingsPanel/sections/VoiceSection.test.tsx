@@ -23,6 +23,8 @@ function setup(settings: AppSettings = baseSettings) {
       setSettings={setSettings}
       providerKind="anthropic"
       setSavedOk={setSavedOk}
+      onPickSttBinary={vi.fn()}
+      onPickSttModel={vi.fn()}
     />,
   );
   return { setSettings, setSavedOk };
