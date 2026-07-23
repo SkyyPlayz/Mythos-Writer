@@ -80,8 +80,15 @@ export function isStoryInternalNotesPath(
   // 2. UUID-named directories (scene/story/chapter ids) and their subtrees.
   //    For a file, only ancestor segments count — a UUID-named .md note is a
   //    file the user could conceivably own; UUID *folders* never are.
+  //    Carve-out: `Boards/<uuid>/` is Scene Crafter's own Notes-Vault-owned
+  //    board storage (crafterBoardStore.ts, boardsDirForStory()) — the UUID
+  //    there is the story id used only as a namespacing key, not a
+  //    Story-Vault internal, so it must stay visible to listNotesVault() or
+  //    saved boards vanish on reload. Scoped to exactly the segment right
+  //    after `Boards/`; anything deeper still goes through the normal rule.
   const dirSegs = item.isDirectory ? segs : segs.slice(0, -1);
-  if (dirSegs.some((s) => UUID_NAME_RE.test(s))) return true;
+  const boardsStorySlugIdx = segs[0] === 'Boards' ? 1 : -1;
+  if (dirSegs.some((s, idx) => idx !== boardsStorySlugIdx && UUID_NAME_RE.test(s))) return true;
 
   // 3. Manifest bookkeeping never belongs to a notes listing at any root.
   if (STORY_INTERNAL_FILES.has(posixPath)) return true;

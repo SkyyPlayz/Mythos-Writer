@@ -89,6 +89,21 @@ describe('isStoryInternalNotesPath / filterNotesListing — unit', () => {
     expect(isStoryInternalNotesPath(item('Story Vault Notes/keep.md'), prefix)).toBe(false);
     expect(isStoryInternalNotesPath(item('Universes', true), prefix)).toBe(false);
   });
+
+  it('SKY-8207: Boards/<uuid>/ (Scene Crafter board storage) survives the UUID-dir rule', () => {
+    expect(isStoryInternalNotesPath(item(`Boards/${SCENE_UUID}`, true), null)).toBe(false);
+    expect(
+      isStoryInternalNotesPath(item(`Boards/${SCENE_UUID}/My Board.canvas.json`), null),
+    ).toBe(false);
+    // The carve-out is scoped to exactly the segment after Boards/ — a UUID
+    // dir anywhere deeper (e.g. Boards/<slug>/<uuid>/) still hides.
+    expect(
+      isStoryInternalNotesPath(item(`Boards/${SCENE_UUID}/${SCENE_UUID}/nested.md`), null),
+    ).toBe(true);
+    expect(isStoryInternalNotesPath(item(`Chapters/${SCENE_UUID}`, true), null)).toBe(true);
+    // Other W0.1 rules still apply inside Boards/.
+    expect(isStoryInternalNotesPath(item(`Boards/${SCENE_UUID}/.snapshots`, true), null)).toBe(true);
+  });
 });
 
 // ─── Integration: real directories through listVaultFiles ───────────────────
@@ -166,5 +181,27 @@ describe('filterNotesListing — integration with listVaultFiles', () => {
     expect(removed.every((i) => i.name.startsWith('.'))).toBe(true);
     const paths = filtered.map((i) => i.path.split(path.sep).join('/'));
     expect(paths).toContain('Universes/My First Universe/Characters');
+  });
+
+  it('SKY-8207: a saved Scene Crafter board survives a simulated app restart', () => {
+    // Mirrors crafterBoardStore.ts's boardFilePath(storySlug, name) shape:
+    // `Boards/<storySlug>/<name>.canvas.json`, where storySlug is DesktopShell's
+    // story UUID. Restart = a fresh listVaultFiles() + filterNotesListing()
+    // pass, exactly as loadCrafterBoards() sees it via window.api.listNotesVault().
+    const notesRoot = path.join(tmpDir, 'Notes Vault');
+    scaffoldNotesVault(notesRoot, 'default');
+    const storySlug = 'f8c62a1a-9b71-4f22-8f6f-0123456789ab';
+    fs.mkdirSync(path.join(notesRoot, 'Boards', storySlug), { recursive: true });
+    fs.writeFileSync(
+      path.join(notesRoot, 'Boards', storySlug, 'My Board.canvas.json'),
+      JSON.stringify({ nodes: [], edges: [] }),
+      'utf-8',
+    );
+
+    const { items } = listVaultFiles(notesRoot);
+    const filtered = filterNotesListing(items, null);
+    const paths = filtered.map((i) => i.path.split(path.sep).join('/'));
+
+    expect(paths).toContain(`Boards/${storySlug}/My Board.canvas.json`);
   });
 });
