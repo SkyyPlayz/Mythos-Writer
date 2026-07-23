@@ -337,6 +337,45 @@ describe('SceneCrafterPage — M19 right kanban: beats/cast/places (§7.1, AC8)'
   });
 });
 
+describe('SceneCrafterPage — SKY-8207 saved boards survive a remount (app-restart simulation)', () => {
+  it('a board saved under Boards/<storySlug>/ still appears in the BOARDS list after the page remounts', async () => {
+    // DesktopShell always sets story.path to `stories/<uuid>` — storySlugFromStory()
+    // takes the last segment, so boards persist at Boards/<uuid>/*.canvas.json.
+    const storyUuid = 'f8c62a1a-9b71-4f22-8f6f-0123456789ab';
+    const uuidStory = { ...STORY, path: `stories/${storyUuid}` };
+    const boardPath = `Boards/${storyUuid}/My Board.canvas.json`;
+
+    const api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          { path: 'Boards', name: 'Boards', isDirectory: true, modifiedAt: '2026-01-01T00:00:00.000Z' },
+          { path: `Boards/${storyUuid}`, name: storyUuid, isDirectory: true, modifiedAt: '2026-01-01T00:00:00.000Z' },
+          { path: boardPath, name: 'My Board.canvas.json', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      }),
+      readNotesVault: vi.fn().mockResolvedValue({
+        content: JSON.stringify({ nodes: [], edges: [] }),
+        path: boardPath,
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+
+    // First mount — simulates the original session that saved the board.
+    const first = render(<SceneCrafterPage story={uuidStory} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    expect(screen.getByTestId('crafter-board-list')).toBeInTheDocument();
+    first.unmount();
+
+    // Second mount — simulates the app restart: a fresh listNotesVault() call
+    // (not React state) is the only source for the boards list.
+    render(<SceneCrafterPage story={uuidStory} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    const boardList = screen.getByTestId('crafter-board-list');
+    expect(within(boardList).getByText('My Board')).toBeInTheDocument();
+  });
+});
+
 describe('SceneCrafterPage — SKY-7601 suggested-card selection (rewired off the retired lanes board)', () => {
   async function renderWithSuggested() {
     const api = streamingApi({
