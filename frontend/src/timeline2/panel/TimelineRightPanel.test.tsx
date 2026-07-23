@@ -37,6 +37,7 @@ function makeStore(): TimelinesStore {
 function makeProps(overrides: Partial<TimelineRightPanelProps> = {}): TimelineRightPanelProps {
   const store = makeStore();
   return {
+    width: 316,
     store,
     activeTimeline: store.timelines[0],
     selection: null,

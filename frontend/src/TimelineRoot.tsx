@@ -96,6 +96,14 @@ import './TimelineRoot.css';
 
 const STORAGE_KEY_MODE = 'timeline:viewMode';
 const STORAGE_KEY_GROUP = 'timeline:groupBy';
+const STORAGE_KEY_RIGHT_WIDTH = 'timeline:rightPanelWidth';
+
+/** SKY-7956: right panel (Inspector/Brainstorm/Archive) resize clamp — ported
+ * from the prototype's app-wide right rail (`rightW`, drag handler Math.max(250,
+ * Math.min(430, ...))); default matches the prototype's initial `rightW: 316`. */
+const RIGHT_PANEL_MIN_WIDTH = 250;
+const RIGHT_PANEL_MAX_WIDTH = 430;
+const RIGHT_PANEL_DEFAULT_WIDTH = 316;
 
 /** Prototype seven-mode segment labels (`tlModeSeg`, 6559). */
 const MODE_OPTIONS: { value: TimelineMode; label: string }[] = [
@@ -244,6 +252,48 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   // ── M25: cross-view selection + right panel ──
   const [tlSelection, setTlSelection] = useState<TimelineSelection | null>(null);
   const [rightTab, setRightTab] = useState<TimelineRightTab>('inspector');
+  // SKY-7956: resizable right panel width (Inspector/Brainstorm/Archive), clamped
+  // to the prototype's 250-430 range, default 316 — see STORAGE_KEY_RIGHT_WIDTH.
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    try {
+      const stored = Number(localStorage.getItem(STORAGE_KEY_RIGHT_WIDTH));
+      if (Number.isFinite(stored) && stored > 0) {
+        return Math.max(RIGHT_PANEL_MIN_WIDTH, Math.min(RIGHT_PANEL_MAX_WIDTH, stored));
+      }
+    } catch {
+      // localStorage unavailable — use the default
+    }
+    return RIGHT_PANEL_DEFAULT_WIDTH;
+  });
+  const handleRightPanelResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightPanelWidth;
+    const move = (ev: MouseEvent) => {
+      const next = Math.max(
+        RIGHT_PANEL_MIN_WIDTH,
+        Math.min(RIGHT_PANEL_MAX_WIDTH, startWidth - (ev.clientX - startX)),
+      );
+      setRightPanelWidth(next);
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      setRightPanelWidth((w) => {
+        try { localStorage.setItem(STORAGE_KEY_RIGHT_WIDTH, String(w)); } catch { /* ignore quota errors */ }
+        return w;
+      });
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  }, [rightPanelWidth]);
+  const adjustRightPanelWidth = useCallback((delta: number) => {
+    setRightPanelWidth((w) => {
+      const next = Math.max(RIGHT_PANEL_MIN_WIDTH, Math.min(RIGHT_PANEL_MAX_WIDTH, w + delta));
+      try { localStorage.setItem(STORAGE_KEY_RIGHT_WIDTH, String(next)); } catch { /* ignore quota errors */ }
+      return next;
+    });
+  }, []);
   const [jumpTarget, setJumpTarget] = useState<{ id: string; n: number } | null>(null);
   const jumpSeq = useRef(0);
   const [flags, setFlags] = useState<TimelineFlag[]>([]);
@@ -1275,9 +1325,32 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
           )}
         </div>
 
+        {/* SKY-7956: right panel resize handle — matches the prototype's app-wide
+            right rail drag affordance (250-430px, default 316). */}
+        {timelinesStore && activeTimeline && (
+          <div
+            role="separator"
+            aria-label="Resize timeline panel"
+            aria-orientation="vertical"
+            aria-valuenow={rightPanelWidth}
+            aria-valuemin={RIGHT_PANEL_MIN_WIDTH}
+            aria-valuemax={RIGHT_PANEL_MAX_WIDTH}
+            tabIndex={0}
+            className="tlr-right-resize"
+            onMouseDown={handleRightPanelResize}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') { e.preventDefault(); adjustRightPanelWidth(+8); }
+              else if (e.key === 'ArrowRight') { e.preventDefault(); adjustRightPanelWidth(-8); }
+              else if (e.key === 'Home') { e.preventDefault(); adjustRightPanelWidth(-Infinity); }
+              else if (e.key === 'End') { e.preventDefault(); adjustRightPanelWidth(Infinity); }
+            }}
+          />
+        )}
+
         {/* ── M25: right panel — Inspector · Brainstorm · Archive (§8.6) ── */}
         {timelinesStore && activeTimeline && (
           <TimelineRightPanel
+            width={rightPanelWidth}
             store={timelinesStore}
             activeTimeline={activeTimeline}
             selection={tlSelection}

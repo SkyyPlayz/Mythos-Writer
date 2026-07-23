@@ -676,6 +676,51 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
   });
 
+  // SKY-7956: right panel is resizable (250-430px, default 316), matching the
+  // prototype's app-wide right rail — previously hardcoded to a fixed 264px.
+  it('right panel defaults to 316px and is resizable via drag handle within the 250-430 clamp', async () => {
+    await renderRoot();
+    const panel = screen.getByTestId('timeline-right-panel');
+    expect(panel.style.width).toBe('316px');
+
+    const handle = screen.getByRole('separator', { name: 'Resize timeline panel' });
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 450 }); // drag left → widen by 50
+    fireEvent.mouseUp(window);
+    expect(panel.style.width).toBe('366px');
+
+    // Clamp at the prototype's max (430px) even with an oversized drag.
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: -1000 });
+    fireEvent.mouseUp(window);
+    expect(panel.style.width).toBe('430px');
+
+    // Clamp at the prototype's min (250px) even with an oversized drag.
+    fireEvent.mouseDown(handle, { clientX: 500 });
+    fireEvent.mouseMove(window, { clientX: 2000 });
+    fireEvent.mouseUp(window);
+    expect(panel.style.width).toBe('250px');
+  });
+
+  it('right panel resize handle supports keyboard adjustment (arrows + Home/End)', async () => {
+    await renderRoot();
+    const panel = screen.getByTestId('timeline-right-panel');
+    const handle = screen.getByRole('separator', { name: 'Resize timeline panel' });
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    expect(panel.style.width).toBe('324px');
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    expect(panel.style.width).toBe('308px');
+
+    fireEvent.keyDown(handle, { key: 'End' });
+    expect(panel.style.width).toBe('430px');
+
+    fireEvent.keyDown(handle, { key: 'Home' });
+    expect(panel.style.width).toBe('250px');
+  });
+
   it('any canvas selection surfaces the Inspector tab, even from another tab (AC1/§14.5)', async () => {
     await renderRoot();
     fireEvent.click(screen.getByTestId('trp-tab-archive'));

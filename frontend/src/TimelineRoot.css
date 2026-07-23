@@ -492,6 +492,27 @@
   min-width: 0;
 }
 
+/* SKY-7956: right panel resize handle — mirrors DesktopShell's .shell-divider
+   drag affordance; idle state matches .trp-root's border-left rgba, hover/
+   focus resolves to Timeline chrome accent slot 6 (--n6). */
+.tlr-right-resize {
+  width: 4px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: col-resize;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+}
+
+.tlr-right-resize:hover,
+.tlr-right-resize:active,
+.tlr-right-resize:focus-visible {
+  background: var(--n6, #3d9bff);
+  outline: 2px solid var(--n6, #3d9bff);
+  outline-offset: 0;
+}
+
 /* ── M25 (design §2): header flag badge — --state-warning, count only ── */
 .tlr-flag-badge {
   display: inline-flex;
