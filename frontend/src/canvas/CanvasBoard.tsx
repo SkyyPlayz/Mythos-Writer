@@ -15,6 +15,7 @@ import { CANVAS_COLOR_SLOTS } from './canvasTypes';
 import {
   NEW_CARD_H,
   NEW_CARD_W,
+  clampCardSize,
   dragCardPosition,
   fitToContent,
   linkPath,
@@ -26,6 +27,28 @@ import {
   type ViewTransform,
 } from './canvasMath';
 import './CanvasBoard.css';
+
+// Keyboard move/resize/pan step (board px, unaffected by zoom — arrow keys
+// don't have a pointer to scale a screen delta by). Shift multiplies the step
+// so keyboard users can cross the board without hundreds of key presses.
+const KB_STEP = 12;
+const KB_STEP_FAST = 48;
+
+function arrowDelta(e: React.KeyboardEvent): { dx: number; dy: number } | null {
+  const step = e.shiftKey ? KB_STEP_FAST : KB_STEP;
+  switch (e.key) {
+    case 'ArrowLeft':
+      return { dx: -step, dy: 0 };
+    case 'ArrowRight':
+      return { dx: step, dy: 0 };
+    case 'ArrowUp':
+      return { dx: 0, dy: -step };
+    case 'ArrowDown':
+      return { dx: 0, dy: step };
+    default:
+      return null;
+  }
+}
 
 export interface CanvasBoardProps {
   board: CanvasBoardData;
@@ -102,6 +125,18 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     });
   };
 
+  // Keyboard equivalent of card drag (WCAG 2.1.1): arrow keys nudge the
+  // focused card head by KB_STEP board px, Shift for KB_STEP_FAST.
+  const onCardHeadKeyDown = (cardId: string) => (e: React.KeyboardEvent) => {
+    if (readOnly) return;
+    const delta = arrowDelta(e);
+    if (!delta) return;
+    e.preventDefault();
+    const card = boardRef.current.cards.find((c) => c.id === cardId);
+    if (!card) return;
+    patchCard(cardId, { x: Math.max(0, card.x + delta.dx), y: Math.max(0, card.y + delta.dy) });
+  };
+
   // Corner resize — prototype `cvResizeDown` (lines 3436–3446): min 130×60.
   const onResizeDown = (cardId: string) => (e: React.MouseEvent) => {
     if (readOnly || e.button === 2) return;
@@ -117,6 +152,18 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     beginDrag((ev) => {
       patchCard(cardId, resizeCardSize(ow, oh, ev.clientX - sx, ev.clientY - sy, zoom));
     });
+  };
+
+  // Keyboard equivalent of the corner resize (WCAG 2.1.1): arrow keys grow
+  // (right/down) or shrink (left/up) the focused card, clamped to 130×60.
+  const onResizeKeyDown = (cardId: string) => (e: React.KeyboardEvent) => {
+    if (readOnly) return;
+    const delta = arrowDelta(e);
+    if (!delta) return;
+    e.preventDefault();
+    const card = boardRef.current.cards.find((c) => c.id === cardId);
+    if (!card) return;
+    patchCard(cardId, clampCardSize(card.w + delta.dx, card.h + delta.dy));
   };
 
   // Pan — prototype `cvPanDown` (lines 3447–3453). Left-drag on empty space
@@ -135,6 +182,15 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
 
   const onCardRootDown = (e: React.MouseEvent) => {
     if (e.button !== 2) e.stopPropagation();
+  };
+
+  // Keyboard equivalent of the mouse-drag pan (WCAG 2.1.1): arrow keys pan
+  // the view by KB_STEP screen px when the pan layer has focus.
+  const onPanKeyDown = (e: React.KeyboardEvent) => {
+    const delta = arrowDelta(e);
+    if (!delta) return;
+    e.preventDefault();
+    setView((v) => ({ ...v, panX: v.panX + delta.dx, panY: v.panY + delta.dy }));
   };
 
   // Wheel zoom — prototype `cvWheelH` (line 4775): ×1.1 / ×0.92, clamped .4–2.4.
@@ -216,8 +272,12 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
       <div
         className="cvb-pan-layer"
         data-testid="canvas-pan-layer"
+        role="group"
+        aria-label="Canvas view. Use arrow keys to pan."
+        tabIndex={0}
         onMouseDown={onPanDown}
         onWheel={onWheel}
+        onKeyDown={onPanKeyDown}
       />
       <div
         className="cvb-stage"
@@ -242,7 +302,11 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
             <div
               className="cvb-card-head"
               data-testid={`canvas-card-head-${card.id}`}
+              role={readOnly ? undefined : 'button'}
+              tabIndex={readOnly ? undefined : 0}
+              aria-label={readOnly ? undefined : `Move card: ${card.t}. Use arrow keys to move.`}
               onMouseDown={onCardHeadDown(card.id)}
+              onKeyDown={onCardHeadKeyDown(card.id)}
             >
               <button
                 type="button"
@@ -299,11 +363,14 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
             </div>
             <div className="cvb-card-body">{card.d}</div>
             {!readOnly && (
-              <span
+              <button
+                type="button"
                 className="cvb-card-resize"
                 title="Resize"
+                aria-label={`Resize card: ${card.t}. Use arrow keys to resize.`}
                 data-testid={`canvas-card-resize-${card.id}`}
                 onMouseDown={onResizeDown(card.id)}
+                onKeyDown={onResizeKeyDown(card.id)}
               />
             )}
           </div>
