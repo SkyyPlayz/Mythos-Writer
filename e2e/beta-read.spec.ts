@@ -38,9 +38,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-
-// SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source
-test.skip(true, 'SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source');
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -329,11 +327,11 @@ test('TC-BR-01: select text → Beta-Read bubble → mocked review → comment i
 
 test('TC-BR-02: comments persist when navigating away and back to the scene', async () => {
   // Navigate away — switches view and clears selectedScene state.
-  await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Brainstorm"]').click();
   await page.waitForTimeout(300); // allow React to unmount scene state
 
-  // Navigate back to the editor.
-  await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
+  // Navigate back to the editor (Story Writer module).
+  await clickStoryNav(page);
 
   // Ensure Stories tab is active, then re-select the scene.
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });

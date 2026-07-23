@@ -76,18 +76,23 @@ export default function ContinuityPanel({ selectionText, autoFocusSearch = false
   }, []);
 
   useEffect(() => {
-    const vr = latestVaultRootRef.current;
-    if (!vr) return;
+    // Depend on notesVaultRoot state (not just the ref) so a selection that's
+    // already present when the panel mounts still gets matched once the vault
+    // root finishes loading -- the ref alone only reruns this effect when
+    // selectionText changes, which never happens again if the panel mounted
+    // with the selection already made (the common case now that Continuity
+    // Peek is a Focus-mode overlay rather than an always-mounted sidebar).
+    if (!notesVaultRoot) return;
     if (matchDebounceRef.current) clearTimeout(matchDebounceRef.current);
     if (!selectionText.trim()) {
       setMatchResult('no-match');
       return;
     }
     matchDebounceRef.current = setTimeout(() => {
-      runMatch(selectionText, vr);
+      runMatch(selectionText, notesVaultRoot);
     }, MATCH_DEBOUNCE_MS);
     return () => { if (matchDebounceRef.current) clearTimeout(matchDebounceRef.current); };
-  }, [selectionText, runMatch]);
+  }, [selectionText, notesVaultRoot, runMatch]);
 
   // Manual search with debounce
   useEffect(() => {

@@ -9,9 +9,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selectors -- #story-vault-path-input renamed by SKY-3215; backdrop click point now covered by the wc-project-trigger window-chrome button
-test.skip(true, 'SKY-6933: stale selectors -- #story-vault-path-input renamed by SKY-3215; backdrop click point now covered by the wc-project-trigger window-chrome button');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
@@ -131,6 +128,11 @@ test.describe('Keyboard Shortcuts Dialog (SKY-83)', () => {
     await page.keyboard.press('ControlOrMeta+,');
     await expect(page.getByRole('dialog', { name: /settings/i })).toBeVisible({ timeout: 5_000 });
 
+    // Settings now opens on the Agents tab by default (SKY-6933 skip claimed the
+    // input id was renamed; it wasn't -- VaultPathsSection just isn't mounted
+    // until the Vault & Files tab is active).
+    await page.locator('[data-testid="settings-cat-vaults"]').click();
+
     const input = page.locator('#story-vault-path-input');
     await expect(input).toBeVisible({ timeout: 5_000 });
     await input.focus();
@@ -160,7 +162,14 @@ test.describe('Keyboard Shortcuts Dialog (SKY-83)', () => {
     const dialog = await openShortcutsWithQuestionMark(page);
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    await page.locator('.ksd-backdrop').click({ position: { x: 10, y: 10 } });
+    // (10, 10) used to be empty backdrop but is now covered by the window
+    // chrome's project-trigger button (wc-project-trigger, top-left) and
+    // intercepts the click -- target the bottom-left corner instead, which
+    // is still plain backdrop and out from under the chrome bar.
+    const backdrop = page.locator('.ksd-backdrop');
+    const box = await backdrop.boundingBox();
+    if (!box) throw new Error('backdrop bounding box unavailable');
+    await backdrop.click({ position: { x: 10, y: box.height - 10 } });
 
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });

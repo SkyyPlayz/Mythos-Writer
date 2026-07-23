@@ -1,19 +1,20 @@
 /**
  * continuity-peek.spec.ts — SKY-2012
  *
- * Selector map:
- *   Right sidebar tab:       .right-sidebar [role="tab"], label "Continuity"
- *   Continuity panel:        .continuity-panel
+ * Selector map (post GH#633 right-sidebar redesign — Continuity Peek is now
+ * ONLY reachable as a floating overlay in Focus writing mode; there is no
+ * right-sidebar tab anymore):
+ *   Focus overlay:           .continuity-focus-overlay[role="dialog"]
+ *   Continuity panel:        .continuity-panel (nested inside the overlay)
  *   Search input:            input[aria-label="Search entities in Notes Vault"]
  *   Entity card:             .entity-card[aria-label="<entity name>"]
  *   Type badge:              .entity-type-badge[aria-label="Type: <type>"]
  *   View-full-note button:   button[aria-label="View full note: <entity name>"]
- *   Focus overlay:           .continuity-focus-overlay[role="dialog"]
  *   Notes editor:            .note-viewer-editor
  *
  * Acceptance coverage:
- *   TC-CP-01  Continuity tab appears in the right sidebar
- *   TC-CP-02  Ctrl/Cmd+Shift+K opens/focuses the Continuity panel
+ *   TC-CP-01  With entity notes present, the shortcut opens the Continuity Peek overlay
+ *   TC-CP-02  Ctrl/Cmd+Shift+K opens/focuses the Continuity Peek overlay
  *   TC-CP-03  Selecting an entity name auto-populates its card
  *   TC-CP-04  Selecting an alias resolves to the entity card
  *   TC-CP-05  Selection lookup still works with 100 seeded entities
@@ -37,8 +38,20 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel
-test.skip(true, 'SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel');
+// SKY-8204 follow-up (SKY-8242): selectors + trigger flow are re-pointed at the
+// current overlay-based architecture (see selector map above) and a real
+// product bug was found + fixed along the way (ContinuityPanel.tsx's
+// selection-match effect only re-ran on selectionText changes, so a selection
+// already made before the panel mounted -- the common case now that Continuity
+// Peek is a Focus-mode overlay instead of an always-mounted sidebar -- never
+// got matched if notesVaultRoot hadn't resolved yet). That fix is real and is
+// landing in this same PR. What's NOT yet solved: TC-CP-02/04/05/06 are still
+// intermittently flaky when the full suite runs sequentially against the
+// single shared Electron instance (each passes reliably in isolation via
+// `-g "TC-CP-0X"`, ruling out a hard logic bug, but something about running
+// them back-to-back against shared `page`/`app` state still races). Re-skip
+// pending that residual investigation rather than merge a flaky CI file.
+test.skip(true, 'SKY-8242: overlay selectors/flow fixed + real ContinuityPanel race fixed, but the full sequential run is still intermittently flaky (passes in isolation) -- see file header for diagnosis, owner: CTO');
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const STORY_ID = 'cp-e2e-story-0001';
@@ -206,6 +219,11 @@ async function selectWholeEditor(page: Page): Promise<void> {
   const editor = page.locator('.ProseMirror');
   await editor.click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  // Ctrl+A raises a native selectionchange event that TipTap's onSelectionUpdate
+  // -> onSelectionChange -> React state propagates asynchronously; without this,
+  // the shortcut that opens Continuity Peek can fire before editorSelectionText
+  // has actually updated, so the panel mounts with a stale/empty selection.
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim() ?? '')).not.toBe('');
 }
 
 async function replaceSceneText(page: Page, text: string): Promise<void> {
@@ -216,9 +234,34 @@ async function replaceSceneText(page: Page, text: string): Promise<void> {
   await expect(editor).toContainText(text, { timeout: 5_000 });
 }
 
+async function ensureFocusMode(page: Page): Promise<void> {
+  const shell = page.locator('.desktop-shell');
+  const cls = await shell.getAttribute('class');
+  if (!cls?.includes('writing-mode-focus')) {
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+F' : 'Control+Shift+F');
+    await expect(shell).toHaveClass(/writing-mode-focus/, { timeout: 4_000 });
+  }
+}
+
+// Continuity Peek only ever mounts inside the Focus-mode floating overlay
+// (DesktopShell.tsx) -- the shortcut is a no-op outside Focus mode, so every
+// caller needs Focus mode active first.
 async function openContinuityWithShortcut(page: Page): Promise<void> {
+  await ensureFocusMode(page);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+K' : 'Control+Shift+K');
+  await expect(page.locator('.continuity-focus-overlay[role="dialog"]')).toBeVisible({ timeout: 6_000 });
   await expect(page.locator('.continuity-panel').first()).toBeVisible({ timeout: 6_000 });
+}
+
+// The overlay's backdrop is a true modal -- it intercepts pointer events to
+// the editor underneath, unlike the old non-modal right-sidebar tab. Tests
+// that need to change the editor selection must close it first.
+async function closeContinuityOverlayIfOpen(page: Page): Promise<void> {
+  const overlay = page.locator('.continuity-focus-overlay[role="dialog"]');
+  if (await overlay.isVisible().catch(() => false)) {
+    await page.keyboard.press('Escape');
+    await expect(overlay).not.toBeVisible({ timeout: 4_000 });
+  }
 }
 
 let userData: string;
@@ -248,59 +291,70 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-test('TC-CP-01: with entity notes present, the Continuity tab appears in the right sidebar', async () => {
-  await expect(page.locator('.right-sidebar [role="tab"]', { hasText: 'Continuity' })).toBeVisible({ timeout: 8_000 });
+// Leave no overlay open across tests -- it would block the next test's
+// editor interactions (see closeContinuityOverlayIfOpen above).
+test.afterEach(async () => {
+  await closeContinuityOverlayIfOpen(page);
+});
+
+test('TC-CP-01: with entity notes present, the shortcut opens the Continuity Peek overlay', async () => {
+  await openContinuityWithShortcut(page);
+  await expect(page.locator('.continuity-focus-overlay[role="dialog"]')).toHaveAttribute('aria-label', 'Continuity Peek');
 });
 
 test('TC-CP-02 and TC-CP-08: Ctrl/Cmd+Shift+K opens Continuity and focuses search', async () => {
   await openContinuityWithShortcut(page);
-  const continuityTab = page.locator('.right-sidebar [role="tab"]', { hasText: 'Continuity' });
-  await expect(continuityTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('input[aria-label="Search entities in Notes Vault"]')).toBeFocused({ timeout: 4_000 });
 });
 
 test('TC-CP-10: empty state is shown with no selection and no search query', async () => {
+  // The overlay is modal (blocks the editor underneath), so the selection
+  // state must be set BEFORE opening it, not after.
+  await page.locator('.ProseMirror').click(); // collapses any selection, nothing selected
   await openContinuityWithShortcut(page);
-  const search = page.locator('input[aria-label="Search entities in Notes Vault"]');
-  await search.fill('');
-  await page.keyboard.press('Escape');
-  await page.locator('.ProseMirror').click();
   await expect(page.locator('.continuity-panel')).toContainText('Select text in the editor');
 });
 
 test('TC-CP-03: selecting an entity name auto-populates a Marcus card', async () => {
-  await openContinuityWithShortcut(page);
+  // Focus mode must be entered before the selection is made -- switching
+  // modes remounts the editor pane and would otherwise drop it.
+  await ensureFocusMode(page);
   await replaceSceneText(page, 'Marcus');
   await selectWholeEditor(page);
+  await openContinuityWithShortcut(page);
   const card = page.locator('.entity-card', { hasText: 'Marcus' }).first();
-  await expect(card).toBeVisible({ timeout: 4_000 });
+  await expect(card).toBeVisible({ timeout: 8_000 });
 });
 
 test('TC-CP-04: selecting an alias resolves to the aliased entity card', async () => {
-  await openContinuityWithShortcut(page);
+  await ensureFocusMode(page);
   await replaceSceneText(page, 'the Duke');
   await selectWholeEditor(page);
+  await openContinuityWithShortcut(page);
   const card = page.locator('.entity-card', { hasText: 'Duke Aurelius' }).first();
-  await expect(card).toBeVisible({ timeout: 4_000 });
-  await expect(card).toContainText('a.k.a. "the Duke"');
+  await expect(card).toBeVisible({ timeout: 8_000 });
+  // EntityCard renders aliases as plain text with no quote marks (a.k.a. {aliases.join(', ')}).
+  await expect(card).toContainText('a.k.a. the Duke');
 });
 
 test('TC-CP-05: selection lookup works with 100 entities seeded', async () => {
-  await openContinuityWithShortcut(page);
+  await ensureFocusMode(page);
   await replaceSceneText(page, 'Perf Entity 099');
   await selectWholeEditor(page);
   const started = Date.now();
+  await openContinuityWithShortcut(page);
   const card = page.locator('.entity-card', { hasText: 'Perf Entity 099' }).first();
   await expect(card).toBeVisible({ timeout: 4_000 });
   expect(Date.now() - started).toBeLessThan(4_000);
 });
 
 test('TC-CP-06: entity card shows required fields and View full note opens the note', async () => {
-  await openContinuityWithShortcut(page);
+  await ensureFocusMode(page);
   await replaceSceneText(page, 'Marcus');
   await selectWholeEditor(page);
+  await openContinuityWithShortcut(page);
   const card = page.locator('.entity-card', { hasText: 'Marcus' }).first();
-  await expect(card).toBeVisible({ timeout: 4_000 });
+  await expect(card).toBeVisible({ timeout: 8_000 });
   await expect(card.locator('.entity-card-name')).toHaveText('Marcus');
   await expect(card.locator('.entity-type-badge')).toHaveText('character');
   await expect(card.locator('.entity-card-excerpt')).toContainText('Marcus is a principled cartographer');
@@ -311,8 +365,10 @@ test('TC-CP-06: entity card shows required fields and View full note opens the n
   await expect(page.locator('.note-viewer-editor')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+1' : 'Control+1');
+  // Exit Focus mode first -- it hides the Story Navigator sidebar, so
+  // nav-scene-row wouldn't be visible yet for openSeededScene to find.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+N' : 'Control+Shift+N');
   await openSeededScene(page);
-  await openContinuityWithShortcut(page);
 });
 
 test('TC-CP-07: manual search returns partial-name matches and clicking a result loads its card', async () => {
@@ -341,7 +397,13 @@ test('TC-CP-09: Focus Mode opens Continuity as a dismissible floating overlay', 
 
   await openContinuityWithShortcut(page);
   await expect(overlay).toBeVisible({ timeout: 4_000 });
-  await page.mouse.click(20, 20);
+  // (20, 20) is now under the window chrome's project-trigger button, which
+  // swallows the click before it reaches the backdrop -- click the backdrop
+  // directly, away from the centered dialog panel.
+  const backdrop = page.locator('.continuity-focus-overlay-backdrop');
+  const backdropBox = await backdrop.boundingBox();
+  if (!backdropBox) throw new Error('continuity overlay backdrop bounding box unavailable');
+  await backdrop.click({ position: { x: backdropBox.width - 15, y: backdropBox.height / 2 } });
   await expect(overlay).not.toBeVisible({ timeout: 4_000 });
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+N' : 'Control+Shift+N');
