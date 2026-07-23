@@ -187,17 +187,21 @@ async function openStep2ViaTemplate(title?: string) {
   }
 }
 
-// M29: Step 2's CTA now navigates into the shared genre → theme pages instead
-// of creating the vault directly; the actual onboardingComplete() call only
-// fires after "Open my vault ✦" on the theme step. Drives Step 2 → genre →
-// theme → finish with default genre/theme picks (Epic Fantasy / Neon Classic).
+// M29 / SKY-7649: Step 2's CTA now navigates into the shared genre → theme →
+// provider pages instead of creating the vault directly; the actual
+// onboardingComplete() call only fires after "Open my vault ✦" on the
+// provider step (Skip, since these tests don't care about provider config).
+// Drives Step 2 → genre → theme → provider → finish with default genre/theme
+// picks (Epic Fantasy / Neon Classic).
 async function finishViaTemplateFlow(title = 'My Novel') {
   await openStep2ViaTemplate(title);
   fireEvent.click(screen.getByTestId('gs-create-story'));
   await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
   fireEvent.click(screen.getByTestId('custom-genre-continue'));
   await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('custom-theme-finish'));
+  fireEvent.click(screen.getByTestId('custom-theme-continue'));
+  await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId('wiz-provider-skip'));
   await flushAsyncEffects();
 }
 
@@ -314,7 +318,8 @@ describe('OnboardingWizard — Step 1', () => {
     fireEvent.click(screen.getByTestId('custom-location-quick-start-link'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
-    expect(screen.getByText('Quick Start · 1 of 2')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step.
+    expect(screen.getByText('Quick Start · 1 of 3')).toBeInTheDocument();
     expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
     await act(async () => {});
   });
@@ -331,7 +336,9 @@ describe('OnboardingWizard — Step 1', () => {
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('custom-genre-continue'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-finish'));
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
     expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
     expect(onComplete).not.toHaveBeenCalled();
@@ -762,23 +769,35 @@ describe('OnboardingWizard — Step 1c (genre picker)', () => {
     await act(async () => {});
   });
 
-  it('Start triggers step3 and calls onboardingComplete with sampleGenre', async () => {
+  // SKY-7649: sample now passes through the shared Theme → Provider tail
+  // (spec §1.1) before finishing, instead of finishing straight off step1c.
+  async function finishSampleFlow() {
+    fireEvent.click(screen.getByTestId('genre-start-btn'));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
+    await flushAsyncEffects();
+  }
+
+  it('Start funnels into the shared Theme + Provider tail before step3', async () => {
     await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
-    fireEvent.click(screen.getByTestId('genre-start-btn'));
+    await finishSampleFlow();
     await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({ startMode: 'sample', sampleGenre: 'cozy-fantasy' })
     ));
   });
 
-  it('error on onboardingComplete shows error card on step1c', async () => {
+  it('error on onboardingComplete shows error card on step3, same as every other flow', async () => {
     mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Bundle not found' });
     await renderAtStep1c();
     fireEvent.click(screen.getByTestId('genre-card-mystery'));
-    fireEvent.click(screen.getByTestId('genre-start-btn'));
-    await waitFor(() => expect(screen.getByTestId('genre-sample-error')).toBeInTheDocument());
-    expect(screen.getByTestId('genre-sample-error')).toHaveTextContent('Bundle not found');
+    await finishSampleFlow();
+    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
+    expect(screen.getByTestId('gs-scaffold-error')).toHaveTextContent('Bundle not found');
+    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
   });
 });
 
@@ -797,9 +816,10 @@ describe('OnboardingWizard — Step 2', () => {
     expect(screen.getByText("What's your story called?")).toBeInTheDocument();
   });
 
-  it('shows step indicator "Use a Template · 2 of 4"', async () => {
+  it('shows step indicator "Use a Template · 2 of 5"', async () => {
     await renderAtStep2();
-    expect(screen.getByText('Use a Template · 2 of 4')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step.
+    expect(screen.getByText('Use a Template · 2 of 5')).toBeInTheDocument();
   });
 
   // SKY-1362: F-12 — step2 Back button arrow also wrapped in aria-hidden
@@ -1004,7 +1024,8 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     await openStep2ViaTemplate('My Novel');
     fireEvent.click(screen.getByTestId('gs-create-story'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    expect(screen.getByText('Use a Template · 3 of 4')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step.
+    expect(screen.getByText('Use a Template · 3 of 5')).toBeInTheDocument();
     expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
   });
 
@@ -1052,7 +1073,9 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     fireEvent.click(screen.getByTestId('custom-genre-continue'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('wiz-theme-aurora'));
-    fireEvent.click(screen.getByTestId('custom-theme-finish'));
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({
         startMode: 'template',
@@ -1073,18 +1096,26 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('custom-genre-continue'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-finish'));
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({ authorName: undefined })
     ));
   });
 
+  // SKY-7649: sample now passes through the shared Theme → Provider tail
+  // (spec §1.1) before finishing.
   it('calls onboardingComplete with correct sample payload', async () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await openSampleFlow();
     // Step1c: select Sci-Fi Noir genre card
     fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
     fireEvent.click(screen.getByTestId('genre-start-btn'));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
       expect.objectContaining({ startMode: 'sample', sampleGenre: 'sci-fi-noir' })
     ));
@@ -1099,7 +1130,9 @@ describe('OnboardingWizard — Step 2 → Step 3', () => {
     await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('custom-genre-continue'));
     await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-finish'));
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ authorName: 'Jane Doe' })
     ));
@@ -1435,12 +1468,22 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
   });
 
-  it('"Use them" dismisses dialog and opens the legacy vault path', async () => {
+  // SKY-7649: opening an existing vault (including via the legacy-migration
+  // "Use them" path) now skips straight to Theme + Provider (spec §1.1) — the
+  // actual open() IPC call is deferred to the provider step's finish.
+  it('"Use them" dismisses dialog and funnels into Theme + Provider before opening the legacy vault path', async () => {
     mockApi = makeApi({ chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }) });
     (window as unknown as { api: unknown }).api = mockApi;
     await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
     fireEvent.click(screen.getByTestId('gs-migration-use'));
     expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
+    // Theme is the first tail screen for open-existing — Back is hidden.
+    expect(screen.queryByTestId('custom-theme-back')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
       startMode: 'open-existing',
       vaultParentPath: '/home/user/Mythos',
@@ -1465,6 +1508,17 @@ describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
 });
 
 // ─── Import / Open screen (SKY-2990) ───────────────────────────────────────────
+
+// SKY-7649: every step-import completion path now funnels into the shared
+// Theme → Provider tail (spec §1.1) instead of finishing immediately — the
+// import/open work already happened by the time this runs, so Skip is enough.
+async function finishImportTail() {
+  await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId('custom-theme-continue'));
+  await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+  fireEvent.click(screen.getByTestId('wiz-provider-skip'));
+  await flushAsyncEffects();
+}
 
 describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
   it('AC-I-01: card-import-obsidian navigates to import screen', async () => {
@@ -1565,6 +1619,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
       startMode: 'open-existing',
       vaultParentPath: '/home/user/MyVault',
     }));
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
@@ -1638,6 +1693,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await openObsReport('/obs/notes');
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
     await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes'));
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
@@ -1652,8 +1708,9 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     expect(screen.getByTestId('obs-report-notes')).toBeInTheDocument();
     expect(screen.getByTestId('obs-report-story')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes'));
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-    expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes');
     expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/story', 'story');
   });
 
@@ -1695,6 +1752,7 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Importing 3 of 15');
     expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Copied Notes/idea.md');
     await act(async () => { resolveImport({ ok: true }); });
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
     expect(unsubscribe).toHaveBeenCalled();
   });
@@ -1735,6 +1793,8 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     expect(onComplete).not.toHaveBeenCalled();
     expect(screen.getByTestId('obs-report-confirm')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(2));
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
@@ -1750,8 +1810,10 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     );
     await openObsReport('/obs/notes');
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
     expect(screen.queryByTestId('obs-import-error')).not.toBeInTheDocument();
+    await finishImportTail();
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
   it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
@@ -1772,7 +1834,55 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('import-action-btn'));
     await waitFor(() => expect(importDocxMock).toHaveBeenCalled());
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  // SKY-7649 regression: the import already committed by the time the tail
+  // reaches Theme (finishImportViaTail) — navigating back to step-import must
+  // not resurrect a re-triggerable "Import / Open" / "Confirm import" control
+  // with the same input still queued, or a second click re-runs the mutation.
+  it('SKY-7649 regression: Back from Theme after a completed DOCX import resets step-import (no re-triggerable Import button)', async () => {
+    const importDocxMock = vi.fn().mockResolvedValue({
+      ok: true,
+      importedStories: [{ filePath: '/docs/story.docx', storyId: 's1', storyTitle: 'Story', sceneCount: 2, warnings: [] }],
+      errors: [],
+    });
+    (window as unknown as { api: unknown }).api = { ...mockApi, importDocxToStoryVault: importDocxMock };
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    const fileInput = screen.getByTestId('import-docx-input');
+    const file = new File(['content'], 'story.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
+    fireEvent.change(fileInput);
+    await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('import-action-btn'));
+    await waitFor(() => expect(importDocxMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('custom-theme-back'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    expect(screen.queryByText('story.docx')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+    expect(importDocxMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('SKY-7649 regression: Back from Theme after a completed Obsidian import resets step-import (no re-triggerable Confirm button)', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('custom-theme-back'));
+    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
+    // Back to the empty picker form, not the stale dry-run report.
+    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('');
+    expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1);
   });
 
   it('AC-E-04: Back button on import screen returns to step1', async () => {
@@ -1813,7 +1923,8 @@ describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)
     expect(screen.getByTestId('custom-location-next')).toBeInTheDocument();
     // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
     // M29: relabeled "Custom Setup" → "Start Fresh"
-    expect(screen.getByText('Start Fresh · 1 of 4')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step.
+    expect(screen.getByText('Start Fresh · 1 of 5')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -2048,7 +2159,8 @@ describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)
     expect(screen.getByTestId('custom-template-finish')).toBeInTheDocument();
     // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
     // M29: relabeled "Custom Setup" → "Start Fresh"
-    expect(screen.getByText('Start Fresh · 2 of 4')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step.
+    expect(screen.getByText('Start Fresh · 2 of 5')).toBeInTheDocument();
     await act(async () => {});
   });
 
@@ -2167,6 +2279,12 @@ describe('OnboardingWizard — SKY-3713: onboardingStartMode on conflict and imp
     fireEvent.click(screen.getByTestId('gs-conflict-see-options'));
     expect(screen.getByTestId('gs-conflict-dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('gs-conflict-open-existing'));
+    // SKY-7649: defers to Theme + Provider before actually opening the vault.
+    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
+    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('custom-theme-continue'));
+    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ onboardingStartMode: 'open-existing' }),
     ));
@@ -2179,6 +2297,7 @@ describe('OnboardingWizard — SKY-3713: onboardingStartMode on conflict and imp
     );
     fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
     fireEvent.click(screen.getByTestId('import-action-btn'));
+    await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ onboardingStartMode: 'open-existing' }),
     ));

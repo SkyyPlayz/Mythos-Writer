@@ -1911,10 +1911,57 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-wiz-skip {
+  /* SKY-7649: .btn-ghost has no base rule of its own, so without an explicit
+     reset here this rendered as the browser's raw UA button chrome (grey
+     fill, outset bevel) — reading as a disabled control, which spec §4.3
+     explicitly forbids for the "Skip for now" link. Pattern matches the
+     existing .gs-footer-link reset above. */
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
   font-size: 11.5px;
   color: rgb(142 157 184); /* prototype #8e9db8 */
 }
 
 .gs-wiz-skip:hover {
   color: var(--n1); /* prototype skip-link hover */
+}
+
+.gs-wiz-skip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ── AI provider step (SKY-7649, design-handoff v2 §4) ── */
+
+/* Wraps the reused ProviderSection in a card — the section itself has no
+   chrome of its own (SettingsPanel relies on its own page layout for that). */
+.wiz-provider-card {
+  padding: var(--space-5, 20px);
+  border-radius: 13px;
+  background: var(--glass, var(--color-surface));
+  border: var(--bw, 1px) solid var(--b1, var(--color-border));
+}
+
+.wiz-provider-reassurance {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: -0.75rem 0 0;
+}
+
+/* Spec §4.3: Skip sits below the primary CTA, not beside it — both centered,
+   same visual weight as any other link (never disabled/de-emphasized). */
+.gs-actions--wiz-provider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.gs-actions--wiz-provider .gs-actions__cta {
+  align-self: stretch;
 }

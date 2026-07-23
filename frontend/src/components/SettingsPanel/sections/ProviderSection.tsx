@@ -36,6 +36,10 @@ interface ProviderSectionProps {
   setModelList: (list: string[]) => void;
   setModelListStatus: (status: ModelListStatus) => void;
   setModelListError: (error: string | null) => void;
+  /** SKY-7649 (design-handoff v2 §4.1): suppress the "Default model" field
+   *  block (select/refresh-models/loading/error) — used by the wizard's
+   *  trimmed WizardProviderStep, which leaves model selection to Settings. */
+  hideModelField?: boolean;
 }
 
 export default function ProviderSection({
@@ -65,6 +69,7 @@ export default function ProviderSection({
   setModelList,
   setModelListStatus,
   setModelListError,
+  hideModelField,
 }: ProviderSectionProps) {
   // Beta 4 M28 (B4-6 / B4-10): OAuth login buttons ship in connect-later
   // state — clicking explains what account linking will do when it lands and
@@ -181,66 +186,68 @@ export default function ProviderSection({
                 />
               </div>
             )}
-            <div className="settings-field">
-              <label className="settings-label" htmlFor="provider-model">Default model</label>
-              {LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
-                <select
-                  id="provider-model"
-                  className="settings-input settings-select"
-                  value={modelList.includes(providerModel) ? providerModel : ''}
-                  aria-label="Default model for this provider"
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '__custom__') {
-                      setUseCustomInput(true);
-                      setProviderModel('');
-                    } else {
-                      setProviderModel(val);
-                    }
-                    setSavedOk(false);
-                  }}
-                >
-                  {!modelList.includes(providerModel) && providerModel && (
-                    <option value={providerModel}>{providerModel}</option>
-                  )}
-                  {modelList.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-              ) : (
-                <input
-                  id="provider-model"
-                  className="settings-input"
-                  type="text"
-                  value={providerModel}
-                  placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
-                  spellCheck={false}
-                  aria-label="Default model for this provider"
-                  onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
-                />
-              )}
-              {modelListStatus === 'loading' && (
-                <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
-              )}
-              {modelListStatus === 'error' && modelListError && (
-                <p className="settings-hint settings-hint-warn" data-testid={providerKind === 'ollama' ? 'ollama-not-running-hint' : 'model-list-error'}>
-                  {modelListError}
-                </p>
-              )}
-              {LISTABLE_PROVIDERS.has(providerKind) && (
-                <button
-                  type="button"
-                  className="settings-btn settings-btn-secondary"
-                  disabled={modelListStatus === 'loading'}
-                  aria-label="Refresh model list"
-                  data-testid="refresh-models-btn"
-                  onClick={() => onFetchModels(providerKind, providerBaseUrl)}
-                >
-                  {modelListStatus === 'loading' ? 'Loading…' : 'Refresh models'}
-                </button>
-              )}
-            </div>
+            {!hideModelField && (
+              <div className="settings-field">
+                <label className="settings-label" htmlFor="provider-model">Default model</label>
+                {LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
+                  <select
+                    id="provider-model"
+                    className="settings-input settings-select"
+                    value={modelList.includes(providerModel) ? providerModel : ''}
+                    aria-label="Default model for this provider"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '__custom__') {
+                        setUseCustomInput(true);
+                        setProviderModel('');
+                      } else {
+                        setProviderModel(val);
+                      }
+                      setSavedOk(false);
+                    }}
+                  >
+                    {!modelList.includes(providerModel) && providerModel && (
+                      <option value={providerModel}>{providerModel}</option>
+                    )}
+                    {modelList.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                    <option value="__custom__">Custom…</option>
+                  </select>
+                ) : (
+                  <input
+                    id="provider-model"
+                    className="settings-input"
+                    type="text"
+                    value={providerModel}
+                    placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
+                    spellCheck={false}
+                    aria-label="Default model for this provider"
+                    onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
+                  />
+                )}
+                {modelListStatus === 'loading' && (
+                  <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
+                )}
+                {modelListStatus === 'error' && modelListError && (
+                  <p className="settings-hint settings-hint-warn" data-testid={providerKind === 'ollama' ? 'ollama-not-running-hint' : 'model-list-error'}>
+                    {modelListError}
+                  </p>
+                )}
+                {LISTABLE_PROVIDERS.has(providerKind) && (
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-secondary"
+                    disabled={modelListStatus === 'loading'}
+                    aria-label="Refresh model list"
+                    data-testid="refresh-models-btn"
+                    onClick={() => onFetchModels(providerKind, providerBaseUrl)}
+                  >
+                    {modelListStatus === 'loading' ? 'Loading…' : 'Refresh models'}
+                  </button>
+                )}
+              </div>
+            )}
             <div className="settings-field">
               <div className="settings-input-row">
                 <button

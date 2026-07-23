@@ -193,15 +193,16 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
     await click('card-start-blank');
     expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    expect(screen.getByText('Start Fresh · 1 of 4')).toBeInTheDocument();
+    // SKY-7649: the tail grew a 3rd "AI helpers" step (Location/Template/Genre/Theme/AI helpers).
+    expect(screen.getByText('Start Fresh · 1 of 5')).toBeInTheDocument();
   });
 
-  it('shows 4 progress dots with the current step filled', async () => {
+  it('shows 5 progress dots with the current step filled', async () => {
     await renderWizard(
       <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-genre" />,
     );
     const dots = screen.getByTestId('wiz-dots');
-    expect(dots.querySelectorAll('.wiz-dot')).toHaveLength(4);
+    expect(dots.querySelectorAll('.wiz-dot')).toHaveLength(5);
     expect(dots.querySelectorAll('.wiz-dot--on')).toHaveLength(3);
     await act(async () => {});
   });
@@ -212,7 +213,7 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-template-continue');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
-    expect(screen.getByText('Start Fresh · 3 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 3 of 5')).toBeInTheDocument();
     await click('custom-genre-back');
     expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
   });
@@ -223,9 +224,22 @@ describe('OnboardingWizard v2 — guided setup navigation (Beta 3 M25)', () => {
     );
     await click('custom-genre-continue');
     expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument();
-    expect(screen.getByText('Start Fresh · 4 of 4')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 4 of 5')).toBeInTheDocument();
     await click('custom-theme-back');
     expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument();
+  });
+
+  it('theme step: Continue advances to the provider step; Back returns to theme', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-theme" />,
+    );
+    await click('custom-theme-continue');
+    expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument();
+    expect(screen.getByText('Start Fresh · 5 of 5')).toBeInTheDocument();
+    const dots = screen.getByTestId('wiz-dots');
+    expect(dots.querySelectorAll('.wiz-dot--on')).toHaveLength(5);
+    await click('wiz-provider-back');
+    expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument();
   });
 
   it('Escape on the genre and theme steps opens the cancel confirm', async () => {
@@ -327,7 +341,10 @@ describe('OnboardingWizard v2 — guided finish persists genre + theme (Beta 3 M
     await click('wiz-genre-dark-fantasy');
     await click('custom-genre-continue');
     await click('wiz-theme-cyber');
-    await click('custom-theme-finish');
+    await click('custom-theme-continue');
+    // SKY-7649: the tail now ends on the (optional) provider step — Skip,
+    // since these tests only care about genre/theme personalization.
+    await click('wiz-provider-skip');
   }
 
   it('"Open my vault ✦" completes onboarding with the custom-vault payload', async () => {
