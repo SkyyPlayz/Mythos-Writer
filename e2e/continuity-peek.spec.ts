@@ -38,7 +38,7 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-8204 follow-up (SKY-8231): selectors + trigger flow are re-pointed at the
+// SKY-8204 follow-up (SKY-8242): selectors + trigger flow are re-pointed at the
 // current overlay-based architecture (see selector map above) and a real
 // product bug was found + fixed along the way (ContinuityPanel.tsx's
 // selection-match effect only re-ran on selectionText changes, so a selection
@@ -51,7 +51,7 @@ import {
 // `-g "TC-CP-0X"`, ruling out a hard logic bug, but something about running
 // them back-to-back against shared `page`/`app` state still races). Re-skip
 // pending that residual investigation rather than merge a flaky CI file.
-test.skip(true, 'SKY-8231: overlay selectors/flow fixed + real ContinuityPanel race fixed, but the full sequential run is still intermittently flaky (passes in isolation) -- see file header for diagnosis, owner: CTO');
+test.skip(true, 'SKY-8242: overlay selectors/flow fixed + real ContinuityPanel race fixed, but the full sequential run is still intermittently flaky (passes in isolation) -- see file header for diagnosis, owner: CTO');
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const STORY_ID = 'cp-e2e-story-0001';
