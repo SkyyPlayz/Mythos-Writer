@@ -3328,11 +3328,17 @@ const handlers: IpcHandlers = {
       const warnings: string[] = [];
       let markdown: string;
       let fallbackTitle = path.basename(filePath).replace(/\.[^.]+$/, '') || 'Imported Story';
+      // True once fallbackTitle is a real title from the source (ePub dc:title,
+      // Scrivener project name) rather than the imported filename — an
+      // authoritative title must survive splitStoryMarkdown's heading split
+      // instead of being overwritten by the first chapter heading it finds.
+      let titleIsAuthoritative = false;
 
       if (format === 'scriv') {
         const res = scrivToStoryMarkdown(filePath);
         markdown = res.markdown;
         fallbackTitle = res.title;
+        titleIsAuthoritative = true;
         warnings.push(...res.warnings);
       } else if (format === 'md' || format === 'epub' || format === 'docx' || format === 'gdoc') {
         const stat = fs.statSync(filePath);
@@ -3344,7 +3350,10 @@ const handlers: IpcHandlers = {
         } else if (format === 'epub') {
           const res = await epubToStoryMarkdown(fs.readFileSync(filePath));
           markdown = res.markdown;
-          if (res.title) fallbackTitle = res.title;
+          if (res.title) {
+            fallbackTitle = res.title;
+            titleIsAuthoritative = true;
+          }
           warnings.push(...res.warnings);
         } else if (/\.html?$/i.test(filePath)) {
           // Google Docs "Download → Web page (.html)" export.
@@ -3358,7 +3367,7 @@ const handlers: IpcHandlers = {
         return { ok: false, error: `Unknown story format: ${String(format)}` };
       }
 
-      const split = splitStoryMarkdown(markdown, fallbackTitle);
+      const split = splitStoryMarkdown(markdown, fallbackTitle, titleIsAuthoritative);
       const written = writeImportedStoryToVault(getVaultRoot(), getManifestPath(), split);
 
       // Story Plan note → Notes Vault Plans/ (Scene Crafter + timeline read plans there).
