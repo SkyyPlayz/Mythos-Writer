@@ -6,9 +6,9 @@
  * (so the onboarding wizard appears), clicks the "Quick Start" card on step 1,
  * and asserts:
  *
- *   - the wizard advances through the shared genre/theme mini-flow
- *     (Beta 4 M29: screen-custom-genre → screen-custom-theme →
- *     custom-theme-finish) then the scaffolding step, then closes
+ *   - the wizard advances through the shared genre/theme/provider mini-flow
+ *     (Beta 4 M29: screen-custom-genre → screen-custom-theme; SKY-7649:
+ *     screen-wiz-provider, skipped here) then the scaffolding step, then closes
  *   - main creates `<userData>/vaults/My First Vault/Story Vault`
  *     and `…/Notes Vault` with the expected SKY-15 seed layout
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
@@ -177,14 +177,17 @@ async function selectQuickStartCard(pg: Page): Promise<void> {
 // Beta 4 M29: Quick Start no longer creates the vault immediately — it now
 // funnels into the shared genre → theme mini-flow (screen-custom-genre →
 // screen-custom-theme) before the vault-creation IPC call fires on
-// "Open my vault ✦" (custom-theme-finish). Defaults (first genre chip,
-// first theme card) are fine for this switcher-focused test.
+// "Open my vault ✦". SKY-7649: the tail grew a 3rd, optional AI-provider
+// step (screen-wiz-provider) — Skip it, defaults (first genre chip, first
+// theme card) are fine for this switcher-focused test.
 async function completeQuickStart(pg: Page): Promise<void> {
   await selectQuickStartCard(pg);
   await expect(pg.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 30_000 });
   await pg.locator('[data-testid="custom-genre-continue"]').click();
   await expect(pg.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
-  await pg.locator('[data-testid="custom-theme-finish"]').click();
+  await pg.locator('[data-testid="custom-theme-continue"]').click();
+  await expect(pg.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+  await pg.locator('[data-testid="wiz-provider-skip"]').click();
   await Promise.race([
     pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
     pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),

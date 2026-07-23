@@ -1,7 +1,7 @@
 /**
  * onboarding-v2.spec.ts — SKY-2009 / SKY-2209
  *
- * E2E coverage for AC-OB-01 through AC-OB-16 from the Onboarding v2 PRD.
+ * E2E coverage for AC-OB-01 through AC-OB-17 from the Onboarding v2 PRD.
  *
  * Coverage map:
  *   AC-OB-01  Quick Start → editor + Getting Started panel visible
@@ -20,6 +20,8 @@
  *   AC-OB-14  Seeded ≤5 recents display correctly; list stays bounded
  *   AC-OB-15  Escape on step1c → cancel-confirm dialog shown
  *   AC-OB-16  Windows-style path > 200 chars → path-too-long state + button disabled
+ *   AC-OB-17  SKY-7649: optional AI-provider step — trimmed ProviderSection
+ *             (no model field), API key persists on finish, Skip never blocks
  *
  * Run (after `npm run build:electron`):
  *   npx playwright install chromium
@@ -126,6 +128,20 @@ async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronAppl
   await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
+/** Poll `predicate` until it returns true or `timeoutMs` elapses. */
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 15_000,
+  intervalMs = 200,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
 /** Navigate from step1 to the step2 form via the (stubbed) template card. */
 async function navigateToStep2(app: ElectronApplication, page: Page): Promise<void> {
   // Stub IPC so step2 can render without side-effects.
@@ -138,16 +154,19 @@ async function navigateToStep2(app: ElectronApplication, page: Page): Promise<vo
 }
 
 /**
- * Complete the shared genre → theme mini-flow (M29) from screen-custom-genre,
- * accepting the default chip/card on each step. Every path that reaches
+ * Complete the shared genre → theme → provider tail (M29 / SKY-7649) from
+ * screen-custom-genre, accepting the default chip/card on each step and
+ * skipping the optional AI-provider step. Every path that reaches
  * screen-step2 or clicks card-quick-start now funnels through this before the
- * vault-creation IPC call fires on "Open my vault ✦" (custom-theme-finish).
+ * vault-creation IPC call fires on "Open my vault ✦" (wiz-provider-skip).
  */
 async function finishGenreThemeFlow(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 8_000 });
   await page.locator('[data-testid="custom-genre-continue"]').click();
   await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
-  await page.locator('[data-testid="custom-theme-finish"]').click();
+  await page.locator('[data-testid="custom-theme-continue"]').click();
+  await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="wiz-provider-skip"]').click();
 }
 
 /** Navigate from step1 to step1c (genre picker) via the sample footer link. */
@@ -413,6 +432,14 @@ test.describe('AC-OB-04: Sci-Fi Noir sample completion', () => {
     await expect(page.locator('[data-testid="genre-start-btn"]')).toBeEnabled();
 
     await page.locator('[data-testid="genre-start-btn"]').click();
+
+    // SKY-7649: sample now passes through the shared Theme → Provider tail
+    // (spec §1.1) before finishing.
+    await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
+
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     // Verify the IPC was called with startMode=sample and the correct sampleGenre
@@ -675,6 +702,16 @@ test.describe('AC-OB-09–12: Path validation states', () => {
 
     // Choose "Open existing vault"
     await page.locator('[data-testid="gs-conflict-open-existing"]').click();
+
+    // SKY-7649: "Open existing vault" now defers straight to Theme + Provider
+    // (spec §1.1) instead of opening immediately — Theme is the tail's first
+    // screen here (Vault is skipped), and its Back is hidden accordingly.
+    await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="custom-theme-back"]')).toHaveCount(0);
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
+
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
   });
 });
@@ -873,5 +910,138 @@ test.describe('AC-OB-16: Windows path > 200 chars disabled', () => {
     await expect(hint).toContainText('200');
 
     await expect(page.locator('[data-testid="gs-create-story"]')).toBeDisabled();
+  });
+});
+
+// ─── AC-OB-17: SKY-7649 — optional AI-provider step ──────────────────────────
+
+test.describe('AC-OB-17: SKY-7649 AI-provider step', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-v2-17-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  /** Fastest real path to the provider step: Quick Start's 2-screen genre → theme tail. */
+  async function reachProviderStep(): Promise<void> {
+    await clickStep1Card(page, 'card-quick-start');
+    await expect(page.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-genre-continue"]').click();
+    await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+  }
+
+  test('AC-OB-17a: renders the trimmed ProviderSection (no model field), reassurance line, and Skip link', async () => {
+    await reachProviderStep();
+
+    await expect(page.getByText('Want writing help from an AI agent?')).toBeVisible();
+    await expect(page.getByText(/This is optional\. Skip it and set it up later/)).toBeVisible();
+    await expect(page.getByText('You can write, take notes, and build your timeline with zero AI set up.')).toBeVisible();
+
+    // spec §4.1 "left out on purpose": the model-list select/refresh-models row
+    // must not render (hideModelField) — that's Settings' surface, not the wizard's.
+    await expect(page.locator('#provider-model')).toHaveCount(0);
+    await expect(page.locator('[data-testid="refresh-models-btn"]')).toHaveCount(0);
+
+    // Provider segmented control + API key field (Anthropic is the default kind).
+    await expect(page.locator('#provider-select')).toBeVisible();
+    await expect(page.locator('#provider-api-key')).toBeVisible();
+
+    // Skip is a plain link, not a disabled/de-emphasized control (spec §4.3 — no dark pattern).
+    const skip = page.locator('[data-testid="wiz-provider-skip"]');
+    await expect(skip).toBeVisible();
+    await expect(skip).toBeEnabled();
+  });
+
+  // Note: `settings:set` strips every secret-shaped field (provider.apiKey
+  // included) into an encrypted OS-keychain-backed store (MYT-777) — real
+  // Electron `safeStorage` isn't available under headless xvfb (no Secret
+  // Service/keychain), so the app deliberately refuses to persist the key at
+  // all there rather than fall back to writing plaintext. That makes
+  // app-settings.json / settingsGet() unusable to verify the key round-tripped
+  // in *this* environment — real desktops have a keychain, and that
+  // persistence layer is covered by `electron-main/src/secrets/*.test.ts`.
+  // What's reliably testable end-to-end is the renderer's own responsibility:
+  // does the wizard send the right `settings:set` payload for what the user
+  // typed. Stub the handler to capture it instead of exercising the real
+  // (environment-dependent) secrets store.
+  test('AC-OB-17b: entering an API key sends the correct provider payload on finish', async () => {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('settings:set');
+      // Capture only the FIRST call with a provider field — the wizard's own
+      // awaited write, dispatched before DesktopShell (and its own later,
+      // unrelated settings:set calls) ever mounts — so a later write can't
+      // shadow the one this test cares about.
+      ipcMain.handle('settings:set', (_evt, envelope: { settings?: { provider?: unknown } }) => {
+        const g = globalThis as typeof globalThis & { __sky7649ProviderPayload?: unknown };
+        if (g.__sky7649ProviderPayload === undefined && envelope?.settings?.provider) {
+          g.__sky7649ProviderPayload = envelope.settings.provider;
+        }
+        return { saved: true };
+      });
+    });
+
+    await page.locator('#provider-api-key').fill('sk-ant-e2e-test-key');
+    await page.locator('[data-testid="wiz-provider-finish"]').click();
+
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    const providerSeenByMain = await app.evaluate(() => (
+      (globalThis as typeof globalThis & { __sky7649ProviderPayload?: unknown }).__sky7649ProviderPayload
+    ));
+    expect(providerSeenByMain, 'main process must receive a settings:set call with the typed provider config')
+      .toEqual({ kind: 'anthropic', model: '', apiKey: 'sk-ant-e2e-test-key' });
+  });
+});
+
+test.describe('AC-OB-17c: Skip never blocks app usage', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob-v2-17c-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-OB-17c: skipping the provider step still completes onboarding and leaves no provider config', async () => {
+    await clickStep1Card(page, 'card-quick-start');
+    await expect(page.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-genre-continue"]').click();
+    await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
+
+    // Skip never blocks: DesktopShell mounts and the app is fully usable with
+    // zero AI set up (spec §4's central promise).
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    const settingsPath = path.join(userData, 'app-settings.json');
+    const settingsExist = await waitUntil(() => fs.existsSync(settingsPath));
+    expect(settingsExist).toBe(true);
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+      provider?: unknown;
+      onboardingComplete?: boolean;
+    };
+    expect(settings.onboardingComplete).toBe(true);
+    expect(settings.provider).toBeUndefined();
   });
 });

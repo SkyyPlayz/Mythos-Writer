@@ -1918,3 +1918,34 @@ a.gs-footer-link:focus-visible {
 .gs-wiz-skip:hover {
   color: var(--n1); /* prototype skip-link hover */
 }
+
+/* ── AI provider step (SKY-7649, design-handoff v2 §4) ── */
+
+/* Wraps the reused ProviderSection in a card — the section itself has no
+   chrome of its own (SettingsPanel relies on its own page layout for that). */
+.wiz-provider-card {
+  padding: var(--space-5, 20px);
+  border-radius: 13px;
+  background: var(--glass, var(--color-surface));
+  border: var(--bw, 1px) solid var(--b1, var(--color-border));
+}
+
+.wiz-provider-reassurance {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: -0.75rem 0 0;
+}
+
+/* Spec §4.3: Skip sits below the primary CTA, not beside it — both centered,
+   same visual weight as any other link (never disabled/de-emphasized). */
+.gs-actions--wiz-provider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.gs-actions--wiz-provider .gs-actions__cta {
+  align-self: stretch;
+}

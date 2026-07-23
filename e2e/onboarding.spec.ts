@@ -3,7 +3,9 @@
  *
  * E2E smoke covering three of the four first-run entry paths in the
  * Beta 4 M29 OnboardingWizard (step1 4-path cards → shared genre/theme →
- * step3):
+ * step3). SKY-7649: the tail now ends on an optional AI-provider step
+ * (Skip'd in all three cases below — provider-step coverage lives in
+ * onboarding-v2.spec.ts):
  *
  *   TC-OB-01  Start Fresh (blank template)  — wizard completes through
  *             location → template(blank) → genre → theme; manifest.json
@@ -113,8 +115,8 @@ async function enterStartFresh(page: Page, vaultName: string): Promise<void> {
 // and OnboardingWizard is rendered. The test navigates:
 //   screen-step1 → card-start-blank → screen-custom-location → fill vault name →
 //   screen-custom-template → custom-template-blank → screen-custom-genre →
-//   screen-custom-theme → custom-theme-finish → (real onboarding:complete IPC)
-//   → DesktopShell
+//   screen-custom-theme → screen-wiz-provider (skipped) →
+//   (real onboarding:complete IPC) → DesktopShell
 //
 // The real IPC handler calls createMythosVault (Beta4 M5/M29 format v2), which
 // creates:
@@ -158,7 +160,11 @@ test.describe('TC-OB-01: Start Fresh (blank template)', () => {
     await page.locator('[data-testid="custom-genre-continue"]').click();
 
     await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="custom-theme-finish"]').click();
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+
+    // SKY-7649: the tail now ends on the optional AI-provider step — Skip it.
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
 
     // DesktopShell must mount (wizard calls onComplete → App re-renders)
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
@@ -262,6 +268,13 @@ test.describe('TC-OB-02: Sample Novel', () => {
     await expect(page.locator('[data-testid="genre-start-btn"]')).toBeEnabled({ timeout: 2_000 });
     await page.locator('[data-testid="genre-start-btn"]').click();
 
+    // SKY-7649: sample now passes through the shared Theme → Provider tail
+    // (spec §1.1) before finishing.
+    await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
+
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     const payloads = await app.evaluate(() => (
@@ -283,7 +296,7 @@ test.describe('TC-OB-02: Sample Novel', () => {
 //   screen-step1 → card-start-blank → screen-custom-location →
 //   custom-location-use-template-link → screen-step1b → template-card-e2e-tmpl →
 //   screen-step2 → fill title with default save path → gs-create-story →
-//   screen-custom-genre → screen-custom-theme → custom-theme-finish →
+//   screen-custom-genre → screen-custom-theme → screen-wiz-provider (skipped) →
 //   (mocked onboarding:complete) → DesktopShell
 
 test.describe('TC-OB-03: From Template', () => {
@@ -356,7 +369,11 @@ test.describe('TC-OB-03: From Template', () => {
     await page.locator('[data-testid="custom-genre-continue"]').click();
 
     await expect(page.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="custom-theme-finish"]').click();
+    await page.locator('[data-testid="custom-theme-continue"]').click();
+
+    // SKY-7649: the tail now ends on the optional AI-provider step — Skip it.
+    await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="wiz-provider-skip"]').click();
 
     // DesktopShell must mount (wizard calls onComplete → App re-renders)
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });

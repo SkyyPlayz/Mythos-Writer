@@ -15,6 +15,13 @@ import {
 } from './theme/liquidNeonEngine';
 import { LIQUID_NEON_PRESETS, LIQUID_NEON_SLOT_ROLES, type LiquidNeonPresetKey } from './theme/presets';
 import { showLnToast } from './theme/lnToast';
+import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
+import {
+  PROVIDER_OPTIONS,
+  type ProviderKind,
+  type TestConnectionStatus,
+  type ModelListStatus,
+} from './components/SettingsPanel/settingsPanelTypes';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -23,17 +30,22 @@ import './OnboardingWizard.css';
 // SKY-2990: step-import is the 3-section Import/Open picker screen
 // Beta 3 M25 / Beta 4 M29: custom-genre + custom-theme are the shared genre and
 // theme pages every creating path funnels through before finishing.
-type WizardStep = 'step1' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'step-import';
+// SKY-7649 (design-handoff v2 §4): wiz-provider is the new optional AI-provider
+// step — the last tail screen, between custom-theme and Done, on every path.
+type WizardStep = 'step1' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'wiz-provider' | 'step-import';
 // M29: 'start-fresh' creates a MythosVault v2 (demo-seeded unless Start Blank)
 // at a chosen location; 'quick-start' does the same at the default location.
 // 'default-mythos-vault' is kept as a legacy backend alias.
 // SKY-2007: 'open-existing' opens a pre-existing Mythos vault parent dir.
 type StartMode = 'blank' | 'sample' | 'template' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
 
-// M29: which entry path is driving the shared genre → theme pages, so the
-// theme step's finish knows which completion call to dispatch and the genre
-// step's Back knows where it came from.
-type WizardFlow = 'start-fresh' | 'template' | 'quick-start';
+// M29: which entry path is driving the shared genre → theme → provider tail,
+// so the tail's finish knows which completion call to dispatch and each
+// screen's Back knows where it came from.
+// SKY-7649: 'sample' / 'import' / 'open-existing' route through the same
+// tail (spec §1.1) even though they skip the genre step (step1c already
+// picked a genre for 'sample'; 'import'/'open-existing' have none).
+type WizardFlow = 'start-fresh' | 'template' | 'quick-start' | 'sample' | 'import' | 'open-existing';
 
 // SKY-2007: 7 inline validation states for the save-location path field.
 type PathValidationState =
@@ -334,6 +346,132 @@ function WizardDots({ total, current, labels }: { total: number; current: number
   );
 }
 
+// ─── WizardProviderStep (SKY-7649, design-handoff v2 §4) ──────────────────────
+
+/** Every piece of controlled state `ProviderSection` needs, minus `hideModelField`
+ *  (the wizard always sets it) — mirrors SettingsPanel's own provider state 1:1
+ *  so the same component can be reused verbatim (spec §4.1 engineering note). */
+interface WizardProviderStepProps {
+  providerKind: ProviderKind;
+  setProviderKind: (kind: ProviderKind) => void;
+  providerApiKey: string;
+  setProviderApiKey: (key: string) => void;
+  providerApiKeyDirty: boolean;
+  setProviderApiKeyDirty: (dirty: boolean) => void;
+  providerBaseUrl: string;
+  setProviderBaseUrl: (url: string) => void;
+  providerModel: string;
+  setProviderModel: (model: string) => void;
+  savedProviderApiKey: string;
+  testStatus: TestConnectionStatus;
+  testMsg: string;
+  onTest: () => void;
+  modelList: string[];
+  modelListStatus: ModelListStatus;
+  modelListError: string | null;
+  useCustomInput: boolean;
+  setUseCustomInput: (v: boolean) => void;
+  onFetchModels: (kind: ProviderKind, baseUrl: string) => void;
+  setSavedOk: (ok: boolean) => void;
+  activeProviderSupportsVoice: boolean;
+  setTestConnectionStatus: (status: TestConnectionStatus) => void;
+  setModelList: (list: string[]) => void;
+  setModelListStatus: (status: ModelListStatus) => void;
+  setModelListError: (error: string | null) => void;
+  /** Chrome the tail screens share (back / close / dots / step label). */
+  onBack: () => void;
+  showBack: boolean;
+  onClose: () => void;
+  stepLabel: string;
+  dotsTotal: number;
+  dotsCurrent: number;
+  dotLabels: string[];
+  /** Primary CTA — persists the entered config, then finishes the wizard. */
+  onContinue: () => void;
+  /** "Skip for now" link — finishes the wizard without touching provider config. */
+  onSkip: () => void;
+}
+
+/** SKY-7649 (design-handoff v2 §4): the optional AI-provider step. Sits
+ *  between Theme and Done on every entry path's tail. Composes the existing
+ *  `ProviderSection` (OAuth button / API-key field / TestConnectionStatus,
+ *  reused verbatim) with `hideModelField` — model selection stays in
+ *  Settings → AI Agents, this is progressive disclosure, not a missing
+ *  feature (spec §4.1). Never blocks or de-emphasizes Skip — no dark pattern. */
+function WizardProviderStep({
+  onBack,
+  showBack,
+  onClose,
+  stepLabel,
+  dotsTotal,
+  dotsCurrent,
+  dotLabels,
+  onContinue,
+  onSkip,
+  ...providerProps
+}: WizardProviderStepProps) {
+  return (
+    <div className="gs-modal" data-testid="screen-wiz-provider">
+      <div className="gs-modal__header">
+        {showBack && (
+          <button
+            className="btn-ghost btn-back"
+            type="button"
+            onClick={onBack}
+            data-testid="wiz-provider-back"
+          >
+            <span aria-hidden="true">&#x2190;</span> Back
+          </button>
+        )}
+        <span className="gs-step-label">{stepLabel}</span>
+        <button
+          className="gs-close-btn"
+          type="button"
+          aria-label="Close setup"
+          onClick={onClose}
+          data-testid="wiz-provider-close"
+        >
+          &#x2715;
+        </button>
+      </div>
+      <WizardDots total={dotsTotal} current={dotsCurrent} labels={dotLabels} />
+      <h2 className="gs-modal__title">Want writing help from an AI agent?</h2>
+      <p className="gs-modal__subtitle">
+        This is optional. Skip it and set it up later — nothing here is required to start writing.
+      </p>
+
+      <div className="wiz-provider-card" data-testid="wiz-provider-card">
+        <ProviderSection {...providerProps} hideModelField />
+      </div>
+
+      <p className="wiz-provider-reassurance" data-testid="wiz-provider-reassurance">
+        You can write, take notes, and build your timeline with zero AI set up.
+      </p>
+
+      {/* Spec §4.3: Skip sits below the primary CTA, same visual weight as any
+          other link — never disabled or de-emphasized (no dark pattern). */}
+      <div className="gs-actions gs-actions--wiz-provider">
+        <button
+          className="btn-primary gs-actions__cta"
+          type="button"
+          onClick={onContinue}
+          data-testid="wiz-provider-finish"
+        >
+          Open my vault &#x2726;
+        </button>
+        <button
+          className="btn-ghost gs-wiz-skip"
+          type="button"
+          onClick={onSkip}
+          data-testid="wiz-provider-skip"
+        >
+          Skip for now — I&apos;ll set this up later
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface StartingPointCardProps {
   icon: string;
   title: string;
@@ -528,7 +666,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // SKY-2008: step1c genre picker state
   const [selectedSampleGenre, setSelectedSampleGenre] = useState<SampleGenreId | null>(null);
   const [openAccordionGenre, setOpenAccordionGenre] = useState<SampleGenreId | null>(null);
-  const [sampleError, setSampleError] = useState('');
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateLoadError, setTemplateLoadError] = useState('');
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -601,8 +738,68 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // is 'classic'); the explicit instruction still stands, the justification
   // is just wrong.
   const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('winter');
-  // Non-null once "Open my vault ✦" ran, so Try Again keeps the personalization.
-  const guidedPersonalizationRef = useRef<{ genre: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
+  // Non-null once the theme step's Continue ran, so Try Again keeps the
+  // personalization. `genre` is omitted for the sample/import/open-existing
+  // flows (SKY-7649) — they never visit the 8-genre custom-genre grid.
+  const guidedPersonalizationRef = useRef<{ genre?: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
+  // SKY-7649: non-null once the provider step's primary CTA ran (Skip leaves
+  // this null) — the config to persist onto AppSettings on finish.
+  const guidedProviderRef = useRef<AppSettings['provider'] | null>(null);
+  // SKY-7649: the folder picked on "Open existing vault" — the IPC call that
+  // actually opens it is deferred to the provider step's finish (spec §1.1:
+  // "Skips straight to Theme + Provider"), so the path needs to outlive the
+  // Welcome screen. Also backs the ConflictDialog "Open existing vault" action.
+  const [openExistingPath, setOpenExistingPath] = useState('');
+  // SKY-7649: the already-completed settings object for the Import path —
+  // step-import's own IPC calls (Obsidian confirm / mythos-path open / docx)
+  // already do the real work on that screen; the tail after it only merges
+  // theme/provider personalization, no further mutation.
+  const pendingImportSettingsRef = useRef<AppSettings | null>(null);
+
+  // ─── SKY-7649: AI-provider step (design-handoff v2 §4) ─────────────────────
+  // Deliberately separate from SettingsPanel's own provider state — this is
+  // the wizard's own controlled instance of the same ~15 props ProviderSection
+  // needs, seeded from any already-saved provider (e.g. a wizard replay).
+  const [providerKind, setProviderKind] = useState<ProviderKind>(initialSettings.provider?.kind ?? 'anthropic');
+  const [providerApiKey, setProviderApiKey] = useState('');
+  const [providerApiKeyDirty, setProviderApiKeyDirty] = useState(false);
+  const [providerBaseUrl, setProviderBaseUrl] = useState(initialSettings.provider?.baseUrl ?? '');
+  const [providerModel, setProviderModel] = useState(initialSettings.provider?.model ?? '');
+  const [providerTestStatus, setProviderTestStatus] = useState<TestConnectionStatus>('idle');
+  const [providerTestMsg, setProviderTestMsg] = useState('');
+  // hideModelField keeps these three inert (no UI reads them) — kept as real
+  // state rather than no-ops only to satisfy ProviderSection's prop contract.
+  const [providerModelList, setProviderModelList] = useState<string[]>([]);
+  const [providerModelListStatus, setProviderModelListStatus] = useState<ModelListStatus>('idle');
+  const [providerModelListError, setProviderModelListError] = useState<string | null>(null);
+  const [providerUseCustomInput, setProviderUseCustomInput] = useState(false);
+
+  const handleProviderTest = useCallback(async () => {
+    setProviderTestStatus('testing');
+    setProviderTestMsg('');
+    try {
+      const result = await window.api.settingsTestConnection({
+        kind: providerKind,
+        apiKey: providerApiKeyDirty ? providerApiKey : (initialSettings.provider?.apiKey ?? ''),
+        baseUrl: providerBaseUrl || undefined,
+        model: providerModel,
+      });
+      if (result?.ok) {
+        setProviderTestStatus('ok');
+        setProviderTestMsg('Connection successful');
+      } else {
+        setProviderTestStatus('error');
+        setProviderTestMsg(result?.error ?? 'Connection failed');
+      }
+    } catch (e) {
+      setProviderTestStatus('error');
+      setProviderTestMsg(e instanceof Error ? e.message : 'Connection failed');
+    }
+  }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // hideModelField means nothing renders the fetched list — skip the network
+  // call entirely rather than fetch models the wizard never shows.
+  const handleProviderFetchModels = useCallback(() => {}, []);
 
   // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
   const [importMwPath, setImportMwPath] = useState('');
@@ -744,66 +941,102 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setStep('custom-template');
   }
 
-  // ─── Beta 3 M25: guided-setup finish (genre + theme persisted) ─────────────
+  // ─── Beta 3 M25 / SKY-7649: guided-setup finish (genre + theme + provider) ──
 
   /**
-   * Fold the guided-setup personalization (genre + neon preset) into the
-   * completed settings. No-op unless the guided "Open my vault ✦" path ran.
-   * Applies the preset tokens immediately (same live-apply path as the
-   * Appearance settings page), persists via settingsSet (non-fatal — the shell
-   * re-saves settings on any later change), and fires the prototype's
-   * "Vault ready" toast (prototype `wizFinish`, HTML 4447).
+   * Fold the guided-setup personalization (genre + neon preset, SKY-7649: plus
+   * the provider step's config) into the completed settings. No-op unless the
+   * theme step's Continue ran. Applies the preset tokens immediately (same
+   * live-apply path as the Appearance settings page), persists via settingsSet
+   * (non-fatal — the shell re-saves settings on any later change), and fires
+   * the prototype's "Vault ready" toast (prototype `wizFinish`, HTML 4447).
    */
-  function withGuidedPersonalization(updated: AppSettings): AppSettings {
+  async function withGuidedPersonalization(updated: AppSettings): Promise<AppSettings> {
     const guided = guidedPersonalizationRef.current;
-    if (!guided) return updated;
-    const preset = LIQUID_NEON_PRESETS[guided.theme];
-    const liquidNeonV2: LiquidNeonV2Settings = {
-      ...normalizeLiquidNeonV2(initialSettings.liquidNeonV2),
-      setKey: guided.theme,
-      slots: [...preset.c] as LiquidNeonV2Settings['slots'],
-      wp: 'match',
-    };
-    const merged: AppSettings = { ...updated, liquidNeonV2, onboardingGenre: guided.genre };
-    applyLiquidNeonV2Tokens(liquidNeonV2, cosmicBgUrl);
-    // Persist as a patch over the FRESH on-disk settings — onboarding:complete
-    // just wrote main-side fields (firstLaunchAt, gettingStartedProgress, …)
-    // that a stale full-object write would clobber.
-    void (async () => {
-      try {
-        const fresh = await window.api.settingsGet();
-        await window.api.settingsSet({ ...fresh, liquidNeonV2, onboardingGenre: guided.genre });
-      } catch { /* non-fatal — shell re-saves settings on any later change */ }
-    })();
-    showLnToast('Vault ready — welcome to Mythos Writer');
+    const provider = guidedProviderRef.current;
+    if (!guided && !provider) return updated;
+    let merged = updated;
+    let liquidNeonV2: LiquidNeonV2Settings | undefined;
+    if (guided) {
+      const preset = LIQUID_NEON_PRESETS[guided.theme];
+      liquidNeonV2 = {
+        ...normalizeLiquidNeonV2(initialSettings.liquidNeonV2),
+        setKey: guided.theme,
+        slots: [...preset.c] as LiquidNeonV2Settings['slots'],
+        wp: 'match',
+      };
+      merged = { ...merged, liquidNeonV2, ...(guided.genre ? { onboardingGenre: guided.genre } : {}) };
+      applyLiquidNeonV2Tokens(liquidNeonV2, cosmicBgUrl);
+    }
+    if (provider) {
+      merged = { ...merged, provider };
+    }
+    // SKY-7649: awaited (not fire-and-forget) — DesktopShell mounts its own
+    // settings state independently once onComplete() fires, and its later
+    // unrelated saves (layout, tabs, …) echo back whatever it had at mount
+    // time. If this patch were still in flight when that happened, an
+    // apiKey the user just typed here could be reconciled away as a
+    // "cleared" key (masking only protects values the renderer has actually
+    // seen). Awaiting guarantees this write lands before DesktopShell exists.
+    try {
+      const fresh = await window.api.settingsGet();
+      await window.api.settingsSet({
+        ...fresh,
+        ...(liquidNeonV2 ? { liquidNeonV2 } : {}),
+        ...(guided?.genre ? { onboardingGenre: guided.genre } : {}),
+        ...(provider ? { provider } : {}),
+      });
+    } catch { /* non-fatal — shell re-saves settings on any later change */ }
+    if (guided) showLnToast('Vault ready — welcome to Mythos Writer');
     return merged;
   }
 
-  /** "Open my vault ✦" on the theme step — dispatch the completion call for
-   *  whichever entry path funneled into the shared genre/theme pages (M29). */
-  function handleGuidedFinish() {
-    guidedPersonalizationRef.current = { genre: wizGenre, theme: wizTheme };
+  /** SKY-7649: dispatch the completion call for whichever entry path funneled
+   *  into the shared theme → provider tail. Called from the provider step's
+   *  primary CTA / Skip link — the last screen on every path. */
+  function dispatchWizardFinish() {
     if (wizardFlow === 'quick-start') void handleQuickStartFinish();
     else if (wizardFlow === 'template') void submitCreateStory();
-    else void handleCustomFinish();
+    else if (wizardFlow === 'start-fresh') void handleCustomFinish();
+    else if (wizardFlow === 'sample') void handleSampleFinish();
+    else if (wizardFlow === 'import') void handleImportFinish();
+    else void handleOpenExistingFinish(); // wizardFlow === 'open-existing'
   }
 
-  /** M29: the shared genre/theme pages render/back-navigate differently
-   *  depending on which of the 3 creating paths funneled into them —
-   *  Quick Start skips location+template, so it's a 2-step mini-flow.
-   *  SKY-7593: Quick Start is now launched from the custom-location screen's
-   *  "One-click setup" link (spec §2.2), so its back-target moved with it. */
-  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep; dotLabels: string[] } {
+  /** M29 / SKY-7649: the shared theme → provider tail renders/back-navigates
+   *  differently depending on which entry path funneled into it — Quick Start
+   *  skips location+template so it's a shorter mini-flow; sample/import/
+   *  open-existing skip the 8-genre grid entirely (SKY-7649: they never visit
+   *  custom-genre — sample already picked a genre on step1c, import/open-
+   *  existing have none). `themeBack` is where the theme step's Back goes
+   *  (distinct from `genreBack`, which is custom-genre's own Back target).
+   *  Every flow's tail now ends with a 3rd "AI helpers" dot for the new
+   *  provider step (spec §6). */
+  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep; themeBack: WizardStep; dotLabels: string[] } {
     if (wizardFlow === 'quick-start') {
-      return { label: 'Quick Start', totalSteps: 2, genreBack: 'custom-location', dotLabels: ['Genre', 'Theme'] };
+      return { label: 'Quick Start', totalSteps: 3, genreBack: 'custom-location', themeBack: 'custom-genre', dotLabels: ['Genre', 'Theme', 'AI helpers'] };
     }
     if (wizardFlow === 'template') {
-      return { label: 'Use a Template', totalSteps: 4, genreBack: 'step2', dotLabels: ['Template', 'Details', 'Genre', 'Theme'] };
+      return { label: 'Use a Template', totalSteps: 5, genreBack: 'step2', themeBack: 'custom-genre', dotLabels: ['Template', 'Details', 'Genre', 'Theme', 'AI helpers'] };
     }
-    return { label: 'Start Fresh', totalSteps: 4, genreBack: 'custom-template', dotLabels: ['Location', 'Template', 'Genre', 'Theme'] };
+    if (wizardFlow === 'start-fresh') {
+      return { label: 'Start Fresh', totalSteps: 5, genreBack: 'custom-template', themeBack: 'custom-genre', dotLabels: ['Location', 'Template', 'Genre', 'Theme', 'AI helpers'] };
+    }
+    if (wizardFlow === 'sample') {
+      return { label: 'Open Sample Project', totalSteps: 2, genreBack: 'step1', themeBack: 'step1c', dotLabels: ['Theme', 'AI helpers'] };
+    }
+    if (wizardFlow === 'import') {
+      return { label: 'Import Obsidian Vault', totalSteps: 2, genreBack: 'step1', themeBack: 'step-import', dotLabels: ['Theme', 'AI helpers'] };
+    }
+    // wizardFlow === 'open-existing': Theme is the first tail screen (Vault is
+    // skipped entirely, spec §1.1) — its Back is hidden, see the render site.
+    return { label: 'Open Existing Vault', totalSteps: 2, genreBack: 'step1', themeBack: 'step1', dotLabels: ['Theme', 'AI helpers'] };
   }
 
-  /** M29: genre + theme sent with every creating completion call. */
+  /** M29: genre + theme sent with every creating completion call
+   *  (start-fresh/template/quick-start only — main doesn't consume either
+   *  field for sample/import/open-existing, SKY-7649 applies theme to those
+   *  purely client-side via withGuidedPersonalization). */
   function personalizationPayload(): { genre?: string; themeKey?: string } {
     const guided = guidedPersonalizationRef.current;
     if (!guided) return {};
@@ -843,7 +1076,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           : {}),
       };
       // Beta 3 M25: merge guided-setup genre + theme when that path was used.
-      onComplete(withGuidedPersonalization(updated));
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
       setScaffolding(false);
@@ -1012,7 +1245,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(withGuidedPersonalization(updated));
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
       setScaffolding(false);
@@ -1029,6 +1262,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setStep('custom-location');
   }
 
+  /** SKY-7649 (design-handoff v2 §1.1): "Open existing vault" now skips
+   *  straight to Theme + Provider — the actual open (and its step3
+   *  spinner/error handling) is deferred to `handleOpenExistingFinish`,
+   *  dispatched from the provider step. Picking a folder here just records
+   *  it; nothing is touched about the existing vault yet. */
   async function handleOpenExistingVault(vaultPath?: string) {
     setStartMode('open-existing');
     setScaffoldError('');
@@ -1037,9 +1275,22 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         ? { cancelled: false, path: vaultPath.trim() }
         : await api().chooseVaultFolder('Open existing Mythos vault');
       if (picked.cancelled || !picked.path) return;
-      setStep('step3');
-      setScaffolding(true);
-      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: picked.path });
+      setOpenExistingPath(picked.path);
+      setWizardFlow('open-existing');
+      setStep('custom-theme');
+    } catch (e) {
+      setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
+    }
+  }
+
+  /** SKY-7649: the provider step's finish for the open-existing flow — does
+   *  the real open (was the tail of the old `handleOpenExistingVault`). */
+  async function handleOpenExistingFinish() {
+    setScaffoldError('');
+    setStep('step3');
+    setScaffolding(true);
+    try {
+      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: openExistingPath });
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? "This folder doesn't look like a Mythos Writer vault…");
         setScaffolding(false);
@@ -1053,7 +1304,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
       setScaffolding(false);
@@ -1158,7 +1409,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
             : {}),
         };
-        onComplete(updated);
+        finishImportViaTail(updated);
         return;
       }
       // SKY-2993: Obsidian path — dry-run scan first, then report → confirm.
@@ -1177,7 +1428,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           });
           return;
         }
-        onComplete({ ...initialSettings, onboardingComplete: true });
+        finishImportViaTail({ ...initialSettings, onboardingComplete: true });
         return;
       }
     } catch (e) {
@@ -1188,6 +1439,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     } finally {
       setImportRunning(false);
     }
+  }
+
+  /** SKY-7649 (design-handoff v2 §1.1): the "Import Obsidian vault" card's
+   *  screen (step-import — shared by all 3 of its sections) still passes
+   *  through Theme + Provider before Done. The real import/open work already
+   *  happened on this screen by the time any of its 3 completion paths call
+   *  this — the tail after it only merges theme/provider personalization. */
+  function finishImportViaTail(updated: AppSettings) {
+    pendingImportSettingsRef.current = updated;
+    setWizardFlow('import');
+    setStep('custom-theme');
+  }
+
+  /** SKY-7649: the provider step's finish for the import flow — no further
+   *  IPC calls (the import already committed), just the settings merge. */
+  async function handleImportFinish() {
+    const updated = pendingImportSettingsRef.current;
+    if (!updated) return;
+    onComplete(await withGuidedPersonalization(updated));
   }
 
   // ─── SKY-2993: Obsidian import flow (dry-run → report → confirm) ───────────
@@ -1240,9 +1510,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         if (res.dropWarning) dropWarnings.push(res.dropWarning);
       }
       // Drop warnings are non-fatal (import still succeeded) — surface them
-      // as a toast alongside the success path instead of blocking onComplete.
+      // as a toast alongside the success path instead of blocking the finish.
       if (dropWarnings.length > 0) showLnToast(dropWarnings.join(' '));
-      onComplete({ ...initialSettings, onboardingComplete: true });
+      finishImportViaTail({ ...initialSettings, onboardingComplete: true });
     } catch (e) {
       setObsError(e instanceof Error ? e.message : 'Import failed. Check the folder and try again.');
     } finally {
@@ -1256,16 +1526,29 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   function handleSelectSample() {
     // SKY-2008: go to genre picker (step1c) instead of form (step2)
     setStartMode('sample');
-    setSampleError('');
     setSelectedSampleGenre(null);
     setOpenAccordionGenre(null);
     setStep('step1c');
   }
 
-  async function handleStartSample() {
+  /** SKY-7649: step1c's "Start with X →" — the sample genre is already
+   *  chosen, so this just funnels into the shared theme → provider tail
+   *  (spec §1.1: "still passes through Theme + Provider") instead of
+   *  finishing immediately. */
+  function handleSampleGenreContinue() {
     if (!selectedSampleGenre) return;
     setScaffoldError('');
-    setSampleError('');
+    setWizardFlow('sample');
+    setStep('custom-theme');
+  }
+
+  /** SKY-7649: the provider step's finish for the sample flow — does the real
+   *  work (was step1c's old immediate finish). Errors surface on step3's
+   *  standard scaffoldError/Try Again/Open Existing Story UI, same as every
+   *  other flow, rather than a sample-specific inline error. */
+  async function handleSampleFinish() {
+    if (!selectedSampleGenre) return;
+    setScaffoldError('');
     setStep('step3');
     setScaffolding(true);
     try {
@@ -1273,8 +1556,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       if (!res.ok || res.error) {
         setScaffoldError(res.error ?? 'Sample content couldn\'t be loaded. Try starting blank instead.');
         setScaffolding(false);
-        setStep('step1c');
-        setSampleError(res.error ?? 'Sample content couldn\'t be loaded. Try starting blank instead.');
         return;
       }
       const updated: AppSettings = {
@@ -1285,13 +1566,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(updated);
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Sample content couldn\'t be loaded. Try starting blank instead.';
       setScaffoldError(msg);
       setScaffolding(false);
-      setStep('step1c');
-      setSampleError(msg);
     }
   }
 
@@ -1398,35 +1677,19 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   // SKY-2007: conflict dialog actions
+  /** SKY-7649: the conflict dialog's "Open existing vault" resolves to the
+   *  same outcome as the top-level card — defer to the shared open-existing
+   *  finish, dispatched from the provider step, same as `handleOpenExistingVault`. */
   function handleConflictOpenExisting() {
     const expanded = savePath.startsWith('~')
       ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
       : savePath;
     setShowConflictDialog(false);
     setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: expanded })
-      .then((res) => {
-        if (!res.ok || res.error) {
-          setScaffoldError(res.error ?? 'Could not open this vault.');
-          setScaffolding(false);
-          return;
-        }
-        const updated: AppSettings = {
-          ...initialSettings,
-          onboardingComplete: true,
-          onboardingStartMode: 'open-existing',
-          ...(res.firstSceneId && res.firstScenePath
-            ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-            : {}),
-        };
-        onComplete(updated);
-      })
-      .catch((e) => {
-        setScaffoldError(e instanceof Error ? e.message : 'Could not open this vault.');
-        setScaffolding(false);
-      });
+    setStartMode('open-existing');
+    setOpenExistingPath(expanded);
+    setWizardFlow('open-existing');
+    setStep('custom-theme');
   }
 
   function handleConflictNewFolder() {
@@ -1522,7 +1785,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
           : {}),
       };
-      onComplete(withGuidedPersonalization(updated));
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
       setScaffolding(false);
@@ -1539,10 +1802,8 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       // retry must not echo those fields — re-issuing with empty strings
       // would be rejected by the main-side validator.
       // SKY-2008: sample mode also skips the form — pass sampleGenre instead.
-      // SKY-2007: open-existing uses the saved path directly.
-      const expanded = savePath.startsWith('~')
-        ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
-        : savePath;
+      // SKY-2007 / SKY-7649: open-existing retries with the folder actually
+      // picked (openExistingPath), not the unrelated step2 savePath field.
       const customExpanded = customVaultPath.startsWith('~/')
         ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
         : customVaultPath.startsWith('~\\')
@@ -1561,7 +1822,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         : startMode === 'sample'
         ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
         : startMode === 'open-existing'
-        ? { startMode: 'open-existing' as const, vaultParentPath: expanded }
+        ? { startMode: 'open-existing' as const, vaultParentPath: openExistingPath }
         : {
             startMode: startMode!,
             storyTitle: storyTitle.trim(),
@@ -1587,7 +1848,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           : {}),
       };
       // Beta 3 M25: a guided-setup retry keeps the picked genre + theme.
-      onComplete(withGuidedPersonalization(updated));
+      onComplete(await withGuidedPersonalization(updated));
     } catch (e) {
       setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
       setScaffolding(false);
@@ -1618,7 +1879,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         setSelectedTemplateId(null);
         return;
       }
-      if (step === 'step1' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'step-import') {
+      if (step === 'step1' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'wiz-provider' || step === 'step-import') {
         setShowCancelConfirm(true);
       }
     }
@@ -1850,7 +2111,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Use a Template &#xB7; 1 of 4</span>
+            <span className="gs-step-label">Use a Template &#xB7; 1 of 5</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2066,7 +2327,6 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               onClick={() => {
                 setSelectedSampleGenre(null);
                 setOpenAccordionGenre(null);
-                setSampleError('');
                 setStep('step1');
               }}
               data-testid="gs-back-step1c"
@@ -2116,26 +2376,12 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               ))}
             </div>
 
-            {sampleError && (
-              <div className="gp-error" role="alert" data-testid="genre-sample-error">
-                <p>{sampleError}</p>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => { setSampleError(''); setStartMode('blank'); setStep('step2'); }}
-                  data-testid="genre-error-blank-cta"
-                >
-                  Start blank instead
-                </button>
-              </div>
-            )}
-
             <div className="gp-footer">
               <button
                 type="button"
                 className="btn-primary gp-start-button"
                 disabled={!selectedSampleGenre}
-                onClick={handleStartSample}
+                onClick={handleSampleGenreContinue}
                 data-testid="genre-start-btn"
               >
                 {selectedSampleGenre
@@ -2160,7 +2406,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Use a Template &#xB7; 2 of 4</span>
+            <span className="gs-step-label">Use a Template &#xB7; 2 of 5</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2378,7 +2624,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Start Fresh · 1 of 4</span>
+            <span className="gs-step-label">Start Fresh · 1 of 5</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2566,7 +2812,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             >
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
-            <span className="gs-step-label">Start Fresh · 2 of 4</span>
+            <span className="gs-step-label">Start Fresh · 2 of 5</span>
             <button
               className="gs-close-btn"
               type="button"
@@ -2661,7 +2907,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               <span aria-hidden="true">&#x2190;</span> Back
             </button>
             <span className="gs-step-label">
-              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps === 2 ? 1 : 3} of {wizFlowMeta().totalSteps}
+              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps - 2} of {wizFlowMeta().totalSteps}
             </span>
             <button
               className="gs-close-btn"
@@ -2675,7 +2921,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <WizardDots
             total={wizFlowMeta().totalSteps}
-            current={wizFlowMeta().totalSteps === 2 ? 1 : 3}
+            current={wizFlowMeta().totalSteps - 2}
             labels={wizFlowMeta().dotLabels}
           />
           <h2 className="gs-modal__title">Pick a genre preset</h2>
@@ -2720,16 +2966,33 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       {step === 'custom-theme' && (
         <div className="gs-modal" data-testid="screen-custom-theme">
           <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep('custom-genre')}
-              data-testid="custom-theme-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
+            {/* SKY-7649 (spec §6): Back is hidden on Theme only when it's the
+                flow's first tail screen — true for open-existing, which skips
+                the Vault step entirely. */}
+            {wizardFlow !== 'open-existing' && (
+              <button
+                className="btn-ghost btn-back"
+                type="button"
+                onClick={() => {
+                  // SKY-7649: the import flow's real import/open IPC call has
+                  // already committed by the time this screen is reached
+                  // (finishImportViaTail) — step-import's own dry-run report
+                  // and file selections are stale leftovers, not resumable
+                  // state. Without a reset, Back would resurrect an enabled
+                  // "Confirm import"/"Import / Open" button that re-runs the
+                  // already-completed import a second time (duplicate notes/
+                  // scenes). Reset it the same way every other entry into
+                  // step-import does (gs-back-step-import, card-import-obsidian).
+                  if (wizardFlow === 'import') resetImportState();
+                  setStep(wizFlowMeta().themeBack);
+                }}
+                data-testid="custom-theme-back"
+              >
+                <span aria-hidden="true">&#x2190;</span> Back
+              </button>
+            )}
             <span className="gs-step-label">
-              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps} of {wizFlowMeta().totalSteps}
+              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps - 1} of {wizFlowMeta().totalSteps}
             </span>
             <button
               className="gs-close-btn"
@@ -2743,7 +3006,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </div>
           <WizardDots
             total={wizFlowMeta().totalSteps}
-            current={wizFlowMeta().totalSteps}
+            current={wizFlowMeta().totalSteps - 1}
             labels={wizFlowMeta().dotLabels}
           />
           <h2 className="gs-modal__title">Choose your neon.</h2>
@@ -2804,13 +3067,82 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-primary gs-actions__cta"
               type="button"
-              onClick={handleGuidedFinish}
-              data-testid="custom-theme-finish"
+              onClick={() => {
+                // SKY-7649: the genre grid only applies to start-fresh/
+                // template/quick-start — sample/import/open-existing never
+                // visit custom-genre, so `genre` stays unset for them.
+                guidedPersonalizationRef.current = {
+                  theme: wizTheme,
+                  ...(wizardFlow === 'start-fresh' || wizardFlow === 'template' || wizardFlow === 'quick-start'
+                    ? { genre: wizGenre }
+                    : {}),
+                };
+                setStep('wiz-provider');
+              }}
+              data-testid="custom-theme-continue"
             >
-              Open my vault &#x2726;
+              Continue &#x2192;
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── AI provider (optional) — new step (SKY-7649, design-handoff v2 §4) ── */}
+      {step === 'wiz-provider' && (
+        <WizardProviderStep
+          providerKind={providerKind}
+          setProviderKind={setProviderKind}
+          providerApiKey={providerApiKey}
+          setProviderApiKey={setProviderApiKey}
+          providerApiKeyDirty={providerApiKeyDirty}
+          setProviderApiKeyDirty={setProviderApiKeyDirty}
+          providerBaseUrl={providerBaseUrl}
+          setProviderBaseUrl={setProviderBaseUrl}
+          providerModel={providerModel}
+          setProviderModel={setProviderModel}
+          savedProviderApiKey={initialSettings.provider?.apiKey ?? ''}
+          testStatus={providerTestStatus}
+          testMsg={providerTestMsg}
+          onTest={() => { void handleProviderTest(); }}
+          modelList={providerModelList}
+          modelListStatus={providerModelListStatus}
+          modelListError={providerModelListError}
+          useCustomInput={providerUseCustomInput}
+          setUseCustomInput={setProviderUseCustomInput}
+          onFetchModels={handleProviderFetchModels}
+          setSavedOk={() => {}}
+          activeProviderSupportsVoice={false}
+          setTestConnectionStatus={setProviderTestStatus}
+          setModelList={setProviderModelList}
+          setModelListStatus={setProviderModelListStatus}
+          setModelListError={setProviderModelListError}
+          onBack={() => setStep('custom-theme')}
+          showBack
+          onClose={() => setShowCancelConfirm(true)}
+          stepLabel={`${wizFlowMeta().label} · ${wizFlowMeta().totalSteps} of ${wizFlowMeta().totalSteps}`}
+          dotsTotal={wizFlowMeta().totalSteps}
+          dotsCurrent={wizFlowMeta().totalSteps}
+          dotLabels={wizFlowMeta().dotLabels}
+          onContinue={() => {
+            const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+            guidedProviderRef.current = {
+              kind: providerKind,
+              model: providerModel,
+              ...(providerDef.needsKey
+                ? { apiKey: providerApiKeyDirty ? providerApiKey : (initialSettings.provider?.apiKey ?? '') }
+                : {}),
+              ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+              ...(initialSettings.provider?.kind === providerKind && initialSettings.provider.capabilities
+                ? { capabilities: initialSettings.provider.capabilities }
+                : {}),
+            };
+            dispatchWizardFinish();
+          }}
+          onSkip={() => {
+            guidedProviderRef.current = null;
+            dispatchWizardFinish();
+          }}
+        />
       )}
 
       {/* ── Step 3: Creating your story ── */}
