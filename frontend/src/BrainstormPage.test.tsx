@@ -4,7 +4,7 @@ import { __resetAgentSessionStores } from './lib/useAgentSessions';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; message: string }) => void;
 
 // ─── MediaRecorder mock (for Voice IO state-machine tests) ────────────────────
 class MockMediaRecorderClass {
@@ -110,7 +110,7 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
       tokenCb?.({ streamId: 'test-stream-1', token: t });
     }
     if (errorMessage) {
-      errorCb?.({ streamId: 'test-stream-1', error: errorMessage });
+      errorCb?.({ streamId: 'test-stream-1', message: errorMessage });
     } else {
       endCb?.({ streamId: 'test-stream-1' });
     }
@@ -539,7 +539,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     // Fire error immediately — no tokens precede it.
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Authentication error — check your API key in Settings.' });
+      errorCb?.({ streamId: 'test-stream-1', message: 'Authentication error — check your API key in Settings.' });
     });
 
     await waitFor(() =>
@@ -549,6 +549,32 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     );
     // Pending assistant bubble should be gone.
     expect(screen.queryByText(/▍/)).not.toBeInTheDocument();
+  });
+
+  // SKY-8111: unreachable Ollama (ECONNREFUSED) must NOT fall back to the
+  // generic key hint — the main-process network message must render as-is,
+  // distinct from the auth message asserted in the neighboring tests.
+  it('displays the network error message distinctly from auth (SKY-8111)', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+
+    await waitFor(() => expect(errorCb).not.toBeNull());
+    act(() => {
+      errorCb?.({
+        streamId: 'test-stream-1',
+        message: 'Network error — check your connection and try again.',
+      });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Network error — check your connection and try again.',
+      ),
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/API key/i);
   });
 
   it('displays user-friendly auth error when STREAM_ERROR carries 401 message', async () => {
@@ -562,7 +588,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Authentication error — check your API key in Settings.',
+        message: 'Authentication error — check your API key in Settings.',
       });
     });
 
@@ -582,7 +608,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Rate limit reached — try again shortly.',
+        message: 'Rate limit reached — try again shortly.',
       });
     });
 
@@ -602,7 +628,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
     act(() => {
       errorCb?.({
         streamId: 'test-stream-1',
-        error: 'Invalid request — check the model and input parameters.',
+        message: 'Invalid request — check the model and input parameters.',
       });
     });
 
@@ -620,7 +646,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: '' });
+      errorCb?.({ streamId: 'test-stream-1', message: '' });
     });
 
     await waitFor(() =>
@@ -636,7 +662,7 @@ describe('BrainstormPage — STREAM_ERROR handling', () => {
 
     await waitFor(() => expect(errorCb).not.toBeNull());
     act(() => {
-      errorCb?.({ streamId: 'test-stream-1', error: 'Rate limit reached — try again shortly.' });
+      errorCb?.({ streamId: 'test-stream-1', message: 'Rate limit reached — try again shortly.' });
     });
 
     await waitFor(() =>
