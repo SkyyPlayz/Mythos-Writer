@@ -14,6 +14,7 @@ import {
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName } from './ProjectSwitcher';
+import { stripManifestContentForIpc } from './manifestIpc';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -104,6 +105,7 @@ import SplitEditorPane from './SplitEditorPane';
 import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import BrainstormPage from './BrainstormPage';
+import BetaReaderPage from './beta/BetaReaderPage';
 import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import type { WikiLinkPreviewData } from './WikiLinkHoverPreview';
 import {
@@ -689,6 +691,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [view, setView] = useState<StorySubView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Beta 4 M27 (SKY-6982): Beta Reader agent view — full overlay, not a
+  // StorySubView/AppTab (opened from the agent hub row + Tools menu only).
+  const [betaReaderOpen, setBetaReaderOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -1135,6 +1140,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     } catch {
       // non-fatal
     }
+  }, []);
+
+  // Beta 4 M27 (SKY-6982): AgentHubPanel's "Beta Reader" row dispatches this
+  // CustomEvent (it has no callback prop into DesktopShell) — listen here
+  // rather than threading a new prop through the agent-hub panel stack.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view === 'beta') setBetaReaderOpen(true);
+    };
+    window.addEventListener('mythos:nav', handler);
+    return () => window.removeEventListener('mythos:nav', handler);
   }, []);
 
   // ─── Beta 3 M22: agents-active chip + vault-tree agent actions ───
@@ -1670,7 +1687,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
-      await window.api.writeManifest(m);
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — the
+      // in-memory `m` (and React state) keep full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc(m));
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);
@@ -2957,6 +2976,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }).catch(() => {});
     }
   }, []);
+
+  // Beta 4 M27 (SKY-6982): resolves a Beta Reader reaction's sceneId/chapterId
+  // back to real objects (reactions only ever cite scenes in the story the
+  // Beta Reader view was opened against) and jumps the manuscript there.
+  const handleBetaReaderNavigateToScene = useCallback((sceneId: string, chapterId: string) => {
+    if (!selectedStory) return;
+    const chapterObj = selectedStory.chapters.find((c) => c.id === chapterId);
+    const sceneObj = chapterObj?.scenes.find((s) => s.id === sceneId);
+    if (chapterObj && sceneObj) handleSelectScene(sceneObj, chapterObj, selectedStory);
+    handleTabChange('story');
+    handleSetView('editor');
+  }, [selectedStory, handleSelectScene, handleTabChange, handleSetView]);
 
   // SKY-2966: Handle scene selection requested from a floating navigator panel.
   useEffect(() => {
@@ -4390,15 +4421,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ] },
     { label: 'Tools', items: [
       { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
-      // Prototype 6814: Beta Reader reads the open scene/chapter, reactions
-      // land as margin comments (BetaReadMargin next to the manuscript).
-      { label: 'Beta read this chapter', run: () => {
-        if (!selectedScene) { showLnToast('Open a scene first — the Beta Reader reads the open chapter'); return; }
-        const text = selectedScene.blocks.map((b) => b.content).join('\n\n');
-        if (!text.trim()) { showLnToast('This scene is empty — nothing to beta read'); return; }
-        void handleBetaReadRequest(text);
-        showLnToast('Beta Reader queued — reactions land as margin comments');
-      } },
+      // Beta 4 M27 (SKY-6982): opens the full Beta Reader view (Reports/Chat,
+      // scope + focus picker, BETA READS history) instead of the legacy
+      // single-passage flow — that flow stays live via text-selection
+      // (onBetaReadRequest below) as its own, separate entry point.
+      { label: 'Beta read this chapter', run: () => setBetaReaderOpen(true) },
       { label: 'Rebuild search index', run: () => {
         showLnToast('Rebuilding search index…');
         void window.api.reindexVault?.()
@@ -4419,7 +4446,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       } },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, handleBetaReadRequest]);
+  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView]);
 
   const navItems = useMemo<NavRailItem[]>(
     () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
@@ -4654,6 +4681,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {historyOpen && (
         <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
+      )}
+      {betaReaderOpen && (
+        <BetaReaderPage
+          story={selectedStory}
+          chapter={selectedChapter}
+          scene={selectedScene}
+          agentNames={appSettings?.agentNames}
+          onClose={() => setBetaReaderOpen(false)}
+          onNavigateToScene={handleBetaReaderNavigateToScene}
+        />
       )}
       {focusModePrefsOpen && (
         <FocusModePrefsDialog

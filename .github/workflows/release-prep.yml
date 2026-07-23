@@ -1,0 +1,259 @@
+name: Release Prep
+
+# One-button release prep: bumps version, generates changelog, builds installer, creates draft release.
+# This workflow is the automation for Mythos Writer's M30 release pipeline.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v0.5.0-beta.1)'
+        required: true
+      dry-run:
+        description: 'Dry run: build artifacts only, do not commit/tag/release'
+        type: boolean
+        default: true
+
+env:
+  MYTHOS_AUTO_UPDATE: '1'
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  validate-input:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.normalize.outputs.version }}
+      version-tag: ${{ steps.normalize.outputs.version-tag }}
+      is-beta: ${{ steps.normalize.outputs.is-beta }}
+    steps:
+      - name: Normalize and validate version input
+        id: normalize
+        run: |
+          VERSION="${{ inputs.version }}"
+          # Strip leading 'v' if present, re-add for normalized tag
+          VERSION="${VERSION#v}"
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            echo "Expected format: X.Y.Z or X.Y.Z-prerelease"
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          IS_BETA="false"
+          if [[ "$TAG" =~ -beta|alpha|rc ]]; then
+            IS_BETA="true"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version-tag=$TAG" >> $GITHUB_OUTPUT
+          echo "is-beta=$IS_BETA" >> $GITHUB_OUTPUT
+          echo "Input version: $TAG (beta=$IS_BETA)"
+
+  generate-changelog:
+    needs: validate-input
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.gen.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog from merged PR titles
+        id: gen
+        run: |
+          TAG="${{ needs.validate-input.outputs.version-tag }}"
+          PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v "$TAG" | head -1 || echo "")
+
+          echo "Generating changelog for $TAG"
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found; using last 20 commits"
+            CHANGELOG=$(git log --oneline --format="- %s" HEAD~20..HEAD)
+          else
+            echo "Previous tag: $PREV_TAG"
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --oneline --format="- %s")
+          fi
+
+          # Save to output (using delimiter for multiline)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "Generated changelog:"
+          echo "$CHANGELOG"
+
+  bump-version:
+    needs: validate-input
+    runs-on: ubuntu-latest
+    outputs:
+      old-version: ${{ steps.bump.outputs.old-version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump version in package.json
+        id: bump
+        run: |
+          # Read current version
+          OLD_VERSION=$(jq -r '.version' package.json)
+          NEW_VERSION="${{ needs.validate-input.outputs.version }}"
+
+          echo "old-version=$OLD_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping version: $OLD_VERSION -> $NEW_VERSION"
+
+          # Update package.json with new version
+          jq ".version = \"$NEW_VERSION\"" package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+          # Verify the change
+          UPDATED=$(jq -r '.version' package.json)
+          if [ "$UPDATED" != "$NEW_VERSION" ]; then
+            echo "Version bump verification failed"
+            exit 1
+          fi
+
+          echo "Version bumped successfully"
+
+      - name: Upload bumped package.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: bumped-package-json
+          path: package.json
+          retention-days: 1
+
+  build-windows:
+    needs: [validate-input, bump-version, generate-changelog]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download bumped package.json
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-package-json
+          path: .
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows installer (unsigned)
+        run: npx electron-vite build && npx electron-builder --win --publish never
+        env:
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+
+      - name: Verify artifacts created
+        run: |
+          if [ ! -d "dist-electron" ]; then
+            echo "ERROR: dist-electron directory not created"
+            exit 1
+          fi
+          ls -lah dist-electron/
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-${{ needs.validate-input.outputs.version-tag }}
+          path: dist-electron/
+          retention-days: 7
+
+  create-release:
+    if: ${{ inputs.dry-run == false }}
+    needs: [validate-input, generate-changelog, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or update draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate-input.outputs.version-tag }}
+          draft: true
+          prerelease: ${{ needs.validate-input.outputs.is-beta == 'true' }}
+          body: |
+            ## Release Notes
+
+            ${{ needs.generate-changelog.outputs.changelog }}
+
+            ---
+            **Build Date:** ${{ github.event.repository.updated_at }}
+            **Build Status:** Installer build in progress…
+
+  commit-version:
+    if: ${{ inputs.dry-run == false }}
+    needs: [validate-input, bump-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download bumped package.json
+        uses: actions/download-artifact@v4
+        with:
+          name: bumped-package-json
+          path: .
+
+      - name: Commit version bump
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          git add package.json
+          git commit -m "chore: bump version to ${{ needs.validate-input.outputs.version }}" || echo "No changes to commit"
+
+          # Tag the commit
+          git tag -a "${{ needs.validate-input.outputs.version-tag }}" -m "Release ${{ needs.validate-input.outputs.version-tag }}"
+
+          # Push the changes
+          git push origin HEAD:${{ github.ref }}
+          git push origin "${{ needs.validate-input.outputs.version-tag }}"
+
+  summary:
+    if: always()
+    needs: [validate-input, generate-changelog, build-windows, create-release, commit-version]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release prep summary
+        run: |
+          echo "## Release Prep Summary"
+          echo ""
+          echo "**Version:** ${{ needs.validate-input.outputs.version-tag }}"
+          echo "**Beta:** ${{ needs.validate-input.outputs.is-beta }}"
+          echo "**Dry Run:** ${{ inputs.dry-run }}"
+          echo ""
+          echo "### Changelog"
+          echo "${{ needs.generate-changelog.outputs.changelog }}"
+          echo ""
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "### 🔍 Dry Run Mode"
+            echo "Artifacts built but NOT committed/tagged/released."
+            echo "Download artifacts from the workflow run and test locally."
+            echo "Run workflow again with dry-run=false to publish the release."
+          else
+            echo "### ✅ Release prepared"
+            echo "Version committed and tagged. Draft release created."
+          fi

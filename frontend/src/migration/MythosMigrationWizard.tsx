@@ -217,7 +217,9 @@ export default function MythosMigrationWizard({ status, onClose }: Props) {
                   <div><dt>Drafts</dt><dd>{report.counts.drafts}</dd></div>
                 </dl>
                 <p className="mythos-migration-safety">
-                  The original vault is untouched. Switch now to start working in
+                  The original vault is kept untouched at
+                  <code className="mythos-migration-path">{status.storyVaultRoot}</code>
+                  Switch now to start working in
                   <code className="mythos-migration-path">{report.targetRoot}</code>
                 </p>
                 {confirmError && <p className="mythos-migration-error">{confirmError}</p>}
@@ -249,7 +251,9 @@ export default function MythosMigrationWizard({ status, onClose }: Props) {
                   </ul>
                 )}
                 <p className="mythos-migration-safety">
-                  Your current vault is untouched and keeps working as before.
+                  Your old vault is kept untouched at
+                  <code className="mythos-migration-path">{status.storyVaultRoot}</code>
+                  and keeps working as before.
                 </p>
                 <div className="mythos-migration-actions">
                   <button type="button" className="mythos-migration-btn" onClick={onClose}>

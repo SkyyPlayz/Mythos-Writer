@@ -184,20 +184,44 @@
   overflow: hidden;
 }
 
-/* Corner resize handle (line 1034). */
+/* Corner resize handle (line 1034). A <button> for keyboard focus (SKY-7929)
+ * — reset the native button chrome back to the bare corner-bracket look. */
 .cvb-card-resize {
   position: absolute;
   right: 2px;
   bottom: 2px;
   width: 13px;
   height: 13px;
+  padding: 0;
+  background: none;
   cursor: nwse-resize;
+  border: none;
   border-right: 2px solid rgba(158, 178, 214, 0.4);
   border-bottom: 2px solid rgba(158, 178, 214, 0.4);
   border-radius: 0 0 6px 0;
 }
 .cvb-card-resize:hover {
-  border-color: var(--n1, #00f0ff);
+  border-right-color: var(--n1, #00f0ff);
+  border-bottom-color: var(--n1, #00f0ff);
+}
+
+/* Keyboard focus rings (SKY-7929, WCAG 2.1.1/2.4.7) — the mouse-only drag
+ * surfaces (card head, resize handle, pan layer) had no focus indicator
+ * because nothing made them focusable before. */
+.cvb-card-head:focus-visible,
+.cvb-card-resize:focus-visible,
+.cvb-pan-layer:focus-visible,
+.cvb-card-connect:focus-visible,
+.cvb-card-av:focus-visible,
+.cvb-dock-add:focus-visible,
+.cvb-dock-zoom:focus-visible,
+.cvb-dock-fit:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 2px;
+}
+.cvb-card-resize:focus-visible {
+  border-right-color: var(--n1, #00f0ff);
+  border-bottom-color: var(--n1, #00f0ff);
 }
 
 /* Connect-mode hint (header hint, line 1013). */
