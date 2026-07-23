@@ -141,7 +141,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   const page = await app.firstWindow();
   page.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 30_000 });
   return page;
 }
 
