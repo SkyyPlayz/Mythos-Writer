@@ -11,6 +11,12 @@ export interface DialogProps {
   'aria-label'?: string;
   'aria-labelledby'?: string;
   'aria-describedby'?: string;
+  /** Extra class(es) merged onto the dialog panel — for callers with bespoke panel skins. */
+  className?: string;
+  /** data-testid on the overlay (the click-outside-to-close backdrop). */
+  overlayTestId?: string;
+  /** data-testid on the dialog panel itself. */
+  testId?: string;
   children: ReactNode;
 }
 
@@ -68,6 +74,9 @@ export default function Dialog({
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledby,
   'aria-describedby': ariaDescribedby,
+  className,
+  overlayTestId,
+  testId,
   children,
 }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -144,9 +153,9 @@ export default function Dialog({
   if (!open) return null;
 
   return (
-    <div className="ln-dialog-overlay" onClick={handleOverlayClick}>
+    <div className="ln-dialog-overlay" onClick={handleOverlayClick} data-testid={overlayTestId}>
       <div
-        className={`ln-dialog ln-dialog--${variant}`}
+        className={['ln-dialog', `ln-dialog--${variant}`, className].filter(Boolean).join(' ')}
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
@@ -155,6 +164,7 @@ export default function Dialog({
         ref={dialogRef}
         onKeyDown={handleKeyDown}
         tabIndex={-1}
+        data-testid={testId}
       >
         {children}
       </div>
