@@ -1,13 +1,17 @@
 name: VR Baselines
 
 # Regenerates the visual-regression baselines (e2e/visual-baselines/) in the
-# GitHub-hosted runner environment and commits them back to the branch the
-# workflow ran on (also uploads them as the `vr-baselines` artifact). Needed
-# whenever the UI changes intentionally (e.g. the Liquid Neon redesign) or the
-# CI rendering environment changes (fonts and viewport metrics differ between
+# GitHub-hosted runner environment (fonts and viewport metrics differ between
 # runner images, so baselines captured on one environment fail pixelmatch on
-# another). Note: the GITHUB_TOKEN push does not re-trigger PR workflows —
-# push any follow-up commit (even empty) to re-run checks.
+# another). Needed whenever the UI changes intentionally (e.g. the Liquid Neon
+# redesign) or the CI rendering environment changes. Also uploads the
+# baselines as the `vr-baselines` artifact.
+#
+# Opens a PR against the branch the workflow ran on and enables auto-merge,
+# rather than pushing directly — branch protection on `main` requires the
+# `ci` and `screenshot-check` status checks, which only run on `pull_request`,
+# so a direct push is rejected (GH006). This matches how every other change
+# lands per the project's merge model. See SKY-8215.
 
 on:
   workflow_dispatch:
@@ -21,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   regenerate:
@@ -68,7 +73,9 @@ jobs:
           path: e2e/visual-baselines/
           retention-days: 3
 
-      - name: Commit regenerated baselines to this branch
+      - name: Commit regenerated baselines to a branch and open a PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "vr-baselines-bot"
           git config user.email "noreply@github.com"
@@ -77,5 +84,17 @@ jobs:
             echo "Baselines unchanged — nothing to commit."
             exit 0
           fi
+
+          BASE="${GITHUB_REF_NAME}"
+          BRANCH="vr-baselines/refresh-${GITHUB_RUN_ID}"
+          git checkout -b "$BRANCH"
           git commit -m "test(vr): regenerate visual baselines on hosted runner"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:$BRANCH"
+
+          gh pr create \
+            --base "$BASE" \
+            --head "$BRANCH" \
+            --title "test(vr): regenerate visual baselines" \
+            --body "Automated visual-regression baseline refresh (workflow run ${GITHUB_RUN_ID}). Auto-merges once required checks pass."
+
+          gh pr merge "$BRANCH" --auto --squash
