@@ -57,4 +57,15 @@ describe('CalendarEditorModal', () => {
     fireEvent.click(screen.getByTestId('cem-backdrop'));
     expect(props.onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('Escape closes the modal', () => {
+    const props = renderModal();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('autofocuses the first focusable element (close button) on open', () => {
+    renderModal();
+    expect(screen.getByTestId('cem-close')).toHaveFocus();
+  });
 });

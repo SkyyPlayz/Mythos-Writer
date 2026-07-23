@@ -17,7 +17,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react';
 import type { ArcOption, CharOption, LocationOption } from './TimelineFilterBar';
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+import type { SpreadsheetScene } from './timelineFilters';
 import './TimelineDetailCard.css';
 
 export type DetailCardState = 'hover' | 'selected';

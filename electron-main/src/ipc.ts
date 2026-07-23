@@ -19,6 +19,7 @@ import type {
   TimelineSpan,
   TimelineRow,
   TimelineEvent,
+  TimelineTensionPoint,
 } from './timelines/model.js';
 export type {
   TimelinesStore,
@@ -29,6 +30,7 @@ export type {
   TimelineSpan,
   TimelineRow,
   TimelineEvent,
+  TimelineTensionPoint,
 };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
@@ -4901,9 +4903,9 @@ export interface TimelinesSetActiveResponse { ok: boolean; store: TimelinesStore
 
 // Beta 4 M22: Axis engine — persist plotted items (eras, spans, events,
 // custom rows) mutated by direct manipulation / the exact-time picker.
-export type TimelinesItemType = 'era' | 'span' | 'event' | 'row';
+export type TimelinesItemType = 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
 
-export type TimelinesItem = TimelineEra | TimelineSpan | TimelineEvent | TimelineRow;
+export type TimelinesItem = TimelineEra | TimelineSpan | TimelineEvent | TimelineRow | TimelineTensionPoint;
 
 export interface TimelinesUpsertItemPayload {
   type: TimelinesItemType;
