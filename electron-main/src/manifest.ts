@@ -185,6 +185,14 @@ function stripSceneProse(scene: SceneEntry): SceneEntry {
   if (!scene.blocks || scene.blocks.length === 0) {
     return scene.wordCount === 0 ? scene : { ...scene, wordCount: 0 };
   }
+  // SKY-6196: the renderer now blanks blocks[].content itself before the
+  // manifest ever crosses the `vault:manifest:write` IPC boundary, computing
+  // bodySegLen AND wordCount client-side (frontend/src/manifestIpc.ts /
+  // sceneBodyLayout.ts, kept in sync with this module). When every block
+  // already arrives content-free, trust both as-is: this function derives
+  // them from real content, so recomputing against blank content here would
+  // just erase the values the renderer already worked out.
+  if (scene.blocks.every((b) => b.content === '')) return scene;
   // Block-aware persistence (PR #932 review): alongside blanking content,
   // record each block's serialized-segment length within the scene's `.md`
   // body (`bodySegLen`) so `readManifest` can hydrate all N blocks — content,
