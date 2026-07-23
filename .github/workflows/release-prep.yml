@@ -175,33 +175,6 @@ jobs:
           path: dist-electron/
           retention-days: 7
 
-  create-release:
-    if: ${{ inputs.dry-run == false }}
-    needs: [validate-input, generate-changelog, build-windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create or update draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.validate-input.outputs.version-tag }}
-          draft: true
-          prerelease: ${{ needs.validate-input.outputs.is-beta == 'true' }}
-          body: |
-            ## Release Notes
-
-            ${{ needs.generate-changelog.outputs.changelog }}
-
-            ---
-            **Build Date:** ${{ github.event.repository.updated_at }}
-            **Build Status:** Installer build in progress…
-
   commit-version:
     if: ${{ inputs.dry-run == false }}
     needs: [validate-input, bump-version]
@@ -231,6 +204,40 @@ jobs:
           # Push the changes
           git push origin HEAD:${{ github.ref }}
           git push origin "${{ needs.validate-input.outputs.version-tag }}"
+
+  create-release:
+    if: ${{ inputs.dry-run == false }}
+    # Must run after commit-version so the release tag already exists on the
+    # bumped-version commit. Running this in parallel with commit-version lets
+    # softprops/action-gh-release create the same tag first against the
+    # pre-bump commit checked out here, racing commit-version's own
+    # `git tag` + `git push` of the identical tag name — whichever job wins
+    # leaves the release (or the push) pointing at the wrong commit, and the
+    # loser's tag push fails outright since the ref already exists.
+    needs: [validate-input, generate-changelog, build-windows, commit-version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create or update draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate-input.outputs.version-tag }}
+          draft: true
+          prerelease: ${{ needs.validate-input.outputs.is-beta == 'true' }}
+          body: |
+            ## Release Notes
+
+            ${{ needs.generate-changelog.outputs.changelog }}
+
+            ---
+            **Build Date:** ${{ github.event.repository.updated_at }}
+            **Build Status:** Installer build in progress…
 
   summary:
     if: always()
