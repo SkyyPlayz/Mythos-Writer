@@ -29,9 +29,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: TC-PROV-03 clicks the visually-hidden native checkbox (opacity:0;width:0;height:0) instead of the visible toggle-track it controls
-test.skip(true, 'SKY-6933: TC-PROV-03 clicks the visually-hidden native checkbox (opacity:0;width:0;height:0) instead of the visible toggle-track it controls');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -200,12 +197,16 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
 
-  // Find the Brainstorm agent's provider override toggle
+  // Find the Brainstorm agent's provider override toggle. The native
+  // checkbox itself is visually hidden (opacity:0; width/height:0) — the
+  // visible clickable control is the sibling `.settings-toggle-track` span
+  // inside the same `<label>` (SettingsPanel.css `.settings-toggle input`).
   const toggleInput = page.getByLabel(/enable brainstorm provider override/i);
+  const toggleTrack = toggleInput.locator('xpath=following-sibling::span[contains(@class, "settings-toggle-track")]');
   await expect(toggleInput).not.toBeChecked();
 
   // Toggle it on
-  await toggleInput.click();
+  await toggleTrack.click();
   await expect(toggleInput).toBeChecked();
 
   // Inline provider form should now be visible
@@ -213,7 +214,7 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   await expect(page.getByLabel('Model for brainstorm')).toBeVisible();
 
   // Toggle off
-  await toggleInput.click();
+  await toggleTrack.click();
   await expect(toggleInput).not.toBeChecked();
   await expect(page.getByLabel('Provider for brainstorm')).not.toBeVisible();
 

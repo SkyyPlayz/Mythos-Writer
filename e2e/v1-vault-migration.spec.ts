@@ -23,9 +23,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: hardcoded schemaVersion expectation of 1 is stale -- SCHEMA_VERSION was bumped 1 to 2 in manifest.ts by an unrelated change; functional migration checks pass
-test.skip(true, 'SKY-6933: hardcoded schemaVersion expectation of 1 is stale -- SCHEMA_VERSION was bumped 1 to 2 in manifest.ts by an unrelated change; functional migration checks pass');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const V1_FIXTURE = path.resolve(__dirname, './fixtures/v1-vault-pre-templates-v2');
 
@@ -239,7 +236,10 @@ test('SKY-1409: v1 vault migrates cleanly to v2 (no schema corruption)', async (
     console.log('Verifying manifest integrity...');
     const manifestPath = path.join(vaultDir, 'manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-    expect(manifest.schemaVersion).toBe(1);
+    // electron-main/src/manifest.ts SCHEMA_VERSION was bumped 1 -> 2 by an
+    // unrelated change; migration writes the current schema version, not the
+    // v1 fixture's original version.
+    expect(manifest.schemaVersion).toBe(2);
     expect(manifest.scenes.length).toBeGreaterThanOrEqual(2); // At least the 2 story scenes
     expect(manifest.entities.length).toBeGreaterThanOrEqual(2);  // At least the 2 entities
     // Verify that our story/chapter structure is preserved

@@ -158,10 +158,6 @@ test('PC-04: line-spacing slider visibly changes and persists the page line heig
 });
 
 test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (owner decision)', async () => {
-  // SKY-6933: `.note-viewer .note-mode-group[aria-label="Editor mode"]` is now hidden
-  // behind the M17 gear-menu redesign (`[data-testid="note-gear-btn"]`); this test
-  // never opens that menu. Stale selector, not a product regression — needs an update.
-  test.skip(true, 'SKY-6933: stale selector post-M17 gear-menu redesign, needs update');
   const notePath = path.join(notesDir, 'chromeless.md');
   fs.writeFileSync(notePath, '# Minimal\n\nNotes keep minimal page chrome.\n');
 
@@ -172,8 +168,11 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
 
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'chromeless' }).first().click();
+    // M17: the mode switch now lives inside the gear-menu popover
+    // (`[data-testid="note-gear-btn"]`), not an always-visible mode row.
+    await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('button.note-viewer-mode', { hasText: 'Rich' }).click();
+    await page.locator('[data-testid="note-gear-mode-rich"]').click();
     await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
 
     // The Story page-chrome toolbar must NOT leak into the Notes surface.

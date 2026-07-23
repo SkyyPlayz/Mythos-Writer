@@ -246,10 +246,6 @@ test('AC-W-04: rename a user layout retains its id', async () => {
 // ─── AC-W-05: Delete user layout (with confirmation) ─────────────────────────
 
 test('AC-W-05: delete a user layout shows confirmation dialog', async () => {
-  // SKY-6933: the just-created layout becomes the active layout, and delete is
-  // correctly disabled for the active layout ("Cannot delete active layout") —
-  // this test never switches away first. Working guard, stale test, not a bug.
-  test.skip(true, 'SKY-6933: test deletes the active layout, which the app correctly blocks — needs a layout switch before delete');
   // First create a layout to delete
   const btn = page.locator('[data-testid="layout-picker-btn"]');
   await btn.click();
@@ -261,6 +257,19 @@ test('AC-W-05: delete a user layout shows confirmation dialog', async () => {
   await page.locator('[data-testid="layout-save-as-input"]').fill('Temp Layout To Delete');
   await page.locator('[data-testid="layout-save-as-confirm"]').click();
   await expect(dialog.getByText('Temp Layout To Delete')).toBeVisible({ timeout: 3_000 });
+
+  // Saving a new layout makes it the active layout, and the app correctly
+  // blocks deleting the currently-active layout ("Cannot delete active
+  // layout" — see LayoutManagerDialog.tsx). Switch to a built-in layout
+  // first so the temp layout is no longer active before deleting it.
+  // Note: selecting a layout row (`onSelectLayout`) applies it AND closes
+  // the manager dialog (DesktopShell.tsx), so it has to be reopened.
+  await page.locator('[data-testid="layout-select-builtin-writing-focus"]').click();
+  await expect(dialog).not.toBeVisible({ timeout: 2_000 });
+
+  await btn.click();
+  await page.locator('[data-testid="layout-manage-btn"]').click();
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
 
   // Click delete on the row
   const tempRow = dialog.locator('[data-testid*="layout-row-"]', { hasText: 'Temp Layout To Delete' });
@@ -300,10 +309,6 @@ test('AC-W-01b: built-in layouts have no Delete button', async () => {
 // ─── AC-W-06: Set default layout ─────────────────────────────────────────────
 
 test('AC-W-06: set a user layout as default', async () => {
-  // SKY-6933: cascades from AC-W-05's skip above — this file shares app/dialog
-  // state sequentially across tests (workers: 1), so AC-W-05 not completing its
-  // delete flow leaves this test's expected dialog state stale.
-  test.skip(true, 'SKY-6933: cascades from AC-W-05 skip — shared sequential dialog state');
   // Ensure we have a user layout
   const btn = page.locator('[data-testid="layout-picker-btn"]');
   await btn.click();

@@ -25,8 +25,14 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- [data-testid=scene-editor-empty][data-variant] now only renders inside SplitEditorPane; default single-pane path uses a different working empty state
-test.skip(true, 'SKY-6933: stale selector -- [data-testid=scene-editor-empty][data-variant] now only renders inside SplitEditorPane; default single-pane path uses a different working empty state');
+// SKY-8211: [data-testid=scene-editor-empty][data-variant] now only renders
+// inside SplitEditorPane (frontend/src/SplitEditorPane.tsx) — the default
+// single-pane path (DesktopShell.tsx) collapses both the select-scene and
+// no-scenes-yet cases into one generic "Select a scene from the left panel…"
+// message with no distinguishing testid, so it can't cover AC-ES-01/02's
+// per-variant copy assertions. Drive each test into split-pane mode via the
+// `[data-testid="split-toggle-btn"]` toggle instead, which is what actually
+// renders SceneEditorEmptyState.
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -196,6 +202,8 @@ test.describe('AC-ES-01 select-scene empty state', () => {
     page = await firstWindow(app);
     // Wait for the shell to finish loading (spinner disappears)
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
+    // SKY-8211: SceneEditorEmptyState only renders inside SplitEditorPane.
+    await page.locator('[data-testid="split-toggle-btn"]').click();
   });
 
   test.afterAll(async () => {
@@ -206,18 +214,18 @@ test.describe('AC-ES-01 select-scene empty state', () => {
   });
 
   test('AC-ES-01a shows empty state when story has scenes but none is selected', async () => {
-    const emptyEl = page.locator('[data-testid="scene-editor-empty"][data-variant="select-scene"]');
+    const emptyEl = page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="select-scene"]');
     await expect(emptyEl).toBeVisible({ timeout: 8_000 });
   });
 
   test('AC-ES-01b select-scene copy matches spec', async () => {
     await expect(
-      page.locator('[data-testid="scene-editor-empty"][data-variant="select-scene"]'),
+      page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="select-scene"]'),
     ).toContainText('Select a scene from your story to start writing.');
   });
 
   test('AC-ES-01c document icon is present (SVG)', async () => {
-    const svg = page.locator('[data-testid="scene-editor-empty"][data-variant="select-scene"] svg.se-empty-icon');
+    const svg = page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="select-scene"] svg.se-empty-icon');
     await expect(svg).toBeAttached({ timeout: 5_000 });
   });
 });
@@ -240,6 +248,8 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
     app = await launchApp(userData);
     page = await firstWindow(app);
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
+    // SKY-8211: SceneEditorEmptyState only renders inside SplitEditorPane.
+    await page.locator('[data-testid="split-toggle-btn"]').click();
   });
 
   test.afterAll(async () => {
@@ -250,24 +260,24 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
   });
 
   test('AC-ES-02a shows empty state when story exists but has no scenes', async () => {
-    const emptyEl = page.locator('[data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]');
+    const emptyEl = page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]');
     await expect(emptyEl).toBeVisible({ timeout: 8_000 });
   });
 
   test('AC-ES-02b no-scenes-yet copy matches spec', async () => {
     await expect(
-      page.locator('[data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]'),
+      page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]'),
     ).toContainText('Create your first scene to start writing.');
   });
 
   test('AC-ES-02c copy mentions the + button', async () => {
     await expect(
-      page.locator('[data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]'),
+      page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="no-scenes-yet"]'),
     ).toContainText('+ button in your story outline');
   });
 
   test('AC-ES-02d document icon is present (SVG)', async () => {
-    const svg = page.locator('[data-testid="scene-editor-empty"][data-variant="no-scenes-yet"] svg.se-empty-icon');
+    const svg = page.locator('[data-testid="split-pane-1"] [data-testid="scene-editor-empty"][data-variant="no-scenes-yet"] svg.se-empty-icon');
     await expect(svg).toBeAttached({ timeout: 5_000 });
   });
 });
