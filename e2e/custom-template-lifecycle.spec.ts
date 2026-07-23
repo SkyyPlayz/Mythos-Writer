@@ -4,14 +4,18 @@
  * E2E regression coverage for custom template lifecycle operations (SKY-1397, SKY-1399):
  *
  *   TC-CTL-01  Rename happy path — user template name updates; persists on restart
- *   TC-CTL-02  Rename duplicate conflict — operation rejected when new name exists
- *   TC-CTL-03  Rename invalid chars — operation rejected on control chars / separators
  *   TC-CTL-04  Delete happy path — user template removed from picker; persists on restart
  *   TC-CTL-05  Delete modal — confirm dialog shown; cancel preserves template
  *   TC-CTL-06  Delete bundled guard — bundled templates cannot be deleted
  *   TC-CTL-07  Duplicate happy path — creates " copy" suffix; persists on restart
  *   TC-CTL-08  Duplicate collision — " copy" suffix auto-increments to " copy 2", etc.
  *   TC-CTL-09  Count badge invariant — custom template counter stays correct after all ops
+ *
+ * TC-CTL-02 (rename duplicate conflict) and TC-CTL-03 (rename invalid chars) remain
+ * skipped below — see the per-test comments; they assert app behavior that isn't
+ * implemented (no duplicate-name rejection, and invalid-char errors from the
+ * TEMPLATE_RENAME IPC handler are never surfaced to the UI). Flagged on SKY-8211
+ * for CTO re-triage rather than faked here.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright install chromium
@@ -29,9 +33,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: the spec's own seedUserData() never mkdirSync's the vault dir it points vaultRoot at, plus stale rename/delete/duplicate testids
-test.skip(true, 'SKY-6933: seedUserData() never creates the vault dir it points vaultRoot at, plus stale rename/delete/duplicate testids');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -42,11 +43,15 @@ interface SeedOptions {
   customTemplates?: Array<{ name: string; structure: Record<string, unknown> }>;
 }
 
-function seedUserData(userData: string, vaultDir: string, opts: SeedOptions = {}): void {
+function seedUserData(userData: string, opts: SeedOptions = {}): void {
+  // onboardingComplete: false routes straight to the wizard (App.tsx) without
+  // ever validating a vault path, so the template picker is reachable without
+  // needing a real vault on disk (SKY-6933's cited bug: the old seed pointed
+  // vaultRoot at a dir it never mkdirSync'd, and onboardingComplete: true sent
+  // the app to VaultNotFoundScreen instead of the wizard).
   const appSettings = {
     apiKey: '',
-    onboardingComplete: true,
-    onboardingStartMode: 'blank',
+    onboardingComplete: false,
     agents: {
       writingAssistant: {
         enabled: false,
@@ -85,18 +90,14 @@ function seedUserData(userData: string, vaultDir: string, opts: SeedOptions = {}
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   };
 
-  const vaultSettings = { vaultRoot: vaultDir };
-
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
     JSON.stringify(appSettings, null, 2),
   );
-  fs.writeFileSync(
-    path.join(userData, 'vault-settings.json'),
-    JSON.stringify(vaultSettings, null, 2),
-  );
 
-  // Seed custom templates
+  // Seed custom templates — electron-main/src/templates.ts loadUserTemplates()
+  // scans every *.json file under userData/templates on each listTemplates()
+  // call; no separate index/manifest file is needed.
   if (opts.customTemplates && opts.customTemplates.length > 0) {
     const templatesDir = path.join(userData, 'templates');
     fs.mkdirSync(templatesDir, { recursive: true });
@@ -125,38 +126,41 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
   const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
     ? ['--headless']
     : [];
-  const app = await electron.launch({
+  return electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
     timeout: 60_000,
   });
-  const proc = app.process();
-  proc.stdout?.on('data', (d: Buffer) => console.log('[main:out]', d.toString().trimEnd()));
-  proc.stderr?.on('data', (d: Buffer) => console.log('[main:err]', d.toString().trimEnd()));
-  return app;
 }
 
 async function firstWindow(app: ElectronApplication): Promise<Page> {
   const pg = await app.firstWindow();
-  pg.on('console', (m) => console.log('[renderer:' + m.type() + ']', m.text()));
-  pg.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
+  pg.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
   await pg.waitForLoadState('domcontentloaded');
   return pg;
 }
 
-// Helper to open the template picker and wait for custom templates section to load
-async function openTemplatePicker(page: Page): Promise<void> {
-  // From DesktopShell, navigate to Settings/Templates or use the template picker if available
-  // For now, we'll trigger via the Getting Started panel if it exists, or navigate via menu
-  const gettingStartedButton = page.locator('[data-testid="gs-open-template-picker"]');
-  if (await gettingStartedButton.isVisible()) {
-    await gettingStartedButton.click();
-  } else {
-    // Fallback: use menu navigation or direct UI element
-    // This will depend on the actual UI structure
-    await page.locator('[data-testid="template-picker-trigger"]').click();
+/**
+ * Step1 (Welcome, 4-card set per SKY-7593) -> "Start blank" -> custom-location
+ * step -> "Use a template instead" footer link -> step1b-inner (template picker).
+ */
+async function openTemplatePicker(pg: Page): Promise<void> {
+  await expect(pg.locator('[data-testid="gs-overlay"]')).toBeVisible({ timeout: 15_000 });
+  // SKY-8211: detectLegacyVaults() scans the real OS home dir (not the test's
+  // isolated --user-data-dir), so on a machine with a stray legacy vault this
+  // dialog can appear over the wizard and intercept clicks. Dismiss it if present.
+  const migrationDialog = pg.locator('[data-testid="gs-migration-dialog"]');
+  if (await migrationDialog.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await pg.locator('[data-testid="gs-migration-never"]').click();
+    await expect(migrationDialog).not.toBeVisible({ timeout: 5_000 });
   }
-  // Wait for the template picker overlay to appear
-  await expect(page.locator('[data-testid="gs-overlay"]')).toBeVisible({ timeout: 5000 });
+  await pg.locator('[data-testid="card-start-blank"]').click();
+  await expect(pg.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 5_000 });
+  await pg.locator('[data-testid="custom-location-use-template-link"]').click();
+  await expect(pg.locator('[id="template-picker-heading"]')).toBeVisible({ timeout: 5_000 });
+}
+
+function userTemplateCard(pg: Page, name: string) {
+  return pg.locator('.gs-template-card--user', { hasText: name });
 }
 
 // ─── TC-CTL-01: Rename happy path ─────────────────────────────────────────────
@@ -165,11 +169,10 @@ test.describe('TC-CTL-01: Rename happy path', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
-  const vaultDir = '';
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl01-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'My Novel', structure: { story: [], notes: [] } },
       ],
@@ -184,131 +187,25 @@ test.describe('TC-CTL-01: Rename happy path', () => {
   });
 
   test('rename custom template and verify persistence on restart', async () => {
-    // Wait for DesktopShell to load
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await openTemplatePicker(page);
 
-    // Navigate to template picker (via Getting Started or menu)
-    // For this test, we assume the Getting Started panel is visible post-onboarding
-    const gettingStarted = page.locator('[data-testid="gs-overlay"]');
-    if (await gettingStarted.isVisible()) {
-      // Click on a template management option if available
-      // This is a placeholder; actual UI may vary
-      const templateLink = page.locator('[data-testid="gs-manage-templates"]');
-      if (await templateLink.isVisible()) {
-        await templateLink.click();
-      }
-    }
+    const card = userTemplateCard(page, 'My Novel');
+    await expect(card).toBeVisible();
+    // SKY-8211: action buttons are hidden until :hover/:focus-within (SKY-1399, OnboardingWizard.css).
+    await card.hover();
+    await card.locator('[data-testid^="template-rename-btn-"]').click();
+    const renameInput = card.locator('[data-testid^="template-rename-input-"]');
+    await expect(renameInput).toBeVisible();
+    await renameInput.fill('My Renamed Novel');
+    await renameInput.press('Enter');
+    await expect(userTemplateCard(page, 'My Renamed Novel')).toBeVisible();
 
-    // Find the custom template card
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]').first();
-    await expect(customCard).toBeVisible({ timeout: 5000 });
-
-    // Click the rename button (pencil icon)
-    const renameBtn = customCard.locator('[data-testid="template-action-rename"]');
-    if (await renameBtn.isVisible()) {
-      await renameBtn.click();
-      // A rename input should appear
-      const renameInput = customCard.locator('[data-testid="template-rename-input"]');
-      await expect(renameInput).toBeVisible();
-      await renameInput.fill('My Renamed Novel');
-      await renameInput.press('Enter');
-      // Verify the name updated in the UI
-      await expect(customCard).toContainText('My Renamed Novel');
-    }
-
-    // Close the app
+    // Close and relaunch to verify persistence.
     await app.close();
-
-    // Relaunch and verify persistence
     app = await launchApp(userData);
     page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
-
-    // Navigate back to template picker and verify the renamed template
-    const renamedCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]').first();
-    await expect(renamedCard).toContainText('My Renamed Novel');
-  });
-});
-
-// ─── TC-CTL-02: Rename duplicate conflict ─────────────────────────────────────
-
-test.describe('TC-CTL-02: Rename duplicate conflict', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl02-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
-      customTemplates: [
-        { name: 'Template A', structure: { story: [], notes: [] } },
-        { name: 'Template B', structure: { story: [], notes: [] } },
-      ],
-    });
-    app = await launchApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('rename to existing name is rejected with error', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
-
-    // Navigate to template picker
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]').nth(0);
-    const renameBtn = customCard.locator('[data-testid="template-action-rename"]');
-    if (await renameBtn.isVisible()) {
-      await renameBtn.click();
-      const renameInput = customCard.locator('[data-testid="template-rename-input"]');
-      await renameInput.fill('Template B'); // Try to rename to existing name
-      await renameInput.press('Enter');
-      // Should show an error or reject the operation
-      const errorMsg = page.locator('[data-testid="template-rename-error"]');
-      await expect(errorMsg).toBeVisible({ timeout: 3000 });
-    }
-  });
-});
-
-// ─── TC-CTL-03: Rename invalid characters ─────────────────────────────────────
-
-test.describe('TC-CTL-03: Rename invalid characters', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl03-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
-      customTemplates: [
-        { name: 'My Novel', structure: { story: [], notes: [] } },
-      ],
-    });
-    app = await launchApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('rename with control characters is rejected', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
-
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]').first();
-    const renameBtn = customCard.locator('[data-testid="template-action-rename"]');
-    if (await renameBtn.isVisible()) {
-      await renameBtn.click();
-      const renameInput = customCard.locator('[data-testid="template-rename-input"]');
-      // Test with path traversal attempt
-      await renameInput.fill('../evil');
-      await renameInput.press('Enter');
-      const errorMsg = page.locator('[data-testid="template-rename-error"]');
-      await expect(errorMsg).toBeVisible({ timeout: 3000 });
-    }
+    await openTemplatePicker(page);
+    await expect(userTemplateCard(page, 'My Renamed Novel')).toBeVisible();
   });
 });
 
@@ -321,7 +218,7 @@ test.describe('TC-CTL-04: Delete happy path', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl04-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'Template to Delete', structure: { story: [], notes: [] } },
       ],
@@ -335,38 +232,25 @@ test.describe('TC-CTL-04: Delete happy path', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('delete custom template removes it from picker', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+  test('delete custom template removes it from picker and does not reappear on restart', async () => {
+    await openTemplatePicker(page);
 
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Template to Delete' })
-      .first();
-    await expect(customCard).toBeVisible({ timeout: 5000 });
+    const card = userTemplateCard(page, 'Template to Delete');
+    await expect(card).toBeVisible();
+    await card.hover();
+    await card.locator('[data-testid^="template-delete-btn-"]').click();
 
-    // Click delete button (trash icon)
-    const deleteBtn = customCard.locator('[data-testid="template-action-delete"]');
-    if (await deleteBtn.isVisible()) {
-      await deleteBtn.click();
-      // Confirm deletion in the modal
-      const confirmBtn = page.locator('[data-testid="confirm-delete-template"]');
-      await expect(confirmBtn).toBeVisible({ timeout: 3000 });
-      await confirmBtn.click();
-      // Template should disappear from the list
-      await expect(customCard).not.toBeVisible({ timeout: 3000 });
-    }
-  });
+    const confirmBtn = page.locator('[data-testid="template-delete-confirm"]');
+    await expect(confirmBtn).toBeVisible({ timeout: 3_000 });
+    await confirmBtn.click();
+    await expect(card).not.toBeVisible({ timeout: 3_000 });
 
-  test('deleted template does not reappear on restart', async () => {
-    // Close and relaunch
+    // Relaunch and verify the delete persisted.
     await app.close();
     app = await launchApp(userData);
     page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
-
-    // Template should not be visible
-    const deletedCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Template to Delete' });
-    await expect(deletedCard).not.toBeVisible({ timeout: 3000 });
+    await openTemplatePicker(page);
+    await expect(userTemplateCard(page, 'Template to Delete')).not.toBeVisible({ timeout: 3_000 });
   });
 });
 
@@ -379,7 +263,7 @@ test.describe('TC-CTL-05: Delete confirmation modal', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl05-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'Template to Preserve', structure: { story: [], notes: [] } },
       ],
@@ -394,24 +278,17 @@ test.describe('TC-CTL-05: Delete confirmation modal', () => {
   });
 
   test('cancel in delete modal preserves template', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await openTemplatePicker(page);
 
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Template to Preserve' })
-      .first();
-    await expect(customCard).toBeVisible();
+    const card = userTemplateCard(page, 'Template to Preserve');
+    await expect(card).toBeVisible();
+    await card.hover();
+    await card.locator('[data-testid^="template-delete-btn-"]').click();
 
-    // Click delete button
-    const deleteBtn = customCard.locator('[data-testid="template-action-delete"]');
-    if (await deleteBtn.isVisible()) {
-      await deleteBtn.click();
-      // Click cancel instead of confirm
-      const cancelBtn = page.locator('[data-testid="cancel-delete-template"]');
-      await expect(cancelBtn).toBeVisible({ timeout: 3000 });
-      await cancelBtn.click();
-      // Template should still be visible
-      await expect(customCard).toBeVisible();
-    }
+    const cancelBtn = page.locator('[data-testid="template-delete-cancel"]');
+    await expect(cancelBtn).toBeVisible({ timeout: 3_000 });
+    await cancelBtn.click();
+    await expect(card).toBeVisible();
   });
 });
 
@@ -424,7 +301,7 @@ test.describe('TC-CTL-06: Delete bundled guard', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl06-'));
-    seedUserData(userData, path.join(userData, 'vault'));
+    seedUserData(userData);
     app = await launchApp(userData);
     page = await firstWindow(app);
   });
@@ -435,15 +312,14 @@ test.describe('TC-CTL-06: Delete bundled guard', () => {
   });
 
   test('bundled templates have no delete button', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await openTemplatePicker(page);
 
-    // Find bundled template (e.g., Novel 3-act)
-    const bundledCard = page.locator('[data-testid="gs-bundled-templates"] [role="radio"]').first();
-    await expect(bundledCard).toBeVisible({ timeout: 5000 });
+    const bundledGroup = page.locator('[role="radiogroup"][aria-labelledby="template-picker-heading"]');
+    const bundledCard = bundledGroup.locator('[role="radio"]').first();
+    await expect(bundledCard).toBeVisible({ timeout: 5_000 });
 
-    // Delete button should not exist for bundled templates
-    const deleteBtn = bundledCard.locator('[data-testid="template-action-delete"]');
-    await expect(deleteBtn).not.toBeVisible();
+    // Bundled cards render via the plain TemplateCard button — no action-btn markup at all.
+    await expect(bundledCard.locator('[data-testid^="template-delete-btn-"]')).toHaveCount(0);
   });
 });
 
@@ -456,7 +332,7 @@ test.describe('TC-CTL-07: Duplicate happy path', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl07-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'Original Template', structure: { story: [], notes: [] } },
       ],
@@ -471,33 +347,20 @@ test.describe('TC-CTL-07: Duplicate happy path', () => {
   });
 
   test('duplicate creates " copy" suffix and persists', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await openTemplatePicker(page);
 
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Original Template' })
-      .first();
-    await expect(customCard).toBeVisible();
+    const card = userTemplateCard(page, 'Original Template');
+    await expect(card).toBeVisible();
+    await card.hover();
+    await card.locator('[data-testid^="template-duplicate-btn-"]').click();
+    await expect(userTemplateCard(page, 'Original Template copy')).toBeVisible({ timeout: 5_000 });
 
-    // Click duplicate button (copy icon)
-    const duplicateBtn = customCard.locator('[data-testid="template-action-duplicate"]');
-    if (await duplicateBtn.isVisible()) {
-      await duplicateBtn.click();
-      // A new card with " copy" suffix should appear
-      const copyCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-        .filter({ hasText: 'Original Template copy' });
-      await expect(copyCard).toBeVisible({ timeout: 5000 });
-    }
-
-    // Close and relaunch to verify persistence
+    // Close and relaunch to verify persistence.
     await app.close();
     app = await launchApp(userData);
     page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
-
-    // Both original and copy should exist
-    const copyCardAfterRestart = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Original Template copy' });
-    await expect(copyCardAfterRestart).toBeVisible();
+    await openTemplatePicker(page);
+    await expect(userTemplateCard(page, 'Original Template copy')).toBeVisible();
   });
 });
 
@@ -510,7 +373,7 @@ test.describe('TC-CTL-08: Duplicate collision', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl08-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'Template', structure: { story: [], notes: [] } },
         { name: 'Template copy', structure: { story: [], notes: [] } },
@@ -526,22 +389,19 @@ test.describe('TC-CTL-08: Duplicate collision', () => {
   });
 
   test('duplicate increments suffix when " copy" exists', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await openTemplatePicker(page);
 
-    const customCard = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: /^Template$/ })
-      .first();
-    await expect(customCard).toBeVisible();
-
-    // Duplicate the original template
-    const duplicateBtn = customCard.locator('[data-testid="template-action-duplicate"]');
-    if (await duplicateBtn.isVisible()) {
-      await duplicateBtn.click();
-      // Should create " copy 2" since " copy" already exists
-      const copy2Card = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-        .filter({ hasText: 'Template copy 2' });
-      await expect(copy2Card).toBeVisible({ timeout: 5000 });
-    }
+    // Disambiguate from the seeded "Template copy" card: the anchored regex
+    // against the whole card's hasText would never match either card since
+    // .gs-template-card__desc ("Custom template: Template") also renders
+    // inside it, so scope the exact-match to the .gs-template-card__name span.
+    const card = page.locator('.gs-template-card--user').filter({
+      has: page.locator('.gs-template-card__name', { hasText: /^Template$/ }),
+    });
+    await expect(card).toBeVisible();
+    await card.hover();
+    await card.locator('[data-testid^="template-duplicate-btn-"]').click();
+    await expect(userTemplateCard(page, 'Template copy 2')).toBeVisible({ timeout: 5_000 });
   });
 });
 
@@ -554,7 +414,7 @@ test.describe('TC-CTL-09: Count badge invariant', () => {
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ctl09-'));
-    seedUserData(userData, path.join(userData, 'vault'), {
+    seedUserData(userData, {
       customTemplates: [
         { name: 'Template A', structure: { story: [], notes: [] } },
         { name: 'Template B', structure: { story: [], notes: [] } },
@@ -569,39 +429,34 @@ test.describe('TC-CTL-09: Count badge invariant', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('count badge reflects correct number after rename, delete, duplicate', async () => {
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+  test('count badge reflects correct number after delete and duplicate', async () => {
+    await openTemplatePicker(page);
 
-    // Initial count should be 2
-    let countBadge = page.locator('[data-testid="gs-custom-templates-count"]');
+    const countBadge = page.locator('[data-testid="user-template-count"]');
     await expect(countBadge).toContainText('(2)');
 
-    // Delete one template
-    const cardA = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Template A' })
-      .first();
-    const deleteBtn = cardA.locator('[data-testid="template-action-delete"]');
-    if (await deleteBtn.isVisible()) {
-      await deleteBtn.click();
-      const confirmBtn = page.locator('[data-testid="confirm-delete-template"]');
-      await confirmBtn.click();
-    }
-
-    // Count should now be 1
-    countBadge = page.locator('[data-testid="gs-custom-templates-count"]');
+    const cardA = userTemplateCard(page, 'Template A');
+    await cardA.hover();
+    await cardA.locator('[data-testid^="template-delete-btn-"]').click();
+    await page.locator('[data-testid="template-delete-confirm"]').click();
     await expect(countBadge).toContainText('(1)');
 
-    // Duplicate Template B
-    const cardB = page.locator('[data-testid="gs-custom-templates"] [role="radio"]')
-      .filter({ hasText: 'Template B' })
-      .first();
-    const duplicateBtn = cardB.locator('[data-testid="template-action-duplicate"]');
-    if (await duplicateBtn.isVisible()) {
-      await duplicateBtn.click();
-    }
-
-    // Count should now be 2
-    countBadge = page.locator('[data-testid="gs-custom-templates-count"]');
+    const cardB = userTemplateCard(page, 'Template B');
+    await cardB.hover();
+    await cardB.locator('[data-testid^="template-duplicate-btn-"]').click();
     await expect(countBadge).toContainText('(2)');
   });
 });
+
+// ─── TC-CTL-02 / TC-CTL-03: skipped — product gap, not a selector fix ─────────
+
+// The TEMPLATE_RENAME IPC handler (electron-main/src/main.ts) does reject
+// invalid/control characters, but the renderer's rename onKeyDown/onBlur
+// handlers (OnboardingWizard.tsx) never inspect the `{ error }` response —
+// there's no `template-rename-error` element or any rename-rejection UI.
+// There is also no duplicate-name check anywhere in renameTemplate()
+// (electron-main/src/templates.ts) or the IPC handler. Both TCs assert
+// behavior that isn't implemented; flagged on SKY-8211 for CTO re-triage
+// rather than faked here.
+test.skip('TC-CTL-02: rename to existing name is rejected with error — product gap, see SKY-8211', () => {});
+test.skip('TC-CTL-03: rename with control characters is rejected — product gap, see SKY-8211', () => {});

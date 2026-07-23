@@ -22,8 +22,8 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: cloud sync (Dropbox wizard) is a deferred/unshipped feature -- SyncBackupSection.tsx notes it ships in a later milestone
-test.skip(true, 'SKY-6933: cloud sync (Dropbox wizard) is a deferred/unshipped feature -- SyncBackupSection.tsx notes it ships in a later milestone');
+// SKY-8244: cloud sync (Dropbox wizard) is a deferred/unshipped feature -- SyncBackupSection.tsx notes it ships in a later milestone. Un-skip when SKY-8244 (CTO-owned) closes.
+test.skip(true, 'SKY-8244: cloud sync (Dropbox wizard) is a deferred/unshipped feature -- SyncBackupSection.tsx notes it ships in a later milestone. Un-skip when SKY-8244 (CTO-owned) closes.');
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 

@@ -48,9 +48,6 @@ import {
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
 
-// SKY-6933: bs-sort-select is intentionally CSS-hidden below ~340px width in the compact embedded panel (SKY-3623); spec drives that layout
-test.skip(true, 'SKY-6933: bs-sort-select is intentionally CSS-hidden below ~340px width in the compact embedded panel (SKY-3623); spec drives that layout');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -133,34 +130,28 @@ async function selectSort(page: Page, value: string): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** Navigate to Brainstorm panel if not already there. */
-async function expandBrainstormPanelIfNeeded(page: Page): Promise<void> {
-  const panel = page.locator('[data-testid="notes-brainstorm-panel"]');
+/**
+ * Navigate to the full-featured, top-level Brainstorm tab (nav-rail "Brainstorm"
+ * item -> DesktopShell `tabShell.activeTab === 'brainstorm'`).
+ *
+ * SKY-8211: the Notes-tab embedded Brainstorm sidebar (`notes-brainstorm-panel`)
+ * always renders `<BrainstormPage compact />` (NotesTabPanel.tsx) — `compact`
+ * unconditionally hides the sort/filter controls and fact board (BrainstormPage.tsx
+ * `!compact && ...` gates), regardless of window width. There is no width
+ * breakpoint to clear; the sort dropdown this suite drives simply does not exist
+ * in that surface. The nav-rail "Brainstorm" tab (DesktopShell.tsx `id="app-tabpanel-brainstorm"`)
+ * mounts `<BrainstormPage>` with no `compact` prop (defaults false), which is the
+ * only place `bs-sort-select` / `bs-facts-controls` actually render.
+ */
+async function ensureBrainstorm(page: Page): Promise<void> {
+  const panel = page.locator('#app-tabpanel-brainstorm');
   if (await panel.isVisible({ timeout: 400 }).catch(() => false)) return;
 
-  const expandBtn = page.locator('[data-testid="notes-brainstorm-expand"]');
-  if (await expandBtn.isVisible({ timeout: 400 }).catch(() => false)) {
-    await expandBtn.click();
-    await panel.waitFor({ state: 'visible', timeout: 3_000 });
-    return;
-  }
-
-  const notesTab = page
+  await page
     .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('button', { name: 'Notes' });
-  if (await notesTab.isVisible()) {
-    await notesTab.click();
-    await panel.waitFor({ state: 'visible', timeout: 3_000 });
-  }
-}
-
-async function ensureBrainstorm(page: Page): Promise<void> {
-  await expandBrainstormPanelIfNeeded(page);
-  const panel = page.locator('[data-testid="notes-brainstorm-panel"]');
-  if (!await panel.isVisible({ timeout: 800 }).catch(() => false)) {
-    await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
-    await expect(panel).toBeVisible({ timeout: 8_000 });
-  }
+    .getByRole('button', { name: 'Brainstorm' })
+    .click();
+  await expect(panel).toBeVisible({ timeout: 8_000 });
 }
 
 /**
@@ -215,9 +206,9 @@ test.beforeAll(async () => {
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to Brainstorm via Notes tab.
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
-  await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 6_000 });
+  // Navigate to the top-level Brainstorm tab (see ensureBrainstorm() for why
+  // this must be the nav-rail tab and not the Notes-embedded sidebar).
+  await ensureBrainstorm(page);
 
   // Stub vault:manifest:read to return a proper nested manifest so scene picker works.
   // BrainstormPage.handleOpenInWritingPanel reads stories[].chapters[].scenes[] — our
