@@ -55,15 +55,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      run-e2e: ${{ steps.filter.outputs.run-e2e }}
-      docs-only: ${{ steps.filter.outputs.docs-only }}
+      run-e2e: ${{ steps.filter-e2e.outputs.run-e2e }}
+      docs-only: ${{ steps.filter-docs.outputs.docs-only }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect changed paths (path-based CI optimization)
-        id: filter
+      - name: Detect changed paths — docs-only (path-based CI optimization)
+        id: filter-docs
         uses: dorny/paths-filter@v2
         with:
           filters: |
@@ -73,6 +73,21 @@ jobs:
               - 'README*'
               - '.gitignore'
               - '.github/ISSUE_TEMPLATE/**'
+
+      # SKY-8145: run-e2e's patterns are all-negated ("not a doc file"). With the
+      # default predicate-quantifier ('some'/OR), a single negated pattern matches
+      # almost any file, so this always evaluated true regardless of diff content —
+      # the e2e-skip-on-docs-only feature this filter exists for never fired.
+      # 'every' requires a changed file to satisfy ALL negations (i.e. actually not
+      # be any doc type) before run-e2e goes true. Kept as a separate step because
+      # predicate-quantifier applies to the whole paths-filter invocation, and
+      # docs-only's positive OR patterns need the default 'some' quantifier.
+      - name: Detect changed paths — run-e2e (path-based CI optimization)
+        id: filter-e2e
+        uses: dorny/paths-filter@v2
+        with:
+          predicate-quantifier: every
+          filters: |
             run-e2e:
               - '!**.md'
               - '!docs/**'
