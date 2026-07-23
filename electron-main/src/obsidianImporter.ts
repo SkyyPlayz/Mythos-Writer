@@ -155,9 +155,13 @@ export function processObsidianFrontmatter(
 export interface ObsidianImportResult {
   ok: boolean;
   targetPath: string;
+  /** Total files found in the source vault (markdown + attachments). */
+  sourceCount: number;
   imported: number;
   skipped: number;
   errors: string[];
+  /** Non-empty when files were silently dropped. */
+  dropWarning: string;
 }
 
 /**
@@ -174,17 +178,18 @@ export function importObsidianToVaultDir(
   let skipped = 0;
 
   if (!fs.existsSync(srcPath)) {
-    return { ok: false, targetPath: vaultRoot, imported: 0, skipped: 0, errors: [`Source path does not exist: ${srcPath}`] };
+    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Source path does not exist: ${srcPath}`], dropWarning: '' };
   }
 
   let realSrc: string;
   try {
     realSrc = fs.realpathSync.native(srcPath);
   } catch {
-    return { ok: false, targetPath: vaultRoot, imported: 0, skipped: 0, errors: [`Cannot resolve source path: ${srcPath}`] };
+    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Cannot resolve source path: ${srcPath}`], dropWarning: '' };
   }
 
   const { markdownFiles, attachmentFiles } = collectObsidianFiles(realSrc);
+  const sourceCount = markdownFiles.length + attachmentFiles.length;
   const wikilinkIndex = buildWikilinkIndex(markdownFiles);
   const allFiles: Array<{ rel: string; isMarkdown: boolean }> = [
     ...markdownFiles.map((rel) => ({ rel, isMarkdown: true })),
@@ -227,12 +232,23 @@ export function importObsidianToVaultDir(
     }
   }
 
+  // Post-import: detect silent drops (files in source not accounted for).
+  const accountedFor = imported + skipped + errors.length;
+  const dropped = Math.max(0, sourceCount - accountedFor);
+  const dropWarning =
+    dropped > 0
+      ? `${dropped} file(s) from the Obsidian vault were not imported and not reported as errors — ` +
+        'check for unsupported file types or permission issues in the source vault'
+      : '';
+
   return {
     ok: errors.length === 0 || imported > 0,
     targetPath: vaultRoot,
+    sourceCount,
     imported,
     skipped,
     errors,
+    dropWarning,
   };
 }
 

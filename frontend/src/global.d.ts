@@ -843,6 +843,61 @@ interface BetaReadComment {
   dismissed_at: string | null;
 }
 
+// ─── Beta Reader agent view (SKY-6982, Beta 4 M27) ───
+
+interface BetaReportScope {
+  kind: 'scene' | 'chapter' | 'story';
+  /** Scene id / chapter id / story id, matching `kind`. */
+  id: string;
+  /** Display label, e.g. "Scene: Arrival" / "Chapter 2: The Descent" / "Full story". */
+  label: string;
+}
+
+interface BetaReportFocus {
+  pacing: boolean;
+  clarity: boolean;
+  character: boolean;
+  plot: boolean;
+}
+
+type BetaReportVerdict = 'strong' | 'mixed' | 'weak';
+
+interface BetaReportCategory {
+  key: string;
+  label: string;
+  score: number;
+  verdict: BetaReportVerdict;
+}
+
+interface BetaReportReaction {
+  id: string;
+  kind: 'loved' | 'stumbled' | 'confused';
+  sceneId: string;
+  quote: string;
+  where: string;
+  note: string;
+}
+
+interface BetaReport {
+  id: string;
+  storyId: string;
+  scope: BetaReportScope;
+  focus: BetaReportFocus;
+  overall: { score: number; verdict: BetaReportVerdict };
+  categories: BetaReportCategory[];
+  feedback: string;
+  reactions: BetaReportReaction[];
+  createdAt: string;
+}
+
+interface BetaReportSummary {
+  id: string;
+  storyId: string;
+  scope: BetaReportScope;
+  overall: { score: number; verdict: BetaReportVerdict };
+  createdAt: string;
+}
+
 interface BrainstormExtractedEntity {
   path: string;
   name: string;
@@ -1034,7 +1089,7 @@ interface Window {
     streamAck: (streamId: string, count: number) => void;
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
-    onStreamError: (cb: (data: { streamId: string; category: string; error: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart: () => void;
@@ -1089,6 +1144,11 @@ interface Window {
     betaReadList: (sceneId: string) => Promise<{ comments: BetaReadComment[] }>;
     betaReadDismiss: (id: string) => Promise<{ id: string; dismissed: boolean }>;
     betaReadScan: (sceneId: string, prose: string, scenePath: string) => Promise<{ comments: BetaReadComment[]; scannedAt: string } | { error: string }>;
+
+    // Beta Reader agent view (SKY-6982, Beta 4 M27) — structured reports
+    betaReportRun: (payload: { storyId: string; scope: BetaReportScope; focus: BetaReportFocus; text: string }) => Promise<{ report: BetaReport } | { error: string }>;
+    betaReportList: (storyId: string) => Promise<{ reports: BetaReportSummary[] }>;
+    betaReportGet: (id: string) => Promise<{ report: BetaReport | null }>;
 
     // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
@@ -1624,15 +1684,16 @@ interface Window {
     timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
     // Beta 4 M22: Axis engine — era/span/event/row item persistence
     timelinesUpsertItem?: (payload: {
-      type: 'era' | 'span' | 'event' | 'row';
+      type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       item:
         | import('./timelinesTypes').TimelineEra
         | import('./timelinesTypes').TimelineSpan
         | import('./timelinesTypes').TimelineEvent
-        | import('./timelinesTypes').TimelineRow;
+        | import('./timelinesTypes').TimelineRow
+        | import('./timelinesTypes').TimelineTensionPoint;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
     timelinesDeleteItem?: (payload: {
-      type: 'era' | 'span' | 'event' | 'row';
+      type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       id: string;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
     // SKY-6228: M15 — agent chat sessions

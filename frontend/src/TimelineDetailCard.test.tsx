@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest';
 import TimelineDetailCard, {
   TimelineSceneContextMenu,
 } from './TimelineDetailCard';
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+import type { SpreadsheetScene } from './timelineFilters';
 
 const ARCS = [
   { id: 'arc-alpha', title: 'Alpha Arc', color: '#7c6af7' },

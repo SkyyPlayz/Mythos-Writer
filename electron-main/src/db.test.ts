@@ -54,6 +54,9 @@ import {
   listArchiveAuditLog,
   pruneGenerationLog,
   pruneArchiveHistory,
+  insertBetaReport,
+  listBetaReports,
+  getBetaReport,
 } from './db.js';
 
 function makeSuggestion(overrides: Partial<Parameters<typeof upsertSuggestion>[0]> = {}) {
@@ -666,7 +669,7 @@ describe('world DB migration — entity tables', () => {
   it('sets user_version to 27 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(27);
+    expect(row.user_version).toBe(28);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -713,7 +716,7 @@ describe('world DB migration — entity tables', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(27);
+    expect(row.user_version).toBe(28);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -748,7 +751,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(27);
+    expect(row.user_version).toBe(28);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -1020,7 +1023,7 @@ describe('scene_snapshots / SKY-1611', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(27);
+    expect(row.user_version).toBe(28);
   });
 });
 
@@ -1065,7 +1068,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(27);
+    expect(row.user_version).toBe(28);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
@@ -1541,5 +1544,66 @@ describe('pruneArchiveHistory', () => {
     openDb(tmpDir);
     expect(getContinuityIssue('ci-stale')).toBeNull();
     expect(getContinuityIssue('ci-open')).not.toBeNull();
+  });
+});
+
+// ─── Beta Reader reports (SKY-6982, Beta 4 M27) ───
+
+describe('beta_reports table', () => {
+  let tmpDir: string;
+
+  function makeReport(overrides: Partial<import('./db.js').DbBetaReport> = {}): import('./db.js').DbBetaReport {
+    return {
+      id: 'report-1',
+      story_id: 'story-1',
+      scope_kind: 'chapter',
+      scope_id: 'chapter-1',
+      scope_label: 'Chapter 2',
+      focus_json: JSON.stringify({ pacing: true, clarity: true, character: false, plot: false }),
+      overall_score: 82,
+      overall_verdict: 'strong',
+      categories_json: JSON.stringify([{ key: 'hook', label: 'Hook', score: 90, verdict: 'strong' }]),
+      feedback: 'Solid chapter.',
+      reactions_json: JSON.stringify([{ id: 'r1', kind: 'loved', sceneId: 'scene-1', quote: 'q', where: 'w', note: 'n' }]),
+      created_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-db-'));
+    openDb(tmpDir);
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('inserts and fetches a report by id', () => {
+    insertBetaReport(makeReport());
+    const row = getBetaReport('report-1');
+    expect(row?.story_id).toBe('story-1');
+    expect(row?.overall_score).toBe(82);
+  });
+
+  it('returns null for an unknown id', () => {
+    expect(getBetaReport('missing')).toBeNull();
+  });
+
+  it('lists reports for a story, newest first', () => {
+    insertBetaReport(makeReport({ id: 'report-old', story_id: 'story-1', created_at: '2026-01-01T00:00:00.000Z' }));
+    insertBetaReport(makeReport({ id: 'report-new', story_id: 'story-1', created_at: '2026-06-01T00:00:00.000Z' }));
+    insertBetaReport(makeReport({ id: 'report-other-story', story_id: 'story-2' }));
+
+    const rows = listBetaReports('story-1');
+    expect(rows.map((r) => r.id)).toEqual(['report-new', 'report-old']);
+  });
+
+  it('scopes list to the requested story only', () => {
+    insertBetaReport(makeReport({ id: 'r1', story_id: 'story-a' }));
+    insertBetaReport(makeReport({ id: 'r2', story_id: 'story-b' }));
+    expect(listBetaReports('story-a')).toHaveLength(1);
+    expect(listBetaReports('story-nonexistent')).toEqual([]);
   });
 });

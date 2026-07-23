@@ -51,6 +51,35 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
+  paths-filter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run-e2e: ${{ steps.filter.outputs.run-e2e }}
+      docs-only: ${{ steps.filter.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths (path-based CI optimization)
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            docs-only:
+              - '**.md'
+              - 'docs/**'
+              - 'README*'
+              - '.gitignore'
+              - '.github/ISSUE_TEMPLATE/**'
+            run-e2e:
+              - '!**.md'
+              - '!docs/**'
+              - '!README*'
+              - '!.gitignore'
+              - '!.github/ISSUE_TEMPLATE/**'
+
   lint:
     needs: [setup]
     runs-on: ubuntu-latest
@@ -198,7 +227,10 @@ jobs:
     # runner disconnects on the DOCX/EPUB step (step 8), which cancelled the whole
     # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
     # via fuzz.yml (runs on every PR as a separate non-blocking check).
-    needs: [lint, typecheck, unit]
+    # SKY-8081: flattened dependency chain — now only needs [setup] instead of
+    # [lint, typecheck, unit], allowing this job to run in parallel with those
+    # checks and reducing wall-clock latency from ~4 hops to ~3 hops.
+    needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -278,9 +310,11 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y,
     # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -441,9 +475,11 @@ jobs:
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -584,9 +620,12 @@ jobs:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
     # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, global-search, readme-screenshots,
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
-    needs: [build-electron]
+    # scene-save-perf (SKY-6198)
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -719,6 +758,8 @@ jobs:
       - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
         run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
 
+      - name: E2E — Scene-save perf regression guard (SKY-6198)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-save-perf
 
       - name: Upload E2E report on failure
         if: failure()
@@ -742,9 +783,11 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     # editor-format-bar, notes-parity, word-count (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -895,7 +938,9 @@ jobs:
     # gets a definitive pass/fail rather than a "pending" indefinite skipped state
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
-    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
+    # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
+    needs: [lint, typecheck, unit, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -903,80 +948,47 @@ jobs:
     steps:
       - name: All checks passed
         run: |
-          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
-          echo "Upstream results: $results"
-          for r in $results; do
+          # Stage 1 checks must always succeed
+          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }}"
+          echo "Stage 1 (lint/typecheck/unit) results: $stage1"
+          for r in $stage1; do
             if [ "$r" != "success" ]; then
-              echo "Required job outcome '$r' — expected 'success'. CI aggregator: FAILED."
+              echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
               exit 1
             fi
           done
-          echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
-  build-macos:
-    # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
-    # DISABLED 2026-07-14 (Skyy): "pause/disable the macos ci for now" — the Actions
-    # budget is reserved for releases only. macos-latest bills at 10x Linux.
-    # To re-enable when the mac build is back on the roadmap, restore:
-    #   if: github.event_name == 'workflow_dispatch'
-    # The `ci` aggregator does not depend on this job, so disabling cannot block a PR.
-    if: false
-    # macOS build: GitHub-hosted runner (required for macOS; no self-hosted macOS available).
-    # Validates macOS Electron build and runs core E2E tests on native macOS.
-    # Unsigned DMG is acceptable for PR CI (signing only needed for release builds).
-    needs: [lint, typecheck, unit]
-    runs-on: macos-latest
-    timeout-minutes: 40
-    continue-on-error: false
+          # E2E shards may be legitimately skipped if path-filter determined they cannot be affected
+          e2e="${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
+          echo "E2E shard results: $e2e"
+          for r in $e2e; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "ERROR: E2E shard outcome '$r' — expected 'success' or 'skipped'. CI aggregator: FAILED."
+              exit 1
+            fi
+          done
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deinit stale git submodule registrations
-        run: git submodule deinit --all -f 2>/dev/null || true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
-        run: pip3 install setuptools --break-system-packages
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build macOS artifacts (DMG, unsigned)
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npx electron-vite build && npx electron-builder --mac dmg --publish never
-
-      - name: Verify .dmg artifact exists
-        run: |
-          DMG=$(ls dist-electron/*.dmg | head -1)
-          if [ -z "$DMG" ]; then
-            echo "ERROR: No .dmg artifact found after build"
-            exit 1
+          # Validate that at least one e2e shard ran if path-filter said to run e2e
+          run_e2e="${{ needs.paths-filter.outputs.run-e2e }}"
+          if [ "$run_e2e" = "true" ]; then
+            skipped_count=0
+            for r in $e2e; do
+              [ "$r" = "skipped" ] && skipped_count=$((skipped_count + 1))
+            done
+            if [ "$skipped_count" -eq 4 ]; then
+              echo "ERROR: path-filter indicated e2e should run, but all 4 shards were skipped. CI aggregator: FAILED."
+              exit 1
+            fi
           fi
-          echo "macOS DMG built: $DMG"
-          ls -lh "$DMG"
 
-      - name: Upload macOS build artifacts (PR debug)
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: dist-electron/*.dmg
-          retention-days: 1
+          echo "All checks passed — lint, typecheck, unit, and applicable E2E shards are green."
 
   build-linux:
-    # SKY-2421: job-level `if` was causing `skipped` status on PRs, which caused
-    # the `report` job (needs: [..., build-linux, ...]) to also be skipped despite
-    # `if: always()` — a known GH Actions quirk with multiple skipped upstream jobs.
-    # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
-    # with `success` and push/workflow_dispatch does the full packaging.
+    # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
+    # runners. Report job was the only downstream consumer (now deleted), so the
+    # skipped status issue from SKY-2421 no longer applies. Packaging steps still
+    # guard at step level as a safety redundancy.
+    if: github.event_name != 'pull_request'
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -1128,14 +1140,16 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   build-windows:
-    # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
-    # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
-    # steps are gated at step level instead.
+    # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
+    # runners. Report job was the only downstream consumer (now deleted), so the
+    # skipped status issue from SKY-2421 no longer applies. Packaging steps still
+    # guard at step level as a safety redundancy.
     # SKY-7428: native windows-latest runner (was ubuntu-latest cross-building via
     # wine, which broke — "wine is required" — after the hosted-runner migration).
     # The windows-latest quota failure seen on PR #571 was a private-repo minutes
     # limit; the repo is now public (35507aea), so hosted Windows minutes are free
     # and native packaging is simpler and more reliable than a wine cross-build.
+    if: github.event_name != 'pull_request'
     needs: [setup]
     runs-on: windows-latest
     timeout-minutes: 40
@@ -1188,58 +1202,3 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
           retention-days: 3
-
-  report:
-    # Event-driven board ping. Runs after all required jobs complete on a PR.
-    # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
-    # sweep for missed pings. PR-only — plain pushes to main get no ping.
-    # Stays self-hosted deliberately: the `paperclipai` CLI it drives only exists
-    # on the local runner (and no public/fork PR exposure per SKY-849). It is not
-    # a required check, so a slow/offline runner never blocks merges.
-    # build-linux and build-windows always run (fast no-op on PRs) so this job
-    # is never blocked by upstream skipped status (SKY-2421).
-    # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
-    # auto-fix stage detection (SKY-3006); it is already transitively needed.
-    # actions: read is required for gh run list / gh run view used by the
-    # repo-wide failure detection in notify-board.sh (SKY-3907).
-    needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
-    # DISABLED while the repo is PUBLIC (owner directive 2026-07-19): self-hosted
-    # runners are OFF until we go private again, and NOTHING may assign to them.
-    # This is the only self-hosted job in CI. Board pings fall back to
-    # GitHubManager's hourly poll sweep (poll-only mode). To re-enable when we go
-    # private: restore `if: always() && github.event_name == 'pull_request'` and
-    # bring the runners back (systemctl --user enable --now actions-runner{,2,3}).
-    runs-on: self-hosted
-    if: false
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - name: Checkout (for scripts/notify-board.sh)
-        uses: actions/checkout@v4
-
-      - name: Notify Paperclip board of CI completion
-        # A board-ping is a notification, not a quality gate — never let it fail
-        # the `report` job and turn an otherwise-green PR red (SKY-7434).
-        continue-on-error: true
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.head_ref }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          LINT_RESULT: ${{ needs.lint.result }}
-          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
-          UNIT_RESULT: ${{ needs.unit.result }}
-          BUILD_ELECTRON_RESULT: ${{ needs.build-electron.result }}
-          CI_RESULT: ${{ needs.ci.result }}
-          BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
-          BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
-          BUILD_WINDOWS_RESULT: ${{ needs.build-windows.result }}
-          PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
-          PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
-          PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
-          PAPERCLIP_FE_AGENT_ID: b2f91d8c-36c6-4397-a5fc-a7cb61d6a64d
-          PAPERCLIP_CTO_AGENT_ID: 63388835-9c91-41d0-8852-ffc1b76daaec
-        run: bash scripts/notify-board.sh

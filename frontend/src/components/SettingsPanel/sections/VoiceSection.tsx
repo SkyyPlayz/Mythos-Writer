@@ -6,9 +6,11 @@ interface VoiceSectionProps {
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
   providerKind: ProviderKind;
   setSavedOk: (ok: boolean) => void;
+  onPickSttBinary: () => void;
+  onPickSttModel: () => void;
 }
 
-export default function VoiceSection({ settings, setSettings, providerKind, setSavedOk }: VoiceSectionProps) {
+export default function VoiceSection({ settings, setSettings, providerKind, setSavedOk, onPickSttBinary, onPickSttModel }: VoiceSectionProps) {
   const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
 
   const refreshMicDevices = useCallback(() => {
@@ -58,7 +60,7 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
         {settings.voice?.enabled && (window as { api?: { isPackaged?: boolean } }).api?.isPackaged && (
           <p className="settings-hint" role="note" style={{ marginTop: '6px' }}>
             Web Speech (browser mic) does not work in the packaged app.
-            Configure STT via a local whisper.cpp binary or a cloud endpoint in the Voice Provider section below.
+            Configure a local whisper.cpp binary or a cloud endpoint via the Voice Provider selector below.
           </p>
         )}
 
@@ -174,6 +176,62 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
             </p>
           </>
         )}
+
+        {/* ── Local STT engine (whisper.cpp) — SKY-7772: moved out of Vault & Files ── */}
+        <div className="settings-field">
+          <span className="settings-label" style={{ fontWeight: 600 }}>Local STT engine (whisper.cpp)</span>
+        </div>
+        <div className="settings-field settings-field-inline">
+          <label className="settings-label" htmlFor="voice-stt-binary">STT Binary</label>
+          <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+            <input
+              id="voice-stt-binary"
+              className="settings-input"
+              type="text"
+              readOnly
+              value={settings.stt?.localBinaryPath ?? ''}
+              placeholder="e.g. /usr/local/bin/whisper-cli"
+              spellCheck={false}
+              aria-label="STT binary path"
+              aria-describedby="voice-stt-binary-hint"
+            />
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={onPickSttBinary}
+              aria-label="Browse for STT binary"
+            >
+              Browse…
+            </button>
+          </div>
+        </div>
+        <div className="settings-field settings-field-inline">
+          <label className="settings-label" htmlFor="voice-stt-model">STT Model</label>
+          <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+            <input
+              id="voice-stt-model"
+              className="settings-input"
+              type="text"
+              readOnly
+              value={settings.stt?.localModelPath ?? ''}
+              placeholder="e.g. ~/models/ggml-tiny.en.bin"
+              spellCheck={false}
+              aria-label="STT model path"
+              aria-describedby="voice-stt-binary-hint"
+            />
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={onPickSttModel}
+              aria-label="Browse for STT model"
+            >
+              Browse…
+            </button>
+          </div>
+        </div>
+        <p className="settings-hint" id="voice-stt-binary-hint">
+          Download whisper-cli from <strong>github.com/ggml-org/whisper.cpp/releases</strong> and a GGML model (e.g. ggml-tiny.en.bin) from the same release assets. Both paths are required for offline transcription.
+        </p>
 
         <div className="settings-field settings-field-inline">
           <label className="settings-label" htmlFor="voice-language">Input language</label>
