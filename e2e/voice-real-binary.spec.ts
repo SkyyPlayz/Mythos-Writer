@@ -25,6 +25,10 @@
  * required PR gate. Run on demand: `npm run test:e2e:voice-real-binary`.
  * Fixtures cache under os.tmpdir() across runs (keyed by a fixed dir name)
  * so repeat local runs skip the download.
+ *
+ * Fixture URLs are keyed on process.platform + process.arch (SKY-8121); on
+ * hosts with no published fixture binaries (e.g. macOS — whisper.cpp ships no
+ * macOS CLI build) the suite skips with an explicit reason instead of failing.
  */
 
 import path from 'path';
@@ -42,12 +46,42 @@ import {
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const FIXTURE_DIR = path.join(os.tmpdir(), 'mythos-voice-real-binary-fixtures');
 
-const WHISPER_RELEASE_URL =
-  'https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-ubuntu-x64.tar.gz';
+/**
+ * Fixture binaries keyed by `${process.platform}-${process.arch}`. Combos with
+ * no entry skip the suite with an explicit reason instead of failing on a
+ * wrong-arch download (SKY-8121 / GH#1050).
+ *
+ * darwin has no entry: whisper.cpp v1.9.1 publishes no macOS CLI binary
+ * (only an xcframework), so there is no fixture to download — Piper does ship
+ * macos_aarch64/macos_x64 tarballs, but STT alone can't run the round-trip.
+ */
+interface PlatformFixtures {
+  whisperReleaseUrl: string;
+  /** Top-level directory the whisper tarball extracts to. */
+  whisperDirName: string;
+  piperReleaseUrl: string;
+}
+const PLATFORM_FIXTURES: Record<string, PlatformFixtures> = {
+  'linux-x64': {
+    whisperReleaseUrl:
+      'https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-ubuntu-x64.tar.gz',
+    whisperDirName: 'whisper-bin-ubuntu-x64',
+    piperReleaseUrl:
+      'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz',
+  },
+  'linux-arm64': {
+    whisperReleaseUrl:
+      'https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-ubuntu-arm64.tar.gz',
+    whisperDirName: 'whisper-bin-ubuntu-arm64',
+    piperReleaseUrl:
+      'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz',
+  },
+};
+const HOST_KEY = `${process.platform}-${process.arch}`;
+const HOST_FIXTURES: PlatformFixtures | undefined = PLATFORM_FIXTURES[HOST_KEY];
+
 const WHISPER_MODEL_URL =
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin';
-const PIPER_RELEASE_URL =
-  'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz';
 const PIPER_VOICE_URL =
   'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx';
 const PIPER_VOICE_CONFIG_URL = `${PIPER_VOICE_URL}.json`;
@@ -76,9 +110,13 @@ async function ensureVoiceFixtures(): Promise<{
   piperBin: string;
   piperModel: string;
 }> {
+  const fixtures = HOST_FIXTURES;
+  if (!fixtures) {
+    throw new Error(`no fixture binaries published for ${HOST_KEY}`);
+  }
   fs.mkdirSync(FIXTURE_DIR, { recursive: true });
 
-  const whisperDir = path.join(FIXTURE_DIR, 'whisper-bin-ubuntu-x64');
+  const whisperDir = path.join(FIXTURE_DIR, fixtures.whisperDirName);
   const whisperBin = path.join(whisperDir, 'whisper-cli');
   const whisperModel = path.join(FIXTURE_DIR, 'ggml-tiny.en.bin');
   const piperDir = path.join(FIXTURE_DIR, 'piper');
@@ -88,7 +126,7 @@ async function ensureVoiceFixtures(): Promise<{
 
   if (!fs.existsSync(whisperBin)) {
     const archive = path.join(FIXTURE_DIR, 'whisper-bin.tar.gz');
-    await download(WHISPER_RELEASE_URL, archive);
+    await download(fixtures.whisperReleaseUrl, archive);
     await extractTarGz(archive, FIXTURE_DIR);
     fs.chmodSync(whisperBin, 0o755);
   }
@@ -97,7 +135,7 @@ async function ensureVoiceFixtures(): Promise<{
   }
   if (!fs.existsSync(piperBin)) {
     const archive = path.join(FIXTURE_DIR, 'piper.tar.gz');
-    await download(PIPER_RELEASE_URL, archive);
+    await download(fixtures.piperReleaseUrl, archive);
     await extractTarGz(archive, FIXTURE_DIR);
     fs.chmodSync(piperBin, 0o755);
   }
@@ -189,6 +227,11 @@ test.describe('SKY-3191 — real whisper.cpp/Piper spawn through the running app
   let page: Page;
 
   test.beforeAll(async () => {
+    test.skip(
+      !HOST_FIXTURES,
+      `no published whisper.cpp/Piper fixture binaries for ${HOST_KEY} — ` +
+        'whisper.cpp v1.9.1 ships CLI builds for linux x64/arm64 (and Windows) only',
+    );
     test.setTimeout(180_000);
     const fixtures = await ensureVoiceFixtures();
 
@@ -203,9 +246,10 @@ test.describe('SKY-3191 — real whisper.cpp/Piper spawn through the running app
 
   test.afterAll(async () => {
     await app?.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-    fs.rmSync(vaultDir, { recursive: true, force: true });
-    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+    // Undefined when beforeAll skipped before mkdtemp (unsupported platform).
+    for (const dir of [userData, vaultDir, notesVaultDir]) {
+      if (dir) fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('real Piper synthesis -> real whisper.cpp transcription round-trip', async () => {
