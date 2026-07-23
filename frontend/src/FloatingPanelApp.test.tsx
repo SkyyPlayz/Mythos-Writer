@@ -196,6 +196,56 @@ describe('FloatingPanelApp — handleNavCreateScene write order (GH #731 / SKY-5
   });
 });
 
+describe('FloatingPanelApp — writeManifest strips scene prose for IPC (SKY-6196 / SKY-8153)', () => {
+  it('blanks an existing scene\'s block content in the writeManifest payload when creating a new story', async () => {
+    const manifestWithProse = {
+      ...structuredClone(baseManifest),
+      stories: [
+        {
+          ...structuredClone(baseManifest.stories[0]),
+          chapters: [
+            {
+              ...structuredClone(baseManifest.stories[0].chapters[0]),
+              scenes: [
+                {
+                  id: 'scene-1',
+                  title: 'Scene One',
+                  path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes/scene-1.md`,
+                  order: 0,
+                  chapterId: CHAPTER_ID,
+                  storyId: STORY_ID,
+                  blocks: [
+                    { id: 'b1', type: 'prose', order: 0, content: 'Rain fell on the tin roof.', updatedAt: '2024-01-01T00:00:00.000Z' },
+                  ],
+                  draftState: 'in-progress',
+                  createdAt: '2024-01-01T00:00:00.000Z',
+                  updatedAt: '2024-01-01T00:00:00.000Z',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const writeManifest = vi.fn().mockResolvedValue({});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeApi({
+      writeManifest,
+      readManifest: () => Promise.resolve(structuredClone(manifestWithProse)),
+    });
+    vi.spyOn(window, 'prompt').mockReturnValue('New Story');
+
+    render(<FloatingPanelApp panelId="stories" />);
+    await waitFor(() => screen.getByLabelText('New story'));
+    fireEvent.click(screen.getByLabelText('New story'));
+
+    await waitFor(() => expect(writeManifest).toHaveBeenCalledTimes(1));
+    const payload = writeManifest.mock.calls[0][0];
+    const existingScene = payload.stories[0].chapters[0].scenes[0];
+    expect(existingScene.blocks[0].content).toBe('');
+  });
+});
+
 describe('FloatingPanelApp — vault-graph pop-out navigation (GH #650)', () => {
   it('forwards scene opens to the main window via the navigator bridge', async () => {
     const navigatorSelectScene = vi.fn().mockResolvedValue(undefined);
