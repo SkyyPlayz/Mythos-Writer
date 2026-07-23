@@ -343,6 +343,29 @@
   color: var(--text-muted);
 }
 
+/* SKY-7788: at narrow viewports the icon rail + category rail leave the
+   settings body too little room for a 160px label beside a control; the
+   control wrapper has no min-width: 0, so instead of shrinking it lays out
+   past the viewport edge and becomes unreachable. Stack label above control.
+   Toggle rows keep control-then-label inline — the ~36px toggle always fits. */
+@media (max-width: 600px) {
+  .settings-field-inline {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+
+  .settings-field-inline .settings-label {
+    min-width: 0;
+  }
+
+  .settings-field-inline.settings-agent-provider-toggle,
+  .settings-category-toggles .settings-field-inline {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
 .settings-input-row {
   display: flex;
   gap: 6px;

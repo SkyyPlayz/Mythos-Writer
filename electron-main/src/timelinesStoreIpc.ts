@@ -12,6 +12,7 @@ import {
   type TimelineEvent,
   type TimelineRow,
   type TimelineSpan,
+  type TimelineTensionPoint,
   type TimelinesStore,
 } from './timelines/model.js';
 import type {
@@ -83,13 +84,14 @@ export function handleTimelinesUpsert(
 
 // ─── Beta 4 M22: Axis engine item persistence ───
 
-type ItemKey = 'eras' | 'spans' | 'events' | 'rows';
+type ItemKey = 'eras' | 'spans' | 'events' | 'rows' | 'tensionPoints';
 
 const ITEM_KEY_BY_TYPE: Record<TimelinesUpsertItemPayload['type'], ItemKey> = {
   era: 'eras',
   span: 'spans',
   event: 'events',
   row: 'rows',
+  tensionPoint: 'tensionPoints',
 };
 
 const ROW_KINDS = new Set(['custom', 'arc', 'entity', 'plotline']);
@@ -100,13 +102,16 @@ const ROW_KINDS = new Set(['custom', 'arc', 'entity', 'plotline']);
  * malformed renderer payload can never corrupt timelines.json.
  */
 function assertItemValid(store: TimelinesStore, payload: TimelinesUpsertItemPayload): void {
-  const item = payload.item as Partial<TimelineEra & TimelineSpan & TimelineEvent & TimelineRow>;
+  const item = payload.item as Partial<TimelineEra & TimelineSpan & TimelineEvent & TimelineRow & TimelineTensionPoint>;
   if (!item || typeof item !== 'object') throw new Error('item is required');
   if (typeof item.id !== 'string' || !item.id.trim()) throw new Error('item.id is required');
   if (typeof item.timelineId !== 'string' || !store.timelines.some((t) => t.id === item.timelineId)) {
     throw new Error('item.timelineId must reference an existing timeline');
   }
-  if (typeof item.name !== 'string' || !item.name.trim()) throw new Error('item.name is required');
+  // tensionPoint has no `name` field (it's a bare chapter/value pair, not a titled item).
+  if (payload.type !== 'tensionPoint' && (typeof item.name !== 'string' || !item.name.trim())) {
+    throw new Error('item.name is required');
+  }
 
   switch (payload.type) {
     case 'era':
@@ -146,6 +151,15 @@ function assertItemValid(store: TimelinesStore, payload: TimelinesUpsertItemPayl
       if (!ROW_KINDS.has(item.kind as string)) throw new Error('row.kind is invalid');
       if (item.color != null && typeof item.color !== 'string') throw new Error('row.color must be a string');
       break;
+    case 'tensionPoint': {
+      if (typeof item.chapter !== 'number' || !Number.isFinite(item.chapter) || item.chapter < 1) {
+        throw new RangeError('tensionPoint.chapter must be a number ≥ 1');
+      }
+      if (typeof item.value !== 'number' || !Number.isFinite(item.value) || item.value < 0 || item.value > 100) {
+        throw new RangeError('tensionPoint.value must be a number between 0 and 100');
+      }
+      break;
+    }
   }
 }
 
@@ -163,6 +177,8 @@ export function handleTimelinesUpsertItem(
     return { ok: false, store, error: err instanceof Error ? err.message : String(err) };
   }
 
+  // Pre-M24 stores never wrote `tensionPoints` — default it before mutating.
+  if (!store[key]) (store as { [k in ItemKey]?: unknown[] })[key] = [];
   const list = store[key] as { id: string }[];
   const idx = list.findIndex((existing) => existing.id === (payload.item as { id: string }).id);
   if (idx === -1) list.push(payload.item as never);
@@ -180,7 +196,7 @@ export function handleTimelinesDeleteItem(
   const key = ITEM_KEY_BY_TYPE[payload?.type as TimelinesDeleteItemPayload['type']];
   if (!key || typeof payload.id !== 'string') return { ok: false, store, error: 'Unknown item type' };
 
-  const list = store[key] as { id: string }[];
+  const list = (store[key] ?? []) as { id: string }[];
   const idx = list.findIndex((existing) => existing.id === payload.id);
   if (idx === -1) return { ok: false, store, error: 'Item not found' };
   const removed = list[idx];

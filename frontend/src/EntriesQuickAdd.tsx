@@ -101,7 +101,7 @@ export default function EntriesQuickAdd({ onEntrySaved }: Props) {
           unsubError();
           resolve();
         });
-        const unsubError = window.api.onStreamError(({ streamId: sid, error: msg }) => {
+        const unsubError = window.api.onStreamError(({ streamId: sid, message: msg }) => {
           if (sid !== streamId) return;
           unsubToken();
           unsubEnd();

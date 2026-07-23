@@ -3,7 +3,7 @@ import { useIpcStream } from './useIpcStream';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; category: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; category: string; message: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -132,7 +132,7 @@ describe('useIpcStream — error state', () => {
     const { result } = renderHook(() => useIpcStream('s1'));
 
     act(() => {
-      errorCb?.({ streamId: 's1', category: 'unknown', error: 'API failure' });
+      errorCb?.({ streamId: 's1', category: 'unknown', message: 'API failure' });
     });
 
     expect(result.current.error).toBe('API failure');
@@ -144,7 +144,7 @@ describe('useIpcStream — error state', () => {
     const { result } = renderHook(() => useIpcStream('s1'));
 
     act(() => {
-      errorCb?.({ streamId: 'other', category: 'unknown', error: 'ignored' });
+      errorCb?.({ streamId: 'other', category: 'unknown', message: 'ignored' });
     });
 
     expect(result.current.error).toBeNull();
@@ -156,7 +156,7 @@ describe('useIpcStream — error state', () => {
 
     act(() => {
       tokenCb?.({ streamId: 's1', token: 'partial' });
-      errorCb?.({ streamId: 's1', category: 'unknown', error: 'mid-stream failure' });
+      errorCb?.({ streamId: 's1', category: 'unknown', message: 'mid-stream failure' });
     });
 
     expect(result.current.text).toBe('partial');

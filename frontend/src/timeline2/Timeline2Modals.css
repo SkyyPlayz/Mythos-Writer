@@ -3,28 +3,6 @@
    rgba(15,19,33,.97) glass, cyan/purple borders, 30px mono inputs r9,
    lnFadeUp .16s, gradient primary button with #0b0d17 text. */
 
-.t2m-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 80;
-  background: rgba(4, 6, 12, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Calendar editor stacks above the time picker (prototype z 82 > 80) */
-.t2m-overlay--top {
-  z-index: 82;
-}
-
-.t2m-backdrop {
-  position: absolute;
-  inset: 0;
-}
-
 .t2m-card {
   position: relative;
   width: 400px;

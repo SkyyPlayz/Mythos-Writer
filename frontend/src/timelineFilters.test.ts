@@ -10,7 +10,7 @@ import {
   chronologicalSceneIds,
   stepFocusedScene,
 } from './timelineFilters';
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+import type { SpreadsheetScene } from './timelineFilters';
 
 function makeScene(overrides: Partial<SpreadsheetScene> = {}): SpreadsheetScene {
   return {

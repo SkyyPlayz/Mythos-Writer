@@ -292,7 +292,11 @@
 .note-tags-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* Must exceed .note-tag-remove's 6px negative-margin hit-area bleed on
+     every side, else the expanded hit target overlaps .note-add-tag-input
+     (SKY-8009) — a flush 6px/6px match still overlaps under subpixel gap
+     rounding. */
+  gap: 9px;
   padding-top: 9px;
   flex-wrap: wrap;
 }

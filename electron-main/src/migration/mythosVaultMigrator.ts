@@ -452,11 +452,21 @@ interface CommentRecord {
 }
 
 function readExistingComments(sourceStoryVault: string, storyPath: string): CommentRecord[] {
+  const commentsPath = path.join(sourceStoryVault, ...storyPath.split(/[\\/]/), 'comments.json');
+  let raw: string;
   try {
-    const raw = fs.readFileSync(
-      path.join(sourceStoryVault, ...storyPath.split(/[\\/]/), 'comments.json'),
-      'utf-8',
-    );
+    raw = fs.readFileSync(commentsPath, 'utf-8');
+  } catch (e) {
+    // Missing sidecar is normal (most stories have none). A sidecar that
+    // EXISTS but can't be read (locked, permission-denied, or a directory
+    // sitting where a file is expected — e.g. an EISDIR from a broken sync
+    // client) must not be silently treated as "no comments": that would
+    // silently drop real data. Surface it as a hard failure instead.
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return [];
+    throw new Error(`Could not read comments sidecar "${commentsPath}": ${(e as Error).message}`);
+  }
+  try {
     const parsed = JSON.parse(raw) as { comments?: unknown[] } | unknown[];
     const list = Array.isArray(parsed)
       ? parsed
@@ -464,8 +474,35 @@ function readExistingComments(sourceStoryVault: string, storyPath: string): Comm
         ? (parsed as { comments: unknown[] }).comments
         : [];
     return list.filter((c): c is CommentRecord => typeof c === 'object' && c !== null);
+  } catch (e) {
+    throw new Error(`Could not parse comments sidecar "${commentsPath}": ${(e as Error).message}`);
+  }
+}
+
+// ─── Cloud-sync placeholder detection (SKY-7937) ─────────────────────────────
+//
+// Cloud-sync clients (OneDrive, Dropbox, iCloud Drive) can leave a
+// "dehydrated" / "online-only" placeholder on disk in place of a file whose
+// real bytes live in the cloud. On Windows these placeholders carry reparse
+// attributes (FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS / OFFLINE) that Node's
+// `fs` module does not expose without a native dependency, and there is no
+// equivalent OS signal on macOS/Linux. So this is a PURE FILE-SIZE HEURISTIC,
+// deliberately kept dependency-free and cross-platform: a source file whose
+// extension implies real content (.md/.txt/.json) but whose size on disk is
+// 0 bytes is treated as a probable placeholder and hard-fails verification
+// with an actionable message, rather than silently hashing two empty files
+// and reporting a false pass. This can false-positive on a genuinely empty
+// user file of one of these extensions — an acceptable trade against
+// silently losing real content.
+const PLAUSIBLE_CONTENT_EXTENSIONS = new Set(['.md', '.txt', '.json']);
+
+function isSuspiciousEmptySource(sourcePath: string): boolean {
+  const ext = path.extname(sourcePath).toLowerCase();
+  if (!PLAUSIBLE_CONTENT_EXTENSIONS.has(ext)) return false;
+  try {
+    return fs.statSync(sourcePath).size === 0;
   } catch {
-    return [];
+    return false;
   }
 }
 
@@ -506,6 +543,11 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
   const { manifest, rawTimeline } = source;
   const warnings: string[] = [];
   const counts: MigrationCounts = { ...empty };
+  // Declared up-front so the copy step (which can already detect cloud-sync
+  // placeholders as it reads each source file) and the later verify step
+  // both append to the same list — a mismatch found at copy time is exactly
+  // as hard-fail as one found at verify time.
+  const mismatches: string[] = [];
 
   try {
     const storyVaultPath = storyVaultRootFor(opts.targetRoot);
@@ -526,6 +568,23 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
     for (const layout of layouts) {
       for (const ch of layout.chapters) {
         for (const s of ch.scenes) sceneToStory.set(s.scene.id, layout.story.id);
+      }
+    }
+
+    // Suspicious-source check for scene files (same heuristic as notes,
+    // see isSuspiciousEmptySource above): a scene .md that is 0 bytes on
+    // disk but the manifest says it should have content is a hard-fail,
+    // not a quiet "migrated empty" warning.
+    for (const layout of layouts) {
+      for (const ch of layout.chapters) {
+        for (const s of ch.scenes) {
+          const sourceScenePath = path.join(opts.sourceStoryVault, ...s.scene.path.split(/[\\/]/));
+          if (isSuspiciousEmptySource(sourceScenePath) && s.prose.trim().length === 0) {
+            mismatches.push(
+              `scene "${s.scene.title}" appears to be a cloud-sync placeholder (0 bytes) — make sure it is fully downloaded/hydrated locally before migrating, then re-run`,
+            );
+          }
+        }
       }
     }
 
@@ -717,13 +776,20 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
     }
 
     // 4. Notes Vault: byte-identical copy (minus the seed sentinel).
+    let noteFilesAtCopyTime = 0;
     if (fs.existsSync(opts.sourceNotesVault)) {
       for (const rel of listNotesFiles(opts.sourceNotesVault)) {
         const from = path.join(opts.sourceNotesVault, ...rel.split('/'));
         const to = path.join(notesVaultPath, ...rel.split('/'));
+        if (isSuspiciousEmptySource(from)) {
+          mismatches.push(
+            `note "${rel}" appears to be a cloud-sync placeholder (0 bytes) — make sure it is fully downloaded/hydrated locally before migrating, then re-run`,
+          );
+        }
         fs.mkdirSync(path.dirname(to), { recursive: true });
         fs.copyFileSync(from, to);
         counts.notes += 1;
+        noteFilesAtCopyTime += 1;
       }
     }
 
@@ -834,7 +900,6 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
     writeFileAtomic(manifestCachePathFor(storyVaultPath), JSON.stringify(newManifest));
 
     // 9. VERIFY: re-open the target with the v2 scanner and cross-check.
-    const mismatches: string[] = [];
     let scenesChecked = 0;
     const rescanned = scanMythosStoryVault(opts.targetRoot);
     if (rescanned.stories.length !== counts.stories) {
@@ -880,6 +945,16 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
           mismatches.push(`note content mismatch: ${rel}`);
         }
       }
+    }
+    // Count assertion: the source directory listing must be the same size at
+    // plan/copy time as it is here. Per-file existence/hash checks above
+    // can't catch a source directory that changed shape between copy and
+    // verify (e.g. a file removed or a new one added mid-migration) — only
+    // an explicit top-level count comparison can.
+    if (notesChecked !== noteFilesAtCopyTime) {
+      mismatches.push(
+        `note count changed during migration: ${noteFilesAtCopyTime} notes were copied but ${notesChecked} were found at verification — the source Notes Vault may have changed while migrating`,
+      );
     }
 
     return {

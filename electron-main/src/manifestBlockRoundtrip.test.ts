@@ -116,6 +116,46 @@ describe('multi-block scene round-trip (PR #932 review blocker)', () => {
     expect(onDisk.map((b) => b.bodySegLen)).toEqual([15, 26, 24]);
   });
 
+  it('SKY-6196: a manifest arriving with content already blanked (renderer-computed bodySegLen) round-trips exactly like a full-content write', () => {
+    // Simulates frontend/src/manifestIpc.ts stripManifestContentForIpc: the
+    // renderer now blanks blocks[].content and computes bodySegLen itself
+    // before the manifest crosses vault:manifest:write. stripSceneProse must
+    // trust that pre-computed bodySegLen rather than recomputing from (now
+    // blank) content, which would erase it and corrupt hydration.
+    const fullBlocks = [
+      block('b-h', 'heading', 0, '## The Old Mill'),
+      block('b-p', 'prose', 1, 'Rain fell on the tin roof.'),
+      block('b-d', 'dialogue', 2, 'We should not be here.'),
+    ];
+    writeSceneFile(tmpDir, 'pre-stripped.md', {
+      id: 'sc-pre',
+      title: 'Scene sc-pre',
+      prose: blocksToMarkdownBody(fullBlocks),
+    });
+    // Pre-stripped as the renderer would send it: content blanked, bodySegLen
+    // set from the same segment-length values the sibling test asserts on.
+    const preStrippedBlocks: BlockEntry[] = [
+      { ...fullBlocks[0], content: '', bodySegLen: 15 },
+      { ...fullBlocks[1], content: '', bodySegLen: 26 },
+      { ...fullBlocks[2], content: '', bodySegLen: 24 },
+    ];
+    const manifestPath = path.join(tmpDir, 'manifest.json');
+    const manifest: Manifest = {
+      ...defaultManifest(tmpDir),
+      scenes: [scene('sc-pre', 'pre-stripped.md', preStrippedBlocks)],
+    };
+    writeManifest(manifestPath, manifest);
+
+    const onDisk = (JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Manifest).scenes[0].blocks;
+    expect(onDisk.map((b) => b.content)).toEqual(['', '', '']);
+    expect(onDisk.map((b) => b.bodySegLen)).toEqual([15, 26, 24]);
+
+    const got = readManifest(manifestPath).scenes[0].blocks;
+    expect(got.map((b) => b.content)).toEqual(fullBlocks.map((b) => b.content));
+    expect(got.map((b) => b.type)).toEqual(['heading', 'prose', 'dialogue']);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it('all block types in one scene round-trip, including marker-like characters inside content', () => {
     const blocks = [
       block('b1', 'heading', 0, '### Act III'),

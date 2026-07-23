@@ -762,6 +762,33 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 27');
   }
+
+  if (currentVersion < 28) {
+    // SKY-6982 (Beta 4 M27): Beta Reader agent view — persists structured
+    // reports (score chips + LOVED/STUMBLED/CONFUSED reactions) so the
+    // left-column BETA READS history survives restarts. Separate from the
+    // legacy beta_read_comments table (MYT-237 selection-based flow, v8),
+    // which stays as-is for its own still-active entry point.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS beta_reports (
+        id              TEXT PRIMARY KEY,
+        story_id        TEXT NOT NULL,
+        scope_kind      TEXT NOT NULL,
+        scope_id        TEXT NOT NULL,
+        scope_label     TEXT NOT NULL,
+        focus_json      TEXT NOT NULL,
+        overall_score   INTEGER NOT NULL,
+        overall_verdict TEXT NOT NULL,
+        categories_json TEXT NOT NULL,
+        feedback        TEXT NOT NULL,
+        reactions_json  TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_beta_reports_story_created
+        ON beta_reports (story_id, created_at DESC);
+    `);
+    db.exec('PRAGMA user_version = 28');
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -1454,6 +1481,48 @@ export function dismissBetaReadComment(id: string): void {
   getDb()
     .prepare(`UPDATE beta_read_comments SET dismissed_at = ? WHERE id = ?`)
     .run(new Date().toISOString(), id);
+}
+
+// ─── Beta Reader reports (Beta 4 M27 — SKY-6982) ───
+
+export interface DbBetaReport {
+  id: string;
+  story_id: string;
+  scope_kind: string;
+  scope_id: string;
+  scope_label: string;
+  /** JSON-serialised BetaReportFocus (see ipc.ts). */
+  focus_json: string;
+  overall_score: number;
+  overall_verdict: string;
+  /** JSON-serialised BetaReportCategory[]. */
+  categories_json: string;
+  feedback: string;
+  /** JSON-serialised BetaReportReaction[]. */
+  reactions_json: string;
+  created_at: string;
+}
+
+export function insertBetaReport(r: DbBetaReport): void {
+  getDb()
+    .prepare(
+      `INSERT INTO beta_reports (id, story_id, scope_kind, scope_id, scope_label, focus_json, overall_score, overall_verdict, categories_json, feedback, reactions_json, created_at)
+       VALUES (@id, @story_id, @scope_kind, @scope_id, @scope_label, @focus_json, @overall_score, @overall_verdict, @categories_json, @feedback, @reactions_json, @created_at)`
+    )
+    .run(r as unknown as Record<string, SQLInputValue>);
+}
+
+export function listBetaReports(storyId: string): DbBetaReport[] {
+  return getDb()
+    .prepare(`SELECT * FROM beta_reports WHERE story_id = ? ORDER BY created_at DESC`)
+    .all(storyId) as unknown as DbBetaReport[];
+}
+
+export function getBetaReport(id: string): DbBetaReport | null {
+  const row = getDb()
+    .prepare(`SELECT * FROM beta_reports WHERE id = ?`)
+    .get(id) as DbBetaReport | undefined;
+  return row ?? null;
 }
 
 // ─── Manifest migration log ───
