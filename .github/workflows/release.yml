@@ -280,9 +280,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update release with notes (keep as draft)
+      # SKY-8110: publish (undraft) once all artifacts are uploaded. Draft releases
+      # are invisible to electron-updater, so keeping releases as drafts stranded
+      # every installed build with no update path. Betas stay marked prerelease
+      # (set at create-release), which keeps them off the stable `latest` channel.
+      - name: Publish release with notes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
         run: |
-          gh release edit "$TAG" --notes "${{ steps.changelog.outputs.notes }}" --draft
+          if [ "${{ needs.determine-release.outputs.is-beta }}" = "true" ]; then
+            gh release edit "$TAG" --notes "${{ steps.changelog.outputs.notes }}" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$TAG" --notes "${{ steps.changelog.outputs.notes }}" --draft=false
+          fi
