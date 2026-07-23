@@ -176,6 +176,34 @@ describe('toolbar Read button + gutter Reader card', () => {
     expect(screen.queryByTestId('msv-gutter')).toBeNull();
   });
 
+  it('the play button reflects playing state via aria-pressed', () => {
+    renderView();
+    openCard();
+    const play = screen.getByTestId('msv-reader-play');
+    expect(play).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(play);
+    expect(play).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(play);
+    expect(play).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('transport buttons carry accessible names', () => {
+    renderView();
+    openCard();
+    expect(screen.getByTestId('msv-reader-prev-scene')).toHaveAttribute('aria-label', 'Previous scene');
+    expect(screen.getByTestId('msv-reader-back')).toHaveAttribute('aria-label', 'Back 10 seconds');
+    expect(screen.getByTestId('msv-reader-fwd')).toHaveAttribute('aria-label', 'Forward 10 seconds');
+    expect(screen.getByTestId('msv-reader-next-scene')).toHaveAttribute('aria-label', 'Next scene');
+  });
+
+  it('Escape closes the Reader card', () => {
+    renderView();
+    openCard();
+    expect(screen.getByTestId('msv-reader-card')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByTestId('msv-reader-card'), { key: 'Escape' });
+    expect(screen.queryByTestId('msv-reader-card')).toBeNull();
+  });
+
   it('centers the card when no comments are visible (prototype gutterSt)', () => {
     renderView();
     openCard();

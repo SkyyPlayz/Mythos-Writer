@@ -32,6 +32,20 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+.msv-reader-nav:focus-visible,
+.msv-reader-play:focus-visible,
+.msv-reader-jump:focus-visible,
+.msv-reader-close:focus-visible,
+.msv-reader-voice:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 1px;
+}
+
+.msv-reader-rate:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 3px;
+}
+
 .msv-reader-play {
   width: 38px;
   height: 38px;
