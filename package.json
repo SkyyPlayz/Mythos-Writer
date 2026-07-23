@@ -30,7 +30,7 @@
     "test:e2e": "playwright test e2e/ --reporter=list",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list",
     "test:e2e:auto-update": "MYTHOS_AUTO_UPDATE=1 playwright test e2e/auto-update-beta.spec.ts --reporter=list",
-    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts --reporter=list",
+    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts e2e/story-import-epub.spec.ts --reporter=list",
     "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list",
     "test:e2e:draft-history": "playwright test e2e/draft-history.spec.ts --reporter=list",
     "test:e2e:comments": "playwright test e2e/comments-v2.spec.ts --reporter=list",

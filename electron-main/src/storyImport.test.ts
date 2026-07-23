@@ -151,8 +151,11 @@ describe('epubToStoryMarkdown', () => {
     expect(res.markdown.indexOf('# Chapter One')).toBeLessThan(res.markdown.indexOf('# Chapter Two'));
     expect(res.markdown).toContain('## Scene A');
     expect(res.markdown).toContain('First words.');
-    // Splits into two chapters downstream
-    const split = splitStoryMarkdown(res.markdown, res.title ?? 'Untitled');
+    // Splits into two chapters downstream — the dc:title survives as the
+    // story title (titleIsAuthoritative=true), it is not overwritten by the
+    // first chapter heading the way a filename-derived fallback would be.
+    const split = splitStoryMarkdown(res.markdown, res.title ?? 'Untitled', true);
+    expect(split.title).toBe('The Sunken Gate');
     expect(split.chapters.map((c) => c.title)).toEqual(['Chapter One', 'Chapter Two']);
   });
 
@@ -244,7 +247,10 @@ describe('scrivToStoryMarkdown', () => {
       expect(res.markdown).toContain('## Arrival');
       expect(res.markdown).toContain('Mira reached the gate.');
 
-      const split = splitStoryMarkdown(res.markdown, res.title);
+      // titleIsAuthoritative=true: the project name survives as the story
+      // title instead of being overwritten by the first chapter heading.
+      const split = splitStoryMarkdown(res.markdown, res.title, true);
+      expect(split.title).toBe('My Novel');
       expect(split.chapters[0].title).toBe('Chapter One');
       expect(split.chapters[0].scenes[0].title).toBe('Arrival');
       expect(split.chapters[0].scenes[0].prose).toContain('Mira reached the gate.');

@@ -118,7 +118,11 @@ export interface StorySplit {
  * Split markdown into chapters/scenes, mapping parts when three heading
  * levels are present. Delegates 1–2-level documents to splitDocxMarkdown.
  */
-export function splitStoryMarkdown(markdown: string, fallbackTitle = 'Untitled'): StorySplit {
+export function splitStoryMarkdown(
+  markdown: string,
+  fallbackTitle = 'Untitled',
+  titleIsAuthoritative = false,
+): StorySplit {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const has = (re: RegExp) => lines.some((l) => re.test(l));
   const h1 = has(/^# /);
@@ -161,7 +165,11 @@ export function splitStoryMarkdown(markdown: string, fallbackTitle = 'Untitled')
     });
   }
   const split = splitDocxMarkdown(demoted.join('\n'), fallbackTitle);
-  return { title: split.title, chapters: split.chapters, partCount: 0 };
+  // A source with a real external title (ePub dc:title, a Scrivener project
+  // name) keeps it — the first chapter heading is not the book title. Only
+  // formats with no metadata title (docx/md/gdoc, fallbackTitle = filename)
+  // fall back to "first heading wins".
+  return { title: titleIsAuthoritative ? fallbackTitle : split.title, chapters: split.chapters, partCount: 0 };
 }
 
 // ─── ePub ─────────────────────────────────────────────────────────────────────
