@@ -30,9 +30,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218)
-test.skip(true, 'SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218)');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
@@ -144,10 +141,15 @@ async function waitUntil(
   return false;
 }
 
+// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
+// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
+// "vault" panel of the Story Writer section (collapsed by default) — the same
+// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
 async function openVaultTab(pg: Page): Promise<void> {
-  const vaultTab = pg.locator('.rail-tab', { hasText: 'Vault' });
-  await expect(vaultTab).toBeVisible({ timeout: 8_000 });
-  await vaultTab.click();
+  const vaultPanel = pg.locator('[data-panel-id="vault"]');
+  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
+  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
 }
 

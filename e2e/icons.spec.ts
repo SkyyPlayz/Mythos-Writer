@@ -16,9 +16,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218); app itself boots fine
-test.skip(true, 'SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218); app itself boots fine');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const ICON_EMOJI = '🎭';
 const NOTE_NAME = 'hero';
@@ -90,11 +87,13 @@ test.afterAll(async () => {
 test('TC-I-01: notes file with icon frontmatter shows emoji in Notes Vault tree', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to the Vault tab
-  const vaultTab = page.locator('.rail-tab', { hasText: 'Vault' });
-  await vaultTab.click();
+  // Navigate to the Notes Editor section (nav-rail rewrite, SKY-3098/3218) —
+  // its sidebar VaultBrowser is locked to the notes scope, so the Notes Vault
+  // tree renders directly with no extra scope-switch needed.
+  const notesTab = page.locator('button.nav-rail__item[aria-label="Notes Editor"]');
+  await notesTab.click();
 
-  // Ensure Notes Vault section is visible (switch to Both or Notes scope)
+  // Ensure Notes Vault section is visible
   const notesVaultSection = page.locator('[data-testid="vb-notes-vault"]');
   await expect(notesVaultSection).toBeVisible({ timeout: 8_000 });
 

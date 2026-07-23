@@ -25,9 +25,6 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
-// SKY-6933: stale selector -- .app-menu-bar removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source
-test.skip(true, 'SKY-6933: stale selector -- .app-menu-bar removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source');
-
 type ProviderListResponse = { ok: true; models: string[] } | { ok: false; error: string };
 type ProviderResponses = Record<string, ProviderListResponse>;
 
