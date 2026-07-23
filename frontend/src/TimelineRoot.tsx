@@ -56,6 +56,8 @@ import TimelineRelationships from './TimelineRelationships';
 import TimelineSubway from './TimelineSubway';
 import TimelineTension from './TimelineTension';
 import TimelinePlotlines from './TimelinePlotlines';
+import { TimelineSubwayTableToggleButton } from './TimelineSubwayTableToggle';
+import TimelineSubwayTableView from './TimelineSubwayTableToggle';
 import AxisView, { type AxisChapterCell } from './timeline2/AxisView';
 import CalendarEditorModal from './timeline2/CalendarEditorModal';
 import TimelineRightPanel, { type TimelineRightTab } from './timeline2/panel/TimelineRightPanel';
@@ -445,6 +447,14 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
   const isLanesMode = viewMode === 'progress' || viewMode === 'structure';
   const isAeonMode = viewMode === 'relations' || viewMode === 'subway';
+
+  // SKY-7935 — Subway "View as table" toggle: visible only in Subway mode,
+  // resets whenever the user leaves Subway so re-entering always starts on
+  // the diagram.
+  const [subwayTableView, setSubwayTableView] = useState(false);
+  useEffect(() => {
+    if (viewMode !== 'subway') setSubwayTableView(false);
+  }, [viewMode]);
 
   // ── M23: derived store slices for the toolbar + left panel ──
   const activeId = timelinesStore?.activeTimelineId ?? '';
@@ -886,6 +896,15 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
           ))}
         </div>
 
+        {/* SKY-7935 — Subway "View as table" toggle: sits beside the mode-seg,
+            visible only in Subway mode (spec §3.3). */}
+        {viewMode === 'subway' && (
+          <TimelineSubwayTableToggleButton
+            pressed={subwayTableView}
+            onToggle={() => setSubwayTableView(v => !v)}
+          />
+        )}
+
         {legend}
 
         {/* M25 (design §2): header-level flag badge — reads in every mode,
@@ -1242,9 +1261,15 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
 
           {isAeonMode && story && !aeonLoading && !aeonError && (
             <>
-              {viewMode === 'relations' && <TimelineRelationships data={aeonData} />}
+              {viewMode === 'relations' && (
+                <TimelineRelationships data={aeonData} onOpenScene={onOpenScene} />
+              )}
               {viewMode === 'subway' && (
-                <TimelineSubway data={aeonData} onOpenScene={onOpenScene} />
+                subwayTableView ? (
+                  <TimelineSubwayTableView data={aeonData} onOpenScene={onOpenScene} />
+                ) : (
+                  <TimelineSubway data={aeonData} onOpenScene={onOpenScene} />
+                )
               )}
             </>
           )}

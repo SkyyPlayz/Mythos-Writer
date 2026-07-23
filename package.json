@@ -104,6 +104,7 @@
     "test:e2e:scene-editor-empty-states": "playwright test e2e/tests/scene-editor-empty-states.spec.ts --reporter=list",
     "test:e2e:sky214-entity-screenshots": "playwright test e2e/tests/sky214-entity-screenshots.spec.ts --reporter=list",
     "test:e2e:scene-save-perf": "playwright test e2e/scene-save-perf.spec.ts --reporter=list",
+    "test:e2e:relationships-subway-a11y": "playwright test e2e/timeline-relationships-subway-a11y.spec.ts --reporter=list",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh"
   },
