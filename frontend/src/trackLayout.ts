@@ -1,7 +1,7 @@
 // SKY-3181: Pure layout engine for the AEON-style track/lane chronology view.
 // No DOM. Mirrors timelineFilters.ts — side-effect free, fully unit-testable.
 
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+import type { SpreadsheetScene } from './timelineFilters';
 import type { TimelinePrimaryGrouping, TimelineSpacingMode } from './types';
 
 // ─── Context types ───────────────────────────────────────────────────────────

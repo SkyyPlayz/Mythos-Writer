@@ -10,7 +10,7 @@ import {
   handleTimelinesDeleteItem,
 } from './timelinesStoreIpc.js';
 import { readTimelinesStore, TIMELINES_FILENAME } from './timelines/store.js';
-import type { TimelineEra, TimelineEvent, TimelineRow, TimelineSpan } from './timelines/model.js';
+import type { TimelineEra, TimelineEvent, TimelineRow, TimelineSpan, TimelineTensionPoint } from './timelines/model.js';
 
 function makeTmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tl-ipc-test-'));
@@ -286,5 +286,72 @@ describe('M23 — plotline rows and story-lane event fields', () => {
     const bad3 = { id: 'ev:badimp', timelineId, name: 'X', when: 1, impact: { t: 'x' } } as unknown as TimelineEvent;
     expect(handleTimelinesUpsertItem(dir, { type: 'event', item: bad3 }).ok).toBe(false);
     expect(readTimelinesStore(dir).events.some((e) => e.id.startsWith('ev:bad'))).toBe(false);
+  });
+});
+
+// ─── Beta 4 M24: Tension mode's per-chapter tension points ───
+
+describe('handleTimelinesUpsertItem — tensionPoint (M24)', () => {
+  let dir: string;
+  let timelineId: string;
+  beforeEach(() => {
+    dir = makeTmp();
+    timelineId = readTimelinesStore(dir).activeTimelineId;
+  });
+
+  it('creates a new tension point and persists it', () => {
+    const item: TimelineTensionPoint = { id: 'tension:1', timelineId, chapter: 1, value: 42 };
+    const res = handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item });
+    expect(res.ok).toBe(true);
+    expect(res.store.tensionPoints?.some((p) => p.id === 'tension:1' && p.value === 42)).toBe(true);
+    expect(readTimelinesStore(dir).tensionPoints?.some((p) => p.id === 'tension:1')).toBe(true);
+  });
+
+  it('updates an existing tension point by id in place', () => {
+    const item: TimelineTensionPoint = { id: 'tension:1', timelineId, chapter: 1, value: 42 };
+    handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item });
+    const res = handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item: { ...item, value: 90 } });
+    expect(res.ok).toBe(true);
+    expect(res.store.tensionPoints?.length).toBe(1);
+    expect(res.store.tensionPoints?.[0].value).toBe(90);
+  });
+
+  it('rejects chapter < 1 and non-finite values', () => {
+    const bad1 = { id: 'tension:bad1', timelineId, chapter: 0, value: 50 } as TimelineTensionPoint;
+    expect(handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item: bad1 }).ok).toBe(false);
+    const bad2 = { id: 'tension:bad2', timelineId, chapter: 1, value: Number.NaN } as TimelineTensionPoint;
+    expect(handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item: bad2 }).ok).toBe(false);
+  });
+
+  it('rejects a value outside 0-100', () => {
+    const bad = { id: 'tension:bad3', timelineId, chapter: 1, value: 101 } as TimelineTensionPoint;
+    expect(handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item: bad }).ok).toBe(false);
+    const bad2 = { id: 'tension:bad4', timelineId, chapter: 1, value: -1 } as TimelineTensionPoint;
+    expect(handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item: bad2 }).ok).toBe(false);
+  });
+
+  it('rejects an item with no `name` field cleanly (tensionPoint has none by design)', () => {
+    // Guards against a future regression re-adding the blanket name check.
+    const item: TimelineTensionPoint = { id: 'tension:1', timelineId, chapter: 1, value: 50 };
+    expect('name' in item).toBe(false);
+    expect(handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item }).ok).toBe(true);
+  });
+
+  it('deletes a tension point', () => {
+    const item: TimelineTensionPoint = { id: 'tension:1', timelineId, chapter: 1, value: 50 };
+    handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item });
+    const res = handleTimelinesDeleteItem(dir, { type: 'tensionPoint', id: 'tension:1' });
+    expect(res.ok).toBe(true);
+    expect(res.store.tensionPoints?.some((p) => p.id === 'tension:1')).toBe(false);
+  });
+
+  it('is additive on a pre-M24 store missing `tensionPoints` entirely', () => {
+    const store = readTimelinesStore(dir);
+    delete (store as { tensionPoints?: unknown }).tensionPoints;
+    fs.writeFileSync(path.join(dir, TIMELINES_FILENAME), JSON.stringify(store, null, 2));
+    const item: TimelineTensionPoint = { id: 'tension:1', timelineId, chapter: 1, value: 50 };
+    const res = handleTimelinesUpsertItem(dir, { type: 'tensionPoint', item });
+    expect(res.ok).toBe(true);
+    expect(res.store.tensionPoints).toEqual([item]);
   });
 });

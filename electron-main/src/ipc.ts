@@ -19,6 +19,7 @@ import type {
   TimelineSpan,
   TimelineRow,
   TimelineEvent,
+  TimelineTensionPoint,
 } from './timelines/model.js';
 export type {
   TimelinesStore,
@@ -29,6 +30,7 @@ export type {
   TimelineSpan,
   TimelineRow,
   TimelineEvent,
+  TimelineTensionPoint,
 };
 
 // Re-export canonical payload/policy types from @mythos-writer/shared.
@@ -231,6 +233,11 @@ export const IPC_CHANNELS = {
   BETA_READ_DISMISS: 'betaRead:dismiss',
   // Beta-Read on-demand LLM scan (MYT-711) — auto-generates anchored comments
   BETA_READ_SCAN: 'betaRead:scan',
+
+  // Beta Reader agent view (SKY-6982, Beta 4 M27) — structured reports
+  BETA_REPORT_RUN: 'betaReport:run',
+  BETA_REPORT_LIST: 'betaReport:list',
+  BETA_REPORT_GET: 'betaReport:get',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -787,6 +794,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_READ_LIST]: (payload: BetaReadListPayload) => BetaReadListResponse;
   [IPC_CHANNELS.BETA_READ_DISMISS]: (payload: BetaReadDismissPayload) => BetaReadDismissResponse;
   // BETA_READ_SCAN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
+  [IPC_CHANNELS.BETA_REPORT_LIST]: (payload: BetaReportListPayload) => BetaReportListResponse;
+  [IPC_CHANNELS.BETA_REPORT_GET]: (payload: BetaReportGetPayload) => BetaReportGetResponse;
+  // BETA_REPORT_RUN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
@@ -3194,6 +3204,88 @@ export interface BetaReadScanResponse {
   scannedAt: string;
 }
 
+// ─── Beta Reader agent view (SKY-6982, Beta 4 M27) ───
+
+export interface BetaReportScope {
+  kind: 'scene' | 'chapter' | 'story';
+  /** Scene id / chapter id / story id, matching `kind`. */
+  id: string;
+  /** Display label, e.g. "Scene: Arrival" / "Chapter 2: The Descent" / "Full story". */
+  label: string;
+}
+
+export interface BetaReportFocus {
+  pacing: boolean;
+  clarity: boolean;
+  character: boolean;
+  plot: boolean;
+}
+
+export interface BetaReportCategory {
+  key: string;
+  label: string;
+  score: number;
+  verdict: 'strong' | 'mixed' | 'weak';
+}
+
+export interface BetaReportReaction {
+  id: string;
+  kind: 'loved' | 'stumbled' | 'confused';
+  sceneId: string;
+  quote: string;
+  where: string;
+  note: string;
+}
+
+export interface BetaReport {
+  id: string;
+  storyId: string;
+  scope: BetaReportScope;
+  focus: BetaReportFocus;
+  overall: { score: number; verdict: 'strong' | 'mixed' | 'weak' };
+  categories: BetaReportCategory[];
+  feedback: string;
+  reactions: BetaReportReaction[];
+  createdAt: string;
+}
+
+export interface BetaReportRunPayload {
+  storyId: string;
+  scope: BetaReportScope;
+  focus: BetaReportFocus;
+  /** Pre-assembled manuscript text with `<<SCENE id="...">>` markers — see textAssembly.ts. */
+  text: string;
+}
+
+export interface BetaReportRunResponse {
+  report: BetaReport;
+}
+
+export interface BetaReportListPayload {
+  storyId: string;
+}
+
+/** Lightweight summary for the BETA READS history list — full report fetched on click via BETA_REPORT_GET. */
+export interface BetaReportSummary {
+  id: string;
+  storyId: string;
+  scope: BetaReportScope;
+  overall: { score: number; verdict: 'strong' | 'mixed' | 'weak' };
+  createdAt: string;
+}
+
+export interface BetaReportListResponse {
+  reports: BetaReportSummary[];
+}
+
+export interface BetaReportGetPayload {
+  id: string;
+}
+
+export interface BetaReportGetResponse {
+  report: BetaReport | null;
+}
+
 // ─── EPUB export (MYT-253 / MYT-342) ───
 
 /**
@@ -4811,9 +4903,9 @@ export interface TimelinesSetActiveResponse { ok: boolean; store: TimelinesStore
 
 // Beta 4 M22: Axis engine — persist plotted items (eras, spans, events,
 // custom rows) mutated by direct manipulation / the exact-time picker.
-export type TimelinesItemType = 'era' | 'span' | 'event' | 'row';
+export type TimelinesItemType = 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
 
-export type TimelinesItem = TimelineEra | TimelineSpan | TimelineEvent | TimelineRow;
+export type TimelinesItem = TimelineEra | TimelineSpan | TimelineEvent | TimelineRow | TimelineTensionPoint;
 
 export interface TimelinesUpsertItemPayload {
   type: TimelinesItemType;

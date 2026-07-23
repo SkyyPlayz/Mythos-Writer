@@ -1,525 +1,159 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
-import TimelineSpreadsheet, { sortScenes, groupScenes, indexProposals, parseWordCount, WORD_COUNT_INVALID } from './TimelineSpreadsheet';
-import type { SpreadsheetScene, SceneGroup } from './TimelineSpreadsheet';
-import type { TimelineAIProposal } from './types';
+// Beta 4 M24 (§8.5) — TimelineSpreadsheet tests (vitest + @testing-library/react).
+//
+// Coverage:
+//   - Empty / unavailable states
+//   - All 6 columns render (EVENT/CH/DATE·ERA/POV/LOCATION/IMPACT)
+//   - Narrative vs Chronological sort toggle re-orders rows
+//   - FLASHBACK badge appears only in Chronological order, on out-of-order rows
+//   - Group-By (POV/Location/Chapter) groups rows with a group header + count
+//   - Row click selects and calls onSelectionChange (routes to Inspector)
+//   - Pure helpers: narrativeOrder / computeFlashbacks / buildSheetRows / groupSheetRows
 
-// ─── Fixtures ───
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { vi, describe, it, expect, afterEach } from 'vitest';
+import TimelineSpreadsheet, {
+  narrativeOrder,
+  computeFlashbacks,
+  buildSheetRows,
+  groupSheetRows,
+} from './TimelineSpreadsheet';
+import type { TimelinesStore, TimelineEvent } from './timelinesTypes';
 
-const ARC_A = { id: 'arc-alpha', title: 'Alpha Arc', color: '#7c6af7' };
-const ARC_B = { id: 'arc-beta', title: 'Beta Arc', color: '#00f0ff' };
-const CHAR_A = { id: 'char-1', name: 'Alice' };
-const CHAR_B = { id: 'char-2', name: 'Bob' };
+const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
 
-function makeScene(overrides: Partial<SpreadsheetScene> = {}): SpreadsheetScene {
+function makeStore(events: TimelineEvent[]): TimelinesStore {
   return {
-    id: crypto.randomUUID(),
-    title: 'Scene',
-    chapterId: 'ch-1',
-    date: '',
-    pov: '',
-    arcIds: [],
-    characterIds: [],
-    wordCount: null,
-    mood: '',
-    locationId: '',
-    ...overrides,
+    schemaVersion: 1,
+    activeTimelineId: 'tl-story',
+    timelines: [
+      {
+        id: 'tl-story', name: 'The Last City of Veynn', kind: 'story', axis: 'calendar',
+        calendar: { ...STANDARD }, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ],
+    eras: [],
+    spans: [],
+    rows: [],
+    events,
   };
 }
 
-// ─── sortScenes ───
-
-describe('sortScenes', () => {
-  it('sorts by date ascending', () => {
-    const scenes = [
-      makeScene({ date: '1990-06-01' }),
-      makeScene({ date: '1985-01-15' }),
-      makeScene({ date: '2000-12-31' }),
-    ];
-    const result = sortScenes(scenes, 'date', 'asc');
-    expect(result[0].date).toBe('1985-01-15');
-    expect(result[1].date).toBe('1990-06-01');
-    expect(result[2].date).toBe('2000-12-31');
-  });
-
-  it('sorts by date descending', () => {
-    const scenes = [
-      makeScene({ date: '1990-06-01' }),
-      makeScene({ date: '2000-12-31' }),
-    ];
-    const result = sortScenes(scenes, 'date', 'desc');
-    expect(result[0].date).toBe('2000-12-31');
-    expect(result[1].date).toBe('1990-06-01');
-  });
-
-  it('sorts by pov ascending', () => {
-    const scenes = [
-      makeScene({ pov: 'third-limited' }),
-      makeScene({ pov: 'first-person' }),
-      makeScene({ pov: 'omniscient' }),
-    ];
-    const result = sortScenes(scenes, 'pov', 'asc');
-    expect(result[0].pov).toBe('first-person');
-    expect(result[1].pov).toBe('omniscient');
-    expect(result[2].pov).toBe('third-limited');
-  });
-
-  it('sorts by arc ascending using first arc id', () => {
-    const scenes = [
-      makeScene({ arcIds: ['arc-beta'] }),
-      makeScene({ arcIds: ['arc-alpha'] }),
-      makeScene({ arcIds: [] }),
-    ];
-    const result = sortScenes(scenes, 'arc', 'asc');
-    expect(result[0].arcIds[0]).toBeUndefined();
-    expect(result[1].arcIds[0]).toBe('arc-alpha');
-    expect(result[2].arcIds[0]).toBe('arc-beta');
-  });
-
-  it('does not mutate original array', () => {
-    const scenes = [makeScene({ date: '2000-01-01' }), makeScene({ date: '1999-01-01' })];
-    const original = [...scenes];
-    sortScenes(scenes, 'date', 'asc');
-    expect(scenes[0].date).toBe(original[0].date);
-  });
+afterEach(() => {
+  cleanup();
 });
 
-// ─── groupScenes ───
+describe('pure helpers', () => {
+  const events: TimelineEvent[] = [
+    { id: 'e1', timelineId: 'tl', name: 'Opening', when: 100, chapter: 1 },
+    { id: 'e2', timelineId: 'tl', name: 'Flashback beat', when: 10, chapter: 2 },
+    { id: 'e3', timelineId: 'tl', name: 'Climax', when: 300, chapter: 3 },
+  ];
 
-describe('groupScenes', () => {
-  it('groups by arc and uses arc titles', () => {
-    const scenes = [
-      makeScene({ arcIds: ['arc-alpha'] }),
-      makeScene({ arcIds: ['arc-beta'] }),
-      makeScene({ arcIds: ['arc-alpha'] }),
-    ];
-    const groups: SceneGroup[] = groupScenes(scenes, 'arc', [ARC_A, ARC_B], []);
-    const titles = groups.map(g => g.label);
-    expect(titles).toContain('Alpha Arc');
-    expect(titles).toContain('Beta Arc');
-    const alpha = groups.find(g => g.key === 'arc-alpha')!;
-    expect(alpha.scenes).toHaveLength(2);
+  it('narrativeOrder sorts by chapter, unset chapters last', () => {
+    const ordered = narrativeOrder([
+      { id: 'a', timelineId: 'tl', name: 'A', when: 0, chapter: 2 },
+      { id: 'b', timelineId: 'tl', name: 'B', when: 0 },
+      { id: 'c', timelineId: 'tl', name: 'C', when: 0, chapter: 1 },
+    ]);
+    expect(ordered.map((e) => e.id)).toEqual(['c', 'a', 'b']);
   });
 
-  it('places multi-arc scene in each matching group', () => {
-    const scene = makeScene({ arcIds: ['arc-alpha', 'arc-beta'] });
-    const groups = groupScenes([scene], 'arc', [ARC_A, ARC_B], []);
-    expect(groups).toHaveLength(2);
-    expect(groups[0].scenes[0]).toBe(scene);
-    expect(groups[1].scenes[0]).toBe(scene);
+  it('computeFlashbacks flags an event whose `when` is earlier than the max seen so far', () => {
+    const flashbacks = computeFlashbacks(events);
+    expect(flashbacks.has('e2')).toBe(true);
+    expect(flashbacks.has('e1')).toBe(false);
+    expect(flashbacks.has('e3')).toBe(false);
   });
 
-  it('creates "No Arc" group for unassigned scenes', () => {
-    const scene = makeScene({ arcIds: [] });
-    const groups = groupScenes([scene], 'arc', [ARC_A], []);
-    const noArc = groups.find(g => g.key === '__unassigned__');
-    expect(noArc).toBeDefined();
-    expect(noArc!.label).toBe('No Arc');
-    expect(noArc!.scenes[0]).toBe(scene);
+  it('buildSheetRows: narrative order never marks flashbacks; chronological does', () => {
+    const narrative = buildSheetRows(events, 'narrative');
+    expect(narrative.map((r) => r.event.id)).toEqual(['e1', 'e2', 'e3']);
+    expect(narrative.every((r) => !r.isFlashback)).toBe(true);
+
+    const chrono = buildSheetRows(events, 'chronological');
+    expect(chrono.map((r) => r.event.id)).toEqual(['e2', 'e1', 'e3']);
+    expect(chrono.find((r) => r.event.id === 'e2')!.isFlashback).toBe(true);
   });
 
-  it('groups by first character', () => {
-    const scene1 = makeScene({ characterIds: ['char-1'] });
-    const scene2 = makeScene({ characterIds: ['char-2'] });
-    const groups = groupScenes([scene1, scene2], 'character', [], [CHAR_A, CHAR_B]);
-    const aliceGroup = groups.find(g => g.key === 'char-1')!;
-    const bobGroup = groups.find(g => g.key === 'char-2')!;
-    expect(aliceGroup.label).toBe('Alice');
-    expect(bobGroup.label).toBe('Bob');
-    expect(aliceGroup.scenes[0]).toBe(scene1);
-    expect(bobGroup.scenes[0]).toBe(scene2);
-  });
-
-  it('creates "No Character" group for unassigned scenes', () => {
-    const scene = makeScene({ characterIds: [] });
-    const groups = groupScenes([scene], 'character', [], []);
-    expect(groups[0].label).toBe('No Character');
-    expect(groups[0].key).toBe('__unassigned__');
-  });
-
-  it('includes arc color on arc groups', () => {
-    const scene = makeScene({ arcIds: ['arc-alpha'] });
-    const groups = groupScenes([scene], 'arc', [ARC_A], []);
-    expect(groups[0].color).toBe('#7c6af7');
-  });
-
-  it('sorts Unassigned group last', () => {
-    const scenes = [
-      makeScene({ arcIds: [] }),
-      makeScene({ arcIds: ['arc-alpha'] }),
-    ];
-    const groups = groupScenes(scenes, 'arc', [ARC_A], []);
-    expect(groups[groups.length - 1].key).toBe('__unassigned__');
-  });
-});
-
-// SKY-5146 / GH#627: word-count validation — reject partial-numeric input.
-describe('parseWordCount', () => {
-  it('accepts a plain non-negative integer', () => {
-    expect(parseWordCount('0')).toBe(0);
-    expect(parseWordCount('1200')).toBe(1200);
-  });
-
-  it('treats an empty string as an intentional clear', () => {
-    expect(parseWordCount('')).toBeUndefined();
-  });
-
-  it.each(['12abc', '5 words', '5.7', '-3', ' ', '1200 ', '+3', 'abc', '1e3', '0x10'])(
-    'rejects partial-numeric / malformed input %j',
-    input => {
-      expect(parseWordCount(input)).toBe(WORD_COUNT_INVALID);
-    },
-  );
-
-  it('never silently coerces partial-numeric text to a partial number', () => {
-    // The core bug: parseInt('12abc') === 12. parseWordCount must not do that.
-    expect(parseWordCount('12abc')).not.toBe(12);
-    expect(parseWordCount('5.7')).not.toBe(5);
-  });
-});
-
-// ─── Component tests ───
-
-const MOCK_SCENE_ENTRY = {
-  id: 'scene-1',
-  title: 'The Beginning',
-  chapterId: 'ch-1',
-  path: 'stories/ch1/scene1.md',
-  order: 0,
-  blocks: [],
-  createdAt: '2024-01-01T00:00:00Z',
-  updatedAt: '2024-01-01T00:00:00Z',
-  chronologicalTime: { date: '1990-06-01', isEstimated: false, confidence: 1, source: 'explicit_marker' },
-  entityLinks: { arcs: ['arc-alpha'], characterIds: ['char-1'], locationId: '' },
-  timelineMetadata: { pov: 'first-person', mood: 'tense', wordCount: 1200 },
-};
-
-function makeApi(overrides: Record<string, unknown> = {}) {
-  return {
-    timelineGetScenes: vi.fn().mockResolvedValue({ scenes: [MOCK_SCENE_ENTRY] }),
-    timelineListArcs: vi.fn().mockResolvedValue({ arcs: [ARC_A, ARC_B] }),
-    entityList: vi.fn().mockResolvedValue({ entities: [CHAR_A, CHAR_B] }),
-    timelineUpdateScene: vi.fn().mockImplementation(async (payload: { sceneId: string }) => ({
-      scene: { ...MOCK_SCENE_ENTRY, id: payload.sceneId },
-    })),
-    // SKY-796: AI proposals — default mocks return empty so legacy tests don't
-    // see badges. Suites that exercise proposal UI override these explicitly.
-    timelineProposalsList: vi.fn().mockResolvedValue({ proposals: [] }),
-    timelineProposalsGenerate: vi.fn().mockResolvedValue({ proposals: [] }),
-    timelineProposalResolve: vi.fn().mockResolvedValue({ proposal: null }),
-    ...overrides,
-  };
-}
-
-const STORY = {
-  id: 'story-1',
-  title: 'My Novel',
-  path: 'stories/my-novel',
-  chapters: [],
-  createdAt: '2024-01-01T00:00:00Z',
-  updatedAt: '2024-01-01T00:00:00Z',
-};
-
-beforeEach(() => {
-  (window as unknown as { api: unknown }).api = makeApi();
-});
-
-async function renderSheet(story = STORY) {
-  const result = render(<TimelineSpreadsheet story={story} />);
-  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
-  return result;
-}
-
-describe('TimelineSpreadsheet — empty states', () => {
-  it('shows "Select a story to view its timeline." when story is null', () => {
-    render(<TimelineSpreadsheet story={null} />);
-    expect(screen.getByText('Select a story to view its timeline.')).toBeInTheDocument();
-  });
-
-  it('shows "Create scenes in your story to see them here." when API returns empty list', async () => {
-    (window as any).api.timelineGetScenes = vi.fn().mockResolvedValue({ scenes: [] });
-    render(<TimelineSpreadsheet story={STORY} />);
-    await waitFor(() => expect(screen.getByText('Create scenes in your story to see them here.')).toBeInTheDocument());
-  });
-});
-
-describe('TimelineSpreadsheet — rendering', () => {
-  it('renders the story title in the toolbar', async () => {
-    await renderSheet();
-    expect(screen.getByText('My Novel')).toBeInTheDocument();
-  });
-
-  it('renders a row for the fixture scene', async () => {
-    await renderSheet();
-    expect(screen.getByTestId('row-scene-1')).toBeInTheDocument();
-  });
-
-  it('renders scene title in the title column', async () => {
-    await renderSheet();
-    expect(screen.getByText('The Beginning')).toBeInTheDocument();
-  });
-
-  it('renders date from chronologicalTime', async () => {
-    await renderSheet();
-    expect(screen.getByTestId('cell-scene-1-date').textContent).toContain('1990-06-01');
-  });
-
-  it('renders POV from timelineMetadata', async () => {
-    await renderSheet();
-    expect(screen.getByTestId('cell-scene-1-pov').textContent).toContain('first-person');
-  });
-
-  it('renders arc pill using arc title', async () => {
-    await renderSheet();
-    expect(screen.getByTestId('cell-scene-1-arc').textContent).toContain('Alpha Arc');
-  });
-
-  it('renders word count', async () => {
-    await renderSheet();
-    expect(screen.getByTestId('cell-scene-1-wordCount').textContent).toContain('1200');
-  });
-});
-
-describe('TimelineSpreadsheet — inline edit', () => {
-  it('shows input on double-click of date cell', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-date'));
-    expect(screen.getByTestId('cell-edit-scene-1-date')).toBeInTheDocument();
-  });
-
-  it('shows input on double-click of pov cell', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-pov'));
-    expect(screen.getByTestId('cell-edit-scene-1-pov')).toBeInTheDocument();
-  });
-
-  it('shows select on double-click of arc cell', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-arc'));
-    expect(screen.getByTestId('cell-edit-scene-1-arc')).toBeInTheDocument();
-  });
-
-  it('calls timelineUpdateScene on Enter key in edit input', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-pov'));
-    const input = screen.getByTestId('cell-edit-scene-1-pov');
-    fireEvent.change(input, { target: { value: 'omniscient' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => {
-      expect((window as any).api.timelineUpdateScene).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sceneId: 'scene-1',
-          timelineMetadata: expect.objectContaining({ pov: 'omniscient' }),
-        }),
-      );
-    });
-  });
-
-  it('cancels edit on Escape key', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-pov'));
-    const input = screen.getByTestId('cell-edit-scene-1-pov');
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(screen.queryByTestId('cell-edit-scene-1-pov')).not.toBeInTheDocument();
-  });
-
-  // SKY-5146 / GH#627: word-count cell must not persist partial-numeric input.
-  it('saves a valid integer word count', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
-    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
-    fireEvent.change(input, { target: { value: '850' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => {
-      expect((window as any).api.timelineUpdateScene).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sceneId: 'scene-1',
-          timelineMetadata: expect.objectContaining({ wordCount: 850 }),
-        }),
-      );
-    });
-  });
-
-  it('rejects a decimal word count without saving (no-op)', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
-    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
-    fireEvent.change(input, { target: { value: '5.7' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    // Edit closes, but nothing is persisted and the original value remains.
-    expect(screen.queryByTestId('cell-edit-scene-1-wordCount')).not.toBeInTheDocument();
-    expect((window as any).api.timelineUpdateScene).not.toHaveBeenCalled();
-    expect(screen.getByTestId('cell-scene-1-wordCount').textContent).toContain('1200');
-  });
-
-  it('rejects a negative word count without saving (no-op)', async () => {
-    await renderSheet();
-    fireEvent.dblClick(screen.getByTestId('cell-scene-1-wordCount'));
-    const input = screen.getByTestId('cell-edit-scene-1-wordCount');
-    fireEvent.change(input, { target: { value: '-3' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    expect((window as any).api.timelineUpdateScene).not.toHaveBeenCalled();
-  });
-});
-
-describe('TimelineSpreadsheet — selection', () => {
-  it('selects a row on checkbox change', async () => {
-    await renderSheet();
-    const checkbox = screen.getByLabelText('Select scene The Beginning');
-    fireEvent.click(checkbox);
-    expect(screen.getByTestId('row-scene-1')).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('selects all rows via header checkbox', async () => {
-    await renderSheet();
-    const allCheck = screen.getByLabelText('Select all scenes');
-    fireEvent.click(allCheck);
-    expect(screen.getByTestId('row-scene-1')).toHaveAttribute('aria-selected', 'true');
-  });
-});
-
-describe('TimelineSpreadsheet — groupBy', () => {
-  it('shows group rows when grouping by arc', async () => {
-    await renderSheet();
-    fireEvent.click(screen.getByRole('button', { name: 'Arc' }));
-    await waitFor(() => {
-      // Group header row should appear (may share label text with arc pills)
-      const groupLabels = document.querySelectorAll('.tls-group-label');
-      const labelTexts = Array.from(groupLabels).map(el => el.textContent);
-      expect(labelTexts).toContain('Alpha Arc');
-    });
-  });
-
-  it('resets to no grouping', async () => {
-    await renderSheet();
-    fireEvent.click(screen.getByRole('button', { name: 'Arc' }));
-    fireEvent.click(screen.getByRole('button', { name: 'None' }));
-    // Group header row should be gone; scene row still present
-    expect(screen.getByTestId('row-scene-1')).toBeInTheDocument();
-  });
-});
-
-// ─── SKY-796: AI auto-population proposals ───
-
-function proposal(over: Partial<TimelineAIProposal> = {}): TimelineAIProposal {
-  return {
-    id: 'p-date-1',
-    sceneId: 'scene-1',
-    kind: 'date',
-    value: 'Year 42',
-    reason: 'in-world year: “Year 42”',
-    confidence: 0.7,
-    source: 'ai',
-    isEstimated: true,
-    status: 'pending',
-    createdAt: '2026-06-04T00:00:00.000Z',
-    ...over,
-  };
-}
-
-describe('indexProposals', () => {
-  it('routes date proposals to the date column', () => {
-    const idx = indexProposals([proposal({ kind: 'date' })]);
-    expect(idx.get('scene-1')?.date?.[0].kind).toBe('date');
-  });
-
-  it('routes mood proposals to the mood column', () => {
-    const idx = indexProposals([proposal({ id: 'p-mood', kind: 'mood', value: 'tense' })]);
-    expect(idx.get('scene-1')?.mood?.[0].value).toBe('tense');
-  });
-
-  it('routes character proposals to the pov column', () => {
-    const idx = indexProposals([proposal({ id: 'p-chars', kind: 'characters', value: 'char-1' })]);
-    expect(idx.get('scene-1')?.pov?.[0].kind).toBe('characters');
-  });
-
-  it('skips non-pending proposals', () => {
-    const idx = indexProposals([proposal({ status: 'accepted' })]);
-    expect(idx.size).toBe(0);
-  });
-});
-
-describe('TimelineSpreadsheet — AI proposals', () => {
-  it('renders a date badge when a pending date proposal exists', async () => {
-    (window as any).api.timelineProposalsList = vi
-      .fn()
-      .mockResolvedValue({ proposals: [proposal()] });
-    render(<TimelineSpreadsheet story={STORY} />);
-    await waitFor(() => expect(screen.getByTestId('proposal-badge-p-date-1')).toBeInTheDocument());
-  });
-
-  it('opens the accept/reject popover when the badge is clicked', async () => {
-    (window as any).api.timelineProposalsList = vi
-      .fn()
-      .mockResolvedValue({ proposals: [proposal()] });
-    render(<TimelineSpreadsheet story={STORY} />);
-    const badge = await screen.findByTestId('proposal-badge-p-date-1');
-    fireEvent.click(badge);
-    expect(screen.getByTestId('proposal-popover-p-date-1')).toBeInTheDocument();
-    expect(screen.getByTestId('proposal-accept-p-date-1')).toBeInTheDocument();
-    expect(screen.getByTestId('proposal-reject-p-date-1')).toBeInTheDocument();
-  });
-
-  it('calls timelineProposalResolve with accept', async () => {
-    const p = proposal();
-    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({ proposals: [p] });
-    (window as any).api.timelineProposalResolve = vi
-      .fn()
-      .mockResolvedValue({ proposal: { ...p, status: 'accepted' }, scene: undefined });
-    render(<TimelineSpreadsheet story={STORY} />);
-    fireEvent.click(await screen.findByTestId('proposal-badge-p-date-1'));
-    fireEvent.click(screen.getByTestId('proposal-accept-p-date-1'));
-    await waitFor(() => {
-      expect((window as any).api.timelineProposalResolve).toHaveBeenCalledWith(
-        'p-date-1',
-        'accept',
-      );
-    });
-  });
-
-  it('calls timelineProposalResolve with reject and removes the badge', async () => {
-    const p = proposal({ id: 'p-mood-1', kind: 'mood', value: 'melancholic' });
-    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({ proposals: [p] });
-    (window as any).api.timelineProposalResolve = vi
-      .fn()
-      .mockResolvedValue({ proposal: { ...p, status: 'rejected' } });
-    render(<TimelineSpreadsheet story={STORY} />);
-    fireEvent.click(await screen.findByTestId('proposal-badge-p-mood-1'));
-    fireEvent.click(screen.getByTestId('proposal-reject-p-mood-1'));
-    await waitFor(() => {
-      expect((window as any).api.timelineProposalResolve).toHaveBeenCalledWith(
-        'p-mood-1',
-        'reject',
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('proposal-badge-p-mood-1')).not.toBeInTheDocument();
-    });
-  });
-
-  it('regenerates proposals on toolbar button click', async () => {
-    (window as any).api.timelineProposalsGenerate = vi
-      .fn()
-      .mockResolvedValue({ proposals: [proposal({ id: 'p-fresh-1' })] });
-    render(<TimelineSpreadsheet story={STORY} />);
-    await waitFor(() => expect(screen.getByTestId('ai-suggest-btn')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('ai-suggest-btn'));
-    await waitFor(() => {
-      expect((window as any).api.timelineProposalsGenerate).toHaveBeenCalledWith('story-1');
-    });
-    await waitFor(() => expect(screen.getByTestId('proposal-badge-p-fresh-1')).toBeInTheDocument());
-  });
-
-  it('shows pending count in the toolbar button label', async () => {
-    (window as any).api.timelineProposalsList = vi.fn().mockResolvedValue({
-      proposals: [
-        proposal({ id: 'a' }),
-        proposal({ id: 'b', kind: 'mood', value: 'tense' }),
+  it('groupSheetRows groups by chapter, POV, and location with an "unassigned" bucket last', () => {
+    const rows = buildSheetRows(
+      [
+        { id: 'a', timelineId: 'tl', name: 'A', when: 0, pov: 'Mira', location: 'The Keep' },
+        { id: 'b', timelineId: 'tl', name: 'B', when: 1 },
       ],
-    });
-    render(<TimelineSpreadsheet story={STORY} />);
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-suggest-btn').textContent).toContain('(2)');
-    });
+      'narrative',
+    );
+    const byPov = groupSheetRows(rows, 'pov');
+    expect(byPov.map((g) => g.label)).toEqual(['Mira', 'No POV']);
+    const byLocation = groupSheetRows(rows, 'location');
+    expect(byLocation.map((g) => g.label)).toEqual(['The Keep', 'No Location']);
+  });
+});
+
+describe('TimelineSpreadsheet component', () => {
+  it('shows the unavailable state when the store is null', () => {
+    render(<TimelineSpreadsheet store={null} />);
+    expect(screen.getByTestId('timeline-spreadsheet-unavailable')).toBeInTheDocument();
+  });
+
+  it('shows the empty state when the active timeline has no events', () => {
+    render(<TimelineSpreadsheet store={makeStore([])} />);
+    expect(screen.getByTestId('timeline-spreadsheet-empty')).toBeInTheDocument();
+  });
+
+  it('renders all six columns and the event data in each', () => {
+    const store = makeStore([
+      { id: 'e1', timelineId: 'tl-story', name: 'The Fall of Veynn', when: 100, chapter: 3, pov: 'Mira', location: 'The Keep', impact: 'reveals betrayal' },
+    ]);
+    render(<TimelineSpreadsheet store={store} />);
+    expect(screen.getByRole('columnheader', { name: 'Event' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'CH' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Date/Era' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'POV' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Location' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Impact' })).toBeInTheDocument();
+    expect(screen.getByTestId('cell-e1-event')).toHaveTextContent('The Fall of Veynn');
+    expect(screen.getByTestId('cell-e1-ch')).toHaveTextContent('3');
+    expect(screen.getByTestId('cell-e1-pov')).toHaveTextContent('Mira');
+    expect(screen.getByTestId('cell-e1-location')).toHaveTextContent('The Keep');
+    expect(screen.getByTestId('cell-e1-impact')).toHaveTextContent('reveals betrayal');
+  });
+
+  it('Narrative⇄Chronological toggle re-sorts and surfaces a FLASHBACK badge only in Chronological order', () => {
+    const store = makeStore([
+      { id: 'e1', timelineId: 'tl-story', name: 'Opening', when: 100, chapter: 1 },
+      { id: 'e2', timelineId: 'tl-story', name: 'Flashback beat', when: 10, chapter: 2 },
+    ]);
+    render(<TimelineSpreadsheet store={store} />);
+    expect(screen.queryByTestId('flashback-e2')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('tls-sort-chronological'));
+    expect(screen.getByTestId('flashback-e2')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').filter((r) => r.dataset.testid?.startsWith('row-'));
+    expect(rows[0]).toHaveAttribute('data-testid', 'row-e2');
+
+    fireEvent.click(screen.getByTestId('tls-sort-narrative'));
+    expect(screen.queryByTestId('flashback-e2')).toBeNull();
+  });
+
+  it('Group-By groups rows under a header with a count', () => {
+    const store = makeStore([
+      { id: 'e1', timelineId: 'tl-story', name: 'A', when: 0, location: 'The Keep' },
+      { id: 'e2', timelineId: 'tl-story', name: 'B', when: 1, location: 'The Keep' },
+      { id: 'e3', timelineId: 'tl-story', name: 'C', when: 2 },
+    ]);
+    render(<TimelineSpreadsheet store={store} />);
+    fireEvent.click(screen.getByTestId('tls-group-location'));
+    expect(screen.getAllByText('The Keep').length).toBeGreaterThan(0);
+    expect(screen.getByText('(2)')).toBeInTheDocument();
+    expect(screen.getAllByText('No Location').length).toBeGreaterThan(0);
+  });
+
+  it('row click selects the event and calls onSelectionChange', () => {
+    const store = makeStore([{ id: 'e1', timelineId: 'tl-story', name: 'A', when: 0 }]);
+    const onSelectionChange = vi.fn();
+    render(<TimelineSpreadsheet store={store} onSelectionChange={onSelectionChange} />);
+    fireEvent.click(screen.getByTestId('row-e1'));
+    expect(onSelectionChange).toHaveBeenCalledWith(new Set(['e1']));
   });
 });

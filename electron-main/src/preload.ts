@@ -457,6 +457,16 @@ contextBridge.exposeInMainWorld('api', {
   betaReadScan: (sceneId: string, prose: string, scenePath: string) =>
     invokeEnvelope('betaRead:scan', { sceneId, prose, scenePath }),
 
+  // Beta Reader agent view (SKY-6982, Beta 4 M27) — structured reports
+  betaReportRun: (payload: {
+    storyId: string;
+    scope: { kind: 'scene' | 'chapter' | 'story'; id: string; label: string };
+    focus: { pacing: boolean; clarity: boolean; character: boolean; plot: boolean };
+    text: string;
+  }) => invokeEnvelope('betaReport:run', payload),
+  betaReportList: (storyId: string) => ipcRenderer.invoke('betaReport:list', { storyId }),
+  betaReportGet: (id: string) => ipcRenderer.invoke('betaReport:get', { id }),
+
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
   voiceStart: (micDeviceId?: string) =>
