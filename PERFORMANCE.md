@@ -88,6 +88,66 @@ flagged 4 regressions vs. the stale 2026-05-24 baseline (`db_open_ms` +258%,
 filed separately, not blocking this doc restoration since the baseline itself
 was updated to today's numbers (`PERF_UPDATE_BASELINE=1 npm run perf`).
 
+## 4. UI-runtime targets (packaged build, headless CDP/rAF/`/proc` harness)
+
+**Procedure** (packaged build, same headless launch pattern as §1/§3 —
+`e2e/scene-save-perf.spec.ts` / `e2e/export-formats.spec.ts`'s `seedUserData`
+shape, never `electron-vite dev`):
+
+```bash
+npm run build:electron
+xvfb-run -a npm run perf:ui-runtime   # builds again + runs the 4-metric spec
+# or, if out/ is already fresh:
+xvfb-run -a npm run test:e2e:perf-ui-runtime
+```
+
+This runs `e2e/perf/ui-runtime.spec.ts` (support modules in
+`e2e/perf/ui-runtime/`), which measures the 4 targets below against a real
+Electron process — no metric here is mocked/stubbed; only the
+`agent:writing-assistant` IPC handler is replaced with a deterministic
+streaming mock for target 4, exactly like `e2e/writing-assistant.spec.ts`
+already does for its own tests:
+
+1. **Keystroke → paint** — a CDP `Tracing` session captures `RunTask`
+   scheduler-task durations around real `page.keyboard.type` input into the
+   live ProseMirror editor; reports p50/p95 main-thread-busy ms per keystroke.
+2. **Idle CPU** — polls `/proc/<pid>/stat` for the Electron main and renderer
+   processes over a 5s idle window (no interaction), converts utime+stime
+   tick deltas to a CPU percentage. Linux-only (matches this repo's headless
+   Xvfb CI target); refuses to report a number on other platforms.
+3. **Ambient animation fps** — samples real `requestAnimationFrame` deltas
+   against the always-on ambient wallpaper layer for 3s. The one launch
+   variant that must NOT set `--force-prefers-reduced-motion` (that flag
+   collapses the ambient animation to a no-op, per
+   `frontend/src/theme/liquidNeon.css`), so this is measured with real motion.
+4. **Dropped frames with agents live** — reuses the fps sampler from target 3
+   while a mocked Writing Coach chat stream is actively emitting chunks, and
+   compares the streaming window's dropped-frame rate against the same run's
+   own idle baseline.
+
+This harness is a **measurement tool, not a CI regression gate** — a target
+miss does not fail the spec (only a broken measurement pipeline does; see the
+spec file's top-of-file note). Pass/fail against each target is recorded in
+`plans/PERF_UI_RUNTIME_BASELINE.json` (JSON) and the console table `npm run
+perf:ui-runtime` prints. It is not wired into `.github/workflows/ci.yml` (out
+of scope for SKY-8217) — run it manually per wave, same cadence as §1/§3.
+
+**Baseline — measured 2026-07-23, packaged build, headless Xvfb, WSL2 host**
+(the same class of virtualized environment as §1's cold-start numbers — see
+that section's caveat about expecting faster wall-clock on real display/GPU
+hardware):
+
+| Metric | Result | Target | Status |
+|---|---:|---:|:---:|
+| Keystroke → paint (p95, n=20) | 47.2 ms | < 16 ms | ❌ |
+| Idle CPU (main + renderer, 5s window) | 4.8% (main 0.2%, renderer 4.6%) | ~0% (harness bar: ≤ 1%) | ❌ |
+| Ambient animation fps floor (95%-of-frames, n=181) | 59.5 fps | ≥ 57 fps (60fps target) | ✅ |
+| Dropped-frame delta, streaming vs. idle | 0.0 pp | ≤ 5 pp | ✅ |
+
+Full sample data in `plans/PERF_UI_RUNTIME_BASELINE.json`. The two misses are
+tracked as a follow-up, not blocking this harness — see SKY-8217's close-out
+comment on SKY-8216 for the filed issue.
+
 ## Acceptance targets (unchanged from the fix-order plan)
 
 - Keystroke → paint under 16 ms with all panels open.
@@ -96,14 +156,13 @@ was updated to today's numbers (`PERF_UPDATE_BASELINE=1 npm run perf`).
   in-app toggle.
 - Typing with Writing Assistant + watcher live: no dropped frames.
 
-These UI-runtime targets still need the DevTools-Performance + React Profiler
-capture described in `plans/design-handoff/v2/PERFORMANCE.md §0` — that
-capture is manual today (no headless harness for GPU/paint metrics yet). The
-cold-start and data-layer numbers above are the automatable subset restored
-by this issue.
+§4 above is the now-automated harness for these 4 targets (SKY-8217). The
+cold-start, editor-open, and data-layer numbers in §1–§3 are the
+previously-automated subset restored by SKY-7936.
 
 ## Wave-boundary log
 
-| Wave | Date | Cold start (empty / large) | Data bench status | Notes |
-|---|---|---|---|---|
-| Restoration (SKY-7936) | 2026-07-22 | 106 ms / 278 ms | 4 regressions vs. stale baseline, baseline refreshed | First entry; establishes the format for future waves |
+| Wave | Date | Cold start (empty / large) | Data bench status | UI-runtime (keystroke / idle CPU / fps floor / stream-drop) | Notes |
+|---|---|---|---|---|---|
+| Restoration (SKY-7936) | 2026-07-22 | 106 ms / 278 ms | 4 regressions vs. stale baseline, baseline refreshed | not yet automated | First entry; establishes the format for future waves |
+| UI-runtime harness (SKY-8217) | 2026-07-23 | — | — | 47.2 ms / 4.8% / 59.5 fps / 0.0 pp | Harness added; 2 of 4 targets miss (keystroke, idle CPU) — follow-up filed, not blocking |

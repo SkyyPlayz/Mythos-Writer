@@ -1,0 +1,75 @@
+{
+  "timestamp": "2026-07-23T17:26:28.750Z",
+  "build": "packaged (electron-vite build, out/main/main.js)",
+  "metrics": {
+    "keystroke_to_paint_p95_ms": {
+      "value": 47.174,
+      "unit": "ms",
+      "target": 16,
+      "targetDescription": "PERFORMANCE.md §0: keystroke -> paint under 16ms (p95, n=20)",
+      "pass": false,
+      "detail": {
+        "p50": 42.114,
+        "samples": [
+          67.604,
+          43.338,
+          40.214,
+          42.114,
+          42.369,
+          43.637,
+          47.174,
+          41.118,
+          40.276,
+          40.992,
+          40.376,
+          41.322,
+          43.319,
+          40.802,
+          39.983,
+          43.091,
+          42.946,
+          42.386,
+          42.139,
+          36.763
+        ]
+      }
+    },
+    "idle_cpu_pct": {
+      "value": 4.799040191961607,
+      "unit": "% CPU",
+      "target": 1,
+      "targetDescription": "PERFORMANCE.md §0: idle CPU ~0% (harness pass bar: total <= 1% over a 5001ms window)",
+      "pass": false,
+      "detail": {
+        "mainCpuPct": 0.19996000799840033,
+        "rendererCpuPct": 4.599080183963207,
+        "windowMs": 5001
+      }
+    },
+    "ambient_animation_fps_floor": {
+      "value": 59.52380952380968,
+      "unit": "fps",
+      "target": 57,
+      "targetDescription": "PERFORMANCE.md §0: ambient animation at 60fps (harness pass bar: 95%-of-frames floor >= 57fps, n=181)",
+      "pass": true,
+      "detail": {
+        "avgFps": 60.00132599615462,
+        "p50Fps": 59.88023952095874,
+        "droppedFramePct": 0
+      }
+    },
+    "streaming_dropped_frame_delta_pp": {
+      "value": 0,
+      "unit": "percentage points",
+      "target": 5,
+      "targetDescription": "PERFORMANCE.md §0: no dropped frames with agents live (harness pass bar: streaming dropped-frame rate no more than 5pp above this run's own idle baseline)",
+      "pass": true,
+      "detail": {
+        "idleDroppedFramePct": 0,
+        "streamingDroppedFramePct": 0,
+        "idleAvgFps": 60.00198353664584,
+        "streamingAvgFps": 60.003163080649806
+      }
+    }
+  }
+}
