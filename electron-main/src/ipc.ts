@@ -3459,6 +3459,10 @@ export interface VaultImportRunResponse {
   imported?: number;
   skipped?: number;
   errors?: string[];
+  /** Total files found in the source vault, when the source kind reports it. */
+  sourceCount?: number;
+  /** Non-empty when files were silently dropped (not imported, not errored). */
+  dropWarning?: string;
 }
 
 export interface StoryImportPickPayload {

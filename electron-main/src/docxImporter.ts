@@ -8,7 +8,6 @@
 // output to a simple heading-delimited text format that splitDocxMarkdown can parse.
 
 import mammoth from 'mammoth';
-import { describeFileError } from './migrationVerify.js';
 
 /** Absolute cap before we even attempt parsing (saves memory on huge files). */
 export const DOCX_MAX_BYTES = 50 * 1024 * 1024; // 50 MB

@@ -1349,7 +1349,7 @@ interface Window {
     onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
     // Beta 3 M24: Settings → Vault & Files import flows
     vaultImportScan: (kind: SettingsVaultImportKind, srcPath: string) => Promise<{ ok: boolean; error?: string; noteCount?: number; attachmentCount?: number; totalFiles?: number; sampleFiles?: string[]; warnings?: string[] }>;
-    vaultImportRun: (payload: { kind: SettingsVaultImportKind; srcPath: string; into: 'second' | 'new'; targetPath?: string }) => Promise<{ ok: boolean; error?: string; targetPath?: string; imported?: number; skipped?: number; errors?: string[] }>;
+    vaultImportRun: (payload: { kind: SettingsVaultImportKind; srcPath: string; into: 'second' | 'new'; targetPath?: string }) => Promise<{ ok: boolean; error?: string; targetPath?: string; imported?: number; skipped?: number; errors?: string[]; sourceCount?: number; dropWarning?: string }>;
     storyImportPickFile: (format: SettingsStoryImportFormat) => Promise<{ filePath: string | null; cancelled: boolean }>;
     storyImportRun: (format: SettingsStoryImportFormat, filePath: string) => Promise<{ ok: boolean; error?: string; storyTitle?: string; chapterCount?: number; sceneCount?: number; partCount?: number; planNotePath?: string; firstSceneId?: string; firstScenePath?: string; warnings?: string[] }>;
     // SKY-9: full Notes-Vault-scoped CRUD. Mirrors the Story Vault

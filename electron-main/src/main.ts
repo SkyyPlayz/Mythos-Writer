@@ -3294,6 +3294,8 @@ const handlers: IpcHandlers = {
         imported: res.imported,
         skipped: res.skipped,
         errors: res.errors,
+        sourceCount: res.sourceCount,
+        dropWarning: res.dropWarning,
       };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
