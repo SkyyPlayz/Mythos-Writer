@@ -3200,17 +3200,14 @@ const handlers: IpcHandlers = {
     }
     const targetRoot = targetVaultKind === 'notes' ? getNotesVaultRoot() : getVaultRoot();
     const result = importObsidianToVaultDir(srcPath, targetRoot);
-    const allErrors = [
-      ...result.errors,
-      ...(result.dropWarning ? [result.dropWarning] : []),
-    ];
     return {
       ok: result.ok,
       targetPath: result.targetPath,
       imported: result.imported,
       skipped: result.skipped,
       sourceCount: result.sourceCount,
-      error: allErrors.length > 0 ? allErrors.join('; ') : undefined,
+      error: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+      dropWarning: result.dropWarning || undefined,
     };
   },
 

@@ -1,7 +1,7 @@
 // Beta 3 M24: unit tests for the "Import another vault" converters
 // (Obsidian/Markdown reuse the Beta-2 importer; Notion + Scrivener convert).
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -13,6 +13,15 @@ import {
   convertVaultSource,
   secondVaultDestination,
 } from './vaultConvert.js';
+import { importObsidianToVaultDir } from './obsidianImporter.js';
+
+// SKY-8157: call through to the real importer by default (every other test in
+// this file relies on real Obsidian/Markdown behavior) — the one test that
+// forces a drop overrides this with mockReturnValueOnce.
+vi.mock('./obsidianImporter.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./obsidianImporter.js')>();
+  return { ...actual, importObsidianToVaultDir: vi.fn(actual.importObsidianToVaultDir) };
+});
 
 const HEX = '0123456789abcdef0123456789abcdef';
 
@@ -118,6 +127,34 @@ describe('markdown tree import', () => {
     expect(res.ok).toBe(true);
     expect(res.imported).toBe(2);
     expect(fs.existsSync(path.join(dst, 'Lore', 'Tides.md'))).toBe(true);
+    // SKY-8157: dropWarning is unset and sourceCount matches the found files
+    // when nothing was silently dropped.
+    expect(res.dropWarning).toBeUndefined();
+    expect(res.sourceCount).toBe(2);
+  });
+
+  // SKY-8157: convertVaultSource('obsidian'|'markdown', ...) must pass the
+  // Beta-2 importer's sourceCount/dropWarning straight through to the
+  // Settings "Import another vault" call site — PR #1049 added these fields
+  // to ObsidianImportResult but the vaultConvert wrapper was discarding them.
+  it('SKY-8157: surfaces sourceCount/dropWarning from the underlying Obsidian importer', () => {
+    vi.mocked(importObsidianToVaultDir).mockReturnValueOnce({
+      ok: true,
+      targetPath: '/dst',
+      sourceCount: 5,
+      imported: 3,
+      skipped: 0,
+      errors: [],
+      dropWarning: '2 file(s) from the Obsidian vault were not imported and not reported as errors — check for unsupported file types or permission issues in the source vault',
+    });
+    const src = path.join(tmp, 'obs-vault');
+    fs.mkdirSync(src, { recursive: true });
+    fs.writeFileSync(path.join(src, 'a.md'), '# A');
+    const dst = path.join(tmp, 'obs-dst');
+    const res = convertVaultSource('obsidian', src, dst);
+    expect(res.ok).toBe(true);
+    expect(res.sourceCount).toBe(5);
+    expect(res.dropWarning).toContain('not imported');
   });
 
   // SKY-8151: convertVaultSource used to discard importObsidianToVaultDir's
