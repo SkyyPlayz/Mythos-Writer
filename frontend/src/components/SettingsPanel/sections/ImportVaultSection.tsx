@@ -235,7 +235,12 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
           </p>
         )}
         {dropWarning && (
-          <p style={{ fontSize: 10.5, color: '#ffd97a', marginTop: 4 }} role="status" data-testid="import-vault-drop-warning">
+          <p
+            role="status"
+            aria-live="polite"
+            data-testid="import-vault-drop-warning"
+            style={{ fontSize: 10.5, color: '#ffd97a', marginTop: 4 }}
+          >
             {dropWarning}
           </p>
         )}

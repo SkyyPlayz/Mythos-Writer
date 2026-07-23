@@ -2378,6 +2378,8 @@ export interface OnboardingImportObsidianResponse {
   imported?: number;
   /** Files skipped (already existed at destination). */
   skipped?: number;
+  /** Non-empty when files were silently dropped — non-fatal, informational only. */
+  dropWarning?: string;
 }
 
 export interface OnboardingDryRunObsidianPayload {

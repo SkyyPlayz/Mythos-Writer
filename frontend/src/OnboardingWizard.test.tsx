@@ -1738,6 +1738,22 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
 
+  it('SKY-8157: a dropWarning is non-fatal — onComplete still fires and no blocking error shows', async () => {
+    const onComplete = vi.fn();
+    mockApi.importObsidianVault = vi.fn().mockResolvedValue({
+      ok: true,
+      targetPath: '/home/user/Vault',
+      dropWarning: '2 file(s) from the Obsidian vault were not imported and not reported as errors — check for unsupported file types or permission issues in the source vault',
+    });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
+    );
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+    expect(screen.queryByTestId('obs-import-error')).not.toBeInTheDocument();
+  });
+
   it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
     const onComplete = vi.fn();
     const importDocxMock = vi.fn().mockResolvedValue({

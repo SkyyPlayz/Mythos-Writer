@@ -149,7 +149,7 @@ describe('ImportVaultSection', () => {
     expect((screen.getByTestId('import-vault-dry-run') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('surfaces a silent-drop warning from vaultImportRun even on a successful import (SKY-8151)', async () => {
+  it('surfaces a silent-drop warning from vaultImportRun even on a successful import (SKY-8151/SKY-8157)', async () => {
     mockVaultImportRun.mockResolvedValue({
       ok: true,
       targetPath: '/notes/Imported/source-vault',
@@ -166,8 +166,11 @@ describe('ImportVaultSection', () => {
     await flush();
     fireEvent.click(screen.getByTestId('import-vault-confirm'));
     await flush();
+    // Import still reports success — dropWarning is informational, not blocking.
     expect(screen.getByTestId('import-vault-done').textContent).toContain('88 files imported');
+    expect(screen.queryByTestId('import-vault-error')).not.toBeInTheDocument();
     expect(screen.getByTestId('import-vault-drop-warning').textContent).toContain('2 file(s)');
+    expect(screen.getByTestId('import-vault-drop-warning').textContent).toContain('not imported');
   });
 });
 

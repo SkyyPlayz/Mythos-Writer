@@ -167,7 +167,7 @@ type Api = {
   }>;
   /** SKY-2993: Obsidian vault importer — dry-run scan + commit (onboarding Path 3) */
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
-  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string }>;
+  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string; dropWarning?: string }>;
   onObsidianImportProgress?: (cb: (data: ObsidianImportProgress) => void) => () => void;
 };
 
@@ -1229,6 +1229,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setObsImporting(true);
     setObsProgress(null);
     const unsubscribe = api().onObsidianImportProgress?.((data) => setObsProgress(data));
+    const dropWarnings: string[] = [];
     try {
       for (const target of obsDryRun) {
         const res = await api().importObsidianVault(target.path, target.kind);
@@ -1236,7 +1237,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           setObsError(res.error ?? 'Import failed. Check the folder and try again.');
           return;
         }
+        if (res.dropWarning) dropWarnings.push(res.dropWarning);
       }
+      // Drop warnings are non-fatal (import still succeeded) — surface them
+      // as a toast alongside the success path instead of blocking onComplete.
+      if (dropWarnings.length > 0) showLnToast(dropWarnings.join(' '));
       onComplete({ ...initialSettings, onboardingComplete: true });
     } catch (e) {
       setObsError(e instanceof Error ? e.message : 'Import failed. Check the folder and try again.');
