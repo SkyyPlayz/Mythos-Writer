@@ -13,9 +13,9 @@
  *
  * Acceptance criteria (current):
  *   AC-SC-07  Obsidian round-trip — serialized board.md matches format spec
- *   AC-SC-08  Brainstorm accept writes a scene_crafter_card onto the board
- *             (verified via IPC read — the lanes surface that displayed
- *             these cards is retired; see "known gap" note below)
+ *   AC-SC-08  Brainstorm accept writes a visible Scene Crafter suggested card
+ *             (SKY-8080: routed through the notes vault as a scene_card note,
+ *             not the retired lanes board — verified UI -> IPC -> disk -> UI)
  *   AC-SC-09  Brainstorm reject removes proposal from list
  *   AC-SC-10  Manuscript deep link — "Go to scene" shown for a tagged card
  *   AC-SC-12  External edit conflict alert surfaced
@@ -25,12 +25,12 @@
  *   AC-SC-16  A card tagged manuscript/<id> with no scene link is silent —
  *             the Linked scenes section only appears when one exists
  *
- * Known gap (not fixed here, out of scope for SKY-7601 per its own ticket
- * text): accepting a scene_crafter_card Brainstorm proposal still writes
- * into board.lanes[0] via sceneCrafterAddCard (BrainstormPage.tsx), which is
- * now an invisible surface unless the card happens to carry a manuscript/
- * tag. Tracked for a follow-up — SKY-7601 scoped only the Scene Crafter
- * page's own UI, not the Brainstorm accept path.
+ * SKY-8080 fix: accepting a scene_crafter_card Brainstorm proposal used to
+ * write into board.lanes[0] via sceneCrafterAddCard (BrainstormPage.tsx) —
+ * an invisible surface since SKY-7601 retired the lanes UI and the only
+ * remaining board.lanes reader (linkedSceneCards) requires a manuscript/ tag
+ * these cards never carry. Fixed by routing through brainstormWriteNote as
+ * a 'scene_card' note instead, which surfaces via suggestedFromVault.
  */
 
 import path from 'path';
@@ -303,7 +303,7 @@ async function injectProposal(
   );
 }
 
-test('AC-SC-08: accepting a Brainstorm proposal writes a card onto the Scene Crafter board', async () => {
+test('AC-SC-08 (SKY-8080): accepting a Brainstorm proposal writes a visible Scene Crafter suggested card', async () => {
   const PROPOSAL_ID = 'e2e-sc08-proposal';
   const CARD_TITLE = 'HeroArrivesAtVillage';
 
@@ -325,12 +325,29 @@ test('AC-SC-08: accepting a Brainstorm proposal writes a card onto the Scene Cra
   // The ProposalCard should disappear (proposals list becomes empty).
   await expect(proposalRegion).not.toBeVisible({ timeout: 4_000 });
 
-  // Scene Crafter's lanes UI is retired (SKY-7601) — verify the card landed
-  // on the board via IPC instead of a DOM testid that no longer exists.
-  await expect.poll(async () => {
-    const board = await readBoard(page, storySlug);
-    return board?.lanes[0]?.cards.some((c) => c.title === CARD_TITLE) ?? false;
-  }, { timeout: 8_000 }).toBe(true);
+  // SKY-8080: the pre-fix path wrote the card into board.lanes[0] via
+  // sceneCrafterAddCard — an invisible surface since SKY-7601 retired the
+  // lanes UI. The fix routes it through brainstormWriteNote as a 'scene_card'
+  // note instead. Verify the real on-disk write (IPC -> disk)...
+  const notePath = path.join(
+    notesVaultDir,
+    'Universes',
+    'My First Universe',
+    'Scenes',
+    `${CARD_TITLE}.md`,
+  );
+  await expect.poll(() => fs.existsSync(notePath), { timeout: 8_000 }).toBe(true);
+  expect(fs.readFileSync(notePath, 'utf8')).toContain('The hero rides into the village at dawn.');
+
+  // ...and that it round-trips back into the UI as a visible Suggested Card
+  // (disk -> UI), which is the only live surface for planning content since
+  // SKY-7601. The stale invisible-lanes write must not occur any more.
+  await openBoardView(page);
+  const suggested = page.locator('.sc-suggest');
+  await expect(suggested).toContainText(CARD_TITLE, { timeout: 8_000 });
+
+  const board = await readBoard(page, storySlug);
+  expect(board?.lanes[0]?.cards.some((c) => c.title === CARD_TITLE) ?? false).toBe(false);
 });
 
 test('AC-SC-09: rejecting a Brainstorm proposal removes it from the proposal list', async () => {

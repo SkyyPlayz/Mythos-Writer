@@ -331,8 +331,9 @@ interface Props {
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
-  /** SKY-1764/SKY-2306: slug of the currently selected story, used to add
-   *  scene_crafter_card proposals directly to the active board. */
+  /** Slug of the currently selected story. Unused internally since SKY-8080
+   *  (scene_crafter_card proposals now route through the notes vault, not a
+   *  per-story board); kept on Props for callers that still pass it. */
   activeStorySlug?: string | null;
   /** Voice input is feature-flagged off by default; Settings must opt in. */
   voiceEnabled?: boolean;
@@ -369,7 +370,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, activeStorySlug, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -1578,25 +1579,20 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           decision: proposal.status === 'edited_and_confirmed' ? 'edit_and_confirm' : 'confirm',
         });
       }
-      // SKY-1764/SKY-2306: scene_crafter_card proposals go directly onto the active
-      // Scene Crafter board rather than to the notes vault.
-      if (proposal.kind === 'scene_crafter_card') {
-        if (activeStorySlug && typeof api?.sceneCrafterAddCard === 'function') {
-          await api.sceneCrafterAddCard({
-            storySlug: activeStorySlug,
-            laneIndex: 0,
-            card: { wikilink: proposal.title, title: proposal.title, done: false },
-          });
-        }
-      } else if (typeof api?.brainstormWriteNote === 'function') {
+      // SKY-8080: scene_crafter_card proposals used to write straight onto the
+      // retired Kanban lanes board (SKY-1764/SKY-2306), which SKY-7601 stopped
+      // rendering — the card became an invisible orphan. Route it through the
+      // notes vault instead, under the 'scene_card' FactType folder, so it
+      // surfaces as a Suggested Card in the current Scene Crafter UI.
+      if (typeof api?.brainstormWriteNote === 'function') {
         await api.brainstormWriteNote({
-          category: proposal.kind,
+          category: proposal.kind === 'scene_crafter_card' ? 'scene_card' : proposal.kind,
           name: proposal.title,
           content: proposal.body,
         });
       }
     } catch { /* non-fatal — proposal removed from queue regardless */ }
-  }, [activeStorySlug]);
+  }, []);
 
   const handleProposalReject = useCallback((proposalId: string) => {
     setProposals((prev) => prev.filter((p) => p.id !== proposalId));
