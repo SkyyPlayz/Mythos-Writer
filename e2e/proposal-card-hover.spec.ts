@@ -20,9 +20,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite; a working [data-view=brainstorm] fallback exists (see readme-screenshots.spec.ts)
-test.skip(true, 'SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite; a working [data-view=brainstorm] fallback exists (see readme-screenshots.spec.ts)');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const ARTIFACT_DIR = path.resolve(__dirname, '../e2e-visual-artifacts/proposal-card-hover');
 
@@ -146,11 +143,11 @@ test('ProposalCard hover states at 1440×900 — SKY-1598', async () => {
   await page.setViewportSize(DESKTOP_VP);
   await page.waitForTimeout(300);
 
-  // Navigate to Brainstorm view
-  const brainstormBtn = page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' });
+  // Navigate to Brainstorm view (nav-rail rewrite, SKY-3098/3218)
+  const brainstormBtn = page.locator('button.nav-rail__item[aria-label="Brainstorm"]');
   await expect(brainstormBtn).toBeVisible({ timeout: 5_000 });
   await brainstormBtn.click();
-  await expect(page.locator('.brainstorm-title')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.brainstorm-page')).toBeVisible({ timeout: 8_000 });
   await page.waitForTimeout(500);
 
   // Inject a test proposal via IPC push from the main process

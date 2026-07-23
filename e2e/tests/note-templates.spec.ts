@@ -23,9 +23,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite, Vault tab never reached so downstream steps cascade-timeout
-test.skip(true, 'SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite, Vault tab never reached so downstream steps cascade-timeout');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
@@ -92,10 +89,15 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
+// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
+// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
+// "vault" panel of the Story Writer section (collapsed by default) — the same
+// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
 async function openVaultTab(pg: Page): Promise<void> {
-  const vaultTab = pg.locator('.rail-tab', { hasText: 'Vault' });
-  await expect(vaultTab).toBeVisible({ timeout: 8_000 });
-  await vaultTab.click();
+  const vaultPanel = pg.locator('[data-panel-id="vault"]');
+  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
+  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -214,16 +216,23 @@ test('TC-NT-03: blank note fallback creates a plain note', async () => {
   await expect(blankTitle).toBeVisible({ timeout: 4_000 });
   await blankTitle.fill('My Research Notes');
 
-  const before = findMdFiles(notesVaultDir).length;
+  const before = findMdFiles(notesVaultDir);
 
   await pg.locator('[data-testid="ntd-submit"]').click();
   await expect(pg.locator('[data-testid="ntd-template-select"]')).not.toBeVisible({ timeout: 6_000 });
 
   const after = findMdFiles(notesVaultDir);
-  expect(after.length).toBeGreaterThan(before);
+  expect(after.length).toBeGreaterThan(before.length);
 
-  const newFile = after.find((f) => !f.includes('the-opening'));
+  // The vault may already contain seeded default-layout files (e.g. a
+  // Templates/ readme) unrelated to this test, so diff against the
+  // pre-submit snapshot rather than assuming any non-"the-opening" file is ours.
+  const newFile = after.find((f) => !before.includes(f) && !f.includes('the-opening'));
   expect(newFile).toBeDefined();
-  const content = fs.readFileSync(newFile!, 'utf-8');
-  expect(content).toContain('title:');
+  // Blank notes intentionally carry no frontmatter/body — the dialog writes an
+  // empty string when no template is selected (see NoteTemplateDialog's
+  // handleSubmit: `content = ''` for the blank case). Existence + filename are
+  // the load-bearing assertions for this test.
+  expect(fs.existsSync(newFile!)).toBe(true);
+  expect(path.basename(newFile!)).toMatch(/my-research-notes/i);
 });
