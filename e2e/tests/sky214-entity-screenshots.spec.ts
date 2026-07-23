@@ -19,13 +19,11 @@ import os from 'os';
 import fs from 'fs';
 import {
   test,
+  expect,
   _electron as electron,
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-
-// SKY-6933: stale selector -- #leftrail-tab-entities, old leftrail-tab-* id convention fully removed by the nav-rail rewrite
-test.skip(true, 'SKY-6933: stale selector -- #leftrail-tab-entities, old leftrail-tab-* id convention fully removed by the nav-rail rewrite');
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../../docs/user-guide/screenshots');
@@ -234,8 +232,10 @@ test.beforeAll(async () => {
   seedUserData(userData, vaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
-  // Navigate to the entities tab — this triggers reindexEntities on first call
-  await page.locator('#leftrail-tab-entities').click();
+  // Navigate to the entities tab (nav-rail rewrite, SKY-3098/3218): the
+  // Entities browser lives as an in-tab sub-view of the Notes Editor section.
+  await page.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
+  await page.locator('[data-testid="notes-subview-entities"]').click();
   // Wait for entities to load and all 7 type groups to render
   await page.waitForTimeout(1_200);
 });
@@ -272,13 +272,25 @@ test('SKY-214-03: Entity card with Connections + Backlinks', async () => {
   await firstItem.click();
   await page.waitForTimeout(1_000);
 
+  // Selecting an entity from the Notes-tab Entities sub-view only updates the
+  // shared `selectedEntity` state — the EntityDetail card itself renders in
+  // the Story Writer section's main pane (nav-rail rewrite, SKY-3098/3218).
+  await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
+  await page.waitForTimeout(500);
+
   const card = page.locator('.entity-detail');
+  await expect(card).toBeVisible({ timeout: 8_000 });
   await card.screenshot({ path: path.join(OUT_DIR, 'entity-03-entity-card.png') });
 });
 
 test('SKY-214-04: WikiLink autocomplete in scene editor', async () => {
-  // Switch to stories tab
-  await page.locator('#leftrail-tab-stories').click();
+  // Switch to the Story Writer section (nav-rail rewrite, SKY-3098/3218).
+  // Re-clicking an already-active "Story Writer" item toggles the Stories
+  // popover instead of navigating (see AppNavRail), so only click when the
+  // section isn't already active (test 03 may have already switched there).
+  const storyWriterTab = page.locator('button.nav-rail__item[aria-label="Story Writer"]');
+  const alreadyActive = await storyWriterTab.evaluate((el) => el.classList.contains('nav-rail__item--active'));
+  if (!alreadyActive) await storyWriterTab.click();
   await page.waitForTimeout(800);
 
   // Click the story toggle button to expand (stories start pre-expanded but make sure)
