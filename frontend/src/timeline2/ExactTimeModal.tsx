@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import type { TimelineCalendar } from '../timelinesTypes';
 import { calendarNote, safeDecodeWhen, safeEncodeWhen } from './axis/calendarCodec';
+import Dialog from '../components/ui/Dialog';
 import './Timeline2Modals.css';
 
 export type ExactTimeTarget =
@@ -98,42 +99,46 @@ export default function ExactTimeModal({
   );
 
   return (
-    <div className="t2m-overlay" data-testid="exact-time-modal">
-      <div className="t2m-backdrop" onClick={onClose} data-testid="etm-backdrop" />
-      <div className="t2m-card t2m-card--cyan" role="dialog" aria-modal="true" aria-label="Set exact time">
-        <div className="t2m-head">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n1,#00f0ff)" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 3" />
-          </svg>
-          <span className="t2m-title">Set exact time</span>
-          <button type="button" className="t2m-close" onClick={onClose} aria-label="Close" data-testid="etm-close">
-            ✕
-          </button>
-        </div>
-        <div className="t2m-note">
-          Calendar for this timeline: <b>{calendarNote(calendar)}</b> ·{' '}
-          <button type="button" className="t2m-link" onClick={onEditCalendar} data-testid="etm-change-calendar">
-            change
-          </button>
-        </div>
-        <div className="t2m-section-label">START</div>
-        {renderFields(start, setStart, 'start')}
-        {isDual && (
-          <>
-            <div className="t2m-section-label">END</div>
-            {renderFields(end, setEnd, 'end')}
-          </>
-        )}
-        <div className="t2m-actions">
-          <button type="button" className="t2m-btn t2m-btn--ghost" onClick={onClose} data-testid="etm-cancel">
-            Cancel
-          </button>
-          <button type="button" className="t2m-btn t2m-btn--primary" onClick={apply} data-testid="etm-apply">
-            Set time
-          </button>
-        </div>
+    <Dialog
+      open
+      onClose={onClose}
+      aria-label="Set exact time"
+      className="t2m-card t2m-card--cyan"
+      overlayTestId="etm-backdrop"
+      testId="exact-time-modal"
+    >
+      <div className="t2m-head">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n1,#00f0ff)" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 3" />
+        </svg>
+        <span className="t2m-title">Set exact time</span>
+        <button type="button" className="t2m-close" onClick={onClose} aria-label="Close" data-testid="etm-close">
+          ✕
+        </button>
       </div>
-    </div>
+      <div className="t2m-note">
+        Calendar for this timeline: <b>{calendarNote(calendar)}</b> ·{' '}
+        <button type="button" className="t2m-link" onClick={onEditCalendar} data-testid="etm-change-calendar">
+          change
+        </button>
+      </div>
+      <div className="t2m-section-label">START</div>
+      {renderFields(start, setStart, 'start')}
+      {isDual && (
+        <>
+          <div className="t2m-section-label">END</div>
+          {renderFields(end, setEnd, 'end')}
+        </>
+      )}
+      <div className="t2m-actions">
+        <button type="button" className="t2m-btn t2m-btn--ghost" onClick={onClose} data-testid="etm-cancel">
+          Cancel
+        </button>
+        <button type="button" className="t2m-btn t2m-btn--primary" onClick={apply} data-testid="etm-apply">
+          Set time
+        </button>
+      </div>
+    </Dialog>
   );
 }
