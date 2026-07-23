@@ -14,7 +14,7 @@
 // engine that isn't set up toast their setupHint and keep playing with the
 // default voice (§1.2 "nothing is dead").
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   listReaderVoices,
   readerVoiceSetupHint,
@@ -161,6 +161,7 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
         className="msv-reader-nav"
         data-testid="msv-reader-prev-scene"
         title="Previous scene"
+        aria-label="Previous scene"
         onClick={() => reader.skipScene(-1)}
       >
         {SCENE_PREV_ICON}
@@ -170,6 +171,7 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
         className="msv-reader-nav msv-reader-nav--wide"
         data-testid="msv-reader-back"
         title="Back ~10s"
+        aria-label="Back 10 seconds"
         onClick={() => reader.skipTime(-1)}
       >
         -10s
@@ -179,6 +181,7 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
         className="msv-reader-play"
         data-testid="msv-reader-play"
         aria-label={reader.playing ? 'Pause reading' : 'Play'}
+        aria-pressed={reader.playing}
         onClick={onToggle}
       >
         {reader.playing ? PAUSE_ICON : PLAY_ICON}
@@ -188,6 +191,7 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
         className="msv-reader-nav msv-reader-nav--wide"
         data-testid="msv-reader-fwd"
         title="Forward ~10s"
+        aria-label="Forward 10 seconds"
         onClick={() => reader.skipTime(1)}
       >
         +10s
@@ -197,6 +201,7 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
         className="msv-reader-nav"
         data-testid="msv-reader-next-scene"
         title="Next scene"
+        aria-label="Next scene"
         onClick={() => reader.skipScene(1)}
       >
         {SCENE_NEXT_ICON}
@@ -265,8 +270,20 @@ export function ReaderCard({ reader, ttsSettings }: ReaderBarProps): ReactNode {
     ttsSettings
   );
 
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      reader.close();
+    }
+  };
+
   return (
-    <section className="msv-reader-card" data-testid="msv-reader-card" aria-label="Reader">
+    <section
+      className="msv-reader-card"
+      data-testid="msv-reader-card"
+      aria-label="Reader"
+      onKeyDown={handleKeyDown}
+    >
       <div className="msv-reader-card-head">
         <span className="msv-reader-card-icon">{SPEAKER_ICON}</span>
         <span className="msv-reader-card-title">Reader</span>
