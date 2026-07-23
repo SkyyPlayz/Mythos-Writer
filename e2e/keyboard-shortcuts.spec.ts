@@ -9,9 +9,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selectors -- #story-vault-path-input renamed by SKY-3215; backdrop click point now covered by the wc-project-trigger window-chrome button
-test.skip(true, 'SKY-6933: stale selectors -- #story-vault-path-input renamed by SKY-3215; backdrop click point now covered by the wc-project-trigger window-chrome button');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
@@ -131,6 +128,8 @@ test.describe('Keyboard Shortcuts Dialog (SKY-83)', () => {
     await page.keyboard.press('ControlOrMeta+,');
     await expect(page.getByRole('dialog', { name: /settings/i })).toBeVisible({ timeout: 5_000 });
 
+    // SKY-2973/M28: vault path moved under the "Vault & Files" settings tab.
+    await page.getByRole('tab', { name: 'Vault & Files' }).click();
     const input = page.locator('#story-vault-path-input');
     await expect(input).toBeVisible({ timeout: 5_000 });
     await input.focus();
@@ -160,7 +159,12 @@ test.describe('Keyboard Shortcuts Dialog (SKY-83)', () => {
     const dialog = await openShortcutsWithQuestionMark(page);
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
-    await page.locator('.ksd-backdrop').click({ position: { x: 10, y: 10 } });
+    // SKY-2973: the window-chrome title bar (wc-project-trigger button) now
+    // occupies the backdrop's top-left corner, so click near the bottom-left
+    // instead — still clearly outside the centered .ksd-dialog.
+    const backdrop = page.locator('.ksd-backdrop');
+    const box = await backdrop.boundingBox();
+    await backdrop.click({ position: { x: 10, y: (box?.height ?? 600) - 10 } });
 
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
   });

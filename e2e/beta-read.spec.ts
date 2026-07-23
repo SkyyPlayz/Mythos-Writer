@@ -38,9 +38,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-
-// SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source
-test.skip(true, 'SKY-6933: stale selector -- .app-menu-view-btn removed by the nav-rail rewrite (SKY-3098/3218), zero matches in current source');
+import { clickStoryNav } from './helpers/navGuard';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -275,9 +273,8 @@ test.afterAll(async () => {
 // 5. Verify the anchored comment (MOCK_COMMENT) appears in BetaReadMargin.
 
 test('TC-BR-01: select text → Beta-Read bubble → mocked review → comment in margin', async () => {
-  // Ensure the Stories tab is active in the left rail.
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+  // Ensure the Story Writer nav-rail item is active.
+  await clickStoryNav(page);
 
   // Pre-seeded scene must be visible (StoryNavigator auto-expands all nodes).
   const sceneRow = page.locator('.nav-scene-row', { hasText: 'Opening Scene' });
@@ -329,15 +326,12 @@ test('TC-BR-01: select text → Beta-Read bubble → mocked review → comment i
 
 test('TC-BR-02: comments persist when navigating away and back to the scene', async () => {
   // Navigate away — switches view and clears selectedScene state.
-  await page.locator('.app-menu-view-btn', { hasText: 'Brainstorm' }).click();
+  const nav = page.locator('nav[aria-label="Main navigation"]');
+  await nav.locator('button[aria-label="Brainstorm"]').click();
   await page.waitForTimeout(300); // allow React to unmount scene state
 
-  // Navigate back to the editor.
-  await page.locator('.app-menu-view-btn', { hasText: 'Editor' }).click();
-
-  // Ensure Stories tab is active, then re-select the scene.
-  const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
+  // Navigate back to the Story Writer module (the editor), then re-select the scene.
+  await clickStoryNav(page);
 
   const sceneRow = page.locator('.nav-scene-row', { hasText: 'Opening Scene' });
   await expect(sceneRow).toBeVisible({ timeout: 5_000 });
