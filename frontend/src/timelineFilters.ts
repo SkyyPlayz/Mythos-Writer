@@ -2,7 +2,21 @@
 // Kept side-effect free so they're trivial to unit-test and reuse from any view.
 // SKY-3185: TimelineViewMode + TimelineGroupBy for the shared view switcher + grouping.
 
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+// M24: moved off TimelineSpreadsheet.tsx (rebuilt display-only against the M21
+// timelines store, §8.5) — this scene shape is still the shared model for the
+// legacy scene-based filter/layout helpers below and TrackTimeline/TimelineDetailCard.
+export interface SpreadsheetScene {
+  id: string;
+  title: string;
+  chapterId: string;
+  date: string;
+  pov: string;
+  arcIds: string[];
+  characterIds: string[];
+  wordCount: number | null;
+  mood: string;
+  locationId: string;
+}
 
 export type EntityTab = 'all' | 'character' | 'arc' | 'location';
 

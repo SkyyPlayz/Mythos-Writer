@@ -97,6 +97,16 @@ export interface TimelineRow {
   source?: TimelineItemSource;
 }
 
+/** Beta 4 M24 (§8.5) — one draggable per-chapter tension value for the Tension mode's
+ *  SVG curve. Optional array: absent on stores written before M24 (treat as []). */
+export interface TimelineTensionPoint {
+  id: string;
+  timelineId: string;
+  chapter: number;
+  value: number;
+  source?: TimelineItemSource;
+}
+
 export interface TimelinesStore {
   schemaVersion: 1;
   activeTimelineId: string;
@@ -105,4 +115,6 @@ export interface TimelinesStore {
   spans: TimelineSpan[];
   rows: TimelineRow[];
   events: TimelineEvent[];
+  /** M24: optional — absent on pre-M24 stores, treat as []. */
+  tensionPoints?: TimelineTensionPoint[];
 }

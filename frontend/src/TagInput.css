@@ -1,7 +1,10 @@
 .tag-input-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  /* Must exceed .tag-chip-remove's 5px negative-margin hit-area bleed on
+     every side, else the expanded hit target overlaps .tag-input-field
+     (SKY-8009). */
+  gap: 6px;
   min-height: 32px;
   padding: 4px 8px;
   background: var(--input-bg, rgba(255,255,255,0.07));

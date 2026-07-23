@@ -1624,15 +1624,16 @@ interface Window {
     timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
     // Beta 4 M22: Axis engine — era/span/event/row item persistence
     timelinesUpsertItem?: (payload: {
-      type: 'era' | 'span' | 'event' | 'row';
+      type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       item:
         | import('./timelinesTypes').TimelineEra
         | import('./timelinesTypes').TimelineSpan
         | import('./timelinesTypes').TimelineEvent
-        | import('./timelinesTypes').TimelineRow;
+        | import('./timelinesTypes').TimelineRow
+        | import('./timelinesTypes').TimelineTensionPoint;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
     timelinesDeleteItem?: (payload: {
-      type: 'era' | 'span' | 'event' | 'row';
+      type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       id: string;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
     // SKY-6228: M15 — agent chat sessions
