@@ -298,13 +298,13 @@ export default function EntriesPanel({ storyTitle = '' }: Props) {
       }
     });
 
-    const unsubError = window.api.onStreamError(({ streamId, error }) => {
+    const unsubError = window.api.onStreamError(({ streamId, message }) => {
       if (streamId !== activeStreamIdRef.current) return;
       activeStreamIdRef.current = null;
       streamAccumRef.current = '';
       setBrainstormingId(null);
       setStreamingText('');
-      setStreamError(error);
+      setStreamError(message);
     });
 
     return () => {
