@@ -141,10 +141,18 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   const page = await app.firstWindow();
   page.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 15_000 });
   return page;
 }
 
+// SKY-8260: must run AFTER firstWindow() resolves, not right after launch().
+// Called too early, this races the main process's own boot-time
+// setupIpcMain() loop; if the mock's ipcMain.handle() wins, main's later
+// handle() call for the same channel throws (Electron disallows a second
+// handler without an intervening removeHandler), which aborts the rest of
+// that registration loop and leaves the shell unable to mount past first
+// paint. Once firstWindow() has resolved, boot's own registration has
+// already completed, so removeHandler()+handle() here cleanly overrides it.
 async function installProviderMocks(app: ElectronApplication, responses: ProviderResponses = {}): Promise<void> {
   await app.evaluate(async ({ ipcMain }, providerResponses: ProviderResponses) => {
     ipcMain.removeHandler('provider:listModels');
@@ -204,8 +212,8 @@ test.afterEach(async () => {
 test('TC-LMP-01 / AC-8: fresh install defaults all agents to the global Anthropic provider', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
-  await installProviderMocks(app);
   page = await firstWindow(app);
+  await installProviderMocks(app);
 
   await openSettings(page);
 
@@ -225,8 +233,8 @@ test('TC-LMP-01 / AC-8: fresh install defaults all agents to the global Anthropi
 test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes only non-overridden agents', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
-  await installProviderMocks(app);
   page = await firstWindow(app);
+  await installProviderMocks(app);
 
   await openSettings(page);
 
@@ -254,10 +262,10 @@ test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes onl
 test('TC-LMP-03 / AC-3: Ollama-not-running shows an inline user-friendly hint', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
+  page = await firstWindow(app);
   await installProviderMocks(app, {
     ollama: { ok: false, error: 'ECONNREFUSED 127.0.0.1:11434' },
   });
-  page = await firstWindow(app);
 
   await openSettings(page);
 
@@ -273,10 +281,10 @@ test('TC-LMP-03 / AC-3: Ollama-not-running shows an inline user-friendly hint', 
 test('TC-LMP-04 / AC-4: custom OpenAI-compatible endpoint populates model dropdown from mocked IPC', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
+  page = await firstWindow(app);
   await installProviderMocks(app, {
     custom: { ok: true, models: ['gpt-4o', 'gpt-4o-mini'] },
   });
-  page = await firstWindow(app);
 
   await openSettings(page);
 
@@ -297,10 +305,10 @@ test('TC-LMP-04 / AC-4: custom OpenAI-compatible endpoint populates model dropdo
 test('TC-LMP-05 / AC-2: Ollama model list populates a per-agent dropdown from mocked IPC', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
+  page = await firstWindow(app);
   await installProviderMocks(app, {
     ollama: { ok: true, models: ['llama3', 'mistral', 'neural-chat'] },
   });
-  page = await firstWindow(app);
 
   await openSettings(page);
 
@@ -323,8 +331,8 @@ test('TC-LMP-06 / AC-9: upgrade preserves old model settings while using global 
   settings.agents.archive.model = 'claude-opus-4-7';
   seedUserData(userData, storyVault, notesVault, settings);
   app = await launchApp(userData);
-  await installProviderMocks(app);
   page = await firstWindow(app);
+  await installProviderMocks(app);
 
   await openSettings(page);
 
@@ -351,10 +359,10 @@ test('TC-LMP-06 / AC-9: upgrade preserves old model settings while using global 
 test('TC-LMP-07 / AC-10: per-agent test-connection results are independent', async () => {
   seedUserData(userData, storyVault, notesVault);
   app = await launchApp(userData);
+  page = await firstWindow(app);
   await installProviderMocks(app, {
     ollama: { ok: true, models: ['llama3'] },
   });
-  page = await firstWindow(app);
 
   await openSettings(page);
 
