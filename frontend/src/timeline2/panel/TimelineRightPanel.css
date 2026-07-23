@@ -1,13 +1,15 @@
 /* Beta 4 M25 — Timeline right panel (§8.6): tabs Inspector · Brainstorm ·
    Archive. Exact values ported from the prototype
    ("Mythos Writer - Liquid Neon.dc.html" ~3300–3530, isTimeline right-panel
-   block): 264px column, 12px pad / 10px gap, 3px tab seg r10, editor cards
-   r14 pad 14 with slot accents (--b2 editors / --b1 event), 28px inputs r8.
-   Timeline chrome accents resolve to slot 6 (--n6/--gs6) per the design spec;
-   flags use --state-warning (ArchivePanel continuity-card vocabulary). */
+   block): 12px pad / 10px gap, 3px tab seg r10, editor cards r14 pad 14 with
+   slot accents (--b2 editors / --b1 event), 28px inputs r8. Timeline chrome
+   accents resolve to slot 6 (--n6/--gs6) per the design spec; flags use
+   --state-warning (ArchivePanel continuity-card vocabulary).
+   SKY-7956: width is resizable (250-430px, default 316, ported from the
+   prototype's app-wide right rail `rightW`) — set inline via TimelineRoot's
+   rightPanelWidth state, not hardcoded here. */
 
 .trp-root {
-  width: 264px;
   flex: none;
   height: 100%;
   min-height: 0;

@@ -34,6 +34,8 @@ const TABS: { value: TimelineRightTab; label: string }[] = [
 ];
 
 export interface TimelineRightPanelProps {
+  /** SKY-7956: panel width in px, clamped by the caller to the prototype's 250-430 range. */
+  width: number;
   store: TimelinesStore;
   activeTimeline: TimelineDefinition;
   selection: TimelineSelection | null;
@@ -106,7 +108,12 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
   };
 
   return (
-    <aside className="trp-root" aria-label="Timeline panel" data-testid="timeline-right-panel">
+    <aside
+      className="trp-root"
+      style={{ width: props.width }}
+      aria-label="Timeline panel"
+      data-testid="timeline-right-panel"
+    >
       <div className="trp-tabs" role="tablist" aria-label="Timeline panel tabs">
         {TABS.map((t) => (
           <button
