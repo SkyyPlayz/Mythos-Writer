@@ -56,23 +56,28 @@ jobs:
     timeout-minutes: 5
     outputs:
       run-e2e: ${{ steps.filter.outputs.run-e2e }}
-      docs-only: ${{ steps.filter.outputs.docs-only }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # SKY-8145: dorny/paths-filter's default predicate-quantifier is 'some'
+      # (OR across patterns). A filter made only of negated patterns ('!x')
+      # then matches almost any file, because each individual negation is
+      # true whenever that one exclusion doesn't apply — even if a different
+      # exclusion does. E.g. a changed docs/*.md file still satisfies
+      # '!README*' (it isn't a README), so run-e2e came out true for every
+      # diff, including pure-docs ones, and e2e shards never actually got
+      # skipped. 'every' requires a file to clear ALL exclusions at once
+      # (i.e. not be docs/md/readme/gitignore/issue-template) before it
+      # counts as a reason to run e2e. Requires v3+ (v2's action.yml has no
+      # predicate-quantifier input at all, so it silently no-ops on v2).
       - name: Detect changed paths (path-based CI optimization)
         id: filter
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v3
         with:
+          predicate-quantifier: 'every'
           filters: |
-            docs-only:
-              - '**.md'
-              - 'docs/**'
-              - 'README*'
-              - '.gitignore'
-              - '.github/ISSUE_TEMPLATE/**'
             run-e2e:
               - '!**.md'
               - '!docs/**'
