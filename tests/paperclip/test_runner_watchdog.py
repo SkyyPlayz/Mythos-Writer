@@ -280,5 +280,40 @@ class TestCancelRun202(unittest.TestCase):
         self.assertFalse(result, "cancel_job must return False for HTTP 500")
 
 
+class TestForceCancelRun(unittest.TestCase):
+    """force_cancel_run must hit the dedicated /force-cancel endpoint exactly
+    once, not call /cancel twice (a second /cancel doesn't escalate to a
+    force-cancel and can 409 on an already-cancelling run, misreporting a
+    successful cancel as a failure)."""
+
+    def setUp(self):
+        self._original_urlopen = urllib.request.urlopen
+
+    def tearDown(self):
+        urllib.request.urlopen = self._original_urlopen
+
+    def test_force_cancel_run_hits_force_cancel_endpoint_once(self):
+        requests = []
+
+        def _urlopen(req):
+            requests.append((req.full_url, req.get_method()))
+            return _MockResponse(202)
+
+        urllib.request.urlopen = _urlopen
+        result = watchdog_module.force_cancel_run(12345)
+
+        self.assertTrue(result, "force_cancel_run must return True for HTTP 202")
+        self.assertEqual(
+            requests,
+            [(f"https://api.github.com/repos/{watchdog_module.REPO}/actions/runs/12345/force-cancel", "POST")],
+            "force_cancel_run must call /force-cancel exactly once, not /cancel twice",
+        )
+
+    def test_force_cancel_run_returns_false_on_error(self):
+        urllib.request.urlopen = _make_urlopen(500)
+        result = watchdog_module.force_cancel_run(12345)
+        self.assertFalse(result, "force_cancel_run must return False for HTTP 500")
+
+
 if __name__ == "__main__":
     unittest.main()
