@@ -26,13 +26,16 @@ import {
   zoomOut,
   type ViewTransform,
 } from './canvasMath';
+import { Toast } from '../components/Toast/Toast';
+import { useToast } from '../hooks/useToast';
 import './CanvasBoard.css';
 
 // Keyboard move/resize/pan step (board px, unaffected by zoom — arrow keys
 // don't have a pointer to scale a screen delta by). Shift multiplies the step
 // so keyboard users can cross the board without hundreds of key presses.
-const KB_STEP = 12;
-const KB_STEP_FAST = 48;
+// 8/40 (SKY-7330) mirrors the mouse-drag granularity per the canvas spec §4.5.
+const KB_STEP = 8;
+const KB_STEP_FAST = 40;
 
 function arrowDelta(e: React.KeyboardEvent): { dx: number; dy: number } | null {
   const step = e.shiftKey ? KB_STEP_FAST : KB_STEP;
@@ -72,14 +75,30 @@ function slotClass(c: number): string {
   return `cvb-card--s${slot + 1}`;
 }
 
+// Screen-reader equivalent of the visual avatar+title (SKY-7330): the card's
+// body is the closest thing this shared engine has to a category/summary, so
+// fold it in when present rather than leaving a sighted-only cue.
+function cardAriaLabel(card: CanvasCard): string {
+  return card.d ? `${card.t} — ${card.d}` : card.t;
+}
+
 export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = false }: CanvasBoardProps) {
   const [view, setView] = useState<ViewTransform>({ zoom: 1, panX: 0, panY: 0 });
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const panLayerRef = useRef<HTMLDivElement>(null);
+  // Card-head DOM nodes, so keyboard delete can hand focus to a neighbor
+  // instead of losing it to <body> when the focused card unmounts (SKY-7330).
+  const cardHeadRefs = useRef(new Map<string, HTMLDivElement>());
 
   // Latest board for window-level drag listeners (the prop may lag mid-drag).
   const boardRef = useRef(board);
   boardRef.current = board;
+
+  // Undo affordance for keyboard/mouse delete (SKY-7330, §4.4/§4.5) — a longer
+  // window than the default toast so there's real time to react to "Undo".
+  const { toast, showToast, clearToast } = useToast(5000);
+  const lastDeleteRef = useRef<CanvasBoardData | null>(null);
 
   // Active drag teardown, so an unmount mid-drag never leaks window listeners.
   const dragCleanup = useRef<(() => void) | null>(null);
@@ -108,6 +127,35 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     });
   };
 
+  // Delete + "Card deleted" toast/undo (SKY-7330, §4.4) — shared by the mouse
+  // × button and the keyboard Delete/Backspace path so both get the same
+  // forgiveness affordance. Moves focus to a neighboring card (or the pan
+  // layer, if none remain) so a keyboard user never loses focus to <body>.
+  const deleteCard = (cardId: string) => {
+    const b = boardRef.current;
+    const idx = b.cards.findIndex((c) => c.id === cardId);
+    if (idx === -1) return;
+    const card = b.cards[idx];
+    const neighbor = b.cards[idx + 1] ?? b.cards[idx - 1] ?? null;
+    lastDeleteRef.current = b;
+    onChange({
+      ...b,
+      cards: b.cards.filter((c) => c.id !== cardId),
+      links: b.links.filter((l) => l[0] !== cardId && l[1] !== cardId),
+    });
+    if (linkFrom === cardId) setLinkFrom(null);
+    showToast(`“${card.t}” deleted`, 'info');
+    (neighbor ? cardHeadRefs.current.get(neighbor.id) : panLayerRef.current)?.focus();
+  };
+
+  const undoDelete = () => {
+    const prev = lastDeleteRef.current;
+    if (!prev) return;
+    onChange(prev);
+    lastDeleteRef.current = null;
+    clearToast();
+  };
+
   // Card drag — prototype `cvCardDown` (lines 3425–3435): zoom-scaled deltas.
   const onCardHeadDown = (cardId: string) => (e: React.MouseEvent) => {
     if (readOnly || e.button === 2) return;
@@ -125,10 +173,22 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     });
   };
 
-  // Keyboard equivalent of card drag (WCAG 2.1.1): arrow keys nudge the
-  // focused card head by KB_STEP board px, Shift for KB_STEP_FAST.
+  // Keyboard equivalent of card drag/connect/delete (SKY-7929/SKY-7330, WCAG
+  // 2.1.1): arrow keys nudge the focused card head by KB_STEP board px (Shift
+  // for KB_STEP_FAST); Enter/Space start or complete a link from this card
+  // (same as clicking its ⚯ button); Delete/Backspace removes it.
   const onCardHeadKeyDown = (cardId: string) => (e: React.KeyboardEvent) => {
     if (readOnly) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      startOrCompleteLink(cardId);
+      return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      deleteCard(cardId);
+      return;
+    }
     const delta = arrowDelta(e);
     if (!delta) return;
     e.preventDefault();
@@ -199,9 +259,9 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     setView((v) => ({ ...v, zoom: wheelZoom(v.zoom, deltaY) }));
   };
 
-  // Connect mode — prototype `cvLinkClick` (lines 3461–3466).
-  const onConnectClick = (cardId: string) => (e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Connect mode — prototype `cvLinkClick` (lines 3461–3466). Shared by the
+  // mouse ⚯ button and Enter/Space on a focused card head (SKY-7330).
+  const startOrCompleteLink = (cardId: string) => {
     if (!linkFrom) {
       setLinkFrom(cardId);
     } else if (linkFrom === cardId) {
@@ -213,15 +273,23 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     }
   };
 
+  const onConnectClick = (cardId: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    startOrCompleteLink(cardId);
+  };
+
   const onDeleteClick = (cardId: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
-    const b = boardRef.current;
-    onChange({
-      ...b,
-      cards: b.cards.filter((c) => c.id !== cardId),
-      links: b.links.filter((l) => l[0] !== cardId && l[1] !== cardId),
-    });
-    if (linkFrom === cardId) setLinkFrom(null);
+    deleteCard(cardId);
+  };
+
+  // Escape cancels linking mode from anywhere on the board (SKY-7330, §4.3) —
+  // previously the only way out was completing the link or reloading.
+  const onRootKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && linkFrom !== null) {
+      e.preventDefault();
+      setLinkFrom(null);
+    }
   };
 
   const onAvatarClick = (card: CanvasCard) => (e: React.MouseEvent) => {
@@ -268,8 +336,10 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
       className="cvb-root"
       data-testid="canvas-board"
       onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={onRootKeyDown}
     >
       <div
+        ref={panLayerRef}
         className="cvb-pan-layer"
         data-testid="canvas-pan-layer"
         role="group"
@@ -297,14 +367,22 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
             className={`cvb-card ${slotClass(card.c)}${linkFrom === card.id ? ' cvb-card--linking' : ''}`}
             data-testid={`canvas-card-${card.id}`}
             style={{ left: card.x, top: card.y, width: card.w, minHeight: card.h }}
+            role="group"
+            aria-label={cardAriaLabel(card)}
             onMouseDown={onCardRootDown}
           >
             <div
+              ref={(el) => {
+                if (el) cardHeadRefs.current.set(card.id, el);
+                else cardHeadRefs.current.delete(card.id);
+              }}
               className="cvb-card-head"
               data-testid={`canvas-card-head-${card.id}`}
               role={readOnly ? undefined : 'button'}
               tabIndex={readOnly ? undefined : 0}
-              aria-label={readOnly ? undefined : `Move card: ${card.t}. Use arrow keys to move.`}
+              aria-label={
+                readOnly ? undefined : `Move card: ${card.t}. Arrow keys move, Enter or Space to connect, Delete to remove.`
+              }
               onMouseDown={onCardHeadDown(card.id)}
               onKeyDown={onCardHeadKeyDown(card.id)}
             >
@@ -416,6 +494,11 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
           Fit
         </button>
       </div>
+      <Toast
+        message={toast?.message ?? null}
+        level={toast?.level}
+        action={toast ? { label: 'Undo', onClick: undoDelete } : undefined}
+      />
     </div>
   );
 }

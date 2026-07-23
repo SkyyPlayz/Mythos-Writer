@@ -180,11 +180,11 @@ describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
     head.focus();
     fireEvent.keyDown(head, { key: 'ArrowRight' });
     let card = lastBoard(onChange).cards[0];
-    expect(card.x).toBe(112); // 100 + 12
+    expect(card.x).toBe(108); // 100 + 8
     expect(card.y).toBe(80);
     fireEvent.keyDown(head, { key: 'ArrowDown', shiftKey: true });
     card = lastBoard(onChange).cards[0];
-    expect(card.y).toBe(128); // 80 + 48
+    expect(card.y).toBe(120); // 80 + 40
   });
 
   it('clamps keyboard card moves to the positive quadrant', () => {
@@ -196,7 +196,7 @@ describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
     fireEvent.keyDown(head, { key: 'ArrowLeft', shiftKey: true });
     fireEvent.keyDown(head, { key: 'ArrowLeft', shiftKey: true });
     const card = lastBoard(onChange).cards[0];
-    expect(card.x).toBe(0); // 100 - 48*3 clamped
+    expect(card.x).toBe(0); // 100 - 40*3 clamped
   });
 
   it('resizes the focused card with arrow keys on the resize handle, clamped at 130×60', () => {
@@ -207,8 +207,8 @@ describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
     fireEvent.keyDown(handle, { key: 'ArrowRight' });
     fireEvent.keyDown(handle, { key: 'ArrowDown' });
     let card = lastBoard(onChange).cards[0];
-    expect(card.w).toBe(212); // 200 + 12
-    expect(card.h).toBe(98); // 86 + 12
+    expect(card.w).toBe(208); // 200 + 8
+    expect(card.h).toBe(94); // 86 + 8
     for (let i = 0; i < 20; i++) fireEvent.keyDown(handle, { key: 'ArrowUp', shiftKey: true });
     card = lastBoard(onChange).cards[0];
     expect(card.h).toBe(60);
@@ -219,7 +219,7 @@ describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
     const panLayer = screen.getByTestId('canvas-pan-layer');
     panLayer.focus();
     fireEvent.keyDown(panLayer, { key: 'ArrowRight' });
-    expect(screen.getByTestId('canvas-stage').style.transform).toContain('translate(12px,0px)');
+    expect(screen.getByTestId('canvas-stage').style.transform).toContain('translate(8px,0px)');
   });
 
   it('does not move or resize cards from arrow keys in readOnly mode', () => {
@@ -242,6 +242,15 @@ describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
     expect(screen.getByTestId('canvas-card-resize-a').tagName).toBe('BUTTON');
     expect(screen.getByTestId('canvas-card-head-a')).toHaveAttribute('tabIndex', '0');
     expect(screen.getByTestId('canvas-pan-layer')).toHaveAttribute('tabIndex', '0');
+  });
+
+  it('gives every card a role=group with an aria-label combining title and body (SKY-7330)', () => {
+    render(<Harness initial={makeBoard()} />);
+    const cardA = screen.getByTestId('canvas-card-a');
+    const cardB = screen.getByTestId('canvas-card-b');
+    expect(cardA).toHaveAttribute('role', 'group');
+    expect(cardA).toHaveAttribute('aria-label', 'Mira Veynn — POV. Dread first, wonder second.');
+    expect(cardB).toHaveAttribute('aria-label', 'The Broker — His price: a memory, not coin.');
   });
 });
 
@@ -275,6 +284,59 @@ describe('connect mode', () => {
   });
 });
 
+describe('keyboard connect (SKY-7330, WCAG 2.1.1)', () => {
+  it('Enter on a focused card head starts linking mode; Space on another completes it', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const headB = screen.getByTestId('canvas-card-head-b');
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headB.focus();
+    fireEvent.keyDown(headB, { key: 'Enter' });
+    expect(screen.getByTestId('canvas-linking-hint')).toHaveTextContent('Connecting — click a target card…');
+    expect(screen.getByTestId('canvas-card-b').className).toContain('cvb-card--linking');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: ' ' });
+    const board = lastBoard(onChange);
+    expect(board.links).toEqual([
+      ['a', 'b'],
+      ['b', 'a'],
+    ]);
+    expect(screen.queryByTestId('canvas-linking-hint')).toBeNull();
+  });
+
+  it('Enter on the same focused card again cancels linking mode without a link', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: 'Enter' });
+    fireEvent.keyDown(headA, { key: 'Enter' });
+    expect(screen.queryByTestId('canvas-linking-hint')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('Escape cancels linking mode from anywhere on the board (also fixes the missing mouse-path cancel)', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: 'Enter' });
+    expect(screen.getByTestId('canvas-linking-hint')).toBeInTheDocument();
+    fireEvent.keyDown(headA, { key: 'Escape' });
+    expect(screen.queryByTestId('canvas-linking-hint')).toBeNull();
+    expect(screen.getByTestId('canvas-card-a').className).not.toContain('cvb-card--linking');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not start linking mode from Enter/Space in readOnly mode', () => {
+    render(<Harness initial={makeBoard()} readOnly />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    expect(headA).not.toHaveAttribute('tabIndex');
+    fireEvent.keyDown(headA, { key: 'Enter' });
+    expect(screen.queryByTestId('canvas-linking-hint')).toBeNull();
+  });
+});
+
 describe('delete card', () => {
   it('removes the card and every link touching it', () => {
     const onChange = vi.fn();
@@ -284,6 +346,74 @@ describe('delete card', () => {
     expect(board.cards.map((c) => c.id)).toEqual(['b']);
     expect(board.links).toEqual([]);
     expect(screen.queryByTestId('canvas-card-a')).toBeNull();
+  });
+
+  it('shows a "Card deleted" toast with an Undo action (SKY-7330, §4.4)', () => {
+    render(<Harness initial={makeBoard()} />);
+    fireEvent.click(within(screen.getByTestId('canvas-card-b')).getByTitle('Delete card'));
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('“The Broker” deleted');
+    expect(screen.getByText('Undo')).toBeInTheDocument();
+  });
+
+  it('Undo restores the deleted card and its links', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    fireEvent.click(within(screen.getByTestId('canvas-card-a')).getByTitle('Delete card'));
+    expect(lastBoard(onChange).cards.map((c) => c.id)).toEqual(['b']);
+    fireEvent.click(screen.getByText('Undo'));
+    const board = lastBoard(onChange);
+    expect(board.cards.map((c) => c.id)).toEqual(['a', 'b']);
+    expect(board.links).toEqual([['a', 'b']]);
+    expect(screen.queryByTestId('app-toast')).toBeNull();
+  });
+});
+
+describe('keyboard delete (SKY-7330, WCAG 2.1.1)', () => {
+  it('Delete on a focused card head removes it, with the same toast/undo affordance as the mouse path', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: 'Delete' });
+    const board = lastBoard(onChange);
+    expect(board.cards.map((c) => c.id)).toEqual(['b']);
+    expect(board.links).toEqual([]);
+    expect(screen.getByTestId('app-toast')).toHaveTextContent('“Mira Veynn” deleted');
+    expect(screen.getByText('Undo')).toBeInTheDocument();
+  });
+
+  it('Backspace also removes the focused card', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const headB = screen.getByTestId('canvas-card-head-b');
+    headB.focus();
+    fireEvent.keyDown(headB, { key: 'Backspace' });
+    expect(lastBoard(onChange).cards.map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('moves focus to the next remaining card after keyboard delete', () => {
+    render(<Harness initial={makeBoard()} />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: 'Delete' });
+    expect(screen.getByTestId('canvas-card-head-b')).toHaveFocus();
+  });
+
+  it('moves focus to the pan layer when the last remaining card is deleted', () => {
+    const solo: CanvasBoardData = { id: 'b1', name: 'Solo', cards: [makeBoard().cards[0]], links: [] };
+    render(<Harness initial={solo} />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    headA.focus();
+    fireEvent.keyDown(headA, { key: 'Delete' });
+    expect(screen.getByTestId('canvas-pan-layer')).toHaveFocus();
+  });
+
+  it('does not delete cards from Delete/Backspace in readOnly mode', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} readOnly />);
+    const headA = screen.getByTestId('canvas-card-head-a');
+    fireEvent.keyDown(headA, { key: 'Delete' });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
