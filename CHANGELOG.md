@@ -9,6 +9,59 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0-beta.1] — 2026-07-23
+
+**"Liquid Neon · Refined."** Beta 4 closes the gap between the Beta 3 shell and the approved v2 prototype across integrity/performance, fidelity, and 29 build milestones (build plan: [`docs/releases/BETA-REFINE.md`](docs/releases/BETA-REFINE.md)).
+
+### Wave 0 — Integrity & performance (shipped first, per owner decision B4-7)
+
+- **Seed-once vaults + notes-tree hygiene** — vault seeding runs exactly once (marker in vault metadata); story-internal scene-UUID folders no longer leak into the Notes tree. ([PR #903](https://github.com/SkyyPlayz/Mythos-Writer/pull/903))
+- **Frontmatter never renders as headings** — a shared strip engine gives lossless round-trip between Rich view and raw YAML frontmatter. ([PR #901](https://github.com/SkyyPlayz/Mythos-Writer/pull/901))
+- **Right-panel layout collisions + single editor chrome** fixed. ([PR #902](https://github.com/SkyyPlayz/Mythos-Writer/pull/902))
+- **20fps → 60fps**: opaque window (frame ring removed), pre-blurred glass, transform-only animations, and a faster typing path. ([PR #905](https://github.com/SkyyPlayz/Mythos-Writer/pull/905))
+- **Boot-race + manifest fixes**: vault-not-found boot race eliminated, `manifest.json` made structure-only for O(1) scene saves, self-write watcher suppression, incremental reindex/FTS, DB growth/retention guards. ([PR #904](https://github.com/SkyyPlayz/Mythos-Writer/pull/904), [#932](https://github.com/SkyyPlayz/Mythos-Writer/pull/932), [#889](https://github.com/SkyyPlayz/Mythos-Writer/pull/889), [#890](https://github.com/SkyyPlayz/Mythos-Writer/pull/890))
+- Wave 0 gate signed off by the owner 2026-07-11; version bumped to `0.5.0-beta.0` for the smoke build. ([PR #906](https://github.com/SkyyPlayz/Mythos-Writer/pull/906), [#907](https://github.com/SkyyPlayz/Mythos-Writer/pull/907))
+
+### Added — 29 build milestones
+
+- **M1 Theme engine refresh** — preset import/export, per-vault theme, interface card, global scrollbars. ([#909](https://github.com/SkyyPlayz/Mythos-Writer/pull/909))
+- **M2 Title bar & status bar parity** — vault switcher, real menus, search field, bell deep-links, one status bar. ([#908](https://github.com/SkyyPlayz/Mythos-Writer/pull/908))
+- **M3 Nav rail v2** — labels, edit popover, stories switcher, New Story wizard. ([#911](https://github.com/SkyyPlayz/Mythos-Writer/pull/911))
+- **M4 Workspace tabs as documents** — provisional scenes, split panes, tab context menu. ([#910](https://github.com/SkyyPlayz/Mythos-Writer/pull/910))
+- **M5 MythosVault format** — single-folder files-first storage, migration wizard, demo seed. ([#912](https://github.com/SkyyPlayz/Mythos-Writer/pull/912))
+- **M6 Auto Note Linker** — built-in deterministic wiki-linking. ([#916](https://github.com/SkyyPlayz/Mythos-Writer/pull/916))
+- **M7 Editor chrome & page parity** — DocHeader, MarginRuler, PageSetupPopover, custom page texture. ([#915](https://github.com/SkyyPlayz/Mythos-Writer/pull/915), [#937](https://github.com/SkyyPlayz/Mythos-Writer/pull/937))
+- **M8 Editing model hardening** — split/merge/drop-cap/status-cycle/grip-drag/scene-hops. ([#941](https://github.com/SkyyPlayz/Mythos-Writer/pull/941))
+- **M9 Comments v2** — selection composer, kinds, gutter cards, vault sidecar storage. ([#953](https://github.com/SkyyPlayz/Mythos-Writer/pull/953))
+- **M10 Drafts v2** — compare split, full diff, load with exact undo, snapshot settings. ([#945](https://github.com/SkyyPlayz/Mythos-Writer/pull/945))
+- **M11 TTS Reader refinements** — gutter dock, full transport, sentence highlight, audiobook bar. ([#938](https://github.com/SkyyPlayz/Mythos-Writer/pull/938))
+- **M12 Writing Coach** — Coach page, suggestions rail, shared conversation store. ([#952](https://github.com/SkyyPlayz/Mythos-Writer/pull/952))
+- **M13 Scene analysis** — computed local metrics feeding the Coach's Read AI split. ([#956](https://github.com/SkyyPlayz/Mythos-Writer/pull/956))
+- **M14 Structure & export** — grid/list Structure view, Book preview, export modal to prototype parity. ([#939](https://github.com/SkyyPlayz/Mythos-Writer/pull/939))
+- **M15 Agent hub** — right-panel agent hub, session store, AgentSessionPicker. ([#917](https://github.com/SkyyPlayz/Mythos-Writer/pull/917))
+- **M16 Explorer parity** — Explorer toolbar + tree parity. ([#920](https://github.com/SkyyPlayz/Mythos-Writer/pull/920))
+- **M17 Note body parity** — title/tags/modes, callouts, backlinks, wiki-link hover + create. ([#940](https://github.com/SkyyPlayz/Mythos-Writer/pull/940))
+- **M18 Notes right panel** — Curator greeting, CONTINUITY FLAGS badge, M9 label parity. ([#963](https://github.com/SkyyPlayz/Mythos-Writer/pull/963))
+- **M19 Scene Crafter refresh** — canvas, draft cards, mini scenes panel. ([#973](https://github.com/SkyyPlayz/Mythos-Writer/pull/973))
+- **M20 Brainstorm unification** — one board, shared sessions, starter library, migration. ([#958](https://github.com/SkyyPlayz/Mythos-Writer/pull/958))
+- **M21 Timeline data model** — `timelines.json` codec, calendar system, migration. ([#914](https://github.com/SkyyPlayz/Mythos-Writer/pull/914))
+- **M22 Timeline axis engine** — eras bar, adaptive ticks, zoom, direct manipulation, auto-stacking. ([#951](https://github.com/SkyyPlayz/Mythos-Writer/pull/951))
+- **M23 Timeline lane rows** — Progress mode + full mode-seg toolbar. ([#957](https://github.com/SkyyPlayz/Mythos-Writer/pull/957))
+- **M24 Timeline remaining view modes** — Plotlines, Tension, Spreadsheet rebuilt onto `timelines.json`; Relationships/Subway rebuilt as native-table/roving-tabindex a11y depth per spec. ([#1040](https://github.com/SkyyPlayz/Mythos-Writer/pull/1040), [#1077](https://github.com/SkyyPlayz/Mythos-Writer/pull/1077))
+- **M25 Timeline right panel** — Inspector + Archive auto-build from vault plans and written scenes. ([#1010](https://github.com/SkyyPlayz/Mythos-Writer/pull/1010))
+- **M26 Vault graph refinements** — category controls, physics sliders, node card, cluster toggle. ([#955](https://github.com/SkyyPlayz/Mythos-Writer/pull/955))
+- **M27 Beta Reader agent view** — reports, reactions, margin comments. ([#965](https://github.com/SkyyPlayz/Mythos-Writer/pull/965))
+- **M28 Settings workspace** — routed full view, BYO providers, autonomy card, vault & import pages. ([#959](https://github.com/SkyyPlayz/Mythos-Writer/pull/959))
+- **M29 Welcome wizard** — onboarding polish, spec-compliant restore after a lost PR, design-QA delta fixes. ([#998](https://github.com/SkyyPlayz/Mythos-Writer/pull/998), [#1007](https://github.com/SkyyPlayz/Mythos-Writer/pull/1007), [#1031](https://github.com/SkyyPlayz/Mythos-Writer/pull/1031))
+
+### Fixed & hardened
+
+- **Accessibility sweep** — keyboard operability for Scene Crafter canvas (WCAG 2.1.1), target-size/focus-outline polish, ReaderBar `aria-pressed`/focus-visible/Escape/transport labels, Timeline keyboard-a11y layer across 5 view modes. ([#1043](https://github.com/SkyyPlayz/Mythos-Writer/pull/1043), [#1044](https://github.com/SkyyPlayz/Mythos-Writer/pull/1044), [#1041](https://github.com/SkyyPlayz/Mythos-Writer/pull/1041))
+- **Import & migration verification** — real (non-stubbed) E2E for Obsidian import fidelity, docx story import, and Move-vault; hard-fail migration verification on cloud-sync placeholders; Obsidian-parity folder operations in the Notes Vault. ([#1051](https://github.com/SkyyPlayz/Mythos-Writer/pull/1051), [#1053](https://github.com/SkyyPlayz/Mythos-Writer/pull/1053), [#1055](https://github.com/SkyyPlayz/Mythos-Writer/pull/1055), [#1056](https://github.com/SkyyPlayz/Mythos-Writer/pull/1056), [#1048](https://github.com/SkyyPlayz/Mythos-Writer/pull/1048), [#1049](https://github.com/SkyyPlayz/Mythos-Writer/pull/1049))
+- **Data-model & IPC fixes** — manifest schema split (single-stringify write, wordCount fix), scene prose stripped from manifest IPC payload (hydrated on vault-open), timeline IPC rerouted off the incompatible legacy schema. ([#999](https://github.com/SkyyPlayz/Mythos-Writer/pull/999), [#1059](https://github.com/SkyyPlayz/Mythos-Writer/pull/1059), [#931](https://github.com/SkyyPlayz/Mythos-Writer/pull/931))
+- **Voice/agent fixes** — unified push-to-talk, per-agent Brainstorm voice, real whisper.cpp/Piper spawn E2E (incl. native Windows), distinct network-vs-auth AI provider errors. ([#1030](https://github.com/SkyyPlayz/Mythos-Writer/pull/1030), [#1037](https://github.com/SkyyPlayz/Mythos-Writer/pull/1037), [#1045](https://github.com/SkyyPlayz/Mythos-Writer/pull/1045), [#1038](https://github.com/SkyyPlayz/Mythos-Writer/pull/1038), [#1072](https://github.com/SkyyPlayz/Mythos-Writer/pull/1072))
+- **CI & release infra** — required screenshot check for UI-milestone PRs, flattened CI graph, path-based e2e sharding for docs-only PRs, permanent perf-regression guard for `scene:save`, one-button release-prep automation, tag-race fix between version-commit and draft-release creation. ([#1046](https://github.com/SkyyPlayz/Mythos-Writer/pull/1046), [#1063](https://github.com/SkyyPlayz/Mythos-Writer/pull/1063), [#1064](https://github.com/SkyyPlayz/Mythos-Writer/pull/1064), [#1036](https://github.com/SkyyPlayz/Mythos-Writer/pull/1036), [#1065](https://github.com/SkyyPlayz/Mythos-Writer/pull/1065), [#1083](https://github.com/SkyyPlayz/Mythos-Writer/pull/1083))
+
 ## [0.4.0-beta.1] — 2026-07-07
 
 **The "Liquid Neon" release.** Beta 3 rebuilds Mythos Writer around the approved Liquid Neon prototype — neon-bordered glass panels floating over animated, user-changeable backgrounds — and fills out the app's full product shape across 26 milestones (build plan: [`docs/releases/BETA-LIQUID-NEON.md`](docs/releases/BETA-LIQUID-NEON.md)).
