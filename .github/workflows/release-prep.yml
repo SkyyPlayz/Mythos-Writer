@@ -177,7 +177,7 @@ jobs:
 
   create-release:
     if: ${{ inputs.dry-run == false }}
-    needs: [validate-input, generate-changelog, build-windows]
+    needs: [validate-input, generate-changelog, build-windows, commit-version]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -204,7 +204,7 @@ jobs:
 
   commit-version:
     if: ${{ inputs.dry-run == false }}
-    needs: [validate-input, bump-version]
+    needs: [validate-input, bump-version, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
