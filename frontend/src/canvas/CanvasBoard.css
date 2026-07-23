@@ -205,9 +205,11 @@
   border-bottom-color: var(--n1, #00f0ff);
 }
 
-/* Keyboard focus rings (SKY-7929, WCAG 2.1.1/2.4.7) — the mouse-only drag
- * surfaces (card head, resize handle, pan layer) had no focus indicator
- * because nothing made them focusable before. */
+/* Keyboard focus rings (SKY-7929/SKY-7330, WCAG 2.1.1/2.4.7) — the mouse-only
+ * drag surfaces (card head, resize handle, pan layer) had no focus indicator
+ * because nothing made them focusable before. Use `--focus-ring`, not a slot
+ * token or `--color-accent` (SKY-1461) — it resolves to higher-contrast
+ * values in high-contrast mode than a fixed neon hue would. */
 .cvb-card-head:focus-visible,
 .cvb-card-resize:focus-visible,
 .cvb-pan-layer:focus-visible,
@@ -216,12 +218,12 @@
 .cvb-dock-add:focus-visible,
 .cvb-dock-zoom:focus-visible,
 .cvb-dock-fit:focus-visible {
-  outline: 2px solid var(--n1, #00f0ff);
+  outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: 2px;
 }
 .cvb-card-resize:focus-visible {
-  border-right-color: var(--n1, #00f0ff);
-  border-bottom-color: var(--n1, #00f0ff);
+  border-right-color: var(--focus-ring, #00f0ff);
+  border-bottom-color: var(--focus-ring, #00f0ff);
 }
 
 /* Connect-mode hint (header hint, line 1013). */
