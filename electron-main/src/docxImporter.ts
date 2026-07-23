@@ -8,6 +8,7 @@
 // output to a simple heading-delimited text format that splitDocxMarkdown can parse.
 
 import mammoth from 'mammoth';
+import { describeFileError } from './migrationVerify.js';
 
 /** Absolute cap before we even attempt parsing (saves memory on huge files). */
 export const DOCX_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -176,5 +177,12 @@ export async function parseDocxBuffer(
 
   const md = htmlToSplittableMarkdown(result.value);
   const { title, chapters } = splitDocxMarkdown(md, fallbackTitle);
+
+  // Detect empty parse: mammoth returned HTML but no usable prose was extracted.
+  const hasContent = chapters.some((ch) => ch.scenes.some((sc) => sc.prose.trim().length > 0));
+  if (!hasContent && result.value.trim().length > 0) {
+    warnings.push('Document was parsed but all scenes are empty — check that the .docx contains readable text paragraphs');
+  }
+
   return { title, chapters, warnings };
 }
