@@ -562,8 +562,8 @@ Accept: every §14 item checked off in the PR description with evidence.
 | M21 | Timeline model + calendars | 6 | M5 | 🔀 in PR | #914 |
 | M22 | Axis engine | 6 | M21 | 🔀 in PR (stacked on #914) | #951 |
 | M23 | Lane rows + Progress | 6 | M22 | 🔀 in PR (stacked on #951) | #957 |
-| M24 | Remaining modes | 6 | M23 | ⏳ | |
-| M25 | Timeline panel + Archive | 6 | M23, M15 | ⏳ | |
+| M24 | Remaining modes | 6 | M23 | ✅ merged | #1040, #1077 |
+| M25 | Timeline panel + Archive | 6 | M23, M15 | ✅ merged | #1010, #1100 |
 | M26 | Vault Graph refinements | 7 | M5 | 🔀 in PR (all checks green) | #955 |
 | M27 | Beta Reader view | 7 | M9, M15 | 🔀 in PR | #965 |
 | M28 | Settings workspace | 7 | M1, M5, M6 | 🔀 in PR | #959 |
