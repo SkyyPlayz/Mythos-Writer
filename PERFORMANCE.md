@@ -107,3 +107,6 @@ by this issue.
 | Wave | Date | Cold start (empty / large) | Data bench status | Notes |
 |---|---|---|---|---|
 | Restoration (SKY-7936) | 2026-07-22 | 106 ms / 278 ms | 4 regressions vs. stale baseline, baseline refreshed | First entry; establishes the format for future waves |
+## Test Documentation Change
+
+Added for SKY-8090 CI optimization verification.
