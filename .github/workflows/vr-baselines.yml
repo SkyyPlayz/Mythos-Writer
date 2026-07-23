@@ -1,13 +1,21 @@
 name: VR Baselines
 
 # Regenerates the visual-regression baselines (e2e/visual-baselines/) in the
-# GitHub-hosted runner environment and commits them back to the branch the
-# workflow ran on (also uploads them as the `vr-baselines` artifact). Needed
-# whenever the UI changes intentionally (e.g. the Liquid Neon redesign) or the
-# CI rendering environment changes (fonts and viewport metrics differ between
+# GitHub-hosted runner environment and lands them on the branch the workflow
+# ran on (also uploads them as the `vr-baselines` artifact). Needed whenever
+# the UI changes intentionally (e.g. the Liquid Neon redesign) or the CI
+# rendering environment changes (fonts and viewport metrics differ between
 # runner images, so baselines captured on one environment fail pixelmatch on
-# another). Note: the GITHUB_TOKEN push does not re-trigger PR workflows —
-# push any follow-up commit (even empty) to re-run checks.
+# another).
+#
+# The bot commit lands via a short-lived branch + auto-merging PR rather than
+# a direct push (see SKY-8214): branch protection requires 2 status checks on
+# every ref update, including direct pushes, and the bot token has no
+# admin/bypass rights, so `git push` straight to a protected branch is always
+# rejected (GH006). Opening a PR lets `ci` and `screenshot-check` run and
+# report against the bot commit; auto-merge lands it once both pass. This
+# adds no exception for human-authored pushes/PRs — the same 2 checks still
+# gate the merge.
 
 on:
   workflow_dispatch:
@@ -21,6 +29,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   regenerate:
@@ -68,14 +77,32 @@ jobs:
           path: e2e/visual-baselines/
           retention-days: 3
 
-      - name: Commit regenerated baselines to this branch
+      - name: Commit regenerated baselines to a branch
+        id: commit
         run: |
           git config user.name "vr-baselines-bot"
           git config user.email "noreply@github.com"
           git add e2e/visual-baselines/
           if git diff --cached --quiet; then
             echo "Baselines unchanged — nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          branch="vr-baselines-update-${GITHUB_RUN_ID}"
+          git checkout -b "$branch"
           git commit -m "test(vr): regenerate visual baselines on hosted runner"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "$branch"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open PR and enable auto-merge
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_url=$(gh pr create \
+            --base "${GITHUB_REF_NAME}" \
+            --head "${{ steps.commit.outputs.branch }}" \
+            --title "test(vr): regenerate visual baselines" \
+            --body "Automated baseline refresh from the vr-baselines workflow (run ${{ github.run_id }}). Branch protection on \`${GITHUB_REF_NAME}\` requires the \`ci\` and \`screenshot-check\` checks before this auto-merges — see SKY-8214.")
+          gh pr merge --auto --squash "$pr_url"
