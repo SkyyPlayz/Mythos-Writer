@@ -1912,8 +1912,7 @@ describe('BrainstormPage — proposal queue (SKY-1485)', () => {
     );
   });
 
-  it('Confirm routes scene_crafter_card proposals to Scene Crafter board', async () => {
-    const mockSceneCrafterAddCard = vi.fn().mockResolvedValue({ ok: true });
+  it('Confirm routes scene_crafter_card proposals to the notes vault as scene_card notes (SKY-8080)', async () => {
     (window as unknown as { api: unknown }).api = buildApiWithProposals(
       [makeBrainstormSuggestion({
         payload_json: JSON.stringify({
@@ -1923,7 +1922,6 @@ describe('BrainstormPage — proposal queue (SKY-1485)', () => {
         }),
         target: 'HeroArrivesAtVillage',
       })],
-      { sceneCrafterAddCard: mockSceneCrafterAddCard },
     );
 
     render(<BrainstormPage onClose={() => {}} activeStorySlug="story-1" />);
@@ -1931,13 +1929,14 @@ describe('BrainstormPage — proposal queue (SKY-1485)', () => {
     await act(async () => { fireEvent.click(confirmBtn); });
 
     await waitFor(() =>
-      expect(mockSceneCrafterAddCard).toHaveBeenCalledWith({
-        storySlug: 'story-1',
-        laneIndex: 0,
-        card: { wikilink: 'HeroArrivesAtVillage', title: 'HeroArrivesAtVillage', done: false },
-      }),
+      expect(mockBrainstormWriteNote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          category: 'scene_card',
+          name: 'HeroArrivesAtVillage',
+          content: 'The hero rides into the village at dawn.',
+        }),
+      ),
     );
-    expect(mockBrainstormWriteNote).not.toHaveBeenCalled();
   });
 
   it('Confirm removes proposal from queue', async () => {
