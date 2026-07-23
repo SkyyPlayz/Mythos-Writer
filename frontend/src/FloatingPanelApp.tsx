@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { applyTheme } from './theme';
 import { DEFAULTS } from './components/SettingsPanel/settingsPanelTypes';
+import { stripManifestContentForIpc } from './manifestIpc';
 import type { Story, Manifest } from './types';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ContinuityPanel from './ContinuityPanel';
@@ -108,7 +109,9 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
         chapters: [], createdAt: nowStr, updatedAt: nowStr,
       };
       const updated = { ...m, stories: [...(m?.stories ?? []), story] };
-      await window.api.writeManifest(updated);
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — React
+      // state (`stories`) keeps full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc(updated));
       setStories(updated.stories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
@@ -134,7 +137,9 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
       const updatedStories = m.stories.map((s) =>
         s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
       );
-      await window.api.writeManifest({ ...m, stories: updatedStories });
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — React
+      // state (`stories`) keeps full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc({ ...m, stories: updatedStories }));
       setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
@@ -176,7 +181,9 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
           ),
         }
       );
-      await window.api.writeManifest({ ...m, stories: updatedStories });
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — React
+      // state (`stories`) keeps full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc({ ...m, stories: updatedStories }));
       setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
@@ -200,7 +207,9 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
           }),
         }
       );
-      await window.api.writeManifest({ ...m, stories: updatedStories });
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — React
+      // state (`stories`) keeps full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc({ ...m, stories: updatedStories }));
       setStories(updatedStories);
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
