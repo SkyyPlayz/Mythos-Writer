@@ -198,7 +198,10 @@ jobs:
     # runner disconnects on the DOCX/EPUB step (step 8), which cancelled the whole
     # job and prevented all 4 e2e shards from running. Fuzz coverage is retained
     # via fuzz.yml (runs on every PR as a separate non-blocking check).
-    needs: [lint, typecheck, unit]
+    # SKY-8081: flattened dependency chain — now only needs [setup] instead of
+    # [lint, typecheck, unit], allowing this job to run in parallel with those
+    # checks and reducing wall-clock latency from ~4 hops to ~3 hops.
+    needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -353,6 +356,9 @@ jobs:
 
       - name: E2E — vault CRUD (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:crud
+
+      - name: E2E — Notes Vault folder operations (SKY-7995)
+        run: xvfb-run --auto-servernum npm run test:e2e:folder-ops
 
       - name: E2E — draft version history snapshot and rollback (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:draft-history
@@ -910,70 +916,12 @@ jobs:
           done
           echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
 
-  build-macos:
-    # macOS is a DEFERRED platform (owner has no Mac; included-minutes-only).
-    # DISABLED 2026-07-14 (Skyy): "pause/disable the macos ci for now" — the Actions
-    # budget is reserved for releases only. macos-latest bills at 10x Linux.
-    # To re-enable when the mac build is back on the roadmap, restore:
-    #   if: github.event_name == 'workflow_dispatch'
-    # The `ci` aggregator does not depend on this job, so disabling cannot block a PR.
-    if: false
-    # macOS build: GitHub-hosted runner (required for macOS; no self-hosted macOS available).
-    # Validates macOS Electron build and runs core E2E tests on native macOS.
-    # Unsigned DMG is acceptable for PR CI (signing only needed for release builds).
-    needs: [lint, typecheck, unit]
-    runs-on: macos-latest
-    timeout-minutes: 40
-    continue-on-error: false
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Deinit stale git submodule registrations
-        run: git submodule deinit --all -f 2>/dev/null || true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install Python setuptools (node-gyp needs distutils, removed in Python 3.12+)
-        run: pip3 install setuptools --break-system-packages
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build macOS artifacts (DMG, unsigned)
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npx electron-vite build && npx electron-builder --mac dmg --publish never
-
-      - name: Verify .dmg artifact exists
-        run: |
-          DMG=$(ls dist-electron/*.dmg | head -1)
-          if [ -z "$DMG" ]; then
-            echo "ERROR: No .dmg artifact found after build"
-            exit 1
-          fi
-          echo "macOS DMG built: $DMG"
-          ls -lh "$DMG"
-
-      - name: Upload macOS build artifacts (PR debug)
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: dist-electron/*.dmg
-          retention-days: 1
-
   build-linux:
-    # SKY-2421: job-level `if` was causing `skipped` status on PRs, which caused
-    # the `report` job (needs: [..., build-linux, ...]) to also be skipped despite
-    # `if: always()` — a known GH Actions quirk with multiple skipped upstream jobs.
-    # Fix: always run the job; gate packaging steps at step level so PRs fast-exit
-    # with `success` and push/workflow_dispatch does the full packaging.
+    # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
+    # runners. Report job was the only downstream consumer (now deleted), so the
+    # skipped status issue from SKY-2421 no longer applies. Packaging steps still
+    # guard at step level as a safety redundancy.
+    if: github.event_name != 'pull_request'
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -1125,14 +1073,16 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   build-windows:
-    # SKY-2421: same fix as build-linux — removed job-level `if` so the job always
-    # runs and produces `success`, keeping `report` unblocked on PRs. Packaging
-    # steps are gated at step level instead.
+    # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
+    # runners. Report job was the only downstream consumer (now deleted), so the
+    # skipped status issue from SKY-2421 no longer applies. Packaging steps still
+    # guard at step level as a safety redundancy.
     # SKY-7428: native windows-latest runner (was ubuntu-latest cross-building via
     # wine, which broke — "wine is required" — after the hosted-runner migration).
     # The windows-latest quota failure seen on PR #571 was a private-repo minutes
     # limit; the repo is now public (35507aea), so hosted Windows minutes are free
     # and native packaging is simpler and more reliable than a wine cross-build.
+    if: github.event_name != 'pull_request'
     needs: [setup]
     runs-on: windows-latest
     timeout-minutes: 40
@@ -1159,6 +1109,16 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm ci
 
+      # SKY-3191: whisper.cpp/Piper spawn (voice.ts) and the MYT-788 trusted-set
+      # gate (voiceGate.ts) have no platform-conditional branches — they rely
+      # entirely on Node's cross-platform child_process.spawn/fs.realpathSync —
+      # but the `unit` job only ever runs on ubuntu-latest, so that claim had
+      # never been empirically checked on native Windows. Scoped to the voice
+      # suite (not the full unit run) to keep this native-Windows job fast.
+      - name: Verify voice spawn/gate suite on native Windows (SKY-3191)
+        if: github.event_name != 'pull_request'
+        run: npm run test -w electron-main -- voice
+
       - name: Build and package (Windows NSIS + ZIP)
         if: github.event_name != 'pull_request'
         env:
@@ -1175,58 +1135,3 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
           retention-days: 3
-
-  report:
-    # Event-driven board ping. Runs after all required jobs complete on a PR.
-    # The merge gate (GitHubManager routine f1bd9b01) keeps an hourly backstop
-    # sweep for missed pings. PR-only — plain pushes to main get no ping.
-    # Stays self-hosted deliberately: the `paperclipai` CLI it drives only exists
-    # on the local runner (and no public/fork PR exposure per SKY-849). It is not
-    # a required check, so a slow/offline runner never blocks merges.
-    # build-linux and build-windows always run (fast no-op on PRs) so this job
-    # is never blocked by upstream skipped status (SKY-2421).
-    # build-electron is included so BUILD_ELECTRON_RESULT is accessible for
-    # auto-fix stage detection (SKY-3006); it is already transitively needed.
-    # actions: read is required for gh run list / gh run view used by the
-    # repo-wide failure detection in notify-board.sh (SKY-3907).
-    needs: [lint, typecheck, unit, build-electron, ci, build-macos, build-linux, build-windows]
-    # DISABLED while the repo is PUBLIC (owner directive 2026-07-19): self-hosted
-    # runners are OFF until we go private again, and NOTHING may assign to them.
-    # This is the only self-hosted job in CI. Board pings fall back to
-    # GitHubManager's hourly poll sweep (poll-only mode). To re-enable when we go
-    # private: restore `if: always() && github.event_name == 'pull_request'` and
-    # bring the runners back (systemctl --user enable --now actions-runner{,2,3}).
-    runs-on: self-hosted
-    if: false
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - name: Checkout (for scripts/notify-board.sh)
-        uses: actions/checkout@v4
-
-      - name: Notify Paperclip board of CI completion
-        # A board-ping is a notification, not a quality gate — never let it fail
-        # the `report` job and turn an otherwise-green PR red (SKY-7434).
-        continue-on-error: true
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.head_ref }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          LINT_RESULT: ${{ needs.lint.result }}
-          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
-          UNIT_RESULT: ${{ needs.unit.result }}
-          BUILD_ELECTRON_RESULT: ${{ needs.build-electron.result }}
-          CI_RESULT: ${{ needs.ci.result }}
-          BUILD_LINUX_RESULT: ${{ needs.build-linux.result }}
-          BUILD_MACOS_RESULT: ${{ needs.build-macos.result }}
-          BUILD_WINDOWS_RESULT: ${{ needs.build-windows.result }}
-          PAPERCLIP_COMPANY_ID: edf5c2ab-f1b1-481e-acf6-0e6ed34457b6
-          PAPERCLIP_PROJECT_ID: e3bac698-f86d-4a54-94cc-d5528261d12f
-          PAPERCLIP_ASSIGNEE: f424b325-3718-48da-9e33-8319c235dc8f
-          PAPERCLIP_FE_AGENT_ID: b2f91d8c-36c6-4397-a5fc-a7cb61d6a64d
-          PAPERCLIP_CTO_AGENT_ID: 63388835-9c91-41d0-8852-ffc1b76daaec
-        run: bash scripts/notify-board.sh
