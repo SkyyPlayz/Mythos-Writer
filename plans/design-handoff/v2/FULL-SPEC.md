@@ -110,6 +110,7 @@ Compiled manuscript + **Export modal**: format cards (DOCX/PDF/EPUB), scope seg,
 
 ### 5.6 Right panel (Story) — tabs **Assistant · Scenes · Notes · References**
 Assistant tab = **agent hub**: AGENTS card (compact rows: 30px icon tile, name, status dot+text; description on hover tooltip; click → in-panel chat: back button, icon+name+status, **session dropdown pill** (§11), scrolling feed incl. issue cards (severity chips) and note cards (deep-link), chips, textarea+send). The Writing Coach panel chat and Coach page share ONE conversation (lesson messages collapse to `title — text` in the mini view). Below: **Suggestions** card (`WRITING COACH` badge + count, 3 suggestion rows, `See All Suggestions` → Coach page) then **Scene Analysis** card. Scenes tab: scene list. Notes: quick notes. References: wiki targets w/ create-on-click.
+Empty/loading/error states, keyboard nav + focus order, reduced-motion, narrow-width (≥280px) behavior, and Readability-mode interplay for this tab and the Suggestion Inbox: `docs/AGENT-HUB-SUGGESTION-INBOX-GAP-SPEC.md` (SKY-8134, design-ahead for M15/SKY-6228).
 
 ---
 
