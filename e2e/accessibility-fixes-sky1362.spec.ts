@@ -26,9 +26,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- [data-testid=card-template] now only renders inside screen-step1b-options (reached via card-custom)
-test.skip(true, 'SKY-6933: stale selector -- [data-testid=card-template] now only renders inside screen-step1b-options (reached via card-custom)');
-
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 async function launchFreshApp(userData: string): Promise<ElectronApplication> {
@@ -72,8 +69,12 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
     // Wait for step 1 (welcome screen)
     await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
 
-    // Navigate to template picker (step 1b)
-    await page.locator('[data-testid="card-template"]').click();
+    // SKY-7593 wizard redesign: "Use a template" is no longer a step1 card —
+    // it's a secondary link on the custom-location screen, reached via
+    // "Start blank" (screen-custom-location's data-testid="custom-location-use-template-link").
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
     await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
 
     // F-12 Check: Back button in step1b should have aria-hidden span
@@ -90,8 +91,7 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
     await expect(page.locator('[data-testid="gs-back-step1b"]')).toHaveAccessibleName('Back');
 
     // Navigate to step 2 — already on the template picker (screen-step1b) from
-    // the click above; select the template directly instead of re-clicking
-    // card-template (which only exists on the step1 landing screen).
+    // the click above; select the template directly.
     await page.locator('[data-testid="template-card-test-template"]').click();
     await page.locator('[data-testid="template-use-btn"]').click();
     await expect(page.locator('[data-testid="screen-step2"]')).toBeVisible({ timeout: 8_000 });
@@ -135,30 +135,36 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
     // Reset to step 1
     await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 12_000 });
 
-    // Focus the "From Template" card
-    await page.locator('[data-testid="card-template"]').focus();
+    // SKY-7593 wizard redesign: reach the template picker via "Start blank" →
+    // custom-location's "Use a template instead" link (no more step1 card-template).
+    await page.locator('[data-testid="card-start-blank"]').click();
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
 
-    // Verify focus is on the template card
+    // Focus the "Use a template instead" link
+    await page.locator('[data-testid="custom-location-use-template-link"]').focus();
+
+    // Verify focus is on the template link
     let focusedTestId = await page.evaluate(() => {
       return (document.activeElement as HTMLElement)?.getAttribute('data-testid');
     });
-    expect(focusedTestId).toBe('card-template');
+    expect(focusedTestId).toBe('custom-location-use-template-link');
 
     // Click to navigate to template picker
-    await page.locator('[data-testid="card-template"]').click();
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
     await expect(page.locator('[data-testid="screen-step1b"]')).toBeVisible({ timeout: 8_000 });
 
-    // Click Back to return to step 1
+    // Click Back — this returns to custom-location (not all the way to step1),
+    // per OnboardingWizard.tsx's gs-back-step1b handler.
     await page.locator('[data-testid="gs-back-step1b"]').click();
-    await expect(page.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="screen-custom-location"]')).toBeVisible({ timeout: 8_000 });
 
-    // F-14 Check: Focus should be restored to the "From Template" card
+    // F-14 Check: Focus should be restored to the "Use a template instead" link
     focusedTestId = await page.evaluate(() => {
       return (document.activeElement as HTMLElement)?.getAttribute('data-testid');
     });
 
     // The focus restoration happens via requestAnimationFrame, so we may need to wait a tick
-    if (focusedTestId !== 'card-template') {
+    if (focusedTestId !== 'custom-location-use-template-link') {
       // Give it another tick if not focused yet
       await page.waitForTimeout(100);
       focusedTestId = await page.evaluate(() => {
@@ -166,7 +172,7 @@ test.describe('SKY-1362: Accessibility Fixes', () => {
       });
     }
 
-    expect(focusedTestId).toBe('card-template');
+    expect(focusedTestId).toBe('custom-location-use-template-link');
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(userData, { recursive: true, force: true });

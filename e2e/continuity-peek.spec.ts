@@ -37,8 +37,29 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel
-test.skip(true, 'SKY-6933: stale selectors -- Continuity panel moved off the right sidebar (GH #633), spec targets removed .right-sidebar/.continuity-panel');
+// SKY-8210: NOT a stale-selector issue (the old SKY-6933 skip reason was wrong —
+// .continuity-panel, .entity-card, and every other selector in this file still
+// exist unchanged in components/ContinuityPanel/ContinuityPanel.tsx). The real
+// blocker is a product gap from the SKY-3179 GRS migration: ContinuityPeekPanel
+// is now rendered in exactly one place in the whole app
+// (DesktopShell.tsx ~5608-5638), gated by `continuityPeekOverlayOpen`, which is
+// only ever set true from the Ctrl/Cmd+Shift+K handler's focus-writing-mode
+// branch (DesktopShell.tsx ~2486-2496). The non-focus-mode branch of that same
+// handler calls handleGrsVisibilityChange(true) and persists
+// layout.rightTab: 'continuity' — but GRS panels are driven by the grsPanels
+// list of PanelId, not by rightTab, and 'continuity' is not a member of
+// RIGHT_PANEL_IDS/PANEL_LABELS in GlobalRightSidebar.tsx. So outside Focus
+// writing mode there is currently NO way to open the entity-search Continuity
+// Peek panel at all — not a relocated tab, just unreachable. TC-CP-01
+// (right-sidebar tab) and TC-CP-02..08/10/11 (opened via the shortcut in
+// normal mode) all assume a normal-mode mount point that doesn't exist.
+// TC-CP-09 (focus-mode floating overlay) and TC-CP-12 (direct IPC, no UI) are
+// the only two that match current behavior. Flagged back on SKY-8204 per this
+// issue's §Instructions #6 rather than silently rewriting the acceptance
+// criteria around a product regression — CTO to re-triage whether normal-mode
+// Continuity Peek should be restored or the ACs formally narrowed to
+// focus-mode-only.
+test.skip(true, 'SKY-8210: product gap, not stale selectors -- ContinuityPeekPanel only mounts behind the focus-writing-mode overlay; no normal-mode embedding exists post-SKY-3179 GRS migration. See comment above; flagged on SKY-8204 for CTO re-triage.');
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const STORY_ID = 'cp-e2e-story-0001';
