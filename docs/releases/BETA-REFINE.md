@@ -531,46 +531,156 @@ Accept: every §14 item checked off in the PR description with evidence.
 
 ## Milestone status table
 
-| # | Milestone | Wave | Depends on | Status | PR |
+**Reconciled 2026-07-23 (SKY-8271)** against `origin/main` — every row below was checked with
+`git merge-base --is-ancestor <sha> origin/main`, not by trusting a PR number alone (several old
+PR numbers below #1000 were previously left in "🔀 in PR" rows after they had actually merged).
+
+| # | Milestone | Wave | Depends on | Status | Merge commit (PR) |
 |---|-----------|------|-----------|--------|----|
-| W0.1 | Seed-once + tree hygiene | 0 | — | ✅ merged | #903 |
-| W0.2 | Frontmatter stripping | 0 | — | ✅ merged | #901 |
-| W0.3 | Right-panel layout fixes | 0 | — | ✅ merged | #902 |
-| W0.4 | Editor chrome dedup | 0 | — | ✅ merged | #902 |
-| W0.5 | Performance to targets | 0 | — | ✅ merged | #905 |
+| W0.1 | Seed-once + tree hygiene | 0 | — | ✅ merged | `490cd4c5` (#903) |
+| W0.2 | Frontmatter stripping | 0 | — | ✅ merged | `bd26de6b` (#901) |
+| W0.3 | Right-panel layout fixes | 0 | — | ✅ merged | `8f5922ee` (#902) |
+| W0.4 | Editor chrome dedup | 0 | — | ✅ merged | `8f5922ee` (#902) |
+| W0.5 | Performance to targets | 0 | — | ✅ merged | `a338aa6f` (#905) |
 | W0.6 | Packaged smoke pass (GATE) | 0 | W0.1–W0.5 | ✅ PASSED — Skyy sign-off 2026-07-11 on v0.5.0-beta.0 ("not really lagging at all") | |
-| M1 | Theme engine refresh | 1 | W0.6 | ✅ merged | #909 |
-| M2 | Title/status bar parity | 1 | W0.6 | ✅ merged | #908 |
-| M3 | Nav rail + stories switcher | 1 | W0.6 | ✅ merged | #911 |
-| M4 | Tabs = documents + splits | 1 | W0.6 | ✅ merged | #910 |
-| M5 | MythosVault + migration | 2 | W0.6 | ✅ merged | #912 |
-| M6 | Auto Note Linker | 2 | M5 | ✅ merged | #916 |
-| M7 | Editor chrome & page | 3 | W0.4, M1 | ✅ merged (incl. M7.PE polish #937) | #915, #937 |
-| M8 | Editing model hardening | 3 | M7 | ✅ merged | #941 |
-| M9 | Comments v2 | 3 | M5, M7 | ✅ merged | #953 |
-| M10 | Drafts v2 | 3 | M5, M7 | ✅ merged | #945 |
-| M11 | Reader refinements | 3 | M7 | ✅ merged | #938 |
-| M12 | Coach page | 3 | M5, M15 | 🔀 in PR (stacked on #917) | #952 |
-| M13 | Scene Analysis | 3 | M12 | 🔀 in PR (stacked on #952) | #956 |
-| M14 | Structure & Book/Export | 3 | M7 | ✅ merged | #939 |
-| M15 | Agent hub + sessions | 3 | M5 | 🔀 in PR | #917 |
-| M16 | Notes explorer parity | 4 | M5 | ✅ merged | #920 |
-| M17 | Note body + wiki links | 4 | M6, M16 | ✅ merged | #940 |
-| M18 | Notes right panel | 4 | M15, M16 | ⏳ | |
-| M19 | Scene Crafter refresh | 5 | M5, M12 | ⏳ | |
-| M20 | Brainstorm unification | 5 | M5, M15 | 🔀 in PR (stacked on #917) | #958 |
-| M21 | Timeline model + calendars | 6 | M5 | 🔀 in PR | #914 |
-| M22 | Axis engine | 6 | M21 | 🔀 in PR (stacked on #914) | #951 |
-| M23 | Lane rows + Progress | 6 | M22 | 🔀 in PR (stacked on #951) | #957 |
-| M24 | Remaining modes | 6 | M23 | ⏳ | |
-| M25 | Timeline panel + Archive | 6 | M23, M15 | ⏳ | |
-| M26 | Vault Graph refinements | 7 | M5 | 🔀 in PR (all checks green) | #955 |
-| M27 | Beta Reader view | 7 | M9, M15 | 🔀 in PR | #965 |
-| M28 | Settings workspace | 7 | M1, M5, M6 | 🔀 in PR | #959 |
-| M29 | Welcome wizard | 7 | M5, M28 | ⏳ | |
-| M30 | Release prep + acceptance | 7 | all | ⏳ | |
+| M1 | Theme engine refresh | 1 | W0.6 | ✅ merged | `d98cb135` (#909) |
+| M2 | Title/status bar parity | 1 | W0.6 | ✅ merged | `69854ca2` (#908) |
+| M3 | Nav rail + stories switcher | 1 | W0.6 | ✅ merged | `470384fb` (#911) |
+| M4 | Tabs = documents + splits | 1 | W0.6 | ✅ merged | `6b2e7d59` (#910) |
+| M5 | MythosVault + migration | 2 | W0.6 | ✅ merged | `5219ac73` (#912) |
+| M6 | Auto Note Linker | 2 | M5 | ✅ merged | `b19703ff` (#916) |
+| M7 | Editor chrome & page | 3 | W0.4, M1 | ✅ merged (+ margin ruler/page-texture polish) | `49218a76` (#915), `be7d7f23` (#937) |
+| M8 | Editing model hardening | 3 | M7 | ✅ merged | `8b3c2fc3` (#941) |
+| M9 | Comments v2 | 3 | M5, M7 | ✅ merged | `82fdd2f2` (#953) |
+| M10 | Drafts v2 | 3 | M5, M7 | ✅ merged | `d7202785` (#945) |
+| M11 | Reader refinements | 3 | M7 | ✅ merged | `79ccb509` (#938) |
+| M12 | Coach page | 3 | M5, M15 | ✅ merged | `2335d507` (#952) |
+| M13 | Scene Analysis | 3 | M12 | ✅ merged | `02a96be0` (#956) |
+| M14 | Structure & Book/Export | 3 | M7 | ✅ merged | `0af0ec92` (#939) |
+| M15 | Agent hub + sessions | 3 | M5 | ✅ merged base (#917); **gap-closure spec landed, gaps NOT yet closed** — see note below | `4acc9b52` (#917); gap spec `eb341e7a` (#1078, SKY-8134) |
+| M16 | Notes explorer parity | 4 | M5 | ✅ merged | `1d953114` (#920) |
+| M17 | Note body + wiki links | 4 | M6, M16 | ✅ merged | `d14560a8` (#940) |
+| M18 | Notes right panel | 4 | M15, M16 | ✅ merged (SKY-6978) — **duplicate build ticket in flight, see note below** | `f61c89ce` (#963) |
+| M19 | Scene Crafter refresh | 5 | M5, M12 | ✅ merged (SKY-6979) — **duplicate build ticket in flight, real E2E gap is genuine, see note below** | `7d28654a` (#973) |
+| M20 | Brainstorm unification | 5 | M5, M15 | ✅ merged | `981e8cec` (#958) |
+| M21 | Timeline model + calendars | 6 | M5 | ✅ merged | `fe2404bb` (#914) |
+| M22 | Axis engine | 6 | M21 | ✅ merged | `b3f8f564` (#951) |
+| M23 | Lane rows + Progress | 6 | M22 | ✅ merged | `94e400d4` (#957) |
+| M24 | Remaining modes | 6 | M23 | ✅ merged | `92f0d92e` (#1040), a11y depth `926b419f` (#1077) |
+| M25 | Timeline panel + Archive | 6 | M23, M15 | ✅ merged (SKY-6981) — **duplicate build ticket in flight, see note below** | `dedf2e77` (#1010) |
+| M26 | Vault Graph refinements | 7 | M5 | ✅ merged | `39b5ceb0` (#955) |
+| M27 | Beta Reader view | 7 | M9, M15 | ✅ merged | `103676f6` (#965) |
+| M28 | Settings workspace | 7 | M1, M5, M6 | ✅ merged | `afcba01f` (#959) |
+| M29 | Welcome wizard | 7 | M5, M28 | ✅ merged (base #998, restore fix #1031, + optional AI-provider step #1101) | `7f21835d` (#998), `32e2c126` (#1101) |
+| M30 | Release prep + acceptance | 7 | all | 🔨 in progress — version bump + changelog done, **packaged-build §14 acceptance run not yet done** | version `0.5.0-beta.1` in `package.json`; `CHANGELOG.md` §0.5.0-beta.1 present |
 
 Status legend: ⏳ not started · 🔨 in progress · 🔀 in PR (#) · ✅ merged
+
+### Reconciliation notes (SKY-8271, 2026-07-23)
+
+**Every M-numbered milestone (M1–M29) is merged to `main`.** The only milestone that is not fully
+closed is **M30 (release prep + acceptance)** — everything else in the old table's `⏳`/`🔀 in PR`
+rows had already landed by the time this reconciliation ran; the table just hadn't been updated
+since ~2026-07-15 (`docs(beta4): status table refresh...` #947/#954 were the last passes).
+
+**Three build tickets dispatched this fire are very likely duplicate work against already-merged
+milestones — flagging back per the issue's "materially incomplete" clause, but this is the
+opposite case: materially *complete*, not incomplete:**
+
+- **SKY-8264** (ProductEngineer, M18 "Notes right panel") — M18 merged 2026-07-18 as PR #963
+  ("Closes SKY-6978"). Current `frontend/src/NotesTabPanel.tsx` already has the Curator greeting,
+  the `CONTINUITY FLAGS` section wired to the same `handleResolve`/comment-action handlers, and a
+  `Properties` tab rendering `NoteProperties` keyed on `activeNotePath` (remounts on note switch).
+  SKY-8264's own description says "M15 (#1078) and M16 (#920) are merged, so this is unblocked
+  now" — reading `#1078` as the M15 delivery PR when #1078 is actually the M15 *gap-check spec*
+  (see M15 row above); the real M15 delivery (#917) merged 2026-07-18, so this ticket's premise
+  ("unblocked now") doesn't establish M18 was ever unbuilt.
+- **SKY-8265** (FableEngineer, M19 "Scene Crafter refresh") — M19 merged 2026-07-18 as PR #973
+  ("Addresses SKY-6979 acceptance criteria 1-9"). `frontend/src/pages/SceneCrafter/SceneCrafterPage.tsx`
+  already has the draft-card `Add to scene board` / `Retry` / `Discard` actions, and
+  `crafterState.ts` already carries the "never the manuscript" invariant in its prompt/generation
+  path. **However — the E2E gap here is real**, not stale-table noise: no `e2e/*.spec.ts` file
+  exercises the Scene Crafter draft flow or asserts the no-manuscript-write invariant end-to-end
+  (unit tests only). SKY-8267's plan to write that test first is correct and should proceed.
+- **SKY-8266** (FoundingEngineer, M25 "Timeline right panel + Archive auto-build") — M25 merged
+  2026-07-22 as PR #1010 ("Implements FULL-SPEC §8.6... Tracker: SKY-6981"), 34 files, Inspector +
+  Brainstorm + Archive tabs all present (`ArchivePanel.tsx`, `TimelineRightPanel.css`,
+  `TimelineRoot.tsx`). SKY-8266's AC #3 asks to remove "the old `timelinePlanBuild` consumer" as if
+  it's dead legacy code blocking the rewrite — it is not dead; `TimelineRoot.tsx` is its live,
+  current consumer, already on the M21 `timelines.json` model per #1010's own PR description.
+
+Active branches/worktrees already exist for this in-flight (possibly duplicate) work:
+`feature/sky-8264-notes-agent-properties-tabs`, `.worktrees/sky8264-notes-agent-tab`,
+`.worktrees/worktree-sky8266-archive-quickadd-e2e`, plus a companion a11y/dyslexia design-ahead
+spec **SKY-8268** (#1108, in review) that frames all three milestones as "actively in progress."
+**Recommend the CEO redirect SKY-8264/65/66 before more code lands**: re-scope from "build the
+milestone" to "close the specific residual gap" (SKY-8268's a11y/dyslexia findings + SKY-8267's
+real-E2E-invariant tests), rather than risk two independent implementations of the same panels
+landing in parallel and conflicting. SKY-8267 (independent spec-only acceptance-test verifier) and
+SKY-8268 (a11y/dyslexia gap spec) both still carry real, non-duplicate value and should continue.
+
+**M15's own gap-closure is a genuine open item**, same shape as M18/M19/M25 but correctly scoped:
+`docs/AGENT-HUB-SUGGESTION-INBOX-GAP-SPEC.md` (landed via #1078, SKY-8134) documents real
+interaction-state gaps in the agent hub / Suggestion Inbox (empty/loading/error states, keyboard
+nav + focus order, reduced-motion, 280px-floor narrow width, accept/dismiss confirm+undo, status-dot
+states, session-list overflow, bell-vs-inbox badge relationship) that the spec identified but that
+no follow-up build ticket has yet closed. This is real remaining work, not stale-table noise.
+
+**E2E depth spot-check (COMPANY-STANDARDS §4a):** 14 `e2e/*.spec.ts` files still carry
+`test.skip`/`describe.skip`. Recent PRs (#1056 move-vault, #1054 brainstorm scene-append, #1089
+epub import) show an active, ongoing push to replace mocked-IPC E2E with real electron-launched
+coverage — that effort is not finished. The Scene Crafter gap above (M19) is the most consequential
+find: it is a **hard product invariant** (no generated prose reaches the manuscript) with zero E2E
+coverage of the boundary it's supposed to guard.
+
+## Remaining work for v0.5.0-beta.1
+
+With M1–M29 confirmed merged, the **only genuinely outstanding milestone is M30**. Everything
+else below is either the M30 acceptance gate itself, cleanup of the SKY-8264/65/66/67/68 fire's
+scope (already dispatched, needs re-aiming not net-new dispatch), or pre-existing gap-closure specs
+that never got build follow-up (M15's Suggestion Inbox).
+
+**Gates M30 (must close before release):**
+1. **M30's own deliverable** — run FULL-SPEC §14 acceptance checklist (10 items) end-to-end on a
+   packaged build, re-measure PERFORMANCE.md targets on the packaged app, refresh VR baselines
+   (last `vr-baselines.yml` run succeeded 2026-07-23T14:36Z — good sign, but a full green run isn't
+   the same as the §14 walkthrough itself), assemble release workflow artifacts. Nobody owns this
+   yet as an active build ticket — it's the true remaining-work item and should be the next thing
+   the CEO dispatches once the items below are resolved (the acceptance run should exercise the
+   real deliverables, not ones that got re-implemented mid-run).
+2. **SKY-8267's real-E2E invariant test for M19** (Scene Crafter no-manuscript-write) — genuine gap,
+   already correctly scoped, in progress. Low risk, keep running.
+3. **SKY-8268's a11y/dyslexia gap-spec for M18/M19/M25** (#1108, in review) — legitimate follow-up
+   spec, independent of the duplicate-build concern above. Let it land, then size its findings into
+   real build tickets (same pattern as M15/SKY-8134 already needs — see next item).
+
+**Does NOT gate M30, but is real outstanding scope (no ticket currently covers it):**
+4. **M15 Suggestion Inbox interaction-state gaps** (`docs/AGENT-HUB-SUGGESTION-INBOX-GAP-SPEC.md`,
+   SKY-8134/#1078) — spec landed, no build ticket exists yet to close it. Same shape as item 3
+   above; the CEO should size and dispatch both gap-specs' findings as one or two follow-up tickets
+   once SKY-8268 lands, rather than as three separate near-duplicate "rebuild the milestone" tickets.
+5. **14 skipped/pending E2E specs** — pre-existing debt, being worked down incrementally (#1056,
+   #1054, #1089 landed this week). Continue at current pace; not new scope.
+
+**Needs an explicit CEO call, not a silent redirect (per this issue's bounds):**
+6. **SKY-8264/65/66** — recommend re-scoping to "close SKY-8268's + this doc's named gaps for
+   M18/M19/M25" instead of "build the milestone," to avoid parallel/conflicting reimplementation of
+   already-shipped panels. This is a scope/sequencing call for the CEO, not something to silently
+   redirect on the executing agents.
+
+**Sequencing (foundations-first, no-backtrack, ≤~6 concurrent slices / ≤~2 per agent):**
+- Wave A (now, already running, keep): SKY-8267 (QA, M19 E2E invariant), SKY-8268 (a11y/dyslexia
+  spec review → merge).
+- Wave B (CEO decision needed first): SKY-8264/65/66 — re-aim to gap-closure scope per item 6, or
+  explicitly confirm "build was already done, cancel/close as duplicate" if the CEO's own triage
+  disagrees with this reconciliation.
+- Wave C (after Wave B lands or is cancelled): size SKY-8134's M15 Suggestion Inbox gaps + SKY-8268's
+  M18/M19/M25 a11y/dyslexia gaps into build tickets; dispatch across PE/FableEngineer/FoundingEngineer
+  once Wave B frees them up.
+- Wave D (M30 gate): once Wave C's findings are closed (or explicitly deferred by the CEO as
+  post-beta polish), dispatch the M30 acceptance-run ticket — packaged build, §14 checklist,
+  PERFORMANCE.md re-measure, VR baseline refresh, release artifacts. This is the last milestone
+  and should not start until the panels it's acceptance-testing have stopped moving.
 
 ## Working rules for this release
 
