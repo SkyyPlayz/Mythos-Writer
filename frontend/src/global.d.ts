@@ -1089,7 +1089,7 @@ interface Window {
     streamAck: (streamId: string, count: number) => void;
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
-    onStreamError: (cb: (data: { streamId: string; category: string; error: string }) => void) => () => void;
+    onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart: () => void;

@@ -509,7 +509,7 @@ function BetaChatPage({ agentLabel, sessionStore, selectedReport, onShowInManusc
       setSending(false);
     });
 
-    const unsubError = window.api.onStreamError(({ streamId: sid, error: err }) => {
+    const unsubError = window.api.onStreamError(({ streamId: sid, message: err }) => {
       if (sid !== streamIdRef.current) return;
       cleanupRef.current?.();
       setMessages((prev) => prev.slice(0, -1));
