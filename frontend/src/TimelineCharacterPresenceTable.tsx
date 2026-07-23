@@ -25,30 +25,51 @@ export interface TimelineCharacterPresenceTableProps {
  */
 const TimelineCharacterPresenceTable = forwardRef<HTMLTableElement, TimelineCharacterPresenceTableProps>(
   function TimelineCharacterPresenceTable({ events, lines, onOpenScene, className }, ref) {
-    // Roving-tabindex grid pattern (§0): one Tab stop for the whole grid, arrow
-    // keys move focus cell-to-cell (no wrap), Home/End jump within a row.
-    const [focused, setFocused] = useState<{ row: number; col: number }>({ row: 0, col: 0 });
-
     const filledCells = lines.map(line => new Set(line.presentAt));
 
-    const moveFocus = useCallback((row: number, col: number) => {
-      const r = Math.max(0, Math.min(lines.length - 1, row));
-      const c = Math.max(0, Math.min(events.length - 1, col));
+    // Roving-tabindex grid pattern (§0): one Tab stop for the whole grid, arrow
+    // keys move focus cell-to-cell (no wrap), Home/End jump within a row.
+    // Seeded to the first *present* cell — (0,0) may be an empty/inert `—`
+    // cell, which would otherwise leave the whole table with no tab stop.
+    const [focused, setFocused] = useState<{ row: number; col: number } | null>(() => {
+      for (let row = 0; row < lines.length; row++) {
+        for (let col = 0; col < events.length; col++) {
+          if (filledCells[row]?.has(col)) return { row, col };
+        }
+      }
+      // No present cell anywhere — degenerate table, fall back to the root
+      // <table> as the tab stop (see tabIndex below) rather than leaving the
+      // whole table unreachable.
+      return null;
+    });
+
+    const moveFocus = useCallback((row: number, col: number, rowStep: number, colStep: number) => {
+      let r = row;
+      let c = col;
+      while (r >= 0 && r < lines.length && c >= 0 && c < events.length && !filledCells[r]?.has(c)) {
+        r += rowStep;
+        c += colStep;
+      }
+      if (r < 0 || r >= lines.length || c < 0 || c >= events.length) {
+        // No present cell in that direction — refuse to move rather than
+        // desyncing DOM focus (a real cell) from `focused` (an inert one).
+        return;
+      }
       setFocused({ row: r, col: c });
       const el = document.querySelector<HTMLElement>(
         `[data-testid="tcpt-cell-${r}-${c}"]`,
       );
       el?.focus();
-    }, [lines.length, events.length]);
+    }, [lines.length, events.length, filledCells]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent, row: number, col: number) => {
       switch (e.key) {
-        case 'ArrowRight': e.preventDefault(); moveFocus(row, col + 1); break;
-        case 'ArrowLeft': e.preventDefault(); moveFocus(row, col - 1); break;
-        case 'ArrowDown': e.preventDefault(); moveFocus(row + 1, col); break;
-        case 'ArrowUp': e.preventDefault(); moveFocus(row - 1, col); break;
-        case 'Home': e.preventDefault(); moveFocus(row, 0); break;
-        case 'End': e.preventDefault(); moveFocus(row, events.length - 1); break;
+        case 'ArrowRight': e.preventDefault(); moveFocus(row, col + 1, 0, 1); break;
+        case 'ArrowLeft': e.preventDefault(); moveFocus(row, col - 1, 0, -1); break;
+        case 'ArrowDown': e.preventDefault(); moveFocus(row + 1, col, 1, 0); break;
+        case 'ArrowUp': e.preventDefault(); moveFocus(row - 1, col, -1, 0); break;
+        case 'Home': e.preventDefault(); moveFocus(row, 0, 0, 1); break;
+        case 'End': e.preventDefault(); moveFocus(row, events.length - 1, 0, -1); break;
         case 'Enter':
         case ' ': {
           e.preventDefault();
@@ -65,7 +86,7 @@ const TimelineCharacterPresenceTable = forwardRef<HTMLTableElement, TimelineChar
         ref={ref}
         className={`tcpt-table${className ? ` ${className}` : ''}`}
         data-testid="timeline-character-presence-table"
-        tabIndex={-1}
+        tabIndex={focused === null ? 0 : -1}
       >
         <caption className="sr-only">Character presence by chapter</caption>
         <thead>
@@ -87,7 +108,7 @@ const TimelineCharacterPresenceTable = forwardRef<HTMLTableElement, TimelineChar
               </th>
               {events.map((event, col) => {
                 const present = filledCells[row]?.has(col);
-                const isFocusStop = focused.row === row && focused.col === col;
+                const isFocusStop = focused !== null && focused.row === row && focused.col === col;
                 if (!present) {
                   // Inert empty cell — plain text content, no focus stop, no click target
                   // (spec §3.2: "don't make 'nothing happened here' a dead-end tab stop").
