@@ -379,6 +379,7 @@ import {
   safePath,
   safeVaultIpcJoin,
   safeVaultDirIpcJoin,
+  safeVaultEntryIpcJoin,
   resolveEpubExportPath,
   writeSceneFile,
   writeSceneFileAtomic,
@@ -5407,17 +5408,21 @@ const handlers: IpcHandlers = {
       items: filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())),
     };
   },
+  // SKY-7995: delete/move accept directories, so they route through
+  // safeVaultEntryIpcJoin (traversal/dotfile guards, no .md/.json allow-list)
+  // instead of safeVaultIpcJoin — the latter hard-rejects extension-less
+  // directory paths and made folder move/delete silently fail.
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload): VaultDeleteResponse => {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
-    safeVaultIpcJoin(root, payload.path, true);
+    safeVaultEntryIpcJoin(root, payload.path);
     return deleteVaultFile(root, payload.path);
   },
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
-    safeVaultIpcJoin(root, payload.fromPath, true);
-    safeVaultIpcJoin(root, payload.toPath, true);
+    safeVaultEntryIpcJoin(root, payload.fromPath);
+    safeVaultEntryIpcJoin(root, payload.toPath);
     return moveVaultFile(root, payload.fromPath, payload.toPath);
   },
 
