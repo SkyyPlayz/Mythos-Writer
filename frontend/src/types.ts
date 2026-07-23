@@ -51,6 +51,13 @@ export interface Block {
   content: string;
   order: number;
   updatedAt: string;
+  /**
+   * SKY-6196: present only on the payload sent over `vault:manifest:write` —
+   * length of this block's serialized segment within the scene's `.md` body,
+   * recorded when `content` is blanked before crossing the IPC boundary (see
+   * `manifestIpc.ts`). Never set on in-memory React state.
+   */
+  bodySegLen?: number;
 }
 
 export interface ChronologicalTime {
@@ -115,6 +122,14 @@ export interface Scene {
   chronologicalTime?: ChronologicalTime;
   entityLinks?: SceneEntityLinks;
   timelineMetadata?: SceneTimelineMetadata;
+  /**
+   * SKY-6196: word count across the scene's blocks, computed client-side
+   * (frontend/src/manifestIpc.ts) before blocks[].content is blanked for the
+   * `vault:manifest:write` IPC payload — mirrors electron-main's
+   * `computeSceneWordCount` (manifest.ts). Present only on that outgoing
+   * payload, not on in-memory React state.
+   */
+  wordCount?: number;
   createdAt: string;
   updatedAt: string;
 }

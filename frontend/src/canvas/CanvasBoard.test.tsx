@@ -172,6 +172,79 @@ describe('corner resize', () => {
   });
 });
 
+describe('keyboard operability (SKY-7929, WCAG 2.1.1)', () => {
+  it('moves the focused card header with arrow keys, and further with Shift', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const head = screen.getByTestId('canvas-card-head-a');
+    head.focus();
+    fireEvent.keyDown(head, { key: 'ArrowRight' });
+    let card = lastBoard(onChange).cards[0];
+    expect(card.x).toBe(112); // 100 + 12
+    expect(card.y).toBe(80);
+    fireEvent.keyDown(head, { key: 'ArrowDown', shiftKey: true });
+    card = lastBoard(onChange).cards[0];
+    expect(card.y).toBe(128); // 80 + 48
+  });
+
+  it('clamps keyboard card moves to the positive quadrant', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const head = screen.getByTestId('canvas-card-head-a');
+    head.focus();
+    fireEvent.keyDown(head, { key: 'ArrowLeft', shiftKey: true });
+    fireEvent.keyDown(head, { key: 'ArrowLeft', shiftKey: true });
+    fireEvent.keyDown(head, { key: 'ArrowLeft', shiftKey: true });
+    const card = lastBoard(onChange).cards[0];
+    expect(card.x).toBe(0); // 100 - 48*3 clamped
+  });
+
+  it('resizes the focused card with arrow keys on the resize handle, clamped at 130×60', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const handle = screen.getByTestId('canvas-card-resize-a');
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    fireEvent.keyDown(handle, { key: 'ArrowDown' });
+    let card = lastBoard(onChange).cards[0];
+    expect(card.w).toBe(212); // 200 + 12
+    expect(card.h).toBe(98); // 86 + 12
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(handle, { key: 'ArrowUp', shiftKey: true });
+    card = lastBoard(onChange).cards[0];
+    expect(card.h).toBe(60);
+  });
+
+  it('pans the view with arrow keys when the pan layer has focus', () => {
+    render(<Harness initial={makeBoard()} />);
+    const panLayer = screen.getByTestId('canvas-pan-layer');
+    panLayer.focus();
+    fireEvent.keyDown(panLayer, { key: 'ArrowRight' });
+    expect(screen.getByTestId('canvas-stage').style.transform).toContain('translate(12px,0px)');
+  });
+
+  it('does not move or resize cards from arrow keys in readOnly mode', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} readOnly />);
+    const head = screen.getByTestId('canvas-card-head-a');
+    expect(head).not.toHaveAttribute('tabIndex');
+    fireEvent.keyDown(head, { key: 'ArrowRight' });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('every mutating control (add, connect, delete, zoom, fit, pan) is a real focusable button/element', () => {
+    render(<Harness initial={makeBoard()} />);
+    expect(screen.getByTitle('Add card').tagName).toBe('BUTTON');
+    expect(screen.getAllByTitle('Connect to another card')[0].tagName).toBe('BUTTON');
+    expect(screen.getAllByTitle('Delete card')[0].tagName).toBe('BUTTON');
+    expect(screen.getByTitle('Zoom in').tagName).toBe('BUTTON');
+    expect(screen.getByTitle('Zoom out').tagName).toBe('BUTTON');
+    expect(screen.getByTitle('Fit board to content').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('canvas-card-resize-a').tagName).toBe('BUTTON');
+    expect(screen.getByTestId('canvas-card-head-a')).toHaveAttribute('tabIndex', '0');
+    expect(screen.getByTestId('canvas-pan-layer')).toHaveAttribute('tabIndex', '0');
+  });
+});
+
 describe('connect mode', () => {
   it('links two cards via their ⚯ buttons and shows the hint while connecting', () => {
     const onChange = vi.fn();

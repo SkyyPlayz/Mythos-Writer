@@ -308,12 +308,14 @@ describe('moveVaultAtomic', () => {
     const dst = path.join(tmpDir, 'DropboxVault');
     let settingsReceived = '';
 
-    await moveVaultAtomic(src, dst, {
+    const moveResult = await moveVaultAtomic(src, dst, {
       syncProvider: 'dropbox',
       updateSettings: (newPath) => { settingsReceived = newPath; },
     });
 
     expect(settingsReceived).toBe(dst);
+    expect(moveResult.verification.ok).toBe(true);
+    expect(moveResult.verification.dropped).toBe(0);
     // Source should be gone.
     expect(fs.existsSync(src)).toBe(false);
     // Destination should exist with the manifest.
@@ -358,7 +360,7 @@ describe('moveVaultAtomic', () => {
 
     const dst = path.join(tmpDir, 'GoogleDriveVault');
 
-    await moveVaultAtomic(src, dst, {
+    const r = await moveVaultAtomic(src, dst, {
       syncProvider: 'google-drive',
       updateSettings: () => {},
     });
@@ -366,6 +368,7 @@ describe('moveVaultAtomic', () => {
     expect(
       fs.readFileSync(path.join(dst, 'Manuscript', 'ch1', 'scene.md'), 'utf-8'),
     ).toBe('# Scene One');
+    expect(r.verification.ok).toBe(true);
   });
 
   it('appends to an existing audit log rather than overwriting it', async () => {

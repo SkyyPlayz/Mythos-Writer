@@ -64,7 +64,7 @@ function makeApi<T extends Record<string, unknown> = Record<string, never>>(over
 // ── Streaming test helpers (mirrors EntriesQuickAdd.test.tsx) ────────────────
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; category: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; category: string; message: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -471,7 +471,7 @@ describe('SceneCrafterPage — M19 AI generate → draft card (§7.1, AC5-7)', (
     await renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Generate ✦' }));
     await waitFor(() => expect(tokenCb).not.toBeNull());
-    await act(async () => { errorCb?.({ streamId: 'sid-1', category: 'network', error: 'AI unavailable.' }); });
+    await act(async () => { errorCb?.({ streamId: 'sid-1', category: 'network', message: 'AI unavailable.' }); });
 
     expect(screen.getByRole('alert')).toHaveTextContent('AI unavailable.');
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();

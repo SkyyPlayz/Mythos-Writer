@@ -51,6 +51,35 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: npm ci
 
+  paths-filter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run-e2e: ${{ steps.filter.outputs.run-e2e }}
+      docs-only: ${{ steps.filter.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths (path-based CI optimization)
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            docs-only:
+              - '**.md'
+              - 'docs/**'
+              - 'README*'
+              - '.gitignore'
+              - '.github/ISSUE_TEMPLATE/**'
+            run-e2e:
+              - '!**.md'
+              - '!docs/**'
+              - '!README*'
+              - '!.gitignore'
+              - '!.github/ISSUE_TEMPLATE/**'
+
   lint:
     needs: [setup]
     runs-on: ubuntu-latest
@@ -281,9 +310,11 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y,
     # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -444,9 +475,11 @@ jobs:
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -587,9 +620,12 @@ jobs:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
     # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, global-search, readme-screenshots,
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
-    needs: [build-electron]
+    # scene-save-perf (SKY-6198)
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -722,6 +758,8 @@ jobs:
       - name: E2E — Provider settings (SKY-6933 sweep, skip-guarded — hidden-checkbox test bug)
         run: xvfb-run --auto-servernum npm run test:e2e:provider-settings
 
+      - name: E2E — Scene-save perf regression guard (SKY-6198)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-save-perf
 
       - name: Upload E2E report on failure
         if: failure()
@@ -745,9 +783,11 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     # editor-format-bar, notes-parity, word-count (SKY-6933 sweep)
-    needs: [build-electron]
+    # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
+    needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -898,7 +938,9 @@ jobs:
     # gets a definitive pass/fail rather than a "pending" indefinite skipped state
     # when Stage 1 (lint/typecheck/unit) fails and downstream jobs are skipped.
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
-    needs: [lint, typecheck, unit, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
+    # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
+    needs: [lint, typecheck, unit, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -906,15 +948,40 @@ jobs:
     steps:
       - name: All checks passed
         run: |
-          results="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
-          echo "Upstream results: $results"
-          for r in $results; do
+          # Stage 1 checks must always succeed
+          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }}"
+          echo "Stage 1 (lint/typecheck/unit) results: $stage1"
+          for r in $stage1; do
             if [ "$r" != "success" ]; then
-              echo "Required job outcome '$r' — expected 'success'. CI aggregator: FAILED."
+              echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
               exit 1
             fi
           done
-          echo "All checks passed — lint, typecheck, unit, and all 4 E2E shards are green."
+
+          # E2E shards may be legitimately skipped if path-filter determined they cannot be affected
+          e2e="${{ needs.e2e-shard-1.result }} ${{ needs.e2e-shard-2.result }} ${{ needs.e2e-shard-3.result }} ${{ needs.e2e-shard-4.result }}"
+          echo "E2E shard results: $e2e"
+          for r in $e2e; do
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
+              echo "ERROR: E2E shard outcome '$r' — expected 'success' or 'skipped'. CI aggregator: FAILED."
+              exit 1
+            fi
+          done
+
+          # Validate that at least one e2e shard ran if path-filter said to run e2e
+          run_e2e="${{ needs.paths-filter.outputs.run-e2e }}"
+          if [ "$run_e2e" = "true" ]; then
+            skipped_count=0
+            for r in $e2e; do
+              [ "$r" = "skipped" ] && skipped_count=$((skipped_count + 1))
+            done
+            if [ "$skipped_count" -eq 4 ]; then
+              echo "ERROR: path-filter indicated e2e should run, but all 4 shards were skipped. CI aggregator: FAILED."
+              exit 1
+            fi
+          fi
+
+          echo "All checks passed — lint, typecheck, unit, and applicable E2E shards are green."
 
   build-linux:
     # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate

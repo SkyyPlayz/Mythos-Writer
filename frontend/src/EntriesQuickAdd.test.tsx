@@ -3,7 +3,7 @@ import EntriesQuickAdd, { buildNoteContent, ENTRIES_SYSTEM_PROMPT, ENTRIES_MAX_T
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; message: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -45,7 +45,7 @@ async function simulateStream(tokens: string[], errorMessage?: string) {
       tokenCb?.({ streamId: 'test-sid', token: t });
     }
     if (errorMessage) {
-      errorCb?.({ streamId: 'test-sid', error: errorMessage });
+      errorCb?.({ streamId: 'test-sid', message: errorMessage });
     } else {
       endCb?.({ streamId: 'test-sid' });
     }

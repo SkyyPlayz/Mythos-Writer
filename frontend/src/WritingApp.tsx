@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState } from './types';
 import BlockEditor from './BlockEditor';
 import StoryNavigator from './StoryNavigator';
+import { stripManifestContentForIpc } from './manifestIpc';
 import './WritingApp.css';
 
 function generateId(): string {
@@ -74,7 +75,9 @@ export default function WritingApp() {
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
-      await window.api.writeManifest(m);
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — the
+      // in-memory `m` (and React state) keep full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc(m));
     } catch (e) {
       console.error('Failed to persist manifest:', e);
     }

@@ -492,3 +492,169 @@ describe('run: safety refusals', () => {
     expect(treeHashes(storyVault)).toEqual(sourceHashesBefore);
   });
 });
+
+// ─── SKY-7937: post-migrate verification hardening ─────────────────────────
+//
+// Minimal, self-contained v0.4 twin-root fixture builder — deliberately
+// separate from the rich fixture above so each hardening scenario can mutate
+// its own tiny vault (0-byte placeholder file, unreadable sidecar, stray
+// pre-existing target file) without disturbing the shared fixture other
+// describe blocks depend on.
+function buildMinimalVault(root: string): { storyVault: string; notesVault: string } {
+  const bundle = path.join(root, 'Mini Vault');
+  const sv = path.join(bundle, 'Story Vault');
+  const nv = path.join(bundle, 'Notes Vault');
+  fs.mkdirSync(sv, { recursive: true });
+  fs.mkdirSync(nv, { recursive: true });
+  const nowStr = '2026-06-01T00:00:00.000Z';
+  const scenePath = 'Manuscript/story-one/01 - opening/01 - scene.md';
+  fs.mkdirSync(path.dirname(path.join(sv, ...scenePath.split('/'))), { recursive: true });
+  fs.writeFileSync(
+    path.join(sv, ...scenePath.split('/')),
+    `---\nid: scene-1\ntitle: Scene\nupdatedAt: ${nowStr}\n---\nSome prose.`,
+  );
+  const manifest: Manifest = {
+    schemaVersion: 1,
+    version: '2.0.0',
+    vaultRoot: sv,
+    stories: [
+      {
+        id: 'story-one', title: 'Story One', path: 'Manuscript/story-one',
+        chapters: [
+          {
+            id: 'ch-1', title: 'Opening', path: 'Manuscript/story-one/01 - opening', order: 0,
+            scenes: [
+              {
+                id: 'scene-1', title: 'Scene', path: scenePath, order: 0,
+                chapterId: 'ch-1', storyId: 'story-one',
+                blocks: [{ id: 'b-1', type: 'prose', order: 0, content: 'Some prose.', updatedAt: nowStr }],
+                createdAt: nowStr, updatedAt: nowStr,
+              },
+            ],
+            createdAt: nowStr, updatedAt: nowStr,
+          },
+        ],
+        createdAt: nowStr, updatedAt: nowStr,
+      },
+    ],
+    entities: [], suggestions: [], scenes: [], chapters: [], provenance: {},
+  } as unknown as Manifest;
+  fs.writeFileSync(path.join(sv, 'manifest.json'), JSON.stringify(manifest));
+  fs.mkdirSync(path.join(nv, 'Inbox'), { recursive: true });
+  fs.writeFileSync(path.join(nv, 'Inbox', 'idea.md'), 'a real idea');
+  return { storyVault: sv, notesVault: nv };
+}
+
+describe('run: cloud-sync placeholder hardening (SKY-7937)', () => {
+  let miniTmp: string;
+
+  beforeAll(() => {
+    miniTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-migrate-placeholder-'));
+  });
+  afterAll(() => {
+    fs.rmSync(miniTmp, { recursive: true, force: true });
+  });
+
+  it('hard-fails when a notes-vault file is a 0-byte cloud-sync placeholder', () => {
+    const dir = path.join(miniTmp, 'case-1');
+    const { storyVault: sv, notesVault: nv } = buildMinimalVault(dir);
+    // Simulate an un-hydrated OneDrive/Dropbox "online-only" stub: the file
+    // exists on disk but has zero bytes even though it's a .md note.
+    fs.writeFileSync(path.join(nv, 'Inbox', 'placeholder.md'), '');
+    const before = treeHashes(sv);
+
+    const report = runMythosVaultMigration({
+      sourceStoryVault: sv, sourceNotesVault: nv, targetRoot: path.join(dir, 'target'),
+    });
+
+    expect(report.ok).toBe(false);
+    expect(
+      report.verified.mismatches.some(
+        (m) => m.includes('placeholder.md') && m.includes('cloud-sync placeholder') && m.includes('re-run'),
+      ),
+    ).toBe(true);
+    expect(treeHashes(sv)).toEqual(before);
+  });
+
+  it('does not flag a genuinely non-empty note as a placeholder', () => {
+    const dir = path.join(miniTmp, 'case-2');
+    const { storyVault: sv, notesVault: nv } = buildMinimalVault(dir);
+    const report = runMythosVaultMigration({
+      sourceStoryVault: sv, sourceNotesVault: nv, targetRoot: path.join(dir, 'target'),
+    });
+    expect(report.ok).toBe(true);
+    expect(report.verified.mismatches).toEqual([]);
+  });
+});
+
+describe('run: locked/unreadable sidecar hardening (SKY-7937)', () => {
+  let miniTmp: string;
+
+  beforeAll(() => {
+    miniTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-migrate-sidecar-'));
+  });
+  afterAll(() => {
+    fs.rmSync(miniTmp, { recursive: true, force: true });
+  });
+
+  it('fails gracefully and leaves the source untouched when comments.json cannot be read', () => {
+    const dir = path.join(miniTmp, 'case-1');
+    const { storyVault: sv, notesVault: nv } = buildMinimalVault(dir);
+    const commentsPath = path.join(sv, 'Manuscript', 'story-one', 'comments.json');
+    // A directory sitting where a file is expected reproduces the same
+    // "exists but unreadable as a file" failure mode as a locked/permission-
+    // denied sidecar, and — unlike fs.chmodSync(path, 0) — is reliable
+    // across CI runners that run as root (root ignores POSIX file-mode
+    // read protection, but EISDIR always fails regardless of user).
+    fs.mkdirSync(commentsPath, { recursive: true });
+    const before = treeHashes(sv);
+
+    const report = runMythosVaultMigration({
+      sourceStoryVault: sv, sourceNotesVault: nv, targetRoot: path.join(dir, 'target'),
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.error).toBeTruthy();
+    expect(report.error).toContain('comments.json');
+    expect(treeHashes(sv)).toEqual(before);
+  });
+});
+
+describe('run: aborted-then-re-run migration (SKY-7937)', () => {
+  let miniTmp: string;
+
+  beforeAll(() => {
+    miniTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-migrate-abort-'));
+  });
+  afterAll(() => {
+    fs.rmSync(miniTmp, { recursive: true, force: true });
+  });
+
+  it('refuses a partially-populated target, then succeeds after cleanup and retry', () => {
+    const dir = path.join(miniTmp, 'case-1');
+    const { storyVault: sv, notesVault: nv } = buildMinimalVault(dir);
+    const target2 = path.join(dir, 'target');
+
+    // Fabricate an aborted prior run: the target dir exists with one stray
+    // file left over (as a real aborted build would leave behind).
+    fs.mkdirSync(target2, { recursive: true });
+    fs.writeFileSync(path.join(target2, 'stray-partial-file.txt'), 'leftover from an aborted build');
+
+    const first = runMythosVaultMigration({
+      sourceStoryVault: sv, sourceNotesVault: nv, targetRoot: target2,
+    });
+    expect(first.ok).toBe(false);
+    expect(first.error).toContain('Target folder is not empty');
+
+    // Clean up the aborted target and retry — the second run is a real
+    // successful migration.
+    fs.rmSync(target2, { recursive: true, force: true });
+    const second = runMythosVaultMigration({
+      sourceStoryVault: sv, sourceNotesVault: nv, targetRoot: target2,
+    });
+    expect(second.ok).toBe(true);
+    expect(second.error).toBeUndefined();
+    expect(second.verified.mismatches).toEqual([]);
+    expect(second.counts).toMatchObject({ stories: 1, chapters: 1, scenes: 1, notes: 1 });
+  });
+});

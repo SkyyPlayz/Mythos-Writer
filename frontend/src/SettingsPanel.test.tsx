@@ -19,6 +19,7 @@ const mockVaultGetPaths = vi.fn();
 const mockVaultSetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
 const mockProviderListModels = vi.fn();
+const mockVoicePickBinary = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
 
@@ -61,6 +62,7 @@ beforeEach(() => {
   );
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
   mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
+  mockVoicePickBinary.mockResolvedValue({ path: null, cancelled: true, registrationToken: null });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
@@ -68,6 +70,7 @@ beforeEach(() => {
     vaultSetPaths: mockVaultSetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
     providerListModels: mockProviderListModels,
+    voicePickBinary: mockVoicePickBinary,
   };
 });
 
@@ -985,6 +988,65 @@ describe('SettingsPanel', () => {
     expect(saved.voice?.ttsRate).toBeCloseTo(1.2);
     expect(saved.voice?.persistentMute).toBe(true);
   }, 20000);
+
+  // ── SKY-7772: local STT/TTS controls live under AI Agents → Voice, not Vault & Files ──
+
+  it('SKY-7772: STT Binary / STT Model / TTS / mic-mute controls render under Agents (Voice section)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    // Agents tab is active by default and hosts VoiceSection.
+    expect(screen.getByRole('tab', { name: /agents/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText(/stt binary path/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/stt model path/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/stt input language/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/tts voice identifier/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/tts volume/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/tts speech rate/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /start microphone muted/i })).toBeInTheDocument();
+  });
+
+  it('SKY-7772: none of the STT/TTS/mic-mute controls render under Vault & Files', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+    fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/stt binary path/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/stt model path/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/stt input language/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/tts voice identifier/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/tts volume/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/tts speech rate/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /start microphone muted/i })).not.toBeInTheDocument();
+  });
+
+  it('SKY-7772: browse-for-binary and browse-for-model populate paths and persist their tokens on save', async () => {
+    mockVoicePickBinary.mockImplementation((kind: 'stt-binary' | 'stt-model') =>
+      Promise.resolve(
+        kind === 'stt-binary'
+          ? { path: '/usr/local/bin/whisper-cli', cancelled: false, registrationToken: 'tok-binary' }
+          : { path: '/home/test/models/ggml-tiny.en.bin', cancelled: false, registrationToken: 'tok-model' },
+      ),
+    );
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await clickAndFlush(screen.getByRole('button', { name: /browse for stt binary/i }));
+    await clickAndFlush(screen.getByRole('button', { name: /browse for stt model/i }));
+
+    expect(mockVoicePickBinary).toHaveBeenCalledWith('stt-binary');
+    expect(mockVoicePickBinary).toHaveBeenCalledWith('stt-model');
+    expect((screen.getByLabelText(/stt binary path/i) as HTMLInputElement).value).toBe('/usr/local/bin/whisper-cli');
+    expect((screen.getByLabelText(/stt model path/i) as HTMLInputElement).value).toBe('/home/test/models/ggml-tiny.en.bin');
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const [savedPayload, savedTokens] = mockSettingsSet.mock.calls[0];
+    expect((savedPayload as AppSettings).stt?.localBinaryPath).toBe('/usr/local/bin/whisper-cli');
+    expect((savedPayload as AppSettings).stt?.localModelPath).toBe('/home/test/models/ggml-tiny.en.bin');
+    expect(savedTokens).toEqual({ sttBinaryToken: 'tok-binary', sttModelToken: 'tok-model' });
+  });
 
   // ── MYT-779: AI providers section ──
 
