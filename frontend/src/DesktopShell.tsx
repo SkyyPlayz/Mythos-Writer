@@ -14,6 +14,7 @@ import {
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName } from './ProjectSwitcher';
+import { stripManifestContentForIpc } from './manifestIpc';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -1686,7 +1687,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
-      await window.api.writeManifest(m);
+      // SKY-6196: strip scene prose before it crosses the IPC boundary — the
+      // in-memory `m` (and React state) keep full content untouched.
+      await window.api.writeManifest(stripManifestContentForIpc(m));
       window.api.navigatorReportManifest?.().catch(() => {});
     } catch (e) {
       console.error('Failed to persist manifest:', e);

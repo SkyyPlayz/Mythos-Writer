@@ -6,7 +6,7 @@ import type { Story, Chapter, Scene } from '../types';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; error: string }) => void;
+type ErrorHandler = (data: { streamId: string; message: string }) => void;
 
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
@@ -226,7 +226,7 @@ describe('BetaReaderPage — Chat page', () => {
     fireEvent.change(screen.getByLabelText(/message the beta reader/i), { target: { value: 'hi' } });
     fireEvent.click(screen.getByRole('button', { name: /send/i }));
     await waitFor(() => expect(errorCb).not.toBeNull());
-    act(() => errorCb?.({ streamId: 'stream-3', error: 'No API key configured.' }));
+    act(() => errorCb?.({ streamId: 'stream-3', message: 'No API key configured.' }));
     expect(await screen.findByText(/no api key configured/i)).toBeInTheDocument();
   });
 });

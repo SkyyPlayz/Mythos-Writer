@@ -47,7 +47,7 @@ export function useIpcStream(streamId: string | null): IpcStreamResult {
     });
 
     const unsubError = window.api.onStreamError(
-      ({ streamId: sid, error: errMsg }: { streamId: string; category: string; error: string }) => {
+      ({ streamId: sid, message: errMsg }: { streamId: string; category: string; message: string }) => {
         if (sid !== streamId || cancelledRef.current) return;
         setError(errMsg);
         setDone(true);
