@@ -12,7 +12,7 @@ import {
   type TrackLayoutContext,
   type TrackLayoutOptions,
 } from './trackLayout';
-import type { SpreadsheetScene } from './TimelineSpreadsheet';
+import type { SpreadsheetScene } from './timelineFilters';
 
 // ─── Factories ────────────────────────────────────────────────────────────────
 
