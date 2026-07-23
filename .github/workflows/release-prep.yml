@@ -176,7 +176,7 @@ jobs:
           retention-days: 7
 
   create-release:
-    if: inputs.dry-run == false
+    if: ${{ inputs.dry-run == false }}
     needs: [validate-input, generate-changelog, build-windows]
     runs-on: ubuntu-latest
     permissions:
@@ -203,7 +203,7 @@ jobs:
             **Build Status:** Installer build in progress…
 
   commit-version:
-    if: inputs.dry-run == false
+    if: ${{ inputs.dry-run == false }}
     needs: [validate-input, bump-version]
     runs-on: ubuntu-latest
     permissions:
