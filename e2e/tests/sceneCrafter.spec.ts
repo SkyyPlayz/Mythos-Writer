@@ -620,3 +620,32 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   await miniAfter.getByTitle('Zoom in').click();
   await expect(zoomPctAfter).toHaveText('115%');
 });
+
+// ─── SKY-8435: M19 dyslexia-conformance floor on the setup-form GOAL/CONFLICT
+//     textareas (M18-M19-M25-A11Y-DYSLEXIA-SPEC.md §2.3 — the one thing the
+//     existing SCENE-CRAFTER-CANVAS-SPEC dyslexia section doesn't already
+//     cover: the form that feeds the cards, not just the cards). ─────────────
+
+test('SKY-8435: GOAL/CONFLICT setup fields render with the dyslexia-conformance spacing bundle', async () => {
+  await openBoardView(page);
+
+  const goal = page.getByLabel('GOAL');
+  await expect(goal).toBeVisible();
+  await expect.poll(() => goal.evaluate((el) => {
+    const styles = getComputedStyle(el);
+    const fontSize = parseFloat(styles.fontSize);
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      lineHeightRatio: round2(parseFloat(styles.lineHeight) / fontSize),
+      letterSpacingRatio: round2((parseFloat(styles.letterSpacing) || 0) / fontSize),
+      resize: styles.resize,
+    };
+  })).toEqual({ lineHeightRatio: 1.6, letterSpacingRatio: 0.01, resize: 'vertical' });
+
+  // Regression guard for the old fixed 44px box (~2 cramped lines at this
+  // line-height): the field must give a GOAL/CONFLICT paragraph real room,
+  // and resize:vertical (asserted above) is the user's escape hatch beyond
+  // that — the spec's "container grows or scrolls, never clips" floor (§0).
+  const boxHeight = await goal.evaluate((el) => el.getBoundingClientRect().height);
+  expect(boxHeight).toBeGreaterThanOrEqual(70);
+});

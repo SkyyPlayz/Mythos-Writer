@@ -126,6 +126,17 @@
   --weight-heading: 600;
   --weight-emphasis: 700;
 
+  /* ---- 1.5a Dyslexia-friendly body-copy spacing bundle (SKY-8435) -------
+     Binding floor per plans/Readability-Mode.md + M18-M19-M25-A11Y-DYSLEXIA-
+     SPEC.md §0: every text node these milestones add needs this bundle, no
+     opt-out. Line-height sits in the spec's 1.5-1.8 range; letter/word
+     spacing aren't numerically locked yet (SKY-3941's full Readability mode
+     settings feature is still backlog) so these are a conservative floor —
+     flagged for UXDesigner visual review, not a final design-system value. */
+  --dyslexia-line-height: 1.6;
+  --dyslexia-letter-spacing: 0.01em;
+  --dyslexia-word-spacing: 0.08em;
+
   /* ---- 1.6 Elevation / shadow ------------------------------------------ */
   --elev-0: none;
   --elev-1: 0 8px 32px rgba(5, 8, 20, 0.45), inset 0 1px 24px rgba(20, 16, 40, 0.45);

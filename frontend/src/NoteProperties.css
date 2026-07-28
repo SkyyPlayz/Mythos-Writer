@@ -38,10 +38,12 @@
 }
 
 .np-row {
+  /* SKY-8435: labels must precede values, one field per row — never
+     label-inline-with-value on a single crammed line (dyslexia spec §1.3). */
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 4.5px 0;
   border-bottom: 1px solid rgb(255 255 255 / 0.045); /* prototype rgba(255,255,255,.045) */
   font-size: 11.5px;
@@ -49,18 +51,15 @@
 
 .np-key {
   color: rgb(142 157 184); /* prototype #8e9db8 */
-  flex: none;
-  max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .np-value {
-  flex: 1;
   min-width: 0;
   height: 24px;
-  text-align: right;
+  text-align: left;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;

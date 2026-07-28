@@ -444,12 +444,16 @@
 .trp-static-row > span:last-child {
   color: #dbe4f5;
   text-align: right;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
 }
 
 .trp-summary {
   font-size: 11.5px;
   color: #c3cee2;
   line-height: 1.55;
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
 }
 
 .trp-impact {
@@ -500,6 +504,7 @@
 .trp-blurb-sub {
   font-size: 10.5px;
   line-height: 1.55;
+  letter-spacing: var(--dyslexia-letter-spacing);
   color: #8e9db8;
 }
 
@@ -535,6 +540,7 @@
   font-size: 10.5px;
   color: #8e9db8;
   line-height: 1.5;
+  letter-spacing: var(--dyslexia-letter-spacing);
 }
 
 .trp-needs {
@@ -570,6 +576,8 @@
   font-size: 9.5px;
   color: #8e9db8;
   margin-top: 1px;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
 }
 
 .trp-recent {
@@ -657,6 +665,8 @@
   font-weight: 600;
   color: #e6ecf9;
   margin-top: 2px;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
 }
 
 .trp-flag-anchor {

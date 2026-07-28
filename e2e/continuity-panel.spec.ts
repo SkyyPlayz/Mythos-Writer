@@ -355,3 +355,44 @@ test('TC-CP-03: Match Archive resolution removes the card and persists resolved 
     cleanupFixture(fixture);
   }
 });
+
+test('TC-CP-04: flag rationale renders with the dyslexia-conformance spacing bundle (SKY-8435)', async () => {
+  // M18-M19-M25-A11Y-DYSLEXIA-SPEC.md §0/§1.3: every text node M18 adds needs
+  // the Readability-mode floor (1.5-1.8 line-height, wider letter/word
+  // spacing), no opt-out. Real render assertion, not a mock — proves the CSS
+  // actually reaches the packaged renderer, not just that a class is present.
+  const longRationale = 'The manuscript places Mara on the Glass Bridge at night under twin '
+    + 'moons, but the vault note for the bridge says it only ever appears in daylight, which '
+    + 'is a direct contradiction a reader would notice on a careful re-read of both scenes.';
+  // Severity 'medium', not 'low': the Low/Ignored severity groups start
+  // collapsed by default (ContinuityPanel.tsx), which is orthogonal to the
+  // spacing bundle under test here — 'medium' keeps this test focused.
+  const fixture = createFixture([{ id: 'inc-dyslexia', severity: 'medium', rationale: longRationale }]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+    const card = sidebar.getByRole('listitem', { name: /medium character attribute drift/i });
+    await expect(card).toBeVisible({ timeout: 12_000 });
+
+    const rationale = card.locator('.ic-rationale');
+    await expect(rationale).toBeVisible();
+    // Ratios (not raw px) so the assertion holds regardless of the element's
+    // resolved font-size — it's the em-relative spacing bundle under test.
+    await expect.poll(() => rationale.evaluate((el) => {
+      const styles = getComputedStyle(el);
+      const fontSize = parseFloat(styles.fontSize);
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      return {
+        lineHeightRatio: round2(parseFloat(styles.lineHeight) / fontSize),
+        letterSpacingRatio: round2((parseFloat(styles.letterSpacing) || 0) / fontSize),
+        wordSpacingRatio: round2((parseFloat(styles.wordSpacing) || 0) / fontSize),
+      };
+    })).toEqual({ lineHeightRatio: 1.6, letterSpacingRatio: 0.01, wordSpacingRatio: 0.08 });
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});

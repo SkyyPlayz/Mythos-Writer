@@ -197,7 +197,9 @@
   padding: 10px 13px;
   max-width: 78%;
   font-size: 12.5px;
-  line-height: 1.6;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -212,7 +214,9 @@
   border-radius: 14px 14px 14px 4px;
   padding: 10px 13px;
   font-size: 12.5px;
-  line-height: 1.6;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
   color: rgb(205, 216, 234); /* prototype #cdd8ea */
   white-space: pre-wrap;
   word-break: break-word;

@@ -870,4 +870,34 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
     await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
   });
+
+  // SKY-8435: M25 dyslexia-conformance floor on the Inspector's static-view
+  // body text (M18-M19-M25-A11Y-DYSLEXIA-SPEC.md §3.3 — blurb/body copy must
+  // carry the spacing bundle even though it's short "chrome" prose).
+  test('SKY-8435: Inspector static view (chapter row + summary) renders with the dyslexia-conformance spacing bundle', async () => {
+    await m23Page.locator('[data-testid="ax-event-ev-early"]').click();
+    await expect(m23Page.locator('[data-testid="trp-tab-inspector"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(m23Page.locator('[data-testid="trp-event-static"]')).toBeVisible({ timeout: 6_000 });
+
+    const assertRatios = async (locator: ReturnType<Page['locator']>, expected: { lineHeightRatio: number; letterSpacingRatio: number }) => {
+      await expect.poll(() => locator.evaluate((el) => {
+        const styles = getComputedStyle(el);
+        const fontSize = parseFloat(styles.fontSize);
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+        return {
+          lineHeightRatio: round2(parseFloat(styles.lineHeight) / fontSize),
+          letterSpacingRatio: round2((parseFloat(styles.letterSpacing) || 0) / fontSize),
+        };
+      })).toEqual(expected);
+    };
+
+    // Chapter static-row value (span:last-child of .trp-static-row).
+    const chapterValue = m23Page.locator('.trp-static-row', { hasText: 'Chapter' }).locator('span').last();
+    await assertRatios(chapterValue, { lineHeightRatio: 1.6, letterSpacingRatio: 0.01 });
+
+    // Event summary body copy.
+    const summary = m23Page.locator('.trp-summary');
+    await expect(summary).toHaveText('A summons at dawn.');
+    await assertRatios(summary, { lineHeightRatio: 1.55, letterSpacingRatio: 0.01 });
+  });
 });
