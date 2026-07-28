@@ -387,7 +387,9 @@ test('TC-W3.3-DR-03: Alt+Arrow is no-op during active LLM stream', async () => {
 
   const cardTitles = page.locator('.idea-card-title');
   const count = await cardTitles.count();
-  if (count < 2) { test.skip(); return; }
+  // beforeAll seeds exactly 2 idea cards (character + location FACT tags) and
+  // asserts the count before any test runs — this can never be < 2.
+  expect(count).toBeGreaterThanOrEqual(2);
 
   const beforeOrder: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -470,8 +472,10 @@ test('TC-W3.3-DR-04: Alt+Arrow is no-op in multi-select mode', async () => {
   await selectSort(page, 'custom');
 
   // Use the stable class selector — text changes between "Select multiple" / "Done selecting".
+  // The toggle renders whenever facts.length > 0 (BrainstormPage.tsx), and beforeAll
+  // guarantees 2 fact cards before any test runs — this is always visible.
   const multiSelectBtn = page.locator('button.bs-multiselect-toggle');
-  if (!await multiSelectBtn.isVisible({ timeout: 2_000 }).catch(() => false)) { test.skip(); return; }
+  await expect(multiSelectBtn).toBeVisible({ timeout: 2_000 });
 
   await multiSelectBtn.click();
   await page.waitForTimeout(200);
@@ -514,7 +518,8 @@ test('TC-W3.3-DR-05: QuotaExceededError → toast; in-memory reorder intact', as
 
   const cardTitles = page.locator('.idea-card-title');
   const count = await cardTitles.count();
-  if (count < 2) { test.skip(); return; }
+  // beforeAll seeds 2 cards and DR-03 adds 2 more before this test runs — always >= 2.
+  expect(count).toBeGreaterThanOrEqual(2);
 
   const beforeOrder: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -568,7 +573,8 @@ test('TC-W3.3-DR-06: switching back to custom sort restores manual sequence', as
 
   const cardTitles = page.locator('.idea-card-title');
   const count = await cardTitles.count();
-  if (count < 2) { test.skip(); return; }
+  // beforeAll seeds 2 cards and DR-03 adds 2 more before this test runs — always >= 2.
+  expect(count).toBeGreaterThanOrEqual(2);
 
   // Do a manual reorder to establish a custom order.
   const firstCard = page.locator('.idea-card').first();
@@ -803,17 +809,17 @@ test('TC-W3.3-OWP-05: sceneAppendBrainstormNote error → error toast; no naviga
   await page.waitForTimeout(200);
 
   // If scene picker appeared (unlinked card), select a scene to trigger IPC call.
-  // Use a SHORT timeout — waiting too long wastes the toast's 3s auto-dismiss window.
+  // vault:manifest:read is stubbed (by beforeAll / OWP-03's restore) to always return
+  // one scene, so whenever the picker renders it always has exactly one option — but
+  // ScenePicker populates that option asynchronously (after its own readManifest() IPC
+  // round-trip resolves), so give it a real timeout budget here rather than the tight
+  // window used elsewhere; the toast's 3s auto-dismiss only starts counting once we
+  // click below (triggering the error), so a generous wait here doesn't cost us that.
   const picker = page.locator('[data-testid="scene-picker"]');
   if (await picker.isVisible({ timeout: 500 }).catch(() => false)) {
     const firstOption = picker.locator('[role="option"]').first();
-    if (await firstOption.isVisible({ timeout: 1_000 }).catch(() => false)) {
-      await firstOption.click();
-    } else {
-      await page.keyboard.press('Escape');
-      test.skip();
-      return;
-    }
+    await expect(firstOption).toBeVisible({ timeout: 4_000 });
+    await firstOption.click();
   }
 
   // Verify error toast — text: "Failed to open in writing panel." (3s auto-dismiss).
