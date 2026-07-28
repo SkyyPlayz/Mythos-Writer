@@ -1116,3 +1116,76 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     await expect(disabledPage.locator('.wa-heartbeat-tips')).not.toBeVisible();
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// SETTINGS PERSISTENCE SUITE (AC-WA-27, real IPC — no mocks) — SKY-8446
+// ════════════════════════════════════════════════════════════════════════════
+//
+// The main suite above mocks `writing-assistant:cadence-change` in
+// installIpcMocks() (returns `{ ok: true }` unconditionally) so the cadence
+// tests there only assert UI state, never that the write actually reaches
+// disk. This suite runs its own app instance with NO IPC mocks installed, so
+// the cadence select hits the real main-process handler
+// (handleCadenceChange → window.api.writingAssistantCadenceChange →
+// WRITING_ASSISTANT_CADENCE_CHANGE → saveAppSettings → fs.writeFileSync), and
+// asserts the persisted value on disk.
+
+test.describe('AC-WA-27: Writing Coach cadence persists to disk (real IPC)', () => {
+  let persistApp: ElectronApplication | undefined;
+  let persistPage: Page;
+  let persistUserData: string;
+  let persistVaultDir: string;
+
+  test.beforeAll(async () => {
+    persistUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-persist-'));
+    persistVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-persist-vault-'));
+    seedUserData(persistUserData, persistVaultDir);
+
+    persistApp = await launchApp(persistUserData);
+    persistPage = await firstWindow(persistApp);
+    await expect(persistPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    // Intentionally no installIpcMocks() call — writing-assistant:cadence-change
+    // must stay wired to the real handler for this suite.
+  });
+
+  test.afterAll(async () => {
+    const proc = persistApp?.process();
+    await Promise.race([
+      persistApp?.close().catch(() => undefined) ?? Promise.resolve(),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try {
+      if (proc && !proc.killed) proc.kill('SIGKILL');
+    } catch {
+      /* already exited */
+    }
+    fs.rmSync(persistUserData, { recursive: true, force: true });
+    fs.rmSync(persistVaultDir, { recursive: true, force: true });
+  });
+
+  test('TC-WA-27-disk: numeric cadence writes agents.writingAssistant.scanIntervalSeconds to app-settings.json', async () => {
+    await openWritingAssistantWithScene(persistPage);
+
+    const cadenceSelect = persistPage.locator('.wa-cadence-select');
+    await expect(cadenceSelect).toBeVisible({ timeout: 5_000 });
+
+    await cadenceSelect.selectOption('300');
+    await expect(cadenceSelect).toHaveValue('300');
+
+    const stored = JSON.parse(
+      fs.readFileSync(path.join(persistUserData, 'app-settings.json'), 'utf-8'),
+    ) as { agents?: { writingAssistant?: { scanIntervalSeconds?: number } } };
+    expect(stored.agents?.writingAssistant?.scanIntervalSeconds).toBe(300);
+  });
+
+  test('TC-WA-27-disk-2: on-save cadence writes top-level waScanInterval to app-settings.json', async () => {
+    const cadenceSelect = persistPage.locator('.wa-cadence-select');
+    await cadenceSelect.selectOption('on-save');
+    await expect(cadenceSelect).toHaveValue('on-save');
+
+    const stored = JSON.parse(
+      fs.readFileSync(path.join(persistUserData, 'app-settings.json'), 'utf-8'),
+    ) as { waScanInterval?: string };
+    expect(stored.waScanInterval).toBe('on-save');
+  });
+});

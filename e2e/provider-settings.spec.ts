@@ -263,3 +263,41 @@ test('TC-PROV-05: switching global provider fills Base URL with that provider\'s
   // Close settings
   await page.click('.settings-close');
 });
+
+// ─── TC-PROV-06: real UI → IPC → disk persistence (SKY-8446) ──────────────────
+//
+// The tests above only assert in-memory UI state. `settings:testConnection`
+// is the only mocked IPC handler in this suite — `settings:set` hits the real
+// main-process handler, so a Save here exercises the actual write path
+// (SettingsPanel.handleSave → window.api.settingsSet → saveAppSettings →
+// fs.writeFileSync(app-settings.json)). This asserts the change survives on
+// disk, not just in the DOM.
+
+test('TC-PROV-06: Save persists global provider config to app-settings.json on disk', async () => {
+  // Open settings
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+
+  const providerSelect = page.getByLabel('AI provider');
+  await providerSelect.selectOption('lmstudio');
+
+  const baseUrlInput = page.getByLabel('Provider base URL');
+  await baseUrlInput.fill('http://127.0.0.1:9999/v1');
+
+  const modelInput = page.getByLabel('Default model for this provider');
+  await modelInput.fill('e2e-persisted-model');
+
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
+
+  // Close settings
+  await page.click('.settings-close');
+
+  // Assert the change actually landed on disk, not just in the DOM.
+  const stored = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
+    provider?: { kind?: string; baseUrl?: string; model?: string };
+  };
+  expect(stored.provider?.kind).toBe('lmstudio');
+  expect(stored.provider?.baseUrl).toBe('http://127.0.0.1:9999/v1');
+  expect(stored.provider?.model).toBe('e2e-persisted-model');
+});
