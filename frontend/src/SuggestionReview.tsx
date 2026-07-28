@@ -4,7 +4,12 @@ import SuggestionDetailPane, {
   type UnifiedSuggestion,
   type SuggestionSourceAgent,
 } from './SuggestionDetailPane';
+import { useToast } from './hooks/useToast';
+import { Toast } from './components/Toast/Toast';
 import './SuggestionReview.css';
+
+/** §8: brief grace window during which a dismiss can still be undone. */
+const DISMISS_UNDO_MS = 2500;
 
 type AgentFilter = 'all' | SuggestionSourceAgent;
 type StatusFilter = 'all' | 'accepted' | 'rejected' | 'ignored';
@@ -147,6 +152,8 @@ interface SuggestionRowProps {
   onOpenDetail: (id: string) => void;
   selected?: boolean;
   onSelect?: (id: string) => void;
+  errorMessage?: { message: string; action: 'accepted' | 'rejected' | 'ignored' };
+  rowRef?: (id: string, el: HTMLElement | null) => void;
 }
 
 function SuggestionRow({
@@ -158,6 +165,8 @@ function SuggestionRow({
   onOpenDetail,
   selected = false,
   onSelect,
+  errorMessage,
+  rowRef,
 }: SuggestionRowProps) {
   const handleRowClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -172,16 +181,22 @@ function SuggestionRow({
     }
   };
 
+  // §4 keyboard map (carried forward from SKY-2471): Enter opens detail,
+  // Ctrl+Enter accepts without opening (power-user shortcut). Backspace/
+  // Delete are deliberately NOT bound to reject (the spec's "dismiss") —
+  // that's destructive-ish (CF-10: never reappears) and shouldn't be one
+  // accidental keystroke away with no confirm.
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      onAccept(suggestion.id);
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       onOpenDetail(suggestion.id);
     }
-    if (e.key === 'a' || e.key === 'A') {
-      e.preventDefault();
-      onAccept(suggestion.id);
-    }
-    if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'r' || e.key === 'R') {
+    if (e.key === 'r' || e.key === 'R') {
       e.preventDefault();
       onReject(suggestion.id);
     }
@@ -226,9 +241,10 @@ function SuggestionRow({
     <div
       className={`sr-row${selected ? ' sr-row--selected' : ''}`}
       role="article"
-      aria-label={`${AGENT_LABELS[suggestion.sourceAgent]} suggestion${suggestion.targetPath ? ` for ${suggestion.targetPath}` : ''}`}
+      aria-label={`${AGENT_LABELS[suggestion.sourceAgent]} suggestion: ${rationaleText}`}
       aria-selected={selected}
       tabIndex={0}
+      ref={(el) => rowRef?.(suggestion.id, el)}
       onClick={handleRowClick}
       onKeyDown={handleKeyDown}
       onClickCapture={handleClickCapture}
@@ -317,6 +333,24 @@ function SuggestionRow({
           Ignore
         </button>
       </div>
+
+      {errorMessage && (
+        <div className="sr-row-error" role="alert">
+          <span className="sr-row-error-text">{errorMessage.message}</span>
+          <button
+            type="button"
+            className="sr-row-error-retry"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (errorMessage.action === 'accepted') onAccept(suggestion.id);
+              else if (errorMessage.action === 'rejected') onReject(suggestion.id);
+              else onIgnore(suggestion.id);
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -413,6 +447,14 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   const [rollingBackIds, setRollingBackIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // §3: per-row accept/reject/ignore failures — the row stays put, never
+  // silently dropped (a failed accept must not be confused with a dismiss).
+  const [rowErrors, setRowErrors] = useState<
+    Record<string, { message: string; action: 'accepted' | 'rejected' | 'ignored' }>
+  >({});
+  // §4: aria-live="assertive" announcement for accept/dismiss — the row
+  // leaves the DOM, so a screen-reader user needs to be told why focus moved.
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
 
   // Confidence range filter (integer 0–100 representing percent)
   const [confidenceMin, setConfidenceMin] = useState(0);
@@ -422,6 +464,33 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
 
   const filterRef = useRef<HTMLDivElement>(null);
   const lastFocusedRowRef = useRef<HTMLElement | null>(null);
+
+  // §4: focus-to-next-row after accept/dismiss — never lost to document.body.
+  const rowElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const emptyStateRef = useRef<HTMLDivElement | null>(null);
+  const registerRowEl = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) rowElsRef.current.set(id, el);
+    else rowElsRef.current.delete(id);
+  }, []);
+  // Snapshot of the visible row order as of the latest render — read at the
+  // start of updateStatus (before the row is removed) so we know what to
+  // focus next once it's gone.
+  const inboxOrderRef = useRef<string[]>([]);
+
+  // §8: accept/dismiss undo. Accept's undo re-runs the existing (indefinite)
+  // rollback; dismiss's undo only works during this toast's grace window,
+  // after which the reject IPC actually fires — CF-10 permanence starts
+  // there, not at the optimistic UI removal.
+  const { toast, showToast, clearToast } = useToast(DISMISS_UNDO_MS);
+  const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | null>(null);
+  const dismissTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const timers = dismissTimersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, []);
 
   // Always-current filter snapshot — avoids stale closures in debounce timer callbacks
   const filtersRef = useRef({ confidenceMin: 0, confidenceMax: 100, searchQuery: '' });
@@ -532,37 +601,34 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
     return () => clearTimeout(timer);
   }, [searchQuery, loadItems]);
 
-  const updateStatus = useCallback(
-    async (id: string, status: 'accepted' | 'rejected' | 'ignored') => {
-      setItems((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
-      setSelectedId(null);
-      setSelectedIds((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const api = (window as any).api;
-        if (status === 'accepted' && typeof api?.suggestionsAccept === 'function') {
-          await api.suggestionsAccept(id);
-        } else if (status === 'rejected' && typeof api?.suggestionsReject === 'function') {
-          await api.suggestionsReject(id);
-        } else if (status === 'ignored' && typeof api?.suggestionsIgnore === 'function') {
-          await api.suggestionsIgnore(id);
-        }
-      } catch {
-        /* IPC not wired — state already updated optimistically */
-      }
-    },
-    [],
-  );
+  // Captured synchronously when updateStatus starts (the row order as it
+  // stood *before* removal) — inboxOrderRef itself gets overwritten by the
+  // post-removal render that runs before this effect fires, so the pre-
+  // removal order has to travel via this ref instead of being re-read later.
+  const pendingFocusRef = useRef<{ id: string; order: string[] } | null>(null);
 
-  const handleAccept = useCallback((id: string) => updateStatus(id, 'accepted'), [updateStatus]);
-  const handleReject = useCallback((id: string) => updateStatus(id, 'rejected'), [updateStatus]);
-  const handleIgnore = useCallback((id: string) => updateStatus(id, 'ignored'), [updateStatus]);
+  const focusRowAfterRemoval = useCallback((removedId: string, order: string[]) => {
+    const idx = order.indexOf(removedId);
+    const remaining = order.filter((i) => i !== removedId);
+    if (remaining.length === 0) {
+      emptyStateRef.current?.focus();
+      return;
+    }
+    const nextId = remaining[Math.min(idx, remaining.length - 1)];
+    rowElsRef.current.get(nextId)?.focus();
+  }, []);
 
+  useEffect(() => {
+    if (!pendingFocusRef.current) return;
+    const { id: removedId, order } = pendingFocusRef.current;
+    pendingFocusRef.current = null;
+    focusRowAfterRemoval(removedId, order);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
+  // Moved above updateStatus (which references it in the accept-undo chip)
+  // to avoid a temporal-dead-zone reference — both are still declared with
+  // useCallback in the component body, order just has to satisfy this one use.
   const handleRollback = useCallback(async (id: string) => {
     setRollingBackIds((prev) => new Set(prev).add(id));
     setSelectedId(null);
@@ -587,6 +653,134 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
       });
     }
   }, []);
+
+  const updateStatus = useCallback(
+    async (id: string, status: 'accepted' | 'ignored') => {
+      // Snapshot the pre-removal row order now, synchronously, before any
+      // await — this is the last point where inboxOrderRef reflects "before".
+      const orderSnapshot = inboxOrderRef.current;
+
+      // Clear a stale error from an earlier failed attempt on this row.
+      setRowErrors((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      try {
+        if (status === 'accepted' && typeof api?.suggestionsAccept === 'function') {
+          await api.suggestionsAccept(id);
+        } else if (status === 'ignored' && typeof api?.suggestionsIgnore === 'function') {
+          await api.suggestionsIgnore(id);
+        }
+      } catch (err) {
+        // Never silently drop the suggestion on a failed action — it stays
+        // in the inbox, not removed, with a retry-able inline error (§3). A
+        // failed accept must not be confused with a dismiss.
+        const verb = status === 'accepted' ? 'accept' : 'ignore';
+        const msg = err instanceof Error ? err.message : String(err);
+        setRowErrors((prev) => ({
+          ...prev,
+          [id]: { message: `Couldn't ${verb} this suggestion — ${msg || 'try again.'}`, action: status },
+        }));
+        return;
+      }
+
+      let targetPath: string | null | undefined;
+      setItems((prev) => {
+        targetPath = prev.find((s) => s.id === id)?.targetPath;
+        return prev.map((s) => (s.id === id ? { ...s, status } : s));
+      });
+      setSelectedId(null);
+      setSelectedIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setStatusAnnouncement(
+        status === 'accepted' && targetPath
+          ? `Suggestion accepted — applied to ${targetPath}`
+          : `Suggestion ${status === 'accepted' ? 'accepted' : 'ignored'}`,
+      );
+      pendingFocusRef.current = { id, order: orderSnapshot };
+
+      // §8: accept's undo re-runs the existing (indefinite) rollback — the
+      // toast is a convenience during its window, not the only path to it
+      // (the Audit tab's Rollback button reaches the same capability later).
+      if (status === 'accepted') {
+        setToastAction({ label: 'Undo', onClick: () => { clearToast(); setToastAction(null); void handleRollback(id); } });
+        showToast(
+          targetPath ? `Suggestion accepted — applied to ${targetPath}` : 'Suggestion accepted',
+          'info',
+        );
+      }
+    },
+    [showToast, clearToast, handleRollback],
+  );
+
+  const handleAccept = useCallback((id: string) => updateStatus(id, 'accepted'), [updateStatus]);
+  const handleIgnore = useCallback((id: string) => updateStatus(id, 'ignored'), [updateStatus]);
+
+  // §8: dismiss (reject) gets its own undo semantics, distinct from accept's.
+  // The row leaves the visible inbox immediately (CF-10 perceivability), but
+  // the actual `suggestions:reject` IPC call is *delayed* until the toast's
+  // grace window elapses — Undo during that window means the backend never
+  // even hears about it. After the window, it's genuinely permanent; there
+  // is no "un-reject" IPC, so undo can't be offered past that point.
+  const handleReject = useCallback((id: string) => {
+    const orderSnapshot = inboxOrderRef.current;
+    setItems((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'rejected' as const } : s)));
+    setSelectedId(null);
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setStatusAnnouncement('Suggestion dismissed');
+    pendingFocusRef.current = { id, order: orderSnapshot };
+
+    const commitDismiss = async () => {
+      dismissTimersRef.current.delete(id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (window as any).api;
+      try {
+        if (typeof api?.suggestionsReject === 'function') {
+          await api.suggestionsReject(id);
+        }
+      } catch (err) {
+        // The grace window passed but the real IPC call failed — restore the
+        // suggestion (never silently drop it, §3) with a retry-able error.
+        const msg = err instanceof Error ? err.message : String(err);
+        setItems((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'proposed' as const } : s)));
+        setRowErrors((prev) => ({
+          ...prev,
+          [id]: { message: `Couldn't dismiss this suggestion — ${msg || 'try again.'}`, action: 'rejected' },
+        }));
+      }
+    };
+
+    dismissTimersRef.current.set(id, setTimeout(() => void commitDismiss(), DISMISS_UNDO_MS));
+
+    setToastAction({
+      label: 'Undo',
+      onClick: () => {
+        const timer = dismissTimersRef.current.get(id);
+        if (timer) {
+          clearTimeout(timer);
+          dismissTimersRef.current.delete(id);
+        }
+        setItems((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'proposed' as const } : s)));
+        clearToast();
+        setToastAction(null);
+      },
+    });
+    showToast('Suggestion dismissed', 'info');
+  }, [showToast, clearToast]);
 
   const handleOpenTarget = useCallback(
     (path: string) => {
@@ -669,6 +863,8 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   const inboxVisible = (
     agentFilter === 'all' ? proposed : proposed.filter((s) => s.sourceAgent === agentFilter)
   ).filter(matchesVault);
+  // Snapshot for updateStatus's focus-to-next-row (read before removal).
+  inboxOrderRef.current = inboxVisible.map((s) => s.id);
 
   const allVisibleSelected =
     inboxVisible.length > 0 && inboxVisible.every((s) => selectedIds.has(s.id));
@@ -715,8 +911,10 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   if (loading) {
     return (
       <div className="suggestion-review">
-        <div className="sr-loading" aria-label="Loading suggestions">
-          Loading&hellip;
+        <div className="sr-skeleton-rows" role="status" aria-label="Loading suggestions" data-testid="sr-skeleton">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="sr-skeleton-bar" />
+          ))}
         </div>
       </div>
     );
@@ -904,6 +1102,13 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
             </div>
           )}
 
+          {/* §4: dedicated assertive live region for accept/dismiss — the row
+              disappears from the DOM, so a screen-reader user needs to be
+              told why focus just moved (CF-10 perceivability). */}
+          <div className="sr-only" aria-live="assertive" aria-atomic="true">
+            {statusAnnouncement}
+          </div>
+
           <div
             className="sr-list"
             role="list"
@@ -911,11 +1116,11 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
             aria-live="polite"
           >
             {inboxVisible.length === 0 ? (
-              <div className="sr-empty" role="status">
+              <div className="sr-empty" role="status" tabIndex={-1} ref={emptyStateRef}>
                 {hasActiveFilter
                   ? 'No suggestions match this filter.'
                   : agentFilter === 'all'
-                    ? 'No pending suggestions — all caught up!'
+                    ? 'Nothing waiting on you.'
                     : `No pending suggestions from ${AGENT_LABELS[agentFilter as SuggestionSourceAgent]}.`}
               </div>
             ) : (
@@ -930,6 +1135,8 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
                   onOpenDetail={handleOpenDetail}
                   selected={selectedIds.has(s.id)}
                   onSelect={handleSelectRow}
+                  errorMessage={rowErrors[s.id]}
+                  rowRef={registerRowEl}
                 />
               ))
             )}
@@ -937,7 +1144,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
 
           {proposed.length > 0 && (
             <p className="sr-keyboard-hint" aria-hidden="true">
-              Click row to review &middot; Backspace reject &middot; I ignore &middot; Ctrl+Click select
+              Enter to open &middot; Ctrl+Enter accept &middot; R reject &middot; I ignore &middot; Ctrl+Click select
             </p>
           )}
 
@@ -1037,6 +1244,13 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
           onRollback={handleRollback}
         />
       )}
+
+      {/* §8: accept/dismiss Undo chip — same toast slot, ~2.5s window. */}
+      <Toast
+        message={toast?.message ?? null}
+        level={toast?.level}
+        action={toastAction ?? undefined}
+      />
     </div>
   );
 }

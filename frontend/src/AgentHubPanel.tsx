@@ -23,6 +23,7 @@ import {
   runFullSceneAnalysis,
   latestAnalysisCardForScene,
   compactReadValue,
+  useSceneAnalysisPending,
 } from './coach/sceneAnalysis';
 import { showLnToast } from './theme/lnToast';
 import './AgentHubPanel.css';
@@ -49,7 +50,7 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'writingAssistant',
     label: 'Writing Coach',
     description: 'Teaches you to write better using your own pages — never ghost-writes.',
-    statusText: 'Idle',
+    statusText: 'Ready',
     statusColor: 'idle',
     color: '#00f0ff',
   },
@@ -58,7 +59,7 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'brainstorm',
     label: 'Brainstorm Agent',
     description: 'Curates your vault, extracts facts, and develops ideas with you.',
-    statusText: 'Idle',
+    statusText: 'Ready',
     statusColor: 'idle',
     color: '#9b5fff',
   },
@@ -67,7 +68,7 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'archive',
     label: 'Archive Agent',
     description: 'Continuity guardian — catches inconsistencies and builds your timeline.',
-    statusText: 'Idle',
+    statusText: 'Ready',
     statusColor: 'idle',
     color: '#ffd319',
   },
@@ -76,7 +77,7 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'betaReader',
     label: 'Beta Reader',
     description: 'Reads your pages like a first-time reader and leaves honest reactions.',
-    statusText: 'Idle',
+    statusText: 'Ready',
     statusColor: 'idle',
     color: '#8ad9ff',
   },
@@ -140,7 +141,19 @@ export default function AgentHubPanel({
     setActiveAgent(id);
   }, []);
 
-  const handleBack = useCallback(() => setActiveAgent(null), []);
+  // §4: focus returns to the AGENTS row for the agent just exited, not the
+  // top of the panel — the row unmounts/remounts across this transition
+  // (AgentHubView <-> AgentChatView swap the whole subtree), so a captured
+  // element ref would go stale; look the row up fresh by testid instead.
+  const handleBack = useCallback(() => {
+    const exitingAgentId = activeAgent;
+    setActiveAgent(null);
+    if (exitingAgentId) {
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>(`[data-testid="ahp-agent-row-${exitingAgentId}"]`)?.focus();
+      });
+    }
+  }, [activeAgent]);
 
   const TABS: { id: HubTab; label: string }[] = [
     { id: 'assistant', label: 'Assistant' },
@@ -221,6 +234,16 @@ interface AgentHubViewProps {
 }
 
 function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage }: AgentHubViewProps) {
+  // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
+  // AGENTS card can derive each row's "needs attention" count from the same
+  // poll instead of a second one.
+  const { items, totalCount, loading } = useSuggestionPreview(SUGGESTION_PREVIEW_LIMIT);
+  const pendingByAgent = useMemo(() => {
+    const counts: Partial<Record<string, number>> = {};
+    for (const s of items) counts[s.sourceAgent] = (counts[s.sourceAgent] ?? 0) + 1;
+    return counts;
+  }, [items]);
+
   return (
     <div className="ahp-hub">
       {/* AGENTS card */}
@@ -235,13 +258,19 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
               def={def}
               displayName={resolveAgentDisplayName(def.agentKey, agentNames)}
               onClick={() => onAgentClick(def.id)}
+              pendingCount={def.id ? pendingByAgent[def.id] ?? 0 : 0}
             />
           ))}
         </div>
       </section>
 
       {/* Suggestions card — preview 3 rows + See All */}
-      <SuggestionPreviewCard onOpenSuggestionInbox={onOpenSuggestionInbox} />
+      <SuggestionPreviewCard
+        items={items}
+        totalCount={totalCount}
+        loading={loading}
+        onOpenSuggestionInbox={onOpenSuggestionInbox}
+      />
 
       {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
       <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
@@ -253,15 +282,23 @@ interface AgentRowProps {
   def: AgentDef;
   displayName: string;
   onClick: () => void;
+  /** §9: pending suggestions from this agent — drives the "needs attention"
+   *  status (Beta 4 ships text chat only, not background autonomy, so idle
+   *  vs. needs-attention is the state this surface can actually observe). */
+  pendingCount?: number;
 }
 
-function AgentRow({ def, displayName, onClick }: AgentRowProps) {
+function AgentRow({ def, displayName, onClick, pendingCount = 0 }: AgentRowProps) {
+  const statusColor = pendingCount > 0 ? 'attention' : def.statusColor;
+  const statusText = pendingCount > 0 ? `${pendingCount} new` : def.statusText;
+
   return (
     <button
       type="button"
       className="ahp-agent-row"
+      data-testid={`ahp-agent-row-${def.id}`}
       onClick={onClick}
-      aria-label={`Open ${displayName} chat`}
+      aria-label={`Open ${displayName} chat${pendingCount > 0 ? ` — ${pendingCount} new suggestion${pendingCount === 1 ? '' : 's'}` : ''}`}
       title={def.description}
       role="listitem"
     >
@@ -275,10 +312,10 @@ function AgentRow({ def, displayName, onClick }: AgentRowProps) {
       <span className="ahp-agent-name">{displayName}</span>
       <span className="ahp-agent-status">
         <span
-          className={`ahp-status-dot ahp-status-dot--${def.statusColor}`}
+          className={`ahp-status-dot ahp-status-dot--${statusColor}`}
           aria-hidden="true"
         />
-        <span className="ahp-status-text">{def.statusText}</span>
+        <span className="ahp-status-text">{statusText}</span>
       </span>
     </button>
   );
@@ -300,11 +337,17 @@ function AgentIcon({ agentId }: { agentId: ActiveAgent }) {
 function useSuggestionPreview(limit: number) {
   const [items, setItems] = useState<UnifiedSuggestion[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  // Only the very first fetch shows a skeleton (Doherty Threshold, §2) —
+  // subsequent 30s polls update in place without re-showing a loading state.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).api;
-    if (typeof api?.suggestionsUnifiedList !== 'function') return;
+    if (typeof api?.suggestionsUnifiedList !== 'function') {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     const poll = () => {
       (api.suggestionsUnifiedList({ status: 'proposed', limit }) as Promise<{ items?: UnifiedSuggestion[]; totalCount?: number }>)
@@ -313,19 +356,25 @@ function useSuggestionPreview(limit: number) {
           setItems(r.items ?? []);
           setTotalCount(r.totalCount ?? (r.items?.length ?? 0));
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setLoading(false); });
     };
     poll();
     const id = window.setInterval(poll, SUGGESTION_POLL_MS);
     return () => { cancelled = true; window.clearInterval(id); };
   }, [limit]);
 
-  return { items, totalCount };
+  return { items, totalCount, loading };
 }
 
-function SuggestionPreviewCard({ onOpenSuggestionInbox }: { onOpenSuggestionInbox?: () => void }) {
-  const { items, totalCount } = useSuggestionPreview(SUGGESTION_PREVIEW_LIMIT);
+interface SuggestionPreviewCardProps {
+  items: UnifiedSuggestion[];
+  totalCount: number;
+  loading: boolean;
+  onOpenSuggestionInbox?: () => void;
+}
 
+function SuggestionPreviewCard({ items, totalCount, loading, onOpenSuggestionInbox }: SuggestionPreviewCardProps) {
   return (
     <section className="ahp-card" aria-label="Suggestions">
       <header className="ahp-card-header">
@@ -339,8 +388,14 @@ function SuggestionPreviewCard({ onOpenSuggestionInbox }: { onOpenSuggestionInbo
           <span className="ahp-badge ahp-badge--coach">WRITING COACH</span>
         </span>
       </header>
-      {items.length === 0 ? (
-        <p className="ahp-suggestion-empty">No new suggestions — scan a scene to get feedback.</p>
+      {loading ? (
+        <div className="ahp-skeleton-rows" role="status" aria-label="Loading suggestions" data-testid="ahp-suggestions-skeleton">
+          <div className="ahp-skeleton-bar" />
+          <div className="ahp-skeleton-bar" />
+          <div className="ahp-skeleton-bar" />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="ahp-suggestion-empty">No suggestions right now — the team&apos;s watching.</p>
       ) : (
         <ul className="ahp-suggestion-rows" role="list">
           {items.map((s) => (
@@ -377,6 +432,7 @@ const FULL_ANALYSIS_TOAST =
 
 function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; onOpenCoachPage?: () => void }) {
   const coachStore = useAgentSessions('coach');
+  const coachReadPending = useSceneAnalysisPending();
 
   const metrics = useMemo(() => (scene ? computeSceneMetrics(scene) : null), [scene]);
   const aiRead = useMemo(() => {
@@ -419,18 +475,26 @@ function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; on
         <p className="ahp-analysis-placeholder">
           Open a scene to see analysis.
         </p>
+      ) : metrics.words === 0 ? (
+        <p className="ahp-analysis-placeholder">
+          Write a little, then check back — analysis needs some text to work with.
+        </p>
       ) : (
         <>
           <div className="ahp-analysis-rows" data-testid="scene-analysis-rows">
             {rows.map((row) => (
               <div key={row.k} className="ahp-analysis-row">
                 <span className="ahp-analysis-row-k">{row.k}</span>
-                <span
-                  className={`ahp-analysis-row-v${row.hot ? ' ahp-analysis-row-v--hot' : ''}`}
-                  title={row.v === '—' && row.ai ? 'A judgment call — run View Full Analysis for the coach’s read' : undefined}
-                >
-                  {row.v}
-                </span>
+                {row.ai && coachReadPending ? (
+                  <span className="ahp-skeleton-bar ahp-skeleton-bar--inline" data-testid={`ahp-analysis-skeleton-${row.k}`} />
+                ) : (
+                  <span
+                    className={`ahp-analysis-row-v${row.hot ? ' ahp-analysis-row-v--hot' : ''}`}
+                    title={row.v === '—' && row.ai ? 'A judgment call — run View Full Analysis for the coach’s read' : undefined}
+                  >
+                    {row.v}
+                  </span>
+                )}
               </div>
             ))}
           </div>

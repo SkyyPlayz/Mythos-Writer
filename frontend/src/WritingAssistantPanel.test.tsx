@@ -313,6 +313,32 @@ describe('WritingAssistantPanel', () => {
     });
     expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
   });
+
+  it('§3: keeps the user message visible on failure, and Retry re-sends without duplicating it', async () => {
+    mockAgentWritingAssistant.mockRejectedValueOnce(new Error('Network error — check your connection and try again.'));
+
+    render(<WritingAssistantPanel scene={null} />);
+    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
+      target: { value: 'Tell me a story' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+    // The failed request's user bubble was never rolled back.
+    expect(screen.getAllByText('Tell me a story')).toHaveLength(1);
+
+    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Once upon a time.' });
+    fireEvent.click(screen.getByRole('button', { name: /^retry$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Once upon a time.');
+    });
+    // Still exactly one copy of the user's message — retry didn't duplicate it.
+    expect(screen.getAllByText('Tell me a story')).toHaveLength(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1121,11 +1147,11 @@ describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
 
-    // Streaming bubble appears (empty text + cursor)
+    // Before the first chunk: typing-dots indicator, not an empty cursor bubble (§2).
     await waitFor(() =>
-      expect(screen.getByLabelText(/writing coach response/i)).toBeInTheDocument(),
+      expect(screen.getByTestId('wa-typing')).toBeInTheDocument(),
     );
-    expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
 
     // Chunks accumulate in the bubble
     act(() => { emitChunk?.('Once '); });
