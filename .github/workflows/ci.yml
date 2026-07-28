@@ -567,6 +567,9 @@ jobs:
       - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
         run: xvfb-run --auto-servernum npm run test:e2e:two-vault
 
+      - name: "E2E — Obsidian import fidelity, real IPC + disk (SKY-8005/SKY-8445)"
+        run: xvfb-run --auto-servernum npm run test:e2e:obsidian-import-fidelity
+
       - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
         run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
 
@@ -908,7 +911,7 @@ jobs:
       - name: E2E — Settings category sub-nav (SKY-6933 sweep, skip-guarded — needs Electron-harness rewrite)
         run: xvfb-run --auto-servernum npm run test:e2e:settings-category-subnav
 
-      - name: E2E — v1 vault migration (SKY-6933 sweep, skip-guarded — stale schema-version constant)
+      - name: "E2E — v1 vault migration, real IPC + disk (SKY-1409/SKY-8211/SKY-8445)"
         run: xvfb-run --auto-servernum npm run test:e2e:v1-vault-migration
 
       - name: E2E — Voice IO (SKY-6933 sweep, skip-guarded — stale selectors)
