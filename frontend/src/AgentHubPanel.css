@@ -191,6 +191,13 @@
   animation: ahp-pulse 1s infinite;
 }
 
+/* §9 — "needs attention": static amber, distinct from --busy's pulse (that's
+   reserved for genuine in-flight "thinking", not "something's waiting on you"). */
+.ahp-status-dot--attention {
+  background: #ffb020;
+  box-shadow: 0 0 6px rgba(255, 176, 32, 0.7);
+}
+
 @keyframes ahp-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -201,6 +208,46 @@
   color: #8e9db8;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* ── Loading skeletons (§2) — same shimmer-bar pattern as TimelineRoot ── */
+
+.ahp-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.ahp-skeleton-bar {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 60%
+  );
+  background-size: 200% 100%;
+  animation: ahp-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.ahp-skeleton-bar--inline {
+  display: inline-block;
+  width: 48px;
+  height: 10px;
+}
+
+@keyframes ahp-skeleton-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -80% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ahp-skeleton-bar {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* ── Suggestions card ─────────────────────────────── */
@@ -223,7 +270,7 @@
 
 .ahp-suggestion-row {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 6px;
   font-size: 11px;
   line-height: 1.35;
@@ -238,12 +285,15 @@
   color: #8e9db8;
 }
 
+/* §6 — 2-line wrap, not truncation: keeps the row scannable without hiding
+   content a decision depends on (same rule SKY-2445 specified generally). */
 .ahp-suggestion-rationale {
   flex: 1;
   color: #c8d3e7;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
 }
 

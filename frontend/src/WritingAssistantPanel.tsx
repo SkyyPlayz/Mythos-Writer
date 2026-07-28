@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
+import { prefersReducedMotion } from './lib/reducedMotion';
+import './WritingAssistantPanel.css';
 import type { UseAgentSessionsResult } from './lib/useAgentSessions';
 import { decodeCoachTurns, collapseCoachMessage } from './coach/coachMessages';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
@@ -606,6 +608,19 @@ export default function WritingAssistantPanel({
     ask(retryPrompt);
   }, [ask, clearStreamResources]);
 
+  // §3: retry after a failed request (as opposed to a stall) — the failed
+  // prompt's user bubble is already in the feed (never rolled back), so drop
+  // it here before re-asking so `ask()` doesn't render it twice.
+  const retryFailedMessage = useCallback(() => {
+    const retryPrompt = lastPromptRef.current;
+    if (!retryPrompt) return;
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      return last?.role === 'user' && last.text === retryPrompt ? prev.slice(0, -1) : prev;
+    });
+    ask(retryPrompt);
+  }, [ask]);
+
   const handleRefine = useCallback((chip: RefinementChip) => {
     const adjusted = chip.adjustAxes(effectiveAxes);
     const newOverrides = { ...presetOverrides, ...adjusted };
@@ -1043,6 +1058,20 @@ export default function WritingAssistantPanel({
                 {' — '}
                 <span className="wa-lesson-mini-text">{msg.mini.text}</span>
               </div>
+            ) : msg.streaming && msg.text === '' ? (
+              /* §2: typing-dots the instant the request goes out — before the
+                 first chunk lands there's nothing to show but "still working". */
+              <div className="wa-assistant-bubble wa-typing" data-testid="wa-typing" aria-label="Writing coach is responding">
+                {prefersReducedMotion() ? (
+                  <span className="wa-typing-label">Thinking&hellip;</span>
+                ) : (
+                  <>
+                    <span className="wa-typing-dot" />
+                    <span className="wa-typing-dot wa-typing-dot--d2" />
+                    <span className="wa-typing-dot wa-typing-dot--d3" />
+                  </>
+                )}
+              </div>
             ) : (
               <div className="wa-assistant-bubble">
                 <div
@@ -1145,7 +1174,11 @@ export default function WritingAssistantPanel({
 
       {error && (
         <div className="writing-assistant-error" role="alert">
-          {error}
+          <span className="wa-error-icon" aria-hidden="true">⚠</span>
+          <span className="wa-error-text">{error}</span>
+          <button type="button" className="wa-error-retry-btn" onClick={retryFailedMessage}>
+            Retry
+          </button>
         </div>
       )}
 

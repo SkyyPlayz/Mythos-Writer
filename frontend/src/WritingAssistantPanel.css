@@ -1,9 +1,12 @@
-/* AC-WA-1/2: Panel root — Liquid Neon bg, border, radius */
+/* AC-WA-1/2: Panel root — Liquid Neon bg, border, radius.
+   No min-width here: AC-WA-20's collapse-to-icon *is* this panel's floor
+   below 280px, so a hard CSS min-width would fight the ResizeObserver that
+   drives it (the box could never legitimately measure below the floor). */
 .wa-panel-root {
-  min-width: 300px;
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
 }
 
 .writing-assistant-panel {
@@ -634,6 +637,49 @@
   50% { opacity: 0; }
 }
 
+/* §2/§5 — typing dots while waiting for the first chunk; reduced-motion swaps
+   to a static label (a JS check, not just a frozen animation — three static
+   dots read as broken UI, not "still working"). */
+.wa-typing {
+  display: flex;
+  flex-direction: row;
+  gap: 5px;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.wa-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #00f0ff);
+  animation: wa-typing-pulse 1s ease-in-out infinite;
+}
+
+.wa-typing-dot--d2 {
+  animation-delay: 0.2s;
+}
+
+.wa-typing-dot--d3 {
+  animation-delay: 0.4s;
+}
+
+@keyframes wa-typing-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.wa-typing-label {
+  font-size: 0.85rem;
+  color: var(--text-muted, #94a3b8);
+  animation: wa-typing-label-pulse 2s ease infinite;
+}
+
+@keyframes wa-typing-label-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 .wa-suggestion-actions {
   display: flex;
   gap: 6px;
@@ -690,6 +736,9 @@
 /* ─── Error ─── */
 
 .writing-assistant-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 12px;
   padding: 8px 12px;
   background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
@@ -699,6 +748,31 @@
   font-size: 0.82rem;
   line-height: 1.5;
   flex-shrink: 0;
+}
+
+.wa-error-icon {
+  flex-shrink: 0;
+}
+
+.wa-error-text {
+  flex: 1;
+}
+
+.wa-error-retry-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--danger, #f87171) 45%, transparent);
+  border-radius: 5px;
+  color: var(--danger, #f87171);
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.wa-error-retry-btn:hover {
+  background: color-mix(in srgb, var(--danger, #f87171) 15%, transparent);
 }
 
 /* ─── Stalled warning ─── */
@@ -1110,11 +1184,13 @@
   outline-offset: 2px;
 }
 
-/* ─── Panel root wrapper (AC-WA-20/21/22) ─── */
-
-.wa-panel-root {
-  display: contents;
-}
+/* ─── Panel root wrapper (AC-WA-20/21/22) ───
+   `display: contents` here would strip this element's own box, which is
+   also the target `panelRootRef`'s ResizeObserver measures for the 280px
+   collapse check (AC-WA-20) — that observer would then always see 0×0 and
+   collapse permanently. `.wa-overlay-backdrop` / `.writing-assistant-panel
+   --overlay` are both `position: fixed` and don't depend on this being a
+   flex container, so the base `display: flex` rule above is safe to keep. */
 
 /* ─── Collapsed icon bar (AC-WA-20) ─── */
 

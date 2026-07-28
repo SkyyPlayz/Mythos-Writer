@@ -285,6 +285,39 @@
   padding: 24px 0;
 }
 
+/* §2 — loading skeleton (same shimmer-bar pattern as the hub/timeline). */
+.sr-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.sr-skeleton-bar {
+  height: 48px;
+  border-radius: 10px;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 60%
+  );
+  background-size: 200% 100%;
+  animation: sr-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes sr-skeleton-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -80% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-skeleton-bar {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 .sr-proposed-content {
   margin: 4px 0 6px;
 }
@@ -716,6 +749,42 @@
 .sr-search-clear:hover {
   color: var(--text-primary, #e2e8f0);
   background: rgba(255, 255, 255, 0.06);
+}
+
+/* §3 — inline per-row error + Retry (accept/reject/ignore failure). Never
+   optimistically removed: the row stays, this shows underneath it. */
+.sr-row-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--danger, #f87171) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger, #f87171) 30%, transparent);
+  border-radius: 6px;
+  color: var(--danger, #f87171);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sr-row-error-text {
+  flex: 1;
+}
+
+.sr-row-error-retry {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--danger, #f87171) 45%, transparent);
+  border-radius: 5px;
+  color: var(--danger, #f87171);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+
+.sr-row-error-retry:hover {
+  background: color-mix(in srgb, var(--danger, #f87171) 15%, transparent);
 }
 
 /* Budget-held row indicator */

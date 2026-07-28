@@ -199,7 +199,107 @@ describe('SuggestionReview — Inbox tab', () => {
     expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
   });
 
-  it('reject button calls IPC and removes row from inbox', async () => {
+  it('§8: reject button removes the row immediately, but only calls IPC once the undo grace window elapses', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<SuggestionReview />);
+      await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+      const rejectBtns = screen.getAllByRole('button', { name: /reject suggestion/i });
+      fireEvent.click(rejectBtns[0]);
+
+      // Row leaves the inbox right away (CF-10 perceivability)...
+      expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+      // ...but the backend hasn't been told yet — still inside the grace window.
+      expect(mockSuggestionsReject).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2600);
+      });
+
+      expect(mockSuggestionsReject).toHaveBeenCalledWith('sug-1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('§8: clicking Undo within the grace window restores the row and never calls the reject IPC', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<SuggestionReview />);
+      await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+      const rejectBtns = screen.getAllByRole('button', { name: /reject suggestion/i });
+      fireEvent.click(rejectBtns[0]);
+      expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+
+      fireEvent.click(await screen.findByRole('button', { name: /^undo$/i }));
+      expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2600);
+      });
+      expect(mockSuggestionsReject).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('§3: a failed accept keeps the suggestion in the inbox and shows a retry-able inline error', async () => {
+    mockSuggestionsAccept.mockRejectedValueOnce(new Error('snapshot write failed'));
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    const acceptBtns = screen.getAllByRole('button', { name: /accept suggestion/i });
+    fireEvent.click(acceptBtns[0]);
+
+    // Never silently removed — the row stays, with an inline error under it.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/couldn't accept this suggestion/i);
+    });
+    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+
+    // Retry re-attempts the same action; on success the row is removed.
+    mockSuggestionsAccept.mockResolvedValueOnce({ id: 'sug-1', status: 'accepted' });
+    fireEvent.click(screen.getByRole('button', { name: /^retry$/i }));
+
+    await waitFor(() => {
+      expect(mockSuggestionsAccept).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('§4: accepting a suggestion announces it via an assertive live region and moves focus to the next row', async () => {
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    const rows = screen.getAllByRole('article');
+    rows[0].focus();
+    const acceptBtns = screen.getAllByRole('button', { name: /accept suggestion/i });
+    fireEvent.click(acceptBtns[0]);
+
+    await waitFor(() => {
+      expect(mockSuggestionsAccept).toHaveBeenCalledWith('sug-1');
+    });
+    await waitFor(() => {
+      // Announced in both the assertive live region (§4) and the visible
+      // Undo toast (§8) — same text, two surfaces.
+      expect(screen.getAllByText(/suggestion accepted — applied to stories\/ch1\/scene-1\.md/i).length).toBeGreaterThan(0);
+    });
+    // Focus lands on what's now the first remaining row (sug-2), never document.body.
+    await waitFor(() => {
+      expect(screen.getByRole('article', { name: /Hero motivation needs clarification/i })).toHaveFocus();
+    });
+  });
+
+  it('§4: dismissing the last row moves focus to the empty-state message, not document.body', async () => {
+    mockSuggestionsUnifiedList.mockResolvedValue({
+      items: [mockUnifiedSuggestions[0]],
+      totalCount: 1,
+      countByAgent: { 'writing-assistant': 1 },
+      countByKind: { suggestion: 1 },
+    });
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
@@ -207,9 +307,8 @@ describe('SuggestionReview — Inbox tab', () => {
     fireEvent.click(rejectBtns[0]);
 
     await waitFor(() => {
-      expect(mockSuggestionsReject).toHaveBeenCalledWith('sug-1');
+      expect(screen.getByText('Nothing waiting on you.')).toHaveFocus();
     });
-    expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
   });
 
   it('ignore button calls IPC and removes row from inbox', async () => {
@@ -237,16 +336,48 @@ describe('SuggestionReview — Inbox tab', () => {
     });
   });
 
-  it('pressing Backspace on a focused row rejects the suggestion', async () => {
+  it('§4: pressing Backspace/Delete on a focused row does NOT reject it (not one accidental keystroke from a CF-10-permanent dismiss)', async () => {
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
     const rows = screen.getAllByRole('article');
     fireEvent.keyDown(rows[0], { key: 'Backspace' });
+    fireEvent.keyDown(rows[0], { key: 'Delete' });
+
+    expect(mockSuggestionsReject).not.toHaveBeenCalled();
+    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+  });
+
+  it('§4: pressing R on a focused row rejects (dismisses) the suggestion', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(<SuggestionReview />);
+      await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+      const rows = screen.getAllByRole('article');
+      fireEvent.keyDown(rows[0], { key: 'r' });
+      expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2600);
+      });
+      expect(mockSuggestionsReject).toHaveBeenCalledWith('sug-1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('§4: pressing Ctrl+Enter on a focused row accepts it without opening the detail pane', async () => {
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+
+    const rows = screen.getAllByRole('article');
+    fireEvent.keyDown(rows[0], { key: 'Enter', ctrlKey: true });
 
     await waitFor(() => {
-      expect(mockSuggestionsReject).toHaveBeenCalledWith('sug-1');
+      expect(mockSuggestionsAccept).toHaveBeenCalledWith('sug-1');
     });
+    expect(screen.queryByRole('complementary', { name: /suggestion detail/i })).not.toBeInTheDocument();
   });
 
   it('pressing I on a focused row ignores the suggestion', async () => {
@@ -266,7 +397,7 @@ describe('SuggestionReview — Inbox tab', () => {
     render(<SuggestionReview />);
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(
-        'No pending suggestions — all caught up!',
+        'Nothing waiting on you.',
       );
     });
   });
@@ -609,6 +740,8 @@ describe('SuggestionReview — SLICE-4: detail pane (AC-S4)', () => {
 
     const acceptBtns = screen.getAllByRole('button', { name: /accept suggestion/i });
     fireEvent.click(acceptBtns[0]);
+
+    await waitFor(() => expect(mockSuggestionsAccept).toHaveBeenCalledWith('sug-1'));
 
     // Detail pane should NOT open; the accept action fired instead
     expect(

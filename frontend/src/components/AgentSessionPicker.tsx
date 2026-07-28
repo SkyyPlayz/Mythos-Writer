@@ -3,6 +3,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { UseAgentSessionsResult } from '../lib/useAgentSessions';
+import { showLnToast } from '../theme/lnToast';
 import './AgentSessionPicker.css';
 
 interface Props {
@@ -28,6 +29,15 @@ export default function AgentSessionPicker({ store, className = '', busy = false
 
   const { sessions, activeSessionId, newSession, renameSession, duplicateSession, deleteSession, switchSession } = store;
   const active = sessions.find((s) => s.id === activeSessionId);
+
+  // §10: newest sorts to the top, except the active session, which stays
+  // pinned first regardless of recency (so the open chat doesn't jump
+  // position under the user's cursor while it's the one they're using).
+  const orderedSessions = [...sessions].sort((a, b) => {
+    if (a.id === activeSessionId) return -1;
+    if (b.id === activeSessionId) return 1;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -56,9 +66,29 @@ export default function AgentSessionPicker({ store, className = '', busy = false
 
   const commitRename = useCallback(async () => {
     if (!renamingId || !renameValue.trim()) { setRenamingId(null); return; }
-    await renameSession(renamingId, renameValue.trim());
+    try {
+      await renameSession(renamingId, renameValue.trim());
+    } catch {
+      showLnToast("Couldn't rename this chat — try again.");
+    }
     setRenamingId(null);
   }, [renamingId, renameValue, renameSession]);
+
+  const handleDuplicate = useCallback(async (id: string) => {
+    try {
+      await duplicateSession(id);
+    } catch {
+      showLnToast("Couldn't duplicate this chat — try again.");
+    }
+  }, [duplicateSession]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await deleteSession(id);
+    } catch {
+      showLnToast("Couldn't delete this chat — try again.");
+    }
+  }, [deleteSession]);
 
   const handleRenameKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') { e.preventDefault(); void commitRename(); }
@@ -76,6 +106,7 @@ export default function AgentSessionPicker({ store, className = '', busy = false
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Session: ${label}`}
+        title={label}
       >
         <span className="asp-pill-label">{label}</span>
         <span className="asp-pill-chevron" aria-hidden="true">▾</span>
@@ -89,7 +120,10 @@ export default function AgentSessionPicker({ store, className = '', busy = false
             onClick={(e) => { e.stopPropagation(); setOpen(false); }}
           />
           <div className="asp-dropdown" role="listbox">
-            {sessions.map((s) => (
+            {/* §10: scrolls independently past ~8 rows — no pagination/search,
+                sessions per agent are expected to stay in the tens. */}
+            <div className="asp-row-list">
+            {orderedSessions.map((s) => (
               <div
                 key={s.id}
                 className={`asp-row${s.id === activeSessionId ? ' asp-row--active' : ''}`}
@@ -137,18 +171,19 @@ export default function AgentSessionPicker({ store, className = '', busy = false
                     className="asp-action-btn"
                     title="Duplicate"
                     aria-label={`Duplicate session ${s.title ?? 'Chat'}`}
-                    onClick={(e) => { e.stopPropagation(); void duplicateSession(s.id); setOpen(false); }}
+                    onClick={(e) => { e.stopPropagation(); void handleDuplicate(s.id); setOpen(false); }}
                   >⎘</button>
                   <button
                     type="button"
                     className="asp-action-btn asp-action-btn--danger"
                     title="Delete"
                     aria-label={`Delete session ${s.title ?? 'Chat'}`}
-                    onClick={(e) => { e.stopPropagation(); void deleteSession(s.id); setOpen(false); }}
+                    onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); setOpen(false); }}
                   >✕</button>
                 </div>
               </div>
             ))}
+            </div>
 
             <div className="asp-divider" role="separator" />
             <button

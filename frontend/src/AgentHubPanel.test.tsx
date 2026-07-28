@@ -1,6 +1,6 @@
 // SKY-6321: Agent hub — Suggestions card live preview + "See All Suggestions" wiring.
 // Beta 4 M13: Scene Analysis card — computed local values + View Full Analysis.
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { vi, afterEach, beforeEach, describe, it, expect } from 'vitest';
 import AgentHubPanel from './AgentHubPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
@@ -42,7 +42,7 @@ describe('AgentHubPanel — Suggestions card', () => {
 
     render(<AgentHubPanel scene={null} />);
 
-    expect(await screen.findByText(/No new suggestions/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No suggestions right now/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/pending/i)).not.toBeInTheDocument();
   });
 
@@ -77,6 +77,27 @@ describe('AgentHubPanel — Suggestions card', () => {
     expect(screen.getByLabelText('5 pending')).toHaveTextContent('5');
   });
 
+  it('§9: an AGENTS row shows "N new" (needs-attention) when that agent has pending suggestions, "Ready" otherwise', async () => {
+    (window as any).api = {
+      suggestionsUnifiedList: vi.fn().mockResolvedValue({
+        totalCount: 2,
+        items: [
+          makeSuggestion({ id: 's1', sourceAgent: 'brainstorm' }),
+          makeSuggestion({ id: 's2', sourceAgent: 'brainstorm' }),
+        ],
+      }),
+    };
+
+    render(<AgentHubPanel scene={null} />);
+    await screen.findAllByText(/Tighten this paragraph/);
+
+    const brainstormRow = screen.getByTestId('ahp-agent-row-brainstorm');
+    expect(within(brainstormRow).getByText('2 new')).toBeInTheDocument();
+
+    const coachRow = screen.getByTestId('ahp-agent-row-writing-assistant');
+    expect(within(coachRow).getByText('Ready')).toBeInTheDocument();
+  });
+
   it('calls onOpenSuggestionInbox when "See All Suggestions" is clicked', async () => {
     (window as any).api = {
       suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
@@ -84,7 +105,7 @@ describe('AgentHubPanel — Suggestions card', () => {
     const onOpenSuggestionInbox = vi.fn();
 
     render(<AgentHubPanel scene={null} onOpenSuggestionInbox={onOpenSuggestionInbox} />);
-    await screen.findByText(/No new suggestions/i);
+    await screen.findByText(/No suggestions right now/i);
 
     fireEvent.click(screen.getByRole('button', { name: /See All Suggestions/i }));
 
@@ -115,7 +136,7 @@ describe('AgentHubPanel — Suggestions card', () => {
       });
 
       expect(screen.queryByText(/Tighten this paragraph\./)).not.toBeInTheDocument();
-      expect(screen.getByText(/No new suggestions/i)).toBeInTheDocument();
+      expect(screen.getByText(/No suggestions right now/i)).toBeInTheDocument();
       expect(suggestionsUnifiedList).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
@@ -453,5 +474,17 @@ describe('AgentHubPanel — Writing Coach session picker (SKY-7113)', () => {
 
     expect(await screen.findByText('Remember this across reopen')).toBeInTheDocument();
     expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Coach reply for reopen test');
+  });
+
+  it('§4: pressing Back returns focus to the AGENTS row for the agent just exited, not the top of the panel', async () => {
+    setupVaultApi([]);
+    render(<AgentHubPanel scene={null} />);
+    await openWritingCoachChat();
+
+    fireEvent.click(await screen.findByRole('button', { name: /back to agents/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ahp-agent-row-writing-assistant')).toHaveFocus();
+    });
   });
 });

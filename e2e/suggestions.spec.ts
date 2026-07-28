@@ -339,12 +339,11 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
     const suggRow = page.locator('.sr-row', { hasText: 'TC-S-02 reject candidate' });
     await expect(suggRow).toBeVisible({ timeout: 8_000 });
 
-    // Reject via the Review panel UI.
+    // Reject via the Review panel UI — the row leaves the inbox immediately
+    // (§8 gap-spec), but the actual reject IPC call is deliberately delayed
+    // ~2.5s behind an Undo chip, so the DB write below has to wait past that.
     await suggRow.locator('.sr-btn-reject').click();
     await expect(suggRow).not.toBeVisible({ timeout: 5_000 });
-
-    // Brief settle to let any async work complete.
-    await page.waitForTimeout(300);
 
     // ── Post-conditions ───────────────────────────────────────────────────────
 
@@ -355,14 +354,15 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
       'Vault file must not be written when a suggestion is rejected',
     ).toBe(false);
 
-    // 2. DB status is rejected.
-    const listResult = await page.evaluate(() => {
-      return (window as any).api.suggestionsList('rejected');
-    }) as { suggestions: Array<{ id: string; status: string }> };
-
-    expect(
-      listResult.suggestions.some((s) => s.id === id && s.status === 'rejected'),
-      'Suggestion must appear in the rejected list',
+    // 2. DB status is rejected, once the undo grace window has elapsed.
+    await expect.poll(
+      async () => {
+        const listResult = await page.evaluate(() => {
+          return (window as any).api.suggestionsList('rejected');
+        }) as { suggestions: Array<{ id: string; status: string }> };
+        return listResult.suggestions.some((s) => s.id === id && s.status === 'rejected');
+      },
+      { message: 'Suggestion must appear in the rejected list', timeout: 6_000 },
     ).toBe(true);
 
     // 3. Audit log contains a reject row.
