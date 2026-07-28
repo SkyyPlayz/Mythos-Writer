@@ -29,6 +29,19 @@ import type { PresetAxes, RefinementChip } from './presets';
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
 
+/**
+ * E2E-only override for the two timers above. e2e/writing-assistant.spec.ts
+ * (TC-WA-11) sets `window.__MYTHOS_E2E_TIMERS__` via `page.evaluate()` before
+ * triggering a stall so CI can reach a real stall/hard-timeout without a real
+ * 20-90s wait. Nothing outside that spec ever sets this global, so production
+ * and every other test always see the real constants.
+ */
+function getEffectiveTimerMs(constant: number, key: 'stallWarningMs' | 'hardTimeoutMs'): number {
+  const override = (window as unknown as { __MYTHOS_E2E_TIMERS__?: Partial<Record<string, number>> })
+    .__MYTHOS_E2E_TIMERS__?.[key];
+  return typeof override === 'number' && override > 0 ? override : constant;
+}
+
 const WA_MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
   idle: 'Start voice input',
   listening: 'Stop voice input',
@@ -394,7 +407,7 @@ export default function WritingAssistantPanel({
       if (requestIdRef.current !== requestId) return;
       setStalled(true);
       announce('Generation is taking longer than expected. You can retry or cancel.');
-    }, STALL_WARNING_MS);
+    }, getEffectiveTimerMs(STALL_WARNING_MS, 'stallWarningMs'));
 
     hardTimerRef.current = setTimeout(() => {
       if (requestIdRef.current !== requestId) return;
@@ -406,7 +419,7 @@ export default function WritingAssistantPanel({
       const timeoutMessage = 'Generation timed out. The network or provider may be slow — please retry.';
       setError(timeoutMessage);
       announce(timeoutMessage);
-    }, HARD_TIMEOUT_MS);
+    }, getEffectiveTimerMs(HARD_TIMEOUT_MS, 'hardTimeoutMs'));
   }, [announce, clearStreamResources]);
 
   const runBetaReadScan = useCallback(async () => {
