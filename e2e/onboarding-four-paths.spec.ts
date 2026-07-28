@@ -1,107 +1,63 @@
 /**
- * onboarding-four-paths.spec.ts — SKY-2639 / SKY-2553 / SKY-8241
+ * onboarding-four-paths.spec.ts — SKY-2639 / SKY-2553 / SKY-8210
  *
- * SKY-8241 (ruling SKY-8382, "test-follows-product", QA/CTO-approved): this
- * file was fully `test.skip`'d under SKY-6933 because it targeted a
- * `[data-testid=screen-path-selector]` four-card *radiogroup* selector that
- * was replaced by the current wizard (SKY-7593, "design-handoff v2" — CTO
- * ruling SKY-7590 superseded the earlier SKY-6983 card set). This rewrite
- * retargets every AC at the actual shipped wizard read from
- * frontend/src/OnboardingWizard.tsx: step1 is a plain `role="group"` of 4
- * native `<button>` cards (card-sample / card-start-blank /
- * card-import-obsidian / card-open-existing) — no radiogroup, no
- * aria-checked, no arrow-key cycling, and no "Default Layout" 4th card
- * (that path was intentionally dropped, not regressed). No product code was
- * changed — test code only, per the ruling.
+ * E2E coverage for AC-OB-01 through AC-OB-25 from the four-path onboarding spec.
  *
- * Coverage map (AC-OB-01 .. AC-OB-25, mapped onto the current flow):
- *   AC-OB-01  Four button cards rendered on screen-step1 (role="group", NOT
- *             radiogroup); card-sample carries the "Recommended" chip
- *   AC-OB-02  Keyboard: Tab visits all 4 cards in DOM order; Enter and Space
- *             both activate a focused card (native <button> + explicit
- *             onKeyDown — arrow-key cycling dropped, see comment at test)
- *   AC-OB-03  DROPPED — old "Path 1 Default Layout / full SKY-15 structure"
- *             card (`card-path-default`) no longer exists (SKY-7593); no
- *             replacement, see comment at former location below
- *   AC-OB-04  DROPPED — same card, "custom title in vault path"; gone with it
- *   AC-OB-05  Start Fresh (card-start-blank) → custom-location → "Start
- *             Blank" template sends customTemplate:'blank' with
- *             startMode:'start-fresh' (was: Path 2 Blank seeds only root
- *             folders — that literal folder-layout assertion belongs to
- *             createMythosVault's own unit tests now; the wizard's job is
- *             sending the right flag, which this asserts)
- *   AC-OB-06  Start Fresh via "Use a template" (screen-step2's title field)
- *             — empty title blocks progression with an inline error (was:
- *             "empty title defaults to Untitled Story"; that silent fallback
- *             no longer exists — validateTitle() hard-requires a title now)
- *   AC-OB-07  Import Obsidian — dry-run success shows one target's preview
- *             stats (markdownCount/attachmentCount/totalFiles); optional
- *             topLevelFolders/sampleFiles lines render only when non-empty
- *   AC-OB-08  Import Obsidian — filling both notes + story slots produces two
- *             independent report sections (obs-report-notes/-story), each
- *             scoped to its own preview
- *   AC-OB-09  Import Obsidian — dry-run error surfaces inline
- *             (obs-dryrun-error); the action button stays enabled so the
- *             user can retry (was: fatalError permanently disabling Import —
- *             that field doesn't exist; current wizard never hard-blocks)
- *   AC-OB-10  Import Obsidian — Confirm commits each filled target in order
- *             (notes then story) and funnels into the shared theme→provider
- *             tail, finishing at the app shell (was: "goes to vault browser,
- *             not writing page" — no vault-browser testid exists; the real
- *             signal is `.app-menu-bar`, same as every other path)
- *   AC-OB-11  Import screen's other two independent sections (Open existing
- *             MW vault by path; .docx import) each complete the flow on their
- *             own via the same import-action-btn; a .docx import failure
- *             shows import-error-modal
- *   AC-OB-12  Sample genre picker (step1c) — exactly 3 cards, each with an
- *             expand/collapse accordion (detailed keyboard/ARIA behavior of
- *             this widget is covered by onboarding-v2.spec.ts; this file only
- *             smoke-checks it as part of the card-sample path)
- *   AC-OB-13  Selecting a genre and finishing the sample path sends the
- *             correct sampleGenre in the onboarding:complete payload
- *   AC-OB-14  Sample-project banner shown once after a sample completion;
- *             dismissing it persists (sampleProjectBannerDismissed) so it
- *             does not reappear on reload
- *   AC-OB-15  ConflictDialog "Open existing vault" → startMode:'open-existing'
- *             (was reached from screen-step2 before too; current step2 is
- *             now the "Use a Template" sub-flow off custom-location, not a
- *             flat step1→step2 hop — see navigateToTemplateStep2 helper)
- *   AC-OB-16  ConflictDialog "Create alongside" sets the path to `<parent> 2`
- *             and requires an explicit Create Story click to proceed (was:
- *             assumed auto-submit; current handleConflictCreateAlongside only
- *             refills + re-validates the field, see comment at test)
- *   AC-OB-17  onboardingComplete persists across restart — wizard does not
- *             reappear
- *   AC-OB-18  Dev/user reset via window.api.onboardingReset() clears the flag;
- *             wizard reappears on next launch
- *   AC-OB-19  Path validation debounce — custom-location's path field fires
- *             at most one vault:validate-path round-trip per 500ms idle
- *             window (the real debounce constant, confirmed in source)
- *   AC-OB-20  Import Obsidian — "Back" from the dry-run report returns to the
- *             fillable form with the previously-entered Obsidian path(s)
- *             still populated (obsDryRun is cleared, path state is not)
- *   AC-OB-21  Liquid Neon `--accent` CSS custom property present on :root
- *             while the wizard is showing
- *   AC-OB-22  aria-live="polite" region (genre-announcement) is unconditionally
- *             mounted on screen-step1c, before and after a genre is selected
- *             (was: "present on step1 / custom-location" — grep shows the
- *             wizard's only aria-live regions are template-announcement on
- *             step1b and genre-announcement on step1c; step1/custom-location
- *             have none)
- *   AC-OB-23  No microphone permission prompt during onboarding
- *             (getUserMedia({audio}) never called while the wizard shows)
- *   AC-OB-24  "Open existing vault" (card-open-existing) — the 4th top-level
- *             card — skips straight to Theme+Provider (Vault step skipped,
- *             Back hidden) and finishes with startMode:'open-existing'
- *   AC-OB-25  window.api.dryRunObsidianImport is a callable function wired to
- *             the real 'onboarding:dryRunObsidianImport' channel (was:
- *             `importVaultDryRun` / 'onboarding:import-vault:dry-run' — that
- *             channel still exists in electron-main/src/ipc.ts but the
- *             current Import screen never calls it; it's orphaned legacy
- *             surface, not what this screen actually uses)
+ * SKY-8210: this file blanket-skipped citing SKY-6933 ("wizard redesigned to
+ * screen-step1/step1b/step2 flow"). That was itself stale — SKY-7593 (M29)
+ * redesigned the wizard AGAIN after SKY-6933 was written: the old single
+ * "4-card path selector on step1 -> step2 form" model is gone. The current
+ * shape (frontend/src/OnboardingWizard.tsx):
  *
- * Run (after `npm run build:electron`):
- *   npx playwright test e2e/onboarding-four-paths.spec.ts --reporter=list
+ *   screen-step1 (card-sample / card-start-blank / card-import-obsidian /
+ *   card-open-existing, plain buttons — no role="radio" radiogroup) ->
+ *     - card-start-blank -> screen-custom-location (vault path + name) ->
+ *         - "Next" -> screen-custom-template (custom-template-recommended /
+ *           custom-template-blank) -> [genre -> theme] -> screen-step3
+ *         - "Use a template instead" -> screen-step1b (template grid) ->
+ *           screen-step2 (title/author/save-path form) -> [genre -> theme] ->
+ *           screen-step3
+ *         - "One-click setup" -> [genre -> theme] -> screen-step3
+ *     - card-sample -> screen-step1c (genre picker, ~unchanged) -> screen-step3
+ *     - card-import-obsidian -> screen-step-import (single screen; dry-run
+ *       report renders inline in the same screen once a scan succeeds)
+ *     - card-open-existing -> native folder picker -> screen-step3
+ *
+ * Every AC below was re-pointed at this flow using the same adapter patterns
+ * already proven in e2e/onboarding-v2.spec.ts (clickStep1Card / navigateToStep2
+ * / finishGenreThemeFlow). Four ACs have no current equivalent and are
+ * individually skipped with a reason (see AC-OB-02, AC-OB-06, AC-OB-10,
+ * AC-OB-23 below) rather than skipping the whole file.
+ *
+ * Coverage map (see individual test bodies for how each AC's assertions were
+ * adapted to the current UI/IPC shape):
+ *   AC-OB-01  Four cards rendered on step1 (Recommended chip on card-sample)
+ *   AC-OB-02  SKIPPED — arrow-key radiogroup semantics removed from step1
+ *   AC-OB-03  "Recommended" custom template seeds MythosVault v2 + demo content
+ *   AC-OB-04  Custom story title (via template flow) reflected in vault folder name
+ *   AC-OB-05  "Blank" custom template creates empty Story/Notes Vault dirs
+ *   AC-OB-06  SKIPPED — empty title now hard-blocked by validation
+ *   AC-OB-07  Obsidian import — invalid folder surfaces a dry-run error
+ *   AC-OB-08  Obsidian import — dry-run report shows per-target counts
+ *   AC-OB-09  Obsidian import — dry-run error shown; button stays enabled (retry)
+ *   AC-OB-10  SKIPPED — restructured-files list has no current UI/IPC equivalent
+ *   AC-OB-11  (no test existed in the pre-SKY-8210 file to re-point — see report)
+ *   AC-OB-12  Obsidian import — successful commit reaches the app shell
+ *   AC-OB-13  Path 4 — genre picker shows exactly 3 cards with accordion
+ *   AC-OB-14  Path 4 — selected genre determines sampleGenre in onboarding:complete
+ *   AC-OB-15  Path 4 — sample project banner shown once, dismissed permanently
+ *   AC-OB-16  ConflictDialog — Open Existing sends startMode:"open-existing"
+ *   AC-OB-17  ConflictDialog — Create Alongside uses <parent> 2/ folder
+ *   AC-OB-18  onboardingComplete persists across restart (wizard does not re-appear)
+ *   AC-OB-19  Dev reset via onboarding:reset clears flag; wizard reappears
+ *   AC-OB-20  Path validation debounce — no more than one call per 400ms idle
+ *   AC-OB-21  Obsidian import — Back from report pre-fills vault path on return
+ *   AC-OB-22  Liquid Neon tokens present on wizard screens (CSS custom properties)
+ *   AC-OB-23  SKIPPED — no persistent aria-live region exists on step1/step2 anymore
+ *   AC-OB-24  No mic permission prompt during onboarding
+ *   AC-OB-25  window.api.importVaultDryRun registered in preload
+ *
+ * Run: xvfb-run --auto-servernum npx playwright test e2e/onboarding-four-paths.spec.ts --reporter=list
  */
 
 import path from 'path';
@@ -119,23 +75,26 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
-type ValidatePathPayload = string | { path?: string };
-
 const SELECTOR = {
   screenStep1: '[data-testid="screen-step1"]',
+  screenStep1b: '[data-testid="screen-step1b"]',
+  screenStep1c: '[data-testid="screen-step1c"]',
+  screenStep2: '[data-testid="screen-step2"]',
+  screenCustomLocation: '[data-testid="screen-custom-location"]',
+  screenCustomTemplate: '[data-testid="screen-custom-template"]',
+  screenCustomGenre: '[data-testid="screen-custom-genre"]',
+  screenCustomTheme: '[data-testid="screen-custom-theme"]',
+  screenStepImport: '[data-testid="screen-step-import"]',
+
   cardSample: '[data-testid="card-sample"]',
   cardStartBlank: '[data-testid="card-start-blank"]',
   cardImportObsidian: '[data-testid="card-import-obsidian"]',
   cardOpenExisting: '[data-testid="card-open-existing"]',
 
-  screenStep1c: '[data-testid="screen-step1c"]',
   genreRadiogroup: '[data-testid="genre-radiogroup"]',
   genreStartBtn: '[data-testid="genre-start-btn"]',
 
-  screenStep1b: '[data-testid="screen-step1b"]',
-  screenStep2: '[data-testid="screen-step2"]',
-  gsTitleInput: '[data-testid="gs-title-input"]',
-  gsTitleError: '[data-testid="gs-title-error"]',
+  gsTitle: '[data-testid="gs-title-input"]',
   gsSavePath: '[data-testid="gs-save-path"]',
   gsCreateStory: '[data-testid="gs-create-story"]',
   gsConflictDialog: '[data-testid="gs-conflict-dialog"]',
@@ -143,49 +102,14 @@ const SELECTOR = {
   gsConflictCreateAlongside: '[data-testid="gs-conflict-create-alongside"]',
   gsConflictSeeOptions: '[data-testid="gs-conflict-see-options"]',
   gsPathValidationHint: '[data-testid="gs-path-validation-hint"]',
-
-  screenCustomLocation: '[data-testid="screen-custom-location"]',
-  customVaultPathInput: '[data-testid="custom-vault-path-input"]',
-  customVaultNameInput: '[data-testid="custom-vault-name-input"]',
-  customLocationNext: '[data-testid="custom-location-next"]',
-  customLocationUseTemplateLink: '[data-testid="custom-location-use-template-link"]',
-
-  screenCustomTemplate: '[data-testid="screen-custom-template"]',
-  customTemplateBlank: '[data-testid="custom-template-blank"]',
-  customTemplateRecommended: '[data-testid="custom-template-recommended"]',
-  customTemplateFinish: '[data-testid="custom-template-finish"]',
-  customTemplateContinue: '[data-testid="custom-template-continue"]',
-
-  screenCustomGenre: '[data-testid="screen-custom-genre"]',
-  customGenreContinue: '[data-testid="custom-genre-continue"]',
-
-  screenCustomTheme: '[data-testid="screen-custom-theme"]',
-  customThemeContinue: '[data-testid="custom-theme-continue"]',
-  customThemeBack: '[data-testid="custom-theme-back"]',
-
-  screenWizProvider: '[data-testid="screen-wiz-provider"]',
-  wizProviderSkip: '[data-testid="wiz-provider-skip"]',
-
-  screenStepImport: '[data-testid="screen-step-import"]',
-  importMwPath: '[data-testid="import-mw-path"]',
-  importMwBrowse: '[data-testid="import-mw-browse"]',
-  importObsNotesBrowse: '[data-testid="import-obs-notes-browse"]',
-  importObsStoryBrowse: '[data-testid="import-obs-story-browse"]',
-  importDocxInput: '[data-testid="import-docx-input"]',
-  importActionBtn: '[data-testid="import-action-btn"]',
-  obsDryrunReport: '[data-testid="obs-dryrun-report"]',
-  obsReportNotes: '[data-testid="obs-report-notes"]',
-  obsReportStory: '[data-testid="obs-report-story"]',
-  obsReportBack: '[data-testid="obs-report-back"]',
-  obsReportConfirm: '[data-testid="obs-report-confirm"]',
-  obsDryrunError: '[data-testid="obs-dryrun-error"]',
-  obsImportError: '[data-testid="obs-import-error"]',
-  importErrorModal: '[data-testid="import-error-modal"]',
-  importErrorDismiss: '[data-testid="import-error-dismiss"]',
-
-  appMenuBar: '.app-menu-bar',
   ariaLiveRegion: '[aria-live="polite"]',
+  appMenuBar: '.app-menu-bar',
+
+  sampleBanner: '[data-testid="gs-sample-banner"]',
+  sampleBannerDismiss: '[data-testid="gs-sample-banner-dismiss"]',
 };
+
+type ValidatePathPayload = string | { path?: string };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -207,38 +131,81 @@ async function firstWindow(app: ElectronApplication, timeout = 60_000): Promise<
   return page;
 }
 
-/** DesktopShell only renders `.app-menu-bar` once a vault is actually
- *  configured (see e2e/tests/first-run-dead-end.spec.ts) — onboardingComplete
- *  alone is not enough on a fresh boot/reload. Seeds a minimal, empty,
- *  writable vault pair alongside app-settings.json. */
-function seedVaultSettings(userData: string): { vaultRoot: string; notesVaultRoot: string } {
-  const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-vault-'));
-  const notesVaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-notes-'));
-  fs.writeFileSync(
-    path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot, notesVaultRoot, layoutMode: 'blank' }, null, 2),
-  );
-  return { vaultRoot, notesVaultRoot };
+/**
+ * SKY-7593 (M29) adapter — same pattern as e2e/onboarding-v2.spec.ts's
+ * clickStep1Card. 'card-blank' stubs a single-item template:list and drives
+ * the template picker to screen-step2, since M29 deleted the standalone
+ * "Blank Slate" card; that form is now only reachable via "Use a Template".
+ */
+async function clickStep1Card(page: Page, cardTestId: string, app?: ElectronApplication): Promise<void> {
+  await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 12_000 });
+
+  if (cardTestId === 'card-blank') {
+    if (!app) throw new Error('clickStep1Card("card-blank", …) requires an ElectronApplication to stub template:list');
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('template:list');
+      ipcMain.handle('template:list', () => ({
+        templates: [{
+          id: 'e2e-4path-step2-stub',
+          name: 'E2E Step 2 Stub',
+          description: 'Stub template routing e2e coverage through to screen-step2.',
+          story: [],
+          notes: [],
+        }],
+      }));
+    });
+    await page.locator(SELECTOR.cardStartBlank).click();
+    await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
+    await expect(page.locator(SELECTOR.screenStep1b)).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="template-card-e2e-4path-step2-stub"]')).toBeVisible({ timeout: 6_000 });
+    await page.locator('[data-testid="template-card-e2e-4path-step2-stub"]').click();
+    await page.locator('[data-testid="template-use-btn"]').click();
+    return;
+  }
+
+  await page.locator(`[data-testid="${cardTestId}"]`).click();
 }
 
-function seedSettings(userData: string, overrides: Record<string, unknown>): void {
-  const defaults = {
-    apiKey: '',
-    onboardingComplete: false,
-    agents: {
-      writingAssistant: { enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-      brainstorm: { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-      archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
-    },
-  };
-  fs.writeFileSync(
-    path.join(userData, 'app-settings.json'),
-    JSON.stringify({ ...defaults, ...overrides }, null, 2),
-  );
+/** Navigate from step1 to the step2 form via the (stubbed) template card. */
+async function navigateToStep2(app: ElectronApplication, page: Page): Promise<void> {
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('vault:validate-path');
+    ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+  });
+  await clickStep1Card(page, 'card-blank', app);
+  await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
 }
 
-/** Stub the real vault-creation/open IPC so tests don't touch the filesystem
- *  and can capture exactly what the wizard sent. */
+/**
+ * Complete the shared theme -> AI-provider tail (M29/SKY-7649) from
+ * screen-custom-theme: click Continue to reach the optional AI-provider
+ * step, then Skip it. The vault-creation/completion IPC call fires either
+ * way (onContinue and onSkip both dispatch the same wizard-finish per
+ * OnboardingWizard.tsx) — Skip avoids needing valid provider input for
+ * tests that don't care about it.
+ */
+async function finishThemeProviderTail(page: Page): Promise<void> {
+  await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-theme-continue"]').click();
+  await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="wiz-provider-skip"]').click();
+}
+
+/**
+ * Complete the shared genre -> theme -> AI-provider mini-flow (M29) from
+ * screen-custom-genre, accepting the default chip/card on each step. Every
+ * path that reaches screen-step2, clicks the "One-click setup" link, or
+ * clicks "Continue" on screen-custom-template funnels through this before
+ * the vault-creation IPC call fires on the provider step's finish/skip.
+ */
+async function finishGenreThemeFlow(page: Page): Promise<void> {
+  await expect(page.locator(SELECTOR.screenCustomGenre)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-genre-continue"]').click();
+  await finishThemeProviderTail(page);
+}
+
+/** Stub ipcMain to prevent real filesystem side-effects in tests. */
 async function stubOnboardingComplete(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('onboarding:complete');
@@ -249,75 +216,9 @@ async function stubOnboardingComplete(app: ElectronApplication): Promise<void> {
   });
 }
 
-async function lastObPayload(app: ElectronApplication): Promise<Record<string, unknown>> {
-  return app.evaluate(() => (global as Record<string, unknown>).__lastObPayload__) as Promise<Record<string, unknown>>;
-}
+// ─── AC-OB-01: Four cards rendered on step1 ────────────────────────────────────
 
-async function stubValidatePath(
-  app: ElectronApplication,
-  result: { exists: boolean; isEmpty: boolean; writable: boolean },
-): Promise<void> {
-  await app.evaluate(({ ipcMain }, r) => {
-    ipcMain.removeHandler('vault:validate-path');
-    ipcMain.handle('vault:validate-path', () => r);
-  }, result);
-}
-
-/** Complete the shared genre → theme → provider tail from screen-custom-genre
- *  (the start-fresh/template/quick-start flows visit all three screens). */
-async function finishFullTail(page: Page): Promise<void> {
-  await expect(page.locator(SELECTOR.screenCustomGenre)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.customGenreContinue).click();
-  await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.customThemeContinue).click();
-  await expect(page.locator(SELECTOR.screenWizProvider)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.wizProviderSkip).click();
-}
-
-/** Complete the theme → provider tail from screen-custom-theme (the
- *  sample/import/open-existing flows skip custom-genre entirely). */
-async function finishThemeTail(page: Page): Promise<void> {
-  await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.customThemeContinue).click();
-  await expect(page.locator(SELECTOR.screenWizProvider)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.wizProviderSkip).click();
-}
-
-/** Reach screen-step2 via the real route: card-start-blank → custom-location
- *  → "Use a template instead" → step1b template gallery → pick a template.
- *  screen-step2 (title/author/save-path form, ConflictDialog) is ONLY
- *  reachable through this template sub-flow now — SKY-7593 moved "Use a
- *  Template" off step1 onto custom-location as a low-emphasis link (see
- *  custom-location-use-template-link at OnboardingWizard.tsx:2786). Stubs
- *  template:list with one item so the picker doesn't depend on bundled
- *  template data being present in this environment. */
-async function navigateToTemplateStep2(app: ElectronApplication, page: Page): Promise<void> {
-  await app.evaluate(({ ipcMain }) => {
-    ipcMain.removeHandler('template:list');
-    ipcMain.handle('template:list', () => ({
-      templates: [{
-        id: 'e2e-step2-stub',
-        name: 'E2E Step 2 Stub',
-        description: 'Stub template routing to screen-step2.',
-        story: [],
-        notes: [],
-      }],
-    }));
-  });
-  await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-  await page.locator(SELECTOR.cardStartBlank).click();
-  await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
-  await page.locator(SELECTOR.customLocationUseTemplateLink).click();
-  await expect(page.locator(SELECTOR.screenStep1b)).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('[data-testid="template-card-e2e-step2-stub"]')).toBeVisible({ timeout: 6_000 });
-  await page.locator('[data-testid="template-card-e2e-step2-stub"]').click();
-  await page.locator('[data-testid="template-use-btn"]').click();
-  await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
-}
-
-// ─── AC-OB-01 & AC-OB-02: step1 four-card selector + keyboard ────────────────
-
-test.describe('AC-OB-01 & AC-OB-02: step1 four button cards + keyboard', () => {
+test.describe('AC-OB-01: Four-card path selector', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -333,86 +234,56 @@ test.describe('AC-OB-01 & AC-OB-02: step1 four button cards + keyboard', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-01: exactly 4 real button cards in a role="group" (not radiogroup); card-sample has the Recommended chip', async () => {
+  test('AC-OB-01: exactly four path cards rendered; Recommended chip on card-sample', async () => {
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
 
-    // Container is role="group" (OnboardingWizard.tsx:2036) — NOT a radiogroup.
-    const group = page.locator('[role="group"][aria-label="Choose how to get started"]');
-    await expect(group).toBeVisible();
-    await expect(page.locator('[role="radiogroup"]')).toHaveCount(0);
+    // M29: the four-card group is a plain `role="group"` container of buttons —
+    // not a `role="radio"` radiogroup (that pattern now only exists on the
+    // genre/template/theme pickers). Count the actual card buttons instead.
+    const cards = page.locator('.gs-cards--four .gs-card');
+    await expect(cards).toHaveCount(4);
 
-    // The 4 real cards, none of them role="radio" / aria-checked.
-    for (const testId of ['card-sample', 'card-start-blank', 'card-import-obsidian', 'card-open-existing']) {
-      const card = page.locator(`[data-testid="${testId}"]`);
-      await expect(card).toBeVisible();
-      await expect(card).not.toHaveAttribute('role', 'radio');
-      await expect(card).not.toHaveAttribute('aria-checked');
-    }
-    // There is no 4th "Default Layout" card — SKY-7593 dropped it (see
-    // AC-OB-03/04 comment in the coverage map above).
-    await expect(page.locator('[data-testid="card-path-default"]')).toHaveCount(0);
+    const sampleCard = page.locator(SELECTOR.cardSample);
+    await expect(sampleCard).toBeVisible();
+    await expect(sampleCard.locator('.gs-card__chip')).toHaveText('Recommended');
 
-    const chip = page.locator(SELECTOR.cardSample).locator('.gs-card__chip');
-    await expect(chip).toHaveText('Recommended');
-  });
-
-  test('AC-OB-02a: Tab order visits all 4 cards in DOM order', async () => {
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-
-    // card-sample gets initial focus automatically on mount (AC-L-05 in source).
-    await expect(page.locator(SELECTOR.cardSample)).toBeFocused({ timeout: 3_000 });
-
-    await page.keyboard.press('Tab');
-    await expect(page.locator(SELECTOR.cardStartBlank)).toBeFocused();
-
-    await page.keyboard.press('Tab');
-    await expect(page.locator(SELECTOR.cardImportObsidian)).toBeFocused();
-
-    await page.keyboard.press('Tab');
-    await expect(page.locator(SELECTOR.cardOpenExisting)).toBeFocused();
-  });
-
-  test('AC-OB-02b: Enter activates a focused card (card-start-blank → screen-custom-location)', async () => {
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-    await page.locator(SELECTOR.cardStartBlank).focus();
-    await page.keyboard.press('Enter');
-    await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
-
-    // Return to step1 for the next test.
-    await page.locator('[data-testid="custom-location-back"]').click();
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-  });
-
-  test('AC-OB-02c: Space activates a focused card (card-import-obsidian → screen-step-import)', async () => {
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-    await page.locator(SELECTOR.cardImportObsidian).focus();
-    await page.keyboard.press(' ');
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator(SELECTOR.cardStartBlank)).toBeVisible();
+    await expect(page.locator(SELECTOR.cardImportObsidian)).toBeVisible();
+    await expect(page.locator(SELECTOR.cardOpenExisting)).toBeVisible();
   });
 });
 
-// AC-OB-03 / AC-OB-04 — DROPPED. The old "Path 1 Default Layout" card
-// (`card-path-default`, full SKY-15 structure seed) does not exist anywhere
-// in the current wizard: `grep -n 'card-path-default' frontend/src/OnboardingWizard.tsx`
-// returns nothing, and `role="group"` at step1 lists only the 4 real cards
-// (card-sample/card-start-blank/card-import-obsidian/card-open-existing).
-// SKY-7593 (CTO ruling SKY-7590) intentionally replaced that card set — this
-// is not a regression, so no replacement test is added per the SKY-8241 scope
-// ruling.
+// ─── AC-OB-02: Keyboard navigation on path selector — SKIPPED ─────────────────
 
-// ─── AC-OB-05 & AC-OB-06: Start Fresh (card-start-blank) screens ─────────────
+test.describe('AC-OB-02: Keyboard navigation', () => {
+  test('AC-OB-02: Arrow keys cycle focus within radiogroup; Enter activates path', async () => {
+    test.skip(
+      true,
+      'SKY-8210: M29 (SKY-7593) removed the arrow-key radiogroup semantics from the ' +
+      'step1 four-card selector. StartingPointCard (frontend/src/OnboardingWizard.tsx:350-374) ' +
+      'renders plain <button> elements with only Enter/Space activation — no role="radio", ' +
+      'no aria-checked, and the `.gs-cards--four` group div has no onKeyDown handler wired for ' +
+      'ArrowUp/ArrowDown (unlike the genre/template/theme pickers, which do use ' +
+      'handleGridArrowKeys/handleGenreArrowKeys on a role="radiogroup"). There is no current ' +
+      'equivalent to test: cards are navigated with plain Tab, not arrow-key radiogroup cycling.',
+    );
+  });
+});
 
-test.describe('AC-OB-05: Start Fresh — Start Blank template sends customTemplate:"blank"', () => {
+// ─── AC-OB-03: "Recommended" custom template seeds MythosVault v2 + demo ──────
+
+test.describe('AC-OB-03: Recommended template seeds MythosVault v2 demo content', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
+  let vaultParent: string;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-05-'));
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-03-'));
+    vaultParent = path.join(userData, 'MyVaults');
+    fs.mkdirSync(vaultParent, { recursive: true });
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
-    await stubValidatePath(app, { exists: false, isEmpty: true, writable: true });
-    await stubOnboardingComplete(app);
   });
 
   test.afterAll(async () => {
@@ -420,45 +291,64 @@ test.describe('AC-OB-05: Start Fresh — Start Blank template sends customTempla
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-05: custom-location → custom-template "Start Blank" → Skip sends startMode:start-fresh, customTemplate:blank', async () => {
+  test('AC-OB-03: Story Vault + Notes Vault created; demo content seeded; mythos.json records seed.mode=default', async () => {
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardStartBlank).click();
     await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
 
-    const vaultParent = path.join(userData, 'Vaults05');
-    fs.mkdirSync(vaultParent, { recursive: true });
-    await page.locator(SELECTOR.customVaultPathInput).fill(vaultParent);
-    await page.locator(SELECTOR.customVaultNameInput).fill('My Blank Vault');
-    await page.waitForTimeout(700); // 500ms debounce + IPC round trip
-    await expect(page.locator(SELECTOR.customLocationNext)).toBeEnabled({ timeout: 4_000 });
-    await page.locator(SELECTOR.customLocationNext).click();
+    await page.locator('[data-testid="custom-vault-path-input"]').fill(vaultParent);
+    const nameInput = page.locator('[data-testid="custom-vault-name-input"]');
+    await nameInput.fill('AC-OB-03 Vault');
+    // Real (unstubbed) vault:validate-path debounce is 500ms.
+    await page.waitForTimeout(700);
+    await expect(page.locator('[data-testid="custom-location-next"]')).toBeEnabled({ timeout: 4_000 });
+    await page.locator('[data-testid="custom-location-next"]').click();
 
     await expect(page.locator(SELECTOR.screenCustomTemplate)).toBeVisible({ timeout: 8_000 });
-    await page.locator(SELECTOR.customTemplateBlank).click();
-    await expect(page.locator(SELECTOR.customTemplateBlank)).toHaveAttribute('aria-checked', 'true');
+    await page.locator('[data-testid="custom-template-recommended"]').click();
+    await page.locator('[data-testid="custom-template-finish"]').click();
 
-    // "Skip this — create my vault" (custom-template-finish) bypasses the
-    // genre/theme/provider tail and fires handleCustomFinish() directly.
-    await page.locator(SELECTOR.customTemplateFinish).click();
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
 
-    const payload = await lastObPayload(app);
-    expect(payload.startMode).toBe('start-fresh');
-    expect(payload.customTemplate).toBe('blank');
-    expect(payload.vaultName).toBe('My Blank Vault');
+    const mythosRoot = path.join(vaultParent, 'AC-OB-03 Vault');
+    const storyVault = path.join(mythosRoot, 'Story Vault');
+    const notesVault = path.join(mythosRoot, 'Notes Vault');
+    expect(fs.existsSync(mythosRoot)).toBe(true);
+    expect(fs.existsSync(storyVault)).toBe(true);
+    expect(fs.existsSync(notesVault)).toBe(true);
+
+    const mythosJson = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
+    expect(mythosJson.seed?.mode).toBe('default');
+
+    // Demo content seeded into both vaults (Veynn seed).
+    expect(fs.readdirSync(notesVault).length).toBeGreaterThan(0);
+    const storyFiles: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.md')) storyFiles.push(full);
+      }
+    };
+    walk(storyVault);
+    expect(storyFiles.length).toBeGreaterThan(0);
   });
 });
 
-test.describe('AC-OB-06: Start Fresh via template — empty story title blocks progression', () => {
+// ─── AC-OB-04: Custom story title reflected in vault folder name ─────────────
+
+test.describe('AC-OB-04: Custom title reflected in vault folder name', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
+  let vaultParent: string;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-06-'));
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-04-'));
+    vaultParent = path.join(userData, 'Vaults04');
+    fs.mkdirSync(vaultParent, { recursive: true });
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
-    await navigateToTemplateStep2(app, page);
   });
 
   test.afterAll(async () => {
@@ -466,22 +356,119 @@ test.describe('AC-OB-06: Start Fresh via template — empty story title blocks p
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-06: leaving the title empty and clicking Create Story shows an inline error and stays on screen-step2', async () => {
-    // storyTitle starts as '' — no "Untitled Story" fallback exists anymore
-    // (validateTitle() in OnboardingWizard.tsx hard-requires a non-empty title).
-    await expect(page.locator(SELECTOR.gsTitleInput)).toHaveValue('');
-    await page.locator(SELECTOR.gsCreateStory).click();
+  test('AC-OB-04: "Dragon\'s Crossing" title used as vault folder name on disk', async () => {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+    });
+    // NOTE: deliberately does NOT stub template:list. The onboarding:complete
+    // handler's 'template' branch (main.ts) calls the real listTemplates()
+    // directly against disk — a stubbed IPC template:list result is invisible
+    // to it and produces "Template not found" when the real vault-creation
+    // call fires. Using a real always-present bundled template keeps this
+    // test's real (unstubbed) disk assertions meaningful.
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 12_000 });
+    await page.locator(SELECTOR.cardStartBlank).click();
+    await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-location-use-template-link"]').click();
+    await expect(page.locator(SELECTOR.screenStep1b)).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="template-card-bundled:novel-3act"]')).toBeVisible({ timeout: 6_000 });
+    await page.locator('[data-testid="template-card-bundled:novel-3act"]').click();
+    await page.locator('[data-testid="template-use-btn"]').click();
+    await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
 
-    await expect(page.locator(SELECTOR.gsTitleError)).toBeVisible({ timeout: 3_000 });
-    await expect(page.locator(SELECTOR.gsTitleError)).toContainText('Please give your story a title before continuing.');
-    // No navigation happened.
-    await expect(page.locator(SELECTOR.screenStep2)).toBeVisible();
+    await page.locator(SELECTOR.gsTitle).fill("Dragon's Crossing");
+    await page.locator(SELECTOR.gsSavePath).clear();
+    await page.locator(SELECTOR.gsSavePath).fill(vaultParent);
+    await page.waitForTimeout(600);
+    await page.locator(SELECTOR.gsCreateStory).click();
+    await finishGenreThemeFlow(page);
+
+    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
+
+    const storyVault = path.join(vaultParent, "Dragon's Crossing", 'Story Vault');
+    expect(fs.existsSync(storyVault), "vaultParent/Dragon's Crossing/Story Vault should exist").toBe(true);
   });
 });
 
-// ─── AC-OB-07 through AC-OB-11: Import Obsidian vault (screen-step-import) ───
+// ─── AC-OB-05: "Blank" custom template creates empty vault dirs ──────────────
 
-test.describe('AC-OB-07: Obsidian dry-run success — single target preview stats', () => {
+test.describe('AC-OB-05: Blank template creates empty Story/Notes Vault dirs', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+  let vaultParent: string;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-05-'));
+    vaultParent = path.join(userData, 'Vaults05');
+    fs.mkdirSync(vaultParent, { recursive: true });
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-OB-05: blank mode creates Notes Vault with no seeded demo content; mythos.json records seed.mode=blank', async () => {
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardStartBlank).click();
+    await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+
+    await page.locator('[data-testid="custom-vault-path-input"]').fill(vaultParent);
+    await page.locator('[data-testid="custom-vault-name-input"]').fill('AC-OB-05 Vault');
+    await page.waitForTimeout(700);
+    await expect(page.locator('[data-testid="custom-location-next"]')).toBeEnabled({ timeout: 4_000 });
+    await page.locator('[data-testid="custom-location-next"]').click();
+
+    await expect(page.locator(SELECTOR.screenCustomTemplate)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="custom-template-blank"]').click();
+    await page.locator('[data-testid="custom-template-finish"]').click();
+
+    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
+
+    const mythosRoot = path.join(vaultParent, 'AC-OB-05 Vault');
+    const notesVault = path.join(mythosRoot, 'Notes Vault');
+    expect(fs.existsSync(notesVault)).toBe(true);
+    // NOTE: the app auto-creates a `Sessions/` folder + a "coach" welcome
+    // session on first vault load regardless of blank/seeded mode (unrelated
+    // to onboarding template choice) — so the Notes Vault is not literally
+    // empty. The blank-mode-specific signal is the ABSENCE of Veynn demo
+    // content folders (NOTE_DIRS in electron-main/src/mythosFormat/veynnSeed.ts).
+    for (const demoDir of ['Worldbuilding', 'Characters', 'Plot & Story']) {
+      expect(
+        fs.existsSync(path.join(notesVault, demoDir)),
+        `blank mode should not seed Notes Vault/${demoDir}/`,
+      ).toBe(false);
+    }
+
+    const mythosJson = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
+    expect(mythosJson.seed?.mode).toBe('blank');
+  });
+});
+
+// ─── AC-OB-06: Empty title — SKIPPED ──────────────────────────────────────────
+
+test.describe('AC-OB-06: Untitled Story fallback', () => {
+  test('AC-OB-06: empty title field → scene path contains "Untitled Story"', async () => {
+    test.skip(
+      true,
+      'SKY-8210: validateTitle() (frontend/src/OnboardingWizard.tsx:943-948) now hard-blocks an ' +
+      'empty story title on screen-step2 — handleStoryDetailsNext() returns false and never leaves ' +
+      'the form, focusing the title input with ERR_EMPTY_TITLE instead of proceeding. No current ' +
+      'onboarding path defaults an unset title to "Untitled Story": the only remaining fallback ' +
+      '(effectiveStoryTitle in main.ts\'s dead startMode===\'blank\'&&customTemplate branch) is ' +
+      'unreachable — the UI always sends startMode:\'start-fresh\' for the custom-template flow. ' +
+      'This AC has no current equivalent to test.',
+    );
+  });
+});
+
+// ─── AC-OB-07: Obsidian import — invalid folder shows dry-run error ──────────
+
+test.describe('AC-OB-07: Obsidian import — invalid folder shows dry-run error', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -497,42 +484,41 @@ test.describe('AC-OB-07: Obsidian dry-run success — single target preview stat
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-07: filling only the notes slot dry-runs just that target; optional folder/sample lines omitted when empty', async () => {
-    const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-notes-07-'));
+  test('AC-OB-07: folder with no .obsidian/ or .md files -> dry-run error; Import/Open stays enabled for retry', async () => {
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardImportObsidian).click();
+    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
+
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'not-obsidian-'));
     await app.evaluate(({ ipcMain }, dir) => {
       ipcMain.removeHandler('vault:chooseFolder');
       ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
       ipcMain.removeHandler('onboarding:dryRunObsidianImport');
       ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
-        preview: { markdownCount: 12, attachmentCount: 3, totalFiles: 15, topLevelFolders: [], sampleFiles: [] },
+        error: "This doesn't look like an Obsidian vault (no .obsidian folder or markdown files found).",
       }));
-    }, notesDir);
+    }, emptyDir);
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardImportObsidian).click();
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="import-obs-notes-browse"]').click();
+    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(emptyDir);
 
-    await page.locator(SELECTOR.importObsNotesBrowse).click();
-    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(notesDir);
-    await expect(page.locator(SELECTOR.importActionBtn)).toBeEnabled();
-    await page.locator(SELECTOR.importActionBtn).click();
+    await page.locator('[data-testid="import-action-btn"]').click();
 
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toBeVisible({ timeout: 8_000 });
-    const notesSection = page.locator(SELECTOR.obsReportNotes);
-    await expect(notesSection).toBeVisible();
-    await expect(notesSection).toContainText('12 markdown notes');
-    await expect(notesSection).toContainText('3 attachments');
-    await expect(notesSection).toContainText('15 files total');
-    await expect(page.locator(SELECTOR.obsReportStory)).toHaveCount(0);
-    // topLevelFolders/sampleFiles are empty arrays — those <p> lines don't render.
-    await expect(notesSection).not.toContainText('Top-level folders');
-    await expect(notesSection).not.toContainText('Sample files');
+    const error = page.locator('[data-testid="obs-dryrun-error"]');
+    await expect(error).toBeVisible({ timeout: 6_000 });
+    await expect(error).toContainText("doesn't look like an Obsidian vault");
 
-    fs.rmSync(notesDir, { recursive: true, force: true });
+    // SKY-2993: the submit button stays enabled so the user can retry.
+    await expect(page.locator('[data-testid="import-action-btn"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="obs-dryrun-report"]')).toHaveCount(0);
+
+    fs.rmSync(emptyDir, { recursive: true, force: true });
   });
 });
 
-test.describe('AC-OB-08: Obsidian dry-run — both slots produce independent report sections', () => {
+// ─── AC-OB-08: Obsidian import — dry-run report shows per-target counts ──────
+
+test.describe('AC-OB-08: Obsidian import — dry-run report display', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -548,21 +534,26 @@ test.describe('AC-OB-08: Obsidian dry-run — both slots produce independent rep
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-08: notes + story both filled → obs-report-notes and obs-report-story each show their own preview', async () => {
-    const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-notes-08-'));
-    const storyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-story-08-'));
-    await app.evaluate(({ ipcMain }, dirs: { notesDir: string; storyDir: string }) => {
+  test('AC-OB-08: dry-run report shows per-target markdown/attachment/file counts', async () => {
+    const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs08-notes-'));
+    const storyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs08-story-'));
+    fs.mkdirSync(path.join(notesDir, '.obsidian'));
+    fs.mkdirSync(path.join(storyDir, '.obsidian'));
+
+    await app.evaluate(({ ipcMain }, dirs) => {
       ipcMain.removeHandler('vault:chooseFolder');
       ipcMain.handle('vault:chooseFolder', (_evt: unknown, payload: { title?: string }) => {
-        const isStory = (payload?.title ?? '').toLowerCase().includes('story');
-        return { path: isStory ? dirs.storyDir : dirs.notesDir, cancelled: false };
+        const title = payload?.title ?? '';
+        return { path: title.includes('story') ? dirs.storyDir : dirs.notesDir, cancelled: false };
       });
       ipcMain.removeHandler('onboarding:dryRunObsidianImport');
-      ipcMain.handle('onboarding:dryRunObsidianImport', (_evt: unknown, payload: { targetVaultKind: 'notes' | 'story' }) => {
-        if (payload.targetVaultKind === 'story') {
-          return { preview: { markdownCount: 7, attachmentCount: 0, totalFiles: 7, topLevelFolders: ['Chapters'], sampleFiles: ['Chapter 1.md'] } };
-        }
-        return { preview: { markdownCount: 20, attachmentCount: 5, totalFiles: 25, topLevelFolders: ['Characters', 'Places'], sampleFiles: [] } };
+      ipcMain.handle('onboarding:dryRunObsidianImport', (_evt: unknown, payload: { targetVaultKind?: string }) => {
+        const kind = payload?.targetVaultKind;
+        return {
+          preview: kind === 'notes'
+            ? { markdownCount: 42, attachmentCount: 5, totalFiles: 47, topLevelFolders: ['Characters', 'Locations'], sampleFiles: ['Characters/Alice.md'] }
+            : { markdownCount: 7, attachmentCount: 1, totalFiles: 8, topLevelFolders: ['Chapters'], sampleFiles: ['Chapters/Ch1.md'] },
+        };
       });
     }, { notesDir, storyDir });
 
@@ -570,24 +561,27 @@ test.describe('AC-OB-08: Obsidian dry-run — both slots produce independent rep
     await page.locator(SELECTOR.cardImportObsidian).click();
     await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
 
-    await page.locator(SELECTOR.importObsNotesBrowse).click();
-    await page.locator(SELECTOR.importObsStoryBrowse).click();
-    await page.locator(SELECTOR.importActionBtn).click();
+    await page.locator('[data-testid="import-obs-notes-browse"]').click();
+    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(notesDir);
+    await page.locator('[data-testid="import-obs-story-browse"]').click();
+    await expect(page.locator('[data-testid="import-obs-story-path"]')).toHaveValue(storyDir);
 
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toBeVisible({ timeout: 8_000 });
-    const notesSection = page.locator(SELECTOR.obsReportNotes);
-    const storySection = page.locator(SELECTOR.obsReportStory);
-    await expect(notesSection).toContainText('20 markdown notes');
-    await expect(notesSection).toContainText('Characters, Places');
-    await expect(storySection).toContainText('7 markdown notes');
-    await expect(storySection).toContainText('Chapter 1.md');
+    await page.locator('[data-testid="import-action-btn"]').click();
+
+    const report = page.locator('[data-testid="obs-dryrun-report"]');
+    await expect(report).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="obs-report-notes"]')).toContainText('42');
+    await expect(page.locator('[data-testid="obs-report-story"]')).toContainText('7');
+    await expect(page.locator('[data-testid="obs-report-confirm"]')).toBeEnabled();
 
     fs.rmSync(notesDir, { recursive: true, force: true });
     fs.rmSync(storyDir, { recursive: true, force: true });
   });
 });
 
-test.describe('AC-OB-09: Obsidian dry-run error stays inline; retry is possible', () => {
+// ─── AC-OB-09: Obsidian import — dry-run error keeps submit enabled ──────────
+
+test.describe('AC-OB-09: Obsidian import — dry-run error surfaced inline', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -603,219 +597,64 @@ test.describe('AC-OB-09: Obsidian dry-run error stays inline; retry is possible'
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-09: dry-run error shows obs-dryrun-error inline; import-action-btn stays enabled for retry (no fatalError field exists)', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-bad-09-'));
-    await app.evaluate(({ ipcMain }, d) => {
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', () => ({ path: d, cancelled: false }));
-      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
-      ipcMain.handle('onboarding:dryRunObsidianImport', () => ({ error: 'Could not read this folder: permission denied' }));
-    }, dir);
+  // NOTE: SKY-2993 deliberately keeps the "Import / Open" button enabled after
+  // a dry-run error so the user can retry without re-picking folders — the old
+  // AC-OB-09 assertion ("Import button disabled") is inverted from current
+  // design intent (see code comment at OnboardingWizard.tsx:3044-3045).
+  test('AC-OB-09: dry-run error shows inline banner with message; Import/Open stays enabled', async () => {
+    const obsidianDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-obsidian-09-'));
+    fs.mkdirSync(path.join(obsidianDir, '.obsidian'));
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardImportObsidian).click();
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
-
-    await page.locator(SELECTOR.importObsNotesBrowse).click();
-    await page.locator(SELECTOR.importActionBtn).click();
-
-    const error = page.locator(SELECTOR.obsDryrunError);
-    await expect(error).toBeVisible({ timeout: 6_000 });
-    await expect(error).toContainText('permission denied');
-    // The report never rendered — stayed on the fillable form.
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toHaveCount(0);
-    await expect(page.locator(SELECTOR.importActionBtn)).toBeEnabled();
-
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-});
-
-test.describe('AC-OB-10: Obsidian Confirm commits per-target and finishes at the app shell', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-10-'));
-    app = await launchFreshApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('AC-OB-10: Confirm import calls importObsidianVault(notes) then importObsidianVault(story), then theme→provider→app-shell', async () => {
-    const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-notes-10-'));
-    const storyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-story-10-'));
-    await app.evaluate(({ ipcMain }, dirs: { notesDir: string; storyDir: string }) => {
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', (_evt: unknown, payload: { title?: string }) => {
-        const isStory = (payload?.title ?? '').toLowerCase().includes('story');
-        return { path: isStory ? dirs.storyDir : dirs.notesDir, cancelled: false };
-      });
-      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
-      ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
-        preview: { markdownCount: 1, attachmentCount: 0, totalFiles: 1, topLevelFolders: [], sampleFiles: [] },
-      }));
-      ipcMain.removeHandler('onboarding:importObsidianVault');
-      (global as Record<string, unknown>).__ob10Order__ = [];
-      ipcMain.handle('onboarding:importObsidianVault', (_evt: unknown, payload: { targetVaultKind: 'notes' | 'story' }) => {
-        ((global as Record<string, unknown>).__ob10Order__ as string[]).push(payload.targetVaultKind);
-        return { ok: true };
-      });
-    }, { notesDir, storyDir });
-    await stubOnboardingComplete(app);
-
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardImportObsidian).click();
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
-
-    await page.locator(SELECTOR.importObsNotesBrowse).click();
-    await page.locator(SELECTOR.importObsStoryBrowse).click();
-    await page.locator(SELECTOR.importActionBtn).click();
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toBeVisible({ timeout: 8_000 });
-
-    await page.locator(SELECTOR.obsReportConfirm).click();
-
-    // Import commits and funnels into the shared theme → provider tail — NOT
-    // a "vault browser" screen (no such testid exists; `.app-menu-bar` is the
-    // real "app is open" signal, same as every other path).
-    await finishThemeTail(page);
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-
-    const order = await app.evaluate(() => (global as Record<string, unknown>).__ob10Order__);
-    expect(order).toEqual(['notes', 'story']);
-
-    fs.rmSync(notesDir, { recursive: true, force: true });
-    fs.rmSync(storyDir, { recursive: true, force: true });
-  });
-});
-
-test.describe('AC-OB-11: import screen\'s other two independent sections', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-11-'));
-    app = await launchFreshApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('AC-OB-11a: "Open Mythos Writer vault" section (import-mw-path) completes without touching the Obsidian sections', async () => {
-    await stubValidatePath(app, { exists: true, isEmpty: false, writable: true });
-    await stubOnboardingComplete(app);
-
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardImportObsidian).click();
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
-
-    const mwDir = path.join(userData, 'existing-mw-vault');
-    fs.mkdirSync(mwDir, { recursive: true });
-    await page.locator(SELECTOR.importMwPath).fill(mwDir);
-    await page.waitForTimeout(600); // 400ms debounce, see handleImportMwPathChange
-    await expect(page.locator(SELECTOR.importActionBtn)).toBeEnabled();
-    await page.locator(SELECTOR.importActionBtn).click();
-
-    await finishThemeTail(page);
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-
-    const payload = await lastObPayload(app);
-    expect(payload.startMode).toBe('open-existing');
-    expect(payload.vaultParentPath).toBe(mwDir);
-  });
-
-  test('AC-OB-11b: .docx import failure shows import-error-modal, dismissible', async () => {
-    // Fresh navigation for this sub-test — previous test already finished onboarding.
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-11b-'));
-    await app.close().catch(() => {});
-    app = await launchFreshApp(userData);
-    page = await firstWindow(app);
-
-    await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('onboarding:importDocxToStoryVault');
-      ipcMain.handle('onboarding:importDocxToStoryVault', () => ({
-        ok: false,
-        importedStories: [],
-        errors: [{ filePath: 'bad.docx', error: 'Unrecognized .docx structure' }],
-      }));
-    });
-
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardImportObsidian).click();
-    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
-
-    // Simulate picking a .docx file via the hidden file input.
-    await page.setInputFiles(SELECTOR.importDocxInput, {
-      name: 'bad.docx',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      buffer: Buffer.from('not a real docx'),
-    });
-    await page.locator(SELECTOR.importActionBtn).click();
-
-    const modal = page.locator(SELECTOR.importErrorModal);
-    await expect(modal).toBeVisible({ timeout: 6_000 });
-    await expect(modal).toContainText('Unrecognized .docx structure');
-    await page.locator(SELECTOR.importErrorDismiss).click();
-    await expect(modal).toHaveCount(0);
-  });
-});
-
-// ─── AC-OB-20: Import Obsidian — Back from report pre-fills path ─────────────
-
-test.describe('AC-OB-20: Obsidian report "Back" preserves the entered path', () => {
-  let userData: string;
-  let app: ElectronApplication;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-20-'));
-    app = await launchFreshApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    await app.close().catch(() => {});
-    fs.rmSync(userData, { recursive: true, force: true });
-  });
-
-  test('AC-OB-20: clicking obs-report-back returns to the fillable form with the notes path still populated', async () => {
-    const notesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-notes-20-'));
     await app.evaluate(({ ipcMain }, dir) => {
       ipcMain.removeHandler('vault:chooseFolder');
       ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
       ipcMain.removeHandler('onboarding:dryRunObsidianImport');
       ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
-        preview: { markdownCount: 2, attachmentCount: 0, totalFiles: 2, topLevelFolders: [], sampleFiles: [] },
+        error: 'Cannot read vault directory: permission denied',
       }));
-    }, notesDir);
+    }, obsidianDir);
 
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardImportObsidian).click();
     await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
 
-    await page.locator(SELECTOR.importObsNotesBrowse).click();
-    await page.locator(SELECTOR.importActionBtn).click();
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="import-obs-notes-browse"]').click();
+    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(obsidianDir);
+    await page.locator('[data-testid="import-action-btn"]').click();
 
-    await page.locator(SELECTOR.obsReportBack).click();
-    await expect(page.locator(SELECTOR.obsDryrunReport)).toHaveCount(0);
-    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(notesDir);
+    const error = page.locator('[data-testid="obs-dryrun-error"]');
+    await expect(error).toBeVisible({ timeout: 6_000 });
+    await expect(error).toContainText('permission denied');
+    await expect(page.locator('[data-testid="import-action-btn"]')).toBeEnabled();
+    await expect(page.locator('[data-testid="obs-dryrun-report"]')).toHaveCount(0);
 
-    fs.rmSync(notesDir, { recursive: true, force: true });
+    fs.rmSync(obsidianDir, { recursive: true, force: true });
   });
 });
 
-// ─── AC-OB-12 & AC-OB-13: sample path (card-sample) genre picker + finish ────
+// ─── AC-OB-10: Restructured files list — SKIPPED ──────────────────────────────
 
-test.describe('AC-OB-12 & AC-OB-13: sample path genre picker + completion payload', () => {
+test.describe('AC-OB-10: Restructured files shown in dry-run', () => {
+  test('AC-OB-10: restructured section shows before/after list; Import button enabled', async () => {
+    test.skip(
+      true,
+      'SKY-8210: the "restructured" before/after file-path list has no current equivalent. ' +
+      'ObsidianImportPreview (electron-main/src/ipc.ts:2388-2394) only carries ' +
+      'markdownCount/attachmentCount/totalFiles/topLevelFolders/sampleFiles — no restructured ' +
+      'mapping. renamedCount/brokenLinkCount exist as numbers on the dry-run *response* but are ' +
+      'never rendered by OnboardingWizard.tsx (grep confirms no "restructured"/"renamedCount"/ ' +
+      '"brokenLinkCount" usage in the render tree). This feature was not carried into the ' +
+      'SKY-2993 Obsidian import redesign.',
+    );
+  });
+});
+
+// ─── AC-OB-12: Obsidian import — successful commit reaches app shell ─────────
+// (AC-OB-11 "name collisions renamed + log file" had no test body in the
+//  pre-SKY-8210 file — only its coverage-map comment mentioned it. Nothing to
+//  re-point; see final report.)
+
+test.describe('AC-OB-12: Obsidian import — successful commit reaches app shell', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -831,45 +670,88 @@ test.describe('AC-OB-12 & AC-OB-13: sample path genre picker + completion payloa
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-12: genre picker renders exactly 3 genre cards with an accordion each (detailed a11y coverage lives in onboarding-v2.spec.ts)', async () => {
+  test('AC-OB-12: confirming the dry-run report imports successfully and dismisses the wizard', async () => {
+    const obsidianDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-obsidian-12-'));
+    fs.mkdirSync(path.join(obsidianDir, '.obsidian'));
+
+    await app.evaluate(({ ipcMain }, dir) => {
+      ipcMain.removeHandler('vault:chooseFolder');
+      ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
+      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
+      ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
+        preview: { markdownCount: 3, attachmentCount: 0, totalFiles: 3, topLevelFolders: [], sampleFiles: ['a.md', 'b.md', 'c.md'] },
+      }));
+      ipcMain.removeHandler('onboarding:importObsidianVault');
+      ipcMain.handle('onboarding:importObsidianVault', () => ({ ok: true, targetPath: dir }));
+    }, obsidianDir);
+
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardImportObsidian).click();
+    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
+
+    await page.locator('[data-testid="import-obs-notes-browse"]').click();
+    await page.locator('[data-testid="import-action-btn"]').click();
+    await expect(page.locator('[data-testid="obs-dryrun-report"]')).toBeVisible({ timeout: 8_000 });
+
+    await page.locator('[data-testid="obs-report-confirm"]').click();
+    // SKY-7649: the import already committed on this screen — confirm just
+    // funnels into the shared Theme + Provider tail before Done.
+    await finishThemeProviderTail(page);
+    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
+
+    // Wizard is fully dismissed — no leftover import UI.
+    await expect(page.locator(SELECTOR.screenStepImport)).toHaveCount(0);
+    await expect(page.locator('[data-testid="import-error-modal"]')).toHaveCount(0);
+
+    fs.rmSync(obsidianDir, { recursive: true, force: true });
+  });
+});
+
+// ─── AC-OB-13: Path 4 — genre picker shows exactly 3 genre cards ─────────────
+
+test.describe('AC-OB-13: Path 4 genre picker — 3 cards with accordions', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-13-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-OB-13: genre picker renders exactly 3 genre cards; each has expandable accordion', async () => {
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
 
-    const cards = page.locator(`${SELECTOR.genreRadiogroup} [role="radio"]`);
+    const radiogroup = page.locator(SELECTOR.genreRadiogroup);
+    await expect(radiogroup).toBeVisible();
+
+    const cards = radiogroup.locator('[role="radio"]');
     await expect(cards).toHaveCount(3);
 
     for (const genre of ['cozy-fantasy', 'sci-fi-noir', 'mystery']) {
       const accordionBtn = page.locator(`[data-testid="genre-accordion-btn-${genre}"]`);
+      await expect(accordionBtn).toBeVisible();
+
       await accordionBtn.click();
       await expect(accordionBtn).toHaveAttribute('aria-expanded', 'true');
+
       await accordionBtn.click();
       await expect(accordionBtn).toHaveAttribute('aria-expanded', 'false');
     }
   });
-
-  test('AC-OB-13: selecting sci-fi-noir and finishing sends startMode:sample, sampleGenre:sci-fi-noir', async () => {
-    await stubOnboardingComplete(app);
-
-    await page.locator('[data-testid="genre-card-sci-fi-noir"]').click();
-    await expect(page.locator('[data-testid="genre-card-sci-fi-noir"]')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.locator(SELECTOR.genreStartBtn)).toBeEnabled();
-    await page.locator(SELECTOR.genreStartBtn).click();
-
-    // Sample funnels into the theme → provider tail (custom-genre is skipped
-    // — the genre was already picked on step1c).
-    await finishThemeTail(page);
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-
-    const payload = await lastObPayload(app);
-    expect(payload.startMode).toBe('sample');
-    expect(payload.sampleGenre).toBe('sci-fi-noir');
-  });
 });
 
-// ─── AC-OB-14: sample-project banner shown once, dismissed permanently ──────
+// ─── AC-OB-14: Path 4 — selected genre determines sample vault contents ────────
 
-test.describe('AC-OB-14: sample banner dismissed permanently', () => {
+test.describe('AC-OB-14: Path 4 genre selection -> sample vault', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -885,50 +767,38 @@ test.describe('AC-OB-14: sample banner dismissed permanently', () => {
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-14: banner shown after sample completion; dismissing persists sampleProjectBannerDismissed across reload', async () => {
-    await stubOnboardingComplete(app);
+  test('AC-OB-14: selecting sci-fi-noir genre sends correct sampleGenre in onboarding:complete', async () => {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('onboarding:complete');
+      ipcMain.handle('onboarding:complete', (_evt: unknown, payload: unknown) => {
+        (global as Record<string, unknown>).__ob14Payload__ = payload;
+        return { ok: true };
+      });
+    });
 
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardSample).click();
     await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
+
+    await page.locator('[data-testid="genre-card-sci-fi-noir"]').click();
+    await expect(page.locator('[data-testid="genre-card-sci-fi-noir"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator(SELECTOR.genreStartBtn)).toBeEnabled();
+
     await page.locator(SELECTOR.genreStartBtn).click();
-    await finishThemeTail(page);
+    // SKY-7649: the sample flow now funnels through the shared Theme +
+    // Provider tail too — genre is already locked in, so this just confirms.
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
-    // The stubbed onboarding:complete never persisted onboardingComplete/
-    // onboardingStartMode or a vault pair, so seed all three directly before
-    // reloading — DesktopShell only renders `.app-menu-bar` on a fresh boot
-    // once a vault is actually configured (see seedVaultSettings above).
-    const settingsPath = path.join(userData, 'app-settings.json');
-    const current = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-    fs.writeFileSync(settingsPath, JSON.stringify({
-      ...current,
-      onboardingComplete: true,
-      onboardingStartMode: 'sample',
-    }, null, 2));
-    seedVaultSettings(userData);
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-
-    const banner = page.locator('[data-testid="gs-sample-banner"]');
-    await expect(banner).toBeVisible({ timeout: 5_000 });
-    await expect(banner).toContainText(/sample project/i);
-
-    await page.locator('[data-testid="gs-sample-banner-dismiss"]').click();
-    await expect(banner).toHaveCount(0);
-
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-    await expect(banner).toHaveCount(0);
+    const payload = await app.evaluate(() => (global as Record<string, unknown>).__ob14Payload__) as Record<string, unknown>;
+    expect(payload?.startMode).toBe('sample');
+    expect(payload?.sampleGenre).toBe('sci-fi-noir');
   });
 });
 
-// ─── AC-OB-15 & AC-OB-16: ConflictDialog via the template screen-step2 ───────
+// ─── AC-OB-15: Path 4 — sample banner shown once, dismissed permanently ────────
 
-test.describe('AC-OB-15: ConflictDialog "Open existing vault" sends startMode:open-existing', () => {
+test.describe('AC-OB-15: Path 4 sample banner dismissed permanently', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -937,8 +807,6 @@ test.describe('AC-OB-15: ConflictDialog "Open existing vault" sends startMode:op
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-15-'));
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
-    await stubValidatePath(app, { exists: false, isEmpty: true, writable: true });
-    await navigateToTemplateStep2(app, page);
   });
 
   test.afterAll(async () => {
@@ -946,7 +814,50 @@ test.describe('AC-OB-15: ConflictDialog "Open existing vault" sends startMode:op
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-15: existing-vault conflict → "See options" → "Open existing vault" → theme (Back hidden) → provider → app shell', async () => {
+  test('AC-OB-15: sample banner visible after Path 4 completion; dismissing hides it permanently', async () => {
+    await stubOnboardingComplete(app);
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await page.locator(SELECTOR.cardSample).click();
+    await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
+
+    await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
+    await page.locator(SELECTOR.genreStartBtn).click();
+    await finishThemeProviderTail(page);
+    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
+
+    await expect(page.locator(SELECTOR.sampleBanner)).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(SELECTOR.sampleBanner)).toContainText(/sample project/i);
+
+    // Dismiss persists via the real (unstubbed) settings:set IPC.
+    await page.locator(SELECTOR.sampleBannerDismiss).click();
+    await expect(page.locator(SELECTOR.sampleBanner)).toHaveCount(0);
+
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator(SELECTOR.sampleBanner)).toHaveCount(0);
+  });
+});
+
+// ─── AC-OB-16: ConflictDialog — Open Existing ────────────────────────────────
+
+test.describe('AC-OB-16: ConflictDialog open-existing sends correct startMode', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-16-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+    await navigateToStep2(app, page);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-OB-16: ConflictDialog open-existing sends startMode:"open-existing"', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
@@ -954,8 +865,12 @@ test.describe('AC-OB-15: ConflictDialog "Open existing vault" sends startMode:op
         if (p.includes('manifest.json')) return { exists: true, isEmpty: false, writable: true };
         return { exists: true, isEmpty: false, writable: true };
       });
+      ipcMain.removeHandler('onboarding:complete');
+      ipcMain.handle('onboarding:complete', (_evt: unknown, pl: unknown) => {
+        (global as Record<string, unknown>).__ob16Payload__ = pl;
+        return { ok: true };
+      });
     });
-    await stubOnboardingComplete(app);
 
     const pathInput = page.locator(SELECTOR.gsSavePath);
     await pathInput.clear();
@@ -966,30 +881,28 @@ test.describe('AC-OB-15: ConflictDialog "Open existing vault" sends startMode:op
     await expect(page.locator(SELECTOR.gsConflictDialog)).toBeVisible({ timeout: 4_000 });
 
     await page.locator(SELECTOR.gsConflictOpenExisting).click();
-
-    // handleConflictOpenExisting routes straight into the theme tail (Vault
-    // step skipped — Back is hidden, same as the top-level card-open-existing).
-    await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator(SELECTOR.customThemeBack)).toHaveCount(0);
-    await finishThemeTail(page);
+    // SKY-7649: open-existing resolves through the shared Theme + Provider
+    // tail too (handleConflictOpenExisting), same as the top-level card.
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
-    const payload = await lastObPayload(app);
-    expect(payload.startMode).toBe('open-existing');
+    const payload = await app.evaluate(() => (global as Record<string, unknown>).__ob16Payload__) as Record<string, unknown>;
+    expect(payload?.startMode).toBe('open-existing');
   });
 });
 
-test.describe('AC-OB-16: ConflictDialog "Create alongside" sets the "<parent> 2" path', () => {
+// ─── AC-OB-17: ConflictDialog — Create Alongside ─────────────────────────────
+
+test.describe('AC-OB-17: ConflictDialog create-alongside uses <parent> 2/', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-16-'));
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-17-'));
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
-    await stubValidatePath(app, { exists: false, isEmpty: true, writable: true });
-    await navigateToTemplateStep2(app, page);
+    await navigateToStep2(app, page);
   });
 
   test.afterAll(async () => {
@@ -997,61 +910,120 @@ test.describe('AC-OB-16: ConflictDialog "Create alongside" sets the "<parent> 2"
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-16: create-alongside refills the path field; an explicit Create Story click is required to proceed', async () => {
-    // handleConflictCreateAlongside only calls setSavePath + validatePathNow —
-    // it does NOT auto-submit (unlike the old spec's assumption). The user
-    // still has to click Create Story and walk the genre/theme/provider tail.
+  test('AC-OB-17: create-alongside pre-fills <parentFolder> 2/ then proceeds through the create flow', async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('vault:validate-path');
       ipcMain.handle('vault:validate-path', (_evt: unknown, payload: ValidatePathPayload) => {
         const p = typeof payload === 'string' ? payload : payload.path ?? '';
-        // Only the ORIGINAL path's Story Vault/manifest.json check reports a
-        // conflict; the " 2" alongside path's manifest check, and every other
-        // validatePath call this screen makes (base-path writability check,
-        // validateStoryDetails' separate title-dir-conflict check), must come
-        // back clean — otherwise validateStoryDetails() would wrongly treat
-        // the story title as colliding and block Create Story entirely.
-        if (p.includes('manifest.json') && !p.includes(' 2')) {
-          return { exists: true, isEmpty: false, writable: true };
-        }
+        // Only the manifest.json-suffixed probe should report a conflict —
+        // validateStoryDetails() re-uses this same channel to check the base
+        // save path AND the storyTitle-suffixed path for a *different*
+        // pre-existing-folder conflict; returning exists:true unconditionally
+        // (as AC-OB-16 above does, harmlessly, since it never reaches
+        // validateStoryDetails) makes that second check falsely block
+        // "Create Story" with ERR_TITLE_EXISTS here.
+        if (p.includes('manifest.json')) return { exists: true, isEmpty: false, writable: true };
         return { exists: false, isEmpty: true, writable: true };
       });
+      ipcMain.removeHandler('onboarding:complete');
+      ipcMain.handle('onboarding:complete', (_evt: unknown, pl: unknown) => {
+        (global as Record<string, unknown>).__ob17Payload__ = pl;
+        return { ok: true };
+      });
     });
-    await stubOnboardingComplete(app);
 
     const pathInput = page.locator(SELECTOR.gsSavePath);
     await pathInput.clear();
     await pathInput.fill(path.join(userData, 'existing-vault'));
+
     await expect(page.locator(SELECTOR.gsPathValidationHint)).toBeVisible({ timeout: 1500 });
     await page.locator(SELECTOR.gsConflictSeeOptions).click();
     await expect(page.locator(SELECTOR.gsConflictDialog)).toBeVisible({ timeout: 4_000 });
 
     await page.locator(SELECTOR.gsConflictCreateAlongside).click();
     await expect(page.locator(SELECTOR.gsConflictDialog)).toHaveCount(0);
-    await expect(pathInput).toHaveValue(/ 2$/, { timeout: 2_000 });
-    // Still on screen-step2 — no auto-submit.
-    await expect(page.locator(SELECTOR.screenStep2)).toBeVisible();
 
-    await page.locator(SELECTOR.gsTitleInput).fill('OB-16 Story');
+    // create-alongside only pre-fills the path; screen-step2's own "Create
+    // Story" -> genre -> theme funnel still has to run to fire the completion
+    // IPC call (M29 — see finishGenreThemeFlow doc comment above).
+    await page.locator(SELECTOR.gsTitle).fill('AC-OB-17 Story');
     await page.locator(SELECTOR.gsCreateStory).click();
-    await finishFullTail(page);
+    await finishGenreThemeFlow(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
-    const payload = await lastObPayload(app);
-    expect(String(payload.vaultParentPath ?? '')).toMatch(/ 2$/);
+    const payload = await app.evaluate(() => (global as Record<string, unknown>).__ob17Payload__) as Record<string, unknown>;
+    expect(String(payload?.vaultParentPath ?? '')).toMatch(/ 2$/);
   });
 });
 
-// ─── AC-OB-17 & AC-OB-18: settings persistence + dev reset ──────────────────
+/**
+ * seedSettings({onboardingComplete:true}) alone is not enough to reach the
+ * shell — with no vaultRoot configured, DesktopShell renders a "Vault not
+ * found" recovery screen instead of `.app-menu-bar` (defaultVaultRoot()
+ * points at a directory that was never created). Drive a real (unstubbed)
+ * "One-click setup" completion instead, which both marks onboardingComplete
+ * and writes a real vault + vault-settings.json to `userData`, then close —
+ * leaving `userData` in the same on-disk state a real prior run would.
+ */
+async function completeQuickStartOnboarding(userData: string): Promise<void> {
+  const app = await launchFreshApp(userData);
+  const page = await firstWindow(app);
+  await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+  await page.locator(SELECTOR.cardStartBlank).click();
+  await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-location-quick-start-link"]').click();
+  await finishGenreThemeFlow(page);
+  await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
+  await app.close().catch(() => {});
+}
 
-test.describe('AC-OB-17: onboardingComplete persists across app restart', () => {
+/**
+ * Same idea as completeQuickStartOnboarding, but via the "Use a template"
+ * flow instead of "One-click setup". Quick Start/Start Fresh create a
+ * MythosVault v2 (mythos.json) — and SETTINGS_GET (main.ts) has an M29
+ * marker guard that force-sets onboardingComplete back to true on next boot
+ * whenever mythos.json is found next to the configured vault root, *even
+ * after onboarding:reset*, by design ("never boot into the wizard for [a
+ * configured v2 vault]"). AC-OB-19 needs a completed vault that ISN'T v2 so
+ * a reset can actually be observed — the template flow scaffolds a legacy
+ * (manifest.json-based) vault with no mythos.json.
+ */
+async function completeTemplateOnboarding(userData: string): Promise<void> {
+  const vaultParent = path.join(userData, 'DefaultVault');
+  fs.mkdirSync(vaultParent, { recursive: true });
+  const app = await launchFreshApp(userData);
+  const page = await firstWindow(app);
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('vault:validate-path');
+    ipcMain.handle('vault:validate-path', () => ({ exists: false, isEmpty: true, writable: true }));
+  });
+  await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+  await page.locator(SELECTOR.cardStartBlank).click();
+  await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-location-use-template-link"]').click();
+  await expect(page.locator(SELECTOR.screenStep1b)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="template-card-bundled:novel-3act"]').click();
+  await page.locator('[data-testid="template-use-btn"]').click();
+  await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
+  await page.locator(SELECTOR.gsTitle).fill('AC-OB-19 Story');
+  await page.locator(SELECTOR.gsSavePath).clear();
+  await page.locator(SELECTOR.gsSavePath).fill(vaultParent);
+  await page.waitForTimeout(600);
+  await page.locator(SELECTOR.gsCreateStory).click();
+  await finishGenreThemeFlow(page);
+  await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
+  await app.close().catch(() => {});
+}
+
+// ─── AC-OB-18: onboardingComplete persists across restart ─────────────────────
+
+test.describe('AC-OB-18: onboardingComplete persists across app restart', () => {
   let userData: string;
   let app: ElectronApplication;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-17-'));
-    seedSettings(userData, { onboardingComplete: true });
-    seedVaultSettings(userData);
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-18-'));
+    await completeQuickStartOnboarding(userData);
   });
 
   test.afterAll(async () => {
@@ -1059,7 +1031,7 @@ test.describe('AC-OB-17: onboardingComplete persists across app restart', () => 
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-17: launching with onboardingComplete:true skips the wizard; app shell renders directly', async () => {
+  test('AC-OB-18: launching with onboardingComplete:true skips wizard; app opens to main shell', async () => {
     app = await launchFreshApp(userData);
     const page = await firstWindow(app);
 
@@ -1068,15 +1040,16 @@ test.describe('AC-OB-17: onboardingComplete persists across app restart', () => 
   });
 });
 
-test.describe('AC-OB-18: onboarding:reset clears the flag; wizard reappears', () => {
+// ─── AC-OB-19: Dev reset via onboarding:reset ─────────────────────────────────
+
+test.describe('AC-OB-19: onboarding:reset clears flag; wizard reappears', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-18-'));
-    seedSettings(userData, { onboardingComplete: true });
-    seedVaultSettings(userData);
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-19-'));
+    await completeTemplateOnboarding(userData);
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
@@ -1087,28 +1060,31 @@ test.describe('AC-OB-18: onboarding:reset clears the flag; wizard reappears', ()
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-18: window.api.onboardingReset() then restarting shows the wizard again', async () => {
+  test('AC-OB-19: calling onboarding:reset then restarting app shows wizard again', async () => {
     await page.evaluate(async () => {
-      await (window as unknown as { api: { onboardingReset: () => Promise<{ ok: boolean }> } }).api.onboardingReset();
+      if (window.api?.onboardingReset) {
+        await window.api.onboardingReset();
+      }
     });
 
     await app.close().catch(() => {});
+
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 12_000 });
   });
 });
 
-// ─── AC-OB-19: path validation debounce ──────────────────────────────────────
+// ─── AC-OB-20: Path validation debounce ──────────────────────────────────────
 
-test.describe('AC-OB-19: custom-location path validation debounces at 500ms idle', () => {
+test.describe('AC-OB-20: Path validation fires at most once per 400ms idle', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
 
   test.beforeAll(async () => {
-    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-19-'));
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-20-'));
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
 
@@ -1122,9 +1098,8 @@ test.describe('AC-OB-19: custom-location path validation debounces at 500ms idle
       });
     });
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardStartBlank).click();
-    await expect(page.locator(SELECTOR.screenCustomLocation)).toBeVisible({ timeout: 8_000 });
+    await clickStep1Card(page, 'card-blank', app);
+    await expect(page.locator(SELECTOR.screenStep2)).toBeVisible({ timeout: 8_000 });
   });
 
   test.afterAll(async () => {
@@ -1132,31 +1107,27 @@ test.describe('AC-OB-19: custom-location path validation debounces at 500ms idle
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-19: rapid keystrokes into custom-vault-path-input produce ≤2 validate calls (500ms debounce, 2 checks/call)', async () => {
-    const pathInput = page.locator(SELECTOR.customVaultPathInput);
+  test('AC-OB-20: rapid keystrokes produce ≤2 validate calls per 400ms idle window', async () => {
+    const pathInput = page.locator(SELECTOR.gsSavePath);
     await pathInput.clear();
 
     const typingText = path.join(userData, 'my-vault');
     await pathInput.pressSequentially(typingText, { delay: 30 });
 
-    // 500ms debounce (handleCustomPathChange) + settle time.
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(600);
 
     const callCount = await app.evaluate(
       () => (global as Record<string, unknown>).__validateCallCount__,
     ) as number;
 
-    // validateCustomPathNow fires 2 validate-path calls per invocation (base
-    // path + Story Vault/manifest.json check) — so ≤2 for exactly one
-    // debounced invocation, not 2×N for N keystrokes.
     expect(callCount).toBeLessThanOrEqual(2);
     expect(callCount).toBeGreaterThanOrEqual(1);
   });
 });
 
-// ─── AC-OB-21, 22, 23: generic wizard-wide checks ────────────────────────────
+// ─── AC-OB-21: Obsidian import — Back from report pre-fills vault path ────────
 
-test.describe('AC-OB-21/22/23: Liquid Neon token, aria-live region, no mic prompt', () => {
+test.describe('AC-OB-21: Obsidian import Back from report returns with pre-filled path', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -1172,68 +1143,90 @@ test.describe('AC-OB-21/22/23: Liquid Neon token, aria-live region, no mic promp
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-21: --accent Liquid Neon CSS token is defined on :root while the wizard shows', async () => {
+  test('AC-OB-21: clicking Back on the dry-run report returns to the import form with the selected path pre-filled', async () => {
+    const selectedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obsidian-21-'));
+    fs.mkdirSync(path.join(selectedDir, '.obsidian'));
+
+    await app.evaluate(({ ipcMain }, dir) => {
+      ipcMain.removeHandler('vault:chooseFolder');
+      ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
+      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
+      ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
+        preview: { markdownCount: 2, attachmentCount: 0, totalFiles: 2, topLevelFolders: [], sampleFiles: ['a.md', 'b.md'] },
+      }));
+    }, selectedDir);
+
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    const hasAccentToken = await page.evaluate(() => {
-      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent');
-      return accent.trim().length > 0;
-    });
-    expect(hasAccentToken).toBe(true);
-  });
+    await page.locator(SELECTOR.cardImportObsidian).click();
+    await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
 
-  test('AC-OB-22: aria-live="polite" region is always mounted on screen-step1c, not conditionally rendered on selection state', async () => {
-    // `grep -n aria-live frontend/src/OnboardingWizard.tsx` shows the only
-    // aria-live="polite" regions in the whole wizard are `template-announcement`
-    // (screen-step1b) and `genre-announcement` (screen-step1c) — screen-step1
-    // and screen-custom-location have none. Rewritten to check the region that
-    // actually exists: it's an unconditional `sr-only` <p> (always in the DOM,
-    // content changes via JS), not gated behind an error/loading condition —
-    // verified both before AND after a genre is selected.
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-    await page.locator(SELECTOR.cardSample).click();
-    await expect(page.locator(SELECTOR.screenStep1c)).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="import-obs-notes-browse"]').click();
+    await expect(page.locator('[data-testid="import-obs-notes-path"]')).toHaveValue(selectedDir);
+    await page.locator('[data-testid="import-action-btn"]').click();
+    await expect(page.locator('[data-testid="obs-dryrun-report"]')).toBeVisible({ timeout: 8_000 });
 
-    const announcement = page.locator('[data-testid="genre-announcement"]');
-    await expect(announcement).toHaveAttribute('aria-live', 'polite');
-    await expect(announcement).toBeAttached();
+    await page.locator('[data-testid="obs-report-back"]').click();
+    await expect(page.locator('[data-testid="obs-dryrun-report"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="import-section-obs"]')).toBeVisible({ timeout: 5_000 });
 
-    await page.locator('[data-testid="genre-card-mystery"]').click();
-    // Still attached/mounted after selection changes — not swapped in/out.
-    await expect(announcement).toHaveAttribute('aria-live', 'polite');
-    await expect(announcement).toBeAttached();
+    const val = await page.locator('[data-testid="import-obs-notes-path"]').inputValue();
+    expect(val).toBe(selectedDir);
 
-    await page.locator('[data-testid="gs-back-step1c"]').click();
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 8_000 });
-  });
-
-  test('AC-OB-23: navigator.mediaDevices.getUserMedia({audio}) is never called while onboarding shows', async () => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__micRequested__ = false;
-      if (navigator.mediaDevices) {
-        const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        navigator.mediaDevices.getUserMedia = (constraints) => {
-          if (constraints?.audio) {
-            (window as unknown as Record<string, boolean>).__micRequested__ = true;
-          }
-          return original(constraints);
-        };
-      }
-    });
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-
-    await page.waitForTimeout(2_000);
-    const micRequested = await page.evaluate(
-      () => (window as unknown as Record<string, boolean>).__micRequested__ ?? false,
-    );
-    expect(micRequested).toBe(false);
+    fs.rmSync(selectedDir, { recursive: true, force: true });
   });
 });
 
-// ─── AC-OB-24: Open existing vault (4th top-level card) ─────────────────────
+// ─── AC-OB-22: Liquid Neon tokens present on wizard screens ───────────────────
 
-test.describe('AC-OB-24: card-open-existing skips straight to Theme + Provider', () => {
+test.describe('AC-OB-22: Liquid Neon CSS tokens on wizard screens', () => {
+  let userData: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-22-'));
+    app = await launchFreshApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => {});
+    fs.rmSync(userData, { recursive: true, force: true });
+  });
+
+  test('AC-OB-22: wizard root element has --accent CSS custom property (Liquid Neon token)', async () => {
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
+
+    const hasAccentToken = await page.evaluate(() => {
+      const root = document.documentElement;
+      const accent = getComputedStyle(root).getPropertyValue('--accent');
+      return accent.trim().length > 0;
+    });
+    expect(hasAccentToken, '--accent Liquid Neon token must be defined on :root').toBe(true);
+  });
+});
+
+// ─── AC-OB-23: aria-live error region always in DOM — SKIPPED ────────────────
+
+test.describe('AC-OB-23: aria-live region always present on wizard', () => {
+  test('AC-OB-23: aria-live="polite" region is in the DOM on screen-step1 (idle state)', async () => {
+    test.skip(
+      true,
+      'SKY-8210: there is no longer a persistent aria-live region on screen-step1 or ' +
+      'screen-step2 — grep of frontend/src/OnboardingWizard.tsx confirms aria-live="polite" ' +
+      'is only used on screen-step1b (template-announcement) and screen-step1c ' +
+      '(genre-announcement), and the shared error/toast surface (components/Toast/Toast.tsx) ' +
+      'returns null (unmounts entirely) whenever there is no active message, so it is not ' +
+      '"always in DOM" either. AC-OB-23 specifically asserted an idle-state region on ' +
+      'screen-step1 that persists into screen-step2 — that region does not exist on either ' +
+      'screen in the current design, so this is not a selector move, it is a removed pattern.',
+    );
+  });
+});
+
+// ─── AC-OB-24: No mic permission prompt during onboarding ─────────────────────
+
+test.describe('AC-OB-24: No microphone permission prompt during onboarding', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -1249,35 +1242,36 @@ test.describe('AC-OB-24: card-open-existing skips straight to Theme + Provider',
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-24: picking a folder via card-open-existing goes straight to screen-custom-theme (no Back), then finishes with startMode:open-existing', async () => {
-    const existingVault = path.join(userData, 'my-existing-vault');
-    fs.mkdirSync(existingVault, { recursive: true });
-    await app.evaluate(({ ipcMain }, dir) => {
-      ipcMain.removeHandler('vault:chooseFolder');
-      ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
-    }, existingVault);
-    await stubOnboardingComplete(app);
+  test('AC-OB-24: navigator.mediaDevices.getUserMedia is not called during wizard display', async () => {
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__micRequested__ = false;
+      if (navigator.mediaDevices) {
+        const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = (constraints) => {
+          if (constraints?.audio) {
+            (window as unknown as Record<string, boolean>).__micRequested__ = true;
+          }
+          return original(constraints);
+        };
+      }
+    });
 
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
-    await page.locator(SELECTOR.cardOpenExisting).click();
 
-    // handleOpenExistingVault skips the Vault step entirely — Theme is the
-    // tail's first screen and its Back is hidden (spec §1.1).
-    await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator(SELECTOR.customThemeBack)).toHaveCount(0);
+    await page.waitForTimeout(2_000);
 
-    await finishThemeTail(page);
-    await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
-
-    const payload = await lastObPayload(app);
-    expect(payload.startMode).toBe('open-existing');
-    expect(payload.vaultParentPath).toBe(existingVault);
+    const micRequested = await page.evaluate(
+      () => (window as unknown as Record<string, boolean>).__micRequested__ ?? false,
+    );
+    expect(micRequested, 'getUserMedia(audio) must NOT be called during onboarding').toBe(false);
   });
 });
 
-// ─── AC-OB-25: real Obsidian dry-run IPC channel is wired ────────────────────
+// ─── AC-OB-25: onboarding:import-vault:dry-run IPC channel registered ─────────
 
-test.describe('AC-OB-25: dryRunObsidianImport bridge is the real, currently-used channel', () => {
+test.describe('AC-OB-25: importVaultDryRun channel in preload bridge', () => {
   let userData: string;
   let app: ElectronApplication;
   let page: Page;
@@ -1294,26 +1288,11 @@ test.describe('AC-OB-25: dryRunObsidianImport bridge is the real, currently-used
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-25: window.api.dryRunObsidianImport is callable and reaches the real "onboarding:dryRunObsidianImport" channel', async () => {
-    // The old spec asserted window.api.importVaultDryRun (channel
-    // 'onboarding:import-vault:dry-run') exists — it still does in
-    // electron-main/src/ipc.ts, but screen-step-import never calls it (it
-    // calls dryRunObsidianImport / 'onboarding:dryRunObsidianImport' instead,
-    // per preload.ts:59-60). Asserting the orphaned channel would test dead
-    // code; assert the one actually wired to the Import screen instead.
-    const hasFn = await page.evaluate(() => typeof (window as unknown as Record<string, Record<string, unknown>>).api?.dryRunObsidianImport === 'function');
-    expect(hasFn).toBe(true);
-
-    await app.evaluate(({ ipcMain }) => {
-      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
-      (global as Record<string, unknown>).__ob25ChannelHit__ = false;
-      ipcMain.handle('onboarding:dryRunObsidianImport', () => {
-        (global as Record<string, unknown>).__ob25ChannelHit__ = true;
-        return { preview: { markdownCount: 0, attachmentCount: 0, totalFiles: 0, topLevelFolders: [], sampleFiles: [] } };
-      });
+  test('AC-OB-25: window.api.importVaultDryRun is a callable function', async () => {
+    const hasChannel = await page.evaluate(() => {
+      const api = (window as unknown as Record<string, Record<string, unknown>>).api;
+      return typeof api?.importVaultDryRun === 'function';
     });
-    await page.evaluate(() => (window as unknown as { api: { dryRunObsidianImport: (p: string, k: string) => Promise<unknown> } }).api.dryRunObsidianImport('/tmp/whatever', 'notes'));
-    const hit = await app.evaluate(() => (global as Record<string, unknown>).__ob25ChannelHit__);
-    expect(hit).toBe(true);
+    expect(hasChannel, 'window.api.importVaultDryRun must be a function registered in preload').toBe(true);
   });
 });

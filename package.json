@@ -89,6 +89,7 @@
     "test:e2e:word-count": "playwright test e2e/tests/word-count.spec.ts --reporter=list",
     "test:e2e:wiki-links": "playwright test e2e/wiki-links.spec.ts --reporter=list",
     "test:e2e:accessibility-fixes-sky1362": "playwright test e2e/accessibility-fixes-sky1362.spec.ts --reporter=list",
+    "test:e2e:theme-export-import": "playwright test e2e/theme-export-import.spec.ts --reporter=list",
     "test:e2e:beta-read": "playwright test e2e/beta-read.spec.ts --reporter=list",
     "test:e2e:brainstorm-wave33": "playwright test e2e/brainstorm-wave33.spec.ts --reporter=list",
     "test:e2e:custom-template-lifecycle": "playwright test e2e/custom-template-lifecycle.spec.ts --reporter=list",
