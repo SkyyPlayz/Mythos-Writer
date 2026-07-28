@@ -638,7 +638,7 @@ jobs:
     # Shard 3: visual-regression, entity-creation, vault-graph, vault-graph-v0, wiki-link-autocomplete, auto-update (guarded)
     # wiki-links, cross-tab-links, shell-relayout-regression, auto-linker, global-search, readme-screenshots,
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
-    # scene-save-perf (SKY-6198)
+    # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -778,6 +778,9 @@ jobs:
 
       - name: E2E — Scene-save perf regression guard (SKY-6198)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-save-perf
+
+      - name: E2E — Timeline Archive quick-add IPC->disk (SKY-8266)
+        run: xvfb-run --auto-servernum npm run test:e2e:archive-quickadd
 
       - name: Upload E2E report on failure
         if: failure()
