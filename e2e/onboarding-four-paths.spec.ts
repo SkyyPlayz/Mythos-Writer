@@ -178,17 +178,31 @@ async function navigateToStep2(app: ElectronApplication, page: Page): Promise<vo
 }
 
 /**
- * Complete the shared genre -> theme mini-flow (M29) from screen-custom-genre,
- * accepting the default chip/card on each step. Every path that reaches
- * screen-step2, clicks the "One-click setup" link, or clicks "Continue" on
- * screen-custom-template funnels through this before the vault-creation IPC
- * call fires on "Open my vault ✦" (custom-theme-finish).
+ * Complete the shared theme -> AI-provider tail (M29/SKY-7649) from
+ * screen-custom-theme: click Continue to reach the optional AI-provider
+ * step, then Skip it. The vault-creation/completion IPC call fires either
+ * way (onContinue and onSkip both dispatch the same wizard-finish per
+ * OnboardingWizard.tsx) — Skip avoids needing valid provider input for
+ * tests that don't care about it.
+ */
+async function finishThemeProviderTail(page: Page): Promise<void> {
+  await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="custom-theme-continue"]').click();
+  await expect(page.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="wiz-provider-skip"]').click();
+}
+
+/**
+ * Complete the shared genre -> theme -> AI-provider mini-flow (M29) from
+ * screen-custom-genre, accepting the default chip/card on each step. Every
+ * path that reaches screen-step2, clicks the "One-click setup" link, or
+ * clicks "Continue" on screen-custom-template funnels through this before
+ * the vault-creation IPC call fires on the provider step's finish/skip.
  */
 async function finishGenreThemeFlow(page: Page): Promise<void> {
   await expect(page.locator(SELECTOR.screenCustomGenre)).toBeVisible({ timeout: 8_000 });
   await page.locator('[data-testid="custom-genre-continue"]').click();
-  await expect(page.locator(SELECTOR.screenCustomTheme)).toBeVisible({ timeout: 8_000 });
-  await page.locator('[data-testid="custom-theme-finish"]').click();
+  await finishThemeProviderTail(page);
 }
 
 /** Stub ipcMain to prevent real filesystem side-effects in tests. */
@@ -680,6 +694,9 @@ test.describe('AC-OB-12: Obsidian import — successful commit reaches app shell
     await expect(page.locator('[data-testid="obs-dryrun-report"]')).toBeVisible({ timeout: 8_000 });
 
     await page.locator('[data-testid="obs-report-confirm"]').click();
+    // SKY-7649: the import already committed on this screen — confirm just
+    // funnels into the shared Theme + Provider tail before Done.
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
 
     // Wizard is fully dismissed — no leftover import UI.
@@ -768,6 +785,9 @@ test.describe('AC-OB-14: Path 4 genre selection -> sample vault', () => {
     await expect(page.locator(SELECTOR.genreStartBtn)).toBeEnabled();
 
     await page.locator(SELECTOR.genreStartBtn).click();
+    // SKY-7649: the sample flow now funnels through the shared Theme +
+    // Provider tail too — genre is already locked in, so this just confirms.
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
     const payload = await app.evaluate(() => (global as Record<string, unknown>).__ob14Payload__) as Record<string, unknown>;
@@ -802,6 +822,7 @@ test.describe('AC-OB-15: Path 4 sample banner dismissed permanently', () => {
 
     await page.locator('[data-testid="genre-card-cozy-fantasy"]').click();
     await page.locator(SELECTOR.genreStartBtn).click();
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
     await expect(page.locator(SELECTOR.sampleBanner)).toBeVisible({ timeout: 5_000 });
@@ -860,6 +881,9 @@ test.describe('AC-OB-16: ConflictDialog open-existing sends correct startMode', 
     await expect(page.locator(SELECTOR.gsConflictDialog)).toBeVisible({ timeout: 4_000 });
 
     await page.locator(SELECTOR.gsConflictOpenExisting).click();
+    // SKY-7649: open-existing resolves through the shared Theme + Provider
+    // tail too (handleConflictOpenExisting), same as the top-level card.
+    await finishThemeProviderTail(page);
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 20_000 });
 
     const payload = await app.evaluate(() => (global as Record<string, unknown>).__ob16Payload__) as Record<string, unknown>;
