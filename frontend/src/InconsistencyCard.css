@@ -165,6 +165,9 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
 }
 
 .ic-rationale--expanded {

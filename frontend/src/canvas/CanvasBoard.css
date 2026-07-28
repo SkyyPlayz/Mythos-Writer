@@ -174,14 +174,20 @@
   background: rgba(255, 80, 110, 0.35);
 }
 
-/* Body text (line 1033). */
+/* Body text (line 1033). SKY-8435: was a hard clip (overflow:hidden with no
+ * clamp) that could cut a line mid-word; SCENE-CRAFTER-CANVAS-SPEC's
+ * dyslexia section calls for a line-aware ≤4-line clamp instead. */
 .cvb-card-body {
   flex: 1;
   padding: 8px 10px;
   font-size: 10px;
   color: #9cabc4;
   line-height: 1.55;
+  letter-spacing: var(--dyslexia-letter-spacing);
   overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 /* Corner resize handle (line 1034). A <button> for keyboard focus (SKY-7929)

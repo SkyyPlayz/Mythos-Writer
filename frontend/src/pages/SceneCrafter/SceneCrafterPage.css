@@ -315,10 +315,16 @@
 }
 
 .sc-field textarea {
-  height: 44px;
-  resize: none;
+  /* SKY-8435: a fixed 44px box hard-clipped a GOAL/CONFLICT paragraph to
+     ~2 lines. Dyslexia-spec §2.3: the container grows, never clips or
+     compresses spacing — min-height fits ~3.5 lines at the spacing bundle
+     below, resize:vertical lets the writer grow it further. */
+  min-height: 72px;
+  resize: vertical;
   padding: 7px 10px;
-  line-height: 1.5;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
 }
 
 .sc-field input:focus,
@@ -372,6 +378,8 @@
   flex: 1;
   font-size: 11.5px;
   color: #cdd8ea;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
 }
 
 .scene-crafter-page button.sc-beat-move {
@@ -588,15 +596,17 @@
 /* Scene Draft column (prototype lines 1097–1145). */
 .sc-summary {
   width: 100%;
-  height: 52px;
-  resize: none;
+  min-height: 52px;
+  resize: vertical;
   background: rgba(255, 255, 255, 0.04);
   border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
   border-radius: 9px;
   color: #dbe4f5;
   font-size: 11px;
   padding: 7px 9px;
-  line-height: 1.5;
+  line-height: var(--dyslexia-line-height);
+  letter-spacing: var(--dyslexia-letter-spacing);
+  word-spacing: var(--dyslexia-word-spacing);
 }
 
 .sc-summary:focus {
