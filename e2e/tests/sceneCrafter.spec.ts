@@ -24,6 +24,10 @@
  *   AC-SC-15  Suggested-card click selects it as draft context (SKY-7601)
  *   AC-SC-16  A card tagged manuscript/<id> with no scene link is silent —
  *             the Linked scenes section only appears when one exists
+ *   AC-SC-17  SKY-8265 (M19 §7.1, AC2/AC3): the editor's Scenes-tab mini canvas
+ *             pans/zooms and its board survives a genuine Electron app restart
+ *             (not just a component remount — SKY-8207/#1107 already covers
+ *             that at the unit level with a mocked window.api)
  *
  * SKY-8080 fix: accepting a scene_crafter_card Brainstorm proposal used to
  * write into board.lanes[0] via sceneCrafterAddCard (BrainstormPage.tsx) —
@@ -504,4 +508,115 @@ test('AC-SC-15: clicking a suggested card selects it instead of writing to the r
   // Toggling again deselects it.
   await firstCard.click();
   await expect(firstCard).toHaveAttribute('aria-pressed', 'false');
+});
+
+// ─── AC-SC-17: Scenes-tab mini canvas pan/zoom + survives a real app restart ─
+//
+// SKY-8265 AC2 ("Add to scene board places the draft card on the board and it
+// survives an app restart") and AC3 ("board mini canvas pans and zooms") name
+// a genuine app restart, not a component remount — SKY-8207/#1107 already
+// covers the remount case at the unit level with a mocked window.api, which
+// per the E2E standard (SKY-7994) does not satisfy "crosses the process
+// boundary". This test seeds a board file shaped exactly like the real
+// addDraftToBoard() output (a hub card + a "— first pass" draft card,
+// composeDraftPassCard/composeDraftBoard in crafterState.ts) directly on disk
+// — AI generation itself needs a live API key unavailable in CI — then drives
+// the mini canvas through the UI, closes the Electron app, relaunches it
+// against the same userData/vault dirs, and re-verifies both the board and
+// its pan/zoom behavior survive the real restart.
+
+/**
+ * Add the "Scenes" right-sidebar (GlobalRightSidebar) panel if it isn't
+ * already present — it persists across restarts once added. The left
+ * sidebar has its own, differently-rendered "Add panel" control, so every
+ * locator here is scoped to `[data-testid="global-right-sidebar"]" to avoid
+ * matching that one instead.
+ */
+async function openScenesPanel(pg: Page): Promise<void> {
+  const panel = pg.locator('[data-panel-id="scenes"]');
+  if ((await panel.count()) === 0) {
+    const showBtn = pg.getByRole('button', { name: 'Show right sidebar' });
+    if (await showBtn.isVisible().catch(() => false)) await showBtn.click();
+    const grs = pg.locator('[data-testid="global-right-sidebar"]');
+    await expect(grs).toBeVisible({ timeout: 8_000 });
+    await grs.getByRole('button', { name: 'Add panel' }).click();
+    await grs.getByRole('menuitem', { name: 'Scenes', exact: true }).click();
+  }
+  await expect(panel).toBeVisible({ timeout: 8_000 });
+}
+
+test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full app restart', async () => {
+  const boardsDir = path.join(notesVaultDir, 'Boards', storySlug);
+  fs.mkdirSync(boardsDir, { recursive: true });
+  const boardJson = {
+    nodes: [
+      { id: 'b1-0', type: 'text', x: 440, y: 40, width: 280, height: 120, text: 'Cold Open — beats\n\nStep through the gate' },
+      { id: 'b1-firstpass', type: 'text', x: 440, y: 220, width: 320, height: 220, text: 'Cold Open — first pass\n\nShe reached the sealed door and stopped.\n\n— 7 words' },
+    ],
+    edges: [{ id: 'edge-0', fromNode: 'b1-0', toNode: 'b1-firstpass' }],
+  };
+  fs.writeFileSync(path.join(boardsDir, 'Cold Open — board 1.canvas.json'), JSON.stringify(boardJson, null, 2));
+
+  // AC-SC-14 (run immediately before this test) switches the active story to
+  // STORY_TITLE_B and leaves it selected — re-select story A, whose slug is
+  // the one this test just seeded a board under.
+  await clickStoryNav(page);
+  await selectStory(page, STORY_TITLE);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 8_000 });
+
+  await openScenesPanel(page);
+  const scenesPanel = page.locator('[data-panel-id="scenes"]');
+  const mini = scenesPanel.locator('[data-testid="scenes-panel-mini"]');
+  await expect(mini).toBeVisible({ timeout: 8_000 });
+  await expect(mini.getByText(/first pass/i)).toBeVisible();
+
+  // Pan + zoom on the mini canvas (AC3).
+  const stage = mini.locator('[data-testid="canvas-stage"]');
+  const zoomPct = mini.locator('[data-testid="canvas-zoom-pct"]');
+  await expect(zoomPct).toHaveText('100%');
+  const panLayer = mini.locator('[data-testid="canvas-pan-layer"]');
+  await panLayer.scrollIntoViewIfNeeded();
+  const box = await panLayer.boundingBox();
+  if (!box) throw new Error('canvas-pan-layer has no bounding box');
+  await page.mouse.move(box.x + 20, box.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 40, box.y + 35);
+  await page.mouse.up();
+  await expect(stage).toHaveAttribute('style', /translate\(20px,\s*15px\)/);
+  await mini.getByTitle('Zoom in').click();
+  await expect(zoomPct).toHaveText('115%');
+
+  // "Open full" reaches the same board in the real Scene Crafter canvas.
+  await scenesPanel.getByRole('button', { name: /open full/i }).click();
+  await expect(page.locator('.sc-columns')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.sc-board-row', { hasText: 'Cold Open' })).toBeVisible({ timeout: 8_000 });
+
+  // Full restart with the same userData/vault dirs — a genuine process-boundary crossing.
+  await app?.close().catch(() => {});
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // The app restores the last-open tab on restart, which may already be a
+  // subview of this story (e.g. Scene Crafter's own left-nav section) rather
+  // than the Story Writer navigator — route through Story Writer first, then
+  // (re-)select the story only if the navigator's picker is what's showing.
+  await clickStoryNav(page);
+  const navigatorEntry = page.locator('.nav-story-title', { hasText: STORY_TITLE });
+  if (await navigatorEntry.isVisible().catch(() => false)) {
+    await navigatorEntry.click();
+  }
+  await page.locator('[data-testid="story-subview-editor"]').click();
+
+  await openScenesPanel(page);
+  const miniAfter = page.locator('[data-panel-id="scenes"] [data-testid="scenes-panel-mini"]');
+  await expect(miniAfter).toBeVisible({ timeout: 8_000 });
+  await expect(miniAfter.getByText(/first pass/i)).toBeVisible();
+
+  // Still pans and zooms on the restored board.
+  const zoomPctAfter = miniAfter.locator('[data-testid="canvas-zoom-pct"]');
+  await expect(zoomPctAfter).toHaveText('100%');
+  await miniAfter.getByTitle('Zoom in').click();
+  await expect(zoomPctAfter).toHaveText('115%');
 });

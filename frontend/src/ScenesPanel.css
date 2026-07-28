@@ -15,6 +15,19 @@
   position: relative;
 }
 
+/*
+ * SKY-8265: this panel's height comes from a min-height clamp on a flex
+ * item, not an explicit `height`, so CanvasBoard's own `.cvb-root { height:
+ * 100% }` (fine in the full-page Scene Crafter canvas, whose flex item has
+ * room to grow) doesn't reliably resolve here and the board collapses to
+ * its border only. Anchor it to the already-positioned container instead.
+ */
+.scenes-panel-mini .cvb-root {
+  position: absolute;
+  inset: 0;
+  height: auto;
+}
+
 .scenes-panel-open-full {
   flex: none;
   align-self: stretch;
