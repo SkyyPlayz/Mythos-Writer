@@ -612,7 +612,7 @@ opposite case: materially *complete*, not incomplete:**
 Active branches/worktrees already exist for this in-flight (possibly duplicate) work:
 `feature/sky-8264-notes-agent-properties-tabs`, `.worktrees/sky8264-notes-agent-tab`,
 `.worktrees/worktree-sky8266-archive-quickadd-e2e`, plus a companion a11y/dyslexia design-ahead
-spec **SKY-8268** (#1108, in review) that frames all three milestones as "actively in progress."
+spec **SKY-8268** (merged `c0a3fb79`, #1108) that frames all three milestones as "actively in progress."
 **Recommend the CEO redirect SKY-8264/65/66 before more code lands**: re-scope from "build the
 milestone" to "close the specific residual gap" (SKY-8268's a11y/dyslexia findings + SKY-8267's
 real-E2E-invariant tests), rather than risk two independent implementations of the same panels
@@ -649,16 +649,17 @@ that never got build follow-up (M15's Suggestion Inbox).
    the CEO dispatches once the items below are resolved (the acceptance run should exercise the
    real deliverables, not ones that got re-implemented mid-run).
 2. **SKY-8267's real-E2E invariant test for M19** (Scene Crafter no-manuscript-write) — genuine gap,
-   already correctly scoped, in progress. Low risk, keep running.
-3. **SKY-8268's a11y/dyslexia gap-spec for M18/M19/M25** (#1108, in review) — legitimate follow-up
-   spec, independent of the duplicate-build concern above. Let it land, then size its findings into
-   real build tickets (same pattern as M15/SKY-8134 already needs — see next item).
+   still in PR (#1112, CI green as of last check), not yet merged. Low risk, keep running.
+3. **SKY-8268's a11y/dyslexia gap-spec for M18/M19/M25** (merged `c0a3fb79`, #1108) — landed since
+   this reconciliation was first drafted. Its findings are now ready to size into real build tickets
+   (same pattern as M15/SKY-8134 — see next item).
 
 **Does NOT gate M30, but is real outstanding scope (no ticket currently covers it):**
 4. **M15 Suggestion Inbox interaction-state gaps** (`docs/AGENT-HUB-SUGGESTION-INBOX-GAP-SPEC.md`,
    SKY-8134/#1078) — spec landed, no build ticket exists yet to close it. Same shape as item 3
    above; the CEO should size and dispatch both gap-specs' findings as one or two follow-up tickets
-   once SKY-8268 lands, rather than as three separate near-duplicate "rebuild the milestone" tickets.
+   now that SKY-8268 has landed, rather than as three separate near-duplicate "rebuild the
+   milestone" tickets.
 5. **14 skipped/pending E2E specs** — pre-existing debt, being worked down incrementally (#1056,
    #1054, #1089 landed this week). Continue at current pace; not new scope.
 
@@ -669,14 +670,14 @@ that never got build follow-up (M15's Suggestion Inbox).
    redirect on the executing agents.
 
 **Sequencing (foundations-first, no-backtrack, ≤~6 concurrent slices / ≤~2 per agent):**
-- Wave A (now, already running, keep): SKY-8267 (QA, M19 E2E invariant), SKY-8268 (a11y/dyslexia
-  spec review → merge).
+- Wave A (now, already running, keep): SKY-8267 (QA, M19 E2E invariant, PR #1112 CI-green). SKY-8268
+  has already merged (`c0a3fb79`, #1108) — its findings feed Wave C below.
 - Wave B (CEO decision needed first): SKY-8264/65/66 — re-aim to gap-closure scope per item 6, or
   explicitly confirm "build was already done, cancel/close as duplicate" if the CEO's own triage
   disagrees with this reconciliation.
 - Wave C (after Wave B lands or is cancelled): size SKY-8134's M15 Suggestion Inbox gaps + SKY-8268's
-  M18/M19/M25 a11y/dyslexia gaps into build tickets; dispatch across PE/FableEngineer/FoundingEngineer
-  once Wave B frees them up.
+  (now-merged) M18/M19/M25 a11y/dyslexia gaps into build tickets; dispatch across
+  PE/FableEngineer/FoundingEngineer once Wave B frees them up.
 - Wave D (M30 gate): once Wave C's findings are closed (or explicitly deferred by the CEO as
   post-beta polish), dispatch the M30 acceptance-run ticket — packaged build, §14 checklist,
   PERFORMANCE.md re-measure, VR baseline refresh, release artifacts. This is the last milestone
