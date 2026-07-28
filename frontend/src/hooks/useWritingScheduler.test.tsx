@@ -305,6 +305,30 @@ describe('useWritingScheduler', () => {
     clearIntervalSpy.mockRestore();
   });
 
+  // SKY-8224: constant-interval heartbeat must skip a tick while the user is
+  // actively typing, per PERFORMANCE.md §4 ("skips when the user typed in
+  // the last N seconds").
+  it('SKY-8224: skips a constant-interval tick if the user typed within the last 5s', async () => {
+    mockWritingScan.mockResolvedValue({ tips: ['tip'], scannedAt: new Date().toISOString() });
+
+    renderHook(() =>
+      useWritingScheduler({ scene: mockScene, enabled: true, scanIntervalSeconds: 10, isActive: true }),
+    );
+
+    // Keydown just before the tick fires.
+    await act(() => {
+      vi.advanceTimersByTime(8_000);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    });
+    await act(async () => { vi.advanceTimersByTime(2_000); }); // tick at 10s, 2s since keydown
+
+    expect(mockWritingScan).not.toHaveBeenCalled();
+
+    // Next tick at 20s is 12s since the keydown — well past the 5s skip window.
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(mockWritingScan).toHaveBeenCalledTimes(1);
+  });
+
   it('continues scheduling after a failed scan (non-fatal)', async () => {
     mockWritingScan
       .mockRejectedValueOnce(new Error('Network error'))

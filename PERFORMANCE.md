@@ -148,6 +148,61 @@ Full sample data in `plans/PERF_UI_RUNTIME_BASELINE.json`. The two misses are
 tracked as a follow-up, not blocking this harness — see SKY-8217's close-out
 comment on SKY-8216 for the filed issue.
 
+### SKY-8224 fixes (2026-07-28) — targeted root causes, re-measure blocked on a quieter host
+
+Root-caused and fixed two concrete regressions the SKY-8217 numbers pointed
+at:
+
+1. **Keystroke → paint.** `AutoLinkerExtension` (`frontend/src/AutoLinkerExtension.ts`)
+   rebuilt entity-mention decorations by walking the **entire document** and
+   text-scanning every node against every entity name/alias on **every**
+   `docChanged` transaction — i.e. every keystroke, cost scaling with total
+   document size regardless of what changed. `WikiLinkResolutionExtension`
+   and `NoteLinksBlockExtension` have the same full-doc-walk shape but scan
+   for specific node types rather than doing a text scan per character, so
+   they're cheaper; not changed in this pass. Fixed `AutoLinkerExtension` to
+   scope the rebuild to the changed textblock(s) only (map old decorations
+   through the transaction, rescan just the edited paragraph(s), same
+   pattern ProseMirror's own decorate-changed-ranges recipe uses). Verified
+   with an isolated microbenchmark (`frontend/src/AutoLinkerExtension.test.ts`
+   — see PR for the throwaway bench script) on a synthetic 300-paragraph /
+   150-entity document: full-doc rebuild **9.3 ms/keystroke** vs. scoped
+   rebuild **0.025 ms/keystroke**, a 377x reduction, isolated from
+   Electron/Xvfb noise. This directly targets the top suspect the SKY-8217
+   baseline flagged.
+2. **Idle CPU (partial, spec-compliance fix, not the main driver).**
+   `useWritingScheduler`'s constant-interval heartbeat mode did not skip a
+   tick while the user was actively typing, contradicting this doc's own §4
+   prescription ("skips when the user typed in the last N seconds"). Fixed:
+   the constant-interval tick now defers if a keydown happened within the
+   last 5s. This does **not** move the harness's idle-CPU number (that
+   window has zero interaction by definition — the bug this fixes only
+   matters while typing), but it is a real behavior fix and closes the gap
+   between this doc and the code.
+
+**Re-measurement in this execution's sandbox was inconclusive and not
+committed as a new baseline.** A same-sandbox control run of the *unmodified*
+pre-fix code measured keystroke p95 **179.7 ms**, idle CPU **2.6%**, fps
+floor **10.0 fps** — all far worse than this doc's 2026-07-23 WSL2-host
+baseline (47.2 ms / 4.8% / 59.5 fps) for the *identical* code, meaning this
+particular sandbox is roughly 4-5x noisier than the host that produced the
+existing baseline (heavier virtualization contention, not a code
+regression). Repeated post-fix runs in the same sandbox landed in the same
+noisy band (keystroke p95 228-254 ms, idle CPU 2.4-3.0%) — no clean signal
+either direction at the full-harness level, because CDP `RunTask` timing and
+`/proc` CPU sampling both capture total system noise, not just this code
+path. The isolated microbenchmark above is the reliable evidence for the
+keystroke fix; **re-running `xvfb-run -a npm run perf:ui-runtime` on a host
+comparable to the original 2026-07-23 measurement (or a dedicated CI runner,
+not a shared dev sandbox) is required to record a trustworthy new §4
+baseline** and confirm whether idle CPU needs further work beyond the
+heartbeat fix above (e.g. profiling the `backdrop-filter` stack noted as
+unaddressed per §2, or the other 30s IPC pollers in `DesktopShell.tsx`,
+`AgentHubPanel.tsx`, `CoachPage.tsx`, `useArchiveScheduler.ts` — none showed
+as continuously-running loops in this pass's code review, so they remain
+plausible but unconfirmed contributors). Tracked as a follow-up
+re-measurement task; not blocking merge of the code fixes themselves.
+
 ## Acceptance targets (unchanged from the fix-order plan)
 
 - Keystroke → paint under 16 ms with all panels open.
@@ -166,3 +221,4 @@ previously-automated subset restored by SKY-7936.
 |---|---|---|---|---|---|
 | Restoration (SKY-7936) | 2026-07-22 | 106 ms / 278 ms | 4 regressions vs. stale baseline, baseline refreshed | not yet automated | First entry; establishes the format for future waves |
 | UI-runtime harness (SKY-8217) | 2026-07-23 | — | — | 47.2 ms / 4.8% / 59.5 fps / 0.0 pp | Harness added; 2 of 4 targets miss (keystroke, idle CPU) — follow-up filed, not blocking |
+| Perf fixes (SKY-8224) | 2026-07-28 | — | — | not re-baselined (see write-up above) | AutoLinker decoration rebuild scoped to changed textblock (377x isolated-bench speedup); writing-assistant heartbeat now skips ticks while typing. Full-harness re-measure blocked on a low-noise host — this execution's sandbox is ~4-5x noisier than the 2026-07-23 baseline host even for unmodified code |
