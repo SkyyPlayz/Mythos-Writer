@@ -777,9 +777,12 @@ test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel
 //
 // AC-WA-11: "After 20 s of no streaming tokens, a stall panel appears with
 // Retry and Cancel buttons."
-// Skipped in CI: the stall timeout (STALL_WARNING_MS = 20_000) exceeds safe
-// per-test wall-clock budget. Unit test WritingAssistantPanel.test.tsx covers
-// this acceptance criterion fully with a fake timer.
+// SKY-8476: Skipped in CI by design, not a coverage gap — the stall timeout
+// (STALL_WARNING_MS = 20_000) exceeds safe per-test wall-clock budget for a
+// real 20s delay, and WritingAssistantPanel.test.tsx ("cancel and stall UX"
+// describe block, `it('shows stall panel...')`) covers this acceptance
+// criterion fully with a fake timer (no real delay). Linked issue if this
+// ever needs revisiting: SKY-8476.
 
 test.skip('TC-WA-11: stall panel appears after 20 s stall (slow — unit test covers AC-WA-11)', async () => {
   await app!.evaluate(async ({ ipcMain }) => {

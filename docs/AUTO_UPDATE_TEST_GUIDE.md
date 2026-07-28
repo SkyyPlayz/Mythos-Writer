@@ -4,6 +4,29 @@ This guide documents how to test the auto-update flow on both Linux (E2E) and ma
 
 ---
 
+## Assumptions & deferred items (SKY-8476)
+
+- **`e2e/auto-update-beta.spec.ts` is gated off by default**, not run as part of
+  the normal `npm run test:e2e*` suite. It carries an unconditional
+  `test.skip(process.env.MYTHOS_AUTO_UPDATE_E2E !== '1', ...)` at the top of
+  the file. Set `MYTHOS_AUTO_UPDATE_E2E=1` to un-skip it.
+- Even with that env var set, the test still assumes all of Part I's
+  Prerequisites below are true (`MYTHOS_AUTO_UPDATE=1` packaged build, plus
+  **two** real GitHub pre-releases — `v0.3.0-beta.1` and `v0.3.1-beta.1` —
+  already published). None of that exists in a default dev checkout or in CI
+  today, so this spec cannot currently be exercised as a real end-to-end
+  check against a live update feed; it is deferred, not broken.
+- Auto-update itself is a **deferred/unshipped-by-default** feature gate:
+  production builds only enable it when `MYTHOS_AUTO_UPDATE=1` is set at build
+  time (see `Setup` below), so the feature and its test coverage are meant to
+  advance together — un-skip the spec (and update this doc's Sign-Off section
+  with real evidence) once the two-release feed exists and this is un-deferred.
+- This doc's Part II (macOS manual testing) has no automated equivalent and is
+  intentionally manual per its own "Why Manual?" section — that is an accepted
+  scope limit, not something to try to automate here.
+
+---
+
 ## Part I: Linux E2E Testing (Automated)
 
 ### Prerequisites
