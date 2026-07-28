@@ -5,7 +5,7 @@
  *
  * Coverage:
  *   Heartbeat:  AC-WA-01, AC-WA-03, AC-WA-04, AC-WA-05, AC-WA-07, AC-WA-08
- *   Chat:       AC-WA-09, AC-WA-10, AC-WA-11 (skipped), AC-WA-13
+ *   Chat:       AC-WA-09, AC-WA-10, AC-WA-11, AC-WA-13
  *   Beta-Read:  AC-WA-17, AC-WA-18, AC-WA-20, AC-WA-21
  *   Voice TTS:  AC-WA-22, AC-WA-23, AC-WA-24
  *   Settings:   AC-WA-26, AC-WA-27
@@ -773,15 +773,24 @@ test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel
   await installIpcMocks(app!);
 });
 
-// ─── TC-WA-11: Stall panel (skipped — slow, 20s real delay) ─────────────────
+// ─── TC-WA-11: Stall panel ────────────────────────────────────────────────────
 //
 // AC-WA-11: "After 20 s of no streaming tokens, a stall panel appears with
 // Retry and Cancel buttons."
-// Skipped in CI: the stall timeout (STALL_WARNING_MS = 20_000) exceeds safe
-// per-test wall-clock budget. Unit test WritingAssistantPanel.test.tsx covers
-// this acceptance criterion fully with a fake timer.
+// Production's STALL_WARNING_MS is a real 20_000ms — too slow to wait out for
+// real in CI. WritingAssistantPanel.tsx reads an E2E-only override off
+// `window.__MYTHOS_E2E_TIMERS__` (set below, before the real constant is
+// otherwise scheduled) so this test reaches a real stall in milliseconds
+// without touching the production default seen by every other caller.
 
-test.skip('TC-WA-11: stall panel appears after 20 s stall (slow — unit test covers AC-WA-11)', async () => {
+test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', async () => {
+  await page.evaluate(() => {
+    (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__ = {
+      stallWarningMs: 300,
+      hardTimeoutMs: 5_000,
+    };
+  });
+
   await app!.evaluate(async ({ ipcMain }) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* skip */ }
     // Never resolves — simulates a provider timeout.
@@ -792,10 +801,13 @@ test.skip('TC-WA-11: stall panel appears after 20 s stall (slow — unit test co
   await page.locator('.writing-assistant-input').fill('Stall test.');
   await page.locator('.writing-assistant-input').press('Enter');
 
-  await expect(page.locator('.wa-stall-panel')).toBeVisible({ timeout: 25_000 });
+  await expect(page.locator('.wa-stall-panel')).toBeVisible({ timeout: 3_000 });
   await expect(page.locator('.wa-btn-retry')).toBeVisible();
   await expect(page.locator('.wa-btn-cancel')).toBeVisible();
 
+  await page.evaluate(() => {
+    delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
+  });
   await installIpcMocks(app!);
 });
 
