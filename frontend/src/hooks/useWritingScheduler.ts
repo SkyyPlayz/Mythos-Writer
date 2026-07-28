@@ -3,6 +3,14 @@ import type { Scene } from '../types';
 
 export type WritingTipCategory = 'grammar' | 'pacing' | 'clarity' | 'style' | 'tone';
 
+/**
+ * SKY-8224: the constant-interval heartbeat must not fire a scan while the
+ * user is actively typing (PERFORMANCE.md §4 — "skips when the user typed in
+ * the last N seconds"). A tick within this window of the last keydown is
+ * deferred to the next tick rather than dropped.
+ */
+const RECENT_TYPING_SKIP_MS = 5_000;
+
 export interface WritingAssistantTip {
   id: string;
   text: string;
@@ -54,6 +62,8 @@ export function useWritingScheduler({
   // Refs so the interval callback always sees the latest scene without restarting the timer.
   const sceneRef = useRef(scene);
   const scanningRef = useRef(false);
+  // 0 = no keydown observed yet this mount; never skip a tick in that case.
+  const lastKeydownRef = useRef(0);
 
   useEffect(() => {
     sceneRef.current = scene;
@@ -160,6 +170,18 @@ export function useWritingScheduler({
     };
   }, [enabled, isActive, cadenceTrigger, idleHeartbeatConstantInterval, idleDebounceSeconds, runScan]);
 
+  // Track the last keydown so the constant-interval tick below can skip
+  // while the user is actively typing (SKY-8224).
+  useEffect(() => {
+    if (!enabled || !isActive) return;
+    if (cadenceTrigger !== 'idle_heartbeat') return;
+    if (!idleHeartbeatConstantInterval) return;
+
+    const handleKey = () => { lastKeydownRef.current = Date.now(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [enabled, isActive, cadenceTrigger, idleHeartbeatConstantInterval]);
+
   // AC-CAD-10: idle_heartbeat + constant interval — existing setInterval path
   useEffect(() => {
     if (!enabled || !isActive) return;
@@ -167,7 +189,11 @@ export function useWritingScheduler({
     if (!idleHeartbeatConstantInterval) return;
 
     const ms = Math.max(5, scanIntervalSeconds) * 1000;
-    const id = setInterval(runScan, ms);
+    const id = setInterval(() => {
+      const last = lastKeydownRef.current;
+      if (last !== 0 && Date.now() - last < RECENT_TYPING_SKIP_MS) return;
+      void runScan();
+    }, ms);
     return () => clearInterval(id);
   }, [enabled, isActive, scanIntervalSeconds, runScan, cadenceTrigger, idleHeartbeatConstantInterval]);
 

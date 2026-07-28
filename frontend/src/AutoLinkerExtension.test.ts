@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { buildEntityTerms, findEntityMentions } from './AutoLinkerExtension';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import { Markdown } from 'tiptap-markdown';
+import {
+  buildEntityTerms,
+  findEntityMentions,
+  AutoLinkerExtension,
+  AUTO_LINKER_META,
+  getAutoLinkerState,
+} from './AutoLinkerExtension';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -188,5 +197,87 @@ describe('findEntityMentions — overlap prevention', () => {
     const matches = findEntityMentions('River Stone crossed the bridge.', terms);
     expect(matches).toHaveLength(1);
     expect(matches[0].anchorText).toBe('River Stone');
+  });
+});
+
+// ─── Plugin integration (SKY-8224: scoped per-keystroke rebuild) ────────────
+
+function makeAutoLinkerEditor(content: string, entities: EntityEntry[]) {
+  const editor = new Editor({
+    extensions: [StarterKit, AutoLinkerExtension, Markdown],
+    content,
+  });
+  editor.view.dispatch(
+    editor.state.tr.setMeta(AUTO_LINKER_META, { entities, mode: 'suggest' }),
+  );
+  return editor;
+}
+
+describe('AutoLinkerExtension plugin — decoration correctness across edits', () => {
+  it('decorates a mention in a two-paragraph doc', () => {
+    const editor = makeAutoLinkerEditor('<p>Elara walked.</p><p>Nothing else here.</p>', [
+      makeEntity('e1', 'Elara'),
+    ]);
+    const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+    editor.destroy();
+    expect(hints).toHaveLength(1);
+  });
+
+  it('adds a new mention decoration when typing into a second paragraph, without disturbing the first', () => {
+    const editor = makeAutoLinkerEditor('<p>Elara walked.</p><p>Then, </p>', [
+      makeEntity('e1', 'Elara'),
+    ]);
+    // place cursor at the end of the second paragraph and type another mention
+    const endPos = editor.state.doc.content.size - 1;
+    editor.chain().focus().setTextSelection(endPos).insertContent('Elara returned.').run();
+
+    const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+    editor.destroy();
+    expect(hints).toHaveLength(2);
+  });
+
+  it('removes a decoration when the mention text is edited away', () => {
+    const editor = makeAutoLinkerEditor('<p>Elara walked in.</p>', [makeEntity('e1', 'Elara')]);
+    expect(editor.view.dom.querySelectorAll('.archive-wl-hint')).toHaveLength(1);
+
+    // Select "Elara" (positions 1-6 in a single-paragraph doc) and replace it.
+    editor.chain().focus().setTextSelection({ from: 1, to: 6 }).insertContent('Somebody').run();
+
+    const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+    editor.destroy();
+    expect(hints).toHaveLength(0);
+  });
+
+  it('re-scans the whole document when entities/mode change via meta', () => {
+    const editor = makeAutoLinkerEditor('<p>Elara and Voss talked.</p>', [
+      makeEntity('e1', 'Elara'),
+    ]);
+    expect(editor.view.dom.querySelectorAll('.archive-wl-hint')).toHaveLength(1);
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(AUTO_LINKER_META, {
+        entities: [makeEntity('e1', 'Elara'), makeEntity('e2', 'Voss')],
+        mode: 'suggest',
+      }),
+    );
+
+    const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+    const state = getAutoLinkerState(editor.state);
+    editor.destroy();
+    expect(hints).toHaveLength(2);
+    expect(state?.entities).toHaveLength(2);
+  });
+
+  it('mode "off" clears decorations and stops scanning on further edits', () => {
+    const editor = makeAutoLinkerEditor('<p>Elara walked.</p>', [makeEntity('e1', 'Elara')]);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(AUTO_LINKER_META, { entities: [makeEntity('e1', 'Elara')], mode: 'off' }),
+    );
+    expect(editor.view.dom.querySelectorAll('.archive-wl-hint')).toHaveLength(0);
+
+    editor.chain().focus().setTextSelection(editor.state.doc.content.size - 1).insertContent(' Elara again.').run();
+    const hints = editor.view.dom.querySelectorAll('.archive-wl-hint');
+    editor.destroy();
+    expect(hints).toHaveLength(0);
   });
 });
