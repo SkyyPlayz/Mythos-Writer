@@ -33,9 +33,6 @@ import {
   type Page,
 } from '@playwright/test';
 
-// SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218), replaced by nav-rail__item
-test.skip(true, 'SKY-6933: stale selector -- .rail-tab removed by the nav-rail rewrite (SKY-3098/3218), replaced by nav-rail__item');
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
@@ -150,10 +147,15 @@ async function waitUntil(
   return false;
 }
 
+// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
+// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
+// "vault" panel of the Story Writer section (collapsed by default) — the same
+// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
 async function openVaultTab(pg: Page): Promise<void> {
-  const vaultTab = pg.locator('.rail-tab', { hasText: 'Vault' });
-  await expect(vaultTab).toBeVisible({ timeout: 8_000 });
-  await vaultTab.click();
+  const vaultPanel = pg.locator('[data-panel-id="vault"]');
+  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
+  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
+  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
   await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -343,11 +345,17 @@ test.describe('populated vaults: routing regression', () => {
       'Scene .md file not found under .../scenes/ in storyVaultDir',
     ).toBe(true);
 
-    // notesVaultDir must have only what was seeded (characters/alice.md).
+    // notesVaultDir must have only what was seeded (characters/alice.md) plus
+    // the `.mythos-seeded` sentinel the app writes on first vault open
+    // (electron-main/src/vaultSeeding.ts) — that write happens at startup, not
+    // as a side effect of story creation, so it's not part of what this test
+    // guards against.
     // A scene ending up in notesVaultDir would indicate an SKY-75-style routing bug.
     const notesFiles = findAllFiles(notesVaultDir);
     const unexpectedInNotes = notesFiles.filter(
-      (f) => !f.includes(path.join(NOTES_SEED_DIR, NOTES_SEED_FILE)),
+      (f) =>
+        !f.includes(path.join(NOTES_SEED_DIR, NOTES_SEED_FILE)) &&
+        path.basename(f) !== '.mythos-seeded',
     );
     expect(
       unexpectedInNotes,
@@ -373,7 +381,7 @@ test.describe('populated vaults: routing regression', () => {
 
     // Click "New Note" — current UX uses the in-app template dialog. The
     // routing invariant remains the load-bearing assertion below.
-    await notesPanel.locator('[aria-label="New Note"]').click();
+    await notesPanel.locator('[aria-label="New note"]').click();
     const noteDialog = page.getByRole('dialog', { name: 'New Note from Template' });
     await expect(noteDialog).toBeVisible({ timeout: 6_000 });
     await noteDialog.locator('[data-testid="ntd-template-select"]').selectOption('__blank__');
