@@ -6,6 +6,13 @@
 // same parser branches: container.xml → OPF full-path, dc:title extraction,
 // spine reading order, non-XHTML manifest items skipped.
 //
+// SKY-8536 / GH #1097: the OPF lives one directory deeper than its spine
+// documents (OEBPS/package/content.opf vs OEBPS/text/*.xhtml), so both spine
+// hrefs are parent-relative ("../text/chN.xhtml"). This is the exact archive
+// shape that broke ePub import before storyImport.ts's spine-path resolution
+// normalized `../` against the OPF directory — every assertion in the spec
+// below now doubles as end-to-end regression coverage for that fix.
+//
 // Run: node e2e/fixtures/build-story-import-epub.cjs
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +21,7 @@ const JSZip = require('jszip');
 const CONTAINER = `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
-    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    <rootfile full-path="OEBPS/package/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
 </container>`;
 
@@ -26,8 +33,8 @@ const OPF = `<?xml version="1.0" encoding="UTF-8"?>
     <dc:language>en</dc:language>
   </metadata>
   <manifest>
-    <item id="c1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
-    <item id="c2" href="ch2.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c1" href="../text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="c2" href="../text/ch2.xhtml" media-type="application/xhtml+xml"/>
     <item id="css" href="style.css" media-type="text/css"/>
   </manifest>
   <spine>
@@ -58,10 +65,10 @@ async function main() {
   // Per the ePub OCF spec the mimetype entry is first and uncompressed.
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
   zip.file('META-INF/container.xml', CONTAINER);
-  zip.file('OEBPS/content.opf', OPF);
-  zip.file('OEBPS/ch1.xhtml', CH1);
-  zip.file('OEBPS/ch2.xhtml', CH2);
-  zip.file('OEBPS/style.css', 'h1 { page-break-before: always }');
+  zip.file('OEBPS/package/content.opf', OPF);
+  zip.file('OEBPS/text/ch1.xhtml', CH1);
+  zip.file('OEBPS/text/ch2.xhtml', CH2);
+  zip.file('OEBPS/package/style.css', 'h1 { page-break-before: always }');
   const buffer = await zip.generateAsync({ type: 'nodebuffer' });
   const out = path.join(__dirname, 'story-import.epub');
   fs.writeFileSync(out, buffer);

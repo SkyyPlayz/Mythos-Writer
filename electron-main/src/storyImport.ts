@@ -222,7 +222,11 @@ export async function epubToStoryMarkdown(buffer: Buffer): Promise<EpubParseResu
     const href = items.get(idref);
     if (!href) continue;
     if (!/\.(x?html?|xml)$/i.test(href)) continue;
-    const entryPath = decodeURIComponent(opfDir + href).replace(/\/{2,}/g, '/');
+    // path.posix.normalize resolves `../` and `./` segments (spine hrefs are
+    // OPF-relative and may climb out of the OPF's own directory, e.g.
+    // `../text/ch1.xhtml`) and collapses doubled slashes; zip entries are
+    // always stored with forward-slash paths regardless of host OS.
+    const entryPath = path.posix.normalize(decodeURIComponent(opfDir + href));
     const entry = zip.file(entryPath) ?? zip.file(decodeURIComponent(href));
     if (!entry) {
       warnings.push(`Spine document missing from archive: ${href}`);
