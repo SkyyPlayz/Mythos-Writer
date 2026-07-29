@@ -39,6 +39,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -195,16 +196,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  const proc = app?.process();
-  await Promise.race([
-    app?.close().catch(() => undefined) ?? Promise.resolve(),
-    new Promise<void>((r) => setTimeout(r, 5_000)),
-  ]);
-  try {
-    if (proc && !proc.killed) proc.kill('SIGKILL');
-  } catch { /* already exited */ }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  await closeElectronApp(app);
+  removeTempDirs(userData, vaultDir);
 });
 
 test('SKY-8007: Open in writing panel appends real content to the real scene note on disk', async () => {
