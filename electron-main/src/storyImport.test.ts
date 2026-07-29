@@ -165,6 +165,36 @@ describe('epubToStoryMarkdown', () => {
     const buffer = await zip.generateAsync({ type: 'nodebuffer' });
     await expect(epubToStoryMarkdown(buffer)).rejects.toThrow(/OPF/);
   });
+
+  // GH #1097 — a spine href that climbs out of the OPF's own directory
+  // (`../text/ch1.xhtml`) must resolve against the OPF base, not be
+  // concatenated as a literal string, or the spine document silently
+  // disappears from the archive lookup.
+  it('resolves parent-relative spine hrefs against the OPF directory', async () => {
+    const zip = new JSZip();
+    zip.file('mimetype', 'application/epub+zip');
+    zip.file('META-INF/container.xml',
+      '<?xml version="1.0"?><container><rootfiles>'
+      + '<rootfile full-path="OEBPS/package/content.opf" media-type="application/oebps-package+xml"/>'
+      + '</rootfiles></container>');
+    // OPF lives in OEBPS/package/, spine documents live in the sibling
+    // OEBPS/text/ directory — hrefs must climb out with `../`.
+    zip.file('OEBPS/package/content.opf',
+      '<?xml version="1.0"?><package><metadata>'
+      + '<dc:title>The Parent Path</dc:title></metadata><manifest>'
+      + '<item id="c1" href="../text/ch1.xhtml" media-type="application/xhtml+xml"/>'
+      + '<item id="c2" href="../text/ch2.xhtml" media-type="application/xhtml+xml"/>'
+      + '</manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>');
+    zip.file('OEBPS/text/ch1.xhtml', '<html><body><h1>Chapter One</h1><p>Climbed out fine.</p></body></html>');
+    zip.file('OEBPS/text/ch2.xhtml', '<html><body><h1>Chapter Two</h1><p>Second door.</p></body></html>');
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+
+    const res = await epubToStoryMarkdown(buffer);
+    expect(res.warnings).toEqual([]);
+    expect(res.markdown).toContain('Climbed out fine.');
+    expect(res.markdown).toContain('Second door.');
+    expect(res.markdown.indexOf('# Chapter One')).toBeLessThan(res.markdown.indexOf('# Chapter Two'));
+  });
 });
 
 // ── RTF ───────────────────────────────────────────────────────────────────────
