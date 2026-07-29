@@ -493,6 +493,7 @@ jobs:
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
+    # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -620,6 +621,9 @@ jobs:
 
       - name: E2E — Story page chrome presets (SKY-6933 sweep, 1 test skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:editor-page-chrome
+
+      - name: "E2E — Agent Hub session picker switch/persist, real IPC + disk (SKY-8537, #1130)"
+        run: xvfb-run --auto-servernum npm run test:e2e:agent-hub-session-picker
 
       - name: Upload E2E report on failure
         if: failure()
