@@ -50,27 +50,72 @@ export interface BackgroundStackProps {
   settings?: Partial<LiquidNeonV2Settings> | null;
 }
 
+/** SKY-8566: no pointer/keyboard activity for this long freezes the ambient
+ *  loops (see the effect below). Reuses the "5s of no recent input" recency
+ *  window already established by useWritingScheduler (SKY-8224) and
+ *  useArchiveScheduler's SAVE_DEBOUNCE_MS elsewhere in this codebase. */
+const IDLE_PAUSE_MS = 5_000;
+
 export default function BackgroundStack({ settings }: BackgroundStackProps) {
   const amb1 = useMemo(() => ambienceLayerStyle(settings, 0), [settings]);
   const amb2 = useMemo(() => ambienceLayerStyle(settings, 1), [settings]);
 
-  // Audit P4: freeze the always-on Liquid Neon loops (wallpaper drift,
-  // ambience, border breathe) while the window is hidden or minimized. The
-  // class rides on <html> so the CSS rule in liquidNeon.css also reaches the
-  // BorderOverlay layers, which render elsewhere in the shell;
-  // BackgroundStack is the stack's owner and is always mounted, making it
-  // the natural home for the listener.
+  // Audit P4 + SKY-8566: freeze the always-on Liquid Neon loops (wallpaper
+  // drift, ambience, border breathe) while the window is hidden/minimized OR
+  // the user hasn't touched the pointer/keyboard for IDLE_PAUSE_MS. The class
+  // rides on <html> so the CSS rule in liquidNeon.css also reaches the
+  // BorderOverlay layers, which render elsewhere in the shell; BackgroundStack
+  // is the stack's owner and is always mounted, making it the natural home
+  // for the listener.
+  //
+  // SKY-8566 root cause: these three layers animate continuously regardless
+  // of `prefers-reduced-motion` actually taking effect (Electron's
+  // `--force-prefers-reduced-motion` does not flip the media query in this
+  // build — confirmed via `matchMedia` + `document.getAnimations()` against
+  // the packaged app), which keeps the compositor ticking a full-viewport
+  // `backdrop-filter` blur pass at 60fps indefinitely — the PERFORMANCE.md
+  // §2 "backdrop-filter is a per-frame tax" driver behind the idle-CPU miss.
+  // Pausing on genuine inactivity (this) stops that tick without touching the
+  // OS-level reduced-motion path at all.
   useEffect(() => {
-    const sync = () => {
+    let idle = false;
+    let idleTimer: number | null = null;
+
+    const syncClass = () => {
       document.documentElement.classList.toggle(
         'ln-anim-paused',
-        document.visibilityState === 'hidden',
+        document.visibilityState === 'hidden' || idle,
       );
     };
-    sync();
-    document.addEventListener('visibilitychange', sync);
+
+    const armIdleTimer = () => {
+      if (idleTimer != null) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        idle = true;
+        syncClass();
+      }, IDLE_PAUSE_MS);
+    };
+
+    const onActivity = () => {
+      if (idle) {
+        idle = false;
+        syncClass();
+      }
+      armIdleTimer();
+    };
+
+    const onVisibility = () => syncClass();
+
+    const activityEvents = ['pointerdown', 'pointermove', 'keydown', 'wheel'] as const;
+    syncClass();
+    armIdleTimer();
+    document.addEventListener('visibilitychange', onVisibility);
+    activityEvents.forEach((evt) => window.addEventListener(evt, onActivity, { passive: true }));
+
     return () => {
-      document.removeEventListener('visibilitychange', sync);
+      if (idleTimer != null) window.clearTimeout(idleTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      activityEvents.forEach((evt) => window.removeEventListener(evt, onActivity));
       document.documentElement.classList.remove('ln-anim-paused');
     };
   }, []);
