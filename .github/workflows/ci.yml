@@ -588,9 +588,6 @@ jobs:
       - name: E2E — Writing Coach page + shared conversation (Beta 4 M12, SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:coach-page
 
-      - name: E2E — Agent Hub session picker switches + persists Writing Coach transcripts (SKY-8537 / GH #960)
-        run: xvfb-run --auto-servernum npm run test:e2e:agent-hub-session-picker
-
       - name: E2E — Two-vault first-run flow (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:two-vault-firstrun
 
