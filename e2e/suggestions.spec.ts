@@ -916,22 +916,13 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   // covers those). This seeds and accepts its own suggestion so the audit log
   // has real rows to display.
   //
-  // BUG FOUND (real, reproducible — not a test-authoring mistake):
-  // frontend/src/SuggestionDetailPane.tsx (~line 90) does:
-  //   (api.auditList(suggestion.id) as Promise<AuditEntry[]>)
-  //     .then((rows) => setAuditRows((rows ?? []).slice(0, 5)))
-  // but the real `audit:list` IPC handler (electron-main/src/main.ts, AUDIT_LIST)
-  // resolves `{ entries: AuditEntry[] }`, not a bare array (matching every other
-  // auditList() call site in this very file, e.g. TC-S-01's
-  // `auditResult.entries`). `.slice` on that plain object throws, is swallowed by
-  // the `.catch(() => setAuditRows([]))`, and the pane silently shows "No audit
-  // entries yet." even when real audit rows exist. AC-EPIC-9 is therefore NOT met
-  // by the shipped app. Filed as SKY-8762 (assignee: ProductEngineer) with the
-  // one-line fix. Quarantined per COMPANY-STANDARDS.md §4a.3 (skip requires a
-  // linked issue + named un-skip owner) so CI stays green — un-skip owner:
-  // ProductEngineer, un-skip when SKY-8762 lands.
+  // Was quarantined (test.skip) while SKY-8762 was open: SuggestionDetailPane
+  // treated the auditList() response as a bare AuditEntry[], but the AUDIT_LIST
+  // IPC handler resolves { entries: AuditEntry[] } — the .slice TypeError was
+  // swallowed by .catch and the pane always showed "No audit entries yet.".
+  // Un-skipped by the SKY-8762 fix (read result.entries off the response).
 
-  test.skip('AC-EPIC-9: detail pane shows populated audit trail entries (SKY-8762)', async () => {
+  test('AC-EPIC-9: detail pane shows populated audit trail entries (SKY-8762)', async () => {
     const id = `ac-epic-9-${Date.now()}`;
     const targetPath = 'suggestions/ac-epic-9.md';
     const targetFullPath = path.join(vaultDir, targetPath);
