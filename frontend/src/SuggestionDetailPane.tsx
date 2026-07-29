@@ -87,8 +87,9 @@ export default function SuggestionDetailPane({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).api;
     if (typeof api?.auditList === 'function') {
-      (api.auditList(suggestion.id) as Promise<AuditEntry[]>)
-        .then((rows) => setAuditRows((rows ?? []).slice(0, 5)))
+      // The AUDIT_LIST IPC handler resolves { entries: AuditEntry[] }, not a bare array
+      (api.auditList(suggestion.id) as Promise<{ entries?: AuditEntry[] }>)
+        .then((result) => setAuditRows((result?.entries ?? []).slice(0, 5)))
         .catch(() => setAuditRows([]))
         .finally(() => setAuditLoading(false));
     } else {

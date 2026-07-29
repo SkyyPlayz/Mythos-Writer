@@ -101,7 +101,7 @@ beforeEach(() => {
   mockSuggestionsReject.mockResolvedValue({ id: 'sug-1', status: 'rejected' });
   mockSuggestionsIgnore.mockResolvedValue({ id: 'sug-1', status: 'ignored' });
   mockSuggestionsRollback.mockResolvedValue({});
-  mockAuditList.mockResolvedValue([]);
+  mockAuditList.mockResolvedValue({ entries: [] });
   setApi();
 });
 
@@ -636,7 +636,7 @@ describe('SuggestionReview — SLICE-4: detail pane (AC-S4)', () => {
       actor: 'user',
       created_at: new Date(Date.now() - 60_000).toISOString(),
     };
-    mockAuditList.mockResolvedValue([auditRow]);
+    mockAuditList.mockResolvedValue({ entries: [auditRow] });
 
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
