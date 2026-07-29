@@ -19,7 +19,7 @@
     "@anthropic-ai/sdk": "^0.100.1",
     "chokidar": "^5.0.0",
     "docx": "^9.7.1",
-    "electron-updater": "^6.3.9",
+    "electron-updater": "^6.8.9",
     "jszip": "^3.10.1",
     "mammoth": "^1.9.0"
   },
