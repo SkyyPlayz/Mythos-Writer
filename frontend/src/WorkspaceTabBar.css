@@ -260,6 +260,20 @@
   animation: lnPulse 1s ease-in-out infinite;
 }
 
+/* SKY-8566: unlike the dictate-on dots elsewhere, this one had no
+   reduced-motion or hidden/idle pause at all — an always-on compositor tick
+   even with the window backgrounded. ln-anim-paused rides on <html>, set by
+   BackgroundStack.tsx on window-hidden OR pointer/keyboard idle. */
+@media (prefers-reduced-motion: reduce) {
+  .wtb-agents-dot {
+    animation: none;
+  }
+}
+
+html.ln-anim-paused .wtb-agents-dot {
+  animation-play-state: paused !important;
+}
+
 /* Context menu (prototype 141): exact popover surface */
 .wtb-ctx-menu {
   position: absolute;

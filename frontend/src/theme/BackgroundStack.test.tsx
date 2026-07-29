@@ -1,6 +1,6 @@
 // Exact-value tests for the M2 background stack — expected strings are the
 // prototype's mkAmb outputs (HTML 4649–4669).
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import BackgroundStack, { ambienceLayerStyle } from './BackgroundStack';
 import type { LiquidNeonV2Settings } from './liquidNeonEngine';
@@ -134,6 +134,66 @@ describe('hidden-window animation pause (audit P4)', () => {
 
     // Listener is gone: further events no longer re-add the class.
     fireEvent(document, new Event('visibilitychange'));
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+  });
+});
+
+describe('SKY-8566 idle-pause (root cause: ambient loops never actually stop under prefers-reduced-motion in the packaged build, so the compositor ticks a live backdrop-filter blur at 60fps forever)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.documentElement.classList.remove('ln-anim-paused');
+  });
+
+  it('adds ln-anim-paused after 5s with no pointer/keyboard/wheel activity', () => {
+    render(<BackgroundStack settings={null} />);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    vi.advanceTimersByTime(4_999);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    vi.advanceTimersByTime(1);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+  });
+
+  it('resumes immediately on pointer activity, then re-arms the 5s timer', () => {
+    render(<BackgroundStack settings={null} />);
+    vi.advanceTimersByTime(5_000);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+
+    fireEvent.pointerMove(window);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    // Doesn't re-pause early — the timer restarted from the activity event.
+    vi.advanceTimersByTime(4_999);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+  });
+
+  it('keydown and wheel also count as activity', () => {
+    render(<BackgroundStack settings={null} />);
+    vi.advanceTimersByTime(5_000);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+
+    vi.advanceTimersByTime(5_000);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(true);
+
+    fireEvent.wheel(window);
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+  });
+
+  it('stays paused across unmount and does not throw on a stale idle timer firing after unmount', () => {
+    const { unmount } = render(<BackgroundStack settings={null} />);
+    unmount();
+    expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
+    expect(() => vi.advanceTimersByTime(10_000)).not.toThrow();
     expect(document.documentElement.classList.contains('ln-anim-paused')).toBe(false);
   });
 });

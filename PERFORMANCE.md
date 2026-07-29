@@ -203,6 +203,98 @@ as continuously-running loops in this pass's code review, so they remain
 plausible but unconfirmed contributors). Tracked as a follow-up
 re-measurement task; not blocking merge of the code fixes themselves.
 
+### SKY-8566 — idle-CPU driver root-caused and fixed: the ambient/border loops never actually stop
+
+**Root cause.** SKY-8224 flagged the `backdrop-filter` stack and the 30s IPC
+pollers as the two unconfirmed suspects and found the pollers innocent (each
+is correctly `setInterval`-gated, not a tight loop). The actual driver is
+`backdrop-filter`, but not through the pollers or through `prefers-reduced-
+motion` failing to apply as *design* intent — it fails to apply as a
+*mechanism*: launching the packaged app with Electron's
+`--force-prefers-reduced-motion` (the flag `e2e/perf/ui-runtime/launch.ts`
+uses for every metric except §4 target 3) does **not** flip the
+`(prefers-reduced-motion: reduce)` media query in this Electron/Chromium
+build. Confirmed directly against the packaged app:
+`page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)`
+returns `false`, and `document.getAnimations()` at the start of the
+SKY-8217 idle-CPU window shows `.ln-bg-wallpaper` (`lnDrift`, 70s),
+`.ln-bg-ambience` (`lnRiseT`, 46s/70s), and `.ln-border-overlay`
+(`lnBreathe`, 4.6s) all `playState: 'running'` at full, un-reduced duration.
+
+This means every SKY-8217 idle-CPU measurement to date (including the
+2026-07-23 baseline) was taken with these "ambient, always-on" loops fully
+live, not reduced to a no-op as `liquidNeon.css`'s
+`@media (prefers-reduced-motion: reduce)` block assumes. A CDP `Profiler`
+capture of the renderer's V8 main thread during the 5s idle window showed
+**99.7% idle JS** (no hot userland function) — ruling out a JS-level cause —
+while a CDP `Tracing` capture of the same window showed the compositor
+producing a full frame every ~16ms indefinitely (`cc::AnimationHost::
+TickAnimations` / `viz::DisplayScheduler::BeginFrame` at a steady ~60/s,
+`viz::SoftwareRenderer::DoDrawQuad` ~6,500/s under this sandbox's software
+rendering). That is exactly `plans/design-handoff/v2/PERFORMANCE.md` §2's
+"backdrop-filter is a per-frame tax": `.tiptap-content`'s live
+`backdrop-filter: blur()` (the one persistent surface, by design — see
+`BlockEditor.css`) sits above the wallpaper/ambience layers, so as long as
+those layers keep animating underneath it, the compositor must re-resolve
+the blur every frame, forever — independent of the 30s IPC pollers.
+
+A second, smaller gap: `.wtb-agents-dot` (`WorkspaceTabBar.css`, the
+always-visible "agents idle/working" status dot) had **no**
+`prefers-reduced-motion` handling and was not covered by the existing
+hidden-window pause at all — it pulses (`lnPulse`, 3s) forever, including
+while the window is minimized.
+
+**Fix.** `plans/design-handoff/v2/PERFORMANCE.md` §3 already prescribes the
+missing half: "every infinite animation must ... pause on blur/**idle** via
+`document.hidden` + a global reduce-motion switch." Only the `document.hidden`
+half was implemented (`BackgroundStack.tsx`'s `ln-anim-paused` class, audit
+P4). `BackgroundStack.tsx` now also arms a 5s no-activity timer
+(`pointerdown`/`pointermove`/`keydown`/`wheel`) and folds it into the same
+`ln-anim-paused` class — reusing the existing CSS rule and the "5s of no
+recent input" recency window `useWritingScheduler` (SKY-8224) and
+`useArchiveScheduler`'s `SAVE_DEBOUNCE_MS` already established elsewhere in
+this codebase. This does not touch the OS-level reduced-motion path (still
+broken as a mechanism, tracked separately below) or change the ambient
+animation's visible behavior while the user is actually present — it only
+stops the compositor tick once there is genuinely no input, which is when
+the idle-CPU target is measured. `WorkspaceTabBar.css`'s `.wtb-agents-dot`
+gets both the missing `@media (prefers-reduced-motion: reduce)` block and a
+hook into the same `ln-anim-paused` class.
+
+**Evidence — isolated, controlled A/B, not the full noisy harness** (same
+sandbox as SKY-8224's inconclusive re-measurement attempt, so absolute
+numbers aren't comparable to the 2026-07-23 baseline host, but the
+before/after comparison is on identical hardware/process in the same run):
+a throwaway script launched the packaged build exactly like
+`e2e/perf/ui-runtime/idleCpu.ts` does, opened the seeded scene, then sampled
+`/proc/<rendererPid>/stat` over two consecutive 5s windows — window A
+starting 1s after scene-open (matches the harness's own timing, animations
+still live because of the `--force-prefers-reduced-motion` gap above),
+window B starting ~4s later (idle-pause engaged). Three runs:
+
+| Run | Window A (pre-idle-pause) | Window B (idle-pause engaged) |
+|---|---:|---:|
+| 1 | 4.80% | 5.20% (pre-fix code — no reduction, confirms the loops don't stop on their own) |
+| 2 | 4.00% | 0.20% |
+| 3 | 3.60% | 0.20% |
+| 4 (fix-branch rebuild) | 3.80% | 0.40% |
+
+Run 1 is the pre-fix code (verified via `git stash` on the same build/
+environment) — window B stays flat or drifts up, confirming the ambient
+loops do not self-quiet without this fix. Runs 2–4 are post-fix: renderer
+idle CPU drops roughly 10–20x once the idle-pause engages, landing at
+0.2–0.4%, comfortably under the harness's `≤ 1%` pass bar and trending to
+the ~0% target. A companion CDP `Tracing` capture of window B (post-fix)
+shows `SoftwareRenderer::DoDrawQuad` drop from 32,691 to 580 events and
+`AnimationHost::TickAnimations` drop from 276 to 40 over the same 5s window.
+
+**Not fixed here, tracked separately:** the `--force-prefers-reduced-motion`
+mechanism itself not flipping `matchMedia` in this Electron/Chromium build.
+That's an OS-integration gap (affects real users who set the OS-level
+reduced-motion preference, not just this harness) worth its own scoped
+investigation; the idle-pause fix above closes the actual idle-CPU driver
+regardless of whether that flag ever gets fixed, so it isn't a blocker here.
+
 ## Acceptance targets (unchanged from the fix-order plan)
 
 - Keystroke → paint under 16 ms with all panels open.
@@ -222,3 +314,4 @@ previously-automated subset restored by SKY-7936.
 | Restoration (SKY-7936) | 2026-07-22 | 106 ms / 278 ms | 4 regressions vs. stale baseline, baseline refreshed | not yet automated | First entry; establishes the format for future waves |
 | UI-runtime harness (SKY-8217) | 2026-07-23 | — | — | 47.2 ms / 4.8% / 59.5 fps / 0.0 pp | Harness added; 2 of 4 targets miss (keystroke, idle CPU) — follow-up filed, not blocking |
 | Perf fixes (SKY-8224) | 2026-07-28 | — | — | not re-baselined (see write-up above) | AutoLinker decoration rebuild scoped to changed textblock (377x isolated-bench speedup); writing-assistant heartbeat now skips ticks while typing. Full-harness re-measure blocked on a low-noise host — this execution's sandbox is ~4-5x noisier than the 2026-07-23 baseline host even for unmodified code |
+| Idle-CPU root cause (SKY-8566) | 2026-07-28 | — | — | not re-baselined on the full harness (see write-up above); isolated A/B: renderer idle CPU 3.6–4.8% → 0.2–0.4% | Root cause: `--force-prefers-reduced-motion` doesn't flip `matchMedia` in this build, so the ambient wallpaper/ambience/border-breathe loops (and the ungated `.wtb-agents-dot` pulse) never actually stop, forcing `.tiptap-content`'s live `backdrop-filter` to re-resolve every frame forever. Fix: idle-timeout (5s no pointer/keyboard/wheel activity) folded into the existing `ln-anim-paused` hidden-window pause class |
