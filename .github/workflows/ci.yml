@@ -226,6 +226,9 @@ jobs:
       - name: Test (frontend)
         run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
 
+      - name: Test (issue-finder dedupe key, SKY-8741)
+        run: node .github/scripts/issue-finder.test.js
+
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
