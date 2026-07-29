@@ -459,7 +459,7 @@ jobs:
       - name: E2E — Cloud sync (SKY-6933 sweep, skip-guarded — deferred feature)
         run: xvfb-run --auto-servernum npm run test:e2e:cloud-sync
 
-      - name: E2E — Continuity peek (SKY-6933 sweep, skip-guarded — stale selector)
+      - name: E2E — Continuity peek (SKY-8242: un-skipped, was flaky full-sequential-run)
         run: xvfb-run --auto-servernum npm run test:e2e:continuity-peek
 
       - name: E2E — Accessibility fixes SKY-1362 (SKY-6933 sweep, skip-guarded — stale selector)
