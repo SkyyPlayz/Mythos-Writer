@@ -3958,9 +3958,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     );
     updateManifest(updatedStories);
+    // Beta 4 M8: the manuscript renders selectedStory — refresh it so a
+    // later structural op (drag/merge) reads this edit, not a stale sibling
+    // (SKY-8587: omitting this silently reverted the just-typed text).
+    const editedStory = updatedStories.find((st) => st.id === selectedStory.id);
+    if (editedStory) refreshManuscriptSelection(editedStory);
     persistSceneMarkdown(updatedScene);
     window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
-  }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, persistSceneMarkdown]);
 
   const handleManuscriptCycleStatus = useCallback((sceneId: string) => {
     if (!selectedStory) return;
@@ -4005,6 +4010,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ),
     };
     updateManifest(stories.map((st) => (st.id === selectedStory.id ? stampedStory : st)));
+    // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
+    // reordered blocks actually appear (the move is already persisted to
+    // disk, but SKY-8587 found the UI stayed on the pre-drag order forever).
+    refreshManuscriptSelection(stampedStory);
     for (const ch of stampedStory.chapters) {
       for (const sc of ch.scenes) {
         if (!changed.has(sc.id)) continue;
@@ -4014,7 +4023,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     }
     showLnToast('Block moved');
-  }, [selectedStory, stories, updateManifest, persistSceneMarkdown]);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, persistSceneMarkdown]);
 
   // Beta 4 M8: shared persistence for model-driven single-scene block edits
   // (split/merge/empty-removal) — stamp the scene, write the manifest, then
