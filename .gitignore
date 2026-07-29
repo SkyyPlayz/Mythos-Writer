@@ -15,3 +15,7 @@ e2e-visual-artifacts
 # Paperclip / Claude Code agent worktrees — never commit nested git repos
 .claude/
 .paperclip/
+# Generated scratch output (e.g. BugHunt-Fisher.sh daily reports) — never source
+.tmp/
+daily_bug_hunt_*.md
+daily_bug_hunt_*.json
