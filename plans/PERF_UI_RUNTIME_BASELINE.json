@@ -1,59 +1,59 @@
 {
-  "timestamp": "2026-07-23T17:26:28.750Z",
+  "timestamp": "2026-07-29T07:56:53.428Z",
   "build": "packaged (electron-vite build, out/main/main.js)",
   "metrics": {
     "keystroke_to_paint_p95_ms": {
-      "value": 47.174,
+      "value": 46.755,
       "unit": "ms",
       "target": 16,
       "targetDescription": "PERFORMANCE.md §0: keystroke -> paint under 16ms (p95, n=20)",
       "pass": false,
       "detail": {
-        "p50": 42.114,
+        "p50": 42.978,
         "samples": [
-          67.604,
-          43.338,
-          40.214,
-          42.114,
-          42.369,
-          43.637,
-          47.174,
-          41.118,
-          40.276,
-          40.992,
-          40.376,
-          41.322,
-          43.319,
-          40.802,
-          39.983,
-          43.091,
-          42.946,
-          42.386,
-          42.139,
-          36.763
+          65.503,
+          42.188,
+          43.186,
+          39.975,
+          42.083,
+          43.89,
+          43.178,
+          46.134,
+          40.259,
+          43.669,
+          45.015,
+          42.339,
+          42.669,
+          46.755,
+          41.233,
+          42.981,
+          44.791,
+          39.488,
+          42.103,
+          42.978
         ]
       }
     },
     "idle_cpu_pct": {
-      "value": 4.799040191961607,
+      "value": 4.798080767692923,
       "unit": "% CPU",
       "target": 1,
-      "targetDescription": "PERFORMANCE.md §0: idle CPU ~0% (harness pass bar: total <= 1% over a 5001ms window)",
+      "targetDescription": "PERFORMANCE.md §0: idle CPU ~0% (harness pass bar: total <= 1% over a 5002ms window)",
       "pass": false,
       "detail": {
-        "mainCpuPct": 0.19996000799840033,
-        "rendererCpuPct": 4.599080183963207,
-        "windowMs": 5001
+        "mainCpuPct": 0,
+        "rendererCpuPct": 4.798080767692923,
+        "windowMs": 5002
       }
     },
     "ambient_animation_fps_floor": {
-      "value": 59.52380952380968,
+      "value": 59.52380952381049,
       "unit": "fps",
       "target": 57,
       "targetDescription": "PERFORMANCE.md §0: ambient animation at 60fps (harness pass bar: 95%-of-frames floor >= 57fps, n=181)",
       "pass": true,
       "detail": {
-        "avgFps": 60.00132599615462,
+        "avgFps": 60.00331510028178,
         "p50Fps": 59.88023952095874,
         "droppedFramePct": 0
       }
@@ -67,8 +67,8 @@
       "detail": {
         "idleDroppedFramePct": 0,
         "streamingDroppedFramePct": 0,
-        "idleAvgFps": 60.00198353664584,
-        "streamingAvgFps": 60.003163080649806
+        "idleAvgFps": 60.00091241056888,
+        "streamingAvgFps": 60.00316308064982
       }
     }
   }
