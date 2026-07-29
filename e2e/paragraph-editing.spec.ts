@@ -20,16 +20,17 @@
  *
  * TC-PE-03's fixture is built by chaining Enter-splits rather than
  * type-then-Tab commits. This is deliberate, not a style choice: investigating
- * this ticket surfaced a real bug (filed separately, see SKY-8587) where
- * `handleManuscriptEditParagraph` (DesktopShell.tsx) never refreshes
+ * this ticket surfaced a real bug (fixed in SKY-8587) where
+ * `handleManuscriptEditParagraph` (DesktopShell.tsx) never refreshed
  * `selectedStory` after a plain paragraph-text commit, so a LATER grip-drag
- * (which reads sibling content straight from `selectedStory`) can silently
- * overwrite that sibling with its pre-edit placeholder text. Enter-splits are
+ * (which reads sibling content straight from `selectedStory`) could silently
+ * overwrite that sibling with its pre-edit placeholder text. Enter-splits were
  * immune (`handleManuscriptSplitParagraph` takes the caret-split halves as
  * fresh parameters and also refreshes `selectedStory`), so this spec's own
- * assertions stay green while the drag path itself is still exercised for
- * real. Do not silently change this test to route through a Tab-commit
- * instead — that would reintroduce SKY-8587 into this suite's blind spot.
+ * assertions stayed green even before SKY-8587 landed. Now that
+ * `handleManuscriptEditParagraph` also refreshes `selectedStory`, a
+ * type-then-Tab fixture would work too — but there's no need to churn this
+ * spec to prove it; keep chaining Enter-splits here.
  *
  * Run:
  *   npx playwright test e2e/paragraph-editing.spec.ts --reporter=list
@@ -382,20 +383,17 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
       // The new order persists to disk immediately, with every paragraph's
       // text intact — the sharp, direct proof that the reorder is real and
       // not just an in-memory artifact.
-      //
-      // NOTE: this spec deliberately does not also assert the ManuscriptView
-      // DOM re-renders the new row order in place. Investigating this ticket
-      // found that `handleManuscriptMoveParagraph` (DesktopShell.tsx) commits
-      // the reorder to `stories` and disk but — unlike every sibling M8/M10
-      // handler — never calls `refreshManuscriptSelection`, so the view (which
-      // renders `selectedStory`, a separate reference) keeps showing the
-      // pre-drag order until something else happens to refresh it. Filed
-      // separately as SKY-8587; see that ticket for the one-line fix. The
-      // drag's effect on the real product (the file on disk) is still
-      // exercised and asserted above.
       await expect
         .poll(() => sceneBody(readSceneFile(scenePath)), { timeout: 10_000 })
         .toBe('Beta paragraph.\n\nAlpha paragraph.\n\nGamma paragraph.\n\n \n');
+
+      // SKY-8587 fixed `handleManuscriptMoveParagraph` to call
+      // `refreshManuscriptSelection` after the move, so the ManuscriptView
+      // DOM should reflect the reordered rows immediately, not just the
+      // on-disk file.
+      await expect(rows.nth(0)).toHaveText('Beta paragraph.');
+      await expect(rows.nth(1)).toHaveText('Alpha paragraph.');
+      await expect(rows.nth(2)).toHaveText('Gamma paragraph.');
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(tmpRoot, { recursive: true, force: true });
