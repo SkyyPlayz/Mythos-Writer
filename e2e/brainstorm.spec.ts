@@ -31,6 +31,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -230,18 +231,8 @@ test.afterAll(async () => {
   // Guard against app being undefined when beforeAll threw before electron.launch
   // resolved (e.g. the 60 s launch timeout fired). Without this guard, accessing
   // app.process() throws TypeError and masks the original launch failure.
-  const proc = app?.process();
-  await Promise.race([
-    app?.close().catch(() => undefined) ?? Promise.resolve(),
-    new Promise<void>((r) => setTimeout(r, 5_000)),
-  ]);
-  try {
-    if (proc && !proc.killed) proc.kill('SIGKILL');
-  } catch {
-    /* already exited */
-  }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  await closeElectronApp(app);
+  removeTempDirs(userData, vaultDir);
 });
 
 // ─── TC-BST-01: Streaming tokens ─────────────────────────────────────────────

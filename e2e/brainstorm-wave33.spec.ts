@@ -47,6 +47,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -255,16 +256,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  const proc = app?.process();
-  await Promise.race([
-    app?.close().catch(() => undefined) ?? Promise.resolve(),
-    new Promise<void>((r) => setTimeout(r, 5_000)),
-  ]);
-  try {
-    if (proc && !proc.killed) proc.kill('SIGKILL');
-  } catch { /* already exited */ }
-  fs.rmSync(userData, { recursive: true, force: true });
-  fs.rmSync(vaultDir, { recursive: true, force: true });
+  await closeElectronApp(app);
+  removeTempDirs(userData, vaultDir);
 });
 
 // ─── TC-W3.3-DR-01: Reorder + persist ────────────────────────────────────────
