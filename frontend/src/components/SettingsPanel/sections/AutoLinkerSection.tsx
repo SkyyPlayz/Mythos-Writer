@@ -22,6 +22,10 @@ export default function AutoLinkerSection({ settings, setSettings, setSavedOk }:
 
   const [formatStatus, setFormatStatus] = useState<string | null>(null);
   const [isFormatting, setIsFormatting] = useState(false);
+  // Raw text while the delay field is being edited; null = not editing, show
+  // the committed value. Lets the field sit empty/partial without the
+  // controlled value snapping back mid-edit (GH #1149).
+  const [delayDraft, setDelayDraft] = useState<string | null>(null);
 
   // Clear status after 4 seconds
   useEffect(() => {
@@ -128,11 +132,16 @@ export default function AutoLinkerSection({ settings, setSettings, setSavedOk }:
           min={0}
           max={30000}
           step={100}
-          value={linker.formatDelay}
+          value={delayDraft ?? String(linker.formatDelay)}
           onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            if (!Number.isNaN(v)) updateLinker({ formatDelay: v });
+            const raw = e.target.value;
+            setDelayDraft(raw);
+            const v = parseInt(raw, 10);
+            if (!Number.isNaN(v)) {
+              updateLinker({ formatDelay: Math.min(30000, Math.max(0, v)) });
+            }
           }}
+          onBlur={() => setDelayDraft(null)}
           style={{ width: '120px' }}
         />
         <p className="settings-hint">Delay after the last keystroke before format-on-save triggers.</p>
