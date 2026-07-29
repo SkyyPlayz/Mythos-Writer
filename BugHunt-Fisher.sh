@@ -11,7 +11,7 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLANS_DIR="$BASE_DIR/plans"
 RUN_DATE="$(date +%Y%m%d)"
 RUN_TS="$(date +%Y-%m-%dT%H:%M:%S%z)"
-OUTPUT_DIR="$BASE_DIR"
+OUTPUT_DIR="$BASE_DIR/.tmp/bughunt-fisher"
 INTAKE_MODE="report-only"
 
 usage() {
@@ -22,6 +22,7 @@ Options:
   --report-only          Generate report artifacts only. This is the default.
   --run-date YYYYMMDD    Override the report date for deterministic checks.
   --output-dir DIR       Write daily_bug_hunt_<date> artifacts to DIR.
+                         Defaults to an ignored scratch dir: .tmp/bughunt-fisher/
   -h, --help             Show this help.
 
 This script never creates GitHub issues. It emits GitHub issue-ready markdown
