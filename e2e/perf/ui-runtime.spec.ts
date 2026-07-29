@@ -141,9 +141,22 @@ test.describe('SKY-8217 metric 2 — idle CPU', () => {
     app = await launchApp(scratch.userData, { reducedMotion: true });
     page = await firstWindow(app);
     await openSeededScene(page);
-    // Let post-navigation layout/paint work settle before sampling idle CPU —
-    // otherwise the window is measuring scene-open cost, not idle cost.
-    await page.waitForTimeout(1000);
+    // SKY-8411: openSeededScene's final `editor.click()` counts as pointer
+    // activity for BackgroundStack's 5s ambient-animation idle-pause
+    // (SKY-8566, IDLE_PAUSE_MS). A fixed 1000ms settle wait left ~80% of the
+    // 5000ms sampling window below running BEFORE that pause engaged, which
+    // silently diluted the fix's effect down to noise (this harness measured
+    // 4.798% post-fix vs. 4.799% pre-fix — the window was mostly capturing
+    // pre-pause CPU, not evidence the fix doesn't work; see BackgroundStack's
+    // own unit coverage and isolated A/B for the real per-fix numbers). Wait
+    // for the actual paused state rather than guessing a duration so this
+    // keeps working if IDLE_PAUSE_MS ever changes.
+    await page.waitForFunction(
+      () => document.documentElement.classList.contains('ln-anim-paused'),
+      { timeout: 8000 },
+    );
+    // Brief extra settle for any paint/GC from the pause transition itself.
+    await page.waitForTimeout(250);
   });
 
   test.afterAll(async () => {

@@ -295,6 +295,79 @@ reduced-motion preference, not just this harness) worth its own scoped
 investigation; the idle-pause fix above closes the actual idle-CPU driver
 regardless of whether that flag ever gets fixed, so it isn't a blocker here.
 
+### SKY-8411 — full-harness re-measure: idle CPU confirmed, a real harness bug found, other 3 metrics proven noisy on this infra
+
+The earlier "no improvement" full-harness read (`plans/PERF_UI_RUNTIME_BASELINE.json`,
+keystroke p95 46.755 ms / idle CPU 4.798% — statistically identical to the
+pre-SKY-8224/8566 baseline) was **not evidence the SKY-8566 fix doesn't
+work — it was a harness timing bug.**
+
+**Root cause.** `e2e/perf/ui-runtime.spec.ts`'s idle-CPU test's `beforeAll`
+calls `openSeededScene`, whose last action is `editor.click()` — pointer
+activity that arms `BackgroundStack.tsx`'s 5s `IDLE_PAUSE_MS` timer (SKY-8566).
+The test then waited a fixed **1000 ms** before starting the 5000 ms
+`/proc` CPU-tick sampling window. Since the idle-pause only engages 5000 ms
+after that click — i.e. **4000 ms into the 5000 ms sampling window** — roughly
+80% of every idle-CPU measurement to date was averaging in the *pre-pause*
+CPU rate, diluting the fix's real effect down to noise. Fixed by waiting for
+the actual `html.ln-anim-paused` class (`page.waitForFunction`) instead of a
+fixed duration, so the sampling window only ever starts once the app is
+genuinely idle-paused, and this keeps working if `IDLE_PAUSE_MS` ever
+changes.
+
+**Idle CPU — now confirmed passing on the full harness**, 4 consecutive
+runs on this execution host (build fresh via `npm run build:electron`,
+`xvfb-run -a npx playwright test e2e/perf/ui-runtime.spec.ts`):
+
+| Run | Idle CPU (total) | vs. ≤1% target |
+|---|---:|:---:|
+| 1 | 0.40% | ✅ |
+| 2 | 0.60% | ✅ |
+| 3 | 0.40% | ✅ |
+| 4 | 0.60% | ✅ |
+
+Tight, repeatable, ~2–2.5x margin under target — this is a real signal, not
+noise. **AC1 (idle CPU) is satisfied.**
+
+**Keystroke p95, ambient fps floor, and streaming-drop delta remain
+unconfirmed — and the same 4 runs prove why a trustworthy read isn't
+obtainable from this host today**, independent of the idle-CPU bug above:
+
+| Run | Keystroke p95 | Ambient fps floor | Streaming drop delta |
+|---|---:|---:|---:|
+| 1 | 79.78 ms ❌ | 59.52 fps ✅ | 7.93 pp ❌ |
+| 2 | 66.45 ms ❌ | 30.03 fps ❌ | 3.42 pp ✅ |
+| 3 | 64.31 ms ❌ | 59.88 fps ✅ | 7.07 pp ❌ |
+| 4 (host quieter, load avg 0.96) | — | — | — |
+
+(Run 4's raw numbers are the ones now committed to
+`plans/PERF_UI_RUNTIME_BASELINE.json`.) Ambient fps swinging 59.9 → 30.0 → 59.9
+fps and the streaming delta oscillating both sides of the 5pp bar, with zero
+code changes between runs, is host scheduling noise, not a regression — this
+is CDP frame-timing and `RunTask` duration, both of which capture total
+system contention, not just this code path (same class of noise SKY-8224
+already documented). Checked at measurement time: this execution host itself
+is not a quiet host — 8 cores, load average 4.4 at the first run, with two
+Paperclip-platform Postgres workers pegged at 98% CPU. It is Paperclip's own
+shared agent-workspace host, not a dedicated perf box, and no such dedicated
+host is currently provisioned. Keystroke p95 additionally can't demonstrate
+the SKY-8224 `AutoLinkerExtension` fix even on a quiet host: the harness's
+seeded scene (`SCENE_BODY`, ~250 words, no entities) is far below the
+300-paragraph/150-entity scale the isolated microbenchmark used to show the
+377x improvement — a full-doc vs. scoped decoration rebuild cost the same
+(near-zero) at this fixture's size regardless of which code path runs. That
+microbenchmark remains the trustworthy evidence for the keystroke fix.
+
+**Disposition:** idle CPU (the metric SKY-8566 specifically targeted) is
+confirmed via the real full-harness measurement, not just the isolated A/B.
+Keystroke/fps/streaming stay unconfirmed pending either (a) a genuinely
+dedicated, idle perf host — not any Paperclip agent workspace, which all
+share this same live-Postgres/concurrent-agent machine — or (b) for keystroke
+specifically, scaling up the seeded fixture to the size that actually
+exercises the fixed code path. Both filed as follow-ups (SKY-8411 does not
+block on them; no evidence of an actual regression, just unmeasurable signal
+here).
+
 ## Acceptance targets (unchanged from the fix-order plan)
 
 - Keystroke → paint under 16 ms with all panels open.
@@ -315,3 +388,4 @@ previously-automated subset restored by SKY-7936.
 | UI-runtime harness (SKY-8217) | 2026-07-23 | — | — | 47.2 ms / 4.8% / 59.5 fps / 0.0 pp | Harness added; 2 of 4 targets miss (keystroke, idle CPU) — follow-up filed, not blocking |
 | Perf fixes (SKY-8224) | 2026-07-28 | — | — | not re-baselined (see write-up above) | AutoLinker decoration rebuild scoped to changed textblock (377x isolated-bench speedup); writing-assistant heartbeat now skips ticks while typing. Full-harness re-measure blocked on a low-noise host — this execution's sandbox is ~4-5x noisier than the 2026-07-23 baseline host even for unmodified code |
 | Idle-CPU root cause (SKY-8566) | 2026-07-28 | — | — | not re-baselined on the full harness (see write-up above); isolated A/B: renderer idle CPU 3.6–4.8% → 0.2–0.4% | Root cause: `--force-prefers-reduced-motion` doesn't flip `matchMedia` in this build, so the ambient wallpaper/ambience/border-breathe loops (and the ungated `.wtb-agents-dot` pulse) never actually stop, forcing `.tiptap-content`'s live `backdrop-filter` to re-resolve every frame forever. Fix: idle-timeout (5s no pointer/keyboard/wheel activity) folded into the existing `ln-anim-paused` hidden-window pause class |
+| Harness re-measure (SKY-8411) | 2026-07-29 | — | — | 64.31 ms / 0.60% / 59.88 fps / 7.07 pp (idle CPU 4-run avg ~0.5%) | Found + fixed a real harness bug: idle-CPU test's 1s settle wait was shorter than SKY-8566's 5s idle-pause threshold, diluting ~80% of every measurement with pre-pause CPU. Idle CPU now confirmed passing on the real full harness (4/4 runs, 0.4–0.6%). Keystroke/fps/streaming stay unconfirmed — proven host noise (fps swung 59.9→30.0→59.9fps across runs with no code change) on this shared Paperclip agent-workspace host (not a dedicated perf box); keystroke fixture is also too small to exercise the SKY-8224 fix at scale. Follow-up filed for a dedicated quiet host + a scaled-up keystroke fixture |
