@@ -340,9 +340,13 @@ obtainable from this host today**, independent of the idle-CPU bug above:
 | 3 | 64.31 ms ❌ | 59.88 fps ✅ | 7.07 pp ❌ |
 | 4 (host quieter, load avg 0.96) | — | — | — |
 
-(Run 4's raw numbers are the ones now committed to
-`plans/PERF_UI_RUNTIME_BASELINE.json`.) Ambient fps swinging 59.9 → 30.0 → 59.9
-fps and the streaming delta oscillating both sides of the 5pp bar, with zero
+(Run 3's numbers are the ones committed to
+`plans/PERF_UI_RUNTIME_BASELINE.json` — run 4 was a spot-check of host load,
+not a full harness pass, and recorded no metrics of its own; an earlier draft
+of this section incorrectly attributed the committed numbers to run 4.)
+**AC3's explicit ≤5pp streaming-drop bar is not met by the committed number
+(7.07pp)** — flagged here rather than glossed over. Ambient fps swinging
+59.9 → 30.0 → 59.9 fps and the streaming delta oscillating both sides of the 5pp bar, with zero
 code changes between runs, is host scheduling noise, not a regression — this
 is CDP frame-timing and `RunTask` duration, both of which capture total
 system contention, not just this code path (same class of noise SKY-8224
@@ -364,9 +368,11 @@ Keystroke/fps/streaming stay unconfirmed pending either (a) a genuinely
 dedicated, idle perf host — not any Paperclip agent workspace, which all
 share this same live-Postgres/concurrent-agent machine — or (b) for keystroke
 specifically, scaling up the seeded fixture to the size that actually
-exercises the fixed code path. Both filed as follow-ups (SKY-8411 does not
-block on them; no evidence of an actual regression, just unmeasurable signal
-here).
+exercises the fixed code path. Both filed as SKY-8748 (SKY-8411 does not
+block on them; no isolated evidence of an actual code regression, just
+unmeasurable signal on this host — but note the currently committed
+streaming-drop number does numerically fail PERFORMANCE.md's own ≤5pp bar
+until SKY-8748 re-measures on a quiet host).
 
 ## Acceptance targets (unchanged from the fix-order plan)
 
