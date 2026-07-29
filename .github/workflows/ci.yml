@@ -600,6 +600,9 @@ jobs:
       - name: E2E — Brainstorm wave 3.3 drag-reorder (SKY-6933 sweep, skip-guarded — narrow-layout controls)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-wave33
 
+      - name: E2E — Brainstorm scene-append writes real content to disk (SKY-8007, SKY-8447)
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-scene-append
+
       - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
         run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
 
