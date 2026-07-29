@@ -55,10 +55,19 @@ export default function ContinuityPanel({ selectionText, autoFocusSearch = false
   }, []);
 
   useEffect(() => {
-    if (!autoFocusSearch) return;
+    // Depend on notesVaultRoot too (not just autoFocusSearch, which is a
+    // constant prop that never changes) -- the search <input> only exists in
+    // the DOM once notesVaultRoot has resolved (see the `!notesVaultRoot`
+    // early-return below, which renders the no-vault empty state without an
+    // input). Without this dependency, this effect's single mount-time
+    // setTimeout fires while searchInputRef.current is still null (the
+    // no-vault render), and never runs again once the real UI mounts a
+    // beat later, so the input silently never receives focus. Same class of
+    // stale-mount race as the selection-match effect (SKY-8204).
+    if (!autoFocusSearch || !notesVaultRoot) return;
     const timer = setTimeout(() => searchInputRef.current?.focus(), 0);
     return () => clearTimeout(timer);
-  }, [autoFocusSearch]);
+  }, [autoFocusSearch, notesVaultRoot]);
 
   // Selection-driven auto-match with 200ms debounce
   const runMatch = useCallback(async (text: string, vaultRoot: string) => {

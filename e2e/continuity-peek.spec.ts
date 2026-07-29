@@ -39,19 +39,31 @@ import {
 } from '@playwright/test';
 
 // SKY-8204 follow-up (SKY-8242): selectors + trigger flow are re-pointed at the
-// current overlay-based architecture (see selector map above) and a real
-// product bug was found + fixed along the way (ContinuityPanel.tsx's
-// selection-match effect only re-ran on selectionText changes, so a selection
-// already made before the panel mounted -- the common case now that Continuity
-// Peek is a Focus-mode overlay instead of an always-mounted sidebar -- never
-// got matched if notesVaultRoot hadn't resolved yet). That fix is real and is
-// landing in this same PR. What's NOT yet solved: TC-CP-02/04/05/06 are still
-// intermittently flaky when the full suite runs sequentially against the
-// single shared Electron instance (each passes reliably in isolation via
-// `-g "TC-CP-0X"`, ruling out a hard logic bug, but something about running
-// them back-to-back against shared `page`/`app` state still races). Re-skip
-// pending that residual investigation rather than merge a flaky CI file.
-test.skip(true, 'SKY-8242: overlay selectors/flow fixed + real ContinuityPanel race fixed, but the full sequential run is still intermittently flaky (passes in isolation) -- see file header for diagnosis, owner: CTO');
+// current overlay-based architecture (see selector map above). Two real races
+// caused the full-sequential-run flakiness described in SKY-8242 (each test
+// passes in isolation, but back-to-back runs intermittently drop 1-3 tests):
+//
+// 1. Product bug: ContinuityPeekPanel's search-input autofocus effect
+//    (frontend/src/components/ContinuityPanel/ContinuityPanel.tsx) depended
+//    only on the constant `autoFocusSearch` prop, so its one mount-time
+//    setTimeout(focus) could fire while notesVaultRoot was still resolving --
+//    i.e. before the real search <input> (vs. the no-vault empty state)
+//    existed, leaving searchInputRef.current null. Fixed by also depending on
+//    notesVaultRoot, mirroring the selection-match effect's existing fix from
+//    PR #1103 (SKY-8204) for the same class of stale-mount race.
+// 2. Test-helper bug: replaceSceneText() pressed Ctrl+A immediately after
+//    editor.click(), but the click's focus can land a beat before
+//    ProseMirror's own selection handling catches up, so Ctrl+A occasionally
+//    selected nothing. The subsequent typed text then appended to the old
+//    scene body instead of replacing it (e.g. "Marcus" + "the Duke" ->
+//    "Marcusthe Duke", which matches no entity). The old assertion used
+//    toContainText(), a substring check, so it silently passed on the
+//    corrupted content. Fixed by retrying Ctrl+A until the native selection
+//    is non-empty, deleting, and asserting on exact text via toHaveText().
+//
+// Verified via `xvfb-run -a npx playwright test e2e/continuity-peek.spec.ts
+// --workers=1` locally: 10/10 consecutive full-suite runs green after both
+// fixes (was reproducing a failure in 6-9 of 10 runs beforehand).
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const STORY_ID = 'cp-e2e-story-0001';
@@ -229,9 +241,22 @@ async function selectWholeEditor(page: Page): Promise<void> {
 async function replaceSceneText(page: Page, text: string): Promise<void> {
   const editor = page.locator('.ProseMirror');
   await editor.click();
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  // Ctrl+A immediately after editor.click() can occasionally be a no-op --
+  // the native click/focus hasn't synced with ProseMirror's own selection
+  // handling yet, so the select-all falls through with no effect. Retry
+  // until the native selection actually reflects a real selection before
+  // deleting; without this, Delete silently does nothing and the typed text
+  // APPENDS to the old content instead of replacing it (e.g. "Marcus" +
+  // "the Duke" -> "Marcusthe Duke"). toContainText wouldn't have caught
+  // that since it's a substring check, not an exact match -- SKY-8242.
+  await expect.poll(async () => {
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    return page.evaluate(() => window.getSelection()?.toString().trim() ?? '');
+  }, { timeout: 3_000 }).not.toBe('');
+  await page.keyboard.press('Delete');
+  await expect(editor).toHaveText('', { timeout: 5_000 });
   await page.keyboard.type(text);
-  await expect(editor).toContainText(text, { timeout: 5_000 });
+  await expect(editor).toHaveText(text, { timeout: 5_000 });
 }
 
 async function ensureFocusMode(page: Page): Promise<void> {
