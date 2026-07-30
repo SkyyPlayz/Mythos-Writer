@@ -183,8 +183,13 @@ test.describe('SKY-8907 per-pane tab strips', () => {
   });
 
   test('the global workspace tab strip is hidden while split is active', async () => {
-    // Only the two per-pane strips' tablists should exist — no third, global one.
-    await expect(page.locator('[role="tablist"]')).toHaveCount(2);
+    // Only the two per-pane WorkspaceTabBar instances (.wtb-root) should exist
+    // — no third, global one. Scoped to .wtb-root rather than the bare
+    // [role="tablist"] attribute selector: StorySubViewBar renders its own,
+    // unrelated tablist (Editor/Coach/Scene Crafter/... sub-view toggles) any
+    // time the Story tab is active, split or not — that's a pre-existing,
+    // independent tab strip, not one of the two per-pane strips under test.
+    await expect(page.locator('.wtb-root[role="tablist"]')).toHaveCount(2);
   });
 
   test('opening a scene in pane 1 adds a tab to pane 1 only', async () => {
