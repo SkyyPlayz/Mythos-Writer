@@ -11,7 +11,7 @@ import { useAgentSessions, type UseAgentSessionsResult } from '../../lib/useAgen
 export type MiniChatInvoke = (
   prompt: string,
   history: { role: 'user' | 'assistant'; content: string }[],
-) => Promise<string>;
+) => Promise<string | { text: string; cardTitle?: string; cardFoot?: string }>;
 
 export interface MiniAgentChat {
   /** Shared session store — feed the session pill with this. */
@@ -50,11 +50,17 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
       }));
 
     try {
-      const text = await invoke(trimmed, history);
+      const result = await invoke(trimmed, history);
       const now = new Date().toISOString();
+      const agentText = typeof result === 'string' ? result : result.text;
+      const agentTurn: AgentSessionTurn = { role: 'agent', text: agentText, at: new Date().toISOString() };
+      if (typeof result !== 'string' && result.cardTitle) {
+        agentTurn.cardTitle = result.cardTitle;
+        if (result.cardFoot) agentTurn.cardFoot = result.cardFoot;
+      }
       await store.appendTurns([
         { role: 'user', text: trimmed, at: now },
-        { role: 'agent', text, at: new Date().toISOString() },
+        agentTurn,
       ], originSessionId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

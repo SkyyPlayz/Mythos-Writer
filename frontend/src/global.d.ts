@@ -5,6 +5,9 @@ interface AgentSessionTurn {
   role: 'user' | 'agent';
   text: string;
   at: string;
+  /** Present when the agent turn should render as a structured card. */
+  cardTitle?: string;
+  cardFoot?: string;
 }
 interface AgentSessionFile {
   id: string;
@@ -970,8 +973,8 @@ interface Window {
     archive: (manuscript: string, vaultPath: string) => Promise<unknown>;
     agentWritingAssistant: (prompt: string, context?: string) => Promise<{ text: string }>;
     onWritingAssistantChunk: (cb: (chunk: string) => void) => () => void;
-    agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
-    agentArchive: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string }>;
+    agentBrainstorm: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string; cardTitle?: string; cardFoot?: string }>;
+    agentArchive: (prompt: string, history?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<{ text: string; cardTitle?: string; cardFoot?: string }>;
     onBrainstormChunk: (cb: (chunk: string) => void) => () => void;
     agentVaultIndex: () => Promise<{ entities: VaultIndexEntry[] }>;
     agentVaultCheck: (sceneContent: string) => Promise<{ text: string; inconsistencies: VaultCheckInconsistency[] }>;

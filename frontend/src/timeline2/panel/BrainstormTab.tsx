@@ -21,6 +21,9 @@ const invokeBrainstorm: MiniChatInvoke = async (prompt, history) => {
     throw new Error('Brainstorm agent unavailable — check your provider settings.');
   }
   const response = await api.agentBrainstorm(prompt, history);
+  if (response.cardTitle) {
+    return { text: response.text, cardTitle: response.cardTitle, cardFoot: response.cardFoot };
+  }
   return response.text;
 };
 
