@@ -1,6 +1,6 @@
 // SKY-1756: Unit tests for Notes Vault graph data layer.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mapCategory, extractWikiLinkTargets, invalidateNoteGraphIndex, getGraphNodes, getGraphEdges, handleNoteFileChanged } from './vaultGraph.js';
+import { mapCategory, extractFrontmatterType, extractWikiLinkTargets, invalidateNoteGraphIndex, getGraphNodes, getGraphEdges, handleNoteFileChanged } from './vaultGraph.js';
 
 // ─── Mock vault.js ───
 // We provide a fake file system so tests run without touching the disk.
@@ -33,8 +33,8 @@ function resetFiles(files: FakeFile[]) {
 // ─── mapCategory ───
 
 describe('mapCategory', () => {
-  it('maps top-level files to default', () => {
-    expect(mapCategory('MyNote.md')).toBe('default');
+  it('maps top-level files with no folder/frontmatter signal to misc', () => {
+    expect(mapCategory('MyNote.md')).toBe('misc');
   });
 
   it('maps Characters/ prefix (case-insensitive)', () => {
@@ -74,8 +74,8 @@ describe('mapCategory', () => {
     expect(mapCategory('Daily Notes/2026-06-16.md')).toBe('misc');
   });
 
-  it('returns default for unknown top-level folder', () => {
-    expect(mapCategory('Universes/Arcadia/Lore.md')).toBe('default');
+  it('returns misc for unknown top-level folder', () => {
+    expect(mapCategory('Universes/Arcadia/Lore.md')).toBe('misc');
   });
 
   it('any matching segment maps to the category (not just the first segment)', () => {
@@ -83,8 +83,48 @@ describe('mapCategory', () => {
     expect(mapCategory('Archive/Characters/Old.md')).toBe('characters');
   });
 
-  it('returns default when no segment matches', () => {
-    expect(mapCategory('Universes/WorldA/Lore.md')).toBe('default');
+  it('returns misc when no segment matches', () => {
+    expect(mapCategory('Universes/WorldA/Lore.md')).toBe('misc');
+  });
+
+  it('honors frontmatter type over folder', () => {
+    expect(mapCategory('Universes/Ashford Village/Systems/Compact.md', 'system')).toBe('systems');
+    expect(mapCategory('SomeFolder/Note.md', 'character')).toBe('characters');
+    expect(mapCategory('SomeFolder/Note.md', 'location')).toBe('locations');
+    expect(mapCategory('SomeFolder/Note.md', 'faction')).toBe('factions');
+    expect(mapCategory('SomeFolder/Note.md', 'item')).toBe('items');
+    expect(mapCategory('SomeFolder/Note.md', 'event')).toBe('history');
+  });
+
+  it('falls back to folder mapping when frontmatter type is unrecognized', () => {
+    expect(mapCategory('Locations/City.md', 'story-notes')).toBe('locations');
+  });
+
+  it('falls back to misc when frontmatter type is unrecognized and folder does not match', () => {
+    expect(mapCategory('Stories/Beats.md', 'story-beats')).toBe('misc');
+  });
+});
+
+describe('extractFrontmatterType', () => {
+  it('returns undefined when there is no frontmatter block', () => {
+    expect(extractFrontmatterType('# Just a note\nNo frontmatter here.')).toBeUndefined();
+  });
+
+  it('extracts a simple type value', () => {
+    expect(extractFrontmatterType('---\ntype: character\n---\n# Body')).toBe('character');
+  });
+
+  it('extracts type regardless of surrounding keys', () => {
+    const content = '---\nsource: sample\nprovenance: bundled\ntype: system\n---\n# Body';
+    expect(extractFrontmatterType(content)).toBe('system');
+  });
+
+  it('strips quotes around the value', () => {
+    expect(extractFrontmatterType('---\ntype: "location"\n---\n')).toBe('location');
+  });
+
+  it('returns undefined when frontmatter has no type key', () => {
+    expect(extractFrontmatterType('---\nsource: sample\n---\n# Body')).toBeUndefined();
   });
 });
 
@@ -240,7 +280,16 @@ describe('node categories', () => {
     const city = nodes.find((n) => n.id === 'Locations/City.md')!;
     expect(city.category).toBe('locations');
     const top = nodes.find((n) => n.id === 'TopLevel.md')!;
-    expect(top.category).toBe('default');
+    expect(top.category).toBe('misc');
+  });
+
+  it('honors frontmatter type over folder name when building nodes', () => {
+    resetFiles([
+      // Folder says "Stories", but frontmatter type says "system" — frontmatter wins.
+      { path: 'Stories/Compact.md', content: '---\ntype: system\n---\n# The Compact' },
+    ]);
+    const nodes = getGraphNodes('/vault');
+    expect(nodes.find((n) => n.id === 'Stories/Compact.md')!.category).toBe('systems');
   });
 });
 

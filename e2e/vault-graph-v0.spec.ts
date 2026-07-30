@@ -154,7 +154,7 @@ async function navigateToGraph(page: Page): Promise<void> {
 //   Characters/Arya.md           — links [[Winterfell]] (neighbour of Winterfell)
 //   Locations/Winterfell.md      — neighbour of Arya
 //   Factions/TheStarks.md        — faction note
-//   TopLevel.md                  — root-level, default category
+//   TopLevel.md                  — root-level, unrecognized → misc category
 //   Orphan1..3.md                — no links → degree=0, r=5
 //   ChainA.md → ChainB → ChainC → ChainD (4-hop chain for depth-filter test)
 //   SearchTarget.md              — unique label for search test
@@ -196,7 +196,7 @@ function seedRichVault(notesVaultDir: string): void {
   fs.writeFileSync(path.join(notesVaultDir, 'Factions', 'TheStarks.md'),
     '# The Starks\n\nA noble house.\n', 'utf-8');
 
-  // Top-level (no folder) → default category
+  // Top-level (no folder, no frontmatter type) → misc category
   fs.writeFileSync(path.join(notesVaultDir, 'TopLevel.md'),
     '# TopLevel\n\nA root-level orphan note.\n', 'utf-8');
 
@@ -265,9 +265,9 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   // ── TC-GV-02 ─────────────────────────────────────────────────────────────────
   // AC-GV-02: Characters/ note renders cyan (--ln-graph-node-characters);
   //           Locations/ note renders violet (--ln-graph-node-locations);
-  //           top-level note renders default token (--ln-graph-node-default).
+  //           top-level note renders misc token (--ln-graph-node-misc).
 
-  test('TC-GV-02: Characters node → vgv-node-circle--characters; Locations → locations; top-level → default', async () => {
+  test('TC-GV-02: Characters node → vgv-node-circle--characters; Locations → locations; top-level → misc', async () => {
     await navigateToGraph(page);
 
     // Characters/Arya.md → category 'characters'
@@ -284,11 +284,13 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     expect(await winterfellCircle.getAttribute('fill')).toBe('var(--ln-graph-node-locations)');
     expect(await winterfellCircle.getAttribute('stroke')).toBe('var(--ln-graph-border-locations)');
 
-    // TopLevel.md (no folder) → category 'default'
+    // TopLevel.md (no folder, no frontmatter type) → category 'misc' (SKY-8943:
+    // unrecognized notes always bucket to 'misc', which has a filter row/chip/
+    // count — never the old unbucketed 'default').
     const topLevelCircle = page.locator(`[data-testid="vault-node-${TOP_LEVEL_ID}"] [data-testid="vault-graph-node-circle"]`);
     await expect(topLevelCircle).toBeVisible({ timeout: 5_000 });
-    await expect(topLevelCircle).toHaveClass(/vgv-node-circle--default/);
-    expect(await topLevelCircle.getAttribute('fill')).toBe('var(--ln-graph-node-default)');
+    await expect(topLevelCircle).toHaveClass(/vgv-node-circle--misc/);
+    expect(await topLevelCircle.getAttribute('fill')).toBe('var(--ln-graph-node-misc)');
   });
 
   // ── TC-GV-03 ─────────────────────────────────────────────────────────────────

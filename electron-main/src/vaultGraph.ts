@@ -29,13 +29,60 @@ const CATEGORY_RULES: Array<[string[], VaultGraphCategory]> = [
   [['inbox', 'research', 'daily notes'], 'misc'],
 ];
 
-/** Map a vault-relative file path to its display category using the §3.1 folder table. */
-export function mapCategory(filePath: string): VaultGraphCategory {
+// Frontmatter `type:` values written by the note-creation templates
+// (frontend/src/TemplatePicker.tsx) and the Brainstorm agent's entity
+// extraction (electron-main/src/entities.ts), plus the bundled sample pack's
+// `type: system`. Singular/plural variants both resolve.
+const FRONTMATTER_TYPE_MAP: Record<string, VaultGraphCategory> = {
+  character: 'characters',
+  characters: 'characters',
+  location: 'locations',
+  locations: 'locations',
+  faction: 'factions',
+  factions: 'factions',
+  history: 'history',
+  event: 'history',
+  events: 'history',
+  system: 'systems',
+  systems: 'systems',
+  item: 'items',
+  items: 'items',
+};
+
+/** Matches the leading `type:` key in a note's YAML frontmatter block. */
+const FRONTMATTER_TYPE_RE = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+/** Extract the frontmatter `type:` value from note content, if present. */
+export function extractFrontmatterType(content: string): string | undefined {
+  const block = content.match(FRONTMATTER_TYPE_RE);
+  if (!block) return undefined;
+  for (const line of block[1].split('\n')) {
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim().toLowerCase();
+    if (key !== 'type') continue;
+    return line.slice(colon + 1).trim().replace(/^['"]|['"]$/g, '').toLowerCase() || undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Map a vault-relative file path (+ optional frontmatter `type:`) to its
+ * display category. Frontmatter `type:` wins first (it is the more precise,
+ * author-declared signal); folder name is the fallback for notes that don't
+ * carry a recognized `type:`. Anything still unrecognized buckets to `misc`
+ * so it always has a filter row/chip/count — never the unbucketed `default`.
+ */
+export function mapCategory(filePath: string, frontmatterType?: string): VaultGraphCategory {
+  if (frontmatterType) {
+    const mapped = FRONTMATTER_TYPE_MAP[frontmatterType.trim().toLowerCase()];
+    if (mapped) return mapped;
+  }
   const segments = filePath.split(/[\\/]/).map((s) => s.toLowerCase());
   for (const [keys, cat] of CATEGORY_RULES) {
     if (segments.some((seg) => keys.includes(seg))) return cat;
   }
-  return 'default';
+  return 'misc';
 }
 
 // ─── Wiki-link extraction ───
@@ -179,12 +226,12 @@ function buildIndex(notesVaultRoot: string): NoteGraphIndex {
 
   // Build nodes — include ALL files, even orphans (degree 0)
   const nodes: NoteGraphNode[] = [];
-  for (const filePath of fileContents.keys()) {
+  for (const [filePath, content] of fileContents) {
     nodes.push({
       id: filePath,
       label: path.basename(filePath, '.md'),
       path: filePath,
-      category: mapCategory(filePath),
+      category: mapCategory(filePath, extractFrontmatterType(content)),
       degree: (outDegree.get(filePath) ?? 0) + (inDegree.get(filePath) ?? 0),
     });
   }

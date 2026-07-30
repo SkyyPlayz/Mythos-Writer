@@ -1099,6 +1099,9 @@ interface Window {
     // Vault notes updated push event (MYT-156)
     onVaultNotesUpdated: (cb: (data: { count: number }) => void) => () => void;
 
+    // SKY-8943: Notes Vault graph topology changed (link added/removed)
+    onVaultGraphTopologyChanged?: (cb: () => void) => () => void;
+
     // Agent budget cap toast (feature-flagged)
     onBudgetCapHit?: (cb: (data: { agentLabel: string; reason: 'daily_token_cap' | 'hourly_token_cap' }) => void) => () => void;
 

@@ -417,6 +417,11 @@ function displayLabel(label: string): string {
   return label.replace(/\.md$/i, '');
 }
 
+/** "1 link" / "3 links" — the header must not always read plural. */
+function pluralizeCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function edgeTestId(edge: GraphEdge): string {
   return `vault-edge-${edge.source}__${edge.target}`;
 }
@@ -971,6 +976,33 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     };
   }, [vaultScope]);
 
+  // SKY-8943: main pushes vault:graph-topology-changed when a [[wikilink]] is
+  // added/removed anywhere in the Notes Vault. Refetch and patch edges in
+  // place — unlike the scope-change load above, this must NOT reset
+  // selection, camera (pan/zoom), or sim positions, since the graph is
+  // already open and the user may be mid-inspection.
+  useEffect(() => {
+    const subscribe = window.api?.onVaultGraphTopologyChanged;
+    if (typeof subscribe !== 'function') return undefined;
+
+    const unsubscribe = subscribe(() => {
+      const nodesHandler = window.api?.vaultGraphNodes;
+      const edgesHandler = window.api?.vaultGraphEdges;
+      if (typeof nodesHandler !== 'function' || typeof edgesHandler !== 'function') return;
+
+      void Promise.all([nodesHandler(vaultScope), edgesHandler(vaultScope)]).then(
+        ([nodeResponse, edgeResponse]) => {
+          const nodes = normalizeNodeResponse(nodeResponse);
+          const edges = normalizeEdgeResponse(edgeResponse);
+          if (!nodes || !edges) return;
+          setGraphData({ nodes, edges });
+        },
+      ).catch(() => { /* transient IPC failure — next topology event will retry */ });
+    });
+
+    return unsubscribe;
+  }, [vaultScope]);
+
   // Truncation (top-500 by degree when vault is large, unless "show all" is active)
   const truncatedData = useMemo(() => {
     if (!graphData) return null;
@@ -1411,10 +1443,15 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   }, [selectedNodeId, selectedNodePath, selectedNodeVaultKind]);
 
   const inspectorConnections: PositionedNode[] = selectedNode && filteredData
-    ? filteredData.edges
-      .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
-      .map((edge) => nodeById.get(edge.source === selectedNode.id ? edge.target : edge.source))
-      .filter((node): node is PositionedNode => Boolean(node))
+    ? Array.from(new Map(
+      filteredData.edges
+        .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
+        .map((edge) => nodeById.get(edge.source === selectedNode.id ? edge.target : edge.source))
+        .filter((node): node is PositionedNode => Boolean(node))
+        // A pair of notes that link to each other both ways is one connection,
+        // not two rows — dedupe by neighbour id (SKY-8943).
+        .map((node) => [node.id, node] as const),
+    ).values())
     : [];
 
   const depthLabel = depthLimit >= DEPTH_UNLIMITED ? 'All' : String(depthLimit);
@@ -1537,7 +1574,9 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
       <header className="vgv-toolbar" ref={toolbarRef} tabIndex={-1}>
         <div className="vgv-title-group">
           <span className="vgv-title">Vault Graph</span>
-          <span className="vgv-count">{graphData.nodes.length} notes · {graphData.edges.length} links</span>
+          <span className="vgv-count">
+            {pluralizeCount(graphData.nodes.length, 'note')} · {pluralizeCount(graphData.edges.length, 'link')}
+          </span>
         </div>
           {vaultScopeSelector}
         {/* M26: collapse toggle for the left panel (filters + forces). */}
@@ -1985,6 +2024,20 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
                     }}
                   />
                   <span className="vgv-inspector-conn-label">{displayLabel(other.label)}</span>
+                  <svg
+                    className="vgv-inspector-conn-chevron"
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 6l6 6-6 6" />
+                  </svg>
                 </button>
               ))}
             </div>
