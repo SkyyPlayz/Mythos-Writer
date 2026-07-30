@@ -13,6 +13,9 @@ _Every change must satisfy all items before merge. Reviewer confirms these hold.
 - [ ] **Boundary tests with behavior-level assertions** — tests check observable behavior, not implementation; each test has been seen to fail before pass.
 - [ ] **Regression test for any bug fixed** — a permanent test that reproduces the bug, kept forever.
 - [ ] **Green CI** — lint, typecheck, tests, and build all pass on this branch before merge.
+- [ ] **Beta 4 surfaces only — visual-fidelity gate (SKY-8962):** compared side-by-side, live, against
+      the CURRENT prototype export and the delta recorded (see [FULL-SPEC §14.11](../plans/design-handoff/v2/FULL-SPEC.md));
+      ran `npm run check:prototype-freshness` first so "current" isn't a stale copy. N/A for non-UI PRs.
 
 > Full rubric: [docs/code-review-rubric.md](../docs/code-review-rubric.md) · Standard: [SKY-356](https://github.com/SkyyPlayz/Mythos-Writer/blob/main/plans/ProjectGoalOverView/13-Code-Quality.md)
 

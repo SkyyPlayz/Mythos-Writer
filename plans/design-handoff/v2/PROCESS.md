@@ -28,4 +28,14 @@ Suggested dependency order (refine it in the plan doc):
 - **CI:** do NOT block on CI tests. Fix nothing CI-related unless it blocks a build.
 - **Merging:** do not merge yourself unless a later milestone literally cannot proceed without it. When that happens (or a PR needs human review to unblock), **stop and ping Skyy directly in the chat** — the rest of the team is out; Skyy is the only merger.
 - **Fidelity:** the prototype is the spec. When the repo's existing behavior conflicts with the prototype, the prototype wins. Reuse repo components where they exist; port exact values (hex, px, radii, shadows) from the prototype source rather than approximating.
+- **Visual-fidelity gate (SKY-8962, done-criteria — [`FULL-SPEC.md` §14.11](FULL-SPEC.md)):**
+  no surface is done until it's been compared side-by-side, live, against the
+  CURRENT prototype export and the delta is recorded (matches, or named gaps +
+  follow-up issue) — screenshot-check.yml enforces that a screenshot exists at
+  all, this is the stronger requirement that it's a live comparison, not a
+  screenshot from memory of an older pass. First run
+  `npm run check:prototype-freshness` — it fails if your branch's copy of
+  `plans/design-handoff/v2/prototype/Mythos Writer - Liquid Neon.dc.html` is
+  behind `origin/main`'s, which is exactly how M25 got built without PR #1156's
+  Timeline right-panel refresh.
 - **Preserve:** don't revert or "clean up" unrelated existing repo code.
