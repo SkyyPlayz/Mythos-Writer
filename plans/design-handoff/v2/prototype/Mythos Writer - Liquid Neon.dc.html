@@ -302,15 +302,23 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
             </div>
             <div style="flex:1;overflow-y:auto;padding:0 8px 10px;min-height:0">
               <sc-for list="{{ noteTreeRows }}" as="r" hint-placeholder-count="0">
-                <div onClick="{{ r.pick }}" onMouseDown="{{ r.down }}" onMouseUp="{{ r.drop }}" onMouseEnter="{{ r.over }}" onContextMenu="{{ r.ctx }}" style="{{ r.st }}" style-hover="{{ r.stH }}">
+                <div onClick="{{ r.pick }}" onMouseDown="{{ r.down }}" onMouseUp="{{ r.drop }}" onMouseMove="{{ r.over }}" onContextMenu="{{ r.ctx }}" style="{{ r.st }}" style-hover="{{ r.stH }}">
                   <sc-if value="{{ r.chev }}" hint-placeholder-val="{{ false }}">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="{{ r.chevSt }}"><path d="M9 6l6 6-6 6"></path></svg>
                   </sc-if>
                   <span style="display:flex;flex:none;opacity:.85" dangerouslySetInnerHTML="{{ r.icon }}"></span>
-                  <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</span>
+                  <sc-if value="{{ r.ren }}" hint-placeholder-val="{{ false }}">
+                    <input value="{{ r.renV }}" onChange="{{ r.renChange }}" onKeyDown="{{ r.renKey }}" onBlur="{{ r.renCommit }}" onClick="{{ r.stop }}" onMouseDown="{{ r.stop }}" autoFocus="{{ true }}" style="flex:1;min-width:0;background:rgba(8,10,18,.85);border:1px solid var(--b1,rgba(0,240,255,.6));border-radius:6px;color:#eef2fb;font-size:11.5px;font-family:inherit;padding:2px 6px;outline:none" />
+                  </sc-if>
+                  <sc-if value="{{ r.notRen }}" hint-placeholder-val="{{ true }}">
+                    <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</span>
+                  </sc-if>
                   <sc-if value="{{ r.count }}" hint-placeholder-val="{{ false }}"><span style="font-size:10px;color:#7686a2">{{ r.count }}</span></sc-if>
                 </div>
               </sc-for>
+              <sc-if value="{{ vDragging }}" hint-placeholder-val="{{ false }}">
+                <div onMouseMove="{{ vRootOver }}" onMouseUp="{{ vRootDrop }}" style="{{ vRootSt }}">DROP HERE FOR VAULT ROOT</div>
+              </sc-if>
               <div style="font-size:10px;font-weight:700;letter-spacing:.14em;color:#7686a2;padding:14px 8px 6px">RECENT NOTES</div>
               <sc-for list="{{ recentNotes }}" as="r" hint-placeholder-count="0">
                 <div onClick="{{ r.pick }}" style="{{ r.st }}" style-hover="{{ r.stH }}">
@@ -4415,7 +4423,7 @@ class Component extends DCLogic {
       reader: { open: false, playing: false, flow: null, idx: 0, curKey: null, rate: 1, voiceI: 0, selOnly: false },
       splitRatio: .5, dragPara: null, dragTab: null, tabMenu: null, diffDraft: 'Draft 6', dictOn: false,
       sugQ: '', dragSugg: null, ckExtra: {}, storiesOpen: false, extraStories: [], stName: '',
-      menuOpen: null, eMoreOpen: false, ntplOpen: false, treeCtx: null, bsMode: 'Board', bsZoom: 100, bsTool: 'select',
+      menuOpen: null, eMoreOpen: false, ntplOpen: false, treeCtx: null, dropZone: null, vRen: null, vRenV: '', bsMode: 'Board', bsZoom: 100, bsTool: 'select',
       bsPos: {}, bsPanX: 0, bsPanY: 0, bsLinkFrom: null,
       bsCollOpen: {}, bsCollQ: '', bsExtra: {},
       bsSessions: [{ id: 'ses1', name: 'Worldbuilding kickoff', msgs: null }], bsSesCur: 'ses1', bsSesOpen: false, bsSesCtx: null, bsSesRen: null, bsSesRenV: '',
@@ -4899,46 +4907,103 @@ class Component extends DCLogic {
     };
   }
 
-  // ── drag & drop: notes vault ──
+  // ── drag & drop: notes vault (Obsidian-style, nests at any depth) ──
   _findFolder(arr, id) { for (const f of arr) { if (f.id === id) return { arr, f }; if (f.kids) { const r = this._findFolder(f.kids, id); if (r) return r; } } return null; }
-  noteDown(kind, folderId, fileIdx) { return () => this.setState({ dragNote: { kind, folderId, fileIdx } }); }
-  noteOver(key) { return () => { if (this.state.dragNote && this.state.dropKey !== key) this.setState({ dropKey: key }); }; }
-  noteDropFolder(targetId) {
-    return () => {
-      const d = this.state.dragNote;
-      this.setState({ dragNote: null, dropKey: null });
-      if (!d) return;
-      const v = JSON.parse(JSON.stringify(this.vault));
-      if (d.kind === 'file') {
-        const src = this._findFolder(v, d.folderId), dst = this._findFolder(v, targetId);
-        if (!src || !dst || !src.f.files || src.f.id === dst.f.id) return;
-        const file = src.f.files.splice(d.fileIdx, 1)[0];
-        dst.f.files = dst.f.files || []; dst.f.files.unshift(file);
-        this.setState({ vaultData: v, vaultOpen: Object.assign({}, this.state.vaultOpen, { [targetId]: true }) });
-        this.showToast('Moved \u201C' + file.label + '\u201D \u2192 ' + dst.f.label);
-      } else {
-        const src = this._findFolder(v, d.folderId), dst = this._findFolder(v, targetId);
-        if (!src || !dst || d.folderId === targetId) return;
-        const si = src.arr.findIndex(f => f.id === d.folderId), di = dst.arr.findIndex(f => f.id === targetId);
-        if (si > -1 && di > -1 && src.arr === dst.arr) { const f = src.arr.splice(si, 1)[0]; dst.arr.splice(di, 0, f); this.setState({ vaultData: v }); this.showToast('Folder reordered'); }
-        else this.showToast('Folders reorder within the same level in this prototype');
-      }
+  _vFolder(arr, id) { for (const f of arr) { if (f.id === id) return f; if (f.kids) { const r = this._vFolder(f.kids, id); if (r) return r; } } return null; }
+  _vList(root, kind, pid) {
+    if (kind === 'folder') { if (!pid) return root; const p = this._vFolder(root, pid); return p ? (p.kids = p.kids || []) : null; }
+    if (!pid) return null;
+    const p = this._vFolder(root, pid); return p ? (p.files = p.files || []) : null;
+  }
+  _vHasKid(f, id) { return (f.kids || []).some(k => k.id === id || this._vHasKid(k, id)); }
+  noteDown(kind, pid, idx, label) {
+    return (e) => {
+      if (e.button !== 0) return;
+      const sx = e.clientX, sy = e.clientY, armed = { kind, pid, idx, label };
+      const mv = (ev) => { if (!this.state.dragNote && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) this.setState({ dragNote: armed }); };
+      const up = () => {
+        window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); clearTimeout(this._vExp);
+        setTimeout(() => { if (this.state.dragNote) this.setState({ dragNote: null, dropKey: null, dropZone: null }); }, 0);
+      };
+      window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
     };
   }
-  noteDropFile(folderId, idx) {
-    return () => {
-      const d = this.state.dragNote;
-      this.setState({ dragNote: null, dropKey: null });
-      if (!d || d.kind !== 'file') return;
-      const v = JSON.parse(JSON.stringify(this.vault));
-      const src = this._findFolder(v, d.folderId), dst = this._findFolder(v, folderId);
-      if (!src || !dst || !src.f.files) return;
-      const file = src.f.files.splice(d.fileIdx, 1)[0];
-      let ti = idx; if (src.f.id === dst.f.id && d.fileIdx < idx) ti = idx - 1;
-      (dst.f.files = dst.f.files || []).splice(Math.min(ti, dst.f.files.length), 0, file);
-      this.setState({ vaultData: v });
-      this.showToast('Moved \u201C' + file.label + '\u201D');
+  noteOver(kind, pid, idx, id) {
+    return (e) => {
+      if (!this.state.dragNote) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const p = (e.clientY - r.top) / Math.max(1, r.height);
+      const zone = kind === 'folder' ? (p < .3 ? 'above' : (p > .7 ? 'below' : 'into')) : (p < .5 ? 'above' : 'below');
+      const key = kind + ':' + pid + ':' + idx;
+      if (this.state.dropKey === key && this.state.dropZone === zone) return;
+      this.setState({ dropKey: key, dropZone: zone });
+      clearTimeout(this._vExp);
+      if (kind === 'folder' && zone === 'into' && !this.state.vaultOpen[id]) this._vExp = setTimeout(() => { if (this.state.dragNote) this.setState(s => ({ vaultOpen: Object.assign({}, s.vaultOpen, { [id]: true }) })); }, 500);
     };
+  }
+  noteDrop(kind, pid, idx, id) {
+    return (e) => {
+      const d = this.state.dragNote, zone = this.state.dropZone;
+      clearTimeout(this._vExp);
+      if (!d) return;
+      e.stopPropagation();
+      this.setState({ dragNote: null, dropKey: null, dropZone: null });
+      if (kind === 'folder' && zone === 'into') this._vMove(d, id, 0);
+      else if (d.kind === kind) this._vMove(d, pid, idx + (zone === 'below' ? 1 : 0));
+      else this._vMove(d, pid, zone === 'below' ? 1e6 : 0);
+    };
+  }
+  vRootDrop() {
+    const d = this.state.dragNote;
+    clearTimeout(this._vExp);
+    this.setState({ dragNote: null, dropKey: null, dropZone: null });
+    if (d) this._vMove(d, null, 1e6);
+  }
+  _vMove(d, destPid, destIdx) {
+    if (d.kind === 'file' && !destPid) { this.showToast('Notes live inside a folder \u2014 drop it on one'); return; }
+    const v = JSON.parse(JSON.stringify(this.vault));
+    const srcList = this._vList(v, d.kind, d.pid);
+    if (!srcList || !srcList[d.idx]) return;
+    if (d.kind === 'folder') {
+      const m = srcList[d.idx];
+      if (destPid === m.id || (destPid && this._vHasKid(m, destPid))) { this.showToast('A folder can\u2019t go inside itself'); return; }
+    }
+    const item = srcList.splice(d.idx, 1)[0];
+    const dstList = this._vList(v, d.kind, destPid);
+    if (!dstList) { this.showToast('Can\u2019t drop there'); return; }
+    let ti = destIdx;
+    if (srcList === dstList && d.idx < destIdx) ti = destIdx - 1;
+    ti = Math.max(0, Math.min(ti, dstList.length));
+    if (srcList === dstList && ti === d.idx) return;
+    dstList.splice(ti, 0, item);
+    const st = { vaultData: v };
+    if (destPid) st.vaultOpen = Object.assign({}, this.state.vaultOpen, { [destPid]: true });
+    if ((this.state.nSort || 'manual') !== 'manual') st.nSort = 'manual';
+    this.setState(st);
+    const dest = destPid ? (this._vFolder(v, destPid) || {}).label : 'Vault root';
+    this.showToast('Moved \u201C' + item.label + '\u201D \u2192 ' + dest);
+  }
+  vNewSub(pid) {
+    const v = JSON.parse(JSON.stringify(this.vault));
+    const list = this._vList(v, 'folder', pid); if (!list) return;
+    const id = 'nf' + Date.now();
+    list.push({ id, label: 'New Folder', kids: [], files: [] });
+    this.setState(s => ({ vaultData: v, nSort: 'manual', vaultOpen: Object.assign({}, s.vaultOpen, { [pid]: true, [id]: true }), vRen: { kind: 'folder', pid, idx: list.length - 1 }, vRenV: 'New Folder' }));
+  }
+  vDelete(kind, pid, idx) {
+    const v = JSON.parse(JSON.stringify(this.vault));
+    const list = this._vList(v, kind, pid); if (!list || !list[idx]) return;
+    const g = list.splice(idx, 1)[0];
+    this.setState({ vaultData: v, treeCtx: null, vRen: null });
+    this.showToast('\u201C' + g.label + '\u201D moved to trash');
+  }
+  vRenameCommit() {
+    const r = this.state.vRen; if (!r) return;
+    const nm = (this.state.vRenV || '').trim();
+    const v = JSON.parse(JSON.stringify(this.vault));
+    const list = this._vList(v, r.kind, r.pid);
+    if (list && list[r.idx] && nm && nm !== list[r.idx].label) { list[r.idx].label = nm; this.setState({ vaultData: v, vRen: null }); this.showToast('Renamed to \u201C' + nm + '\u201D'); }
+    else this.setState({ vRen: null });
   }
 
   // ── comments ──
@@ -5792,21 +5857,31 @@ class Component extends DCLogic {
     // vault tree (notes)
     const noteTreeRows = [];
     const nsrt = (arr, key) => { if (S.nSort === 'az') return arr.slice().sort((a, b) => (key(a) || '').localeCompare(key(b) || '')); if (S.nSort === 'za') return arr.slice().sort((a, b) => (key(b) || '').localeCompare(key(a) || '')); return arr; };
-    const addFolder = (f, depth) => {
-      const open = S.vaultOpen[f.id];
-      noteTreeRows.push({ label: f.label, chev: true, chevSt: { flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .18s ease', opacity: .7 }, icon: this.icons.folder, count: f.count || (f.kids ? '' : (f.files || []).length || ''), down: this.noteDown('folder', f.id), drop: this.noteDropFolder(f.id), over: this.noteOver('vf' + f.id), st: rowBase + 'padding-left:' + (8 + depth * 16) + 'px;' + (S.dropKey === 'vf' + f.id && S.dragNote ? 'outline:1.5px dashed var(--b1,rgba(0,240,255,.6));outline-offset:-1px;' : '') + (depth === 0 ? 'font-weight:600;color:#d6dff0' : ''), stH: rowHover, pick: () => this.setState(s => ({ vaultOpen: Object.assign({}, s.vaultOpen, { [f.id]: !open }) })) });
+    const vInd = (key, cur) => {
+      if (!S.dragNote || S.dropKey !== key) return '';
+      if (S.dropZone === 'into') return 'outline:1.5px dashed var(--b1,rgba(0,240,255,.75));outline-offset:-1px;background:var(--gs1,rgba(0,240,255,.12));';
+      return 'box-shadow:inset 0 ' + (S.dropZone === 'above' ? '2px' : '-2px') + ' 0 0 var(--n1,#00f0ff)' + (cur ? ',0 0 12px -4px var(--g1,rgba(0,240,255,.4))' : '') + ';';
+    };
+    const vDim = (kind, pid, idx) => (S.dragNote && S.dragNote.kind === kind && S.dragNote.pid === pid && S.dragNote.idx === idx) ? 'opacity:.4;' : '';
+    const renBits = (kind, pid, idx) => {
+      const on = !!(S.vRen && S.vRen.kind === kind && S.vRen.pid === pid && S.vRen.idx === idx);
+      return { ren: on, notRen: !on, renV: S.vRenV, renChange: (e) => this.setState({ vRenV: e.target.value }), renKey: (e) => { if (e.key === 'Enter') this.vRenameCommit(); else if (e.key === 'Escape') this.setState({ vRen: null }); }, renCommit: () => this.vRenameCommit(), stop: (e) => e.stopPropagation() };
+    };
+    const addFolder = (f, depth, pid, idx) => {
+      const open = S.vaultOpen[f.id], key = 'folder:' + pid + ':' + idx;
+      noteTreeRows.push(Object.assign({ label: f.label, chev: true, chevSt: { flex: 'none', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .18s ease', opacity: .7 }, icon: this.icons.folder, count: f.count || (f.kids ? '' : (f.files || []).length || ''), down: this.noteDown('folder', pid, idx, f.label), drop: this.noteDrop('folder', pid, idx, f.id), over: this.noteOver('folder', pid, idx, f.id), ctx: (e) => { e.preventDefault(); this.setState({ treeCtx: { kind: 'folder', id: f.id, label: f.label, pid, idx, x: e.clientX, y: e.clientY } }); }, st: rowBase + 'padding-left:' + (8 + depth * 16) + 'px;' + vDim('folder', pid, idx) + vInd(key) + (depth === 0 ? 'font-weight:600;color:#d6dff0' : ''), stH: rowHover, pick: () => this.setState(s => ({ vaultOpen: Object.assign({}, s.vaultOpen, { [f.id]: !open }) })) }, renBits('folder', pid, idx)));
       if (!open) return;
-      nsrt(f.kids || [], k => k.label).forEach(k => addFolder(k, depth + 1));
+      nsrt((f.kids || []).map((k, i) => ({ k, i })), x => x.k.label).forEach(({ k, i }) => addFolder(k, depth + 1, f.id, i));
       nsrt((f.files || []).map((file, fIdx) => ({ file, fIdx })), x => x.file.label).forEach(({ file, fIdx }) => {
         const openable = !!this.notes[file.id];
-        const cur = S.ntab === file.id;
-        noteTreeRows.push({ label: file.label, chev: false, icon: this.icons.file, count: '', down: this.noteDown('file', f.id, fIdx), drop: this.noteDropFile(f.id, fIdx), over: this.noteOver('vn' + f.id + fIdx), ctx: (e) => { e.preventDefault(); this.setState({ treeCtx: { id: file.id, label: file.label, x: e.clientX, y: e.clientY } }); }, st: rowBase + 'padding-left:' + (26 + depth * 16) + 'px;font-size:11.5px;' + (S.dropKey === 'vn' + f.id + fIdx && S.dragNote ? 'outline:1.5px dashed var(--b1,rgba(0,240,255,.6));outline-offset:-1px;' : '') + (cur ? 'background:var(--gs1,rgba(0,240,255,.12));color:#eef2fb;border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));box-shadow:0 0 12px -4px var(--g1,rgba(0,240,255,.4))' : '') + (openable ? '' : 'opacity:.55'), stH: rowHover, pick: () => {
+        const cur = S.ntab === file.id, fkey = 'file:' + f.id + ':' + fIdx;
+        noteTreeRows.push(Object.assign({ label: file.label, chev: false, icon: this.icons.file, count: '', down: this.noteDown('file', f.id, fIdx, file.label), drop: this.noteDrop('file', f.id, fIdx, file.id), over: this.noteOver('file', f.id, fIdx, file.id), ctx: (e) => { e.preventDefault(); this.setState({ treeCtx: { kind: 'file', id: file.id, label: file.label, pid: f.id, idx: fIdx, x: e.clientX, y: e.clientY } }); }, st: rowBase + 'padding-left:' + (26 + depth * 16) + 'px;font-size:11.5px;' + vDim('file', f.id, fIdx) + (cur ? 'background:var(--gs1,rgba(0,240,255,.12));color:#eef2fb;border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));box-shadow:0 0 12px -4px var(--g1,rgba(0,240,255,.4));' : '') + vInd(fkey, cur) + (openable ? '' : 'opacity:.55'), stH: rowHover, pick: () => {
           if (!openable) { this.showToast('Sample note — content not mocked'); return; }
           this.setState(s => ({ ntab: file.id, ntabs: s.ntabs.includes(file.id) ? s.ntabs : s.ntabs.concat(file.id) }));
-        } });
+        } }, renBits('file', f.id, fIdx)));
       });
     };
-    if (S.view === 'notes') nsrt(this.vault, f => f.label).forEach(f => addFolder(f, 0));
+    if (S.view === 'notes') nsrt(this.vault.map((f, i) => ({ f, i })), x => x.f.label).forEach(({ f, i }) => addFolder(f, 0, null, i));
     const recentBase = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;font-size:11.5px;color:#aebad0;cursor:pointer;';
     const recentNotes = [ ['gate', 'The Sunken Gate', '1m ago'], ['mira', 'Mira Veynn', '2h ago'], ['veynn', 'The Last City of Veynn', '2d ago'] ].map(([id, label, when]) => ({ label, when, st: recentBase, stH: rowHover, pick: () => this.setState(s => ({ ntab: id, ntabs: s.ntabs.includes(id) ? s.ntabs : s.ntabs.concat(id) })) }));
 
@@ -6844,7 +6919,20 @@ class Component extends DCLogic {
 
     // ── notes: template picker + tree context + tags ──
     const ntplItems = [ ['Character', 'Bio, arc, relationships, voice'], ['Location', 'Region, environment, danger'], ['Faction', 'Goals, members, secrets'], ['Item / System', 'Rules, costs, limits'], ['Event / History', 'Date, impact, witnesses'], ['Blank note', 'Empty page'] ].map(x => ({ t: x[0], d: x[1], pick: () => { this.setState({ ntplOpen: false }); this.showToast('\u201CNew ' + x[0] + '\u201D created from template \u2014 Brainstorm will pre-fill what it knows'); } }));
-    const treeCtxItems = S.treeCtx ? [ ['Open in new tab', () => { const id = S.treeCtx.id; if (this.notes[id]) this.setState(s => ({ ntab: id, ntabs: s.ntabs.includes(id) ? s.ntabs : s.ntabs.concat(id) })); }], ['Beta read', () => { this.showToast('Beta Reader queued on \u201C' + S.treeCtx.label + '\u201D')}], ['Continuity check', () => { this.showToast('Archive Agent checking \u201C' + S.treeCtx.label + '\u201D \u2194 story')}], ['Rename\u2026', () => this.showToast('Rename \u2014 inline edit in the shipped app')], ['Delete', () => this.showToast('\u201C' + S.treeCtx.label + '\u201D moved to trash (mock)')] ].map(m => ({ t: m[0], st: 'padding:6px 10px;border-radius:8px;font-size:11.5px;cursor:pointer;color:' + (m[0] === 'Delete' ? '#ff9db4' : '#cdd8ea'), run: (e) => { e.stopPropagation(); this.setState({ treeCtx: null }); m[1](); } })) : [];
+    const tc = S.treeCtx;
+    const tcMk = (arr) => arr.map(m => ({ t: m[0], st: 'padding:6px 10px;border-radius:8px;font-size:11.5px;cursor:pointer;color:' + (m[0].indexOf('Delete') === 0 ? '#ff9db4' : '#cdd8ea'), run: (e) => { e.stopPropagation(); this.setState({ treeCtx: null }); m[1](); } }));
+    const treeCtxItems = !tc ? [] : (tc.kind === 'folder' ? tcMk([
+      ['New note here', () => this.setState({ ntplOpen: true, vaultOpen: Object.assign({}, S.vaultOpen, { [tc.id]: true }) })],
+      ['New subfolder', () => this.vNewSub(tc.id)],
+      ['Rename\u2026', () => this.setState({ vRen: { kind: 'folder', pid: tc.pid, idx: tc.idx }, vRenV: tc.label })],
+      ['Delete folder', () => this.vDelete('folder', tc.pid, tc.idx)]
+    ]) : tcMk([
+      ['Open in new tab', () => { const id = tc.id; if (this.notes[id]) this.setState(s => ({ ntab: id, ntabs: s.ntabs.includes(id) ? s.ntabs : s.ntabs.concat(id) })); }],
+      ['Beta read', () => this.showToast('Beta Reader queued on \u201C' + tc.label + '\u201D')],
+      ['Continuity check', () => this.showToast('Archive Agent checking \u201C' + tc.label + '\u201D \u2194 story')],
+      ['Rename\u2026', () => this.setState({ vRen: { kind: 'file', pid: tc.pid, idx: tc.idx }, vRenV: tc.label })],
+      ['Delete', () => this.vDelete('file', tc.pid, tc.idx)]
+    ]));
     const noteTagsAll = (note.tags || []).concat((S.extraTags[S.ntab] || []).map(t => ({ t, c: c1 })));
     const noteTags2 = noteTagsAll.map(tg => ({ t: tg.t, st: 'font-size:10.5px;padding:3px 11px;border-radius:99px;border:1px solid ' + this.hexA(tg.c, .5) + ';color:' + tg.c + ';background:' + this.hexA(tg.c, .1) + ';cursor:default' }));
     const addTag = () => { const t = (S.tagInput || '').trim().replace(/^#/, ''); if (!t) return; this.setState(s => { const ex = Object.assign({}, s.extraTags); ex[s.ntab] = (ex[s.ntab] || []).concat(t); return { extraTags: ex, tagInput: '' }; }); };
@@ -7437,6 +7525,10 @@ class Component extends DCLogic {
       toggleFocus: () => this.setState(s => (!s.leftOpen && !s.rightOpen) ? { leftOpen: true, rightOpen: true } : { leftOpen: false, rightOpen: false }),
       focusBtnSt: 'display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:9px;font-size:11.5px;cursor:pointer;flex:none;' + (focusOn ? 'border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));color:var(--n1,#00f0ff);background:var(--gs1,rgba(0,240,255,.12));box-shadow:0 0 12px -3px var(--g1,rgba(0,240,255,.4))' : 'border:1px solid rgba(255,255,255,.1);color:#aebad0'),
       treeRows, noteTreeRows, recentNotes, addSceneH: () => this.addScene(),
+      vDragging: !!S.dragNote,
+      vRootOver: (e) => { e.stopPropagation(); if (S.dragNote && S.dropKey !== 'root') this.setState({ dropKey: 'root', dropZone: 'into' }); },
+      vRootDrop: (e) => { e.stopPropagation(); this.vRootDrop(); },
+      vRootSt: 'margin:6px 2px 0;padding:7px 10px;border-radius:9px;font-size:10.5px;letter-spacing:.06em;text-align:center;border:1.5px dashed ' + (S.dropKey === 'root' ? 'var(--n1,#00f0ff)' : 'rgba(255,255,255,.16)') + ';color:' + (S.dropKey === 'root' ? '#eef2fb' : '#7686a2') + ';background:' + (S.dropKey === 'root' ? 'var(--gs1,rgba(0,240,255,.14))' : 'transparent'),
       insSceneH: () => this.addScene(), insChapterH: () => this.addChapter(), insPartH: () => this.addPart(),
       addProvSceneH: () => { if (S.view === 'notes') this.setState({ ntplOpen: true }); else this.addProvScene(); },
       zoomOpts, zoomNav: S.zoom !== 'book', zoomPrev: () => this.zoomStep(-1), zoomNext: () => this.zoomStep(1),
