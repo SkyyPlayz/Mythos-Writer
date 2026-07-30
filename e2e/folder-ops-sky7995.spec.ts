@@ -297,3 +297,97 @@ test('FO-06: deleting a folder recursively removes it and its contents on disk',
   expect(deleted, 'Cosmology/ (and pantheon.md inside it) was not deleted from disk').toBe(true);
   await expect(page.locator('[data-testid="vb-row-Cosmology"]')).toHaveCount(0);
 });
+
+// ─── SKY-8881: nested-source moves — the Windows separator bug ───────────────
+//
+// FO-03/FO-04 only ever drag ROOT-level items, whose paths contain no
+// separator, so they pass on Windows even while the bug ships. The owner's
+// repro needs a NESTED source: listVaultFiles used path.join for listing
+// paths, which emits '\' on Windows; the renderer's split('/') then treated
+// the whole path as a bare filename and the move re-created the source folder
+// under the target ("it just duplicates the folders"). These tests run on the
+// native-Windows CI runner (build-windows job) where they fail against the
+// old code; on Linux/macOS they guard the same flows.
+
+test('FO-07 (SKY-8881): dragging a NESTED note into another folder moves the file, no duplicated folder', async () => {
+  // Fixture: Research/field-notes.md, created entirely through the UI.
+  await page.locator('[data-testid="vb-btn-new-folder"]').click();
+  await fillPrompt(page, 'Research');
+  await expect(page.locator('[data-testid="vb-row-Research"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="vb-row-Research"]').click({ button: 'right' });
+  await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-note"]').click();
+  const dialog = page.locator('.ntd-dialog');
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  await dialog.locator('[data-testid="ntd-blank-title"]').fill('Field Notes');
+  await dialog.locator('[data-testid="ntd-submit"]').click();
+  await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+  expect(await waitUntil(() => fs.existsSync(path.join(notesVaultDir, 'Research', 'field-notes.md'))),
+    'fixture Research/field-notes.md not created').toBe(true);
+
+  // The nested row's testid IS the listing path — on Windows the old code
+  // rendered it with '\' and this locator alone catches the regression.
+  await ensureExpanded(page, 'vb-row-Research');
+  const from = await page.locator('[data-testid="vb-row-Research/field-notes.md"]').elementHandle();
+  const to = await page.locator('[data-testid="vb-row-Archive"]').elementHandle();
+  expect(from, 'nested source row (POSIX path testid) not found').toBeTruthy();
+  expect(to, 'target folder row not found').toBeTruthy();
+  await simulateRowDrag(from!, to!);
+
+  const moved = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'field-notes.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Research', 'field-notes.md')),
+  );
+  expect(moved, 'nested note was not moved into Archive/ on disk').toBe(true);
+  // The owner's symptom: the move used to create Archive/Research/ instead.
+  expect(fs.existsSync(path.join(notesVaultDir, 'Archive', 'Research')),
+    'move duplicated the source folder under the target (SKY-8881 regression)').toBe(false);
+});
+
+test('FO-08 (SKY-8881): dragging a folder into another folder nests it with contents intact', async () => {
+  const from = await page.locator('[data-testid="vb-row-Archive"]').elementHandle();
+  const to = await page.locator('[data-testid="vb-row-Research"]').elementHandle();
+  expect(from, 'Archive row not found').toBeTruthy();
+  expect(to, 'Research row not found').toBeTruthy();
+  await simulateRowDrag(from!, to!);
+
+  const nested = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Research', 'Archive', 'field-notes.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive')),
+  );
+  expect(nested, 'Archive/ was not nested under Research/ with its contents').toBe(true);
+});
+
+test('FO-09 (SKY-8881): dragging a NESTED folder to the root drop zone moves it back out', async () => {
+  await ensureExpanded(page, 'vb-row-Research');
+  const from = await page.locator('[data-testid="vb-row-Research/Archive"]').elementHandle();
+  expect(from, 'nested folder row (POSIX path testid) not found').toBeTruthy();
+  await simulateDropToRoot(page, from!);
+
+  const movedOut = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'field-notes.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Research', 'Archive')),
+  );
+  expect(movedOut, 'nested folder was not moved back to the vault root').toBe(true);
+});
+
+test('FO-10 (SKY-8881): renaming a NESTED note keeps it in its folder', async () => {
+  await ensureExpanded(page, 'vb-row-Archive');
+  const row = page.locator('[data-testid="vb-row-Archive/field-notes.md"]');
+  await expect(row).toBeVisible({ timeout: 8_000 });
+  // dblclick opens a note; file rename goes through the context menu.
+  await row.click({ button: 'right' });
+  await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-rename"]').click();
+  const input = page.locator('.vb-rename-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await input.fill('field-journal');
+  await input.press('Enter');
+
+  // Pre-fix on Windows, lastIndexOf('/') found no separator, dropped the
+  // directory, and renamed the note out to the vault root.
+  const renamed = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'field-journal.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'field-notes.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'field-journal.md')),
+  );
+  expect(renamed, 'nested rename did not stay inside Archive/').toBe(true);
+});

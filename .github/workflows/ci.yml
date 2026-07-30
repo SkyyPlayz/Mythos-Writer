@@ -1224,11 +1224,36 @@ jobs:
         if: github.event_name != 'pull_request'
         run: npm run test -w electron-main -- voice
 
-      - name: Build and package (Windows NSIS + ZIP)
+      # SKY-8881: listVaultFiles built listing paths with path.join, which
+      # emits '\' on native Windows — the renderer's '/'-based path handling
+      # then re-created source folders on every nested move ("it just
+      # duplicates the folders"). The vault suite asserts POSIX listing paths
+      # and only exercises the Windows code path here — the ubuntu `unit` job
+      # cannot fail on this by construction.
+      - name: Verify vault suite on native Windows (SKY-8881)
+        if: github.event_name != 'pull_request'
+        run: npm run test -w electron-main -- vault.test
+
+      - name: Build (electron-vite)
         if: github.event_name != 'pull_request'
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron && npx electron-builder --win nsis zip --publish never
+        run: npm run build:electron
+
+      # SKY-8881: real renderer→IPC→fs folder-ops E2E on native Windows.
+      # FO-07..FO-10 drag NESTED items, the exact case the separator bug
+      # broke for the owner; a Linux-only E2E run is blind to it because
+      # path.join emits '/' there. windows-latest has a desktop session, so
+      # Electron launches headed without xvfb.
+      - name: Folder-ops E2E on native Windows (SKY-8881)
+        if: github.event_name != 'pull_request'
+        run: npm run test:e2e:folder-ops
+
+      - name: Package (Windows NSIS + ZIP)
+        if: github.event_name != 'pull_request'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npx electron-builder --win nsis zip --publish never
 
       - name: Upload Windows packages
         if: github.event_name != 'pull_request'

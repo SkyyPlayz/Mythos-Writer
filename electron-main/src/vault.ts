@@ -253,7 +253,13 @@ export function listVaultFiles(
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
       const fullPath = path.join(dir, entry.name);
-      const relativePath = path.join(prefix, entry.name);
+      // SKY-8881: listing paths cross the IPC boundary into the renderer,
+      // which treats '/' as the only separator. path.join emits '\' on
+      // Windows, which malformed every nested path downstream — a
+      // file-into-folder move re-created the source folder under the target
+      // ("it just duplicates the folders"). Join with '/' explicitly so the
+      // listing is POSIX on every platform by construction.
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
       let modifiedAt: string;
       try {
         modifiedAt = new Date(fs.statSync(fullPath).mtime).toISOString();

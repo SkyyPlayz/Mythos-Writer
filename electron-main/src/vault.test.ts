@@ -192,6 +192,30 @@ describe('IPC vault round-trip', () => {
     expect(items.map((i) => i.name)).toContain('scene-b.txt');
   });
 
+  // SKY-8881: listing paths cross the IPC boundary and the renderer treats
+  // '/' as the only separator. On Windows the old path.join emitted '\',
+  // which made file-into-folder moves re-create the source folder under the
+  // target. This test runs in CI on native Windows (build-windows job) where
+  // it fails against the old code — a Linux-only run cannot catch it.
+  it('listVaultFiles returns POSIX (forward-slash) paths for nested entries on every platform', () => {
+    writeVaultFileUnsafe_testOnly(tmpDir, 'Notes/Chapter1/scene.md', 'x');
+    const { items } = listVaultFiles(tmpDir);
+    const paths = items.map((i) => i.path);
+    expect(paths).toContain('Notes');
+    expect(paths).toContain('Notes/Chapter1');
+    expect(paths).toContain('Notes/Chapter1/scene.md');
+    for (const p of paths) expect(p).not.toContain('\\');
+  });
+
+  it('listVaultFiles scoped to a subdirectory root still returns POSIX relative paths', () => {
+    writeVaultFileUnsafe_testOnly(tmpDir, 'Notes/Sub/deep.md', 'x');
+    const { items } = listVaultFiles(tmpDir, 'Notes');
+    const paths = items.map((i) => i.path);
+    expect(paths).toContain('Sub');
+    expect(paths).toContain('Sub/deep.md');
+    for (const p of paths) expect(p).not.toContain('\\');
+  });
+
   it('deleteVaultFile removes file and reports deleted=true', () => {
     writeVaultFileUnsafe_testOnly(tmpDir, 'to-delete.txt', 'bye');
     expect(deleteVaultFile(tmpDir, 'to-delete.txt').deleted).toBe(true);
