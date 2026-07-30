@@ -370,6 +370,19 @@ test('FO-09 (SKY-8881): dragging a NESTED folder to the root drop zone moves it 
   expect(movedOut, 'nested folder was not moved back to the vault root').toBe(true);
 });
 
+/** All directories under root as sorted POSIX-relative paths — for asserting
+ *  a move neither creates nor destroys any folder anywhere in the vault. */
+function listDirsRecursive(root: string, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    out.push(rel);
+    out.push(...listDirsRecursive(path.join(root, entry.name), rel));
+  }
+  return out.sort();
+}
+
 test('FO-10 (SKY-8881): renaming a NESTED note keeps it in its folder', async () => {
   await ensureExpanded(page, 'vb-row-Archive');
   const row = page.locator('[data-testid="vb-row-Archive/field-notes.md"]');
@@ -390,4 +403,86 @@ test('FO-10 (SKY-8881): renaming a NESTED note keeps it in its folder', async ()
     !fs.existsSync(path.join(notesVaultDir, 'field-journal.md')),
   );
   expect(renamed, 'nested rename did not stay inside Archive/').toBe(true);
+});
+
+// ─── SKY-8881 owner ruling: pre-existing duplicate-named folders ─────────────
+//
+// The separator bug already wrote duplicate folders into the owner's live
+// vault (Stories ×6, etc.) and the owner ruled "fix going forward only" — no
+// repair pass. That makes a tree containing several folders with the SAME
+// name (at different depths) a supported, permanent condition. These tests
+// build exactly that tree and prove a drop lands in the one folder the user
+// actually dropped on, while every same-named duplicate survives untouched
+// and no folder is created or lost anywhere in the vault.
+
+test('FO-11 (SKY-8881): with duplicate-named folders, a drop lands in the exact folder dropped on', async () => {
+  // Duplicates fixture, built through the UI: Stories/ at root, Archive/Stories/,
+  // Research/Stories/ — three folders literally named "Stories".
+  await page.locator('[data-testid="vb-btn-new-folder"]').click();
+  await fillPrompt(page, 'Stories');
+  await expect(page.locator('[data-testid="vb-row-Stories"]')).toBeVisible({ timeout: 8_000 });
+
+  for (const parent of ['Archive', 'Research']) {
+    await page.locator(`[data-testid="vb-row-${parent}"]`).click({ button: 'right' });
+    await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-folder"]').click();
+    await fillPrompt(page, 'Stories');
+    const created = await waitUntil(() =>
+      fs.existsSync(path.join(notesVaultDir, parent, 'Stories')) &&
+      fs.statSync(path.join(notesVaultDir, parent, 'Stories')).isDirectory());
+    expect(created, `fixture ${parent}/Stories not created on disk`).toBe(true);
+    await ensureExpanded(page, `vb-row-${parent}`);
+    await expect(page.locator(`[data-testid="vb-row-${parent}/Stories"]`)).toBeVisible({ timeout: 8_000 });
+  }
+
+  const dirsBefore = listDirsRecursive(notesVaultDir);
+
+  // Drag Archive/field-journal.md onto the NESTED duplicate Archive/Stories —
+  // not the root Stories, not Research/Stories.
+  await ensureExpanded(page, 'vb-row-Archive');
+  const from = await page.locator('[data-testid="vb-row-Archive/field-journal.md"]').elementHandle();
+  const to = await page.locator('[data-testid="vb-row-Archive/Stories"]').elementHandle();
+  expect(from, 'source note row not found').toBeTruthy();
+  expect(to, 'nested duplicate folder row not found').toBeTruthy();
+  await simulateRowDrag(from!, to!);
+
+  const moved = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'Stories', 'field-journal.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'field-journal.md')),
+  );
+  expect(moved, 'note did not land in the exact duplicate dropped on (Archive/Stories)').toBe(true);
+
+  // The note landed in ONE folder only — its same-named duplicates stay empty.
+  expect(fs.existsSync(path.join(notesVaultDir, 'Stories', 'field-journal.md')),
+    'note leaked into the root-level duplicate Stories/').toBe(false);
+  expect(fs.existsSync(path.join(notesVaultDir, 'Research', 'Stories', 'field-journal.md')),
+    'note leaked into Research/Stories/').toBe(false);
+
+  // The owner's symptom was folders appearing out of nowhere: the move must
+  // neither create nor destroy ANY directory anywhere in the vault.
+  expect(listDirsRecursive(notesVaultDir), 'move changed the vault folder set').toEqual(dirsBefore);
+});
+
+test('FO-12 (SKY-8881): moving OUT of a duplicate to a same-named root folder picks the right one', async () => {
+  const dirsBefore = listDirsRecursive(notesVaultDir);
+
+  // Same file, now dragged from Archive/Stories onto the ROOT Stories row —
+  // the reverse ambiguity: the target shares its name with the source parent.
+  await ensureExpanded(page, 'vb-row-Archive');
+  await ensureExpanded(page, 'vb-row-Archive/Stories');
+  const from = await page.locator('[data-testid="vb-row-Archive/Stories/field-journal.md"]').elementHandle();
+  const to = await page.locator('[data-testid="vb-row-Stories"]').elementHandle();
+  expect(from, 'nested source row not found').toBeTruthy();
+  expect(to, 'root duplicate folder row not found').toBeTruthy();
+  await simulateRowDrag(from!, to!);
+
+  const moved = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Stories', 'field-journal.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'Stories', 'field-journal.md')),
+  );
+  expect(moved, 'note did not move to the root-level Stories/').toBe(true);
+
+  // The now-empty source duplicate must survive — no merge, rename or delete.
+  expect(fs.existsSync(path.join(notesVaultDir, 'Archive', 'Stories')),
+    'emptied duplicate Archive/Stories was removed by the move').toBe(true);
+  expect(listDirsRecursive(notesVaultDir), 'move changed the vault folder set').toEqual(dirsBefore);
 });

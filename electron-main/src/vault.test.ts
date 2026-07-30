@@ -265,6 +265,30 @@ describe('IPC vault round-trip', () => {
     expect(fs.readFileSync(path.join(tmpDir, 'new-name', 'note.md'), 'utf-8')).toBe('hi');
   });
 
+  // SKY-8881 owner ruling: the separator bug already wrote duplicate-named
+  // folders into the owner's real vault and there will be NO repair pass, so
+  // a tree containing several folders literally named "Stories" (at different
+  // depths) is a supported, permanent condition. A move addressed to one of
+  // them must land in exactly that one and leave every same-named sibling
+  // byte-for-byte alone — no merge, rename, or delete.
+  it('moveVaultFile targets the exact folder when duplicate-named folders exist', () => {
+    for (const dir of ['Stories', 'Archive/Stories', 'Archive/Stories/Stories']) {
+      fs.mkdirSync(path.join(tmpDir, dir), { recursive: true });
+    }
+    fs.writeFileSync(path.join(tmpDir, 'Stories', 'keep-root.md'), 'root copy');
+    fs.writeFileSync(path.join(tmpDir, 'Archive', 'draft.md'), 'draft');
+
+    const result = moveVaultFile(tmpDir, 'Archive/draft.md', 'Archive/Stories/draft.md');
+    expect(result.moved).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, 'Archive', 'Stories', 'draft.md'), 'utf-8')).toBe('draft');
+
+    // Every duplicate survives untouched; the note landed in only one of them.
+    expect(fs.readFileSync(path.join(tmpDir, 'Stories', 'keep-root.md'), 'utf-8')).toBe('root copy');
+    expect(fs.existsSync(path.join(tmpDir, 'Stories', 'draft.md'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'Archive', 'Stories', 'Stories'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'Archive', 'Stories', 'Stories', 'draft.md'))).toBe(false);
+  });
+
   it('moveVaultFile rejects moving a directory into itself', () => {
     fs.mkdirSync(path.join(tmpDir, 'folder'), { recursive: true });
     expect(() => moveVaultFile(tmpDir, 'folder', 'folder')).not.toThrow();
@@ -1096,6 +1120,7 @@ describe('realSafePath — symlink escapes are rejected', () => {
 
   // GH#622: a single unreadable subdirectory must not abort the entire listing.
   it('listVaultFiles skips unreadable subdirectories and continues (GH#622)', () => {
+    if (process.platform === 'win32') return; // chmod 0o000 does not revoke directory read access on Windows
     if (process.getuid && process.getuid() === 0) return; // root bypasses chmod
     fs.writeFileSync(path.join(tmpDir, 'top.md'), 'top');
     const readableDir = path.join(tmpDir, 'readable');
@@ -2038,6 +2063,30 @@ describe('watcher self-write suppression (perf audit)', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-'));
     writeVaultFileAtomic(root, 'note.md', 'content');
     expect(isRecentSelfWrite(path.join(root, 'note.md'))).toBe(true);
+  });
+
+  // SKY-8881: writeVaultFileAtomic marks the realpath'd target (safeVaultJoin
+  // resolves symlinks and Windows 8.3 short names), but watcher events carry
+  // the vault root as configured. Both spellings must hit the same map entry
+  // or app writes echo back as external edits. The Windows runner covers the
+  // short-name variant via the test above; this covers the symlink variant.
+  it('suppresses a self-write regardless of how the path is spelled (symlinked root)', () => {
+    const realRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-selfwrite-real-'));
+    const linkRoot = path.join(os.tmpdir(), `mythos-selfwrite-link-${process.pid}-${Date.now()}`);
+    try {
+      fs.symlinkSync(realRoot, linkRoot, 'dir');
+    } catch {
+      fs.rmSync(realRoot, { recursive: true, force: true });
+      return; // symlink creation not permitted in this environment
+    }
+    try {
+      writeVaultFileAtomic(linkRoot, 'note.md', 'content');
+      expect(isRecentSelfWrite(path.join(linkRoot, 'note.md'))).toBe(true);
+      expect(isRecentSelfWrite(path.join(realRoot, 'note.md'))).toBe(true);
+    } finally {
+      fs.rmSync(linkRoot, { recursive: true, force: true });
+      fs.rmSync(realRoot, { recursive: true, force: true });
+    }
   });
 });
 
