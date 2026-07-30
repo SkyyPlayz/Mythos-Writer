@@ -834,7 +834,15 @@ function shouldInitializeVaultsOnStartup(): boolean {
   });
 }
 
+// SKY-8882: set once "Delete Everything" (APP_CLEAN_UNINSTALL) has removed the
+// vaults. While true, the ensure* scaffolders refuse to run so no later IPC
+// call silently resurrects a seeded vault before the user restarts the app.
+let appDataCleared = false;
+
 function ensureVaultDir() {
+  if (appDataCleared) {
+    throw new Error('App data was cleared — restart Mythos Writer to continue.');
+  }
   const vaultRoot = getVaultRoot();
   const mythosRoot = mythosRootForStoryVault(vaultRoot);
   if (mythosRoot !== null) {
@@ -997,6 +1005,9 @@ function persistBrainstormSuggestion(
 }
 
 function ensureNotesVaultDir() {
+  if (appDataCleared) {
+    throw new Error('App data was cleared — restart Mythos Writer to continue.');
+  }
   // M5: the Notes Vault half of a MythosVault v2 never receives the SKY-15
   // legacy scaffold — its layout was written at creation/migration time.
   if (mythosRootForStoryVault(getVaultRoot()) !== null) {
@@ -5328,34 +5339,36 @@ const handlers: IpcHandlers = {
     const mythosVaultRoot = path.join(parentPath, finalName);
     const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
     const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
-    let created = true;
-    try {
-      if (fs.existsSync(mythosVaultRoot)) {
-        // Reuse only when fully empty — otherwise refuse so we never overwrite.
-        if (!isEmptyOrMissing(mythosVaultRoot)) {
-          return {
-            mythosVaultRoot,
-            vaultRoot: storyVaultPath,
-            notesVaultRoot: notesVaultPath,
-            name: finalName,
-            created: false,
-            error: 'Mythos Vault folder is not empty',
-          };
-        }
-        created = false;
-      } else {
-        fs.mkdirSync(mythosVaultRoot, { recursive: true });
-      }
-      fs.mkdirSync(storyVaultPath, { recursive: true });
-      fs.mkdirSync(notesVaultPath, { recursive: true });
-    } catch (e) {
+    // Reuse an existing folder only when fully empty — never overwrite.
+    const created = !fs.existsSync(mythosVaultRoot);
+    if (!created && !isEmptyOrMissing(mythosVaultRoot)) {
       return {
         mythosVaultRoot,
         vaultRoot: storyVaultPath,
         notesVaultRoot: notesVaultPath,
         name: finalName,
         created: false,
-        error: `Could not create vault bundle: ${(e as Error).message}`,
+        error: 'Mythos Vault folder is not empty',
+      };
+    }
+    // SKY-8882: scaffold a REAL MythosVault v2 (mythos.json + settings.json +
+    // timelines.json + seed) via the M29 creator. This handler used to mkdir
+    // only the two roots, so every in-app "new vault" booted as a v0.4
+    // twin-root — ensureVaultDir wrote a legacy manifest.json into it and the
+    // brand-new vault then showed the "upgrade to MythosVault" prompt.
+    const createdVault = createMythosVault(parentPath, {
+      name: finalName,
+      exactName: true,
+      seedDemo: seedMode !== 'blank',
+    });
+    if (!createdVault.ok) {
+      return {
+        mythosVaultRoot,
+        vaultRoot: storyVaultPath,
+        notesVaultRoot: notesVaultPath,
+        name: finalName,
+        created: false,
+        error: `Could not create vault bundle: ${createdVault.error}`,
       };
     }
     // Persist settings + add to recents BEFORE the scaffold so the new pair
@@ -5367,9 +5380,16 @@ const handlers: IpcHandlers = {
     });
     addToRecentProjects(storyVaultPath, notesVaultPath);
     // ensureVaultDir / ensureNotesVaultDir read the persisted settings, so
-    // they scaffold against the new roots above.
+    // they open against the new roots above (v2 path: manifest cache + DB).
     ensureVaultDir();
     ensureNotesVaultDir();
+    // Re-point the file watchers at the new vault — the renderer only reloads
+    // its own state after this call (no project:switch follows), so without
+    // this the watchers keep streaming events from the OLD vault.
+    await stopVaultWatcher();
+    await startVaultWatcher(storyVaultPath, notifyVaultChanged);
+    await stopNotesVaultWatcher();
+    await startNotesVaultWatcher(notesVaultPath, notifyNotesVaultChanged);
     return {
       mythosVaultRoot,
       vaultRoot: storyVaultPath,
@@ -5839,18 +5859,37 @@ const handlers: IpcHandlers = {
     if (response === 0) {
       return { cancelled: true, deleted: [], errors: [], customPathsWarning: [] };
     }
+    // SKY-8882: release every handle the app holds inside the vaults BEFORE
+    // deleting. On Windows the chokidar watchers (and an open SQLite DB) hold
+    // directory/file handles that make the recursive delete fail with
+    // EBUSY/EPERM — the old-vault-survives bug. Mirrors MYTHOS_MIGRATION_CONFIRM.
+    stopWritingScanScheduler();
+    await stopBoardWatcher();
+    await stopVaultWatcher();
+    await stopNotesVaultWatcher();
     closeDb();
-    try {
-      const result = cleanUninstall({
-        storyVaultRoot: getVaultRoot(),
-        notesVaultRoot: getNotesVaultRoot(),
-        userDataPath: app.getPath('userData'),
-      });
-      return { cancelled: false, ...result };
-    } finally {
-      // Re-open the DB only if the vault still exists (user may not uninstall immediately).
-      try { ensureVaultDir(); } catch { /* non-fatal */ }
+    const result = cleanUninstall({
+      storyVaultRoot: getVaultRoot(),
+      notesVaultRoot: getNotesVaultRoot(),
+      userDataPath: app.getPath('userData'),
+    });
+    if (fs.existsSync(getVaultRoot())) {
+      // Delete failed or was partial — the vault is still there, so bring the
+      // app back to a working state and let the renderer surface the errors.
+      try {
+        ensureVaultDir();
+        ensureNotesVaultDir();
+        await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+        await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+        startWritingScanScheduler();
+      } catch { /* non-fatal — the renderer already shows the delete errors */ }
+    } else {
+      // Vault data is gone. Do NOT re-open/re-scaffold anything — the old
+      // `finally { ensureVaultDir() }` here recreated a seeded vault right
+      // after deleting it. The app stays in this drained state until restart.
+      appDataCleared = true;
     }
+    return { cancelled: false, ...result };
   },
 
   // SKY-156: Project Templates
