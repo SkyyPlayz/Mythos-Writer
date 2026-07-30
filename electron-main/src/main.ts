@@ -5864,6 +5864,7 @@ const handlers: IpcHandlers = {
     // directory/file handles that make the recursive delete fail with
     // EBUSY/EPERM — the old-vault-survives bug. Mirrors MYTHOS_MIGRATION_CONFIRM.
     stopWritingScanScheduler();
+    stopArchiveContScheduler();
     await stopBoardWatcher();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
@@ -5882,6 +5883,7 @@ const handlers: IpcHandlers = {
         await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
         await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
         startWritingScanScheduler();
+        startArchiveContScheduler();
       } catch { /* non-fatal — the renderer already shows the delete errors */ }
     } else {
       // Vault data is gone. Do NOT re-open/re-scaffold anything — the old
