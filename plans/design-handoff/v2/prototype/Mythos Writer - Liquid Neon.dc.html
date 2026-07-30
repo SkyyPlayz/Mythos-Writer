@@ -348,7 +348,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
               </div>
             </sc-for>
           </sc-for>
-          <div style="font-size:9.5px;color:#7686a2;line-height:1.5;padding:2px">Click or drag a card onto the board — the Brainstorm Agent keeps this list stocked from your vault.</div>
+          <div style="font-size:9.5px;color:#7686a2;line-height:1.5;padding:2px">{{ ckVaultHint }}</div>
         </div></sc-if>
 
         <sc-if value="{{ isBrainstorm }}" hint-placeholder-val="{{ false }}"><div style="padding:16px;display:flex;flex-direction:column;min-height:0;overflow-y:auto" id="ln-left-brainstorm">
@@ -372,7 +372,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
               </sc-for>
             </sc-if>
           </sc-for>
-          <div style="font-size:9px;color:#586a88;padding:6px 10px 0;line-height:1.5">Ideas the agent captures in chat land in your Notes Vault and appear here — click + to place one on the board.</div>
+          <div style="font-size:9px;color:#586a88;padding:6px 10px 0;line-height:1.5">{{ bsCollHint }}</div>
         </div></sc-if>
 
         <sc-if value="{{ isTimeline }}" hint-placeholder-val="{{ false }}"><div style="padding:16px;display:flex;flex-direction:column;gap:7px;overflow-y:auto" id="ln-left-timeline">
@@ -521,10 +521,12 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
             <svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
           </div>
           <div style="flex:1"></div>
+          <sc-if value="{{ aiOn }}" hint-placeholder-val="{{ true }}">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:#7686a2">
             <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;box-shadow:0 0 7px rgba(74,222,128,.7);animation:lnPulse 3s ease-in-out infinite"></span>
             <span>All agents idle</span>
           </div>
+          </sc-if>
         </div>
         </sc-if>
 
@@ -578,6 +580,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                       </div>
                     </div>
                   </div>
+                  <sc-if value="{{ aiOn }}" hint-placeholder-val="{{ true }}">
                   <div style="width:400px;flex:none;border-radius:15px;background:rgba(255,255,255,.03);border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.5));box-shadow:0 0 22px -8px var(--g2,rgba(155,95,255,.4));padding:16px 18px">
                     <div style="display:flex;align-items:center;gap:8px">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n2,#9b5fff)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8z"></path></svg>
@@ -609,6 +612,18 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                       </div>
                     </sc-if>
                   </div>
+                  </sc-if>
+                  <sc-if value="{{ aiOff }}" hint-placeholder-val="{{ false }}">
+                  <div style="width:400px;flex:none;border-radius:15px;background:rgba(255,255,255,.03);border:var(--bwh,1px) solid var(--bh,rgba(0,240,255,.2));box-shadow:var(--glowH,none);padding:16px 18px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n1,#00f0ff)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V6a2 2 0 0 1 2-2h11l3 3v12.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M8 9h7M8 13h7M8 17h4"></path></svg>
+                      <span style="font-size:13px;font-weight:600;color:#eef2fb;flex:1">Your scene plan</span>
+                    </div>
+                    <div style="font-size:12px;color:#8e9db8;line-height:1.6;margin:10px 0 16px">Beats, tone and POV are saved to this scene. Open it in the Story Writer and write it in your own words — your plan stays pinned beside the page.</div>
+                    <div onClick="{{ craftManualH }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:9px;border-radius:11px;border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));color:var(--n1,#00f0ff);font-size:12.5px;font-weight:700;cursor:pointer" style-hover="background:var(--gs1,rgba(0,240,255,.12));box-shadow:0 0 14px -4px var(--g1,rgba(0,240,255,.4))">Write this scene</div>
+                    <div style="font-size:9.5px;color:#7686a2;margin-top:9px;text-align:center">{{ sbBeatsN }} · nothing is generated for you</div>
+                  </div>
+                  </sc-if>
                 </div>
               </div>
             </sc-if>
@@ -1002,9 +1017,9 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                 <span style="{{ dictDotSt }}"></span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9.5" y="3.5" width="5" height="10" rx="2.5"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v3.5"></path></svg>Dictate
               </div>
-              <div onClick="{{ openAssist }}" title="Open the Writing Coach" style="display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:8px;border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.5));color:var(--n2,#9b5fff);font-size:11px;font-weight:600;cursor:pointer;flex:none" style-hover="background:var(--gs2,rgba(155,95,255,.12));box-shadow:0 0 12px -3px var(--g2,rgba(155,95,255,.4))">
+              <sc-if value="{{ aiOn }}" hint-placeholder-val="{{ true }}"><div onClick="{{ openAssist }}" title="Open the Writing Coach" style="display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:8px;border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.5));color:var(--n2,#9b5fff);font-size:11px;font-weight:600;cursor:pointer;flex:none" style-hover="background:var(--gs2,rgba(155,95,255,.12));box-shadow:0 0 12px -3px var(--g2,rgba(155,95,255,.4))">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path><circle cx="12" cy="12" r="3.4"></circle></svg>Coach
-              </div>
+              </div></sc-if>
             </div>
             <!-- diff compare mode -->
             <sc-if value="{{ diffOpen }}" hint-placeholder-val="{{ false }}">
@@ -1038,13 +1053,16 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
             </sc-if>
             <sc-if value="{{ diffClosed }}" hint-placeholder-val="{{ true }}">
             <!-- margin ruler -->
-            <div title="Drag the diamonds to set page margins" style="{{ rulerWrapSt }}">
+            <div title="Outer diamonds resize the page · inner diamonds set the margins" style="{{ rulerWrapSt }}">
               <div style="position:absolute;inset:0;opacity:.45;background:repeating-linear-gradient(90deg, rgba(142,157,184,.35) 0 1px, transparent 1px 24px), repeating-linear-gradient(90deg, rgba(142,157,184,.6) 0 1px, transparent 1px 120px)"></div>
               <div style="position:absolute;top:2px;bottom:2px;left:0;width:2px;border-radius:2px;background:rgba(142,157,184,.5)"></div>
               <div style="position:absolute;top:2px;bottom:2px;right:0;width:2px;border-radius:2px;background:rgba(142,157,184,.5)"></div>
               <div style="{{ rulerSpanSt }}"></div>
+              <div style="{{ rulerTextSt }}"></div>
               <div onMouseDown="{{ startDragL }}" style="{{ rulerHandLSt }}" style-hover="{{ rulerHandLHov }}"></div>
               <div onMouseDown="{{ startDragR }}" style="{{ rulerHandRSt }}" style-hover="{{ rulerHandRHov }}"></div>
+              <div onMouseDown="{{ startMarginL }}" title="Drag to set margin" style="{{ rulerMargLSt }}" style-hover="{{ rulerMargHov }}"></div>
+              <div onMouseDown="{{ startMarginR }}" title="Drag to set margin" style="{{ rulerMargRSt }}" style-hover="{{ rulerMargHov }}"></div>
             </div>
             <div style="{{ splitWrapSt }}">
             <!-- page scroll area -->
@@ -1108,7 +1126,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                       <div style="width:4px;height:52px;border-radius:3px;background:var(--n1,#00f0ff);box-shadow:0 0 12px var(--g1,rgba(0,240,255,.4))"></div>
                     </div>
                     <sc-if value="{{ dragging }}" hint-placeholder-val="{{ false }}">
-                      <div style="position:absolute;top:10px;right:14px;font-size:10.5px;color:var(--n1,#00f0ff);border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));border-radius:7px;padding:3px 8px;background:rgba(8,10,18,.85);box-shadow:0 0 12px -2px var(--g1,rgba(0,240,255,.4))">{{ pageW }} px</div>
+                      <div style="position:absolute;top:10px;right:14px;font-size:10.5px;color:var(--n1,#00f0ff);border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));border-radius:7px;padding:3px 8px;background:rgba(8,10,18,.85);box-shadow:0 0 12px -2px var(--g1,rgba(0,240,255,.4))">{{ rulerBadge }}</div>
                     </sc-if>
                     <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="0">
                       <sc-if value="{{ b.isH1 }}" hint-placeholder-val="{{ false }}">
@@ -1386,7 +1404,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                         <div onClick="{{ p.pick }}" style="{{ p.st }}"><div style="font-weight:600">{{ p.t }}</div><div style="font-size:9px;opacity:.75;margin-top:1px">{{ p.d }}</div></div>
                       </sc-for>
                     </div>
-                    <div onClick="{{ genBulletsClick }}" style="margin-top:10px;text-align:center;padding:7px;border-radius:10px;background:var(--grad,linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff));color:#0b0d17;font-size:11.5px;font-weight:700;cursor:pointer" style-hover="transform:scale(1.03)">Draft board ✦</div>
+                    <div onClick="{{ genBulletsClick }}" style="margin-top:10px;text-align:center;padding:7px;border-radius:10px;background:var(--grad,linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff));color:#0b0d17;font-size:11.5px;font-weight:700;cursor:pointer" style-hover="transform:scale(1.03)">{{ craftBoardLabel }}</div>
                     <div style="font-size:8.5px;color:#586a88;margin-top:6px;line-height:1.5">Reads your summary + selected plan cards and builds a canvas board — it lands under BOARDS in Scene Setup.</div>
                   </div>
                   <sc-if value="{{ hasDraftBullets }}" hint-placeholder-val="{{ false }}">
@@ -1403,13 +1421,13 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                     </div>
                   </sc-if>
                   <sc-if value="{{ crafterIdle }}" hint-placeholder-val="{{ true }}">
-                    <div style="padding:14px;border-radius:13px;border:1px dashed var(--b2,rgba(155,95,255,.4));text-align:center;color:#8e9db8;font-size:11.5px;line-height:1.6">Set beats and tone, then<br>Draft — the card lands here.</div>
+                    <div style="padding:14px;border-radius:13px;border:1px dashed var(--b2,rgba(155,95,255,.4));text-align:center;color:#8e9db8;font-size:11.5px;line-height:1.6">{{ craftIdleHint }}</div>
                   </sc-if>
                   <sc-if value="{{ crafterBusy }}" hint-placeholder-val="{{ false }}">
                     <div style="padding:16px;border-radius:13px;background:var(--glass2,rgba(21,26,45,.88));border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.5))">
                       <div style="height:8px;border-radius:5px;background:var(--gs2,rgba(155,95,255,.12));margin-bottom:8px;animation:lnPulse 1.1s ease-in-out infinite"></div>
                       <div style="height:8px;border-radius:5px;background:var(--gs2,rgba(155,95,255,.12));width:80%;animation:lnPulse 1.1s ease-in-out .2s infinite"></div>
-                      <div style="font-size:10.5px;color:var(--n2,#9b5fff);margin-top:12px">Drafting to your beats…</div>
+                      <div style="font-size:10.5px;color:var(--n2,#9b5fff);margin-top:12px">{{ craftBusyHint }}</div>
                     </div>
                   </sc-if>
                   <sc-if value="{{ crafterDone }}" hint-placeholder-val="{{ false }}">
@@ -2384,6 +2402,22 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
 
             <!-- ░ settings: AI Agents ░ -->
             <sc-if value="{{ settingsIsAgents }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius:15px;background:rgba(255,255,255,.03);border:var(--bwh,1px) solid var(--bh,rgba(0,240,255,.2));box-shadow:var(--glowH,none);padding:15px 17px;margin-bottom:13px" data-screen-label="AI master switch">
+                <div style="display:flex;align-items:center;gap:13px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:600;color:#eef2fb">AI features</div>
+                    <div style="font-size:11px;color:#8e9db8;margin-top:3px;line-height:1.6">Turn this off and every AI surface disappears — the Coach, the agent panels, Brainstorm chat, continuity flags, beta reads and AI suggestions. Nothing is sent anywhere. Every tool stays fully usable by hand.</div>
+                  </div>
+                  <div onClick="{{ aiMasterToggle.pick }}" style="{{ aiMasterToggle.pillSt }}"><span style="{{ aiMasterToggle.knobSt }}"></span></div>
+                </div>
+                <sc-if value="{{ aiOff }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:13px;padding:11px 13px;border-radius:11px;background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.14)">
+                    <div style="font-size:11.5px;font-weight:600;color:#dbe4f5">Manual mode is on</div>
+                    <div style="font-size:10.5px;color:#7686a2;margin-top:4px;line-height:1.65">Wiki-links and backlinks still auto-build as you type — that is plain text matching, not AI. Timeline, Vault Graph, Scene Crafter beats, drafts, export and the reader all work exactly as before.</div>
+                  </div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ aiOn }}" hint-placeholder-val="{{ true }}">
               <div style="border-radius:15px;background:rgba(255,255,255,.03);border:var(--bwh,1px) solid var(--bh,rgba(0,240,255,.2));box-shadow:var(--glowH,none);padding:15px 17px">
                 <div style="font-size:12.5px;font-weight:600;color:#eef2fb">Provider</div>
                 <div style="font-size:11px;color:#8e9db8;margin:2px 0 12px">All three agents share one provider. Keys are stored locally, never synced.</div>
@@ -2454,6 +2488,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                   </sc-for>
                 </div>
               </div>
+              </sc-if>
             </sc-if>
 
             <!-- ░ settings: Editor ░ -->
@@ -2998,6 +3033,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                 </div>
               </div>
 
+              <sc-if value="{{ aiOn }}" hint-placeholder-val="{{ true }}">
               <div style="border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:13px">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n3,#ff4dff)" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="10" r="5"></circle><path d="M10 17.5h4M10.5 20.5h3"></path></svg>
@@ -3017,6 +3053,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                 </sc-for>
                 <div onClick="{{ goCoach }}" title="Open the Writing Coach" style="text-align:center;padding:7px;border-radius:9px;border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.35));color:#c3cee2;font-size:11.5px;cursor:pointer" style-hover="border-color:var(--b3,rgba(255,77,255,.5));color:#fff;box-shadow:0 0 14px -4px var(--g3,rgba(255,77,255,.4))">See All Suggestions</div>
               </div>
+              </sc-if>
               <div style="border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:13px">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--n2,#9b5fff)" stroke-width="1.8" stroke-linecap="round"><path d="M4 19V5M4 19h16"></path><path d="M8 15l3-4 3 2 4-6"></path></svg>
@@ -3648,7 +3685,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
     <div style="display:flex;align-items:center;gap:14px;height:30px;padding:0 18px;flex:none;font-size:11px;color:#8195b2;background:rgba(8,10,18,.4);backdrop-filter:blur(var(--blur,18px));-webkit-backdrop-filter:blur(var(--blur,18px));border-top:1px solid rgba(255,255,255,.05)">
       <span>{{ statWords }} words</span><span style="opacity:.4">·</span><span>{{ statChars }} characters</span><span style="opacity:.4">·</span><span>{{ statRead }}</span>
       <sc-if value="{{ isEditor }}" hint-placeholder-val="{{ true }}">
-        <span style="opacity:.4">·</span><span style="color:#93a5c2">Page {{ pageW }} px — drag page edge to resize</span>
+        <span style="opacity:.4">·</span><span style="color:#93a5c2">Page {{ pageW }} px · margin {{ pageM }} px — drag the ruler diamonds</span>
       </sc-if>
       <div style="flex:1"></div>
       <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--n1,#00f0ff);box-shadow:0 0 8px var(--g1,rgba(0,240,255,.4));animation:lnPulse 2.6s ease-in-out infinite"></span>Saved 2m ago</span>
@@ -4519,7 +4556,7 @@ class Component extends DCLogic {
       dragScene: null, dragNote: null, dropKey: null,
       crafterCards: [],
       zoom: 'chapter', pp: 0, cc: 1, ss: 1,
-      collapsed: {}, pageW: 1000, dragging: false,
+      collapsed: {}, pageW: 1000, dragging: false, pageM: 84, mDragging: false,
       styleSel: 'Body Text', font: 'Lora', fsize: 12, fmt: { b: false, i: false, u: false, s: false }, align: 'left',
       etab: 's4', etabs: ['s4', 's3', 'ch3'],
       ntab: 'gate', ntabs: ['gate', 'mira', 'veynn'],
@@ -4531,7 +4568,7 @@ class Component extends DCLogic {
       selEvent: 2, tlZoom: 'Year',
       selNode: 'mira', hovNode: null, offCats: { 5: true },
       fCenter: 6, fRepel: 14, fLink: 8, linkDist: 120,
-      settingsSec: 'appearance',
+      settingsSec: 'appearance', aiOff: false,
       bsPage: 'bot', bsChatBoard: false, bsInput: '', bsBusy: false,
       bsChat: [ { who: 'bot', text: 'Tell me about your story \u2014 characters, places, rules of the world. I\u2019ll turn what you say into structured notes and connections as we talk.' } ],
       bsActivity: [ { k: 'scan', text: 'Session started \u2014 watching for facts to extract into the vault' } ],
@@ -4714,8 +4751,17 @@ class Component extends DCLogic {
     return (e) => {
       e.preventDefault();
       const sx = e.clientX, sw = this.state.pageW;
-      const mv = (ev) => this.setState({ pageW: Math.max(520, Math.min(3000, sw + (ev.clientX - sx) * side * 2)), dragging: true });
+      const mv = (ev) => this.setState(s => { const w = Math.max(520, Math.min(3000, sw + (ev.clientX - sx) * side * 2)); return { pageW: w, pageM: Math.max(12, Math.min(s.pageM, Math.floor(w / 2) - 60)), dragging: true }; });
       const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); this.setState({ dragging: false }); };
+      window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+    };
+  }
+  startMarginDrag(side) {
+    return (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const sx = e.clientX, sm = this.state.pageM, cap = Math.floor(this.state.pageW / 2) - 60;
+      const mv = (ev) => this.setState({ pageM: Math.max(12, Math.min(cap, Math.round(sm + (ev.clientX - sx) * side))), mDragging: true });
+      const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); this.setState({ mDragging: false }); };
       window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
     };
   }
@@ -5008,9 +5054,10 @@ class Component extends DCLogic {
 
   // ── comments ──
   commentsVisible() { const S = this.state; const focusOn = !S.leftOpen && !S.rightOpen; return S.showComments && (!focusOn || S.commentsInFocus); }
+  visibleComments() { const S = this.state; return S.aiOff ? S.comments.filter(c => c.kind === 'user') : S.comments; }
   segsFor(sceneKey, text) {
     if (!this.commentsVisible()) return null;
-    const hits = this.state.comments.filter(c => c.scene === sceneKey && text.indexOf(c.anchor) > -1);
+    const hits = this.visibleComments().filter(c => c.scene === sceneKey && text.indexOf(c.anchor) > -1);
     if (!hits.length) return null;
     const marks = hits.map(c => ({ c, i: text.indexOf(c.anchor) })).sort((a, b) => a.i - b.i);
     const segs = []; let pos = 0;
@@ -5711,6 +5758,7 @@ class Component extends DCLogic {
 
   renderVals() {
     const S = this.state;
+    const aiOn = !S.aiOff;
     const I = S.reduceGlow ? Math.min(S.intensity, 5) / 25 : S.intensity / 25;
     const [c1, c2, c3] = S.slots;
     const c4 = S.slots[3] || '#ff9a3d', c5 = S.slots[4] || '#2fe6c8', c6 = S.slots[5] || '#3d9bff';
@@ -5936,7 +5984,8 @@ class Component extends DCLogic {
 
     // right panel (editor)
     const rTabBase = 'padding:5px 12px;border-radius:8px;font-size:11.5px;cursor:pointer;';
-    const rightTabsE = ['Assistant', 'Scenes', 'Notes', 'References'].map(k => ({ label: k, st: rTabBase + (S.rightTabE === k ? 'background:var(--gs3,rgba(255,77,255,.12));color:var(--n3,#ff4dff);border:var(--bw,1px) solid var(--b3,rgba(255,77,255,.5));font-weight:600' : 'color:#94a3bd;border:1px solid transparent'), stH: S.rightTabE === k ? '' : 'color:#e8eefc;background:rgba(255,255,255,.06)', pick: () => this.setState(k === 'Assistant' ? { rightTabE: k, waMode: 'hub' } : { rightTabE: k }) }));
+    const rTabE = (!aiOn && S.rightTabE === 'Assistant') ? 'Scenes' : S.rightTabE;
+    const rightTabsE = (aiOn ? ['Assistant', 'Scenes', 'Notes', 'References'] : ['Scenes', 'Notes', 'References']).map(k => ({ label: k, st: rTabBase + (rTabE === k ? 'background:var(--gs3,rgba(255,77,255,.12));color:var(--n3,#ff4dff);border:var(--bw,1px) solid var(--b3,rgba(255,77,255,.5));font-weight:600' : 'color:#94a3bd;border:1px solid transparent'), stH: S.rightTabE === k ? '' : 'color:#e8eefc;background:rgba(255,255,255,.06)', pick: () => this.setState(k === 'Assistant' ? { rightTabE: k, waMode: 'hub' } : { rightTabE: k }) }));
     const assistRows = [ { k: 'Cadence', v: 'Moderate' }, { k: 'Tone', v: 'Dark & Gritty' } ];
     const analysisRows = [ ['Purpose', 'Story Progression'], ['Tension', 'Rising', 1], ['Pacing', 'Medium'], ['POV', 'Third Limited'], ['Word Count', '1,842'], ['Read Time', '~7 min'] ].map(([k, v, hot]) => ({ k, v, vSt: hot ? { color: 'var(--n1,#00f0ff)', fontWeight: 600, textShadow: '0 0 10px var(--g1,rgba(0,240,255,.4))' } : { color: '#dbe4f5' } }));
     const sIc = (p, c) => ({ __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="' + c + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' });
@@ -6122,7 +6171,7 @@ class Component extends DCLogic {
       this.setState(s => ({ extraLoose: (s.extraLoose || []).concat(item) }));
       this.showToast('Idea captured \u2014 landed near Loose Ideas');
     };
-    const bsCanvasHint = S.bsTool === 'connect' ? (S.bsLinkFrom ? 'Click a second idea to link it' : 'Connect tool \u2014 click two ideas to link them') : 'Drag ideas anywhere \u00b7 wheel to zoom \u00b7 flesh things out in the Agent Chat';
+    const bsCanvasHint = S.bsTool === 'connect' ? (S.bsLinkFrom ? 'Click a second idea to link it' : 'Connect tool \u2014 click two ideas to link them') : ('Drag ideas anywhere \u00b7 wheel to zoom' + (aiOn ? ' \u00b7 flesh things out in the Agent Chat' : ' \u00b7 double-click the canvas to add an idea'));
 
     // ── TIMELINE ──
     const tlZoomOpts = segMk([['Year', 'Year'], ['Quarter', 'Quarter'], ['Month', 'Month'], ['Week', 'Week'], ['Day', 'Day']], S.tlZoom, k => this.setState({ tlZoom: k }));
@@ -6295,8 +6344,8 @@ class Component extends DCLogic {
     const savedPrompts = [ ['Deepen the Undercity', 'Just now'], ['Mira\u2019s Inner Conflict', 'Used 3d ago'], ['Raise the Stakes', 'Used 5d ago'] ].map(x => ({ t: x[0], when: x[1] }));
 
     // ── brainstorm pages ──
-    const bsIsBot = S.bsPage === 'bot';
-    const bsPages = segMk([['bot', 'Agent Chat'], ['board', 'Board']], S.bsPage, k => { this.setState({ bsPage: k }); this.scrollFeed(this.bsFeedRef); this.scrollFeed(this.bsActRef); });
+    const bsIsBot = aiOn && S.bsPage === 'bot';
+    const bsPages = !aiOn ? [] : segMk([['bot', 'Agent Chat'], ['board', 'Board']], S.bsPage, k => { this.setState({ bsPage: k }); this.scrollFeed(this.bsFeedRef); this.scrollFeed(this.bsActRef); });
     const bubbleUser = 'max-width:78%;padding:10px 13px;border-radius:14px 14px 4px 14px;background:var(--gs1,rgba(0,240,255,.12));border:var(--bw,1px) solid var(--b1,rgba(0,240,255,.5));box-shadow:0 0 14px -6px var(--g1,rgba(0,240,255,.4));color:#e9f7ff;font-size:12.5px;line-height:1.6';
     const bubbleBot = 'max-width:84%;padding:10px 13px;border-radius:14px 14px 14px 4px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);color:#cdd8ea;font-size:12.5px;line-height:1.6';
     const bsChatR = S.bsChat.map(m => ({ text: m.text, rowSt: 'display:flex;' + (m.who === 'user' ? 'justify-content:flex-end' : 'justify-content:flex-start'), st: m.who === 'user' ? bubbleUser : bubbleBot }));
@@ -6411,7 +6460,7 @@ class Component extends DCLogic {
       };
     };
     const agent = agentDefs.find(a => a.id === S.waMode);
-    const waIsChat = !!agent && S.rightTabE === 'Assistant';
+    const waIsChat = aiOn && !!agent && rTabE === 'Assistant';
     const sevChip = (m) => 'font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:6px;color:' + m.sevC + ';background:' + this.hexA(m.sevC, .1) + ';border:1px solid ' + this.hexA(m.sevC, .5);
     const waMsgs = (agent ? (agent.id === 'writing' ? S.coachChat.map(m => m.who === 'lesson' ? { who: 'bot', text: m.title + ' \u2014 ' + m.text } : m) : S.waChats[agent.id]) : []).map(m => ({
       isText: m.who === 'user' || m.who === 'bot',
@@ -6445,8 +6494,8 @@ class Component extends DCLogic {
     const storyToggle = mkToggle(storyOn, () => { this._energy = 1; this.setState(s => ({ offCats: Object.assign({}, s.offCats, { 5: !s.offCats[5] }) })); });
 
     // ── story sub-views ──
-    const sub = S.storySub;
-    const storySubTabs = segMk([['editor', 'Editor'], ['coach', 'Coach'], ['structure', 'Structure'], ['book', 'Book']], sub, k => this.setState({ storySub: k }));
+    const sub = (!aiOn && S.storySub === 'coach') ? 'editor' : S.storySub;
+    const storySubTabs = segMk((aiOn ? [['editor', 'Editor'], ['coach', 'Coach'], ['structure', 'Structure'], ['book', 'Book']] : [['editor', 'Editor'], ['structure', 'Structure'], ['book', 'Book']]), sub, k => this.setState({ storySub: k }));
     const statusMeta = { done: ['Complete', '#4ade80'], draft: ['Drafting', c1], todo: ['Planned', '#8e9db8'] };
     const structChs = [];
     if (S.view === 'editor' && sub === 'structure') this.book.forEach((p, pi) => p.chapters.forEach((c, ci) => {
@@ -6504,12 +6553,13 @@ class Component extends DCLogic {
 
     // ── command palette ──
     const q = S.cmdQ.trim().toLowerCase();
-    const hits = this.cmdIndex().filter(x => !q || x.t.toLowerCase().includes(q) || x.sub.toLowerCase().includes(q));
+    const aiRe = /agent|continuity|coach|assistant|beta read|brainstorm/i;
+    const hits = this.cmdIndex().filter(x => aiOn || !(aiRe.test(x.t) || aiRe.test(x.sub))).filter(x => !q || x.t.toLowerCase().includes(q) || x.sub.toLowerCase().includes(q));
     const cmdGroups = ['Commands', 'Notes', 'Scenes'].map(kind => ({ kind, items: hits.filter(h => h.kind === kind).slice(0, 5).map(h => ({ t: h.t, sub: h.sub, run: () => { this.setState({ cmdOpen: false }); h.run(); } })) })).filter(g => g.items.length);
 
     // ── popovers ──
     const notifMeta = { archive: ['#ffd319', '<path d="M12 3l7 3v5.5c0 4.2-2.9 7.4-7 9-4.1-1.6-7-4.8-7-9V6z"></path><path d="M9 12l2.2 2.2L15.5 10"></path>'], sync: ['#4ade80', '<path d="M20 17H7a4 4 0 1 1 .9-7.9A5.5 5.5 0 0 1 18.6 11a3 3 0 0 1 1.4 6z"></path>'], sugg: [c2, '<path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8z"></path>'], bs: [c1, '<circle cx="12" cy="10" r="5"></circle><path d="M10 17.5h4M10.5 20.5h3"></path>'], crafter: [c3, '<path d="M5 21V8l3-3v16M9 21V5l3-2v18M12 21V3l4 3v15M19 21V9l-3-3"></path><path d="M3 21h18"></path>'] };
-    const notifRows = this.notifs.map(n => { const m = notifMeta[n.k]; return { t: n.t, d: n.d, time: n.time,
+    const notifRows = this.notifs.filter(n => aiOn || !['archive', 'sugg', 'bs', 'crafter'].includes(n.k)).map(n => { const m = notifMeta[n.k]; return { t: n.t, d: n.d, time: n.time,
       icon: { __html: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="' + m[0] + '" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + m[1] + '</svg>' },
       icSt: 'width:27px;height:27px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:' + this.hexA(m[0], .1) + ';border:1px solid ' + this.hexA(m[0], .4),
       pick: () => { this.setState({ bellOpen: false }); if (n.k === 'archive') this.setState({ view: 'editor', waMode: 'archive', rightTabE: 'Assistant', rightOpen: true }); else if (n.k === 'sugg') this.setState({ view: 'editor', storySub: 'editor', waMode: 'writing', rightTabE: 'Assistant', rightOpen: true }); else if (n.k === 'bs') this.setState({ view: 'brainstorm', bsPage: 'bot' }); else if (n.k === 'crafter') this.setState({ view: 'crafter' }); else this.showToast('All files synced \u2713'); } }; });
@@ -6554,9 +6604,10 @@ class Component extends DCLogic {
       'ag-brainstorm': [S.agentNames.brainstorm, 'Vault curator \u2014 everything it handles, its files, and its model.'],
       'ag-archive': [S.agentNames.archive, 'Continuity keeper \u2014 everything it handles, its files, and its model.'],
       'ag-beta': [S.agentNames.beta, 'First-time reader \u2014 everything it handles, its files, and its model.'],
-      agents: ['AI Agents', 'Provider, models and autonomy. Pick an agent in the sidebar for its own page.']
+      agents: ['AI Agents', aiOn ? 'Provider, models and autonomy. Pick an agent in the sidebar for its own page.' : 'AI is switched off \u2014 every tool is manual. Turn it back on to configure provider, models and autonomy.']
     });
     const sm2 = settingsMeta[S.settingsSec] || settingsMeta.appearance;
+    const aiMasterToggle = mkToggle(aiOn, () => this.setState(s => { const off = !s.aiOff; const st = { aiOff: off }; if (off) { if (s.storySub === 'coach') st.storySub = 'editor'; if (s.rightTabE === 'Assistant') st.rightTabE = 'Scenes'; if (s.view === 'beta') st.view = 'editor'; if (s.bsPage === 'bot') st.bsPage = 'board'; st.nrTab = 'props'; } this.showToast(off ? 'AI features off \u2014 every tool is now manual' : 'AI features back on'); return st; }));
 
     // ── split / diff / comments / width ──
     const splitDoc = S.split && S.split.doc;
@@ -6633,7 +6684,7 @@ class Component extends DCLogic {
     const goCrafter = () => this.setState({ view: 'crafter' });
 
     // ── notes right (agent-first) ──
-    const nrTabs = segMk([['agent', 'Agent'], ['props', 'Properties']], S.nrTab || 'agent', k => this.setState({ nrTab: k }));
+    const nrTabs = !aiOn ? [] : segMk([['agent', 'Agent'], ['props', 'Properties']], S.nrTab || 'agent', k => this.setState({ nrTab: k }));
     const nrMsgs = S.waChats.brainstorm.map(m => ({ isUser: m.who === 'user', isNote: m.who === 'note', isText: m.who === 'user' || m.who === 'bot', text: m.text || '', title: m.title || '', foot: m.foot || '', notePick: () => m.noteId && this.openNote(m.noteId), rowSt: 'display:flex;' + (m.who === 'user' ? 'justify-content:flex-end' : 'justify-content:flex-start'), st: m.who === 'user' ? bubbleUser : bubbleBot }));
     const contFinds = [
       { title: 'Tide rule conflict', src: 'Story \u2194 Vault', text: 'Scene 4 enters the Gate at high tide; note \u201CThe Sunken Gate\u201D says the inner passage opens only at low tide.' },
@@ -6830,15 +6881,15 @@ class Component extends DCLogic {
     const pc = S.pageCfg;
     const pcBg = this.hexA(pc.bg, pc.op / 100);
     let sheetBoxSt;
-    if (pc.mode === 'off') sheetBoxSt = { position: 'relative', background: 'transparent', padding: '10px 8px 80px' };
+    if (pc.mode === 'off') sheetBoxSt = { position: 'relative', background: 'transparent', padding: '10px ' + S.pageM + 'px 80px' };
     else if (pc.mode === 'scroll') { const st2 = S.scrollTint || '#2b2213'; const so = (S.scrollOp != null ? S.scrollOp : 92) / 100;
       sheetBoxSt = { position: 'relative',
         background: 'radial-gradient(60% 40% at 20% 12%, rgba(0,0,0,.28), transparent 60%),radial-gradient(45% 30% at 82% 70%, rgba(0,0,0,.24), transparent 65%),repeating-linear-gradient(97deg, transparent 0 110px, rgba(0,0,0,.14) 110px 111px, transparent 111px 240px),repeating-linear-gradient(3deg, transparent 0 160px, rgba(0,0,0,.1) 160px 161px, transparent 161px 300px),linear-gradient(173deg,' + this.hexA(st2, so) + ',' + this.hexA(st2, Math.max(0, so - .18)) + ' 55%,' + this.hexA('#0f0a02', so) + ')',
         border: 'var(--bw,1px) solid rgba(214,183,121,.45)', borderRadius: '10px',
-        boxShadow: '0 18px 60px rgba(2,4,10,.55), inset 0 0 80px rgba(0,0,0,.5), inset 0 0 12px rgba(90,64,20,.35)', padding: '76px 96px 96px' }; }
-    else if (pc.mode === 'custom') sheetBoxSt = { position: 'relative', background: S.pageTex ? ('url(' + S.pageTex + ') center/cover, ' + pcBg) : pcBg, border: '1px solid rgba(255,255,255,.12)', borderRadius: '12px', boxShadow: '0 18px 60px rgba(2,4,10,.55), inset 0 0 60px rgba(0,0,0,.35)', padding: '64px 84px 90px' };
-    else if (pc.mode === 'neon') sheetBoxSt = { position: 'relative', background: pcBg, backdropFilter: 'blur(' + pc.blur + 'px)', WebkitBackdropFilter: 'blur(' + pc.blur + 'px)', border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.5))', borderRadius: '12px', boxShadow: '0 0 var(--gr,26px) -7px var(--g2,rgba(155,95,255,.4)), 0 18px 60px rgba(2,4,10,.55)', padding: '64px 84px 90px' };
-    else sheetBoxSt = { position: 'relative', background: pcBg, backdropFilter: 'blur(' + pc.blur + 'px)', WebkitBackdropFilter: 'blur(' + pc.blur + 'px)', border: '1px solid rgba(255,255,255,.06)', borderRadius: '12px', boxShadow: '0 18px 60px rgba(2,4,10,.55),inset 0 1px 0 rgba(255,255,255,.04)', padding: '64px 84px 90px' };
+        boxShadow: '0 18px 60px rgba(2,4,10,.55), inset 0 0 80px rgba(0,0,0,.5), inset 0 0 12px rgba(90,64,20,.35)', padding: '76px ' + S.pageM + 'px 96px' }; }
+    else if (pc.mode === 'custom') sheetBoxSt = { position: 'relative', background: S.pageTex ? ('url(' + S.pageTex + ') center/cover, ' + pcBg) : pcBg, border: '1px solid rgba(255,255,255,.12)', borderRadius: '12px', boxShadow: '0 18px 60px rgba(2,4,10,.55), inset 0 0 60px rgba(0,0,0,.35)', padding: '64px ' + S.pageM + 'px 90px' };
+    else if (pc.mode === 'neon') sheetBoxSt = { position: 'relative', background: pcBg, backdropFilter: 'blur(' + pc.blur + 'px)', WebkitBackdropFilter: 'blur(' + pc.blur + 'px)', border: 'var(--bw,1px) solid var(--b2,rgba(155,95,255,.5))', borderRadius: '12px', boxShadow: '0 0 var(--gr,26px) -7px var(--g2,rgba(155,95,255,.4)), 0 18px 60px rgba(2,4,10,.55)', padding: '64px ' + S.pageM + 'px 90px' };
+    else sheetBoxSt = { position: 'relative', background: pcBg, backdropFilter: 'blur(' + pc.blur + 'px)', WebkitBackdropFilter: 'blur(' + pc.blur + 'px)', border: '1px solid rgba(255,255,255,.06)', borderRadius: '12px', boxShadow: '0 18px 60px rgba(2,4,10,.55),inset 0 1px 0 rgba(255,255,255,.04)', padding: '64px ' + S.pageM + 'px 90px' };
     const setPc = (patch) => this.setState(s => ({ pageCfg: Object.assign({}, s.pageCfg, patch) }));
     const pageModeSeg = segMk([['neon', 'Neon'], ['default', 'No glow'], ['scroll', 'Scroll'], ['custom', 'Custom'], ['off', 'Off']], pc.mode, k => setPc({ mode: k }));
     const pageOpSlider = mkSlider('Background opacity', pc.op, 0, 96, '%', v => setPc({ op: v }));
@@ -6855,7 +6906,7 @@ class Component extends DCLogic {
     const frameSpeedSlider = { label: 'Animation speed', valueLabel: (Math.round(S.frameSpeed * 100) / 100) + 's', min: 1, max: 120, value: fsQ, onChange: (e) => this.setState({ frameSpeed: +e.target.value / 4 }), trackSt: 'width:100%;background:linear-gradient(to right,var(--n1,#00f0ff) ' + fsPct + '%,rgba(255,255,255,.12) ' + fsPct + '%)' };
     const frameSpinSt = { position: 'absolute', left: '50%', top: '50%', width: '170vmax', height: '170vmax', marginLeft: '-85vmax', marginTop: '-85vmax', background: 'conic-gradient(var(--ring,#00f0ff,#9b5fff,#ff4dff,#ff9a3d,#2fe6c8,#3d9bff,#00f0ff))', animation: S.frameAnim === 'cycle' ? 'lnSpin ' + S.frameSpeed + 's linear infinite' : S.frameAnim === 'sparkle' ? 'lnHue ' + S.frameSpeed + 's linear infinite' : 'none' };
     const kMeta2 = { user: ['#ffd319', 'Skyy'], writing: ['var(--n1,#00f0ff)', 'Writing Coach'], archive: ['#ff5f8f', 'Archive Agent'] };
-    const gutterCards = S.comments.map(c => ({ id: c.id, text: c.text, author: kMeta2[c.kind][1],
+    const gutterCards = this.visibleComments().map(c => ({ id: c.id, text: c.text, author: kMeta2[c.kind][1],
       chipSt: 'width:8px;height:8px;border-radius:50%;flex:none;background:' + kMeta2[c.kind][0] + ';box-shadow:0 0 7px ' + kMeta2[c.kind][0],
       anchor: c.anchor.length > 34 ? c.anchor.slice(0, 34) + '\u2026' : c.anchor,
       isArchive: c.kind === 'archive', expanded: S.cOpen === c.id,
@@ -6864,7 +6915,7 @@ class Component extends DCLogic {
       resolve: (e) => { e.stopPropagation(); this.resolveComment(c.id); },
       actEdit: (e) => { e.stopPropagation(); this.resolveComment(c.id); this.showToast('Note updated to match the story (mock)'); },
       actStory: (e) => { e.stopPropagation(); this.resolveComment(c.id); this.showToast('Suggested edit drafted \u2014 see Writing Coach (mock)'); } }));
-    const gutterHasComments = this.commentsVisible() && S.comments.length > 0;
+    const gutterHasComments = this.commentsVisible() && this.visibleComments().length > 0;
     const gutterOpen = S.view === 'editor' && sub === 'editor' && !S.diffOpen && (gutterHasComments || R.open);
     const gutterSt = { width: '236px', flex: 'none', minHeight: 0, overflowY: 'auto', padding: '22px 12px 40px 2px', display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: gutterHasComments ? 'flex-start' : 'center' };
     const spPageSt = { flex: S.split ? 'none' : '1', width: S.split ? (S.splitRatio * 100) + '%' : 'auto', minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '22px 26px 60px', position: 'relative' };
@@ -6910,11 +6961,11 @@ class Component extends DCLogic {
     const menuItems2 = ['File', 'Edit', 'View', 'Insert', 'Tools', 'Help'].map(l => ({ label: l, open: S.menuOpen === l,
       pick: (e) => { e.stopPropagation(); this.setState(s => ({ menuOpen: s.menuOpen === l ? null : l })); },
       st: 'position:relative;padding:4px 10px;border-radius:7px;font-size:12px;cursor:pointer;' + (S.menuOpen === l ? 'background:rgba(255,255,255,.1);color:#e8eefc' : 'color:#94a3bd'),
-      items: menuDefs[l].map(m => ({ t: m[0], run: (e) => { e.stopPropagation(); this.setState({ menuOpen: null }); m[1](); } })) }));
+      items: menuDefs[l].filter(m => aiOn || !/continuity|agent|coach|beta read|brainstorm/i.test(m[0])).map(m => ({ t: m[0], run: (e) => { e.stopPropagation(); this.setState({ menuOpen: null }); m[1](); } })) }));
     const closeMenus = () => this.setState({ menuOpen: null });
 
     // ── editor ⋯ + assist ──
-    const eMoreItems = [ ['Rename scene\u2026', () => this.showToast('Rename \u2014 inline edit in the shipped app')], ['Duplicate scene', () => this.showToast('Scene duplicated as Draft (mock)')], ['Beta read this scene', () => { this.setState({ waMode: 'beta', rightTabE: 'Assistant', rightOpen: true }); }], ['Continuity check', () => { this.setState({ waMode: 'archive', rightTabE: 'Assistant', rightOpen: true }); this.showToast('Archive Agent checking this scene \u2014 auto-linking to vault'); }], ['Delete scene', () => this.showToast('Scene moved to trash (mock)')] ].map(m => ({ t: m[0], run: (e) => { e.stopPropagation(); this.setState({ eMoreOpen: false }); m[1](); } }));
+    const eMoreItems = [ ['Rename scene\u2026', () => this.showToast('Rename \u2014 inline edit in the shipped app')], ['Duplicate scene', () => this.showToast('Scene duplicated as Draft (mock)')], ['Beta read this scene', () => { this.setState({ waMode: 'beta', rightTabE: 'Assistant', rightOpen: true }); }], ['Continuity check', () => { this.setState({ waMode: 'archive', rightTabE: 'Assistant', rightOpen: true }); this.showToast('Archive Agent checking this scene \u2014 auto-linking to vault'); }], ['Delete scene', () => this.showToast('Scene moved to trash (mock)')] ].filter(m => aiOn || !/beta read|continuity/i.test(m[0])).map(m => ({ t: m[0], run: (e) => { e.stopPropagation(); this.setState({ eMoreOpen: false }); m[1](); } }));
     const openAssist = () => this.setState({ waMode: 'writing', rightTabE: 'Assistant', rightOpen: true, reader: Object.assign({}, S.reader, { open: false }) });
 
     // ── notes: template picker + tree context + tags ──
@@ -6927,12 +6978,12 @@ class Component extends DCLogic {
       ['Rename\u2026', () => this.setState({ vRen: { kind: 'folder', pid: tc.pid, idx: tc.idx }, vRenV: tc.label })],
       ['Delete folder', () => this.vDelete('folder', tc.pid, tc.idx)]
     ]) : tcMk([
-      ['Open in new tab', () => { const id = tc.id; if (this.notes[id]) this.setState(s => ({ ntab: id, ntabs: s.ntabs.includes(id) ? s.ntabs : s.ntabs.concat(id) })); }],
+      ['Open in new tab', () => { const id = tc.id; if (this.notes[id]) this.setState(s => ({ ntab: id, ntabs: s.ntabs.includes(id) ? s.ntabs : s.ntabs.concat(id) })); }]].concat(aiOn ? [
       ['Beta read', () => this.showToast('Beta Reader queued on \u201C' + tc.label + '\u201D')],
-      ['Continuity check', () => this.showToast('Archive Agent checking \u201C' + tc.label + '\u201D \u2194 story')],
+      ['Continuity check', () => this.showToast('Archive Agent checking \u201C' + tc.label + '\u201D \u2194 story')]] : []).concat([
       ['Rename\u2026', () => this.setState({ vRen: { kind: 'file', pid: tc.pid, idx: tc.idx }, vRenV: tc.label })],
       ['Delete', () => this.vDelete('file', tc.pid, tc.idx)]
-    ]));
+    ])));
     const noteTagsAll = (note.tags || []).concat((S.extraTags[S.ntab] || []).map(t => ({ t, c: c1 })));
     const noteTags2 = noteTagsAll.map(tg => ({ t: tg.t, st: 'font-size:10.5px;padding:3px 11px;border-radius:99px;border:1px solid ' + this.hexA(tg.c, .5) + ';color:' + tg.c + ';background:' + this.hexA(tg.c, .1) + ';cursor:default' }));
     const addTag = () => { const t = (S.tagInput || '').trim().replace(/^#/, ''); if (!t) return; this.setState(s => { const ex = Object.assign({}, s.extraTags); ex[s.ntab] = (ex[s.ntab] || []).concat(t); return { extraTags: ex, tagInput: '' }; }); };
@@ -7186,6 +7237,8 @@ class Component extends DCLogic {
       cOpenData, closeComment: () => this.setState({ cOpen: null }), cifToggle,
       wSlider,
       ckVault, goCrafter, sbBeatsN: cf.beats.length + ' beats set',
+      ckVaultHint: aiOn ? 'Click or drag a card onto the board \u2014 the Brainstorm Agent keeps this list stocked from your vault.' : 'Click or drag a card onto the board \u2014 this list is drawn straight from your Notes Vault.',
+      bsCollHint: aiOn ? 'Ideas the agent captures in chat land in your Notes Vault and appear here \u2014 click + to place one on the board.' : 'Ideas you save land in your Notes Vault and appear here \u2014 click + to place one on the board.',
       bsModeBoard: !bsIsBot || !!S.bsChatBoard,
       bsBoardToggle: mkToggle(!!S.bsChatBoard, () => this.setState(s => ({ bsChatBoard: !s.bsChatBoard }))),
       bsCanvasWrapSt: (bsIsBot ? 'height:' + (S.bsBoardH || 380) + 'px;flex:none;margin:0 10px 8px' : 'flex:1;min-height:0;margin:4px 12px 12px') + ';position:relative;border-radius:14px;background:radial-gradient(90% 90% at 50% 40%,rgba(20,26,48,.35),rgba(6,8,15,.55));border:1px solid rgba(255,255,255,.05);overflow:hidden',
@@ -7260,7 +7313,7 @@ class Component extends DCLogic {
       createStory: () => { const nm = (S.stName || '').trim() || 'Untitled Story'; const v = JSON.parse(JSON.stringify(this.vault)); const plot = v.find(f => f.id === 'plot'); if (plot) (plot.files = plot.files || []).unshift({ id: null, label: 'Story Plan — ' + nm }); this.setState(s => ({ extraStories: (s.extraStories || []).concat({ n: nm, vault: s.vaultCur || 'mythos' }), stName: '', vaultData: v, storiesOpen: false })); this.showToast('\u201C' + nm + '\u201D created — plan note added; Brainstorm will fill the outline'); },
       crafterExcerpt: this.crafterDraft[0],
       bookWrapSt: { maxWidth: S.pageW + 'px', margin: '0 auto', fontFamily: "'Lora',Georgia,serif", color: 'var(--txB,#c8d3e7)', background: 'rgba(9,11,20,.66)', border: '1px solid rgba(255,255,255,.06)', borderRadius: '12px', boxShadow: '0 18px 60px rgba(2,4,10,.55)', padding: '70px 76px 90px' },
-      nrTabs, nrIsAgent: (S.nrTab || 'agent') === 'agent', nrIsProps: S.nrTab === 'props', nrMsgs, contFinds,
+      nrTabs, nrIsAgent: aiOn && (S.nrTab || 'agent') === 'agent', nrIsProps: !aiOn || S.nrTab === 'props', nrMsgs, contFinds,
       nrInputV: S.nrInput || '', nrInputChange: (e) => this.setState({ nrInput: e.target.value }),
       nrKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendWa(null, 'brainstorm'); } },
       nrSendClick: () => this.sendWa(null, 'brainstorm'),
@@ -7424,7 +7477,7 @@ class Component extends DCLogic {
       popsOpen: S.bellOpen || S.acctOpen || S.projMenuOpen || S.draftsOpen,
       notifRows, draftRows, projItems,
       draftsOpen: S.draftsOpen, toggleDrafts: () => this.setState(s => ({ draftsOpen: !s.draftsOpen })),
-      rightIsNotes: S.rightTabE === 'Notes', rightIsRefs: S.rightTabE === 'References', rightIsBoard: S.rightTabE === 'Scenes',
+      rightIsNotes: rTabE === 'Notes', rightIsRefs: rTabE === 'References', rightIsBoard: rTabE === 'Scenes',
       quickNotesR, refsR,
       quickNoteV: S.quickNoteInput, quickNoteChange: (e) => this.setState({ quickNoteInput: e.target.value }),
       addQuickNote: () => { const t = S.quickNoteInput.trim(); if (!t) return; this.setState(s => ({ quickNotes: s.quickNotes.concat(t), quickNoteInput: '' })); },
@@ -7461,18 +7514,23 @@ class Component extends DCLogic {
       bsTyping: S.bsBusy,
       bsTitle: bsIsBot ? 'Brainstorm Agent' : 'Brainstorm Center',
       bsCaption: bsIsBot ? 'Talk your world into existence \u2014 the vault builds itself.' : 'Capture. Connect. Develop.',
+      aiOn, aiOff: !aiOn, aiMasterToggle,
+      craftManualH: () => { this.setState({ view: 'editor', storySub: 'editor' }); this.showToast('Beats saved \u2014 write the scene your way'); },
+      craftBoardLabel: aiOn ? 'Draft board \u2726' : 'Build board',
+      craftIdleHint: aiOn ? 'Set beats and tone, then Draft \u2014 the card lands here.' : 'Set beats and tone, then Build \u2014 your checklist lands here.',
+      craftBusyHint: aiOn ? 'Drafting to your beats\u2026' : 'Building your checklist\u2026',
       bsInputV: S.bsInput, bsInputChange: (e) => this.setState({ bsInput: e.target.value }),
       bsKey: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendBs(); } },
       bsSendClick: () => this.sendBs(),
       bsFeedRef: this.bsFeedRef, bsActRef: this.bsActRef,
-      waIsHub: S.rightTabE === 'Assistant' && !waIsChat, waIsChat, waAgents, waIsWriting: waIsChat && agent.id === 'writing',
+      waIsHub: aiOn && rTabE === 'Assistant' && !waIsChat, waIsChat, waAgents, waIsWriting: waIsChat && agent.id === 'writing',
       waTitle: agent ? agent.name : '', waStatus: agent ? agent.status : '', waIconH: agent ? { __html: agent.icon } : { __html: '' },
       waIconSt: 'width:30px;height:30px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--gs' + waSlot + ');border:var(--bw,1px) solid var(--b' + waSlot + ');box-shadow:0 0 12px -4px var(--g' + waSlot + ')',
       waDotSt: agent ? 'width:7px;height:7px;border-radius:50%;flex:none;background:' + agent.dot + ';box-shadow:0 0 7px ' + agent.dot : '',
       waBack: () => this.setState({ waMode: 'hub' }),
       waSes: agent ? mkSesUI(agent.id) : {}, waHasSes: !!agent,
       coachSes: mkSesUI('writing'),
-      isBeta: S.view === 'beta',
+      isBeta: aiOn && S.view === 'beta',
       betaScopeOpts, betaScopeV: S.betaScope, betaScopeChange: (e) => this.setState({ betaScope: e.target.value }),
       betaFocusRows, betaRunH: betaRun, betaRunning: S.betaRunning, betaIdle: !S.betaRunning,
       betaReports2, betaCount: S.betaReports.length,
@@ -7540,9 +7598,16 @@ class Component extends DCLogic {
       sheetWrapSt, pSt, blocks: S.view === 'editor' ? this.buildBlocks(pSt) : [],
       lineSpV: String(S.lineSp || 1.85), setLineSp: (e) => this.setState({ lineSp: parseFloat(e.target.value) }),
       startDragL: this.startDrag(-1), startDragR: this.startDrag(1),
-      dragging: S.dragging, pageW: S.pageW,
+      startMarginL: this.startMarginDrag(1), startMarginR: this.startMarginDrag(-1),
+      dragging: S.dragging || S.mDragging, pageW: S.pageW,
+      pageM: S.pageM,
+      rulerBadge: S.mDragging ? (S.pageM + ' px margin') : (S.pageW + ' px page'),
+      rulerTextSt: 'position:absolute;top:50%;height:3px;transform:translateY(-50%);border-radius:2px;background:var(--n1,#00f0ff);box-shadow:0 0 9px -1px var(--g1,rgba(0,240,255,.55));z-index:1;left:max(2px,calc(50% - ' + (S.pageW / 2 - S.pageM) + 'px));right:max(2px,calc(50% - ' + (S.pageW / 2 - S.pageM) + 'px))',
+      rulerMargLSt: 'position:absolute;top:50%;left:max(6px,calc(50% - ' + (S.pageW / 2 - S.pageM) + 'px));width:8px;height:8px;margin:1px 0 0 -4px;transform:rotate(45deg);border-radius:2px;background:var(--n1,#00f0ff);box-shadow:0 0 10px var(--g1,rgba(0,240,255,.55));cursor:ew-resize;transition:transform .12s ease,box-shadow .12s ease;z-index:3',
+      rulerMargRSt: 'position:absolute;top:50%;left:min(calc(100% - 6px),calc(50% + ' + (S.pageW / 2 - S.pageM) + 'px));width:8px;height:8px;margin:1px 0 0 -4px;transform:rotate(45deg);border-radius:2px;background:var(--n1,#00f0ff);box-shadow:0 0 10px var(--g1,rgba(0,240,255,.55));cursor:ew-resize;transition:transform .12s ease,box-shadow .12s ease;z-index:3',
+      rulerMargHov: 'transform:rotate(45deg) scale(1.35);box-shadow:0 0 12px var(--g1,rgba(0,240,255,.8))',
       rulerWrapSt: 'height:15px;flex:none;position:relative;user-select:none;margin:3px ' + (gutterOpen ? 250 : 14) + 'px 3px 14px',
-      rulerSpanSt: 'position:absolute;top:50%;height:2.5px;transform:translateY(-50%);border-radius:2px;left:max(2px,calc(50% - ' + S.pageW / 2 + 'px));right:max(2px,calc(50% - ' + S.pageW / 2 + 'px));background:linear-gradient(90deg,var(--gs1,rgba(0,240,255,.2)) 0%,var(--n1,#00f0ff) 12%,var(--n1,#00f0ff) 88%,var(--gs1,rgba(0,240,255,.2)) 100%);box-shadow:0 0 7px -1px var(--g1,rgba(0,240,255,.45));opacity:.8',
+      rulerSpanSt: 'position:absolute;top:50%;height:2.5px;transform:translateY(-50%);border-radius:2px;left:max(2px,calc(50% - ' + S.pageW / 2 + 'px));right:max(2px,calc(50% - ' + S.pageW / 2 + 'px));background:rgba(142,157,184,.34);box-shadow:none',
       rulerHandLSt: 'position:absolute;top:50%;left:max(6px,calc(50% - ' + S.pageW / 2 + 'px));width:8px;height:8px;margin:-4px 0 0 -4px;transform:rotate(45deg);border-radius:2px;background:var(--n2,#9b5fff);box-shadow:0 0 8px var(--g2,rgba(155,95,255,.55));cursor:ew-resize;z-index:2',
       rulerHandRSt: 'position:absolute;top:50%;left:min(calc(100% - 6px),calc(50% + ' + S.pageW / 2 + 'px));width:8px;height:8px;margin:-4px 0 0 -4px;transform:rotate(45deg);border-radius:2px;background:var(--n2,#9b5fff);box-shadow:0 0 8px var(--g2,rgba(155,95,255,.55));cursor:ew-resize;z-index:2',
       rulerHandLHov: 'transform:rotate(45deg) scale(1.35);box-shadow:0 0 12px var(--g2,rgba(155,95,255,.8))',
