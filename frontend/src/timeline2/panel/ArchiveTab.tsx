@@ -31,6 +31,9 @@ const invokeArchive: MiniChatInvoke = async (prompt, history) => {
     throw new Error('Archive agent unavailable — check your provider settings.');
   }
   const response = await api.agentArchive(prompt, history);
+  if (response.cardTitle) {
+    return { text: response.text, cardTitle: response.cardTitle, cardFoot: response.cardFoot };
+  }
   return response.text;
 };
 
@@ -157,7 +160,7 @@ export default function ArchiveTab(props: ArchiveTabProps) {
       <MiniAgentChat
         chat={chat}
         accent="archive"
-        placeholder="Ask about your timeline…"
+        placeholder="Talk to the Archive Agent…"
         testidPrefix="trp-archive"
       />
 
