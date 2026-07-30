@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -151,6 +151,54 @@ describe('cleanUninstall', () => {
     expect(result.errors).toHaveLength(0);
     expect(fs.existsSync(customStory)).toBe(false);
     expect(fs.existsSync(customNotes)).toBe(false);
+  });
+
+  // SKY-8882: on Windows a locked file lets the vault survive the recursive
+  // rm — success must be VERIFIED, never assumed from "rmSync didn't throw".
+  it('reports an error when the directory still exists after rm (Windows lock)', () => {
+    const vaultsParent = path.join(tmp, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
+    fs.mkdirSync(story, { recursive: true });
+    fs.mkdirSync(notes, { recursive: true });
+
+    // Simulate the Windows failure mode: rmSync returns without throwing but
+    // the directory is still on disk (force:true swallowed a locked entry).
+    const rmSpy = vi.spyOn(fs, 'rmSync').mockImplementation(() => undefined);
+    try {
+      const result = cleanUninstall({
+        storyVaultRoot: story,
+        notesVaultRoot: notes,
+        userDataPath: tmp,
+      });
+
+      expect(result.deleted).not.toContain(vaultsParent);
+      expect(result.errors.some((e) => e.startsWith(vaultsParent))).toBe(true);
+      expect(result.errors.join(' ')).toMatch(/still exists/i);
+    } finally {
+      rmSpy.mockRestore();
+    }
+  });
+
+  it('passes maxRetries to rmSync so transient Windows locks are retried', () => {
+    const vaultsParent = path.join(tmp, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    fs.mkdirSync(story, { recursive: true });
+
+    const rmSpy = vi.spyOn(fs, 'rmSync');
+    try {
+      cleanUninstall({
+        storyVaultRoot: story,
+        notesVaultRoot: path.join(vaultsParent, 'Mythos Vault', 'Notes Vault'),
+        userDataPath: tmp,
+      });
+
+      const dirCall = rmSpy.mock.calls.find(([p]) => p === vaultsParent);
+      expect(dirCall).toBeDefined();
+      expect(dirCall![1]).toMatchObject({ recursive: true, maxRetries: 10 });
+    } finally {
+      rmSpy.mockRestore();
+    }
   });
 
   it('does not delete userData dir itself — only targeted subdirs and files', () => {

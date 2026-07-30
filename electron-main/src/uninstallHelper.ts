@@ -88,9 +88,18 @@ function removeEntry(p: string): { ok: boolean; error?: string } {
     if (!fs.existsSync(p)) return { ok: true };
     const stat = fs.statSync(p);
     if (stat.isDirectory()) {
-      fs.rmSync(p, { recursive: true, force: true });
+      // maxRetries/retryDelay: on Windows, EBUSY/EPERM/ENOTEMPTY are often
+      // transient (AV scanners, search indexer, a handle mid-close) — Node
+      // retries the failing operation instead of giving up on first contact.
+      fs.rmSync(p, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     } else {
       fs.unlinkSync(p);
+    }
+    // SKY-8882: never report a delete as successful without verifying the
+    // entry is actually gone — on Windows a locked file can survive the
+    // recursive rm without an exception reaching us.
+    if (fs.existsSync(p)) {
+      return { ok: false, error: 'Entry still exists after delete (a file may be locked by another program)' };
     }
     return { ok: true };
   } catch (err) {

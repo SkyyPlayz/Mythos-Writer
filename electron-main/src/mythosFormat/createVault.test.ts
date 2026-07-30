@@ -20,6 +20,7 @@ import {
 import { parseBookFile } from './bookFile.js';
 import { listSessions } from './agentSessions.js';
 import { parseV2SceneFile } from './sceneFiles.js';
+import { detectVaultFormat } from '../migration/mythosVaultMigrator.js';
 
 let tmp: string;
 
@@ -328,5 +329,25 @@ describe('storyVaultRootFor sanity', () => {
   it('derives the twin roots from the mythos root', () => {
     expect(storyVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Story Vault'));
     expect(notesVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Notes Vault'));
+  });
+});
+
+// SKY-8882: the in-app "new vault" flow used to mkdir bare Story/Notes roots
+// without mythos.json, so detectVaultFormat classified every freshly created
+// vault as v0.4 and the brand-new vault nagged about upgrading to MythosVault.
+// A created vault — seeded or blank — must detect as mythos-v2 immediately.
+describe('created vaults detect as mythos-v2 (never prompt for upgrade)', () => {
+  it('seeded vault detects as mythos-v2', () => {
+    const result = createMythosVault(tmp, { name: 'Fresh Seeded' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(detectVaultFormat(result.storyVaultPath)).toBe('mythos-v2');
+  });
+
+  it('blank vault detects as mythos-v2', () => {
+    const result = createMythosVault(tmp, { name: 'Fresh Blank', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(detectVaultFormat(result.storyVaultPath)).toBe('mythos-v2');
   });
 });
