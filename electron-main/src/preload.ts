@@ -331,6 +331,14 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('vault:notes-updated', handler);
   },
 
+  // SKY-8943: Notes Vault graph topology changed (link added/removed) —
+  // an open Vault Graph view should refetch/patch edges without remounting.
+  onVaultGraphTopologyChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('vault:graph-topology-changed', handler);
+    return () => ipcRenderer.removeListener('vault:graph-topology-changed', handler);
+  },
+
   // Stream-start push events — renderer receives requestId before first chunk
   onWritingAssistantStreamStart: (cb: (requestId: string) => void) => {
     const handler = (_: unknown, data: { requestId: string }) => cb(data.requestId);

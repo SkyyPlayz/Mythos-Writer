@@ -1116,6 +1116,11 @@
   overflow-wrap: anywhere;
 }
 
+.vgv-inspector-conn-chevron {
+  flex: none;
+  color: var(--text-muted);
+}
+
 .vgv-inspector-open {
   display: flex;
   align-items: center;

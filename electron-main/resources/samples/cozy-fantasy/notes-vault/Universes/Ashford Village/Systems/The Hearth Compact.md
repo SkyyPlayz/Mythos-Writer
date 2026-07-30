@@ -13,3 +13,9 @@ Hearth Compact magic works through domestic acts performed with full attention a
 The system has its own ethical gravity. It resists manipulation and compulsion, though both are possible with sufficient skill and the wrong intentions. Objects made or maintained within strong domestic magic — hearthstones, kitchen tools, inherited items — can hold resonance for generations. Familiars (animate companions like Pip) develop in close proximity to practitioners and are not created so much as *recognised*.
 
 The governing Compact is informal: practitioners know each other, share knowledge through networks of apprenticeship and correspondence, and maintain the rule that magic used against a person's knowledge or will is cause for community intervention.
+
+**Relationships:**
+- Learned and practiced by [[Wren Ashby]]
+- Familiars like [[Pip]] are recognised through it
+- Its resonance centres on the hearth at [[The Hearthstone Tea Shop]]
+- Being learned by [[Young Tobias]]

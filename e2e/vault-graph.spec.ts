@@ -89,6 +89,43 @@ function seedVaultNotes(vaultDir: string): void {
   }
 }
 
+// ─── SKY-8943: real cross-note wikilinks in the Notes Vault ──────────────────
+//
+// The graph view's default scope is 'notes' (getNotesVaultRoot()), which the
+// original seedVaultNotes() above never populated — it seeds the Story Vault
+// instead. TC-G-01/02 therefore never exercised a real edge. These constants
+// seed actual notes in the Notes Vault with genuine [[wikilink]] cross-refs
+// so TC-G-04/TC-G-05 below can assert on real, non-self-referential edges.
+
+const CROSS_LINK_A = 'Jon Snow';
+const CROSS_LINK_B = 'Arya Stark (Notes)';
+const LIVE_UPDATE_NOTE = 'Bran Stark';
+
+function seedNotesVaultCharacters(notesVaultDir: string): void {
+  const dir = path.join(notesVaultDir, 'Characters');
+  fs.mkdirSync(dir, { recursive: true });
+
+  // Two notes that genuinely reference each other — a real, bidirectional edge.
+  fs.writeFileSync(
+    path.join(dir, `${CROSS_LINK_A}.md`),
+    `# ${CROSS_LINK_A}\n\nSibling of [[${CROSS_LINK_B}]].`,
+    'utf-8',
+  );
+  fs.writeFileSync(
+    path.join(dir, `${CROSS_LINK_B}.md`),
+    `# ${CROSS_LINK_B}\n\nSibling of [[${CROSS_LINK_A}]].`,
+    'utf-8',
+  );
+
+  // A note with no links yet — TC-G-05 adds a link to it after the graph is
+  // already open, to prove the live-topology-refresh wiring.
+  fs.writeFileSync(
+    path.join(dir, `${LIVE_UPDATE_NOTE}.md`),
+    `# ${LIVE_UPDATE_NOTE}\n\nNo relationships noted yet.`,
+    'utf-8',
+  );
+}
+
 async function launchApp(userData: string): Promise<ElectronApplication> {
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   const app = await electron.launch({
@@ -123,6 +160,7 @@ test.beforeAll(async () => {
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-graph-notes-'));
   seedUserData(userData, vaultDir, notesVaultDir);
   seedVaultNotes(vaultDir);
+  seedNotesVaultCharacters(notesVaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
   // Wait for DesktopShell
@@ -137,6 +175,14 @@ test.afterAll(async () => {
 });
 
 async function openGraphView(): Promise<void> {
+  // TC-G-03 (settings) may leave the settings dialog open if a prior test in
+  // this file failed before its cleanup Escape landed — close it defensively.
+  const settingsOverlay = page.locator('.settings-overlay');
+  if (await settingsOverlay.isVisible({ timeout: 500 }).catch(() => false)) {
+    await page.keyboard.press('Escape');
+    await expect(settingsOverlay).not.toBeVisible({ timeout: 4_000 });
+  }
+
   const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
   await expect(notesTab).toBeVisible({ timeout: 12_000 });
   if ((await notesTab.getAttribute('aria-current')) !== 'page') {
@@ -261,4 +307,82 @@ test('TC-G-03: ThemeContrastSlider sets --lg-neon; soft=0.60, sharp=0.35', async
 
   // Close settings
   await page.keyboard.press('Escape');
+});
+
+// ─── TC-G-04: real wikilink edge renders + bidirectional inspector ───────────
+//
+// SKY-8943: unlike TC-G-02's self-linking seed note (which vaultGraph.ts
+// filters out — a note never links to itself), this seeds two DIFFERENT
+// Notes Vault notes that reference each other via a real [[wikilink]], and
+// asserts the graph draws the edge and the inspector's connections list
+// shows the link from both ends.
+
+test('TC-G-04: real [[wikilink]] between two notes renders an edge and shows in both notes\' connections', async () => {
+  await openGraphView();
+
+  const nodeA = page.locator(`[data-testid="vault-node-Characters/${CROSS_LINK_A}.md"]`);
+  const nodeB = page.locator(`[data-testid="vault-node-Characters/${CROSS_LINK_B}.md"]`);
+  await expect(nodeA).toBeVisible({ timeout: 10_000 });
+  await expect(nodeB).toBeVisible({ timeout: 10_000 });
+
+  // The edge itself is drawn (direction depends on file-scan order, so check either).
+  const edgeAB = page.locator(`[data-testid="vault-edge-Characters/${CROSS_LINK_A}.md__Characters/${CROSS_LINK_B}.md"]`);
+  const edgeBA = page.locator(`[data-testid="vault-edge-Characters/${CROSS_LINK_B}.md__Characters/${CROSS_LINK_A}.md"]`);
+  expect(await edgeAB.count() + await edgeBA.count()).toBeGreaterThan(0);
+
+  // Select A → inspector shows B as a connection.
+  await nodeA.focus();
+  await nodeA.press('Enter');
+  const inspector = page.locator('[data-testid="vault-graph-inspector"]');
+  await expect(inspector).toBeVisible({ timeout: 4_000 });
+  await expect(inspector.locator('[data-testid="vault-graph-inspector-title"]')).toHaveText(CROSS_LINK_A);
+  await expect(page.locator(`[data-testid="vault-graph-inspector-conn-Characters/${CROSS_LINK_B}.md"]`)).toBeVisible();
+
+  // Select B → inspector shows A as a connection (the "both directions" check).
+  await nodeB.focus();
+  await nodeB.press('Enter');
+  await expect(inspector.locator('[data-testid="vault-graph-inspector-title"]')).toHaveText(CROSS_LINK_B);
+  await expect(page.locator(`[data-testid="vault-graph-inspector-conn-Characters/${CROSS_LINK_A}.md"]`)).toBeVisible();
+});
+
+// ─── TC-G-05: live topology refresh — no remount ─────────────────────────────
+//
+// SKY-8943: with the graph already open and a node selected, add a
+// [[wikilink]] directly on disk (simulating an external/editor edit) to an
+// already-open graph's note, and assert the new edge appears without the
+// view remounting — proven by the selection surviving the refresh.
+
+test('TC-G-05: adding a [[wikilink]] to an open graph\'s note live-updates the edge without remount', async () => {
+  await openGraphView();
+
+  const liveNode = page.locator(`[data-testid="vault-node-Characters/${LIVE_UPDATE_NOTE}.md"]`);
+  await expect(liveNode).toBeVisible({ timeout: 10_000 });
+  await liveNode.focus();
+  await liveNode.press('Enter');
+
+  const inspector = page.locator('[data-testid="vault-graph-inspector"]');
+  await expect(inspector).toBeVisible({ timeout: 4_000 });
+  await expect(inspector.locator('[data-testid="vault-graph-inspector-title"]')).toHaveText(LIVE_UPDATE_NOTE);
+  await expect(page.locator('.vgv-inspector-empty')).toHaveText('No connections yet.');
+
+  // External edit: add a real wikilink to the already-open graph's note.
+  const liveNotePath = path.join(notesVaultDir, 'Characters', `${LIVE_UPDATE_NOTE}.md`);
+  fs.writeFileSync(
+    liveNotePath,
+    `# ${LIVE_UPDATE_NOTE}\n\nJust remembered: sibling of [[${CROSS_LINK_A}]].`,
+    'utf-8',
+  );
+
+  // Watcher awaitWriteFinish (300ms) + debounced reindex — poll for the patch.
+  await expect(page.locator(`[data-testid="vault-graph-inspector-conn-Characters/${CROSS_LINK_A}.md"]`))
+    .toBeVisible({ timeout: 10_000 });
+
+  // Still the same node selected (no remount / lost selection) — the title
+  // stayed put through the refresh, and the new edge is now drawn too.
+  await expect(inspector.locator('[data-testid="vault-graph-inspector-title"]')).toHaveText(LIVE_UPDATE_NOTE);
+  const newEdge = page.locator(
+    `[data-testid="vault-edge-Characters/${LIVE_UPDATE_NOTE}.md__Characters/${CROSS_LINK_A}.md"], ` +
+    `[data-testid="vault-edge-Characters/${CROSS_LINK_A}.md__Characters/${LIVE_UPDATE_NOTE}.md"]`,
+  );
+  await expect(newEdge.first()).toBeVisible({ timeout: 4_000 });
 });
