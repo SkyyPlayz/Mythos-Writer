@@ -238,9 +238,6 @@ async function activateStorySection(pg: Page): Promise<void> {
 async function openArchiveTab(pg: Page, sceneTitle: string): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  const storiesTab = pg.locator('.rail-tab', { hasText: 'Stories' });
-  if (await storiesTab.isVisible()) await storiesTab.click();
-
   const sceneRow = pg.locator('.nav-scene-row', { hasText: sceneTitle }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
