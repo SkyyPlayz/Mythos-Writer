@@ -2,7 +2,7 @@
 // "both side-tab mini chats send/receive"). Bubbles + typing dots + input on
 // a shared agent session (M15), topped with the session pill so the §11
 // "sessions everywhere" contract holds in the timeline too.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 
@@ -16,6 +16,11 @@ export interface MiniAgentChatProps {
 
 export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix }: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
+  const feedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chat.messages.length, chat.pendingPrompt]);
 
   const submit = () => {
     const text = draft.trim();
@@ -30,14 +35,26 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
         <span className="trp-label">CHAT</span>
         <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
       </div>
-      <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`}>
+      <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
         {chat.messages.map((turn, i) => (
-          <div
-            key={`${turn.at}-${i}`}
-            className={`trp-bubble trp-bubble--${turn.role === 'user' ? 'user' : 'agent'}`}
-          >
-            {turn.text}
-          </div>
+          turn.role !== 'user' && turn.cardTitle ? (
+            <div
+              key={`${turn.at}-${i}`}
+              className={`trp-msg-card trp-msg-card--${accent}`}
+              data-testid={`${testidPrefix}-card-${i}`}
+            >
+              <div className="trp-msg-card-title">{turn.cardTitle}</div>
+              <div className="trp-msg-card-text">{turn.text}</div>
+              {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
+            </div>
+          ) : (
+            <div
+              key={`${turn.at}-${i}`}
+              className={`trp-bubble trp-bubble--${turn.role === 'user' ? 'user' : 'agent'}`}
+            >
+              {turn.text}
+            </div>
+          )
         ))}
         {chat.pendingPrompt !== null && (
           <>

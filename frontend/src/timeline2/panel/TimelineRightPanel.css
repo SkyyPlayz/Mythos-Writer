@@ -706,6 +706,8 @@
 
 /* ── Mini chat (base accent = brainstorm/purple; --archive overrides) ── */
 .trp-chat {
+  flex: 1;
+  min-height: 300px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -731,11 +733,13 @@
 }
 
 .trp-chat-feed {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: 240px;
   overflow-y: auto;
+  padding-right: 2px;
 }
 
 .trp-bubble {
@@ -771,6 +775,39 @@
 .trp-chat-error {
   font-size: 10.5px;
   color: #ff9db4;
+}
+
+/* Card messages (agent returns structured result: title / text / footer) */
+.trp-msg-card {
+  align-self: flex-start;
+  max-width: 94%;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--gs2, rgba(155, 95, 255, 0.07));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.45));
+}
+.trp-msg-card--archive {
+  background: rgba(255, 211, 25, 0.06);
+  border-color: rgba(255, 211, 25, 0.4);
+}
+.trp-msg-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e9ddff;
+}
+.trp-msg-card--archive .trp-msg-card-title {
+  color: #ffe680;
+}
+.trp-msg-card-text {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #c3cee2;
+  margin-top: 3px;
+}
+.trp-msg-card-foot {
+  font-size: 9.5px;
+  color: #8e9db8;
+  margin-top: 5px;
 }
 
 .trp-chat-input-row {

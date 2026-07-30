@@ -9,6 +9,10 @@ import type { TimelinesStore } from '../../timelinesTypes';
 import { ARC_LANE, CHARACTER_LANE, WORLD_LANE } from '../axis/storyLanes';
 import TimelineRightPanel, { type TimelineRightPanelProps } from './TimelineRightPanel';
 
+vi.mock('../../components/AgentSessionPicker', () => ({
+  default: () => null,
+}));
+
 const STANDARD = { preset: 'standard' as const, monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 };
 
 function makeStore(): TimelinesStore {

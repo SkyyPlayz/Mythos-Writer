@@ -456,6 +456,38 @@ describe('agent session files', () => {
     expect(read?.turns).toHaveLength(1);
     expect(read?.turns[0].text).toBe(cardText);
   });
+
+  // SKY-8886: card metadata (cardTitle + cardFoot) must survive the session-file
+  // round-trip so cards are durable across app restarts.
+  it('SKY-8886: agent turns with cardTitle/cardFoot round-trip losslessly', () => {
+    const { session } = createSession(tmp, {
+      agent: 'archive',
+      turns: [
+        { role: 'user', at: '2026-01-01T00:00:00.000Z', text: 'List the arcs' },
+        { role: 'agent', at: '2026-01-01T00:01:00.000Z', text: 'Timeline has 4 eras.', cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' },
+      ],
+    });
+    const read = readSession(tmp, session.id);
+    expect(read?.turns).toHaveLength(2);
+    expect(read?.turns[1].cardTitle).toBe('Timeline Summary');
+    expect(read?.turns[1].cardFoot).toBe('4 eras · 12 events');
+    expect(read?.turns[1].text).toBe('Timeline has 4 eras.');
+    // User turns must never carry card metadata even if the field is set
+    expect(read?.turns[0].cardTitle).toBeUndefined();
+  });
+
+  it('SKY-8886: agent turns without card metadata round-trip as plain bubbles', () => {
+    const { session } = createSession(tmp, {
+      agent: 'brainstorm',
+      turns: [
+        { role: 'user', at: '2026-01-01T00:00:00.000Z', text: 'What do we know?' },
+        { role: 'agent', at: '2026-01-01T00:01:00.000Z', text: 'Here is what I found.' },
+      ],
+    });
+    const read = readSession(tmp, session.id);
+    expect(read?.turns[1].cardTitle).toBeUndefined();
+    expect(read?.turns[1].cardFoot).toBeUndefined();
+  });
 });
 
 // ─── settings.json + timelines.json ─────────────────────────────────────────

@@ -258,4 +258,89 @@ describe('Archive tab (AC5/AC6 surface, AC8)', () => {
       expect.objectContaining({ role: 'agent', text: 'Dated to Y871.' }),
     ]);
   });
+
+  it('archive chat placeholder is "Talk to the Archive Agent…" (SKY-8886)', async () => {
+    installMockApi({ agent: 'archive' });
+    render(<ArchiveTab {...archiveProps()} />);
+    await flush();
+    expect(screen.getByTestId('trp-archive-chat-input')).toHaveAttribute('placeholder', 'Talk to the Archive Agent…');
+  });
+});
+
+describe('MiniAgentChat — card messages (SKY-8886)', () => {
+  it('renders agent turns with cardTitle as a trp-msg-card (brainstorm accent)', async () => {
+    // Seed the archive session with a card turn so the feed shows it on mount
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({
+          sessions: [{ id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 1, relPath: 'Sessions/x.md' }],
+        })),
+        create: vi.fn(async () => ({
+          session: { id: 'bs-s1', agent: 'brainstorm', turns: [
+            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' },
+          ], startedAt: AT, updatedAt: AT },
+          relPath: 'Sessions/x.md',
+        })),
+        read: vi.fn(async () => ({
+          session: { id: 'bs-s1', agent: 'brainstorm', turns: [
+            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' },
+          ], startedAt: AT, updatedAt: AT },
+        })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session: { id: 'bs-s1', agent: 'brainstorm', turns: [], startedAt: AT, updatedAt: AT }, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns: vi.fn(async () => ({ session: null })),
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: 'ok' })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+
+    // The card turn loaded from the session should render as trp-msg-card
+    expect(document.querySelector('.trp-msg-card')).toBeInTheDocument();
+    expect(screen.getByText('Timeline Summary')).toBeInTheDocument();
+    expect(screen.getByText('4 eras · 12 events')).toBeInTheDocument();
+  });
+
+  it('persists card metadata (cardTitle + cardFoot) when agent returns structured result (SKY-8886)', async () => {
+    const session: AgentSessionFile = {
+      id: 'arc-s1',
+      agent: 'archive',
+      title: 'T',
+      startedAt: AT,
+      updatedAt: AT,
+      turns: [],
+    };
+    const appendTurns = vi.fn(async (_id: string, turns: AgentSessionTurn[]) => {
+      session.turns = [...session.turns, ...turns];
+      return { session: { ...session } };
+    });
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({ sessions: [{ id: session.id, agent: 'archive', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 0, relPath: 'Sessions/x.md' }] })),
+        create: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        read: vi.fn(async () => ({ session })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns,
+      },
+      agentArchive: vi.fn(async () => ({ text: 'Timeline has 4 eras.', cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<ArchiveTab {...archiveProps()} />);
+    await flush();
+
+    fireEvent.change(screen.getByTestId('trp-archive-chat-input'), { target: { value: 'Summarise arcs' } });
+    fireEvent.click(screen.getByTestId('trp-archive-chat-send'));
+    await flush();
+
+    // The agent turn persisted to the session must include cardTitle + cardFoot
+    const calls = appendTurns.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const agentTurn = calls[0]?.[1]?.find((t: AgentSessionTurn) => t.role === 'agent');
+    expect(agentTurn?.cardTitle).toBe('Timeline Summary');
+    expect(agentTurn?.cardFoot).toBe('4 eras · 12 events');
+  });
 });
