@@ -39,6 +39,9 @@ export interface WorkspaceTabBarProps {
   staticTabLabel?: string;
   /** Tooltip for the + button (prototype 512). */
   newTabTitle?: string;
+  /** SKY-8907: per-pane strips allow closing the last tab (it collapses the
+   * pane rather than orphaning a blank editor, unlike the single global strip). */
+  allowCloseLastTab?: boolean;
 }
 
 /** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
@@ -57,6 +60,7 @@ export default function WorkspaceTabBar({
   onTabDragStart,
   staticTabLabel,
   newTabTitle = 'New blank scene — it only saves once you type',
+  allowCloseLastTab = false,
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -276,7 +280,9 @@ export default function WorkspaceTabBar({
 
   // Beta 4 M4: the last document tab is not closable (prototype
   // `closable: tabIds.length > 1`) — an empty strip would orphan the editor.
-  const closable = tabs.length > 1;
+  // SKY-8907: per-pane strips opt out via allowCloseLastTab — closing a
+  // pane's last tab collapses that pane instead of orphaning it.
+  const closable = allowCloseLastTab || tabs.length > 1;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

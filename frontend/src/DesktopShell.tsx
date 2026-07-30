@@ -831,6 +831,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [pane2Scene, setPane2Scene] = useState<Scene | null>(null);
   const [pane2Chapter, setPane2Chapter] = useState<Chapter | null>(null);
   const [pane2Story, setPane2Story] = useState<Story | null>(null);
+  // SKY-8907: pane 2 owns its own Obsidian-style tab strip, session-only (not
+  // persisted — split state was never restored across restarts either).
+  const [pane2Tabs, setPane2Tabs] = useState<WorkspaceTab[]>([]);
+  const [activePane2TabId, setActivePane2TabId] = useState<string | null>(null);
+  // SKY-8907: which pane a tab drag started in, so the destination pane's
+  // strip knows whether to accept the drop (tabDragPayload alone doesn't say).
+  const [tabDragSourcePane, setTabDragSourcePane] = useState<1 | 2 | null>(null);
   const pane2EditorApiRef = useRef<BlockEditorApi | null>(null);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitDragRef = useRef<{ startX: number; startRatio: number; containerWidth: number; axis: 'x' | 'y' } | null>(null);
@@ -2327,10 +2334,51 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setPane2Scene(null);
         setPane2Chapter(null);
         setPane2Story(null);
+        // SKY-8907: pane 2's own tab strip is session-only — clear it so a
+        // future split starts fresh rather than resurrecting stale tabs.
+        setPane2Tabs([]);
+        setActivePane2TabId(null);
       }
       return !prev;
     });
   }, [focusedPane, pane2Scene, pane2Chapter, pane2Story]);
+
+  // SKY-8907: find a scene (+ its chapter/story) by id — used to resolve a
+  // pane-2 tab or a moved tab back into a real editable Scene.
+  const findSceneLocation = useCallback((sceneId: string) => {
+    for (const story of stories) {
+      for (const chapter of story.chapters) {
+        const sc = chapter.scenes.find((candidate) => candidate.id === sceneId);
+        if (sc) return { scene: sc, chapter, story };
+      }
+    }
+    return null;
+  }, [stories]);
+
+  // SKY-8907: closing a pane's last tab collapses that pane (Obsidian
+  // behaviour) — pane 1 closing promotes pane 2's tabs/scene to primary;
+  // pane 2 closing just exits split (pane 1 already holds the primary state).
+  const collapseSplitPane = useCallback((closedPane: 1 | 2) => {
+    if (closedPane === 1) {
+      if (pane2Scene && pane2Chapter && pane2Story) {
+        setSelectedScene(pane2Scene);
+        setSelectedChapter(pane2Chapter);
+        setSelectedStory(pane2Story);
+      } else {
+        setSelectedScene(null);
+      }
+      setStoryDocTabs(pane2Tabs);
+      setActiveStoryDocTabId(activePane2TabId);
+      persistDocTabs({ story: { tabs: pane2Tabs, activeId: activePane2TabId } });
+    }
+    setSplitWindowEnabled(false);
+    setFocusedPane(1);
+    setPane2Scene(null);
+    setPane2Chapter(null);
+    setPane2Story(null);
+    setPane2Tabs([]);
+    setActivePane2TabId(null);
+  }, [pane2Scene, pane2Chapter, pane2Story, pane2Tabs, activePane2TabId, persistDocTabs]);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -2650,13 +2698,117 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
   }, [persistSplitRatio]);
 
-  // SKY-1699: Pane 2 scene selection.
+  // SKY-1699: Pane 2 scene selection. SKY-8907: also upserts pane 2's own tab.
   const handlePane2SelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
     setPane2Scene(scene);
     setPane2Chapter(chapter);
     setPane2Story(story);
     setFocusedPane(2);
+    setPane2Tabs((prev) => {
+      const result = upsertSceneTab(prev, scene);
+      setActivePane2TabId(result.activeId);
+      return result.tabs;
+    });
   }, []);
+
+  // SKY-8907: pane 2 tab strip — select/close/reorder/new mirror the story
+  // strip's handlers but target pane 2's own session-only tab list.
+  const handlePane2TabSelect = useCallback((tabId: string) => {
+    setActivePane2TabId(tabId);
+    setFocusedPane(2);
+    const tab = pane2Tabs.find((t) => t.id === tabId);
+    const loc = tab?.docId ? findSceneLocation(tab.docId) : null;
+    if (loc) {
+      setPane2Scene(loc.scene);
+      setPane2Chapter(loc.chapter);
+      setPane2Story(loc.story);
+    } else {
+      setPane2Scene(null);
+      setPane2Chapter(null);
+      setPane2Story(null);
+    }
+  }, [pane2Tabs, findSceneLocation]);
+
+  const handlePane2TabClose = useCallback((tabId: string) => {
+    const next = pane2Tabs.filter((t) => t.id !== tabId);
+    if (next.length === 0) {
+      collapseSplitPane(2);
+      return;
+    }
+    let nextActive = activePane2TabId;
+    if (activePane2TabId === tabId) {
+      const idx = pane2Tabs.findIndex((t) => t.id === tabId);
+      nextActive = idx > 0 ? pane2Tabs[idx - 1].id : next[0].id;
+    }
+    setPane2Tabs(next);
+    setActivePane2TabId(nextActive);
+    const activeTab = next.find((t) => t.id === nextActive);
+    const loc = activeTab?.docId ? findSceneLocation(activeTab.docId) : null;
+    if (loc) {
+      setPane2Scene(loc.scene);
+      setPane2Chapter(loc.chapter);
+      setPane2Story(loc.story);
+    } else {
+      setPane2Scene(null);
+      setPane2Chapter(null);
+      setPane2Story(null);
+    }
+  }, [pane2Tabs, activePane2TabId, collapseSplitPane, findSceneLocation]);
+
+  const handlePane2TabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setPane2Tabs((prev) => {
+      const arr = [...prev];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      return arr;
+    });
+  }, []);
+
+  // SKY-8907: pane 2's "+" / empty-pane "Create new scene" — unlike pane 1's
+  // provisional-scene "+", this creates (and persists) a real scene right
+  // away; pane 2 never had a provisional-scene lifecycle to extend here.
+  const handlePane2NewScene = useCallback(async () => {
+    const story = pane2Story ?? selectedStory ?? stories[0] ?? null;
+    const chapter = story
+      ? (pane2Chapter && story.chapters.some((c) => c.id === pane2Chapter.id)
+          ? pane2Chapter
+          : story.chapters[story.chapters.length - 1] ?? null)
+      : null;
+    if (!story || !chapter) {
+      showLnToast('Create a story with a chapter first — a new scene needs a home');
+      return;
+    }
+    const title = await requestText('Scene title:');
+    if (!title?.trim()) return;
+    const id = generateId();
+    const scene: Scene = {
+      id,
+      title: title.trim(),
+      path: `stories/${story.id}/chapters/${chapter.id}/scenes/${id}.md`,
+      order: chapter.scenes.length,
+      chapterId: chapter.id,
+      storyId: story.id,
+      blocks: [],
+      draftState: 'in-progress',
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    updateManifest(stories.map((s) =>
+      s.id !== story.id ? s : {
+        ...s,
+        chapters: s.chapters.map((ch) =>
+          ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }
+        ),
+      }
+    ));
+    const result = upsertSceneTab(pane2Tabs, scene);
+    setPane2Tabs(result.tabs);
+    setActivePane2TabId(result.activeId);
+    setPane2Scene(scene);
+    setPane2Chapter(chapter);
+    setPane2Story(story);
+    setFocusedPane(2);
+  }, [pane2Story, pane2Chapter, selectedStory, stories, updateManifest, pane2Tabs, requestText]);
 
   // SKY-1699: Keyboard handler for split divider (accessibility).
   const handleSplitDividerKey = useCallback((e: React.KeyboardEvent) => {
@@ -3343,6 +3495,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     if (storyDocTabs.some((t) => t.id === tabId)) {
       const next = storyDocTabs.filter((t) => t.id !== tabId);
+      // SKY-8907: pane 1's strip allows closing its last tab while split —
+      // that collapses the pane (promotes pane 2) instead of orphaning it.
+      if (next.length === 0 && splitWindowEnabled) {
+        collapseSplitPane(1);
+        return;
+      }
       // Mirror the bar's neighbor pick (left, or right from the first slot) so
       // the persisted active id matches what the bar just selected.
       let nextActive = activeStoryDocTabId;
@@ -3368,7 +3526,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setActiveNotesDocTabId(nextActive);
       persistDocTabs({ notes: { tabs: next, activeId: nextActive } });
     }
-  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs]);
+  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane]);
 
   const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
     if (workspaceStripMode.kind !== 'docs') return;
@@ -3400,9 +3558,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (found) break;
     }
     if (!found) return;
-    setPane2Scene(found.scene);
-    setPane2Chapter(found.chapter);
-    setPane2Story(found.story);
+    const { scene: foundScene, chapter: foundChapter, story: foundStory } = found;
+    setPane2Scene(foundScene);
+    setPane2Chapter(foundChapter);
+    setPane2Story(foundStory);
+    // SKY-8907: upsert rather than replace — if pane 2 is already split open
+    // with tabs of its own, this appends/focuses instead of discarding them.
+    setPane2Tabs((prev) => {
+      const result = upsertSceneTab(prev, foundScene);
+      setActivePane2TabId(result.activeId);
+      return result.tabs;
+    });
     setSplitDirection(zone);
     setSplitWindowEnabled(true);
     handleTabChange('story');
@@ -3464,6 +3630,78 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const noteTab = notesDocTabs.find((t) => t.id === tabId);
     if (noteTab?.docPath) openNoteInSplitPane(noteTab.docPath, noteTab.title, 'right');
   }, [storyDocTabs, notesDocTabs, openSceneInSplitPane, openNoteInSplitPane]);
+
+  // SKY-8907: dropping a tab dragged from the OTHER pane's own strip onto
+  // this one — moves it (Obsidian behaviour). A dragged-away tab leaves its
+  // source pane empty (action card) rather than auto-collapsing; the user
+  // can collapse explicitly via that card's Close button if they want to.
+  const handleSplitPaneTabDrop = useCallback((targetPane: 1 | 2) => {
+    const payload = tabDragPayload;
+    const sourcePane = tabDragSourcePane;
+    setTabDragPayload(null);
+    setTabDragSourcePane(null);
+    if (!payload || !sourcePane || sourcePane === targetPane) return;
+    if (payload.kind !== 'scene' || !payload.docId) return;
+    if (payload.provisional) {
+      showLnToast('Type in the new scene first — an empty provisional scene has nothing to move');
+      return;
+    }
+    const loc = findSceneLocation(payload.docId);
+    if (!loc) return;
+
+    if (sourcePane === 1) {
+      const remaining = storyDocTabs.filter((t) => t.id !== payload.id);
+      let nextActive = activeStoryDocTabId;
+      if (activeStoryDocTabId === payload.id) {
+        const idx = storyDocTabs.findIndex((t) => t.id === payload.id);
+        nextActive = remaining.length > 0 ? (idx > 0 ? storyDocTabs[idx - 1].id : remaining[0].id) : null;
+        if (remaining.length === 0) setSelectedScene(null);
+      }
+      setStoryDocTabs(remaining);
+      setActiveStoryDocTabId(nextActive);
+      persistDocTabs({ story: { tabs: remaining, activeId: nextActive } });
+
+      const result = upsertSceneTab(pane2Tabs, loc.scene);
+      setPane2Tabs(result.tabs);
+      setActivePane2TabId(result.activeId);
+      setPane2Scene(loc.scene);
+      setPane2Chapter(loc.chapter);
+      setPane2Story(loc.story);
+      setFocusedPane(2);
+    } else {
+      const remaining = pane2Tabs.filter((t) => t.id !== payload.id);
+      let nextActive = activePane2TabId;
+      if (activePane2TabId === payload.id) {
+        const idx = pane2Tabs.findIndex((t) => t.id === payload.id);
+        nextActive = remaining.length > 0 ? (idx > 0 ? pane2Tabs[idx - 1].id : remaining[0].id) : null;
+      }
+      setPane2Tabs(remaining);
+      setActivePane2TabId(nextActive);
+      const remainingActiveTab = remaining.find((t) => t.id === nextActive);
+      const remainingLoc = remainingActiveTab?.docId ? findSceneLocation(remainingActiveTab.docId) : null;
+      if (remainingLoc) {
+        setPane2Scene(remainingLoc.scene);
+        setPane2Chapter(remainingLoc.chapter);
+        setPane2Story(remainingLoc.story);
+      } else {
+        setPane2Scene(null);
+        setPane2Chapter(null);
+        setPane2Story(null);
+      }
+
+      const result = upsertSceneTab(storyDocTabs, loc.scene);
+      setStoryDocTabs(result.tabs);
+      setActiveStoryDocTabId(result.activeId);
+      persistDocTabs({ story: { tabs: result.tabs, activeId: result.activeId } });
+      setSelectedScene(loc.scene);
+      setSelectedChapter(loc.chapter);
+      setSelectedStory(loc.story);
+      setFocusedPane(1);
+    }
+  }, [
+    tabDragPayload, tabDragSourcePane, findSceneLocation,
+    storyDocTabs, activeStoryDocTabId, pane2Tabs, activePane2TabId, persistDocTabs,
+  ]);
 
   const handleSelectEntity = useCallback((entity: EntityEntry) => {
     setSelectedEntity(entity);
@@ -4615,7 +4853,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         {/* Beta 4 M4 (§4): document tab strip — Story + Notes views only;
             static pseudo-tab on Scene Crafter/Entities; hidden on
             Brainstorm/Timeline/Graph (Settings/Beta are overlays). */}
-        {showTitleBar && workspaceStripMode.kind !== 'hidden' && (
+        {/* SKY-8907: while the Story split editor is active, pane 1 renders its
+            own copy of this strip (storyDocTabs) — hide the global one so
+            there aren't two. Notes/static strips are unaffected (split is a
+            Story-editor-only feature). */}
+        {showTitleBar && workspaceStripMode.kind !== 'hidden' &&
+          !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') && (
           <WorkspaceTabBar
             tabs={
               workspaceStripMode.kind === 'docs'
@@ -4634,7 +4877,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onNewTab={handleNewWorkspaceTab}
             onTabOpenInSplit={handleTabOpenInSplit}
             onTabPopOut={handleTabPopOut}
-            onTabDragStart={setTabDragPayload}
+            onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
             agentsActive={agentsActive}
             newTabTitle={
               workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes'
@@ -5010,6 +5253,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   resolvedWikiLinkTitles={wikiLinkTitleIndex}
                   wikiLinkCandidates={wikiLinkCandidates}
                   style={{ flex: splitRatio }}
+                  tabs={storyDocTabs}
+                  activeTabId={activeStoryDocTabId}
+                  onTabSelect={handleWorkspaceTabSelect}
+                  onTabClose={handleWorkspaceTabClose}
+                  onTabReorder={handleWorkspaceTabReorder}
+                  onNewTab={handleNewWorkspaceTab}
+                  onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(1); }}
+                  acceptsTabDrop={tabDragSourcePane === 2}
+                  onTabStripDrop={() => handleSplitPaneTabDrop(1)}
+                  onCreateNewDoc={handleNewProvisionalScene}
+                  onCloseEmptyPane={() => collapseSplitPane(1)}
                 />
                 <div
                   className="split-window-divider"
@@ -5039,6 +5293,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   resolvedWikiLinkTitles={wikiLinkTitleIndex}
                   wikiLinkCandidates={wikiLinkCandidates}
                   style={{ flex: 100 - splitRatio }}
+                  tabs={pane2Tabs}
+                  activeTabId={activePane2TabId}
+                  onTabSelect={handlePane2TabSelect}
+                  onTabClose={handlePane2TabClose}
+                  onTabReorder={handlePane2TabReorder}
+                  onNewTab={handlePane2NewScene}
+                  onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(2); }}
+                  acceptsTabDrop={tabDragSourcePane === 1}
+                  onTabStripDrop={() => handleSplitPaneTabDrop(2)}
+                  onCreateNewDoc={handlePane2NewScene}
+                  onCloseEmptyPane={() => collapseSplitPane(2)}
                 />
               </div>
             </>

@@ -4,6 +4,10 @@ export type SceneEditorEmptyVariant = 'select-scene' | 'loading' | 'no-scenes-ye
 
 interface Props {
   variant: SceneEditorEmptyVariant;
+  /** SKY-8907: Obsidian-style pane action card — omitted actions are hidden. */
+  onCreateNew?: () => void;
+  onGoTo?: () => void;
+  onClosePane?: () => void;
 }
 
 function DocumentIcon() {
@@ -35,7 +39,48 @@ function LoadingSpinner() {
   );
 }
 
-export function SceneEditorEmptyState({ variant }: Props) {
+/** SKY-8907 (Obsidian empty-pane parity): Create new scene / Go to scene / Close. */
+function PaneActionCard({ onCreateNew, onGoTo, onClosePane }: Omit<Props, 'variant'>) {
+  if (!onCreateNew && !onGoTo && !onClosePane) return null;
+  return (
+    <div className="se-empty-actions" data-testid="scene-editor-empty-actions">
+      {onCreateNew && (
+        <button
+          type="button"
+          className="se-empty-action"
+          onClick={onCreateNew}
+          data-testid="se-empty-action-create"
+        >
+          <span className="se-empty-action-label">Create new scene</span>
+          <span className="se-empty-action-shortcut">Ctrl+N</span>
+        </button>
+      )}
+      {onGoTo && (
+        <button
+          type="button"
+          className="se-empty-action"
+          onClick={onGoTo}
+          data-testid="se-empty-action-goto"
+        >
+          <span className="se-empty-action-label">Go to scene</span>
+          <span className="se-empty-action-shortcut">Ctrl+O</span>
+        </button>
+      )}
+      {onClosePane && (
+        <button
+          type="button"
+          className="se-empty-action"
+          onClick={onClosePane}
+          data-testid="se-empty-action-close"
+        >
+          <span className="se-empty-action-label">Close</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function SceneEditorEmptyState({ variant, onCreateNew, onGoTo, onClosePane }: Props) {
   if (variant === 'loading') {
     return (
       <div
@@ -62,6 +107,7 @@ export function SceneEditorEmptyState({ variant }: Props) {
         <p className="se-empty-body">
           Create your first scene to start writing. Use the&nbsp;+ button in your story outline.
         </p>
+        <PaneActionCard onCreateNew={onCreateNew} onGoTo={onGoTo} onClosePane={onClosePane} />
       </div>
     );
   }
@@ -74,6 +120,7 @@ export function SceneEditorEmptyState({ variant }: Props) {
     >
       <DocumentIcon />
       <p className="se-empty-body">Select a scene from your story to start writing.</p>
+      <PaneActionCard onCreateNew={onCreateNew} onGoTo={onGoTo} onClosePane={onClosePane} />
     </div>
   );
 }

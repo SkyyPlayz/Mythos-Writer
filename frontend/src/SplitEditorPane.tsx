@@ -1,10 +1,19 @@
-import { type CSSProperties, useState, useRef, useEffect, useMemo } from 'react';
+import {
+  type CSSProperties,
+  forwardRef,
+  useImperativeHandle,
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+} from 'react';
 import type { Scene, Chapter, Story, Block, EntityEntry } from './types';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import type { AutoLinkerMode } from './AutoLinkerExtension';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import { SceneEditorEmptyState } from './SceneEditorEmptyState';
+import WorkspaceTabBar from './WorkspaceTabBar';
 import './SplitEditorPane.css';
 
 // ─── Compact per-pane scene selector ───
@@ -15,114 +24,124 @@ interface PaneSceneSelectorProps {
   onSelect: (scene: Scene, chapter: Chapter, story: Story) => void;
 }
 
-function PaneSceneSelector({ scene, stories, onSelect }: PaneSceneSelectorProps) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+/** SKY-8907: imperative handle so the pane's empty-state action card can
+ * trigger "Go to scene" without lifting the popover's open state. */
+export interface PaneSceneSelectorHandle {
+  openPicker: () => void;
+}
 
-  useEffect(() => {
-    if (!open) {
-      setQuery('');
-      return;
-    }
-    // Small delay so the popover is in the DOM before focusing
-    const id = setTimeout(() => inputRef.current?.focus(), 10);
-    return () => clearTimeout(id);
-  }, [open]);
+const PaneSceneSelector = forwardRef<PaneSceneSelectorHandle, PaneSceneSelectorProps>(
+  function PaneSceneSelector({ scene, stories, onSelect }, ref) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
+    useImperativeHandle(ref, () => ({ openPicker: () => setOpen(true) }), []);
+
+    useEffect(() => {
+      if (!open) {
+        setQuery('');
+        return;
       }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onOutside);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onOutside);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+      // Small delay so the popover is in the DOM before focusing
+      const id = setTimeout(() => inputRef.current?.focus(), 10);
+      return () => clearTimeout(id);
+    }, [open]);
 
-  const allScenes = useMemo(() => {
-    const results: { scene: Scene; chapter: Chapter; story: Story }[] = [];
-    for (const st of stories) {
-      for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
-        for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
-          results.push({ scene: sc, chapter: ch, story: st });
+    useEffect(() => {
+      if (!open) return;
+      const onOutside = (e: MouseEvent) => {
+        if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+          setOpen(false);
+        }
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setOpen(false);
+      };
+      document.addEventListener('mousedown', onOutside);
+      document.addEventListener('keydown', onKey);
+      return () => {
+        document.removeEventListener('mousedown', onOutside);
+        document.removeEventListener('keydown', onKey);
+      };
+    }, [open]);
+
+    const allScenes = useMemo(() => {
+      const results: { scene: Scene; chapter: Chapter; story: Story }[] = [];
+      for (const st of stories) {
+        for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
+          for (const sc of [...ch.scenes].sort((a, b) => a.order - b.order)) {
+            results.push({ scene: sc, chapter: ch, story: st });
+          }
         }
       }
-    }
-    return results;
-  }, [stories]);
+      return results;
+    }, [stories]);
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return allScenes;
-    const q = query.toLowerCase();
-    return allScenes.filter(({ scene: sc, chapter, story }) =>
-      sc.title.toLowerCase().includes(q) ||
-      chapter.title.toLowerCase().includes(q) ||
-      story.title.toLowerCase().includes(q),
+    const filtered = useMemo(() => {
+      if (!query.trim()) return allScenes;
+      const q = query.toLowerCase();
+      return allScenes.filter(({ scene: sc, chapter, story }) =>
+        sc.title.toLowerCase().includes(q) ||
+        chapter.title.toLowerCase().includes(q) ||
+        story.title.toLowerCase().includes(q),
+      );
+    }, [allScenes, query]);
+
+    return (
+      <div ref={containerRef} className="spe-scene-selector">
+        <button
+          className="spe-scene-btn"
+          onClick={() => setOpen(o => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title="Select scene for this pane"
+          data-testid="spe-scene-btn"
+        >
+          <span className="spe-scene-title">
+            {scene ? scene.title : 'Select scene…'}
+          </span>
+          <span className="spe-scene-caret" aria-hidden="true">▾</span>
+        </button>
+
+        {open && (
+          <div className="spe-scene-popover" role="dialog" aria-label="Select scene">
+            <input
+              ref={inputRef}
+              className="spe-scene-search"
+              placeholder="Filter scenes…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              aria-label="Filter scenes"
+              data-testid="spe-scene-search"
+            />
+            <ul className="spe-scene-list" role="listbox" aria-label="Scenes">
+              {filtered.length === 0 ? (
+                <li className="spe-scene-empty">No scenes match</li>
+              ) : (
+                filtered.map(({ scene: sc, chapter, story }) => (
+                  <li key={sc.id} role="option" aria-selected={sc.id === scene?.id}>
+                    <button
+                      className={`spe-scene-option${sc.id === scene?.id ? ' spe-scene-option--selected' : ''}`}
+                      onClick={() => { onSelect(sc, chapter, story); setOpen(false); }}
+                      data-testid={`spe-scene-option-${sc.id}`}
+                    >
+                      <span className="spe-scene-option-path">
+                        {story.title} › {chapter.title}
+                      </span>
+                      <span className="spe-scene-option-title">{sc.title}</span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
     );
-  }, [allScenes, query]);
-
-  return (
-    <div ref={containerRef} className="spe-scene-selector">
-      <button
-        className="spe-scene-btn"
-        onClick={() => setOpen(o => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title="Select scene for this pane"
-        data-testid="spe-scene-btn"
-      >
-        <span className="spe-scene-title">
-          {scene ? scene.title : 'Select scene…'}
-        </span>
-        <span className="spe-scene-caret" aria-hidden="true">▾</span>
-      </button>
-
-      {open && (
-        <div className="spe-scene-popover" role="dialog" aria-label="Select scene">
-          <input
-            ref={inputRef}
-            className="spe-scene-search"
-            placeholder="Filter scenes…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            aria-label="Filter scenes"
-            data-testid="spe-scene-search"
-          />
-          <ul className="spe-scene-list" role="listbox" aria-label="Scenes">
-            {filtered.length === 0 ? (
-              <li className="spe-scene-empty">No scenes match</li>
-            ) : (
-              filtered.map(({ scene: sc, chapter, story }) => (
-                <li key={sc.id} role="option" aria-selected={sc.id === scene?.id}>
-                  <button
-                    className={`spe-scene-option${sc.id === scene?.id ? ' spe-scene-option--selected' : ''}`}
-                    onClick={() => { onSelect(sc, chapter, story); setOpen(false); }}
-                    data-testid={`spe-scene-option-${sc.id}`}
-                  >
-                    <span className="spe-scene-option-path">
-                      {story.title} › {chapter.title}
-                    </span>
-                    <span className="spe-scene-option-title">{sc.title}</span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
+  },
+);
 
 // ─── Split editor pane ───
 
@@ -153,6 +172,25 @@ export interface SplitEditorPaneProps {
   sceneLoading?: boolean;
   /** Flex grow value for split container sizing. */
   style?: CSSProperties;
+
+  // ─── SKY-8907: Obsidian-style per-pane tab strip (owned by the shell) ───
+  /** Omitted entirely → no tab strip renders (back-compat for non-split callers/tests). */
+  tabs?: WorkspaceTab[];
+  activeTabId?: string | null;
+  onTabSelect?: (tabId: string) => void;
+  onTabClose?: (tabId: string) => void;
+  onTabReorder?: (fromIndex: number, toIndex: number) => void;
+  onNewTab?: () => void;
+  /** Notifies the shell a drag started in THIS pane's strip (for cross-pane drop routing). */
+  onTabDragStart?: (tab: WorkspaceTab) => void;
+  /** True while a tab dragged from the OTHER pane's strip is over this one. */
+  acceptsTabDrop?: boolean;
+  /** A tab from the other pane was dropped on this pane's strip — the shell moves it. */
+  onTabStripDrop?: () => void;
+  /** Empty-pane action card: "Create new scene". */
+  onCreateNewDoc?: () => void;
+  /** Empty-pane action card: "Close" — collapses this (empty) pane. */
+  onCloseEmptyPane?: () => void;
 }
 
 export default function SplitEditorPane({
@@ -175,12 +213,24 @@ export default function SplitEditorPane({
   wikiLinkCandidates,
   sceneLoading = false,
   style,
+  tabs,
+  activeTabId = null,
+  onTabSelect,
+  onTabClose,
+  onTabReorder,
+  onNewTab,
+  onTabDragStart,
+  acceptsTabDrop = false,
+  onTabStripDrop,
+  onCreateNewDoc,
+  onCloseEmptyPane,
 }: SplitEditorPaneProps) {
   const hasAnyScenes = useMemo(
     () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
     [stories],
   );
   const paneLabel = `Pane ${paneNumber}`;
+  const sceneSelectorRef = useRef<PaneSceneSelectorHandle>(null);
 
   return (
     <div
@@ -195,6 +245,33 @@ export default function SplitEditorPane({
         aria-hidden="true"
       />
 
+      {/* SKY-8907: per-pane tab strip — sits above the pane header (Obsidian
+          layout), owned entirely by the shell (tab list/active id/handlers). */}
+      {tabs && (
+        <div
+          className={`spe-tab-strip${acceptsTabDrop ? ' spe-tab-strip--drop-target' : ''}`}
+          data-testid={`split-pane-${paneNumber}-tab-strip`}
+          onDragOver={(e) => { if (acceptsTabDrop) e.preventDefault(); }}
+          onDrop={(e) => {
+            if (!acceptsTabDrop) return;
+            e.preventDefault();
+            onTabStripDrop?.();
+          }}
+        >
+          <WorkspaceTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabSelect={onTabSelect ?? (() => {})}
+            onTabClose={onTabClose ?? (() => {})}
+            onTabReorder={onTabReorder ?? (() => {})}
+            onNewTab={onNewTab ?? (() => {})}
+            onTabDragStart={onTabDragStart}
+            newTabTitle="New scene in this pane"
+            allowCloseLastTab
+          />
+        </div>
+      )}
+
       <div className="spe-header">
         <span
           className="spe-label"
@@ -204,6 +281,7 @@ export default function SplitEditorPane({
         </span>
         {isFocused && <span className="spe-focused-badge" aria-hidden="true">●</span>}
         <PaneSceneSelector
+          ref={sceneSelectorRef}
           scene={scene}
           stories={stories}
           onSelect={onSelectScene}
@@ -235,6 +313,11 @@ export default function SplitEditorPane({
               hasAnyScenes ? 'select-scene' :
               'no-scenes-yet'
             }
+            onCreateNew={sceneLoading ? undefined : onCreateNewDoc}
+            onGoTo={sceneLoading ? undefined : (
+              hasAnyScenes ? () => sceneSelectorRef.current?.openPicker() : undefined
+            )}
+            onClosePane={sceneLoading ? undefined : onCloseEmptyPane}
           />
         )}
       </div>
