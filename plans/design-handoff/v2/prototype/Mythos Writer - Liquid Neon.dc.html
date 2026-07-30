@@ -3485,12 +3485,19 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                     </sc-for>
                   </div>
                 </div>
-                              <div style="border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                              <div style="flex:1;min-height:300px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:11px 12px;display:flex;flex-direction:column;gap:7px">
                   <div style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#7686a2">CHAT</div>
+                  <div data-ln="tlbs" style="flex:1;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding-right:2px">
                   <sc-for list="{{ tlBsMsgs }}" as="m" hint-placeholder-count="0">
                     <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-end;max-width:88%;padding:7px 10px;border-radius:11px 11px 3px 11px;background:var(--gs1,rgba(0,240,255,.1));border:1px solid var(--b1,rgba(0,240,255,.4));color:#dbe4f5;font-size:11px;line-height:1.5">{{ m.text }}</div></sc-if>
                     <sc-if value="{{ m.isBot }}" hint-placeholder-val="{{ true }}"><div style="align-self:flex-start;max-width:92%;padding:7px 10px;border-radius:11px 11px 11px 3px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);color:#c3cee2;font-size:11px;line-height:1.55">{{ m.text }}</div></sc-if>
+                    <sc-if value="{{ m.isCard }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-start;max-width:94%;padding:9px 11px;border-radius:11px;background:var(--gs2,rgba(155,95,255,.07));border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.45))">
+                      <div style="font-size:11px;font-weight:700;color:#e9ddff">{{ m.title }}</div>
+                      <div style="font-size:10.5px;line-height:1.5;color:#c3cee2;margin-top:3px">{{ m.text }}</div>
+                      <sc-if value="{{ m.foot }}" hint-placeholder-val="{{ false }}"><div style="font-size:9.5px;color:#8e9db8;margin-top:5px">{{ m.foot }}</div></sc-if>
+                    </div></sc-if>
                   </sc-for>
+                  </div>
                   <div style="display:flex;gap:6px">
                     <input placeholder="Ask about your notes…" value="{{ tlBsAskV }}" onChange="{{ tlBsAskChange }}" onKeyDown="{{ tlBsAskKey }}" style="flex:1;height:28px;background:rgba(255,255,255,.05);border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.4));border-radius:9px;color:#dbe4f5;font-size:11px;padding:0 9px;min-width:0">
                     <div onClick="{{ tlBsAskSend }}" style="padding:0 12px;height:28px;display:flex;align-items:center;border-radius:9px;background:var(--gs2,rgba(155,95,255,.12));border:var(--bw,1px) solid var(--b2,rgba(155,95,255,.5));color:var(--n2,#9b5fff);font-size:11px;font-weight:700;cursor:pointer" style-hover="background:var(--gs2,rgba(155,95,255,.2))">Send</div>
@@ -3514,12 +3521,23 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:non
                     </sc-for>
                   </div>
                 </div>
-                <div style="border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:11px 12px;display:flex;flex-direction:column;gap:7px">
+                <div style="flex:1;min-height:300px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);padding:11px 12px;display:flex;flex-direction:column;gap:7px">
                   <div style="font-size:9.5px;font-weight:700;letter-spacing:.12em;color:#7686a2">CHAT</div>
+                  <div data-ln="tlarc" style="flex:1;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding-right:2px">
                   <sc-for list="{{ tlArcMsgs }}" as="m" hint-placeholder-count="0">
                     <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-end;max-width:88%;padding:7px 10px;border-radius:11px 11px 3px 11px;background:rgba(255,211,25,.08);border:1px solid rgba(255,211,25,.4);color:#dbe4f5;font-size:11px;line-height:1.5">{{ m.text }}</div></sc-if>
                     <sc-if value="{{ m.isBot }}" hint-placeholder-val="{{ true }}"><div style="align-self:flex-start;max-width:92%;padding:7px 10px;border-radius:11px 11px 11px 3px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);color:#c3cee2;font-size:11px;line-height:1.55">{{ m.text }}</div></sc-if>
+                    <sc-if value="{{ m.isCard }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-start;max-width:94%;padding:9px 11px;border-radius:11px;background:rgba(255,211,25,.06);border:1px solid rgba(255,211,25,.4)">
+                      <div style="font-size:11px;font-weight:700;color:#ffe680">{{ m.title }}</div>
+                      <div style="font-size:10.5px;line-height:1.5;color:#c3cee2;margin-top:3px">{{ m.text }}</div>
+                      <sc-if value="{{ m.foot }}" hint-placeholder-val="{{ false }}"><div style="font-size:9.5px;color:#8e9db8;margin-top:5px">{{ m.foot }}</div></sc-if>
+                    </div></sc-if>
                   </sc-for>
+                  </div>
+                  <div style="display:flex;gap:6px">
+                    <input placeholder="Talk to the Archive Agent…" value="{{ tlArcChatV }}" onChange="{{ tlArcChatChange }}" onKeyDown="{{ tlArcChatKey }}" style="flex:1;height:28px;background:rgba(255,255,255,.05);border:1px solid rgba(255,211,25,.4);border-radius:9px;color:#dbe4f5;font-size:11px;padding:0 9px;min-width:0">
+                    <div onClick="{{ tlArcChatSend }}" style="padding:0 12px;height:28px;display:flex;align-items:center;border-radius:9px;background:rgba(255,211,25,.12);border:1px solid rgba(255,211,25,.5);color:#ffe680;font-size:11px;font-weight:700;cursor:pointer" style-hover="background:rgba(255,211,25,.2)">Send</div>
+                  </div>
                 </div>
               </sc-if>
             </div>
@@ -4851,7 +4869,7 @@ class Component extends DCLogic {
     if (r.kind === 'note') this.openNote(r.id); else this.openScene(r.pp, r.cc, r.ss);
   }
   later(fn, ms) { this._timers.push(setTimeout(fn, ms)); }
-  scrollFeed() { this.later(() => { ['bsfeed', 'bsact', 'wafeed'].forEach(k => { const el = document.querySelector('[data-ln="' + k + '"]'); if (el) el.scrollTop = el.scrollHeight; }); }, 60); }
+  scrollFeed() { this.later(() => { ['bsfeed', 'bsact', 'wafeed', 'tlbs', 'tlarc'].forEach(k => { const el = document.querySelector('[data-ln="' + k + '"]'); if (el) el.scrollTop = el.scrollHeight; }); }, 60); }
 
   // ── panel resize ──
   panelDrag(side) {
@@ -7181,8 +7199,11 @@ class Component extends DCLogic {
       tlArcAskV: S.tlArcAsk || '', tlArcAskChange: (e) => this.setState({ tlArcAsk: e.target.value }),
       tlArcAskSend: () => { const t = (this.state.tlArcAsk || '').trim(); if (!t) return; this.setState({ tlArcAsk: '' }); this.sendWa(t, 'archive'); this.showToast('Archive Agent will read the manuscript and add it to the timeline'); },
       tlArcRecent: [ 'Added \u201CThe Sunken Gate\u201D from Ch. 18 prose', 'Dated \u201CBetrayal at Dusk\u201D from context clues', 'Linked Ashfall \u2194 note \u201CTide Mechanics\u201D' ].map(t => ({ t })),
-      tlBsMsgs: S.waChats.brainstorm.filter(m => m.who === 'user' || m.who === 'bot').slice(-6).map(m => ({ isUser: m.who === 'user', isBot: m.who === 'bot', text: m.text })),
-      tlArcMsgs: S.waChats.archive.filter(m => m.who === 'user' || m.who === 'bot').slice(-6).map(m => ({ isUser: m.who === 'user', isBot: m.who === 'bot', text: m.text })),
+      tlBsMsgs: S.waChats.brainstorm.map(m => ({ isUser: m.who === 'user', isBot: m.who === 'bot', isCard: m.who !== 'user' && m.who !== 'bot', title: m.title || m.kind || 'Note', text: m.text || '', foot: m.foot || '' })),
+      tlArcMsgs: S.waChats.archive.map(m => ({ isUser: m.who === 'user', isBot: m.who === 'bot', isCard: m.who !== 'user' && m.who !== 'bot', title: m.title || m.kind || 'Note', text: m.text || '', foot: m.foot || '' })),
+      tlArcChatV: S.tlArcChat || '', tlArcChatChange: (e) => this.setState({ tlArcChat: e.target.value }),
+      tlArcChatKey: (e) => { if (e.key === 'Enter') { const t = (this.state.tlArcChat || '').trim(); if (t) { this.setState({ tlArcChat: '' }); this.sendWa(t, 'archive'); this.scrollFeed(); } } },
+      tlArcChatSend: () => { const t = (this.state.tlArcChat || '').trim(); if (t) { this.setState({ tlArcChat: '' }); this.sendWa(t, 'archive'); this.scrollFeed(); } },
       tlBsAskV: S.tlBsAsk || '', tlBsAskChange: (e) => this.setState({ tlBsAsk: e.target.value }),
       tlBsAskKey: (e) => { if (e.key === 'Enter') { const t = (this.state.tlBsAsk || '').trim(); if (t) { this.setState({ tlBsAsk: '' }); this.sendWa(t, 'brainstorm'); } } },
       tlBsAskSend: () => { const t = (this.state.tlBsAsk || '').trim(); if (t) { this.setState({ tlBsAsk: '' }); this.sendWa(t, 'brainstorm'); } },
