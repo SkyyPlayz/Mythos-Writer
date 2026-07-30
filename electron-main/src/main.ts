@@ -5664,8 +5664,10 @@ const handlers: IpcHandlers = {
       if (candidates.length >= MAX_CANDIDATES) break;
       if (item.isDirectory) continue;
       if (!item.name.endsWith('.md')) continue;
-      // Skip hidden paths (staging dir, .git, etc.)
-      if (item.path.split(path.sep).some((seg) => seg.startsWith('.'))) continue;
+      // Skip hidden paths (staging dir, .git, etc.). SKY-8881: listing paths
+      // are POSIX on every platform now, so split on '/' (path.sep is '\' on
+      // Windows and would stop matching nested dot-segments there).
+      if (item.path.split('/').some((seg) => seg.startsWith('.'))) continue;
       try {
         const { content } = readVaultFile(root, item.path);
         const { frontmatter, prose } = parseFrontmatter(content);

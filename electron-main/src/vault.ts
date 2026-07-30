@@ -253,7 +253,13 @@ export function listVaultFiles(
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
       const fullPath = path.join(dir, entry.name);
-      const relativePath = path.join(prefix, entry.name);
+      // SKY-8881: listing paths cross the IPC boundary into the renderer,
+      // which treats '/' as the only separator. path.join emits '\' on
+      // Windows, which malformed every nested path downstream — a
+      // file-into-folder move re-created the source folder under the target
+      // ("it just duplicates the folders"). Join with '/' explicitly so the
+      // listing is POSIX on every platform by construction.
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
       let modifiedAt: string;
       try {
         modifiedAt = new Date(fs.statSync(fullPath).mtime).toISOString();
@@ -1242,6 +1248,23 @@ const SELF_WRITE_TTL_MS = 2500;
 const selfWrites = new Map<string, { mtimeMs: number; size: number; expiresAt: number }>();
 
 /**
+ * Canonical map key for the self-write registry. Writers mark paths that
+ * safeVaultJoin has already realpath'd (symlinks resolved, Windows 8.3 short
+ * names expanded), while watcher events carry the vault root exactly as the
+ * user configured it — so the same file can arrive spelled two ways and a
+ * plain normalize() lets suppression silently miss (SKY-8881: caught on the
+ * native-Windows runner, where os.tmpdir() is a short name; a symlinked
+ * vault root reproduces it on any OS).
+ */
+function selfWriteKey(absPath: string): string {
+  try {
+    return fs.realpathSync.native(absPath);
+  } catch {
+    return path.normalize(absPath); // vanished/unreadable — best-effort key
+  }
+}
+
+/**
  * Record the on-disk identity (mtime + size) of a file the app just wrote.
  * Must be called AFTER the write/rename lands so the recorded stat matches
  * what the watcher will observe.
@@ -1253,7 +1276,7 @@ export function markSelfWrite(absPath: string, ttlMs = SELF_WRITE_TTL_MS): void 
       if (entry.expiresAt <= now) selfWrites.delete(key);
     }
   }
-  const key = path.normalize(absPath);
+  const key = selfWriteKey(absPath);
   try {
     const st = fs.statSync(key);
     selfWrites.set(key, { mtimeMs: st.mtimeMs, size: st.size, expiresAt: now + ttlMs });
@@ -1269,7 +1292,7 @@ export function markSelfWrite(absPath: string, ttlMs = SELF_WRITE_TTL_MS): void 
  * where consume-once/TTL suppression silently dropped it.
  */
 export function isRecentSelfWrite(absPath: string): boolean {
-  const key = path.normalize(absPath);
+  const key = selfWriteKey(absPath);
   const entry = selfWrites.get(key);
   if (!entry) return false;
   if (entry.expiresAt <= Date.now()) {
