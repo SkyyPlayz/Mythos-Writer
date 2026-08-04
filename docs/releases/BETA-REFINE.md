@@ -37,10 +37,22 @@ all of them:
    Brainstorm board, the Beta Reader view, split panes, sessions-everywhere, the
    demo-seeded vault, and the refreshed Settings workspace.
 
-**Definition of done** = FULL-SPEC §14's 10-point acceptance checklist +
+**Definition of done** = FULL-SPEC §14's 11-point acceptance checklist (item 11 is
+the **visual-fidelity gate, SKY-8962** — side-by-side vs the current prototype export,
+delta recorded, freshness-checked first) +
 [`PERFORMANCE.md`](../../PERFORMANCE.md)'s acceptance targets (keystroke→paint <16ms with panels open, idle
 ≈0% CPU, 60fps ambients, no dropped frames typing with agents live) + all three
 required CI checks green on every merged PR (owner decision B4-5).
+
+No Beta 4 surface is "done" without a recorded fidelity comparison against the
+current `plans/design-handoff/v2/prototype/Mythos Writer - Liquid Neon.dc.html`
+export (FULL-SPEC §14.11). This closes the GAP-REPORT-v2 / PR #1156 failure
+pattern: a milestone shipped, or a milestone built, against a repo copy of the
+prototype that predated an owner-supplied refresh, so nobody caught the gap
+until a screenshot review weeks later. Run
+[`scripts/check-prototype-freshness.sh`](../../scripts/check-prototype-freshness.sh)
+(`npm run check:prototype-freshness`) before the comparison — it fails loudly if
+your branch's prototype copy is behind `origin/main`'s.
 
 ## What gets deleted (owner decision B4-1/B4-2/B4-4)
 
