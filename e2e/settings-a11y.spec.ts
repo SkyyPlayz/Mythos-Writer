@@ -216,6 +216,13 @@ test('TC-SKY-814-04: Toggle switches can be activated and announce state change'
   const initialChecked = await toggle.isChecked();
   await toggleControl.click();
   await expect(toggle).toBeChecked({ checked: !initialChecked });
+
+  // M11a (SKY-9160): the first toggle on the Agents page is now the master AI
+  // switch, which persists immediately and unmounts every section below it
+  // while off. Restore the initial state so later tests (e.g. TC-SKY-814-06's
+  // .settings-input lookup in ProviderSection) see the full page.
+  await toggleControl.click();
+  await expect(toggle).toBeChecked({ checked: initialChecked });
 });
 
 // ─── TC-SKY-814-05: Sliders have aria-label and value is announced ──────────────

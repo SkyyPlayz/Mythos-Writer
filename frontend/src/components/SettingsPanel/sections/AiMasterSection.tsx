@@ -3,7 +3,7 @@
 // verbatim). Unlike the rest of the panel this toggle persists immediately —
 // the prototype toasts on flip, and "Nothing is sent anywhere" must hold
 // without a separate Save click.
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useToast } from '../../../hooks/useToast';
 import { Toast } from '../../Toast/Toast';
 import { setAiEnabled } from '../../../hooks/useAiEnabled';
@@ -19,6 +19,9 @@ const TOAST_DURATION_MS = 2400;
 export default function AiMasterSection({ settings, setSettings }: AiMasterSectionProps) {
   const { toast, showToast, clearToast } = useToast(TOAST_DURATION_MS);
   const enabled = settings.ai?.enabled !== false;
+  // Serialize persists: a rapid double-flip must not let the first flip's
+  // write land after the second's (get/set round-trips would interleave).
+  const persistChain = useRef<Promise<void>>(Promise.resolve());
 
   const handleToggle = useCallback(
     async (next: boolean) => {
@@ -29,8 +32,12 @@ export default function AiMasterSection({ settings, setSettings }: AiMasterSecti
         // Persist only this flip: round-trip the stored settings so unsaved
         // edits elsewhere in the panel stay unsaved (masked keys reconcile
         // main-side, see settings-masking.ts).
-        const stored = await window.api.settingsGet();
-        await window.api.settingsSet({ ...stored, ai: { enabled: next } });
+        const run = persistChain.current.then(async () => {
+          const stored = await window.api.settingsGet();
+          await window.api.settingsSet({ ...stored, ai: { enabled: next } });
+        });
+        persistChain.current = run.catch(() => undefined);
+        await run;
       } catch (err) {
         setSettings((p) => ({ ...p, ai: { enabled: !next } }));
         setAiEnabled(!next);
