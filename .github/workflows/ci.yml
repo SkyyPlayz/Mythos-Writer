@@ -1343,5 +1343,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: notes-windows-e2e-report
-          path: e2e-report/
+          # The e2e npm scripts pass --reporter=list, which replaces the html
+          # reporter from playwright.config — e2e-report/ is never written
+          # here. Failure screenshots and error-context land in test-results/.
+          path: |
+            e2e-report/
+            test-results/
           retention-days: 3

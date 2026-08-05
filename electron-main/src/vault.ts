@@ -179,6 +179,32 @@ export function writeVaultFileUnsafe_testOnly(
   return { path: filePath, bytes: Buffer.byteLength(content, 'utf-8') };
 }
 
+// SKY-9027: on Windows, a file or directory that was just created or is being
+// scanned (antivirus, search indexer, an FTS walk) can hold a transient handle
+// that fails fs.renameSync with EPERM/EBUSY/EACCES even though the same rename
+// succeeds a moment later — observed on the native-Windows CI runner renaming a
+// freshly seeded folder. Retry briefly with backoff (the graceful-fs approach)
+// instead of surfacing a one-shot failure to the renderer. Non-transient codes
+// (ENOENT, EXDEV, …) and code-less errors still throw immediately.
+const RETRYABLE_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
+
+export function renameSyncWithRetry(from: string, to: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? '';
+      if (attempt >= RENAME_RETRY_DELAYS_MS.length || !RETRYABLE_RENAME_CODES.has(code)) {
+        throw err;
+      }
+      // Bounded sync wait (~750ms worst case) — these handlers run as sync IPC.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RENAME_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 /**
  * Atomic vault write: temp file → fdatasync → rename.
  * A crash between writeSync and renameSync leaves the original file intact.
@@ -202,7 +228,7 @@ export function writeVaultFileAtomic(
     fs.closeSync(fd);
   }
   try {
-    fs.renameSync(tmp, fullPath);
+    renameSyncWithRetry(tmp, fullPath);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
     throw err;
@@ -228,7 +254,7 @@ export function writeFileAtomic(absPath: string, data: Buffer | string): void {
     fs.closeSync(fd);
   }
   try {
-    fs.renameSync(tmp, absPath);
+    renameSyncWithRetry(tmp, absPath);
   } catch (err) {
     try { fs.unlinkSync(tmp); } catch { /* ignore cleanup errors */ }
     throw err;
@@ -328,7 +354,7 @@ export function moveVaultFile(
     }
   }
   fs.mkdirSync(path.dirname(toFull), { recursive: true });
-  fs.renameSync(fromFull, toFull);
+  renameSyncWithRetry(fromFull, toFull);
   return { fromPath, toPath, moved: true };
 }
 
