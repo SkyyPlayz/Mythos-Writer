@@ -16,6 +16,7 @@ import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
 import NoteTemplateDialog from '../NoteTemplateDialog';
+import IconPicker from '../IconPicker/IconPicker';
 import TagPane from '../TagPane';
 import { useToast } from '../../hooks/useToast';
 import { Toast } from '../Toast/Toast';
@@ -525,6 +526,10 @@ interface NotesVaultProps {
   activeTag: string | null;
   onTagFilter: (tag: string | null) => void;
   iconMap?: Record<string, string>;
+  /** SKY-9310 (M8 spec item 6): notify the parent after a Set icon…/Remove
+   *  icon action so it can update the map it owns (fetched once, then kept
+   *  in sync locally rather than round-tripping an IPC read per change). */
+  onIconChange?: (path: string, icon: string | null) => void;
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
   /** SKY-7995: drop target for dragging an item back out to the vault root. */
   onMoveToRoot?: (fromPath: string) => void;
@@ -581,7 +586,7 @@ function addRecent(current: string[], path: string): string[] {
   return deduped.slice(0, RECENT_MAX);
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
@@ -671,6 +676,31 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   // Esc on this one deletes it instead of just reverting the rename input.
   const [pendingNewFolderPath, setPendingNewFolderPath] = useState<string | null>(null);
 
+  const { toast, showToast } = useToast();
+
+  // ─── SKY-9310 (M8 spec item 6): icon picker state ───
+  const [iconPickerRow, setIconPickerRow] = useState<FlatRow | null>(null);
+
+  const handleSetIcon = useCallback((row: FlatRow) => {
+    setIconPickerRow(row);
+  }, []);
+
+  const handleIconSelect = useCallback(
+    async (iconValue: string) => {
+      if (!iconPickerRow) return;
+      const path = iconPickerRow.node.path;
+      const icon = iconValue.trim() || null;
+      setIconPickerRow(null);
+      try {
+        await window.api.notesVaultSetIcon(path, icon);
+        onIconChange?.(path, icon);
+      } catch (e) {
+        showToast((e as Error).message || 'Set icon failed', 'error');
+      }
+    },
+    [iconPickerRow, onIconChange, showToast],
+  );
+
   const handleContextMenu = useCallback((e: React.MouseEvent, row: FlatRow) => {
     e.preventDefault();
     setCtxRow(row);
@@ -711,8 +741,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     },
     [select, onOpenInNewTab, onOpenFile, onContextChange],
   );
-
-  const { toast, showToast } = useToast();
 
   // M15: context-menu Delete — confirm, then remove via the notes-vault IPC.
   // SKY-7995: directories get an item-count confirm so deleting a folder
@@ -1154,7 +1182,15 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onDelete={handleDelete}
         onBetaRead={onBetaRead ? handleBetaRead : undefined}
         onContinuityCheck={onContinuityCheck ? handleContinuityCheck : undefined}
+        onSetIcon={handleSetIcon}
       />
+      {iconPickerRow && (
+        <IconPicker
+          currentIcon={iconMap?.[iconPickerRow.node.path]}
+          onSelect={handleIconSelect}
+          onClose={() => setIconPickerRow(null)}
+        />
+      )}
       <NoteTemplateDialog
         open={dialogOpen}
         dirPath={dialogDirPath}
@@ -1295,11 +1331,16 @@ export default function VaultBrowser({
     return map;
   }, [stories]);
 
+  // SKY-9310: re-fetch on every `notesItems` reload (not just count changes)
+  // so a rename/move — same item count, new paths — picks up the icon
+  // store's rewritten keys instead of showing a stale/missing icon until an
+  // item is added or removed. useVaultFiles hands back a fresh array
+  // reference per load(), so this doesn't refire on unrelated re-renders.
   useEffect(() => {
     window.api.notesVaultReadIcons().then((m) => {
       if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
     }).catch(() => {});
-  }, [notesItems.length]);
+  }, [notesItems]);
 
   const showStory = scope === 'story' || scope === 'both';
   const showNotes = scope === 'notes' || scope === 'both';
@@ -1424,6 +1465,17 @@ export default function VaultBrowser({
                 activeTag={activeTag}
                 onTagFilter={setActiveTag}
                 iconMap={notesIconMap}
+                onIconChange={(path, icon) => {
+                  setNotesIconMap((prev) => {
+                    if (!icon) {
+                      if (!(path in prev)) return prev;
+                      const next = { ...prev };
+                      delete next[path];
+                      return next;
+                    }
+                    return { ...prev, [path]: icon };
+                  });
+                }}
                 onMove={handleMove}
                 onMoveToRoot={handleMoveToRoot}
                 onMoveTo={moveNotesItem}

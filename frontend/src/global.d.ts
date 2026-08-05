@@ -1526,6 +1526,8 @@ interface Window {
     // SKY-194: Iconize — per-node icon IPC
     notesVaultReadIcons: () => Promise<Record<string, string>>;
     vaultReadIcons: () => Promise<Record<string, string>>;
+    // SKY-9310 (M8 spec item 6): assign/clear a path-keyed icon (file or folder).
+    notesVaultSetIcon: (filePath: string, icon: string | null) => Promise<{ path: string; icon: string | null }>;
     iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
     iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
 

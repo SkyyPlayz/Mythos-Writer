@@ -222,7 +222,10 @@ function Row({
         </span>
       )}
       <span className="vb-icon" aria-hidden="true">
-        <NodeIcon icon={!node.isDirectory ? iconMap?.[node.path] : undefined} fallback={node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'} />
+        {/* SKY-9310 (R8): iconMap now covers directories too (path-keyed
+            .mythos/icons.json), not just files (frontmatter) — a custom icon
+            wins over the open/closed folder glyph at every depth. */}
+        <NodeIcon icon={iconMap?.[node.path]} fallback={node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'} />
       </span>
       {isEditing && onRenameChange && onRenameCommit && onRenameCancel ? (
         <RenameInput value={editingValue ?? ''} error={editError} onChange={onRenameChange} onCommit={onRenameCommit} onCancel={onRenameCancel} />

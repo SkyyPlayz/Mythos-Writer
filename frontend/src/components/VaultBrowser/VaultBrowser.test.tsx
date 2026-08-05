@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import {
   buildTree,
@@ -57,6 +57,7 @@ beforeEach(() => {
     notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
     vaultReadIcons: vi.fn().mockResolvedValue({}),
     iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     // SKY-8891: persisted manual order
@@ -635,6 +636,7 @@ describe('StoryVault inline rename', () => {
       notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
       notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
       notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
       vaultReadIcons: vi.fn().mockResolvedValue({}),
       iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     };
@@ -726,6 +728,7 @@ describe('VirtualTree ARIA attributes', () => {
       writeVault: mockWriteVault,
       writeNotesVault: mockWriteNotesVault,
       notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
       notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
       noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
@@ -841,6 +844,7 @@ describe('VirtualTree keyboard navigation', () => {
       writeVault: mockWriteVault,
       writeNotesVault: mockWriteNotesVault,
       notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
       notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
       noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
@@ -1050,6 +1054,7 @@ describe('StoryVault ARIA tree roles', () => {
       writeVault: mockWriteVault,
       sceneRename: vi.fn().mockResolvedValue({ scene: { id: 'sc1', title: 'Opening Scene' } }),
       notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+      notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
       notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
       noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
     };
@@ -1326,6 +1331,85 @@ describe('NotesVault context menu (M15)', () => {
   it('context menu carries the prototype popover class', async () => {
     await openFileContextMenu();
     expect(screen.getByTestId('vb-context-menu').className).toContain('vb-ctx-menu');
+  });
+});
+
+// ─── SKY-9310 (M8 spec item 6): Iconize-style icons ────────────────────────
+
+describe('NotesVault "Set icon…" (SKY-9310)', () => {
+  const mockSetIcon = vi.fn();
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockSetIcon.mockReset().mockResolvedValue({ path: '', icon: null });
+    mockListNotesVault.mockResolvedValue({
+      items: [
+        { path: 'folder', name: 'folder', isDirectory: true, modifiedAt: '' },
+        { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
+      ],
+    });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      notesVaultSetIcon: mockSetIcon,
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+  });
+
+  it('is offered on both file and folder rows', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+
+    fireEvent.contextMenu(screen.getByTestId('vb-row-note.md'));
+    expect((await screen.findByTestId('menu-item-set-icon')).textContent).toBe('Set icon…');
+
+    fireEvent.contextMenu(screen.getByTestId('vb-row-folder'));
+    expect((await screen.findByTestId('menu-item-set-icon')).textContent).toBe('Set icon…');
+  });
+
+  it('picking an emoji persists it via notesVaultSetIcon and closes the picker', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('vb-row-note.md'));
+    fireEvent.click(await screen.findByTestId('menu-item-set-icon'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Icon picker' });
+    fireEvent.click(within(dialog).getByTitle('🔥'));
+
+    await waitFor(() => expect(mockSetIcon).toHaveBeenCalledWith('note.md', '🔥'));
+    expect(screen.queryByRole('dialog', { name: 'Icon picker' })).not.toBeInTheDocument();
+  });
+
+  it('assigns a custom icon to a folder (frontmatter can\'t do this — folders have none)', async () => {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-folder')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('vb-row-folder'));
+    fireEvent.click(await screen.findByTestId('menu-item-set-icon'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Icon picker' });
+    fireEvent.click(within(dialog).getByTitle('🌍'));
+
+    await waitFor(() => expect(mockSetIcon).toHaveBeenCalledWith('folder', '🌍'));
+  });
+
+  it('"Remove icon" clears via notesVaultSetIcon(path, null)', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' }],
+    });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      notesVaultSetIcon: mockSetIcon,
+      notesVaultReadIcons: vi.fn().mockResolvedValue({ 'note.md': '🔥' }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+    fireEvent.contextMenu(screen.getByTestId('vb-row-note.md'));
+    fireEvent.click(await screen.findByTestId('menu-item-set-icon'));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Icon picker' });
+    fireEvent.click(within(dialog).getByText('Remove icon'));
+
+    await waitFor(() => expect(mockSetIcon).toHaveBeenCalledWith('note.md', null));
   });
 });
 

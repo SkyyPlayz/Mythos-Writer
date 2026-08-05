@@ -86,6 +86,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     notesTagRename: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
     vaultReadIcons: vi.fn().mockResolvedValue({}),
     iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     outline: {

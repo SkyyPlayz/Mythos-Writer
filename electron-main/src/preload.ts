@@ -755,6 +755,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
   vaultReadIcons: () =>
     ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+  // SKY-9310 (M8 spec item 6): assign (icon truthy) or clear (icon null) a
+  // path-keyed icon in .mythos/icons.json — works for both notes and folders.
+  notesVaultSetIcon: (filePath: string, icon: string | null) =>
+    ipcRenderer.invoke('notesVault:setIcon', { path: filePath, icon }) as Promise<{ path: string; icon: string | null }>,
   iconListUserPacks: () =>
     ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
   iconReadSvg: (packName: string, iconName: string) =>

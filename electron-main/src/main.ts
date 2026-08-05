@@ -29,6 +29,8 @@ import {
   type VaultMkdirResponse,
   type VaultReorderPayload,
   type VaultReorderResponse,
+  type VaultSetIconPayload,
+  type VaultSetIconResponse,
   type VaultChooseFolderPayload,
   type VaultChooseFolderResponse,
   type Manifest,
@@ -397,6 +399,7 @@ import {
   writeArcManifest,
 } from './vault.js';
 import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
+import { readIconMap, writeIconMap, setIcon, rewriteIconsOnMove, removeIconsUnderPath } from './vaultIcons.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -5460,7 +5463,15 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.path);
-    return deleteVaultFile(root, payload.path);
+    const result = deleteVaultFile(root, payload.path);
+    // SKY-9310: drop any icon assignment(s) for the deleted path so
+    // .mythos/icons.json never accumulates entries for things that no
+    // longer exist.
+    if (result.deleted) {
+      const rewritten = removeIconsUnderPath(readIconMap(root), payload.path);
+      if (rewritten) writeIconMap(root, rewritten);
+    }
+    return result;
   },
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
     ensureNotesVaultDir();
@@ -5474,6 +5485,10 @@ const handlers: IpcHandlers = {
     if (result.moved) {
       const rewritten = rewriteOrderOnMove(readOrderMap(root), payload.fromPath, payload.toPath);
       if (rewritten) writeOrderMap(root, rewritten);
+      // SKY-9310: icon assignments survive rename/move — the filename never
+      // encodes the icon, so only this sidecar's key needs to follow.
+      const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), payload.fromPath, payload.toPath);
+      if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
     }
     return result;
   },
@@ -6036,11 +6051,23 @@ const handlers: IpcHandlers = {
   },
 
   // SKY-194: Iconize — per-node icon IPC
+  // SKY-9310 (M8 spec item 6): the path-keyed `.mythos/icons.json` store is
+  // authoritative (it's the only way a folder — which has no frontmatter —
+  // can carry an icon); frontmatter `icon:` stays as a read-only fallback for
+  // notes that only ever had that field seeded.
   [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
-    return batchReadVaultIcons(getNotesVaultRoot());
+    const root = getNotesVaultRoot();
+    return { ...batchReadVaultIcons(root), ...readIconMap(root) };
   },
   [IPC_CHANNELS.VAULT_READ_ICONS]: (): Record<string, string> => {
     return batchReadVaultIcons(getVaultRoot());
+  },
+  [IPC_CHANNELS.NOTES_VAULT_SET_ICON]: (payload: VaultSetIconPayload): VaultSetIconResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    safeVaultEntryIpcJoin(root, payload.path);
+    setIcon(root, payload.path, payload.icon);
+    return { path: payload.path, icon: payload.icon };
   },
   [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (): import('./iconPacks.js').UserIconPack[] => {
     const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
