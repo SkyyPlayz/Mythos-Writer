@@ -233,6 +233,23 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
     const vaultSettings = readVaultSettings(userData);
     expect(vaultSettings.vaultRoot).toBe(vaultPair.vaultRoot);
     expect(vaultSettings.notesVaultRoot).toBe(vaultPair.notesVaultRoot);
+
+    // SKY-9262 (P0.5): the header/switcher labels this fresh single-story
+    // vault by its story title, never the raw vault directory name. Guard the
+    // assertion's meaning first: the two must actually differ on disk.
+    const vaultDirName = path.basename(path.dirname(vaultPair.vaultRoot));
+    expect(vaultDirName).not.toBe('The Last City of Veynn');
+    await pg.locator('.project-switcher-btn').click();
+    const activeRow = pg
+      .locator('[data-testid="wc-project-menu"] .project-switcher-item')
+      .filter({ has: pg.locator('.wc-active-dot') });
+    // The story title lands once the renderer's manifest load resolves —
+    // toHaveText retries until it does.
+    await expect(activeRow.locator('.wc-pop-row-title')).toHaveText('The Last City of Veynn', { timeout: 15_000 });
+    // The directory path stays available on the row's subline for
+    // disambiguation; only the *title* stops being the directory name.
+    await expect(activeRow.locator('.wc-pop-row-sub')).toHaveText(vaultPair.vaultRoot);
+    await pg.keyboard.press('Escape');
   } finally {
     await app.close().catch(() => {});
   }

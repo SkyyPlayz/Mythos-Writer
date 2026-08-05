@@ -13,7 +13,7 @@ import {
   type LiquidNeonPageCfg,
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
-import { deriveVaultDisplayName } from './ProjectSwitcher';
+import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitcher';
 import { stripManifestContentForIpc } from './manifestIpc';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
@@ -286,6 +286,8 @@ interface AppMenuBarProps {
   onSearchNavigate: (result: SearchResultItem) => void;
   selectedStoryId?: string | null;
   activeVaultRoot: string;
+  /** SKY-9262 (P0.5): single-story vaults label the switcher with the story title. */
+  activeStoryTitle?: string;
   onProjectSwitched: (vaultRoot: string) => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
@@ -299,7 +301,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -341,7 +343,7 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} onSwitched={onProjectSwitched} requestText={requestText} />
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} requestText={requestText} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -1536,9 +1538,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           setAppSettings(themed);
           window.api.settingsSet(themed).catch(() => {});
           void applyLiquidNeonV2Theme(vaultPatch.liquidNeonV2);
+          // SKY-9262 (P0.5): name the vault by its single story's title when it
+          // has one — the raw directory name is only the fallback.
           showLnToast(
             'Switched Mythos vault — '
-            + deriveVaultDisplayName({ vaultRoot: switchedVaultRoot, notesVaultRoot: notesPath || undefined })
+            + (deriveSingleStoryTitle(m.stories)
+              ?? deriveVaultDisplayName({ vaultRoot: switchedVaultRoot, notesVaultRoot: notesPath || undefined }))
             + ' · ' + vaultPatch.presetName + ' theme',
           );
         } else {
@@ -4580,6 +4585,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
+          activeStoryTitle={deriveSingleStoryTitle(stories)}
           onProjectSwitched={handleProjectSwitched}
           onNewStory={() => { void createStory(); }}
           onOpenVault={() => { void openVaultViaPicker(); }}
