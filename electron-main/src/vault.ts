@@ -1321,6 +1321,12 @@ export async function startVaultWatcher(
   // literal is "backslash + any char", not "literal dot" — so dotfiles were
   // never actually ignored and the TypeError from calling a RegExp as a function
   // silently killed event delivery for all paths below the vault root.
+  // SKY-9346: on Windows, fs.watch() (ReadDirectoryChangesW) holds an open
+  // handle to every watched directory, causing EPERM when our IPC rename or
+  // delete touches one of those same directories. Polling (fs.watchFile) is
+  // purely stat-based and never holds a directory handle, so rename/rmSync
+  // always succeeds. The 2 s poll interval keeps CPU overhead low.
+  const usePollingOnWin = process.platform === 'win32';
   activeWatcher = chokidar.watch(vaultRoot, {
     // Ignore dotdirs (e.g. .mythos SQLite DB + WAL, .snapshots) and the
     // version-history dir — every save writes versions/<id>/*.md, which
@@ -1331,6 +1337,8 @@ export async function startVaultWatcher(
     },
     persistent: true,
     ignoreInitial: true,
+    usePolling: usePollingOnWin,
+    interval: usePollingOnWin ? 2000 : undefined,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     followSymlinks: false, // MYT-445/MYT-362: don't recurse into symlinked dirs
   });
@@ -1577,10 +1585,14 @@ export async function startNotesVaultWatcher(
 
   const { default: chokidar } = await import('chokidar');
   // Same fix as startVaultWatcher (GH#892): chokidar v4+ requires a function.
+  // SKY-9346: same Windows polling fix as startVaultWatcher — see comment there.
+  const usePollingOnWinNotes = process.platform === 'win32';
   activeNotesWatcher = chokidar.watch(vaultRoot, {
     ignored: (filePath: string) => path.basename(filePath).startsWith('.'),
     persistent: true,
     ignoreInitial: true,
+    usePolling: usePollingOnWinNotes,
+    interval: usePollingOnWinNotes ? 2000 : undefined,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
   });
