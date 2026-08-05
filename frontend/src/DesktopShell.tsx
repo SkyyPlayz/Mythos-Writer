@@ -26,11 +26,6 @@ import { cursorChapter, cycleDraftState, draftStateLabel, mergeParagraphUp, move
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
-import PageChromeToolbar from './PageChromeToolbar';
-import PageRuler from './PageRuler';
-import DocHeader from './DocHeader';
-import MarginRuler from './MarginRuler';
-import PageSetupPopover, { type PageStyle } from './PageSetupPopover';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail from './AppNavRail';
 import WorkspaceTabBar from './WorkspaceTabBar';
@@ -66,11 +61,6 @@ import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
-import SceneHistory from './SceneHistory';
-// Beta 4 M10 — Drafts v2: compare split, full diff, popover on the M5 store.
-import DraftsCompareSplit from './drafts/DraftsCompareSplit';
-import DraftDiffView from './drafts/DraftDiffView';
-import DraftsPopover from './drafts/DraftsPopover';
 import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
 import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo';
 import UpdateBanner from './UpdateBanner';
@@ -78,7 +68,6 @@ import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
 import TourModal from './TourModal';
 import PaneTip from './PaneTip';
-import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
@@ -688,7 +677,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M1: set by the two project-switch paths right before loadVault so
   // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
   const pendingVaultThemeRootRef = useRef<string | null>(null);
-  const [editorSelectionText, setEditorSelectionText] = useState<string>('');
+  const [editorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
@@ -700,7 +689,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
+  const [, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
@@ -713,8 +702,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const voiceSessionRef = useRef<string | null>(null);
   const speechRecogRef = useRef<SpeechRecognition | null>(null);
   const pttDownRef = useRef(false);
-  const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
-  const [betaReadLoading, setBetaReadLoading] = useState(false);
+  const [, setBetaReadComments] = useState<BetaReadComment[]>([]);
+  const [betaReadLoading] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -732,7 +721,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
-  const [restoreKey, setRestoreKey] = useState(0);
+  const [, setRestoreKey] = useState(0);
   // Beta 4 M10 — Drafts v2 surfaces (compare split · full diff · popover) +
   // the exact-undo state for Load draft (CF-4). Undo survives split close.
   const [draftsSplitOpen, setDraftsSplitOpen] = useState(false);
@@ -740,7 +729,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [draftsPopoverOpen, setDraftsPopoverOpen] = useState(false);
   const [draftsSelectedTs, setDraftsSelectedTs] = useState<string | null>(null);
   const [draftsUndo, setDraftsUndo] = useState<DraftUndoState | null>(null);
-  const draftsPillRef = useRef<HTMLButtonElement | null>(null);
   /** SKY-204: currently open vault note path (relative to notes vault root). */
   const [openedNotePath, setOpenedNotePath] = useState<string | null>(null);
   /** SKY-204: word count of the currently open vault note, updated live. */
@@ -751,7 +739,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
    *  Cleared after BrainstormPage mounts so navigating back doesn't re-seed with stale text. */
   const [brainstormSeedPrompt, setBrainstormSeedPrompt] = useState<string | null>(null);
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
-  const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
+  const [, setSceneFlashId] = useState<string | null>(null);
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
@@ -851,12 +839,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-3206: story page chrome
   const [pagePrefs, setPagePrefs] = useState<StoryPagePrefs>(STORY_PAGE_DEFAULTS);
-  const [pageStyle, setPageStyle] = useState<PageStyle>('neon');
-  const [pageSetupOpen, setPageSetupOpen] = useState(false);
-  const [docZoom, setDocZoom] = useState(1.0);
-  const pageWrapRef = useRef<HTMLDivElement | null>(null);
-  const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-
 
   // SKY-3206: Sync page prefs from settings when vault/settings change.
   // M1-S3: maps persisted before the canonical fields existed are seeded from
@@ -906,7 +888,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const pendingCursorPosRef = useRef<number | null>(null);
   const sceneRestoreAttemptedRef = useRef(false);
   const restoreInProgressRef = useRef(false);
-  const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -1014,32 +995,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api.settingsSet(updated as AppSettings).catch(() => {});
   }, [appSettings, activeVaultRoot, pagePrefs]);
 
-  const handlePageDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const el = pageWrapRef.current;
-    if (!el) return;
-    pageDragRef.current = { startX: e.clientX, startWidth: el.getBoundingClientRect().width };
-    const onMove = (ev: MouseEvent) => {
-      if (!pageDragRef.current) return;
-      const delta = ev.clientX - pageDragRef.current.startX;
-      const newW = Math.max(320, Math.min(1400, pageDragRef.current.startWidth + delta * 2));
-      document.documentElement.style.setProperty('--page-width-story', `${newW}px`);
-    };
-    const onUp = (ev: MouseEvent) => {
-      if (!pageDragRef.current) return;
-      const delta = ev.clientX - pageDragRef.current.startX;
-      const newW = Math.max(320, Math.min(1400, pageDragRef.current.startWidth + delta * 2));
-      pageDragRef.current = null;
-      const next: StoryPagePrefs = { ...pagePrefs, sizePreset: 'custom', customWidthPx: newW };
-      setPagePrefs(next);
-      handlePagePrefsChange(next);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handlePagePrefsChange, pagePrefs]);
 
   // Beta 4 M10 — numbered drafts (M5 file store) for the open scene, shared
   // by the popover, the compare split, and the full diff.
@@ -1132,30 +1087,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setRestoreKey(0);
   }, [selectedScene?.id]);
 
-  const handleBetaReadRequest = useCallback(async (selectedText: string) => {
-    if (!selectedScene || betaReadLoading) return;
-    setBetaReadLoading(true);
-    try {
-      const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
-      const res = await window.api.agentWritingAssistant(selectedText, context);
-      const commentText: string = res?.text ?? 'No feedback generated.';
-      await window.api.betaReadCreate(selectedScene.id, selectedText, commentText);
-      await loadBetaReadComments(selectedScene.id);
-    } catch {
-      // non-fatal
-    } finally {
-      setBetaReadLoading(false);
-    }
-  }, [selectedScene, betaReadLoading, loadBetaReadComments]);
-
-  const handleBetaReadDismiss = useCallback(async (id: string) => {
-    try {
-      await window.api.betaReadDismiss(id);
-      setBetaReadComments((prev) => prev.filter((c) => c.id !== id));
-    } catch {
-      // non-fatal
-    }
-  }, []);
 
   // Beta 4 M27 (SKY-6982): AgentHubPanel's "Beta Reader" row dispatches this
   // CustomEvent (it has no callback prop into DesktopShell) — listen here
@@ -2993,47 +2924,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setDraftsSelectedTs(null);
   }, [selectedScene?.id]);
 
-  const handleDraftStateChange = useCallback((state: DraftState) => {
-    if (!selectedScene || !selectedChapter || !selectedStory) return;
-    const updatedScene: Scene = { ...selectedScene, draftState: state, updatedAt: now() };
-    setSelectedScene(updatedScene);
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
-
-  // SKY-6491: DocHeader's editable title was wired to a no-op that silently
-  // discarded edits — commit the new title into the scene like every other
-  // per-field scene mutation in this file (state + manifest + markdown).
-  const handleSceneTitleChange = useCallback((title: string) => {
-    if (!selectedScene || !selectedChapter || !selectedStory) return;
-    const trimmed = title.trim();
-    if (!trimmed || trimmed === selectedScene.title) return;
-    const updatedScene: Scene = { ...selectedScene, title: trimmed, updatedAt: now() };
-    setSelectedScene(updatedScene);
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
-          }
-        ),
-      }
-    );
-    updateManifest(updatedStories);
-    persistSceneMarkdown(updatedScene);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown]);
 
   // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
 
@@ -3286,18 +3176,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-206: keep outline highlight in sync with the active scene (immediate on selection change)
   // SKY-130: debounced cursor persistence as user types/navigates
-  const handleCursorPosChange = useCallback((pos: number) => {
-    if (!selectedScene) return;
-    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
-    saveCursorDebounceRef.current = setTimeout(() => {
-      window.api.sessionSaveScene({
-        sceneId: selectedScene.id,
-        scenePath: selectedScene.path,
-        scrollTop: 0,
-        cursorLine: pos,
-      }).catch(() => {});
-    }, 1000);
-  }, [selectedScene]);
 
   // Navigate to a scene from a backlink click by looking it up by path in the loaded stories.
   // If no scene matches, treat the path as a vault note and open it in the NoteViewer (SKY-204).
@@ -5337,11 +5215,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   </button>
                 </div>
               </div>
-            ) : viewDepth !== 'scene' && selectedStory ? (
-              /* M1 (SKY-9013): ONE ManuscriptView branch renders book, part and
-                 chapter depth — cursor.zoom carries the depth. Both legacy
-                 selector-compat anchors stay on the unified wrapper (CI). */
-              <div className="shell-depth-view-wrap book-outline-view chapter-continuous-view">
+            ) : selectedStory ? (
+              /* M1-S4 (SKY-9404): ONE ManuscriptView branch renders ALL four depths
+                 (book/part/chapter/scene) — cursor.zoom carries the depth. Legacy
+                 scene-branch chrome deleted; drafts/history wired via new props. */
+              <div className="shell-depth-view-wrap book-outline-view chapter-continuous-view shell-editor-scene-wrap">
                 <ManuscriptView
                   story={selectedStory}
                   cursor={manuscriptCursor}
@@ -5367,9 +5245,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
                   onAddScene={() => {
                     if (!selectedStory) return;
-                    // The cursor's chapter is what row 3/4 show — selectedChapter
-                    // only syncs after a cursor change and is null on several
-                    // book/part-depth paths (adversarial S2 finding).
                     const target = cursorChapter(selectedStory, manuscriptCursor) ?? selectedChapter;
                     if (target) void createScene(selectedStory.id, target.id);
                   }}
@@ -5377,6 +5252,40 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
+                  drafts={selectedScene ? {
+                    drafts: sceneDrafts.drafts,
+                    currentLabel: sceneDrafts.currentLabel,
+                    currentContent: selectedScene.blocks.map(b => b.content).join('\n\n'),
+                    documentLabel: selectedScene.title ?? 'Scene',
+                    error: sceneDrafts.error,
+                    popoverOpen: draftsPopoverOpen,
+                    onTogglePopover: () => setDraftsPopoverOpen(o => !o),
+                    onClosePopover: () => setDraftsPopoverOpen(false),
+                    onCompare: handleDraftCompare,
+                    onRestore: (draft) => { setDraftsPopoverOpen(false); void handleLoadDraft(draft); },
+                    splitOpen: draftsSplitOpen,
+                    onToggleSplit: () => { setDraftsSplitOpen(o => !o); setDraftsDiffOpen(false); },
+                    onCloseSplit: () => setDraftsSplitOpen(false),
+                    diffOpen: draftsDiffOpen,
+                    onOpenDiff: () => setDraftsDiffOpen(true),
+                    onCloseDiff: () => setDraftsDiffOpen(false),
+                    selectedTs: draftsSelectedTs,
+                    onSelectTs: setDraftsSelectedTs,
+                    onLoadDraft: (draft) => { void handleLoadDraft(draft); },
+                    undoLabel: draftsUndo && draftsUndo.sceneId === selectedScene.id ? draftsUndo.loadedLabel : null,
+                    onUndo: handleDraftUndo,
+                  } : undefined}
+                  onManualSnapshot={selectedScene ? handleManualSnapshot : undefined}
+                  snapshotSavedAt={snapshotSavedAt}
+                  sceneHistory={selectedScene ? {
+                    open: showSceneHistory,
+                    onOpen: () => setShowSceneHistory(true),
+                    onClose: () => setShowSceneHistory(false),
+                    sceneId: selectedScene.id,
+                    scenePath: selectedScene.path,
+                    currentContent: editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
+                    onRestore: handleSceneRestore,
+                  } : undefined}
                 />
                 <DepthEdgeArrows
                   depth={viewDepth}
@@ -5385,223 +5294,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onPrev={handleDepthPrev}
                   onNext={handleDepthNext}
                 />
-              </div>
-            ) : selectedScene ? (
-              <div className={`shell-editor-scene-wrap story-page-canvas${sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
-                <DocHeader
-                  title={selectedScene.title ?? ''}
-                  onTitleChange={handleSceneTitleChange}
-                  wordCount={focusWordCount}
-                  breadcrumb={[selectedStory?.title ?? '', selectedChapter?.title ?? '', selectedScene.title ?? ''].filter(Boolean)}
-                  zoom={docZoom}
-                  onZoomChange={setDocZoom}
-                  isFocusMode={writingMode === 'focus'}
-                  onFocusToggle={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
-                />
-                <MarginRuler
-                  widthPx={
-                    pagePrefs.sizePreset === 'custom' && pagePrefs.customWidthPx != null
-                      ? pagePrefs.customWidthPx
-                      : (STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
-                  }
-                  onWidthChange={(px) => handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: px })}
-                />
-                <PageSetupPopover
-                  isOpen={pageSetupOpen}
-                  onClose={() => setPageSetupOpen(false)}
-                  prefs={pagePrefs}
-                  onPrefsChange={handlePagePrefsChange}
-                  pageStyle={pageStyle}
-                  onPageStyleChange={setPageStyle}
-                />
-                <div className="scene-snapshot-toolbar">
-                  <button
-                    className="scene-snapshot-save"
-                    onClick={handleManualSnapshot}
-                  >
-                    Save snapshot now
-                  </button>
-                  <span className="scene-autosave" aria-live="polite">
-                    {snapshotSavedAt ? `Snapshot saved ${snapshotSavedAt}` : ''}
-                  </span>
-                  {/* Beta 4 M10 — Drafts v2 entry points: "Draft N ▾" pill
-                      (popover w/ snapshot settings) + "Drafts" (compare split). */}
-                  <span className="scene-drafts-anchor">
-                    <button
-                      ref={draftsPillRef}
-                      className="scene-drafts-pill"
-                      onClick={() => setDraftsPopoverOpen(o => !o)}
-                      aria-haspopup="dialog"
-                      aria-expanded={draftsPopoverOpen}
-                      data-testid="scene-drafts-pill"
-                    >
-                      {sceneDrafts.currentLabel} ▾
-                    </button>
-                    {draftsPopoverOpen && (
-                      <DraftsPopover
-                        documentLabel={selectedScene.title ?? 'Scene'}
-                        drafts={sceneDrafts.drafts}
-                        currentLabel={sceneDrafts.currentLabel}
-                        currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                        onCompare={handleDraftCompare}
-                        onRestore={(draft) => {
-                          setDraftsPopoverOpen(false);
-                          void handleLoadDraft(draft);
-                        }}
-                        onClose={() => setDraftsPopoverOpen(false)}
-                        anchorRef={draftsPillRef}
-                      />
-                    )}
-                  </span>
-                  <button
-                    className={`scene-drafts-compare-btn${draftsSplitOpen ? ' is-active' : ''}`}
-                    onClick={() => { setDraftsSplitOpen(o => !o); setDraftsDiffOpen(false); }}
-                    aria-pressed={draftsSplitOpen}
-                    title="Drafts — compare previous drafts side-by-side"
-                    data-testid="scene-drafts-compare-btn"
-                  >
-                    Drafts
-                  </button>
-                  <button
-                    className="btn-history"
-                    onClick={() => setShowSceneHistory(true)}
-                    aria-label="Open scene history"
-                  >
-                    History
-                  </button>
-                </div>
-                <PageChromeToolbar
-                  prefs={pagePrefs}
-                  onPrefsChange={handlePagePrefsChange}
-                />
-                {/* GH #842 (Beta 3 M10): Word-style draggable ruler — hidden in
-                    Focus mode and when the top bar is hidden. */}
-                {!inFocusOrDF && !topBarHidden && (
-                  <PageRuler prefs={pagePrefs} onPrefsChange={handlePagePrefsChange} />
-                )}
-                {/* Beta 4 M10: row wrapper — column layout normally; becomes a
-                    flex row hosting the drafts compare split when it's open. */}
-                <div className={`shell-drafts-splitrow${draftsSplitOpen ? ' shell-drafts-splitrow--open' : ''}`}>
-                <div
-                  ref={pageWrapRef}
-                  className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
-                  style={{ position: 'relative' }}
-                >
-                  {/* SKY-5904: anchored to the page-mode wrapper (max-width 720px,
-                      centered) rather than the full-width canvas, so the arrows
-                      hug the actual page edges instead of the outer pane edges. */}
-                  <DepthEdgeArrows
-                    depth="scene"
-                    canPrev={depthCanPrev}
-                    canNext={depthCanNext}
-                    onPrev={handleDepthPrev}
-                    onNext={handleDepthNext}
-                  />
-                  <BlockEditor
-                    key={`${selectedScene.id}-${restoreKey}`}
-                    scene={selectedScene}
-                    enableHeadingFocus
-                    onBlocksChange={handleBlocksChange}
-                    onDraftStateChange={handleDraftStateChange}
-                    onEditorReady={handleEditorReady}
-                    onBetaReadRequest={handleBetaReadRequest}
-                    wikiLinkSuggestions={wikiLinkSuggestions}
-                    onAcceptWikiLink={handleEditorAcceptWikiLink}
-                    onRejectWikiLink={handleEditorRejectWikiLink}
-                    autoLinkerEntities={allEntities}
-                    autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                    initialCursorPos={pendingCursorPosRef.current ?? undefined}
-                    onCursorPosChange={handleCursorPosChange}
-                    onEntityClick={handleEntityMentionClick}
-                    onWikiLinkClick={handleWikiLinkClick}
-                    resolvedWikiLinkTitles={wikiLinkTitleIndex}
-                    wikiLinkCandidates={wikiLinkCandidates}
-                    onSelectionChange={setEditorSelectionText}
-                    toolbarActions={manuscriptToolbarActions}
-                    emptySceneHint={
-                      isGettingStartedVisible(gettingStartedProgress) &&
-                      !seenEmptySceneHints.has(selectedScene.id)
-                        ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
-                        : ''
-                    }
-                  />
-                  {(betaReadComments.length > 0 || betaReadLoading) && (
-                    <div className="shell-beta-margin">
-                      {betaReadLoading && (
-                        <div className="br-loading" aria-live="polite">
-                          <span className="wa-spinner" aria-hidden="true" />
-                          Reading…
-                        </div>
-                      )}
-                      <BetaReadMargin
-                        comments={betaReadComments}
-                        onDismiss={handleBetaReadDismiss}
-                      />
-                    </div>
-                  )}
-                  <div
-                    className="pct-drag-handle"
-                    onMouseDown={handlePageDragStart}
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Drag to resize page width"
-                    tabIndex={0}
-                    onKeyDown={e => {
-                      const cur = pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680;
-                      if (e.key === 'ArrowRight') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.min(1400, cur + 10) });
-                      else if (e.key === 'ArrowLeft') handlePagePrefsChange({ ...pagePrefs, sizePreset: 'custom', customWidthPx: Math.max(320, cur - 10) });
-                    }}
-                  />
-                </div>
-                {/* Beta 4 M10: drafts compare split (scope = the open scene). */}
-                {draftsSplitOpen && (
-                  <DraftsCompareSplit
-                    scopeLabel={selectedScene.title ?? 'Scene'}
-                    drafts={sceneDrafts.drafts}
-                    currentLabel={sceneDrafts.currentLabel}
-                    currentContent={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                    selectedTs={draftsSelectedTs}
-                    onSelectTs={setDraftsSelectedTs}
-                    onFullDiff={() => setDraftsDiffOpen(true)}
-                    onLoadDraft={(draft) => { void handleLoadDraft(draft); }}
-                    undoLabel={draftsUndo && draftsUndo.sceneId === selectedScene.id ? draftsUndo.loadedLabel : null}
-                    onUndo={handleDraftUndo}
-                    onClose={() => setDraftsSplitOpen(false)}
-                    error={sceneDrafts.error}
-                  />
-                )}
-                {/* Beta 4 M10: full side-by-side diff — covers the page area
-                    (doc header + toolbars stay usable); current draft ALWAYS
-                    the left/green column. */}
-                {draftsDiffOpen && (() => {
-                  const diffDraft =
-                    sceneDrafts.drafts.find(d => d.ts === draftsSelectedTs) ?? sceneDrafts.drafts[0] ?? null;
-                  return diffDraft ? (
-                    <div className="shell-drafts-diff-cover" data-testid="shell-drafts-diff-cover">
-                      <DraftDiffView
-                        documentLabel={selectedScene.title ?? 'Scene'}
-                        currentLabel={sceneDrafts.currentLabel}
-                        previousLabel={diffDraft.label}
-                        currentText={selectedScene.blocks.map(b => b.content).join('\n\n')}
-                        previousText={diffDraft.content}
-                        previousOptions={sceneDrafts.drafts.map(d => ({ id: d.ts, label: d.label }))}
-                        selectedPreviousId={diffDraft.ts}
-                        onSelectPrevious={setDraftsSelectedTs}
-                        onClose={() => setDraftsDiffOpen(false)}
-                      />
-                    </div>
-                  ) : null;
-                })()}
-                </div>
-                {showSceneHistory && (
-                  <SceneHistory
-                    sceneId={selectedScene.id}
-                    scenePath={selectedScene.path}
-                    currentContent={editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n')}
-                    onRestore={handleSceneRestore}
-                    onClose={() => setShowSceneHistory(false)}
-                  />
-                )}
               </div>
             ) : selectedEntity ? (
               <EntityDetail
