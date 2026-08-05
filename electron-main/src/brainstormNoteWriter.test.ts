@@ -5,12 +5,15 @@ import path from 'path';
 import {
   STORY_VAULT_GUARD_ERROR,
   buildFrontmatter,
+  buildRelationshipsBlock,
   dismissPendingBrainstormProposals,
   findNotesVaultNoteByName,
+  listKnownEntityStems,
   renderProposalMarkdown,
   resolveProposalDestination,
   writeNoteProposal,
 } from './brainstormNoteWriter.js';
+import { getGraphEdges, invalidateNoteGraphIndex } from './vaultGraph.js';
 import { closeDb, getSuggestion, openDb, upsertSuggestion, type DbSuggestion } from './db.js';
 import type { NoteProposal } from './brainstormAgent.js';
 
@@ -448,5 +451,144 @@ describe('renderProposalMarkdown', () => {
     expect(markdown).toContain('  - Stormlight');
     expect(markdown).toContain('role: healer');
     expect(markdown).toContain('---\n# Lyra Storm');
+  });
+
+  it('appends a Relationships block for known entities mentioned in the body', () => {
+    const markdown = renderProposalMarkdown(
+      makeProposal({ body: 'A healer trained by Aria in the Glass Library.' }),
+      NOW,
+      undefined,
+      ['Aria', 'Glass Library', 'Red Conclave'],
+    );
+
+    expect(markdown).toContain('**Relationships:**\n- [[Aria]]\n- [[Glass Library]]');
+    expect(markdown).not.toContain('[[Red Conclave]]');
+  });
+
+  it('does not append a second block when the body already contains one', () => {
+    const markdown = renderProposalMarkdown(
+      makeProposal({ body: 'Trained by Aria.\n\n**Relationships:**\n- [[Aria]]' }),
+      NOW,
+      undefined,
+      ['Aria'],
+    );
+
+    expect(markdown.match(/\*\*Relationships:\*\*/g)).toHaveLength(1);
+  });
+});
+
+describe('buildRelationshipsBlock', () => {
+  it('links whole-word, case-insensitive mentions using the canonical stem casing', () => {
+    const block = buildRelationshipsBlock(
+      'She follows ARIA but distrusts Ariana.',
+      'Lyra Storm',
+      ['Aria'],
+    );
+    expect(block).toBe('**Relationships:**\n- [[Aria]]');
+  });
+
+  it('excludes the note\'s own title and dedupes stems case-insensitively', () => {
+    const block = buildRelationshipsBlock(
+      'Lyra Storm and Aria spar daily.',
+      'Lyra Storm',
+      ['Lyra Storm', 'Aria', 'aria'],
+    );
+    expect(block).toBe('**Relationships:**\n- [[Aria]]');
+  });
+
+  it('returns null when no known entity is mentioned', () => {
+    expect(buildRelationshipsBlock('Meets Zorblax the unknown.', 'Lyra Storm', ['Aria'])).toBeNull();
+    expect(buildRelationshipsBlock('Meets Aria.', 'Lyra Storm', [])).toBeNull();
+  });
+
+  it('escapes regex metacharacters in stems', () => {
+    const block = buildRelationshipsBlock('Visits Watchtower (North).', 'Lyra', ['Watchtower (North)']);
+    expect(block).toBe('**Relationships:**\n- [[Watchtower (North)]]');
+  });
+});
+
+describe('listKnownEntityStems', () => {
+  it('collects stems only under Characters/Locations/Factions directories', () => {
+    const notesRoot = makeTmp('mythos-notes-stems-');
+    try {
+      const mk = (rel: string) => {
+        fs.mkdirSync(path.join(notesRoot, path.dirname(rel)), { recursive: true });
+        fs.writeFileSync(path.join(notesRoot, rel), '# note\n', 'utf-8');
+      };
+      mk('Universes/Argent/Characters/Aria.md');
+      mk('Universes/Argent/Locations/Glass Library.md');
+      mk('Universes/Argent/Factions/Red Conclave.md');
+      mk('Universes/Argent/Systems/Weave Magic.md');
+      mk('Inbox/Loose Idea.md');
+
+      const stems = listKnownEntityStems(notesRoot).sort();
+      expect(stems).toEqual(['Aria', 'Glass Library', 'Red Conclave']);
+    } finally {
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('returns [] for a missing vault root', () => {
+    expect(listKnownEntityStems(path.join(os.tmpdir(), 'mythos-does-not-exist'))).toEqual([]);
+  });
+});
+
+describe('Relationships wikilinks resolve to graph edges (SKY-9206)', () => {
+  it('writes links that the vault graph resolves into an edge to the known note', () => {
+    const notesRoot = makeTmp('mythos-notes-edges-');
+    const storyRoot = makeTmp('mythos-story-edges-');
+    try {
+      const charactersDir = path.join(notesRoot, 'Universes', 'Argent', 'Characters');
+      fs.mkdirSync(charactersDir, { recursive: true });
+      fs.writeFileSync(path.join(charactersDir, 'Aria.md'), '# Aria\n\nAn archivist.\n', 'utf-8');
+
+      const result = writeNoteProposal({
+        proposal: makeProposal({ body: 'A healer who studied under Aria before refusing the throne.' }),
+        notesVaultRoot: notesRoot,
+        storyVaultRoot: storyRoot,
+        now: NOW,
+      });
+
+      const written = fs.readFileSync(path.join(notesRoot, result.path), 'utf-8');
+      expect(written).toContain('**Relationships:**\n- [[Aria]]');
+
+      // The link must actually resolve — the graph draws a directed edge from
+      // the generated note to the pre-existing Aria note.
+      invalidateNoteGraphIndex();
+      const edges = getGraphEdges(notesRoot);
+      expect(edges).toContainEqual({
+        source: 'Universes/Argent/Characters/Lyra Storm.md',
+        target: 'Universes/Argent/Characters/Aria.md',
+        weight: 1,
+      });
+    } finally {
+      invalidateNoteGraphIndex();
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+      fs.rmSync(storyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('emits no Relationships block when the body mentions no vault entity', () => {
+    const notesRoot = makeTmp('mythos-notes-noedge-');
+    const storyRoot = makeTmp('mythos-story-noedge-');
+    try {
+      const charactersDir = path.join(notesRoot, 'Universes', 'Argent', 'Characters');
+      fs.mkdirSync(charactersDir, { recursive: true });
+      fs.writeFileSync(path.join(charactersDir, 'Aria.md'), '# Aria\n', 'utf-8');
+
+      const result = writeNoteProposal({
+        proposal: makeProposal({ body: 'Meets Zorblax, someone entirely new.' }),
+        notesVaultRoot: notesRoot,
+        storyVaultRoot: storyRoot,
+        now: NOW,
+      });
+
+      const written = fs.readFileSync(path.join(notesRoot, result.path), 'utf-8');
+      expect(written).not.toContain('**Relationships:**');
+      expect(written).not.toContain('[[');
+    } finally {
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+      fs.rmSync(storyRoot, { recursive: true, force: true });
+    }
   });
 });

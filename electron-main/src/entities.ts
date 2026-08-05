@@ -118,6 +118,28 @@ function fmToEntry(fm: EntityFrontmatter, relPath: string): EntityEntry {
   };
 }
 
+// ─── Relationships prose block (SKY-9206) ───
+//
+// Mirrors the sample pack's `**Relationships:**` [[wikilink]] mechanism
+// (SKY-8943) so agent-created entities carry human-readable, linkable
+// relationship prose alongside the typed `relations:` frontmatter. Only
+// relations whose target id resolves in the manifest are linked — a stale or
+// invented target must never become a dangling [[wikilink]].
+
+function buildRelationshipsProse(
+  relations: EntityRelation[] | undefined,
+  manifest: Manifest,
+): string {
+  const bullets: string[] = [];
+  for (const rel of relations ?? []) {
+    const target = manifest.entities.find((e) => e.id === rel.target);
+    if (!target) continue;
+    bullets.push(`- ${rel.type} [[${target.name}]]`);
+  }
+  if (bullets.length === 0) return '';
+  return ['**Relationships:**', ...bullets].join('\n') + '\n';
+}
+
 // ─── CRUD ───
 
 export function createEntity(
@@ -149,7 +171,12 @@ export function createEntity(
     updatedAt: now,
   };
 
-  const content = serializeEntityFrontmatter(fm, opts.prose ?? '');
+  const relationshipsBlock = buildRelationshipsProse(fm.relations, manifest);
+  const baseProse = opts.prose ?? '';
+  const prose = relationshipsBlock
+    ? (baseProse.trim() ? `${baseProse.replace(/\s+$/, '')}\n\n${relationshipsBlock}` : relationshipsBlock)
+    : baseProse;
+  const content = serializeEntityFrontmatter(fm, prose);
   writeVaultFileAtomic(vaultRoot, relPath, content);
 
   const entry = fmToEntry(fm, relPath);

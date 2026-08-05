@@ -77,6 +77,77 @@ export function findNotesVaultNoteByName(notesVaultRoot: string, name: string): 
   return walk(notesVaultRoot, '');
 }
 
+// ─── Relationships block (SKY-9206) ───
+//
+// Agent-written notes must be born with graph edges, mirroring the sample
+// pack's `**Relationships:**` [[wikilink]] blocks (SKY-8943). The vault graph
+// (vaultGraph.ts) resolves a [[link]] against note filename stems, so we only
+// ever link stems of .md files that already exist in the Notes Vault — every
+// emitted link resolves by construction and hallucinated names can never
+// become links.
+
+/** Notes Vault directories whose notes count as linkable world entities. */
+const LINKABLE_ENTITY_DIRS = new Set(['characters', 'locations', 'factions']);
+
+/**
+ * Collect filename stems of all Characters/Locations/Factions notes in the
+ * Notes Vault. Hidden directories (leading `.`) are skipped.
+ */
+export function listKnownEntityStems(notesVaultRoot: string): string[] {
+  const stems: string[] = [];
+  function walk(absDir: string, underEntityDir: boolean): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        walk(
+          path.join(absDir, entry.name),
+          underEntityDir || LINKABLE_ENTITY_DIRS.has(entry.name.toLowerCase()),
+        );
+      } else if (underEntityDir && entry.isFile() && entry.name.endsWith('.md')) {
+        stems.push(entry.name.slice(0, -3));
+      }
+    }
+  }
+  if (fs.existsSync(notesVaultRoot)) walk(notesVaultRoot, false);
+  return stems;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Build a `**Relationships:**` block linking every known entity whose name
+ * appears (whole-word, case-insensitive) in the body. Returns null when the
+ * body mentions no known entity — an empty block would be noise.
+ */
+export function buildRelationshipsBlock(
+  body: string,
+  selfTitle: string,
+  knownEntityStems: string[],
+): string | null {
+  const selfLower = selfTitle.trim().toLowerCase();
+  const seen = new Set<string>();
+  const linked: string[] = [];
+  for (const stem of knownEntityStems) {
+    const name = stem.trim();
+    if (!name) continue;
+    const lower = name.toLowerCase();
+    if (lower === selfLower || seen.has(lower)) continue;
+    if (!new RegExp(`(?<![\\w])${escapeRegExp(name)}(?![\\w])`, 'i').test(body)) continue;
+    seen.add(lower);
+    linked.push(name);
+  }
+  if (linked.length === 0) return null;
+  return ['**Relationships:**', ...linked.map((name) => `- [[${name}]]`)].join('\n');
+}
+
 function listChildDirectories(root: string, relativeDir: string): string[] {
   const absoluteDir = path.join(root, relativeDir);
   if (!fs.existsSync(absoluteDir)) return [];
@@ -191,9 +262,10 @@ export function renderProposalMarkdown(
   proposal: NoteProposal,
   now = new Date().toISOString(),
   suggestedDestination?: string,
+  knownEntityStems: string[] = [],
 ): string {
   const frontmatter = buildFrontmatter(proposal, now, suggestedDestination);
-  return [
+  const lines = [
     '---',
     renderYaml(frontmatter),
     '---',
@@ -201,7 +273,14 @@ export function renderProposalMarkdown(
     '',
     proposal.body,
     '',
-  ].join('\n');
+  ];
+  // Skip when the body already carries its own block — the extraction prompt
+  // forbids that, but a duplicate heading is worse than a missed append.
+  if (!proposal.body.includes('**Relationships:**')) {
+    const relationships = buildRelationshipsBlock(proposal.body, proposal.title, knownEntityStems);
+    if (relationships) lines.push(relationships, '');
+  }
+  return lines.join('\n');
 }
 
 function assertWriteTarget(notesVaultRoot: string, storyVaultRoot: string, destinationPath: string): string {
@@ -221,8 +300,13 @@ function assertWriteTarget(notesVaultRoot: string, storyVaultRoot: string, desti
 export function writeNoteProposal(args: WriteNoteProposalArgs): { status: 'written'; path: string } {
   const now = args.now ?? new Date().toISOString();
   const target = assertWriteTarget(args.notesVaultRoot, args.storyVaultRoot, args.proposal.destinationPath);
+  const knownEntityStems = listKnownEntityStems(args.notesVaultRoot);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, renderProposalMarkdown(args.proposal, now, args.suggestedDestination), 'utf-8');
+  fs.writeFileSync(
+    target,
+    renderProposalMarkdown(args.proposal, now, args.suggestedDestination, knownEntityStems),
+    'utf-8',
+  );
   return { status: 'written', path: args.proposal.destinationPath };
 }
 

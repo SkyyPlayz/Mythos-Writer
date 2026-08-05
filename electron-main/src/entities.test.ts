@@ -543,3 +543,61 @@ describe('applyTypedRelation', () => {
     expect(result.targetWritten).toBe(false);
   });
 });
+
+// ─── Relationships prose block (SKY-9206) ───
+
+describe('createEntity — Relationships prose block', () => {
+  it('writes a **Relationships:** block whose [[wikilinks]] resolve against the manifest', () => {
+    const aria = createEntity(tmpDir, manifest, { name: 'Aria Voss', type: 'character' });
+    const kade = createEntity(tmpDir, manifest, {
+      name: 'Kade',
+      type: 'character',
+      relations: [{ type: 'ally of', target: aria.id }],
+      prose: 'A wandering blade.',
+    });
+
+    const raw = fs.readFileSync(path.join(tmpDir, kade.path), 'utf-8');
+    // Typed relation stays in frontmatter…
+    expect(raw).toContain('relations:');
+    expect(raw).toContain(`target: ${aria.id}`);
+    // …and the prose block links the resolved entity name.
+    expect(raw).toContain('A wandering blade.');
+    expect(raw).toContain('**Relationships:**\n- ally of [[Aria Voss]]');
+
+    // Round-trip: the appended block must not corrupt frontmatter parsing.
+    const read = readEntity(tmpDir, manifest, kade.id);
+    expect(read?.relations).toEqual([{ type: 'ally of', target: aria.id }]);
+    expect(read?.name).toBe('Kade');
+  });
+
+  it('writes the block alone when the entity has no prose', () => {
+    const aria = createEntity(tmpDir, manifest, { name: 'Aria Voss', type: 'character' });
+    const fort = createEntity(tmpDir, manifest, {
+      name: 'Northwatch',
+      type: 'location',
+      relations: [{ type: 'ruled by', target: aria.id }],
+    });
+
+    const raw = fs.readFileSync(path.join(tmpDir, fort.path), 'utf-8');
+    expect(raw).toContain('**Relationships:**\n- ruled by [[Aria Voss]]');
+  });
+
+  it('never links a relation whose target is missing from the manifest', () => {
+    const kade = createEntity(tmpDir, manifest, {
+      name: 'Kade',
+      type: 'character',
+      relations: [{ type: 'ally of', target: 'no-such-entity-id' }],
+      prose: 'A wandering blade.',
+    });
+
+    const raw = fs.readFileSync(path.join(tmpDir, kade.path), 'utf-8');
+    expect(raw).not.toContain('**Relationships:**');
+    expect(raw).not.toContain('[[');
+  });
+
+  it('adds no block when the entity has no relations', () => {
+    const solo = createEntity(tmpDir, manifest, { name: 'Solo', type: 'character', prose: 'Alone.' });
+    const raw = fs.readFileSync(path.join(tmpDir, solo.path), 'utf-8');
+    expect(raw).not.toContain('**Relationships:**');
+  });
+});

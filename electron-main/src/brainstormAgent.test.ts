@@ -971,3 +971,46 @@ describe('DB migration v13 — proposal_telemetry table', () => {
     })).not.toThrow();
   });
 });
+
+// ─── Known-entity context in the extraction prompt (SKY-9206) ───
+
+describe('runExtractionSideCall — known-entity prompt context', () => {
+  it('lists known entities ahead of the turn text so the model can reference them', async () => {
+    let captured = '';
+    const callLlm = async (userPrompt: string) => {
+      captured = userPrompt;
+      return '[]';
+    };
+
+    await runExtractionSideCall(
+      'Kade meets Aria at the gate.',
+      new Set(['Aria', 'The Guild']),
+      new Set(),
+      'turn-known',
+      { callLlm },
+    );
+
+    expect(captured).toContain('Known entities already in the vault: Aria, The Guild');
+    expect(captured).toContain('Kade meets Aria at the gate.');
+    // Known list must come first so the extraction instruction stays adjacent to the turn.
+    expect(captured.indexOf('Known entities')).toBeLessThan(captured.indexOf('Extract entities'));
+  });
+
+  it('omits the known-entities preamble when the vault has none', async () => {
+    let captured = '';
+    const callLlm = async (userPrompt: string) => {
+      captured = userPrompt;
+      return '[]';
+    };
+
+    await runExtractionSideCall('Some text', new Set(), new Set(), 'turn-none', { callLlm });
+
+    expect(captured).not.toContain('Known entities');
+    expect(captured.startsWith('Extract entities from this brainstorm conversation turn:')).toBe(true);
+  });
+
+  it('instructs the model about known-entity mentions in the system prompt', () => {
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Known entities already in the vault');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('exact listed name');
+  });
+});

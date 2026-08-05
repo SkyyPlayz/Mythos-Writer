@@ -301,6 +301,12 @@ Rules:
 - Include every distinct named story entity, even minor or uncertain ones — express
   doubt through an honestly low extractionConfidence instead of leaving the entity
   out. Keep each body to one short sentence so the array stays compact.
+- The user prompt may start with a "Known entities already in the vault" list. When
+  the turn genuinely connects an extracted entity to a known entity, mention that
+  known entity by its exact listed name inside the body sentence — the note writer
+  turns exact-name mentions into [[wikilinks]]. Do not mention known entities the
+  turn does not connect, do not invent entity names, and do not write [[brackets]]
+  or a Relationships section yourself.
 - Return [] only when the turn names no story entities at all.
 - Raw JSON array only — no markdown fences.`;
 
@@ -316,6 +322,8 @@ interface RawExtractionItem {
 const VALID_FACT_KINDS: Set<string> = new Set([
   'character', 'location', 'item', 'faction', 'scene_card', 'inbox',
 ]);
+
+const MAX_KNOWN_ENTITIES_IN_PROMPT = 60;
 
 function parseExtractionResponse(raw: string): RawExtractionItem[] {
   const trimmed = raw.trim();
@@ -382,7 +390,18 @@ export async function runExtractionSideCall(
   deps: ExtractionCallDeps,
 ): Promise<NoteProposal[]> {
   const generateId = deps.generateId ?? (() => crypto.randomUUID());
-  const userPrompt = `Extract entities from this brainstorm conversation turn:\n\n${turnText}`;
+  // SKY-9206: surface the vault's known entities so the model can mention them
+  // by exact name in proposal bodies — the note writer links those mentions as
+  // [[wikilinks]]. Capped so an entity-heavy vault can't crowd out the turn
+  // text within the side-call's bounded budget.
+  const knownEntities = [...existingEntityNames]
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, MAX_KNOWN_ENTITIES_IN_PROMPT);
+  const knownEntitiesSection = knownEntities.length > 0
+    ? `Known entities already in the vault: ${knownEntities.join(', ')}\n\n`
+    : '';
+  const userPrompt = `${knownEntitiesSection}Extract entities from this brainstorm conversation turn:\n\n${turnText}`;
 
   let rawResponse: string;
   try {
