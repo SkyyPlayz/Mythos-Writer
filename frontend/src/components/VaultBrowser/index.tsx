@@ -15,6 +15,7 @@ import type { FlatRow, TreeNode, TreeSortMode, VaultListItem, VaultOrderMap } fr
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
+import { RecentNoteIcon, NewFolderIcon } from './TreeIcons';
 import NoteTemplateDialog from '../NoteTemplateDialog';
 import IconPicker from '../IconPicker/IconPicker';
 import TagPane from '../TagPane';
@@ -555,7 +556,14 @@ const EMPTY_TITLE_MAP: ReadonlyMap<string, string> = new Map();
 const SORT_MODE_KEY = 'vb-sort-mode-notes';
 const AUTO_REVEAL_KEY = 'vb-auto-reveal';
 const RECENT_KEY = 'vb-notes-recent';
-const RECENT_MAX = 5;
+// M8c (SKY-9335): the prototype's RECENT NOTES shows exactly three entries.
+const RECENT_MAX = 3;
+
+/** M8c: a recently-opened note, path + the time it was opened (for the relative-timestamp display). */
+interface RecentEntry {
+  path: string;
+  at: number;
+}
 
 function readSortMode(): TreeSortMode {
   try {
@@ -569,21 +577,39 @@ function readAutoReveal(): boolean {
   try { return localStorage.getItem(AUTO_REVEAL_KEY) === 'true'; } catch { return false; }
 }
 
-function readRecent(): string[] {
+// SKY-9335: tolerate the pre-M8c string[] shape already sitting in a user's
+// localStorage — treated as "just opened" so it still renders (no timestamp
+// was ever recorded for it).
+function readRecent(): RecentEntry[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
-    if (raw) return JSON.parse(raw) as string[];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => (typeof entry === 'string' ? { path: entry, at: Date.now() } : entry as RecentEntry))
+      .filter((entry): entry is RecentEntry => !!entry && typeof entry.path === 'string');
   } catch { /**/ }
   return [];
 }
 
-function saveRecent(paths: string[]) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(paths)); } catch { /**/ }
+function saveRecent(entries: RecentEntry[]) {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(entries)); } catch { /**/ }
 }
 
-function addRecent(current: string[], path: string): string[] {
-  const deduped = [path, ...current.filter((p) => p !== path)];
+function addRecent(current: RecentEntry[], path: string): RecentEntry[] {
+  const deduped = [{ path, at: Date.now() }, ...current.filter((e) => e.path !== path)];
   return deduped.slice(0, RECENT_MAX);
+}
+
+// M8c: "1m ago" / "2h ago" / "2d ago" — same bucketing as SceneHistoryPane's
+// relativeTimeFrom, matching the prototype's RECENT NOTES timestamps.
+function formatRecentTime(atMs: number, nowMs: number): string {
+  const diffSec = Math.max(0, Math.floor((nowMs - atMs) / 1000));
+  if (diffSec < 60) return 'just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86_400)}d ago`;
 }
 
 function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
@@ -597,8 +623,9 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   const [sortMode, setSortMode] = useState<TreeSortMode>(readSortMode);
   const [autoReveal, setAutoReveal] = useState<boolean>(readAutoReveal);
   const [searchQuery, setSearchQuery] = useState('');
-  const [recentPaths, setRecentPaths] = useState<string[]>(readRecent);
-  const [recentOpen, setRecentOpen] = useState(true);
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>(readRecent);
+  // M8c: vault picker dropdown state
+  const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!activeTag) { setTagPaths(null); return; }
@@ -713,7 +740,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       onOpenFile?.(path);
       onContextChange?.('file');
       // M16: track in RECENT
-      setRecentPaths((prev) => {
+      setRecentEntries((prev) => {
         const next = addRecent(prev, path);
         saveRecent(next);
         return next;
@@ -991,13 +1018,60 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
 
   const rows = flattenTree(tree, expanded, selected);
 
+  // M8c: footer note count — files only, derived from the already-loaded
+  // listing (no extra scan/IPC round-trip).
+  const noteCount = allNotesItems.filter((item) => !item.isDirectory).length;
+
   const sortLabel = sortMode === 'az' ? 'A–Z' : sortMode === 'za' ? 'Z–A' : 'Manual';
 
   return (
     <div className="vb-notes-vault" data-testid="vb-notes-vault">
+      {/* M8c: vault picker header — "Notes Vault ▾" clickable, opens vault list */}
+      <div className="vb-notes-header" data-testid="vb-notes-header">
+        <button
+          className="vb-vault-picker"
+          onClick={() => setVaultPickerOpen((o) => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={vaultPickerOpen}
+          data-testid="vb-vault-picker"
+        >
+          <span className="vb-vault-name">Notes Vault</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        {vaultPickerOpen && (
+          <>
+            <div className="vb-vault-picker-backdrop" onClick={() => setVaultPickerOpen(false)} />
+            <div className="vb-vault-picker-dropdown" role="listbox" aria-label="Note Vaults">
+              <div className="vb-vault-picker-heading">NOTE VAULTS</div>
+              <div className="vb-vault-picker-row vb-vault-picker-row--active" role="option" aria-selected="true">
+                <div className="vb-vault-picker-info">
+                  <span className="vb-vault-picker-label">Notes Vault</span>
+                  <span className="vb-vault-picker-sub">primary</span>
+                </div>
+                <span className="vb-vault-picker-dot" aria-hidden="true" />
+              </div>
+              <div className="vb-vault-picker-divider" aria-hidden="true" />
+              <button
+                type="button"
+                className="vb-vault-picker-row vb-vault-picker-import"
+                role="option"
+                aria-selected="false"
+                data-testid="vb-vault-picker-import"
+                onClick={() => {
+                  setVaultPickerOpen(false);
+                  window.api.openVaultFolder?.();
+                }}
+              >
+                <div className="vb-vault-picker-info">
+                  <span className="vb-vault-picker-label">Import a vault…</span>
+                </div>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       {/* M16: 5-button toolbar */}
       <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
-        <span className="vb-section-label">Notes Vault</span>
         <button
           className="vb-toolbar-btn"
           onClick={() => handleNewNote('')}
@@ -1014,7 +1088,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           aria-label="New folder"
           data-testid="vb-btn-new-folder"
         >
-          📁+
+          <NewFolderIcon />
         </button>
         <button
           className="vb-toolbar-btn"
@@ -1076,36 +1150,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </button>
         )}
       </div>
-      {/* M16: RECENT list */}
-      {recentPaths.length > 0 && (
-        <div className="vb-recent" data-testid="vb-recent">
-          <button
-            className="vb-recent-toggle"
-            onClick={() => setRecentOpen((o) => !o)}
-            aria-expanded={recentOpen}
-            data-testid="vb-recent-toggle"
-          >
-            <span className="vb-recent-chevron" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
-            RECENT
-          </button>
-          {recentOpen && (
-            <ul className="vb-recent-list" data-testid="vb-recent-list">
-              {recentPaths.map((p) => (
-                <li key={p} className="vb-recent-item">
-                  <button
-                    className="vb-recent-btn"
-                    onClick={() => handleOpen(p)}
-                    title={p}
-                    data-testid={`vb-recent-item-${p}`}
-                  >
-                    {p.split('/').pop()?.replace(/\.md$/i, '') ?? p}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
       <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
       {allNotesItems.length === 0 ? (
         <NotesVaultEmptyState onCreate={() => handleNewNote('')} />
@@ -1170,6 +1214,35 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           Drop here to move to vault root
         </div>
       )}
+      {/* M8c (SKY-9335): RECENT NOTES — three most-recently-opened notes,
+          relative timestamps, drawn note glyph. Prototype §M8 item 2. */}
+      {recentEntries.length > 0 && (
+        <div className="vb-recent" data-testid="vb-recent">
+          <div className="vb-recent-label">RECENT NOTES</div>
+          <ul className="vb-recent-list" data-testid="vb-recent-list">
+            {recentEntries.map((entry) => (
+              <li key={entry.path} className="vb-recent-item">
+                <button
+                  className="vb-recent-btn"
+                  onClick={() => handleOpen(entry.path)}
+                  title={entry.path}
+                  data-testid={`vb-recent-item-${entry.path}`}
+                >
+                  <RecentNoteIcon />
+                  <span className="vb-recent-name">
+                    {entry.path.split('/').pop()?.replace(/\.md$/i, '') ?? entry.path}
+                  </span>
+                  <span className="vb-recent-when">{formatRecentTime(entry.at, Date.now())}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* M8c: footer — total note count + sync status, outside the scroll region. */}
+      <div className="vb-notes-footer" data-testid="vb-notes-footer">
+        {noteCount} note{noteCount === 1 ? '' : 's'} · synced
+      </div>
       <ContextMenu
         row={ctxRow}
         x={ctxPos.x}
@@ -1436,24 +1509,6 @@ export default function VaultBrowser({
 
         {showNotes && (
           <div className={`vb-section${scope === 'both' ? ' vb-section-notes-split' : ' vb-section-full'}`}>
-            {/* M16: vault switcher */}
-            <div className="vb-vault-switcher" data-testid="vb-vault-switcher">
-              <select
-                className="vb-vault-select"
-                data-testid="vb-vault-select"
-                defaultValue="main"
-                onChange={(e) => {
-                  if (e.target.value === 'import') {
-                    e.target.value = 'main';
-                    window.api.openVaultFolder?.();
-                  }
-                }}
-                aria-label="Select vault"
-              >
-                <option value="main">Notes Vault</option>
-                <option value="import">Import a vault…</option>
-              </select>
-            </div>
             {notesLoading ? (
               <div className="vb-loading">Loading…</div>
             ) : (

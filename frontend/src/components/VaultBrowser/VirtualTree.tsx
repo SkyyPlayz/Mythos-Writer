@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import type { ListImperativeAPI } from 'react-window';
 import type { FlatRow } from './treeUtils';
 import { NodeIcon } from '../../NodeIcon';
+import { FolderIcon, FileIcon } from './TreeIcons';
 
 // M15: 28px matches the Liquid Neon prototype tree row (12px type + 5.5px×2 padding).
 const ITEM_HEIGHT = 28;
@@ -224,8 +225,8 @@ function Row({
       <span className="vb-icon" aria-hidden="true">
         {/* SKY-9310 (R8): iconMap now covers directories too (path-keyed
             .mythos/icons.json), not just files (frontmatter) — a custom icon
-            wins over the open/closed folder glyph at every depth. */}
-        <NodeIcon icon={iconMap?.[node.path]} fallback={node.isDirectory ? (isExpanded ? '📂' : '📁') : isMd ? '📄' : '·'} />
+            wins over the drawn folder/file glyph at every depth. */}
+        <NodeIcon icon={iconMap?.[node.path]} fallback={node.isDirectory ? <FolderIcon /> : isMd ? <FileIcon /> : '·'} />
       </span>
       {isEditing && onRenameChange && onRenameCommit && onRenameCancel ? (
         <RenameInput value={editingValue ?? ''} error={editError} onChange={onRenameChange} onCommit={onRenameCommit} onCancel={onRenameCancel} />

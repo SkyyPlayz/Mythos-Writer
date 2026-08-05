@@ -291,6 +291,124 @@
   overflow: hidden;
 }
 
+/* M8c: vault picker header */
+.vb-notes-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 14px 10px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.vb-vault-picker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 8px;
+  margin-left: -7px;
+  color: var(--text-primary, #eef2fb);
+}
+
+.vb-vault-picker:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.vb-vault-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #eef2fb);
+}
+
+.vb-vault-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+
+.vb-vault-picker-dropdown {
+  position: absolute;
+  left: 0;
+  top: 44px;
+  width: 230px;
+  z-index: 46;
+  padding: 8px;
+  border-radius: 13px;
+  background: rgba(15,19,33,0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.vb-vault-picker-heading {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-muted, #7686a2);
+  padding: 3px 9px 7px;
+}
+
+.vb-vault-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.vb-vault-picker-row:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.vb-vault-picker-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vb-vault-picker-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary, #e6ecf9);
+}
+
+.vb-vault-picker-sub {
+  font-size: 9.5px;
+  color: var(--text-muted, #8e9db8);
+}
+
+.vb-vault-picker-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary, #00f0ff);
+  box-shadow: 0 0 7px rgba(0,240,255,0.6);
+  flex: none;
+}
+
+.vb-vault-picker-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: rgba(255,255,255,0.08);
+}
+
+/* .vb-vault-picker-row is a <button> here — reset the native chrome. */
+.vb-vault-picker-import {
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
 /* M16: toolbar */
 .vb-notes-toolbar {
   display: flex;
@@ -367,35 +485,20 @@
   color: var(--text-header, #fff);
 }
 
-/* M16: RECENT */
+/* M8c (SKY-9335): RECENT NOTES — always visible (no collapse), prototype
+   §M8 item 2 (three entries, relative timestamps, drawn note glyph). */
 .vb-recent {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  border-top: 1px solid var(--glass-border, rgba(255,255,255,0.08));
 }
 
-.vb-recent-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, rgba(255,255,255,0.4));
-  font-size: 0.65rem;
+.vb-recent-label {
+  font-size: 0.625rem;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 4px 8px;
-  width: 100%;
-  text-align: left;
-}
-
-.vb-recent-toggle:hover {
-  color: var(--text-header, #fff);
-}
-
-.vb-recent-chevron {
-  font-size: 0.6rem;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+  padding: 8px 8px 4px;
 }
 
 .vb-recent-list {
@@ -409,23 +512,45 @@
 }
 
 .vb-recent-btn {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   width: 100%;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-secondary, rgba(255,255,255,0.7));
   font-size: 0.75rem;
-  padding: 3px 8px 3px 20px;
+  padding: 4px 8px;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .vb-recent-btn:hover {
   background: var(--glass-highlight, rgba(255,255,255,0.05));
   color: var(--text-header, #fff);
+}
+
+.vb-recent-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vb-recent-when {
+  flex: none;
+  font-size: 0.625rem;
+  color: var(--text-muted, rgba(255,255,255,0.4));
+}
+
+/* M8c: footer — total note count + sync status, pinned below the scroll region. */
+.vb-notes-footer {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  font-size: 0.65rem;
+  color: var(--text-muted, rgba(255,255,255,0.5));
 }
 
 /* M16: vault switcher */
