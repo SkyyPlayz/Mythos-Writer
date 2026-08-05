@@ -314,7 +314,7 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
 
     // Create-on-click: the note is written to the vault and opened.
     await unresolved.click();
-    await expect(page.locator('.note-viewer-filename', { hasText: 'Lost Civilization.md' })).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Lost Civilization' })).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(notesDir, 'Lost Civilization.md'))).toBe(true);
     expect(fs.readFileSync(path.join(notesDir, 'Lost Civilization.md'), 'utf-8')).toContain('# Lost Civilization');
   } finally {

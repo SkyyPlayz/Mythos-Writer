@@ -162,7 +162,7 @@ async function openSceneLinksNote(page: Page): Promise<void> {
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
   await page.getByText('Scene Links', { exact: true }).click();
-  await expect(page.locator('.note-viewer-filename', { hasText: 'Scene Links.md' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Scene Links' })).toBeVisible({ timeout: 8_000 });
   // M17: the mode seg moved into the gear popover; rendered links live in Rich.
   await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
   await page.locator('[data-testid="note-gear-mode-rich"]').click();
@@ -177,7 +177,7 @@ async function openGraph(page: Page): Promise<void> {
 
 async function expectElaraNoteOpen(page: Page): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-  await expect(page.locator('.note-viewer-filename', { hasText: 'Elara.md' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Elara' })).toBeVisible({ timeout: 8_000 });
   await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
 }
 

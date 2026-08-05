@@ -45,6 +45,11 @@ export function countWords(text: string): number {
     .filter(Boolean).length;
 }
 
+/** M8: note-editor footer "N characters" (prototype `noteChars`). */
+export function countChars(text: string): number {
+  return stripMarkdown(stripFrontmatter(text)).trim().length;
+}
+
 export function readingTimeMinutes(words: number): number {
   if (words === 0) return 0;
   return Math.ceil(words / 238);

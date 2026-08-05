@@ -11,6 +11,7 @@ import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
+import type { FormatToolbarActions } from './FormatToolbar';
 import NoteSplitPane from './NoteSplitPane';
 import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
@@ -100,6 +101,8 @@ export interface NotesTabPanelProps {
   onOpenFocusPrefs?: () => void;
   /** SKY-3201: open the standalone Brainstorm tab seeded with the given text. */
   onOpenBrainstorm?: (seedText: string) => void;
+  /** M8d: note-editor Read/Dictate toolbar buttons — reuses the app's TTS/voice pipeline. */
+  noteToolbarActions?: FormatToolbarActions;
 }
 
 export default function NotesTabPanel({
@@ -152,6 +155,7 @@ export default function NotesTabPanel({
   onSetWritingMode,
   onOpenFocusPrefs,
   onOpenBrainstorm,
+  noteToolbarActions,
 }: NotesTabPanelProps) {
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
@@ -419,6 +423,7 @@ export default function NotesTabPanel({
               stories={stories}
               onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
               onOpenBacklinkScene={onSelectScene}
+              toolbarActions={noteToolbarActions}
             />
           )}
           {/* M16: note split — active note + a second note side by side. */}
@@ -441,6 +446,7 @@ export default function NotesTabPanel({
                   stories={stories}
                   onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
                   onOpenBacklinkScene={onSelectScene}
+                  toolbarActions={noteToolbarActions}
                 />
               </div>
               <div
