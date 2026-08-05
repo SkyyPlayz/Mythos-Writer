@@ -1,15 +1,16 @@
 // Walk every prototype surface and capture it + a text dump for structural diffing.
+// Harness rules: see lib.mjs header (no Close-clicks, dismiss `Not now` first,
+// verify nav via --active, never pipe the runner through `head`).
 import fs from 'fs';
-import { chromium } from '/home/skyy/Mythos-Writer/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
+import { serveProto, outDir, chromiumLaunchOptions } from './lib.mjs';
 
-const BASE = 'http://127.0.0.1:8899/index.html';
-const OUT = '/tmp/claude-1000/-home-skyy-PaperclipWork/7b5f74a1-1f91-48aa-8e4c-dc9984d1fe5d/scratchpad/shots-proto';
+const proto = await serveProto();
+const BASE = proto.url;
+const OUT = outDir('capture-proto');
 fs.mkdirSync(OUT, { recursive: true });
 
-const browser = await chromium.launch({
-  executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--disable-dev-shm-usage'],
-});
+const browser = await chromium.launch(chromiumLaunchOptions());
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForTimeout(3500);
@@ -81,4 +82,5 @@ for (const r of ['Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vau
 
 fs.writeFileSync(`${OUT}/proto-text.json`, JSON.stringify(texts, null, 1));
 await browser.close();
+await proto.close();
 console.log('DONE');

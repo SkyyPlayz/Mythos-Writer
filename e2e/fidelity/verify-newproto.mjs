@@ -1,13 +1,19 @@
 // Verify the 2026-07-30 export: margin ruler + AI master toggle, and capture
 // what the app looks like with AI OFF (the manual-mode spec).
+// Harness rules: see lib.mjs header (no Close-clicks, dismiss `Not now` first,
+// verify nav via --active, never pipe the runner through `head`).
 import fs from 'fs';
-import { chromium } from '/home/skyy/Mythos-Writer/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
+import { serveProto, outDir, chromiumLaunchOptions } from './lib.mjs';
 
-const OUT = '/tmp/claude-1000/-home-skyy-PaperclipWork/7b5f74a1-1f91-48aa-8e4c-dc9984d1fe5d/scratchpad/shots-newproto';
+const proto = await serveProto();
+const BASE = proto.url;
+
+const OUT = outDir('verify-newproto');
 fs.mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const browser = await chromium.launch(chromiumLaunchOptions());
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-await page.goto('http://127.0.0.1:8899/index.html', { waitUntil: 'networkidle', timeout: 60000 });
+await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForTimeout(3500);
 
 const clickText = async (label, leftMax = 9999, leftMin = 0) => {
@@ -86,4 +92,5 @@ const tN = await page.evaluate(() => document.body.innerText);
 for (const g of ['CONTINUITY FLAGS', 'Brainstorm Agent', 'CHAT']) console.log(`  notes ${g}: ${tN.includes(g) ? 'STILL PRESENT' : 'hidden'}`);
 
 await browser.close();
+await proto.close();
 console.log('DONE');
