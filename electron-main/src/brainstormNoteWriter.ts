@@ -2,6 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import type { FactType, NoteProposal } from './brainstormAgent.js';
 import { getDb } from './db.js';
+import {
+  collectNotesVaultNoteNames,
+  findExplicitMentions,
+  renderRelationshipsBlock,
+  sanitizeWikilinks,
+  type KnownNoteNames,
+} from './noteRelationships.js';
 
 export const STORY_VAULT_GUARD_ERROR = 'STORY_VAULT_GUARD_ERROR';
 
@@ -191,15 +198,28 @@ export function renderProposalMarkdown(
   proposal: NoteProposal,
   now = new Date().toISOString(),
   suggestedDestination?: string,
+  existingNoteNames?: KnownNoteNames,
 ): string {
   const frontmatter = buildFrontmatter(proposal, now, suggestedDestination);
+  // SKY-9203: link only to notes that already exist, and only when the body
+  // explicitly mentions them. Unresolvable [[wikilinks]] in the LLM-produced
+  // body are unwrapped so a hallucinated link never reaches disk.
+  let body = proposal.body;
+  let relationships = '';
+  if (existingNoteNames) {
+    body = sanitizeWikilinks(body, existingNoteNames);
+    const selfStem = path.basename(proposal.destinationPath || sanitizeFileName(proposal.title), '.md');
+    const mentions = findExplicitMentions(body, existingNoteNames, selfStem);
+    relationships = renderRelationshipsBlock(mentions);
+  }
   return [
     '---',
     renderYaml(frontmatter),
     '---',
     `# ${proposal.title}`,
     '',
-    proposal.body,
+    body,
+    ...(relationships ? ['', relationships] : []),
     '',
   ].join('\n');
 }
@@ -221,8 +241,15 @@ function assertWriteTarget(notesVaultRoot: string, storyVaultRoot: string, desti
 export function writeNoteProposal(args: WriteNoteProposalArgs): { status: 'written'; path: string } {
   const now = args.now ?? new Date().toISOString();
   const target = assertWriteTarget(args.notesVaultRoot, args.storyVaultRoot, args.proposal.destinationPath);
+  // Collected at write time (not proposal time) so a note deleted between
+  // extraction and confirm can no longer be linked.
+  const existingNoteNames = collectNotesVaultNoteNames(args.notesVaultRoot);
   fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, renderProposalMarkdown(args.proposal, now, args.suggestedDestination), 'utf-8');
+  fs.writeFileSync(
+    target,
+    renderProposalMarkdown(args.proposal, now, args.suggestedDestination, existingNoteNames),
+    'utf-8',
+  );
   return { status: 'written', path: args.proposal.destinationPath };
 }
 

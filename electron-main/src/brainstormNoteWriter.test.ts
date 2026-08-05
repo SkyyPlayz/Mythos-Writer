@@ -449,4 +449,89 @@ describe('renderProposalMarkdown', () => {
     expect(markdown).toContain('role: healer');
     expect(markdown).toContain('---\n# Lyra Storm');
   });
+
+  // SKY-9203: grounded Relationships wikilinks
+  const KNOWN = new Map([
+    ['dark cave', 'Dark Cave'],
+    ['ravenspire', 'Ravenspire'],
+  ]);
+
+  it('appends a Relationships block when the body mentions existing notes', () => {
+    const markdown = renderProposalMarkdown(
+      makeProposal({ body: 'A healer raised in Ravenspire, near Dark Cave.' }),
+      NOW,
+      undefined,
+      KNOWN,
+    );
+
+    expect(markdown).toContain(
+      '**Relationships:**\n- References [[Ravenspire]]\n- References [[Dark Cave]]',
+    );
+  });
+
+  it('emits NO Relationships block when nothing pre-existing is mentioned', () => {
+    const markdown = renderProposalMarkdown(makeProposal(), NOW, undefined, KNOWN);
+    expect(markdown).not.toContain('**Relationships:**');
+    expect(markdown).not.toContain('[[');
+  });
+
+  it('unwraps a hallucinated [[wikilink]] to a non-existent note', () => {
+    const markdown = renderProposalMarkdown(
+      makeProposal({ body: 'Sworn enemy of [[Ghost Keep]], ally of [[Ravenspire]].' }),
+      NOW,
+      undefined,
+      KNOWN,
+    );
+
+    expect(markdown).toContain('Sworn enemy of Ghost Keep, ally of [[Ravenspire]].');
+    expect(markdown).not.toContain('[[Ghost Keep]]');
+    expect(markdown).toContain('- References [[Ravenspire]]');
+  });
+
+  it('never lists the note itself as a relationship', () => {
+    const knownWithSelf = new Map([...KNOWN, ['lyra storm', 'Lyra Storm']]);
+    const markdown = renderProposalMarkdown(
+      makeProposal({ body: 'Lyra Storm keeps to herself.' }),
+      NOW,
+      undefined,
+      knownWithSelf,
+    );
+    expect(markdown).not.toContain('**Relationships:**');
+  });
+
+  it('leaves the body untouched when no known-name map is provided (legacy callers)', () => {
+    const markdown = renderProposalMarkdown(makeProposal({ body: 'See [[Ghost Keep]].' }), NOW);
+    expect(markdown).toContain('See [[Ghost Keep]].');
+    expect(markdown).not.toContain('**Relationships:**');
+  });
+});
+
+describe('writeNoteProposal Relationships integration (SKY-9203)', () => {
+  it('links a pre-existing vault note the body mentions, and only that note', () => {
+    const notesRoot = makeTmp('mythos-notes-rel-');
+    const storyRoot = makeTmp('mythos-story-rel-');
+    try {
+      const locDir = path.join(notesRoot, 'Universes', 'Argent', 'Locations');
+      fs.mkdirSync(locDir, { recursive: true });
+      fs.writeFileSync(path.join(locDir, 'Ravenspire.md'), '# Ravenspire\n', 'utf-8');
+
+      const result = writeNoteProposal({
+        proposal: makeProposal({
+          body: 'A healer raised in Ravenspire who fears the [[Ghost Keep]].',
+        }),
+        notesVaultRoot: notesRoot,
+        storyVaultRoot: storyRoot,
+        now: NOW,
+      });
+
+      const written = fs.readFileSync(path.join(notesRoot, result.path), 'utf-8');
+      expect(written).toContain('**Relationships:**\n- References [[Ravenspire]]');
+      // The hallucinated link was unwrapped — no dangling wikilink on disk.
+      expect(written).not.toContain('[[Ghost Keep]]');
+      expect(written).toContain('fears the Ghost Keep.');
+    } finally {
+      fs.rmSync(notesRoot, { recursive: true, force: true });
+      fs.rmSync(storyRoot, { recursive: true, force: true });
+    }
+  });
 });

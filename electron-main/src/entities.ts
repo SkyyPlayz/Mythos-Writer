@@ -118,6 +118,28 @@ function fmToEntry(fm: EntityFrontmatter, relPath: string): EntityEntry {
   };
 }
 
+// ─── Relationships prose block (SKY-9203) ───
+//
+// Renders the SKY-8943-style `**Relationships:**` block from the explicit typed
+// relations passed by the caller. De-risk constraints: only relations the
+// caller explicitly asserted are rendered (never inferred), and only when the
+// target entity exists in the manifest — a relation to a missing/deleted
+// entity is silently skipped so no dangling [[wikilink]] is ever written.
+// Creation-time only: later relation edits go through updateEntity /
+// applyTypedRelation, which manage the frontmatter `relations:` block and do
+// not rewrite prose.
+function renderRelationshipsProse(relations: EntityRelation[], manifest: Manifest): string {
+  const lines: string[] = [];
+  for (const rel of relations) {
+    const target = manifest.entities.find((e) => e.id === rel.target);
+    if (!target) continue;
+    const label = rel.type.charAt(0).toUpperCase() + rel.type.slice(1);
+    lines.push(`- ${label} [[${target.name}]]`);
+  }
+  if (lines.length === 0) return '';
+  return ['**Relationships:**', ...lines].join('\n');
+}
+
 // ─── CRUD ───
 
 export function createEntity(
@@ -149,7 +171,13 @@ export function createEntity(
     updatedAt: now,
   };
 
-  const content = serializeEntityFrontmatter(fm, opts.prose ?? '');
+  const relationshipsBlock = fm.relations ? renderRelationshipsProse(fm.relations, manifest) : '';
+  const baseProse = opts.prose ?? '';
+  const prose = relationshipsBlock
+    ? (baseProse.trim() ? `${baseProse.replace(/\s+$/, '')}\n\n${relationshipsBlock}\n` : `${relationshipsBlock}\n`)
+    : baseProse;
+
+  const content = serializeEntityFrontmatter(fm, prose);
   writeVaultFileAtomic(vaultRoot, relPath, content);
 
   const entry = fmToEntry(fm, relPath);

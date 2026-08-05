@@ -3,6 +3,7 @@
 
 import crypto from 'crypto';
 import type { DbSuggestion } from './db.js';
+import { sanitizeWikilinks, type KnownNoteNames } from './noteRelationships.js';
 
 // ─── Public types ───
 
@@ -304,6 +305,33 @@ Rules:
 - Return [] only when the turn names no story entities at all.
 - Raw JSON array only — no markdown fences.`;
 
+// Bound the injected known-entity list so an enormous vault cannot blow out the
+// side-call's prompt (the response budget is only 1024 tokens).
+const MAX_KNOWN_ENTITIES_IN_PROMPT = 200;
+
+/**
+ * SKY-9203: extraction prompt extended with the vault's already-known entity
+ * names so descriptions can reference them as [[wikilinks]]. Constraints match
+ * the CEO de-risk decision on SKY-8945: link ONLY names from the provided list,
+ * and ONLY when the turn explicitly states the connection — and both rules are
+ * additionally enforced in code (runExtractionSideCall unwraps any [[link]]
+ * whose target is not a known entity), so prompt compliance is not load-bearing.
+ */
+export function buildExtractionSystemPrompt(existingEntityNames: readonly string[] = []): string {
+  const names = [...new Set(existingEntityNames.map((n) => n.trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, MAX_KNOWN_ENTITIES_IN_PROMPT);
+  if (names.length === 0) return EXTRACTION_SYSTEM_PROMPT;
+  return [
+    EXTRACTION_SYSTEM_PROMPT,
+    '',
+    `Known vault entities: ${names.map((n) => JSON.stringify(n)).join(', ')}.`,
+    '- When the turn explicitly states a connection between an extracted entity and a known vault entity, write the known entity\'s name inside the body as a wikilink, spelled exactly as listed: [[Name]].',
+    '- Wikilink ONLY names from the known list. Never wikilink any other name and never invent an entity to link to.',
+    '- Do not wikilink a known entity the turn merely implies is related — the connection must be explicit in the turn\'s text.',
+  ].join('\n');
+}
+
 interface RawExtractionItem {
   kind: string;
   title: string;
@@ -394,6 +422,14 @@ export async function runExtractionSideCall(
   const items = parseExtractionResponse(rawResponse);
   const proposals: NoteProposal[] = [];
 
+  // SKY-9203 hard guarantee: unwrap any [[wikilink]] whose target is not an
+  // already-known entity, so a hallucinated link never reaches the proposal
+  // card or the vault. (writeNoteProposal re-sanitizes against actual note
+  // files at write time as the final guard.)
+  const knownForLinks: KnownNoteNames = new Map(
+    [...existingEntityNames].map((n) => [n.toLowerCase(), n]),
+  );
+
   for (const item of items) {
     if (!VALID_FACT_KINDS.has(item.kind)) continue;
     if (item.extractionConfidence < 0.6) continue;
@@ -407,7 +443,7 @@ export async function runExtractionSideCall(
       kind: item.kind as FactType,
       title: normalizedTitle,
       destinationPath: item.destinationPath ?? '',
-      body: item.body ?? '',
+      body: sanitizeWikilinks(item.body ?? '', knownForLinks),
       frontmatter: item.frontmatter && typeof item.frontmatter === 'object' ? item.frontmatter : {},
       sourceConversationTurnId: turnId,
       extractionConfidence: item.extractionConfidence,

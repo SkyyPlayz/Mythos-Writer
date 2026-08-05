@@ -12,6 +12,7 @@ import {
   parseAliasHints,
   runExtractionSideCall,
   EXTRACTION_SYSTEM_PROMPT,
+  buildExtractionSystemPrompt,
   type BrainstormAgentDeps,
   type ParsedFact,
   type WrittenEntity,
@@ -634,6 +635,53 @@ describe('EXTRACTION_SYSTEM_PROMPT', () => {
   it('keeps the JSON contract phrasing the parser depends on', () => {
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('Return ONLY a valid JSON array');
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('no markdown fences');
+  });
+});
+
+describe('buildExtractionSystemPrompt (SKY-9203)', () => {
+  it('returns the base prompt unchanged when no entities are known', () => {
+    expect(buildExtractionSystemPrompt()).toBe(EXTRACTION_SYSTEM_PROMPT);
+    expect(buildExtractionSystemPrompt([])).toBe(EXTRACTION_SYSTEM_PROMPT);
+    expect(buildExtractionSystemPrompt(['  ', ''])).toBe(EXTRACTION_SYSTEM_PROMPT);
+  });
+
+  it('lists known entities and the explicit-connection-only wikilink rules', () => {
+    const prompt = buildExtractionSystemPrompt(['Ravenspire', 'Aria Voss']);
+    expect(prompt).toContain(EXTRACTION_SYSTEM_PROMPT);
+    expect(prompt).toContain('Known vault entities: "Aria Voss", "Ravenspire".');
+    expect(prompt).toContain('Wikilink ONLY names from the known list');
+    expect(prompt).toContain('must be explicit in the turn');
+    expect(prompt).toContain('[[Name]]');
+  });
+
+  it('dedupes names and caps the injected list at 200', () => {
+    const names = Array.from({ length: 500 }, (_, i) => `Entity ${String(i).padStart(3, '0')}`);
+    const prompt = buildExtractionSystemPrompt([...names, 'Entity 000']);
+    expect(prompt).toContain('"Entity 000"');
+    expect(prompt).toContain('"Entity 199"');
+    expect(prompt).not.toContain('"Entity 200"');
+    expect(prompt.match(/"Entity 000"/g)).toHaveLength(1);
+  });
+});
+
+describe('runExtractionSideCall — wikilink sanitization (SKY-9203)', () => {
+  it('keeps [[links]] to known entities and unwraps links to unknown names', async () => {
+    const response = JSON.stringify([
+      {
+        kind: 'character',
+        title: 'Mira',
+        destinationPath: 'characters/mira.md',
+        body: 'Guardian of [[Ravenspire]], sworn to [[The Unseen Court]].',
+        frontmatter: {},
+        extractionConfidence: 0.9,
+      },
+    ]);
+    const callLlm = async () => response;
+    const proposals = await runExtractionSideCall(
+      '', new Set(['Ravenspire']), new Set(), 'turn-w', { callLlm },
+    );
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].body).toBe('Guardian of [[Ravenspire]], sworn to The Unseen Court.');
   });
 });
 
