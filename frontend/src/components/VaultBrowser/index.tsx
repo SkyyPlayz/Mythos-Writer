@@ -18,7 +18,6 @@ import { validateRenameName } from './renameUtils';
 import NoteTemplateDialog from '../NoteTemplateDialog';
 import TagPane from '../TagPane';
 import { useToast } from '../../hooks/useToast';
-import { useTextPrompt } from '../../useTextPrompt';
 import { Toast } from '../Toast/Toast';
 import './VaultBrowser.css';
 
@@ -39,6 +38,12 @@ function countDescendants(node: TreeNode): number {
     count += 1 + countDescendants(child);
   }
   return count;
+}
+
+// Directory a vault item lives in, e.g. "Lore/Gods" for "Lore/Gods/Zeus.md".
+function parentDirOf(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash > 0 ? path.slice(0, slash) : '';
 }
 
 function isNotesItem(item: { path: string; name: string; isDirectory: boolean }): boolean {
@@ -639,6 +644,9 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  // SKY-8892: path of a just-created folder still on its placeholder name —
+  // Esc on this one deletes it instead of just reverting the rename input.
+  const [pendingNewFolderPath, setPendingNewFolderPath] = useState<string | null>(null);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, row: FlatRow) => {
     e.preventDefault();
@@ -723,6 +731,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   // strip, so only do the dot-splitting for files.
   const handleStartRename = useCallback((row: FlatRow) => {
     setEditingPath(row.node.path);
+    setPendingNewFolderPath(null);
     const name = row.node.name;
     const lastDot = name.lastIndexOf('.');
     setEditValue(row.node.isDirectory || lastDot <= 0 ? name : name.slice(0, lastDot));
@@ -743,13 +752,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     const lastDot = origName.lastIndexOf('.');
     const ext = !isDir && lastDot > 0 ? origName.slice(lastDot) : '';
     const newPath = dir + trimmed + ext;
-    if (newPath === editingPath) { setEditingPath(null); return; }
+    if (newPath === editingPath) {
+      setEditingPath(null);
+      setPendingNewFolderPath(null);
+      return;
+    }
     const pathExists = notesItems.some((item) => item.path === newPath);
     if (pathExists) { setEditError('An item with that name already exists'); return; }
     try {
       await window.api.moveNotesVault(editingPath, newPath);
       setEditingPath(null);
       setEditError(null);
+      setPendingNewFolderPath(null);
       onReload();
       select(newPath);
     } catch (e) {
@@ -757,10 +771,21 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     }
   }, [editingPath, editValue, notesItems, onReload, select]);
 
+  // SKY-8892: Esc on a freshly-created (still-placeholder-named) folder
+  // removes it, matching the prototype's "type a name or it goes away" flow.
+  // Esc on any other rename just reverts the input, as before.
   const handleRenameCancel = useCallback(() => {
+    if (pendingNewFolderPath && editingPath === pendingNewFolderPath) {
+      const path = pendingNewFolderPath;
+      setEditingPath(null);
+      setEditError(null);
+      setPendingNewFolderPath(null);
+      window.api.deleteNotesVault(path).then(() => onReload()).catch(() => {});
+      return;
+    }
     setEditingPath(null);
     setEditError(null);
-  }, []);
+  }, [editingPath, pendingNewFolderPath, onReload]);
 
   const handleNewNote = useCallback(
     (dirPath: string) => {
@@ -779,25 +804,39 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     [onReload, select, onOpenFile],
   );
 
-  // SKY-7995: window.prompt() throws "prompt() is not supported" in Electron's
-  // renderer — this silently broke folder creation in every packaged build.
-  // useTextPrompt is the same promise-based modal DesktopShell already uses.
-  const { requestText, promptModal } = useTextPrompt();
-
+  // SKY-8892: create the folder immediately under a unique placeholder name
+  // ("New Folder", "New Folder 2", …) and drop straight into the existing
+  // inline-rename input (Enter commits, Esc deletes the placeholder) instead
+  // of a modal text prompt. Folder names are validated the same way file
+  // renames are (real filesystem-unsafe characters only) — no more slugifying
+  // "Lore & Myth" into something unrecognizable.
   const handleNewFolder = useCallback(
     async (dirPath: string) => {
-      const name = await requestText('Folder name:');
-      if (!name?.trim()) return;
-      const slug = name.trim().replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
-      const rel = dirPath ? `${dirPath}/${slug || 'folder'}` : `${slug || 'folder'}`;
+      const siblingNames = new Set(
+        notesItems
+          .filter((item) => item.isDirectory && parentDirOf(item.path) === dirPath)
+          .map((item) => item.name),
+      );
+      const base = 'New Folder';
+      let name = base;
+      let n = 1;
+      while (siblingNames.has(name)) { n += 1; name = `${base} ${n}`; }
+      const rel = dirPath ? `${dirPath}/${name}` : name;
       try {
         await window.api.mkdirNotesVault(rel);
         await onReload();
+        // Expand the parent folder (if any) so the new row is actually
+        // visible before we drop it into inline rename.
+        reveal(rel);
+        setPendingNewFolderPath(rel);
+        setEditingPath(rel);
+        setEditValue(name);
+        setEditError(null);
       } catch (e) {
         showToast((e as Error).message || 'Failed to create folder', 'error');
       }
     },
-    [onReload, showToast, requestText],
+    [notesItems, onReload, showToast, reveal],
   );
 
   // ─── M16: toolbar handlers ───
@@ -1007,7 +1046,16 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
             setRootDropActive(false);
             const from = e.dataTransfer.getData('text/plain');
             // Already at root (no '/') — nothing to move.
-            if (from && from.includes('/')) onMoveToRoot(from);
+            if (!from || !from.includes('/')) return;
+            // SKY-8892 (spec item 9): notes must live inside a folder — only
+            // folders may drop onto the root strip. Refuse notes with a toast
+            // instead of silently moving them out to the vault root.
+            const draggedItem = allNotesItems.find((item) => item.path === from);
+            if (draggedItem && !draggedItem.isDirectory) {
+              showToast('Notes must live inside a folder — drag a folder to move it to the vault root', 'error');
+              return;
+            }
+            onMoveToRoot(from);
           }}
         >
           Drop here to move to vault root
@@ -1036,7 +1084,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
       )}
       <Toast message={toast?.message ?? null} level={toast?.level} />
-      {promptModal}
     </div>
   );
 }

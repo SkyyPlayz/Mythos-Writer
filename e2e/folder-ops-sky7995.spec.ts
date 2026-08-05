@@ -1,5 +1,5 @@
 /**
- * folder-ops-sky7995.spec.ts — SKY-7995
+ * folder-ops-sky7995.spec.ts — SKY-7995, extended by SKY-8892
  *
  * Obsidian-parity folder operations in the Notes Vault tree. Runs against the
  * real packaged Electron app + real filesystem (no mocked window.api) — the
@@ -7,12 +7,24 @@
  * dir support only prove out end-to-end through the actual renderer→main→fs path.
  *
  * Coverage:
- *   FO-01  Create folder                — toolbar "New folder" → dir on disk
- *   FO-02  Nest a note inside a folder   — "New note" from a folder's context menu
- *   FO-03  Drag a note INTO a folder     — dir-safe move, file relocated on disk
- *   FO-04  Drag a note OUT to vault root — root drop zone, file relocated on disk
- *   FO-05  Rename a folder               — inline rename, dir renamed on disk incl. contents
- *   FO-06  Delete a folder (with contents) — item-count confirm, recursive delete on disk
+ *   FO-01  Create folder                    — toolbar "New folder" → dir on disk
+ *   FO-02  Nest a note inside a folder       — "New note" from a folder's context menu
+ *   FO-03  Drag a note INTO a folder         — dir-safe move, file relocated on disk
+ *   FO-04  Drag a note OUT to vault root     — SKY-8892 spec item 9: refused with a
+ *                                              toast, note stays put (notes must live
+ *                                              inside a folder)
+ *   FO-04b Drag a FOLDER OUT to vault root   — SKY-8892: folders may still move to root
+ *   FO-05  Rename a folder                   — inline rename, dir renamed on disk incl. contents
+ *   FO-06  Delete a folder (with contents)   — item-count confirm, recursive delete on disk
+ *   FO-07  New Folder → straight to inline rename, no slugifying ("Lore & Myth")
+ *   FO-08  Esc on a freshly-created folder deletes the placeholder
+ *   FO-09  "Lore & Myth" can be renamed and moved like any other folder
+ *   FO-10  Drag a NESTED note into another folder (SKY-8881 separator bug)
+ *   FO-11  Drag a folder into another folder, nests with contents intact
+ *   FO-12  Drag a NESTED folder to the root drop zone, moves back out
+ *   FO-13  Renaming a NESTED note keeps it in its folder
+ *   FO-14  Duplicate-named folders: a drop lands in the exact folder dropped on
+ *   FO-15  Moving OUT of a duplicate to a same-named root folder picks the right one
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list
@@ -178,15 +190,15 @@ test.afterAll(async () => {
 });
 
 /**
- * Fill and confirm the app's in-renderer text-prompt modal (useTextPrompt) —
- * VaultBrowser's "New folder" flow uses this instead of window.prompt(),
- * which Electron's renderer does not support ("prompt() is not supported").
+ * SKY-8892: VaultBrowser's "New folder" flow creates the placeholder
+ * directory immediately and drops straight into the existing inline-rename
+ * input (no modal prompt) — fill it and press Enter to commit the name.
  */
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
+async function fillNewFolderName(pg: Page, response: string): Promise<void> {
+  const input = pg.locator('.vb-rename-input');
   await input.waitFor({ state: 'visible', timeout: 6_000 });
   await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
+  await input.press('Enter');
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
@@ -194,7 +206,7 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
 
 test('FO-01: New Folder toolbar button creates a directory on disk', async () => {
   await page.locator('[data-testid="vb-btn-new-folder"]').click();
-  await fillPrompt(page, 'Worldbuilding');
+  await fillNewFolderName(page, 'Worldbuilding');
   await expect(page.locator('[data-testid="vb-row-Worldbuilding"]')).toBeVisible({ timeout: 8_000 });
   const found = await waitUntil(() => fs.existsSync(path.join(notesVaultDir, 'Worldbuilding')) &&
     fs.statSync(path.join(notesVaultDir, 'Worldbuilding')).isDirectory());
@@ -223,8 +235,10 @@ test('FO-02: New Note from a folder context menu nests the note inside it', asyn
 // ─── FO-01b: Second folder + root note, fixtures for drag tests ─────────────
 
 test('FO-01b: create a second folder and a root-level note for drag fixtures', async () => {
-  await page.locator('[data-testid="vb-btn-new-folder"]').click();
-  await fillPrompt(page, 'Archive');
+  // "Archive" is one of the default folders the app auto-scaffolds into every
+  // fresh, non-blank Notes Vault (NOTES_VAULT_DIRS in electron-main/src/vault.ts)
+  // — reuse it as the second fixture folder rather than creating a duplicate,
+  // which now correctly gets refused as a name collision (SKY-8892).
   await expect(page.locator('[data-testid="vb-row-Archive"]')).toBeVisible({ timeout: 8_000 });
 
   await page.locator('[data-testid="vb-btn-new-note"]').click();
@@ -253,9 +267,9 @@ test('FO-03: dragging a root note onto a folder moves it in (dir-safe IPC move)'
   expect(moved, 'loose-note.md was not moved into Archive/ on disk').toBe(true);
 });
 
-// ─── FO-04: Drag a note OUT to the vault root ────────────────────────────────
+// ─── FO-04: Drag a note OUT to the vault root — refused (SKY-8892 spec item 9) ─
 
-test('FO-04: dragging a nested note to the root drop zone moves it back out', async () => {
+test('FO-04: dragging a nested note to the root drop zone is refused, not moved', async () => {
   await ensureExpanded(page, 'vb-row-Archive');
   await expect(page.locator('[data-testid="vb-row-Archive/loose-note.md"]')).toBeVisible({ timeout: 8_000 });
 
@@ -263,11 +277,40 @@ test('FO-04: dragging a nested note to the root drop zone moves it back out', as
   expect(from, 'nested row not found').toBeTruthy();
   await simulateDropToRoot(page, from!);
 
-  const movedOut = await waitUntil(() =>
-    fs.existsSync(path.join(notesVaultDir, 'loose-note.md')) &&
-    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'loose-note.md')),
+  // Scoped to VaultBrowser's own toast — DesktopShell renders an unrelated
+  // "Your notes are in the new Notes tab" upgrade toast with the same testid.
+  await expect(page.locator('[data-testid="vb-notes-vault"] [data-testid="app-toast"]')).toContainText(/notes must live inside a folder/i, { timeout: 3_000 });
+  // Refused — the note stays exactly where it was, nothing lands at root.
+  expect(fs.existsSync(path.join(notesVaultDir, 'Archive', 'loose-note.md')), 'loose-note.md was unexpectedly moved out of Archive/').toBe(true);
+  expect(fs.existsSync(path.join(notesVaultDir, 'loose-note.md')), 'loose-note.md unexpectedly appeared at the vault root').toBe(false);
+});
+
+// ─── FO-04b: Drag a FOLDER OUT to the vault root — still allowed ─────────────
+
+test('FO-04b: dragging a folder to the root drop zone still moves it (folders may move to root)', async () => {
+  await page.locator('[data-testid="vb-row-Archive"]').click({ button: 'right' });
+  await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-folder"]').click();
+  // SKY-8892: New Folder drops straight into inline rename — accept the placeholder as-is.
+  const input = page.locator('.vb-rename-input');
+  await expect(input).toBeVisible({ timeout: 6_000 });
+  await input.press('Enter');
+  await expect(page.locator('[data-testid="vb-row-Archive/New Folder"]')).toBeVisible({ timeout: 8_000 });
+
+  const from = await page.locator('[data-testid="vb-row-Archive/New Folder"]').elementHandle();
+  expect(from, 'nested folder row not found').toBeTruthy();
+  await simulateDropToRoot(page, from!);
+
+  const moved = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'New Folder')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'New Folder')),
   );
-  expect(movedOut, 'loose-note.md was not moved back to vault root').toBe(true);
+  expect(moved, 'folder was not moved to the vault root — folders should still be able to').toBe(true);
+
+  // Clean up so the "New Folder" placeholder-name tests below start from a clean slate.
+  await page.locator('[data-testid="vb-row-New Folder"]').click({ button: 'right' });
+  await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-delete"]').click();
+  const deleted = await waitUntil(() => !fs.existsSync(path.join(notesVaultDir, 'New Folder')));
+  expect(deleted, 'cleanup delete of root "New Folder" failed').toBe(true);
 });
 
 // ─── FO-05: Rename a folder ──────────────────────────────────────────────────
@@ -307,6 +350,71 @@ test('FO-06: deleting a folder recursively removes it and its contents on disk',
   }
 });
 
+// ─── FO-07: New Folder → straight to inline rename, no slugifying ───────────
+
+test('FO-07: New Folder button drops into inline rename; "Lore & Myth" creates without slugifying', async () => {
+  await page.locator('[data-testid="vb-btn-new-folder"]').click();
+  // The placeholder folder is created immediately (no modal prompt) and the
+  // row appears already in inline-rename mode.
+  const input = page.locator('.vb-rename-input');
+  await expect(input).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('[data-testid="vb-row-New Folder"]')).toBeVisible({ timeout: 6_000 });
+  const placeholderOnDisk = await waitUntil(() => fs.existsSync(path.join(notesVaultDir, 'New Folder')));
+  expect(placeholderOnDisk, 'placeholder folder was not created on disk immediately').toBe(true);
+
+  await input.fill('Lore & Myth');
+  await input.press('Enter');
+  await expect(input).not.toBeVisible({ timeout: 6_000 });
+
+  const created = await waitUntil(() => fs.existsSync(path.join(notesVaultDir, 'Lore & Myth')));
+  expect(created, '"Lore & Myth" folder (unslugified) was not created on disk').toBe(true);
+  await expect(page.locator('[data-testid="vb-row-Lore & Myth"]')).toBeVisible({ timeout: 8_000 });
+});
+
+// ─── FO-08: Esc on a freshly-created folder deletes the placeholder ─────────
+
+test('FO-08: Esc on a freshly-created folder removes the placeholder, not just the text', async () => {
+  await page.locator('[data-testid="vb-btn-new-folder"]').click();
+  const input = page.locator('.vb-rename-input');
+  await expect(input).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('[data-testid="vb-row-New Folder"]')).toBeVisible({ timeout: 6_000 });
+
+  await input.press('Escape');
+  await expect(input).not.toBeVisible({ timeout: 6_000 });
+
+  const removed = await waitUntil(() => !fs.existsSync(path.join(notesVaultDir, 'New Folder')));
+  expect(removed, 'placeholder "New Folder" was not deleted on disk after Esc').toBe(true);
+  await expect(page.locator('[data-testid="vb-row-New Folder"]')).toHaveCount(0);
+});
+
+// ─── FO-09: "Lore & Myth" can be renamed and moved like any other folder ────
+
+test('FO-09: "Lore & Myth" can be renamed and moved', async () => {
+  await page.locator('[data-testid="vb-row-Lore & Myth"]').dblclick();
+  const input = page.locator('.vb-rename-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await input.fill('Lore & Myth Renamed');
+  await input.press('Enter');
+
+  const renamed = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Lore & Myth Renamed')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Lore & Myth')),
+  );
+  expect(renamed, '"Lore & Myth" was not renamed on disk').toBe(true);
+
+  const from = await page.locator('[data-testid="vb-row-Lore & Myth Renamed"]').elementHandle();
+  const to = await page.locator('[data-testid="vb-row-Archive"]').elementHandle();
+  expect(from, 'source row not found').toBeTruthy();
+  expect(to, 'target folder row not found').toBeTruthy();
+  await simulateRowDrag(from!, to!);
+
+  const moved = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'Lore & Myth Renamed')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Lore & Myth Renamed')),
+  );
+  expect(moved, '"Lore & Myth Renamed" was not moved into Archive/').toBe(true);
+});
+
 // ─── SKY-8881: nested-source moves — the Windows separator bug ───────────────
 //
 // FO-03/FO-04 only ever drag ROOT-level items, whose paths contain no
@@ -318,10 +426,12 @@ test('FO-06: deleting a folder recursively removes it and its contents on disk',
 // native-Windows CI runner (build-windows job) where they fail against the
 // old code; on Linux/macOS they guard the same flows.
 
-test('FO-07 (SKY-8881): dragging a NESTED note into another folder moves the file, no duplicated folder', async () => {
+test('FO-10 (SKY-8881): dragging a NESTED note into another folder moves the file, no duplicated folder', async () => {
+  // "Research" is one of the default folders NOTES_VAULT_DIRS auto-scaffolds
+  // into every fresh Notes Vault — reuse it as the fixture folder rather than
+  // creating a duplicate, which now correctly gets refused as a name collision
+  // (SKY-8892), same reasoning as the "Archive" reuse in FO-01b.
   // Fixture: Research/field-notes.md, created entirely through the UI.
-  await page.locator('[data-testid="vb-btn-new-folder"]').click();
-  await fillPrompt(page, 'Research');
   await expect(page.locator('[data-testid="vb-row-Research"]')).toBeVisible({ timeout: 8_000 });
   await page.locator('[data-testid="vb-row-Research"]').click({ button: 'right' });
   await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-note"]').click();
@@ -352,7 +462,7 @@ test('FO-07 (SKY-8881): dragging a NESTED note into another folder moves the fil
     'move duplicated the source folder under the target (SKY-8881 regression)').toBe(false);
 });
 
-test('FO-08 (SKY-8881): dragging a folder into another folder nests it with contents intact', async () => {
+test('FO-11 (SKY-8881): dragging a folder into another folder nests it with contents intact', async () => {
   const from = await page.locator('[data-testid="vb-row-Archive"]').elementHandle();
   const to = await page.locator('[data-testid="vb-row-Research"]').elementHandle();
   expect(from, 'Archive row not found').toBeTruthy();
@@ -366,7 +476,7 @@ test('FO-08 (SKY-8881): dragging a folder into another folder nests it with cont
   expect(nested, 'Archive/ was not nested under Research/ with its contents').toBe(true);
 });
 
-test('FO-09 (SKY-8881): dragging a NESTED folder to the root drop zone moves it back out', async () => {
+test('FO-12 (SKY-8881): dragging a NESTED folder to the root drop zone moves it back out', async () => {
   await ensureExpanded(page, 'vb-row-Research');
   const from = await page.locator('[data-testid="vb-row-Research/Archive"]').elementHandle();
   expect(from, 'nested folder row (POSIX path testid) not found').toBeTruthy();
@@ -392,7 +502,7 @@ function listDirsRecursive(root: string, prefix = ''): string[] {
   return out.sort();
 }
 
-test('FO-10 (SKY-8881): renaming a NESTED note keeps it in its folder', async () => {
+test('FO-13 (SKY-8881): renaming a NESTED note keeps it in its folder', async () => {
   await ensureExpanded(page, 'vb-row-Archive');
   const row = page.locator('[data-testid="vb-row-Archive/field-notes.md"]');
   await expect(row).toBeVisible({ timeout: 8_000 });
@@ -424,17 +534,17 @@ test('FO-10 (SKY-8881): renaming a NESTED note keeps it in its folder', async ()
 // actually dropped on, while every same-named duplicate survives untouched
 // and no folder is created or lost anywhere in the vault.
 
-test('FO-11 (SKY-8881): with duplicate-named folders, a drop lands in the exact folder dropped on', async () => {
-  // Duplicates fixture, built through the UI: Stories/ at root, Archive/Stories/,
-  // Research/Stories/ — three folders literally named "Stories".
-  await page.locator('[data-testid="vb-btn-new-folder"]').click();
-  await fillPrompt(page, 'Stories');
+test('FO-14 (SKY-8881): with duplicate-named folders, a drop lands in the exact folder dropped on', async () => {
+  // "Stories" is itself one of the default NOTES_VAULT_DIRS folders, already
+  // present at root — reuse it as the root-level duplicate (SKY-8892: creating
+  // a second root "Stories" now correctly gets refused as a name collision)
+  // and only create the two NESTED duplicates: Archive/Stories/, Research/Stories/.
   await expect(page.locator('[data-testid="vb-row-Stories"]')).toBeVisible({ timeout: 8_000 });
 
   for (const parent of ['Archive', 'Research']) {
     await page.locator(`[data-testid="vb-row-${parent}"]`).click({ button: 'right' });
     await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-folder"]').click();
-    await fillPrompt(page, 'Stories');
+    await fillNewFolderName(page, 'Stories');
     const created = await waitUntil(() =>
       fs.existsSync(path.join(notesVaultDir, parent, 'Stories')) &&
       fs.statSync(path.join(notesVaultDir, parent, 'Stories')).isDirectory());
@@ -471,7 +581,7 @@ test('FO-11 (SKY-8881): with duplicate-named folders, a drop lands in the exact 
   expect(listDirsRecursive(notesVaultDir), 'move changed the vault folder set').toEqual(dirsBefore);
 });
 
-test('FO-12 (SKY-8881): moving OUT of a duplicate to a same-named root folder picks the right one', async () => {
+test('FO-15 (SKY-8881): moving OUT of a duplicate to a same-named root folder picks the right one', async () => {
   const dirsBefore = listDirsRecursive(notesVaultDir);
 
   // Same file, now dragged from Archive/Stories onto the ROOT Stories row —
