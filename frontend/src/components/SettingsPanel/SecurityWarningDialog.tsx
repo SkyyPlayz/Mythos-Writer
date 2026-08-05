@@ -10,7 +10,7 @@ export default function SecurityWarningDialog({
   let hostname = url;
   try { hostname = new URL(url).hostname; } catch { /* use full url */ }
   return (
-    <div className="settings-overlay" role="dialog" aria-modal="true" aria-labelledby="security-warn-title">
+    <div className="settings-overlay settings-overlay--scrim" role="dialog" aria-modal="true" aria-labelledby="security-warn-title">
       <div className="settings-panel settings-security-warning" style={{ maxWidth: 420 }}>
         <h3 id="security-warn-title" className="settings-section-title">⚠ Remote Endpoint Warning</h3>
         <p className="settings-hint" style={{ marginBottom: 8 }}>
