@@ -1,12 +1,15 @@
 // Verify: (a) is "Part" depth absent? (b) does Chapter/Full Book depth compose
 // content once a scene IS open, or stay empty?
+// Harness rules: see lib.mjs header (no Close-clicks, dismiss `Not now` first,
+// verify nav via --active, never pipe the runner through `head`).
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { _electron as electron } from '/home/skyy/Mythos-Writer/node_modules/playwright/index.mjs';
+import { _electron as electron } from 'playwright';
+import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
 
-const MAIN_JS = '/home/skyy/Mythos-Writer/out/main/main.js';
-const OUT = '/tmp/claude-1000/-home-skyy-PaperclipWork/7b5f74a1-1f91-48aa-8e4c-dc9984d1fe5d/scratchpad/shots-verify';
+requireBuild();
+const OUT = outDir('verify-depths');
 fs.mkdirSync(OUT, { recursive: true });
 const now = new Date().toISOString();
 const storyId = 'v-story';

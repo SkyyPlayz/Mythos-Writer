@@ -117,6 +117,10 @@
     "test:e2e:relationships-subway-a11y": "playwright test e2e/timeline-relationships-subway-a11y.spec.ts --reporter=list",
     "test:e2e:perf-ui-runtime": "playwright test e2e/perf/ui-runtime.spec.ts --reporter=list",
     "perf:ui-runtime": "npm run build:electron && npm run test:e2e:perf-ui-runtime",
+    "fidelity:proto": "node e2e/fidelity/capture-proto.mjs",
+    "fidelity:app": "npm run build:electron && node e2e/fidelity/capture-app2.mjs",
+    "fidelity:both": "npm run fidelity:proto && npm run fidelity:app",
+    "fidelity:verify-offline": "node e2e/fidelity/verify-offline.mjs",
     "bughunt:report": "./BugHunt-Fisher.sh --report-only",
     "preflight": "bash scripts/preflight.sh",
     "check:prototype-freshness": "bash scripts/check-prototype-freshness.sh"

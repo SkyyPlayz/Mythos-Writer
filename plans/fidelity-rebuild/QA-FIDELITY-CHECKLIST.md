@@ -75,9 +75,11 @@ Harness rules (PLAN.md P0.2, learned the hard way — do not relearn these):
 - Verify navigation landed via the `--active` class, not a timing guess.
 - Never pipe the runner through `head` — it needs to exit cleanly on its own.
 
-If `fidelity:both` isn't wired yet (P0.2 still in progress under SKY-9012), fall back to
-manually rendering `plans/fidelity-rebuild/harness/*.mjs` scripts directly per their
-existing (proven) invocation, and log that the npm-script wiring is still outstanding.
+The harness lives at `e2e/fidelity/` (wired under SKY-9257; the old
+`plans/fidelity-rebuild/harness/` location is retired). Outputs land in
+`e2e/fidelity/output/<script-name>/` (gitignored). On a headless host, wrap the app
+capture the same way CI wraps E2E: `xvfb-run --auto-servernum npm run fidelity:both`.
+`npm run fidelity:verify-offline` asserts the P0.1 offline-render criterion.
 
 ## D. Native-Windows gate (M8 name-handling)
 

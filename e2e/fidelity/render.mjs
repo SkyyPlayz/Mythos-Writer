@@ -1,13 +1,14 @@
 // Render the Liquid Neon prototype and capture every surface.
-import { chromium } from '/home/skyy/Mythos-Writer/node_modules/playwright/index.mjs';
+// Harness rules: see lib.mjs header (no Close-clicks, dismiss `Not now` first,
+// verify nav via --active, never pipe the runner through `head`).
+import { chromium } from 'playwright';
+import { serveProto, outDir, chromiumLaunchOptions } from './lib.mjs';
 
-const BASE = process.env.BASE || 'http://127.0.0.1:8899/index.html';
-const OUT = '/tmp/claude-1000/-home-skyy-PaperclipWork/7b5f74a1-1f91-48aa-8e4c-dc9984d1fe5d/scratchpad/shots';
+const proto = process.env.BASE ? null : await serveProto();
+const BASE = process.env.BASE || proto.url;
+const OUT = outDir('render');
 
-const browser = await chromium.launch({
-  executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-device-scale-factor=1'],
-});
+const browser = await chromium.launch(chromiumLaunchOptions(['--force-device-scale-factor=1']));
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 
 const errs = [];
@@ -49,3 +50,4 @@ const rail = await page.evaluate(() => {
 console.log('RAIL: ' + JSON.stringify(rail));
 
 await browser.close();
+if (proto) await proto.close();
