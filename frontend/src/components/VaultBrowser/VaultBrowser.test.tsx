@@ -1547,15 +1547,49 @@ describe('M16: RECENT list', () => {
     expect(screen.getByTestId('vb-recent-item-note.md')).toBeInTheDocument();
   });
 
-  it('stores recent paths in localStorage', async () => {
+  it('stores recent paths (with an opened-at timestamp) in localStorage', async () => {
     await renderNotesVaultWithItems([
       { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
     ]);
     await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
     await act(async () => { fireEvent.click(screen.getByTestId('vb-row-note.md')); });
 
-    const stored = JSON.parse(localStorage.getItem('vb-notes-recent') ?? '[]') as string[];
-    expect(stored).toContain('note.md');
+    const stored = JSON.parse(localStorage.getItem('vb-notes-recent') ?? '[]') as { path: string; at: number }[];
+    expect(stored.map((e) => e.path)).toContain('note.md');
+    expect(stored.find((e) => e.path === 'note.md')?.at).toBeGreaterThan(0);
+  });
+
+  it('caps the recent list at three entries and shows a relative timestamp', async () => {
+    const { onOpenFile } = await renderNotesVaultWithItems([
+      { path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' },
+      { path: 'b.md', name: 'b.md', isDirectory: false, modifiedAt: '' },
+      { path: 'c.md', name: 'c.md', isDirectory: false, modifiedAt: '' },
+      { path: 'd.md', name: 'd.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    void onOpenFile;
+    for (const p of ['a.md', 'b.md', 'c.md', 'd.md']) {
+      await waitFor(() => expect(screen.getByTestId(`vb-row-${p}`)).toBeInTheDocument());
+      await act(async () => { fireEvent.click(screen.getByTestId(`vb-row-${p}`)); });
+    }
+
+    const list = await screen.findByTestId('vb-recent-list');
+    expect(list.querySelectorAll('.vb-recent-item')).toHaveLength(3);
+    // Most-recently-opened first, oldest (a.md) evicted.
+    expect(screen.getByTestId('vb-recent-item-d.md')).toBeInTheDocument();
+    expect(screen.queryByTestId('vb-recent-item-a.md')).not.toBeInTheDocument();
+    expect(screen.getByTestId('vb-recent-item-d.md')).toHaveTextContent('just now');
+  });
+});
+
+describe('M8c (SKY-9335): footer', () => {
+  it('shows the note count and synced status', async () => {
+    await renderNotesVaultWithItems([
+      { path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' },
+      { path: 'folder', name: 'folder', isDirectory: true, modifiedAt: '' },
+      { path: 'folder/b.md', name: 'b.md', isDirectory: false, modifiedAt: '' },
+    ]);
+    const footer = await screen.findByTestId('vb-notes-footer');
+    expect(footer).toHaveTextContent('2 notes · synced');
   });
 });
 

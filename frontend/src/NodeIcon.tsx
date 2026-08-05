@@ -1,7 +1,7 @@
 // NodeIcon — renders per-node icon from frontmatter `icon:` field.
 // Supports emoji, bundled Lucide icons, and user SVG packs.
 import { useState, useEffect } from 'react';
-import type { FC } from 'react';
+import type { FC, ReactNode } from 'react';
 import { parseIconValue } from './iconUtils';
 import { LUCIDE_ICONS } from './lucideRegistry';
 
@@ -11,8 +11,8 @@ const STROKE = 1.5;
 interface NodeIconProps {
   /** Raw frontmatter icon string, e.g. "🗡️" or "pack:lucide/sword" */
   icon?: string;
-  /** Fallback rendered when icon is absent or unresolvable */
-  fallback: string;
+  /** Fallback rendered when icon is absent or unresolvable — e.g. a drawn default icon */
+  fallback: ReactNode;
 }
 
 export const NodeIcon: FC<NodeIconProps> = ({ icon, fallback }) => {
@@ -39,7 +39,7 @@ export const NodeIcon: FC<NodeIconProps> = ({ icon, fallback }) => {
   return <UserSvgIcon pack={parsed.pack} name={parsed.name} fallback={fallback} />;
 };
 
-function UserSvgIcon({ pack, name, fallback }: { pack: string; name: string; fallback: string }) {
+function UserSvgIcon({ pack, name, fallback }: { pack: string; name: string; fallback: ReactNode }) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
