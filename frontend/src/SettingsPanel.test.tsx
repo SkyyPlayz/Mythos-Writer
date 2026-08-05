@@ -107,7 +107,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(highContrast);
     expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    // M4 (§2-B): the Appearance tab persists live on a debounce — no Save click.
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ theme: 'high-contrast' }));
   });
@@ -1427,7 +1427,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable telemetry/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    // M4 (§2-B): the Appearance tab persists live on a debounce — no Save click.
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -2282,11 +2282,11 @@ describe('SKY-3218 nav-bar configuration', () => {
     fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
 
     const notesToggle = screen.getByLabelText(/enable notes/i);
-    fireEvent.click(notesToggle);
-
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+      fireEvent.click(notesToggle);
     });
+
+    // M4 (§2-B): the Appearance tab persists live on a debounce — no Save click.
     await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
 
     const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
@@ -2317,5 +2317,51 @@ describe('SKY-3218 nav-bar configuration', () => {
     expect(
       screen.getByText('AI is switched off — every tool is manual. Turn it back on to configure provider, models and autonomy.'),
     ).toBeInTheDocument();
+  });
+
+  // ── M4 (§2-B): Appearance tab applies + persists live, footer removed ──
+
+  describe('M4: Appearance live-apply', () => {
+    it('hides the Cancel/Save footer on the Appearance tab only', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
+    });
+
+    it('does not write settings when merely opening the Appearance tab', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      // Longer than the live-persist debounce.
+      await act(async () => { await new Promise((r) => setTimeout(r, 600)); });
+      expect(mockSettingsSet).not.toHaveBeenCalled();
+    });
+
+    it('live-persist does not commit unsaved edits parked on other tabs', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByLabelText(/enable writing coach/i));
+
+      // Unsaved edit on the Agents tab (explicit-save tab)…
+      fireEvent.click(screen.getByRole('checkbox', { name: /enable writing coach/i }));
+
+      // …then a live-persisting edit on the Appearance tab.
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /enable telemetry/i }));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+      const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+      // Appearance slice committed; the parked Agents edit was not.
+      expect(saved.telemetry?.enabled).toBe(true);
+      expect(saved.agents.writingAssistant.enabled).toBe(true);
+    });
   });
 });
