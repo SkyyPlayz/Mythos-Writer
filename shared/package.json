@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./types/suggestion": "./types/suggestion.ts"
+    "./types/suggestion": "./types/suggestion.ts",
+    "./vaultNameSanitizer": "./vaultNameSanitizer.ts"
   }
 }

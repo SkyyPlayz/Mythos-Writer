@@ -9,6 +9,7 @@ import {
   sanitizeWikilinks,
   type KnownNoteNames,
 } from './noteRelationships.js';
+import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 
 export const STORY_VAULT_GUARD_ERROR = 'STORY_VAULT_GUARD_ERROR';
 
@@ -43,7 +44,7 @@ export interface WriteNoteProposalArgs {
 }
 
 function sanitizeFileName(title: string): string {
-  return title.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
+  return sanitizeVaultName(title, 'unnamed');
 }
 
 function joinPosix(...segments: string[]): string {

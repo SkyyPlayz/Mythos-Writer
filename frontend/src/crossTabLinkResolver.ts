@@ -1,4 +1,5 @@
 import type { Chapter, EntityEntry, EntityType, Scene, Story } from './types';
+import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 
 export type CrossTabLinkMatch =
   | {
@@ -377,9 +378,9 @@ export function wikiLinkTargetStem(rawTarget: string): string {
  */
 export function notePathForUnresolvedLink(rawTarget: string): string | null {
   const stem = wikiLinkTargetStem(rawTarget);
-  if (!stem) return null;
-  const fileName = stem.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
-  if (!fileName || /^\.+$/.test(fileName)) return null;
+  if (!stem || /^\.+$/.test(stem)) return null;
+  const fileName = sanitizeVaultName(stem.replace(/\s+/g, ' ').trim());
+  if (!fileName) return null;
   return `${fileName}.md`;
 }
 

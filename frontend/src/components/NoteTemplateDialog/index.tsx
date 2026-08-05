@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 import './NoteTemplateDialog.css';
 
 // ─── Client-side template resolution ─────────────────────────────────────────
@@ -16,15 +17,6 @@ function resolveBody(body: string, vars: Record<string, string>): string {
     const key = expr.split('|')[0].trim();
     return vars[key] ?? '';
   });
-}
-
-function slugify(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-_]/g, '')
-    .replace(/^-+|-+$/g, '') || 'note';
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -137,7 +129,7 @@ export default function NoteTemplateDialog({
         (titleKey ? values[titleKey] : '') ||
         Object.values(values).find(Boolean) ||
         'note';
-      const slug = slugify(noteTitle);
+      const slug = sanitizeVaultName(noteTitle, 'note');
       const rel = dirPath ? `${dirPath}/${slug}.md` : `${slug}.md`;
 
       let content: string;

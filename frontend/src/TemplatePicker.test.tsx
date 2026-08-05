@@ -104,7 +104,7 @@ describe('TemplatePicker', () => {
 
     await waitFor(() => expect(mockWriteNotesVault).toHaveBeenCalled());
     const [path, content] = mockWriteNotesVault.mock.calls[0] as [string, string];
-    expect(path).toBe('ash-court.md');
+    expect(path).toBe('Ash Court.md');
     expect(content).toContain('title: "Ash Court"');
     expect(content).toContain('type: faction');
     expect(content).toContain('## Goals');
@@ -120,7 +120,7 @@ describe('TemplatePicker', () => {
 
     await waitFor(() => expect(mockWriteNotesVault).toHaveBeenCalled());
     const [path, content] = mockWriteNotesVault.mock.calls[0] as [string, string];
-    expect(path).toBe('new-item--system.md');
+    expect(path).toBe('New Item - System.md');
     expect(content).toContain('title: "New Item / System"');
     expect(content).toContain('type: item');
   });
@@ -131,7 +131,16 @@ describe('TemplatePicker', () => {
     fireEvent.click(screen.getByTestId('template-blank'));
     fireEvent.change(screen.getByTestId('tp-note-name'), { target: { value: 'Loose Thread' } });
     fireEvent.click(screen.getByTestId('tp-apply'));
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('loose-thread.md'));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('Loose Thread.md'));
+  });
+
+  it('preserves emoji and full Unicode in the note filename (SKY-9027)', async () => {
+    const onCreated = vi.fn();
+    render(<TemplatePicker {...baseProps} onCreated={onCreated} />);
+    fireEvent.click(screen.getByTestId('template-blank'));
+    fireEvent.change(screen.getByTestId('tp-note-name'), { target: { value: '🔥 Note' } });
+    fireEvent.click(screen.getByTestId('tp-apply'));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('🔥 Note.md'));
   });
 
   it('surfaces write failures as an alert and does not call onApplied', async () => {

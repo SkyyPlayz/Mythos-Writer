@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 import './EntriesPanel.css';
 
 const ENTRIES_DIR = 'Entries';
@@ -113,14 +114,7 @@ export function buildSceneCrafterPayload(
 }
 
 function slugify(text: string): string {
-  return (
-    text
-      .slice(0, 50)
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'entry'
-  );
+  return sanitizeVaultName(text.slice(0, 50).trim(), 'entry');
 }
 
 export async function findAvailablePromotedNotePath(

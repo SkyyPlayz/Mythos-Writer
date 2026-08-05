@@ -583,6 +583,33 @@ describe('validateRenameName', () => {
   it('allows hyphens, underscores, spaces, and dots', () => {
     expect(validateRenameName('my-scene_v1.2 final')).toBeNull();
   });
+
+  it('allows full Unicode and emoji (SKY-9027)', () => {
+    expect(validateRenameName('🌊 Folder')).toBeNull();
+    expect(validateRenameName('🔥 Note')).toBeNull();
+    expect(validateRenameName('日本語のノート')).toBeNull();
+  });
+
+  it('rejects control characters (SKY-9027)', () => {
+    expect(validateRenameName('bad\x00name')).not.toBeNull();
+    expect(validateRenameName('bad\x1fname')).not.toBeNull();
+  });
+
+  it('rejects a trailing dot (SKY-9027)', () => {
+    expect(validateRenameName('My Note.')).not.toBeNull();
+    expect(validateRenameName('My Note..')).not.toBeNull();
+  });
+
+  it('rejects Windows reserved device names case-insensitively (SKY-9027)', () => {
+    for (const reserved of ['CON', 'con', 'PRN', 'AUX', 'NUL', 'COM1', 'LPT9']) {
+      expect(validateRenameName(reserved)).not.toBeNull();
+    }
+  });
+
+  it('does not flag a reserved name as a mere substring (SKY-9027)', () => {
+    expect(validateRenameName('CONtinuity')).toBeNull();
+    expect(validateRenameName('Falcon')).toBeNull();
+  });
 });
 
 // ─── StoryVault inline rename (SKY-115) ───
