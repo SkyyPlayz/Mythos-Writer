@@ -61,10 +61,19 @@ export function handleAgentSessionCreate(
   const firstTurn = payload.greeting
     ? [{ role: 'agent' as const, text: payload.greeting, at: new Date().toISOString() }]
     : [];
+  // SKY-9028: honour a renderer-supplied id ONLY in UUID shape — the id is
+  // written into frontmatter and (sanitized) into the file name, so free-form
+  // renderer strings are rejected rather than trusted.
+  const requestedId =
+    typeof payload.id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.id)
+      ? payload.id
+      : undefined;
   const { session, relPath } = createSession(notesRoot, {
     agent: payload.agent,
     title: payload.title,
     turns: firstTurn,
+    ...(requestedId ? { id: requestedId } : {}),
   });
   return { session, relPath };
 }

@@ -65,6 +65,12 @@ const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 // M20 (SKY-6663): one-shot marker — the legacy draft transcript has been
 // copied into the shared agent-session store (never orphan chat history).
 const SESSION_MIGRATED_KEY = 'brainstorm:session-migrated';
+// SKY-9028: one-shot guard for the legacy-draft → board migration. It used to
+// live only in the board file's `draftMigrated` flag, but the board file is no
+// longer written on mount (an empty board must not create Boards/ in the
+// user's vault), so a file-less mount needs a durable flag or the migration
+// re-arms every mount and drags chat-detected draft facts onto the board.
+const BOARD_MIGRATED_KEY = 'brainstorm:board-migrated';
 
 // Sentinel value used when the user explicitly picks "Vault root" in the
 // routing-prompt select. Empty string is reserved for "nothing selected yet"
@@ -732,9 +738,21 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       if (cancelled) return;
       let next = loaded ?? createEmptyBoard();
       if (!next.draftMigrated) {
-        next = migrateDraftFactsToBoard(next, legacyDraft.facts, legacyDraft.customOrder);
+        let migratedBefore = false;
+        try { migratedBefore = localStorage.getItem(BOARD_MIGRATED_KEY) === '1'; } catch { /* ignore */ }
+        if (migratedBefore) {
+          next = { ...next, draftMigrated: true };
+        } else {
+          next = migrateDraftFactsToBoard(next, legacyDraft.facts, legacyDraft.customOrder);
+          try { localStorage.setItem(BOARD_MIGRATED_KEY, '1'); } catch { /* ignore */ }
+        }
         lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
-        void saveBrainstormBoard(next);
+        // SKY-9028 (GAP P0 #1): only write when there is real data to keep —
+        // the file already exists, or the migration actually captured cards.
+        // A fresh mount with an empty board must not create Boards/ in the
+        // user's vault; the debounced write-back below persists the board on
+        // the first real user change instead.
+        if (loaded !== null || next.cards.length > 0) void saveBrainstormBoard(next);
       } else {
         lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
       }
@@ -819,7 +837,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               text: m.text,
               at,
             }));
-          if (turns.length > 0) void sessionStoreRef.current.appendTurns(turns);
+          // SKY-9028: a draft holding only agent text (the greeting the feed
+          // saved on a previous mount) is not user history — migrating it
+          // would materialize a session file in a vault the user never chatted
+          // in. Only a draft with at least one user turn is worth persisting.
+          if (turns.some((t) => t.role === 'user')) void sessionStoreRef.current.appendTurns(turns);
           localStorage.setItem(SESSION_MIGRATED_KEY, '1');
         }
       } catch { /* draft unreadable — nothing to migrate */ }
