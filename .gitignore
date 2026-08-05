@@ -19,3 +19,6 @@ e2e-visual-artifacts
 .tmp/
 daily_bug_hunt_*.md
 daily_bug_hunt_*.json
+
+# Fidelity harness captures (SKY-9257) — regenerated per run, never source
+e2e/fidelity/output/

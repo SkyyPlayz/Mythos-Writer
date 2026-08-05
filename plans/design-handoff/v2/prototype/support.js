@@ -1,4 +1,7 @@
 // GENERATED from dc-runtime/src/*.ts — do not edit. Rebuild with `cd dc-runtime && bun run build`.
+// SKY-9257 exception: the dc-runtime generator source does not exist in this repo (or anywhere we
+// can reach), so the loader below was patched BY HAND to prefer the vendored react/react-dom/babel
+// copies committed next to this file, falling back to unpkg only if the local load fails.
 "use strict";
 (() => {
   var __defProp = Object.defineProperty;
@@ -1047,6 +1050,7 @@
   }
   var BABEL_URL = "https://unpkg.com/@babel/standalone@7.29.0/babel.min.js";
   var BABEL_SRI = "sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y";
+  var BABEL_LOCAL = "./babel.min.js";
   var GLOBAL_POLL_INTERVAL_MS = 50;
   var GLOBAL_POLL_TIMEOUT_MS = 3e4;
   function createExternalModules(onResolved) {
@@ -1057,15 +1061,8 @@
     function ensureBabel() {
       if (window.Babel) return Promise.resolve();
       if (babelLoading) return babelLoading;
-      babelLoading = new Promise((res, rej) => {
-        const s = document.createElement("script");
-        s.src = BABEL_URL;
-        s.integrity = BABEL_SRI;
-        s.crossOrigin = "anonymous";
-        s.onload = () => res();
-        s.onerror = rej;
-        document.head.appendChild(s);
-      });
+      // loadScriptPreferLocal is hoisted from the src/index.ts section of this bundle.
+      babelLoading = loadScriptPreferLocal(BABEL_LOCAL, BABEL_URL, BABEL_SRI);
       return babelLoading;
     }
     const pending = /* @__PURE__ */ new Map();
@@ -1593,8 +1590,10 @@
   // src/index.ts
   var REACT_URL = "https://unpkg.com/react@18.3.1/umd/react.production.min.js";
   var REACT_SRI = "sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z";
+  var REACT_LOCAL = "./react.production.min.js";
   var REACT_DOM_URL = "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js";
   var REACT_DOM_SRI = "sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1";
+  var REACT_DOM_LOCAL = "./react-dom.production.min.js";
   function hideRawTemplate() {
     const s = document.createElement("style");
     s.textContent = "x-dc{display:none!important}";
@@ -1605,21 +1604,30 @@
       //! nosemgrep: create-script-element
       const s = document.createElement("script");
       s.src = src;
-      s.integrity = integrity;
-      s.crossOrigin = "anonymous";
+      if (integrity) {
+        s.integrity = integrity;
+        s.crossOrigin = "anonymous";
+      }
       s.async = false;
       s.onload = () => resolve2();
       s.onerror = () => reject(new Error(`failed to load ${src}`));
       document.head.appendChild(s);
     });
   }
+  function loadScriptPreferLocal(localSrc, cdnSrc, integrity) {
+    return loadScript(localSrc).catch(() => {
+      console.warn(`[dc-runtime] vendored ${localSrc} failed to load; falling back to ${cdnSrc}`);
+      return loadScript(cdnSrc, integrity);
+    });
+  }
   function loadReactUmd() {
     const w = window;
     if (w.React && w.ReactDOM) return Promise.resolve();
-    return Promise.all([
-      loadScript(REACT_URL, REACT_SRI),
-      loadScript(REACT_DOM_URL, REACT_DOM_SRI)
-    ]).then(() => void 0);
+    // Sequential on purpose: the ReactDOM UMD needs the React global at eval time, and a
+    // mixed local/CDN pair would not preserve insertion-order execution guarantees.
+    return loadScriptPreferLocal(REACT_LOCAL, REACT_URL, REACT_SRI).then(
+      () => loadScriptPreferLocal(REACT_DOM_LOCAL, REACT_DOM_URL, REACT_DOM_SRI)
+    ).then(() => void 0);
   }
   function init() {
     const runtime = createRuntime(document);
