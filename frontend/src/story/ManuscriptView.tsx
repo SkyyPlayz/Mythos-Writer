@@ -29,7 +29,9 @@ import {
 import {
   breadcrumbs,
   buildBlocks,
+  cursorScene,
   normalizeInlineTitle,
+  scopeScenes,
   splitParagraphText,
   zoomStep,
   type ManuscriptBlock,
@@ -38,6 +40,8 @@ import {
   type SceneStatus,
   type ZoomLevel,
 } from './manuscriptModel';
+import TitleRow from './TitleRow';
+import { countWords } from '../wordStats';
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
 import MarginRuler from './MarginRuler';
@@ -141,6 +145,12 @@ export interface ManuscriptViewProps {
    * the "Show in focus" override is on (prototype commentsVisible 3600).
    */
   focusMode?: boolean;
+  /** M1 row 3 (SKY-9013): Focus toggle on the title row (shell writingMode). */
+  onToggleFocus?: () => void;
+  /** M1 row 5 (SKY-9013): "+ Chapter" — appends a chapter to the story. */
+  onAddChapter?: () => void;
+  /** M1 row 5 (SKY-9013): "+ Scene" — adds a scene to the cursor's chapter. */
+  onAddScene?: () => void;
   /**
    * M23: archive auto-[[link]]ing in the continuous manuscript (same entity
    * matching as the scene editor's AutoLinkerExtension). 'suggest' underlines
@@ -305,6 +315,9 @@ export default function ManuscriptView({
   dictating = false,
   onAssist,
   focusMode = false,
+  onToggleFocus,
+  onAddChapter,
+  onAddScene,
   autoLinkEntities,
   autoLinkMode = 'off',
   ttsSettings,
@@ -386,6 +399,17 @@ export default function ManuscriptView({
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
+
+  // M1 row 3 (SKY-9013): scope stats + the status chip's target scene.
+  const scene = useMemo(() => cursorScene(story, cursor), [story, cursor]);
+  const scopeWords = useMemo(
+    () =>
+      scopeScenes(story, cursor).reduce(
+        (sum, sc) => sum + countWords(sc.blocks.map((b) => b.content).join('\n\n')),
+        0
+      ),
+    [story, cursor]
+  );
 
   // M10: page-mode sheet chrome from M4's persisted settings (pageCfg).
   const pageChrome = useMemo(() => pageModeChrome(liquidNeon), [liquidNeon]);
@@ -995,7 +1019,20 @@ export default function ManuscriptView({
 
   return (
     <div className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}`} data-testid="msv-root">
-      {/* zoom bar (prototype 717–741) */}
+      {/* M1 row 3 (SKY-9013): depth-invariant title row (prototype 897–948). */}
+      <TitleRow
+        story={story}
+        cursor={cursor}
+        scene={scene}
+        wordCount={scopeWords}
+        commentCount={comments.length}
+        commentsOpen={showComments}
+        onToggleComments={() => setShowComments(!showComments)}
+        onCycleStatus={onCycleStatus}
+        focusActive={focusMode}
+        onToggleFocus={onToggleFocus}
+      />
+      {/* M1 row 4 — zoom bar (prototype 949–970) */}
       <div className="msv-zoombar">
         <div className="msv-zoom-seg" role="group" aria-label="Zoom level">
           {ZOOM_LEVELS.map(([level, label]) => (
@@ -1066,67 +1103,8 @@ export default function ManuscriptView({
         <div className="msv-flex-spacer" />
         {/* W0.4 (GAP P0#4): the zoombar's duplicate Read chip is gone — the
             single Read button lives right-aligned on the format toolbar below
-            (prototype 748) and toggles the same M13 reader dock. */}
-        {/* M11: comments chip (prototype 697–699 / commentsChipSt 4842) */}
-        <button
-          type="button"
-          className={`msv-comments-chip${showComments ? ' msv-comments-chip--on' : ''}`}
-          data-testid="msv-comments-chip"
-          title="Show / hide comments"
-          aria-pressed={showComments}
-          onClick={() => setShowComments(!showComments)}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            aria-hidden="true"
-          >
-            <path d="M21 12c0 4-4 7-9 7s-9-3-9-7 4-7 9-7 9 3 9 7z" />
-          </svg>
-          {comments.length}
-        </button>
-        {/* M7 (§5.1): page-setup is a compact popover, not an always-open strip. */}
-        <div className="msv-page-setup-anchor">
-          <button
-            type="button"
-            className={`msv-page-setup-btn${pageSetupOpen ? ' msv-page-setup-btn--on' : ''}`}
-            data-testid="msv-page-setup-btn"
-            title="Page setup — width and page style"
-            aria-label="Page setup"
-            aria-pressed={pageSetupOpen}
-            onClick={() => setPageSetupOpen((v) => !v)}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
-            </svg>
-            <span className="msv-page-setup-readout">{pageW}px</span>
-          </button>
-          <PageChrome
-            open={pageSetupOpen}
-            onClose={() => setPageSetupOpen(false)}
-            pageWidth={pageW}
-            min={PAGE_W_MIN}
-            max={PAGE_W_MAX}
-            onPageWidthChange={commitPageWidth}
-            pageStyleMode={onPageStyleChange ? pageChrome.mode : undefined}
-            onPageStyleChange={onPageStyleChange}
-            textureFileName={textureFileName}
-            onPickPageTexture={onPickPageTexture}
-          />
-        </div>
+            (prototype 748) and toggles the same M13 reader dock. M1 moved the
+            comments chip to row 3 and the page chip to row 5 (prototype rows). */}
       </div>
 
       {/* toolbar v2 (prototype 742–777) */}
@@ -1217,6 +1195,78 @@ export default function ManuscriptView({
             {TB_ICON(p)}
           </button>
         ))}
+        <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
+        {/* M1 row 5 (SKY-9013): structure actions (prototype 1003–1011).
+            "+ Part" enables when M2 (SKY-9017) lands the Parts data model. */}
+        <button
+          type="button"
+          className="msv-tb-add"
+          data-testid="msv-add-part"
+          title="Start a new part after this one"
+          disabled
+        >
+          + Part
+        </button>
+        {onAddChapter && (
+          <button
+            type="button"
+            className="msv-tb-add"
+            data-testid="msv-add-chapter"
+            title="Start a new chapter after this one"
+            onClick={onAddChapter}
+          >
+            + Chapter
+          </button>
+        )}
+        {onAddScene && (
+          <button
+            type="button"
+            className="msv-tb-add"
+            data-testid="msv-add-scene"
+            title="Add a new scene to this chapter"
+            onClick={onAddScene}
+          >
+            + Scene
+          </button>
+        )}
+        {/* M1 row 5: page chip — page setup as a compact popover (spec #5a). */}
+        <div className="msv-page-setup-anchor">
+          <button
+            type="button"
+            className={`msv-page-setup-btn${pageSetupOpen ? ' msv-page-setup-btn--on' : ''}`}
+            data-testid="msv-page-setup-btn"
+            title="Page setup — width and page style"
+            aria-label="Page setup"
+            aria-pressed={pageSetupOpen}
+            onClick={() => setPageSetupOpen((v) => !v)}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12h18M6 8l-3 4 3 4M18 8l3 4-3 4" />
+            </svg>
+            <span className="msv-page-setup-readout">{pageW}px</span>
+          </button>
+          <PageChrome
+            open={pageSetupOpen}
+            onClose={() => setPageSetupOpen(false)}
+            pageWidth={pageW}
+            min={PAGE_W_MIN}
+            max={PAGE_W_MAX}
+            onPageWidthChange={commitPageWidth}
+            pageStyleMode={onPageStyleChange ? pageChrome.mode : undefined}
+            onPageStyleChange={onPageStyleChange}
+            textureFileName={textureFileName}
+            onPickPageTexture={onPickPageTexture}
+          />
+        </div>
         <div className="msv-flex-spacer" />
         {/* W0.4 (GAP P0#4): the ONE Read button — right-aligned on the format
             toolbar per the prototype (748), wired to the M13 reader dock the
@@ -1292,7 +1342,7 @@ export default function ManuscriptView({
               <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
               <circle cx="12" cy="12" r="3.4" />
             </svg>
-            Assist
+            Coach
           </button>
         )}
       </div>

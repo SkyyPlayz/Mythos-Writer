@@ -167,6 +167,32 @@
   font-size: 10px;
 }
 
+/* M1 row 5 (SKY-9013): structure actions "+ Part / + Chapter / + Scene"
+   (prototype 1003–1011). "+ Part" is disabled until M2 lands Parts. */
+.msv-tb-add {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #94a3bd;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.msv-tb-add:hover:not(:disabled) {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.msv-tb-add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ── toolbar v2 (prototype 742–777, tbBase 4111, dictBtnSt 4815) ── */
 
 .msv-toolbar {

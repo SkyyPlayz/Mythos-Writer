@@ -21,7 +21,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, sceneStatus, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -4202,8 +4202,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
     const scene = owner?.scenes.find((sc) => sc.id === sceneId);
     if (!owner || !scene) return;
-    const next = cycleStatus(sceneStatus(scene));
-    const draftState = next === 'draft' ? 'in-progress' as const : next === 'done' ? 'final' as const : undefined;
+    // M1 (SKY-9013): cycle the STORED draftState vocabulary — the old
+    // todo/draft/done round-trip silently collapsed 'review' into 'in-progress'.
+    const draftState = cycleDraftState(scene.draftState);
     const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
     const updatedStories = stories.map((story) =>
       story.id !== selectedStory.id ? story : {
@@ -4219,7 +4220,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const cycledStory = updatedStories.find((st) => st.id === selectedStory.id);
     if (cycledStory) refreshManuscriptSelection(cycledStory);
     // Beta 4 M8 (§1.6): every dot click confirms — prototype cycleStatus toast.
-    showLnToast(`“${scene.title}” → ${next === 'done' ? 'Complete' : next === 'draft' ? 'Drafting' : 'Planned'}`);
+    showLnToast(`“${scene.title}” → ${draftStateLabel(draftState)}`);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 3 M10: paragraph grip drag — pure move via the model, then persist
@@ -5348,6 +5349,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  onToggleFocus={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
+                  onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
+                  onAddScene={() => {
+                    if (selectedStory && selectedChapter) void createScene(selectedStory.id, selectedChapter.id);
+                  }}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}

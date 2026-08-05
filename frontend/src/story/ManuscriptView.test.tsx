@@ -107,7 +107,8 @@ describe('ManuscriptView rendering', () => {
 
   it('scopes to one chapter at chapter zoom and one scene at scene zoom', () => {
     const { rerender, props } = renderView({ cursor: cur('chapter', 1) });
-    expect(screen.getByText('Fractures')).toBeInTheDocument();
+    // Chapter title appears on the sheet (and again in the M1 title row).
+    expect(within(screen.getByTestId('msv-sheet')).getByText('Fractures')).toBeInTheDocument();
     expect(screen.queryByText('The Quiet Before')).not.toBeInTheDocument();
 
     rerender(
