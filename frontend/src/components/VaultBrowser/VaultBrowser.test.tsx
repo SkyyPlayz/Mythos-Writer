@@ -59,6 +59,10 @@ beforeEach(() => {
     notesVaultReadIcons: vi.fn().mockResolvedValue({}),
     vaultReadIcons: vi.fn().mockResolvedValue({}),
     iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
+    // SKY-8891: persisted manual order
+    getNotesVaultOrder: vi.fn().mockResolvedValue({}),
+    reorderNotesVault: vi.fn().mockImplementation((parentPath: string, orderedPaths: string[]) =>
+      Promise.resolve({ parentPath, orderedPaths })),
   };
 });
 
@@ -115,6 +119,58 @@ describe('buildTree', () => {
     expect(tree[0].children).toHaveLength(1);
     expect(tree[0].children[0].children).toHaveLength(1);
     expect(tree[0].children[0].children[0].name).toBe('c.md');
+  });
+});
+
+// ─── treeUtils: buildTree manual sort (SKY-8891) ───
+
+describe('buildTree manual sort mode', () => {
+  const items = [
+    { path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' },
+    { path: 'b.md', name: 'b.md', isDirectory: false, modifiedAt: '' },
+    { path: 'c.md', name: 'c.md', isDirectory: false, modifiedAt: '' },
+    { path: 'Folder', name: 'Folder', isDirectory: true, modifiedAt: '' },
+    { path: 'Folder/x.md', name: 'x.md', isDirectory: false, modifiedAt: '' },
+    { path: 'Folder/y.md', name: 'y.md', isDirectory: false, modifiedAt: '' },
+  ];
+
+  it('orders root children by the order map', () => {
+    const tree = buildTree(items, 'manual', { '': ['c.md', 'a.md', 'b.md', 'Folder'] });
+    expect(tree.map((n) => n.path)).toEqual(['c.md', 'a.md', 'b.md', 'Folder']);
+  });
+
+  it('appends unmapped children after ordered ones, in a–z order', () => {
+    const tree = buildTree(items, 'manual', { '': ['c.md'] });
+    // c.md pinned first; the rest fall back to folders-first a–z.
+    expect(tree.map((n) => n.path)).toEqual(['c.md', 'Folder', 'a.md', 'b.md']);
+  });
+
+  it('ignores order entries for paths that no longer exist', () => {
+    const tree = buildTree(items, 'manual', { '': ['ghost.md', 'b.md', 'a.md'] });
+    expect(tree.map((n) => n.path)).toEqual(['b.md', 'a.md', 'Folder', 'c.md']);
+  });
+
+  it('orders nested folders by their own parentPath key', () => {
+    const tree = buildTree(items, 'manual', {
+      '': ['Folder', 'a.md', 'b.md', 'c.md'],
+      Folder: ['Folder/y.md', 'Folder/x.md'],
+    });
+    expect(tree[0].children.map((n) => n.path)).toEqual(['Folder/y.md', 'Folder/x.md']);
+  });
+
+  it('falls back to folders-first a–z when the map has no entry', () => {
+    const tree = buildTree(items, 'manual', {});
+    expect(tree.map((n) => n.path)).toEqual(['Folder', 'a.md', 'b.md', 'c.md']);
+  });
+
+  it('manual with no map behaves like a–z (no more readdir passthrough)', () => {
+    const tree = buildTree(items, 'manual');
+    expect(tree.map((n) => n.path)).toEqual(['Folder', 'a.md', 'b.md', 'c.md']);
+  });
+
+  it('za still sorts folders first with names reversed', () => {
+    const tree = buildTree(items, 'za');
+    expect(tree.map((n) => n.path)).toEqual(['Folder', 'c.md', 'b.md', 'a.md']);
   });
 });
 

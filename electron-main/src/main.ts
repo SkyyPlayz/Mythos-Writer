@@ -27,6 +27,8 @@ import {
   type VaultMoveResponse,
   type VaultMkdirPayload,
   type VaultMkdirResponse,
+  type VaultReorderPayload,
+  type VaultReorderResponse,
   type VaultChooseFolderPayload,
   type VaultChooseFolderResponse,
   type Manifest,
@@ -394,6 +396,7 @@ import {
   readArcManifest,
   writeArcManifest,
 } from './vault.js';
+import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -5445,7 +5448,36 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.fromPath);
     safeVaultEntryIpcJoin(root, payload.toPath);
-    return moveVaultFile(root, payload.fromPath, payload.toPath);
+    const result = moveVaultFile(root, payload.fromPath, payload.toPath);
+    // SKY-8891: keep the manual-order store in step with the rename — same
+    // handler as the filesystem move so the two can't diverge. A moved
+    // folder's descendants keep their manual order via prefix rewrite.
+    if (result.moved) {
+      const rewritten = rewriteOrderOnMove(readOrderMap(root), payload.fromPath, payload.toPath);
+      if (rewritten) writeOrderMap(root, rewritten);
+    }
+    return result;
+  },
+  // SKY-8891: persisted manual order for the Notes Vault tree (.vb-order.json).
+  [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (): Record<string, string[]> => {
+    ensureNotesVaultDir();
+    return readOrderMap(getNotesVaultRoot());
+  },
+  [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload): VaultReorderResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const parentPath = payload.parentPath ?? '';
+    // Entries are display data, never used as fs paths — but hold them to the
+    // same traversal/dotfile bar as every other notes-vault IPC payload.
+    if (parentPath) safeVaultEntryIpcJoin(root, parentPath);
+    const orderedPaths = (payload.orderedPaths ?? []).filter(
+      (p): p is string => typeof p === 'string' && p.length > 0,
+    );
+    for (const p of orderedPaths) safeVaultEntryIpcJoin(root, p);
+    const map = readOrderMap(root);
+    map[parentPath] = orderedPaths;
+    writeOrderMap(root, map);
+    return { parentPath, orderedPaths };
   },
 
   // SKY-95: create a directory directly so handleNewFolder in VaultBrowser

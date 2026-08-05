@@ -66,7 +66,18 @@ export interface FlatRow {
 
 export type TreeSortMode = 'manual' | 'az' | 'za';
 
-export function buildTree(items: VaultListItem[], sortMode: TreeSortMode = 'az'): TreeNode[] {
+/**
+ * SKY-8891: persisted manual order (`.vb-order.json` via notesVault:getOrder).
+ * Keys are '' (vault root) or a folder's relative POSIX path; values are that
+ * folder's immediate children (full relative POSIX paths) in display order.
+ */
+export type VaultOrderMap = Record<string, string[]>;
+
+export function buildTree(
+  items: VaultListItem[],
+  sortMode: TreeSortMode = 'az',
+  orderMap?: VaultOrderMap,
+): TreeNode[] {
   const nodeMap = new Map<string, TreeNode>();
   for (const item of items) {
     nodeMap.set(item.path, {
@@ -87,18 +98,44 @@ export function buildTree(items: VaultListItem[], sortMode: TreeSortMode = 'az')
       roots.push(node);
     }
   }
-  sortNodes(roots, sortMode);
+  sortNodes(roots, sortMode, orderMap, '');
   return roots;
 }
 
-function sortNodes(nodes: TreeNode[], sortMode: TreeSortMode) {
-  if (sortMode === 'manual') return;
-  nodes.sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-    const byName = a.name.localeCompare(b.name);
-    return sortMode === 'za' ? -byName : byName;
-  });
-  for (const n of nodes) if (n.isDirectory) sortNodes(n.children, sortMode);
+/** Folders-first a–z — the default comparator and manual mode's fallback. */
+function azCompare(a: TreeNode, b: TreeNode): number {
+  if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+  return a.name.localeCompare(b.name);
+}
+
+function sortNodes(
+  nodes: TreeNode[],
+  sortMode: TreeSortMode,
+  orderMap: VaultOrderMap | undefined,
+  parentPath: string,
+) {
+  if (sortMode === 'manual') {
+    // SKY-8891: children in the persisted order first (by array index),
+    // unmapped children appended after in a–z order — a folder with no order
+    // entry degrades to plain a–z instead of unstable readdir order.
+    const order = orderMap?.[parentPath];
+    const idx = new Map((order ?? []).map((p, i) => [p, i]));
+    nodes.sort((a, b) => {
+      const ia = idx.get(a.path);
+      const ib = idx.get(b.path);
+      if (ia !== undefined && ib !== undefined) return ia - ib;
+      if (ia !== undefined) return -1;
+      if (ib !== undefined) return 1;
+      return azCompare(a, b);
+    });
+  } else {
+    nodes.sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+      const byName = a.name.localeCompare(b.name);
+      return sortMode === 'za' ? -byName : byName;
+    });
+  }
+  for (const n of nodes) if (n.isDirectory) sortNodes(n.children, sortMode, orderMap, n.path);
 }
 
 export function collectDirectoryPaths(nodes: TreeNode[]): string[] {
