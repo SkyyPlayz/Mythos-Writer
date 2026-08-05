@@ -18,6 +18,8 @@ interface Props {
   onBetaRead?: (row: FlatRow) => void;
   /** M15: run an Archive continuity check on this note. Item disabled until wired. */
   onContinuityCheck?: (row: FlatRow) => void;
+  /** SKY-9310 (M8 spec item 6): open the icon picker for this note/folder. */
+  onSetIcon?: (row: FlatRow) => void;
 }
 
 function dirOf(row: FlatRow): string {
@@ -38,6 +40,7 @@ export default function ContextMenu({
   onDelete,
   onBetaRead,
   onContinuityCheck,
+  onSetIcon,
 }: Props) {
   if (!row) return null;
 
@@ -50,6 +53,9 @@ export default function ContextMenu({
   // creation flows remain reachable from the same menu.
   // SKY-7995: folder rows get Rename…/Delete too (Obsidian parity) — just
   // without the file-only actions (open-tab, beta-read, continuity-check).
+  // SKY-9310 (R8): "Set icon…" is available on both file and folder rows —
+  // folders have no frontmatter to carry a per-note icon, so the picker is
+  // the only way they get one.
   const items: MenuItemDef[] = [
     ...(isFile
       ? [
@@ -57,11 +63,13 @@ export default function ContextMenu({
           { id: 'beta-read', label: 'Beta read', disabled: !onBetaRead } as MenuItemDef,
           { id: 'continuity-check', label: 'Continuity check', disabled: !onContinuityCheck } as MenuItemDef,
           ...(onRename ? [{ id: 'rename', label: 'Rename…' } as MenuItemDef] : []),
+          ...(onSetIcon ? [{ id: 'set-icon', label: 'Set icon…' } as MenuItemDef] : []),
           { id: 'delete', label: 'Delete', destructive: true, disabled: !onDelete } as MenuItemDef,
           { id: 'new-note', label: 'New Note', separator: true } as MenuItemDef,
         ]
       : [
           ...(onRename ? [{ id: 'rename', label: 'Rename…' } as MenuItemDef] : []),
+          ...(onSetIcon ? [{ id: 'set-icon', label: 'Set icon…' } as MenuItemDef] : []),
           { id: 'delete', label: 'Delete', destructive: true, disabled: !onDelete } as MenuItemDef,
           { id: 'new-note', label: 'New Note', separator: true } as MenuItemDef,
         ]),
@@ -78,6 +86,8 @@ export default function ContextMenu({
       onContinuityCheck?.(row);
     } else if (id === 'rename' && onRename) {
       onRename(row);
+    } else if (id === 'set-icon') {
+      onSetIcon?.(row);
     } else if (id === 'delete') {
       onDelete?.(row);
     } else if (id === 'new-note') {

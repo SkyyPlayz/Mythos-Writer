@@ -465,6 +465,10 @@ export const IPC_CHANNELS = {
   VAULT_READ_ICONS: 'vault:readIcons',
   ICONS_LIST_USER_PACKS: 'icons:listUserPacks',
   ICONS_READ_SVG: 'icons:readSvg',
+  // SKY-9310 (M8 spec item 6): assign/clear a path-keyed icon (file or
+  // folder) in `.mythos/icons.json` — see vaultIcons.ts. Distinct from the
+  // read-only NOTES_VAULT_READ_ICONS above (frontmatter-derived, file-only).
+  NOTES_VAULT_SET_ICON: 'notesVault:setIcon',
 
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   SMART_FOLDER_LIST: 'smartFolder:list',
@@ -848,6 +852,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (payload: never) => Record<string, string[]>;
   [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload) => VaultReorderResponse;
+  [IPC_CHANNELS.NOTES_VAULT_SET_ICON]: (payload: VaultSetIconPayload) => VaultSetIconResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
@@ -1129,6 +1134,17 @@ export interface VaultReorderPayload {
 export interface VaultReorderResponse {
   parentPath: string;
   orderedPaths: string[];
+}
+
+// SKY-9310: assign (icon truthy) or clear (icon null) one path's icon.
+export interface VaultSetIconPayload {
+  path: string;
+  icon: string | null;
+}
+
+export interface VaultSetIconResponse {
+  path: string;
+  icon: string | null;
 }
 
 export interface VaultMkdirPayload {
