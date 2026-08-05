@@ -91,6 +91,34 @@ describe('createEntity', () => {
       fs.rmSync(linkedRoot, { force: true });
     }
   });
+
+  // SKY-9203: explicit relations render a grounded **Relationships:** block.
+  it('renders a Relationships wikilink block for relations whose targets exist', () => {
+    const elena = createEntity(tmpDir, manifest, { name: 'Elena Voss', type: 'character' });
+    const entry = createEntity(tmpDir, manifest, {
+      name: 'Aria Voss',
+      type: 'character',
+      prose: 'A powerful sorceress.',
+      relations: [
+        { type: 'sibling of', target: elena.id },
+        { type: 'ally of', target: 'no-such-entity-id' },
+      ],
+    });
+
+    const raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).toContain('A powerful sorceress.\n\n**Relationships:**\n- Sibling of [[Elena Voss]]');
+    // De-risk: a relation to a missing entity never becomes a dangling wikilink.
+    expect(raw).not.toContain('no-such-entity-id]]');
+    expect(raw.match(/\[\[/g)).toHaveLength(1);
+    // The typed relations frontmatter still round-trips unchanged.
+    expect(readEntity(tmpDir, manifest, entry.id)?.relations).toHaveLength(2);
+  });
+
+  it('emits no Relationships block when no relations are passed', () => {
+    const entry = createEntity(tmpDir, manifest, { name: 'Solo', type: 'character', prose: 'Alone.' });
+    const raw = fs.readFileSync(path.join(tmpDir, entry.path), 'utf-8');
+    expect(raw).not.toContain('**Relationships:**');
+  });
 });
 
 describe('readEntity', () => {

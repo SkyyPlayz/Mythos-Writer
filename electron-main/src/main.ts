@@ -555,8 +555,15 @@ import {
   entityTypeToFactType,
   buildEnrichmentSystemPrompt,
   runExtractionSideCall,
-  EXTRACTION_SYSTEM_PROMPT,
+  buildExtractionSystemPrompt,
 } from './brainstormAgent.js';
+import {
+  collectNotesVaultNoteNames,
+  findExplicitMentions,
+  renderRelationshipsBlock,
+  sanitizeWikilinks,
+  type KnownNoteNames,
+} from './noteRelationships.js';
 import {
   dismissPendingBrainstormProposals,
   resolveProposalDestination,
@@ -927,7 +934,18 @@ function renderBrainstormNote(args: {
   content: string;
   suggestionId: string;
   now: string;
+  /** SKY-9203: when provided, the note gets a grounded **Relationships:** block
+   *  linking only pre-existing notes the content explicitly mentions, and any
+   *  unresolvable [[wikilink]] in the content is unwrapped to plain text. */
+  existingNoteNames?: KnownNoteNames;
 }): string {
+  let content = args.content;
+  let relationships = '';
+  if (args.existingNoteNames) {
+    content = sanitizeWikilinks(content, args.existingNoteNames);
+    const mentions = findExplicitMentions(content, args.existingNoteNames, args.name);
+    relationships = renderRelationshipsBlock(mentions);
+  }
   return [
     '---',
     `agent: brainstorm`,
@@ -939,7 +957,8 @@ function renderBrainstormNote(args: {
     '',
     `# ${args.name}`,
     '',
-    args.content,
+    content,
+    ...(relationships ? ['', relationships] : []),
     '',
   ].join('\n');
 }
@@ -5616,6 +5635,7 @@ const handlers: IpcHandlers = {
       content: payload.content,
       suggestionId,
       now,
+      existingNoteNames: collectNotesVaultNoteNames(root),
     });
 
     if (resolution.kind === 'resolved') {
@@ -7566,7 +7586,7 @@ function registerBrainstormExtractionHandlers(): void {
             // Structured-output side-call: keep thinking off so the budget
             // stays available for the JSON array itself.
             ...anthropicThinkingParam(model, undefined),
-            system: EXTRACTION_SYSTEM_PROMPT,
+            system: buildExtractionSystemPrompt([...existingEntityNames]),
             messages: [{ role: 'user', content: userPrompt }],
           });
           const block = response.content[0];
@@ -8005,15 +8025,15 @@ function registerBrainstormEnrichHandler() {
         const suggestionId = crypto.randomUUID();
         const safeName = fact.name.replace(/[/\\:*?"<>|]/g, '-').trim() || 'unnamed';
         const fileName = `${safeName}.md`;
+        const root = getNotesVaultRoot();
         const body = renderBrainstormNote({
           category: fact.type,
           name: fact.name,
           content: fact.description,
           suggestionId,
           now,
+          existingNoteNames: collectNotesVaultNoteNames(root),
         });
-
-        const root = getNotesVaultRoot();
         let writtenPath: string;
 
         if (resolution.kind === 'resolved') {

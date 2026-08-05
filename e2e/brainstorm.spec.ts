@@ -40,14 +40,21 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 /**
  * Fixed token sequence emitted by the mock LLM.
  * Includes a [FACT:...] tag so TC-BST-02 / TC-BST-03 can verify extraction and saving.
+ * The description mentions SEEDED_NOTE_NAME (a note seeded into the vault before
+ * launch) so TC-BST-07 can verify the SKY-9203 grounded Relationships wikilink.
  */
 const MOCK_TOKENS = [
   'Great idea for your story! ',
   'Here is a character suggestion.\n\n',
-  '[FACT:character|Aria Voss|A brave young sorceress who discovers her hidden powers]',
+  '[FACT:character|Aria Voss|A brave young sorceress of Ravenspire who discovers her hidden powers]',
 ];
 const MOCK_FACT_NAME = 'Aria Voss';
-const MOCK_FACT_DESC = 'A brave young sorceress who discovers her hidden powers';
+const MOCK_FACT_DESC = 'A brave young sorceress of Ravenspire who discovers her hidden powers';
+
+// SKY-9203: pre-existing vault note the mock fact's description explicitly
+// mentions — the only name the agent note is allowed to wikilink.
+const SEEDED_NOTE_NAME = 'Ravenspire';
+const SEEDED_NOTE_REL_PATH = path.join('Universes', 'My First Universe', 'Locations', `${SEEDED_NOTE_NAME}.md`);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -179,6 +186,16 @@ test.beforeAll(async () => {
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-'));
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bst-vault-'));
   seedUserData(userData, vaultDir);
+
+  // SKY-9203: seed one pre-existing Notes Vault note. The mock fact's
+  // description mentions it, so the agent-created note must link it.
+  const seededAbs = path.join(vaultDir, SEEDED_NOTE_REL_PATH);
+  fs.mkdirSync(path.dirname(seededAbs), { recursive: true });
+  fs.writeFileSync(
+    seededAbs,
+    `---\ntype: location\n---\n\n# ${SEEDED_NOTE_NAME}\n\nA storm-wracked mountain citadel.\n`,
+    'utf-8',
+  );
 
   app = await launchApp(userData);
   page = await firstWindow(app);
@@ -408,6 +425,68 @@ test('TC-BST-03: detected fact is auto-saved as an entity file with correct fron
 
   // Prose body (after the closing ---) must contain the fact description.
   expect(content).toContain(MOCK_FACT_DESC);
+});
+
+// ─── TC-BST-07: grounded Relationships wikilinks + real graph edge (SKY-9203) ─
+//
+// The agent-created note from TC-BST-03 mentions the pre-seeded note
+// "Ravenspire" in its description, so it must:
+//   - carry a **Relationships:** block linking [[Ravenspire]] (and ONLY notes
+//     that pre-existed in the vault — no dangling/hallucinated wikilinks), and
+//   - produce a real edge in the Vault Graph between the two notes.
+
+test('TC-BST-07: agent-created note emits a grounded Relationships wikilink and a real graph edge', async () => {
+  const agentNoteRelPath = path.join('Universes', 'My First Universe', 'Characters', `${MOCK_FACT_NAME}.md`);
+  const content = fs.readFileSync(path.join(vaultDir, agentNoteRelPath), 'utf-8');
+
+  // Relationships block with the wikilink to the pre-existing note.
+  expect(content).toContain('**Relationships:**');
+  expect(content).toContain(`- References [[${SEEDED_NOTE_NAME}]]`);
+
+  // NO dangling wikilink: every [[target]] in the note must resolve to a note
+  // that exists on disk in the vault.
+  const existingStems = new Set<string>();
+  const collectStems = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) collectStems(path.join(dir, entry.name));
+      else if (entry.name.endsWith('.md')) existingStems.add(entry.name.slice(0, -3).toLowerCase());
+    }
+  };
+  collectStems(vaultDir);
+  const linkTargets = [...content.matchAll(/\[\[([^\]|#\n]+?)(?:[|#][^\]\n]*)?\]\]/g)].map((m) => m[1].trim());
+  expect(linkTargets.length).toBeGreaterThanOrEqual(1);
+  for (const target of linkTargets) {
+    expect(existingStems.has(path.basename(target, '.md').toLowerCase()),
+      `dangling wikilink [[${target}]] — no such note in the vault`).toBe(true);
+  }
+
+  // The Vault Graph draws a real edge between the agent note and the seeded note.
+  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
+  await expect(notesTab).toBeVisible({ timeout: 12_000 });
+  if ((await notesTab.getAttribute('aria-current')) !== 'page') {
+    await notesTab.click();
+  }
+  await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="notes-subview-graph"]').click();
+
+  const agentNodeId = agentNoteRelPath.split(path.sep).join('/');
+  const seededNodeId = SEEDED_NOTE_REL_PATH.split(path.sep).join('/');
+  await expect(page.locator(`[data-testid="vault-node-${agentNodeId}"]`)).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(`[data-testid="vault-node-${seededNodeId}"]`)).toBeVisible({ timeout: 10_000 });
+
+  // Edge direction follows file-scan order — accept either orientation. Same
+  // count-based check as vault-graph.spec.ts TC-G-04: a horizontal SVG <line>
+  // has a zero-height bounding box, which Playwright reports as "hidden".
+  const edge = page.locator(
+    `[data-testid="vault-edge-${agentNodeId}__${seededNodeId}"], [data-testid="vault-edge-${seededNodeId}__${agentNodeId}"]`,
+  );
+  await expect(edge.first()).toBeAttached({ timeout: 10_000 });
+  expect(await edge.count()).toBeGreaterThan(0);
+
+  // Leave the app back on the Brainstorm panel so later tests in this file see
+  // the same UI state they would without TC-BST-07 (TC-BST-06 branches on it).
+  await openBrainstormPanel();
 });
 
 // ─── TC-BST-06: Sort + filter controls (Wave 3.2) ────────────────────────────
