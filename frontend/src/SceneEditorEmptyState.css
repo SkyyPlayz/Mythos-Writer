@@ -52,3 +52,42 @@
 .spe-content .se-empty-state {
   min-height: 200px;
 }
+
+/* SKY-8907: Obsidian-style pane action card (Create new scene / Go to scene / Close) */
+.se-empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 24px;
+  width: 100%;
+  max-width: 260px;
+}
+
+.se-empty-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur-hover-in) var(--ease-out),
+              border-color var(--dur-hover-in) var(--ease-out);
+}
+
+.se-empty-action:hover,
+.se-empty-action:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--color-accent, var(--accent));
+}
+
+.se-empty-action-shortcut {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

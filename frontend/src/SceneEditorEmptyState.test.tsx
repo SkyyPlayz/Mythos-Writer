@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 
 describe('SceneEditorEmptyState', () => {
@@ -88,6 +88,51 @@ describe('SceneEditorEmptyState', () => {
       render(<SceneEditorEmptyState variant="select-scene" />);
       const svg = document.querySelector('svg.se-empty-icon')!;
       expect(svg).toHaveAttribute('aria-hidden', 'true');
+    });
+  });
+
+  // SKY-8907: Obsidian-style empty-pane action card
+  describe('pane action card', () => {
+    it('renders no action card when no handlers are passed', () => {
+      render(<SceneEditorEmptyState variant="select-scene" />);
+      expect(screen.queryByTestId('scene-editor-empty-actions')).toBeNull();
+    });
+
+    it('renders only the actions whose handler was passed', () => {
+      render(<SceneEditorEmptyState variant="select-scene" onCreateNew={vi.fn()} />);
+      expect(screen.getByTestId('se-empty-action-create')).toBeInTheDocument();
+      expect(screen.queryByTestId('se-empty-action-goto')).toBeNull();
+      expect(screen.queryByTestId('se-empty-action-close')).toBeNull();
+    });
+
+    it('calls the right handler for each action', () => {
+      const onCreateNew = vi.fn();
+      const onGoTo = vi.fn();
+      const onClosePane = vi.fn();
+      render(
+        <SceneEditorEmptyState
+          variant="no-scenes-yet"
+          onCreateNew={onCreateNew}
+          onGoTo={onGoTo}
+          onClosePane={onClosePane}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('se-empty-action-create'));
+      fireEvent.click(screen.getByTestId('se-empty-action-goto'));
+      fireEvent.click(screen.getByTestId('se-empty-action-close'));
+      expect(onCreateNew).toHaveBeenCalledOnce();
+      expect(onGoTo).toHaveBeenCalledOnce();
+      expect(onClosePane).toHaveBeenCalledOnce();
+    });
+
+    it('does not render an action card on the loading variant even with handlers passed', () => {
+      render(<SceneEditorEmptyState variant="loading" onCreateNew={vi.fn()} />);
+      expect(screen.queryByTestId('scene-editor-empty-actions')).toBeNull();
+    });
+
+    it('preserves the original select-scene copy alongside the action card', () => {
+      render(<SceneEditorEmptyState variant="select-scene" onClosePane={vi.fn()} />);
+      expect(screen.getByText(/Select a scene from your story to start writing/i)).toBeInTheDocument();
     });
   });
 });

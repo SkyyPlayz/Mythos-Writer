@@ -128,6 +128,30 @@ describe('WorkspaceTabBar tab close (AC-LN-06)', () => {
     expect(screen.getByRole('button', { name: 'Close Chapter One' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Close Chapter Two' })).toBeTruthy();
   });
+
+  it('SKY-8907: allowCloseLastTab shows a close button even on the last tab', () => {
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a', allowCloseLastTab: true })}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Close Chapter One' })).toBeTruthy();
+  });
+
+  it('SKY-8907: closing the last tab with allowCloseLastTab calls onTabClose (no neighbor to select)', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({
+          tabs: [TAB_A], activeTabId: 'tab-a', allowCloseLastTab: true, onTabClose, onTabSelect,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close Chapter One' }));
+    expect(onTabClose).toHaveBeenCalledWith('tab-a');
+    expect(onTabSelect).not.toHaveBeenCalled();
+  });
 });
 
 // ── Drag-to-reorder ───────────────────────────────────────────────────────────

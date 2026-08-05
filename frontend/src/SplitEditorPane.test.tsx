@@ -212,3 +212,89 @@ describe('scene selector', () => {
     expect(option.className).toContain('spe-scene-option--selected');
   });
 });
+
+// ── SKY-8907: per-pane tab strip ──────────────────────────────────────────────
+
+describe('per-pane tab strip', () => {
+  it('renders no tab strip when the tabs prop is omitted (back-compat)', () => {
+    render(<SplitEditorPane {...defaultProps()} />);
+    expect(screen.queryByTestId('split-pane-1-tab-strip')).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('renders a tab strip above the pane header when tabs are provided', () => {
+    const tab: WorkspaceTab = { id: 't1', kind: 'scene', title: 'Opening Scene', icon: '📄', docId: 'sc-1' };
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab], activeTabId: 't1' })} />);
+    expect(screen.getByTestId('split-pane-1-tab-strip')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Opening Scene' })).toBeInTheDocument();
+  });
+
+  it('allows closing the strip down to its last tab (per-pane strips collapse instead of orphaning)', () => {
+    const tab: WorkspaceTab = { id: 't1', kind: 'scene', title: 'Opening Scene', icon: '📄', docId: 'sc-1' };
+    const onTabClose = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab], activeTabId: 't1', onTabClose })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Close Opening Scene' }));
+    expect(onTabClose).toHaveBeenCalledWith('t1');
+  });
+
+  it('calls onNewTab when the strip + button is clicked', () => {
+    const onNewTab = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [], activeTabId: null, onNewTab })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    expect(onNewTab).toHaveBeenCalledOnce();
+  });
+
+  it('marks the strip as a drop target and calls onTabStripDrop when acceptsTabDrop', () => {
+    const onTabStripDrop = vi.fn();
+    render(
+      <SplitEditorPane
+        {...defaultProps({ tabs: [], activeTabId: null, acceptsTabDrop: true, onTabStripDrop })}
+      />,
+    );
+    const strip = screen.getByTestId('split-pane-1-tab-strip');
+    expect(strip.className).toContain('spe-tab-strip--drop-target');
+    fireEvent.drop(strip);
+    expect(onTabStripDrop).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onTabStripDrop when this pane is not an accepted drop target', () => {
+    const onTabStripDrop = vi.fn();
+    render(
+      <SplitEditorPane
+        {...defaultProps({ tabs: [], activeTabId: null, acceptsTabDrop: false, onTabStripDrop })}
+      />,
+    );
+    fireEvent.drop(screen.getByTestId('split-pane-1-tab-strip'));
+    expect(onTabStripDrop).not.toHaveBeenCalled();
+  });
+});
+
+// ── SKY-8907: empty-pane action card wiring ───────────────────────────────────
+
+describe('empty-pane action card', () => {
+  it('wires onCreateNewDoc into the "Create new scene" action', () => {
+    const onCreateNewDoc = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ scene: null, onCreateNewDoc })} />);
+    fireEvent.click(screen.getByTestId('se-empty-action-create'));
+    expect(onCreateNewDoc).toHaveBeenCalledOnce();
+  });
+
+  it('wires onCloseEmptyPane into the "Close" action', () => {
+    const onCloseEmptyPane = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ scene: null, onCloseEmptyPane })} />);
+    fireEvent.click(screen.getByTestId('se-empty-action-close'));
+    expect(onCloseEmptyPane).toHaveBeenCalledOnce();
+  });
+
+  it('"Go to scene" opens the same scene picker popover as the header button', () => {
+    render(<SplitEditorPane {...defaultProps({ scene: null })} />);
+    expect(screen.queryByTestId('spe-scene-search')).toBeNull();
+    fireEvent.click(screen.getByTestId('se-empty-action-goto'));
+    expect(screen.getByTestId('spe-scene-search')).toBeInTheDocument();
+  });
+
+  it('does not render an action card while loading', () => {
+    render(<SplitEditorPane {...defaultProps({ scene: null, sceneLoading: true, onCreateNewDoc: vi.fn() })} />);
+    expect(screen.queryByTestId('scene-editor-empty-actions')).toBeNull();
+  });
+});

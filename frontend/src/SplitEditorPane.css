@@ -92,6 +92,19 @@
   z-index: 0;
 }
 
+/* ── SKY-8907: per-pane tab strip (sits above the pane header) ── */
+
+.spe-tab-strip {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--dur-hover-in) var(--ease-out);
+}
+
+/* Cross-pane drag target highlight while a tab from the other pane hovers. */
+.spe-tab-strip--drop-target {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, transparent);
+}
+
 /* ── Pane header ── */
 
 .spe-header {

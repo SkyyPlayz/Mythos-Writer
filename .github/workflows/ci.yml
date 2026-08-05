@@ -952,6 +952,9 @@ jobs:
       - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
 
+      - name: E2E — Split-pane per-pane tab strips (SKY-8907)
+        run: xvfb-run --auto-servernum npm run test:e2e:split-pane-tab-strips
+
       - name: E2E — SKY-214 entity screenshots (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:sky214-entity-screenshots
 
