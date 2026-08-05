@@ -36,6 +36,10 @@ export interface WindowChromeProps {
   onOpenAccount?: () => void;
   /** Project menu wiring (prototype projItems). */
   activeVaultRoot?: string;
+  /** SKY-9262 (P0.5): the active vault's single-story title, when it has
+   *  exactly one story. The active switcher row is labeled by it instead of
+   *  the raw vault directory name; the path stays on the row's subline. */
+  activeStoryTitle?: string;
   onProjectSwitched?: (vaultRoot: string) => void;
   onNewStory?: () => void;
   onOpenVault?: () => void;
@@ -136,6 +140,7 @@ export default function WindowChrome({
   onOpenSettings,
   onOpenAccount,
   activeVaultRoot,
+  activeStoryTitle,
   onProjectSwitched,
   onNewStory,
   onOpenVault,
@@ -220,20 +225,28 @@ export default function WindowChrome({
   const handleMaximize = () => { void window.api?.windowMaximize?.(); };
 
   const projItems: { t: string; sub: string; stats?: string | null; on?: boolean; testId?: string; pick: () => void }[] = [
-    ...projects.map((p) => ({
-      t: p.name || p.vaultRoot.split(/[/\\]/).filter(Boolean).pop() || p.vaultRoot,
-      sub: p.vaultRoot,
-      // Beta 4 M2 (§4): location + stats per vault row.
-      stats: formatVaultStats(projStats[p.vaultRoot]),
-      on: p.vaultRoot === activeVaultRoot,
-      pick: () => {
-        setProjOpen(false);
-        if (p.vaultRoot === activeVaultRoot) return;
-        window.api?.projectSwitch?.(p.vaultRoot, p.notesVaultRoot)
-          .then((res) => { if (res?.switched) onProjectSwitched?.(p.vaultRoot); })
-          .catch(() => {});
-      },
-    })),
+    ...projects.map((p) => {
+      const on = p.vaultRoot === activeVaultRoot;
+      return {
+        // SKY-9262 (P0.5): the active vault labels itself by its single
+        // story's title when it has one; the directory name is only the
+        // fallback. Other vaults keep their project name — main would have
+        // to read every manifest to know their story titles.
+        t: (on ? activeStoryTitle : undefined)
+          || p.name || p.vaultRoot.split(/[/\\]/).filter(Boolean).pop() || p.vaultRoot,
+        sub: p.vaultRoot,
+        // Beta 4 M2 (§4): location + stats per vault row.
+        stats: formatVaultStats(projStats[p.vaultRoot]),
+        on,
+        pick: () => {
+          setProjOpen(false);
+          if (on) return;
+          window.api?.projectSwitch?.(p.vaultRoot, p.notesVaultRoot)
+            .then((res) => { if (res?.switched) onProjectSwitched?.(p.vaultRoot); })
+            .catch(() => {});
+        },
+      };
+    }),
     ...(onNewStory ? [{ t: 'New story…', sub: 'Fresh vault, ready to write', pick: () => { setProjOpen(false); onNewStory(); } }] : []),
     ...(onOpenVault ? [{ t: 'Open vault…', sub: 'Bring in an existing folder', pick: () => { setProjOpen(false); onOpenVault(); } }] : []),
     // Beta 4 M2: spec label "New Mythos vault…"; testid stays for sky-906 E2E.

@@ -229,6 +229,50 @@ describe('WindowChrome — vault switcher stats', () => {
   });
 });
 
+// ─── SKY-9262 (P0.5) — single-story vaults label the active row by story title ─
+
+describe('WindowChrome — active row workspace title', () => {
+  function stubApiWithTwoVaults() {
+    stubApi('linux');
+    const projectList = vi.fn().mockResolvedValue({
+      projects: [
+        { name: 'Mythos Vault', vaultRoot: '/vaults/Mythos Vault/Story Vault', notesVaultRoot: '/vaults/Mythos Vault/Notes Vault', openedAt: '2026-08-01T00:00:00Z' },
+        { name: 'Second Vault', vaultRoot: '/vaults/Second Vault/Story Vault', notesVaultRoot: '/vaults/Second Vault/Notes Vault', openedAt: '2026-07-01T00:00:00Z' },
+      ],
+    });
+    (window as unknown as { api: Record<string, unknown> }).api = {
+      ...(window as unknown as { api: Record<string, unknown> }).api,
+      projectList,
+    };
+  }
+
+  it('labels the active vault by its single story title, not the directory name', async () => {
+    stubApiWithTwoVaults();
+    await act(async () => {
+      render(<WindowChrome
+        activeVaultRoot="/vaults/Mythos Vault/Story Vault"
+        activeStoryTitle="The Last City of Veynn"
+      />);
+    });
+    await act(async () => { fireEvent.click(screen.getByTestId('wc-project-trigger')); });
+    expect(screen.getByText('The Last City of Veynn')).toBeInTheDocument();
+    // The raw directory name is not a row title — it survives only in the
+    // path subline, and the inactive vault keeps its project name.
+    expect(screen.queryByText('Mythos Vault')).not.toBeInTheDocument();
+    expect(screen.getByText('/vaults/Mythos Vault/Story Vault')).toBeInTheDocument();
+    expect(screen.getByText('Second Vault')).toBeInTheDocument();
+  });
+
+  it('falls back to the project name when no single-story title exists', async () => {
+    stubApiWithTwoVaults();
+    await act(async () => {
+      render(<WindowChrome activeVaultRoot="/vaults/Mythos Vault/Story Vault" />);
+    });
+    await act(async () => { fireEvent.click(screen.getByTestId('wc-project-trigger')); });
+    expect(screen.getByText('Mythos Vault')).toBeInTheDocument();
+  });
+});
+
 // ─── Beta 4 M2 — center "Search vault…" field + Ctrl-K hint (§4 / CF-14) ─────
 
 describe('WindowChrome — search field', () => {

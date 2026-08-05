@@ -12,6 +12,10 @@ interface ProjectEntry {
 
 interface Props {
   activeVaultRoot: string;
+  /** SKY-9262 (P0.5): the active vault's single-story title, when it has
+   *  exactly one story. Labels the workspace with what the user is writing
+   *  instead of the on-disk vault directory name. */
+  activeStoryTitle?: string;
   onSwitched: (vaultRoot: string) => void;
   requestText: (label: string) => Promise<string | null>;
 }
@@ -33,7 +37,20 @@ export function deriveVaultDisplayName(p: { vaultRoot: string; notesVaultRoot?: 
   return story[story.length - 1] ?? p.vaultRoot;
 }
 
-export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestText }: Props) {
+// SKY-9262 (P0.5): a vault holding exactly one story is labeled by that
+// story's title — never the raw `MythosVault-xxxx` directory name. Multi-story
+// vaults have no single winner, so callers fall back to the project name
+// (ProjectEntry.name / deriveVaultDisplayName). The raw directory path stays
+// visible only in Settings → Vault & Files and switcher-row path sublines.
+export function deriveSingleStoryTitle(
+  stories: ReadonlyArray<{ title?: string }> | undefined | null,
+): string | undefined {
+  if (!stories || stories.length !== 1) return undefined;
+  const title = (stories[0].title ?? '').trim();
+  return title || undefined;
+}
+
+export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onSwitched, requestText }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [creating, setCreating] = useState(false);
@@ -42,8 +59,14 @@ export default function ProjectSwitcher({ activeVaultRoot, onSwitched, requestTe
   const dropdownRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  // SKY-9262 (P0.5): story title (single-story vault) → project name from
+  // recents → directory-derived fallback. Never the raw dir name when a
+  // friendlier label exists.
+  const activeProject = projects.find((p) => p.vaultRoot === activeVaultRoot);
   const activeName = activeVaultRoot
-    ? deriveVaultDisplayName({ vaultRoot: activeVaultRoot, notesVaultRoot: activeNotesVaultRoot })
+    ? (activeStoryTitle
+      || activeProject?.name
+      || deriveVaultDisplayName({ vaultRoot: activeVaultRoot, notesVaultRoot: activeNotesVaultRoot }))
     : 'No Project';
 
   const loadProjects = useCallback(async () => {
