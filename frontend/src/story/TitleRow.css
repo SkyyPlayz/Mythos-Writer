@@ -121,3 +121,66 @@
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
   box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.4));
 }
+
+/* SKY-9404 (M1-S4): the ⋯ menu — "Save snapshot now" / "History" — relocated
+   here from the deleted legacy scene branch's snapshot toolbar. */
+.msv-title-menu {
+  position: relative;
+  flex: none;
+}
+
+.msv-title-menu-btn {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 9px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #aebad0;
+}
+
+.msv-title-menu-btn:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.msv-title-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 190px;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(18, 22, 32, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.msv-title-menu-item {
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  background: none;
+  border: none;
+  color: #d7deec;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msv-title-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.msv-title-menu-note {
+  padding: 4px 9px;
+  font-size: 10.5px;
+  color: #8195b2;
+}
