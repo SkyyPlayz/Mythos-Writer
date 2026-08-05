@@ -871,3 +871,85 @@ describe('NoteViewer M17 backlinks footer', () => {
     expect(screen.queryByTestId('note-backlinks-footer')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// M8d: surface-to-prototype inventory — breadcrumb, edited badge, Share,
+// favorite star, and the word/character-count + Add-tag footer.
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer M8d surface inventory', () => {
+  it('renders a folder-path breadcrumb ending at the note title, never the raw filename', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Body.' });
+    render(<NoteViewer path="Notes/Characters/gate.md" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    const crumb = screen.getByTestId('note-breadcrumb');
+    expect(crumb).toHaveTextContent('Notes');
+    expect(crumb).toHaveTextContent('Characters');
+    const current = crumb.querySelector('.note-breadcrumb-item--current');
+    // The item's own separator ("/") lives inside the same span as its label.
+    expect(current?.textContent).toBe('/gate');
+  });
+
+  it('shows the "Edited just now" badge only after a save, and hides it while a save error is showing', async () => {
+    render(<NoteViewer path="Notes/gate.md" />);
+    const textarea = await screen.findByLabelText('Edit note: gate.md');
+
+    expect(screen.queryByTestId('note-edited-badge')).toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new Event('mythos:save-note'));
+    });
+    await waitFor(() => expect(screen.getByTestId('note-edited-badge')).toHaveTextContent('Edited just now'));
+
+    writeNotesVault.mockRejectedValueOnce(new Error('disk full'));
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'edited body' } });
+      window.dispatchEvent(new Event('mythos:save-note'));
+    });
+
+    await screen.findByRole('alert');
+    expect(screen.queryByTestId('note-edited-badge')).toBeNull();
+  });
+
+  it('Share copies the note path to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    readNotesVault.mockResolvedValue({ content: 'Body.' });
+    render(<NoteViewer path="Notes/gate.md" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('note-share-btn'));
+    });
+
+    expect(writeText).toHaveBeenCalledWith('Notes/gate.md');
+  });
+
+  it('renders the decorative favorite star next to the title', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Body.' });
+    render(<NoteViewer path="Notes/gate.md" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    expect(screen.getByTestId('note-star-btn')).toBeTruthy();
+  });
+
+  it('footer reports word/character counts off the display body and hosts the Add-tag input', async () => {
+    readNotesVault.mockResolvedValue({ content: '---\ntags: [location]\n---\nTwo words.' });
+    render(<NoteViewer path="Notes/gate.md" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    expect(screen.getByTestId('note-word-count')).toHaveTextContent('2 words');
+    expect(screen.getByTestId('note-char-count')).toHaveTextContent('10 characters');
+    expect(screen.getByTestId('note-footer')).toContainElement(screen.getByTestId('note-add-tag-input'));
+  });
+
+  it('the header "+" tag affordance focuses the footer Add-tag input', async () => {
+    readNotesVault.mockResolvedValue({ content: '---\ntags: [location]\n---\nBody.' });
+    render(<NoteViewer path="Notes/gate.md" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    fireEvent.click(screen.getByTestId('note-tag-add-btn'));
+    expect(screen.getByTestId('note-add-tag-input')).toHaveFocus();
+  });
+});

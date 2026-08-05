@@ -7,7 +7,7 @@
 // gear menu → Rich/Markdown/Source seg + always-open-rich toggle, purple
 // callout cards + links block in Rich mode, and a backlinks footer.
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
-import { countWords } from './wordStats';
+import { countWords, countChars } from './wordStats';
 import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
 import { normalize, wikiLinkTargetStem, type WikiLinkCandidate } from './crossTabLinkResolver';
 import { replaceDisplayBody, stripHiddenBlocks } from './lib/frontmatter';
@@ -15,7 +15,9 @@ import { parseNoteFrontmatter, setFrontmatterField, setFrontmatterTags } from '.
 import { NoteCallout } from './NoteCalloutExtension';
 import { NoteLinksBlock } from './NoteLinksBlockExtension';
 import RichTextEditor from './RichTextEditor';
+import type { FormatToolbarActions } from './FormatToolbar';
 import Backlinks from './Backlinks';
+import { showLnToast } from './theme/lnToast';
 import type { Story, Scene, Chapter } from './types';
 import type { AnyExtension } from '@tiptap/core';
 import './NoteViewer.css';
@@ -46,6 +48,9 @@ interface Props {
   previewMode?: boolean;
   /** @deprecated Use `mode` + `onModeChange`. */
   onPreviewModeChange?: (previewMode: boolean) => void;
+  /** M8d: Read/Dictate toolbar buttons (prototype toolbar 1532-1538) — reuses
+   * the app's existing TTS/voice pipeline (R11: utility, not AI). */
+  toolbarActions?: FormatToolbarActions;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +93,20 @@ export function tagColor(tag: string): string {
   let h = 0;
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
   return TAG_PALETTE[h % TAG_PALETTE.length];
+}
+
+// ---------------------------------------------------------------------------
+// M8d: "Edited N ago ✓" badge (prototype 1478-1480) — relative phrasing off
+// the same savedAt timestamp the existing "Saved HH:MM:SS" status already uses.
+// ---------------------------------------------------------------------------
+
+export function formatEditedAgo(savedAt: Date): string {
+  const mins = Math.floor((Date.now() - savedAt.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 min ago';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,11 +236,12 @@ interface RichEditorProps {
   sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
   fileName: string;
+  toolbarActions?: FormatToolbarActions;
 }
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName }: RichEditorProps) {
+function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
   return (
     <div className="note-rich-editor">
       <RichTextEditor
@@ -233,6 +253,7 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTi
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
         sceneWikiLinkTitles={sceneWikiLinkTitles}
         wikiLinkCandidates={wikiLinkCandidates}
+        toolbarActions={toolbarActions}
         wrapClassName="note-rich-editor-wrap"
         contentClassName="note-tiptap-content"
         wrapAriaLabel={`Rich edit note: ${fileName}`}
@@ -313,6 +334,7 @@ export default function NoteViewer({
   onOpenBacklinkScene,
   previewMode,
   onPreviewModeChange,
+  toolbarActions,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
 
@@ -328,7 +350,7 @@ export default function NoteViewer({
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   // GH#616: surface autosave failures instead of silently dropping them, so a
   // writer never loses changes to a save they believe succeeded.
@@ -342,6 +364,9 @@ export default function NoteViewer({
   const contentRef = useRef(content);
   contentRef.current = content;
   const titleElRef = useRef<HTMLSpanElement | null>(null);
+  // M8d: header "+" tag affordance focuses the footer's real Add-tag input
+  // (prototype's "+" chip carries no handler of its own — see 1516/1605).
+  const footerTagInputRef = useRef<HTMLInputElement | null>(null);
 
   // W0.5 (PERFORMANCE §4): the word count reaches the app shell
   // (setOpenedNoteWordCount → BottomBar) — never per keystroke. Counting and
@@ -396,7 +421,7 @@ export default function NoteViewer({
     try {
       const r = await window.api.writeNotesVault(path, text);
       if ('error' in r) throw new Error(r.error);
-      setSavedAt(new Date().toLocaleTimeString());
+      setSavedAt(new Date());
       setSaveError(null);
       return true;
     } catch {
@@ -478,6 +503,26 @@ export default function NoteViewer({
   const titleField = noteMeta.fields.find((f) => f.key.toLowerCase() === 'title')?.value?.trim();
   const noteTitle = titleField || fileStem;
   const tags = noteMeta.tags;
+
+  // M8d: breadcrumb (prototype 1472-1480 `noteCrumbs`) — vault-relative folder
+  // path with the note title as the final, bold crumb.
+  const breadcrumbItems = useMemo(() => {
+    const folders = path.split('/').filter(Boolean).slice(0, -1);
+    return [...folders, noteTitle];
+  }, [path, noteTitle]);
+
+  // M8d: footer word/character counts (prototype `noteWords`/`noteChars`) —
+  // computed off the display body, same as the fidelity guard (frontmatter
+  // and any kanban-settings trailer never count toward either).
+  const displayBody = useMemo(() => stripHiddenBlocks(content), [content]);
+  const bodyWordCount = useMemo(() => countWords(displayBody), [displayBody]);
+  const bodyCharCount = useMemo(() => countChars(displayBody), [displayBody]);
+
+  const handleShare = useCallback(() => {
+    void navigator.clipboard.writeText(path)
+      .then(() => showLnToast('Note path copied to clipboard'))
+      .catch(() => showLnToast('Could not copy the note path'));
+  }, [path]);
 
   // A frontmatter edit (title/tags) is a discrete commit: adopt + save now.
   const adoptFrontmatterChange = useCallback((next: string) => {
@@ -604,10 +649,46 @@ export default function NoteViewer({
         />
       )}
       <div className="note-viewer-toolbar">
-        <span className="note-viewer-filename">{fileName}</span>
+        {/* M8d: breadcrumb (prototype `noteCrumbs`) — folder path + note title. */}
+        <nav className="note-breadcrumb" aria-label="Note path" data-testid="note-breadcrumb">
+          {breadcrumbItems.map((crumb, i) => (
+            <span
+              key={i}
+              className={`note-breadcrumb-item${i === breadcrumbItems.length - 1 ? ' note-breadcrumb-item--current' : ''}`}
+            >
+              {i > 0 && <span className="note-breadcrumb-sep" aria-hidden="true">/</span>}
+              {crumb}
+            </span>
+          ))}
+        </nav>
         <span className="note-viewer-save-status" aria-live="polite">
-          {saving ? 'Saving…' : savedAt ? `Saved ${savedAt}` : ''}
+          {saving ? 'Saving…' : savedAt ? `Saved ${savedAt.toLocaleTimeString()}` : ''}
         </span>
+        {/* M8d: "Edited N ago ✓" (prototype 1478-1480) — hidden while a save
+            error is showing so the surface never implies a clean save. */}
+        {savedAt && !saveError && (
+          <span className="note-edited-badge" data-testid="note-edited-badge">
+            Edited {formatEditedAgo(savedAt)}
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M8.5 12.5l2.5 2.5 4.5-5" />
+            </svg>
+          </span>
+        )}
+        <button
+          type="button"
+          className="note-share-btn"
+          data-testid="note-share-btn"
+          aria-label="Share note"
+          title="Share"
+          onClick={handleShare}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 15V4M8 7.5L12 3.5l4 4" />
+            <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+          </svg>
+          Share
+        </button>
         {saveError && (
           <span className="note-viewer-save-error" role="alert">
             {saveError}{' '}
@@ -720,6 +801,18 @@ export default function NoteViewer({
           >
             {noteTitle}
           </span>
+          {/* M8d: decorative favorite toggle (prototype 1512) — same unwired
+              pattern as the Story editor's DocHeader star; no favorites data
+              model exists yet to persist against. */}
+          <button
+            type="button"
+            className="note-star-btn"
+            data-testid="note-star-btn"
+            aria-label="Toggle favorite"
+            title="Add to favorites"
+          >
+            ☆
+          </button>
         </div>
         <div className="note-tags-row" data-testid="note-tags-row">
           {tags.map((tag) => {
@@ -743,15 +836,16 @@ export default function NoteViewer({
               </span>
             );
           })}
-          <input
-            className="note-add-tag-input"
-            placeholder="Add tag…"
+          <button
+            type="button"
+            className="note-tag-add-btn"
+            data-testid="note-tag-add-btn"
             aria-label="Add tag"
-            data-testid="note-add-tag-input"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') commitAddTag(); }}
-          />
+            title="Add tag"
+            onClick={() => footerTagInputRef.current?.focus()}
+          >
+            +
+          </button>
         </div>
       </div>
 
@@ -799,6 +893,7 @@ export default function NoteViewer({
           sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
           fileName={fileName}
+          toolbarActions={toolbarActions}
         />
       )}
 
@@ -807,6 +902,24 @@ export default function NoteViewer({
           {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles)}
         </div>
       )}
+
+      {/* M8d: footer word/character counts + Add-tag input (prototype 1602-1606). */}
+      <div className="note-footer" data-testid="note-footer">
+        <span data-testid="note-word-count">{bodyWordCount.toLocaleString()} words</span>
+        <span className="note-footer-sep" aria-hidden="true">·</span>
+        <span data-testid="note-char-count">{bodyCharCount.toLocaleString()} characters</span>
+        <div className="note-footer-spacer" />
+        <input
+          ref={footerTagInputRef}
+          className="note-add-tag-input"
+          placeholder="Add tag…"
+          aria-label="Add tag"
+          data-testid="note-add-tag-input"
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitAddTag(); }}
+        />
+      </div>
 
       {/* M17: backlinks footer — lives in the note body (the right panel is
           owned by M15/M18; see BETA-REFINE M17). */}

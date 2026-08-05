@@ -41,10 +41,75 @@
   text-overflow: ellipsis;
 }
 
+/* ── M8d: breadcrumb (prototype `noteCrumbs`, 1472-1480) ────────────────── */
+
+.note-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  overflow: hidden;
+}
+
+.note-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--n2, #9b5fff);
+}
+
+.note-breadcrumb-item--current {
+  color: #e6ecf9;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-breadcrumb-sep {
+  color: #586a88;
+}
+
 .note-viewer-save-status {
   font-size: 11px;
   color: var(--text-secondary, #666);
   white-space: nowrap;
+}
+
+/* ── M8d: "Edited N ago ✓" badge (prototype 1478-1480) ──────────────────── */
+
+.note-edited-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8e9db8;
+  font-size: 11px;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* ── M8d: Share button (prototype 1481-1483) ─────────────────────────────── */
+
+.note-share-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 9px;
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5));
+  background: none;
+  color: var(--n1, #00f0ff);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+}
+
+.note-share-btn:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  box-shadow: 0 0 12px -3px var(--g1, rgb(0 240 255 / 0.4));
 }
 
 /* GH#616: failed-save surface — must read as an error, never as "saved". */
@@ -289,6 +354,22 @@
   min-width: 40px;
 }
 
+/* M8d: decorative favorite star (prototype 1512) — matches DocHeader's ☆. */
+.note-star-btn {
+  background: none;
+  border: none;
+  color: #8e9db8;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px;
+  flex: none;
+}
+
+.note-star-btn:hover {
+  color: var(--n1, #00f0ff);
+}
+
 .note-tags-row {
   display: flex;
   align-items: center;
@@ -342,6 +423,50 @@
 
 .note-add-tag-input::placeholder {
   color: #7686a2;
+}
+
+/* M8d: header "+" tag affordance (prototype 1516) — focuses the footer's
+   real Add-tag input; decorative on its own, same as the prototype's span. */
+.note-tag-add-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 99px;
+  border: 1px dashed rgb(255 255 255 / 0.25);
+  background: none;
+  color: #8e9db8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+
+.note-tag-add-btn:hover {
+  border-color: var(--b1, rgb(0 240 255 / 0.5));
+  color: var(--n1, #00f0ff);
+}
+
+/* ── M8d: footer — word/character counts + Add tag (prototype 1602-1606) ── */
+
+.note-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+  font-size: 11px;
+  color: #8195b2;
+  flex-shrink: 0;
+}
+
+.note-footer-sep {
+  opacity: 0.4;
+}
+
+.note-footer-spacer {
+  flex: 1;
 }
 
 /* ── Source / Markdown modes (raw textarea) ────────────────────────────── */

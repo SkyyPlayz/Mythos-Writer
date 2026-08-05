@@ -4451,6 +4451,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     onAssist: handleToolbarAssist,
   }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist]);
 
+  // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Read/
+  // Dictate handlers as the manuscript — no Assist button in the Notes surface.
+  const noteToolbarActions = useMemo(() => ({
+    onRead: handleToolbarRead,
+    onDictate: handleToolbarDictate,
+    dictating: voiceActive,
+  }), [handleToolbarRead, handleToolbarDictate, voiceActive]);
+
   // Beta 3 M6 → Beta 4 M4: context-menu "Pop out into new window". Document
   // tabs have no dedicated window host yet, so they explain themselves (§1.2
   // "nothing is dead") until the doc pop-out window lands; module kinds with
@@ -5649,6 +5657,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 wikiLinkCandidates={wikiLinkCandidates}
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
+                toolbarActions={noteToolbarActions}
               />
             ) : (
               <div className="shell-editor-empty">
@@ -5763,6 +5772,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenScene={handleOpenGraphScene}
           onBetaRead={betaReadNote}
           onContinuityCheck={continuityCheckNote}
+          noteToolbarActions={noteToolbarActions}
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
