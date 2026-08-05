@@ -82,7 +82,7 @@ import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import ProjectSwitcher from './ProjectSwitcher';
-import DepthSlider, { type ViewDepth } from './DepthSlider';
+import DepthSlider from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
 import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
@@ -724,17 +724,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // showLeftSidebar below (focus/distraction-free rules unchanged).
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const [viewDepth, setViewDepthRaw] = useState<ViewDepth>('scene');
-  // SKY-6010: 'part' has no ViewDepth of its own (Parts don't exist in the
-  // data model yet — book zoom stands in for it), so it's tracked as a flag
-  // alongside viewDepth==='book' rather than folded into ViewDepth's union.
-  // Any navigation through setViewDepth that isn't the manuscript zoom bar
-  // itself must clear it, or the flag would go stale and misreport zoom.
-  const [manuscriptPartZoom, setManuscriptPartZoom] = useState(false);
-  const setViewDepth = useCallback((depth: ViewDepth) => {
-    setManuscriptPartZoom(false);
-    setViewDepthRaw(depth);
-  }, []);
+  // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
+  // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
+  // lands the Parts data model, part depth renders the story's chapters
+  // ungrouped (manuscriptModel's implicit single part).
+  const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
@@ -4115,7 +4109,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     );
   }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, applyStepTarget]);
 
-  const handleViewDepthChange = useCallback((newDepth: ViewDepth) => {
+  const handleViewDepthChange = useCallback((newDepth: ZoomLevel) => {
     setViewDepth(newDepth);
     if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
       const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
@@ -4142,17 +4136,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
   // Cursor indices follow the model's order-field sorting.
   const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
-    const zoom: ZoomLevel =
-      viewDepth === 'book'
-        ? (manuscriptPartZoom ? 'part' : 'book')
-        : viewDepth === 'chapter' ? 'chapter' : 'scene';
-    if (!selectedStory) return { zoom, part: 0, chapter: 0, scene: 0 };
+    if (!selectedStory) return { zoom: viewDepth, part: 0, chapter: 0, scene: 0 };
     const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
     const ci = Math.max(0, selectedChapter ? chapters.findIndex((c) => c.id === selectedChapter.id) : 0);
     const scenes = chapters[ci] ? [...chapters[ci].scenes].sort((a, b) => a.order - b.order) : [];
     const si = Math.max(0, selectedScene ? scenes.findIndex((sc) => sc.id === selectedScene.id) : 0);
-    return { zoom, part: 0, chapter: ci, scene: si };
-  }, [viewDepth, manuscriptPartZoom, selectedStory, selectedChapter, selectedScene]);
+    return { zoom: viewDepth, part: 0, chapter: ci, scene: si };
+  }, [viewDepth, selectedStory, selectedChapter, selectedScene]);
 
   const handleManuscriptCursorChange = useCallback((cursor: ManuscriptCursor) => {
     if (!selectedStory) return;
@@ -4163,10 +4153,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const sc = scenes[Math.min(cursor.scene, Math.max(0, scenes.length - 1))];
       if (sc) handleSelectScene(sc, ch, selectedStory);
     }
-    // setViewDepth clears manuscriptPartZoom as a side effect, so the 'part'
-    // flag must be (re-)applied after it, not before — see SKY-6010.
-    setViewDepth(cursor.zoom === 'part' ? 'book' : cursor.zoom);
-    setManuscriptPartZoom(cursor.zoom === 'part');
+    setViewDepth(cursor.zoom);
   }, [selectedStory, handleSelectScene, setViewDepth]);
 
   // Beta 4 M8: shared follow-up for model-driven manuscript changes — the
@@ -5335,10 +5322,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   </button>
                 </div>
               </div>
-            ) : viewDepth === 'book' && selectedStory ? (
-              /* Beta 3 M9: the heading-zoom manuscript renders book zoom.
-                 book-outline-view stays as an E2E selector-compat anchor. */
-              <div className="shell-depth-view-wrap book-outline-view">
+            ) : viewDepth !== 'scene' && selectedStory ? (
+              /* M1 (SKY-9013): ONE ManuscriptView branch renders book, part and
+                 chapter depth — cursor.zoom carries the depth. Both legacy
+                 selector-compat anchors stay on the unified wrapper (CI). */
+              <div className="shell-depth-view-wrap book-outline-view chapter-continuous-view">
                 <ManuscriptView
                   story={selectedStory}
                   cursor={manuscriptCursor}
@@ -5366,45 +5354,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
-                  depth="book"
-                  canPrev={depthCanPrev}
-                  canNext={depthCanNext}
-                  onPrev={handleDepthPrev}
-                  onNext={handleDepthNext}
-                />
-              </div>
-            ) : viewDepth === 'chapter' && selectedChapter ? (
-              /* Beta 3 M9: chapter zoom of the same continuous manuscript.
-                 chapter-continuous-view stays as an E2E compat anchor. */
-              <div className="shell-depth-view-wrap chapter-continuous-view">
-                <ManuscriptView
-                  story={selectedStory!}
-                  cursor={manuscriptCursor}
-                  onCursorChange={handleManuscriptCursorChange}
-                  onEditParagraph={handleManuscriptEditParagraph}
-                  onCycleStatus={handleManuscriptCycleStatus}
-                  onMoveParagraph={handleManuscriptMoveParagraph}
-                  onSplitParagraph={handleManuscriptSplitParagraph}
-                  onMergeParagraph={handleManuscriptMergeParagraph}
-                  onRemoveParagraph={handleManuscriptRemoveParagraph}
-                  onRenameScene={handleManuscriptRenameScene}
-                  onRenameChapter={handleManuscriptRenameChapter}
-                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
-                  onPageWidthChange={handleManuscriptPageWidthChange}
-                  liquidNeon={appSettings?.liquidNeonV2}
-                  onPageStyleChange={handleManuscriptPageStyleChange}
-                  onPickPageTexture={handlePickPageTexture}
-                  onDictate={manuscriptToolbarActions.onDictate}
-                  dictating={manuscriptToolbarActions.dictating}
-                  onAssist={manuscriptToolbarActions.onAssist}
-                  focusMode={writingMode === 'focus'}
-                  autoLinkEntities={allEntities}
-                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                  ttsSettings={appSettings?.tts}
-                  voicePrefs={appSettings?.voice}
-                />
-                <DepthEdgeArrows
-                  depth="chapter"
+                  depth={viewDepth}
                   canPrev={depthCanPrev}
                   canNext={depthCanNext}
                   onPrev={handleDepthPrev}

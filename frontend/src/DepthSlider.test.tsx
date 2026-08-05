@@ -1,9 +1,10 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import DepthSlider, { type ViewDepth } from './DepthSlider';
+import DepthSlider from './DepthSlider';
+import type { ZoomLevel } from './story/manuscriptModel';
 
 const DEFAULT_PROPS = {
-  depth: 'scene' as ViewDepth,
+  depth: 'scene' as ZoomLevel,
   onDepthChange: vi.fn(),
   canPrev: true,
   canNext: true,
@@ -17,9 +18,10 @@ describe('DepthSlider', () => {
     vi.clearAllMocks();
   });
 
-  it('renders all three depth buttons', () => {
+  it('renders all four depth buttons (M1: part is first-class)', () => {
     render(<DepthSlider {...DEFAULT_PROPS} />);
     expect(screen.getByRole('button', { name: /full book/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^part$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /chapter/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /scene/i })).toBeInTheDocument();
   });
@@ -28,6 +30,7 @@ describe('DepthSlider', () => {
     render(<DepthSlider {...DEFAULT_PROPS} depth="chapter" />);
     expect(screen.getByRole('button', { name: /chapter/i })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: /full book/i })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: /^part$/i })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: /scene/i })).toHaveAttribute('aria-pressed', 'false');
   });
 
@@ -124,9 +127,16 @@ describe('DepthSlider', () => {
   });
 
   describe('§7 keyboard shortcuts', () => {
-    it('Ctrl+Alt+ArrowDown moves depth from book to chapter', () => {
+    it('Ctrl+Alt+ArrowDown moves depth from book to part (M1)', () => {
       const onDepthChange = vi.fn();
       render(<DepthSlider {...DEFAULT_PROPS} depth="book" onDepthChange={onDepthChange} />);
+      fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true, altKey: true });
+      expect(onDepthChange).toHaveBeenCalledWith('part');
+    });
+
+    it('Ctrl+Alt+ArrowDown moves depth from part to chapter (M1)', () => {
+      const onDepthChange = vi.fn();
+      render(<DepthSlider {...DEFAULT_PROPS} depth="part" onDepthChange={onDepthChange} />);
       fireEvent.keyDown(window, { key: 'ArrowDown', ctrlKey: true, altKey: true });
       expect(onDepthChange).toHaveBeenCalledWith('chapter');
     });
@@ -145,9 +155,16 @@ describe('DepthSlider', () => {
       expect(onDepthChange).toHaveBeenCalledWith('chapter');
     });
 
-    it('Ctrl+Alt+ArrowUp moves depth from chapter to book', () => {
+    it('Ctrl+Alt+ArrowUp moves depth from chapter to part (M1)', () => {
       const onDepthChange = vi.fn();
       render(<DepthSlider {...DEFAULT_PROPS} depth="chapter" onDepthChange={onDepthChange} />);
+      fireEvent.keyDown(window, { key: 'ArrowUp', ctrlKey: true, altKey: true });
+      expect(onDepthChange).toHaveBeenCalledWith('part');
+    });
+
+    it('Ctrl+Alt+ArrowUp moves depth from part to book (M1)', () => {
+      const onDepthChange = vi.fn();
+      render(<DepthSlider {...DEFAULT_PROPS} depth="part" onDepthChange={onDepthChange} />);
       fireEvent.keyDown(window, { key: 'ArrowUp', ctrlKey: true, altKey: true });
       expect(onDepthChange).toHaveBeenCalledWith('book');
     });
@@ -212,7 +229,7 @@ describe('DepthSlider', () => {
       const onDepthChange = vi.fn();
       render(<DepthSlider {...DEFAULT_PROPS} depth="book" onDepthChange={onDepthChange} />);
       fireEvent.keyDown(window, { key: 'ArrowDown', metaKey: true, altKey: true });
-      expect(onDepthChange).toHaveBeenCalledWith('chapter');
+      expect(onDepthChange).toHaveBeenCalledWith('part');
     });
 
     it('removes keydown listener on unmount', () => {
