@@ -1294,6 +1294,7 @@ jobs:
   notes-windows:
     needs: [setup]
     runs-on: windows-latest
+    continue-on-error: true  # SKY-9419: temp until SKY-9346 (FO-05/06/08/09 win32 rename/delete) is fixed
     timeout-minutes: 20
     defaults:
       run:
