@@ -5,7 +5,7 @@ import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, E
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
-import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
+import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, clampPageWidth, normalizeStoryPagePrefs, resolvePageWidth, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import {
   applyLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
@@ -21,7 +21,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cursorChapter, cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -857,12 +857,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
 
-  // SKY-3206: Sync page prefs from settings when vault/settings change
+  // SKY-3206: Sync page prefs from settings when vault/settings change.
+  // M1-S3: maps persisted before the canonical fields existed are seeded from
+  // the old app-wide manuscript width once, then normalized so the canonical
+  // and legacy fields describe the same page.
   useEffect(() => {
     if (!appSettings || !activeVaultRoot) return;
     const map = (appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap;
-    const prefs = map?.[activeVaultRoot] ?? STORY_PAGE_DEFAULTS;
-    setPagePrefs(prefs);
+    const stored = map?.[activeVaultRoot] ?? STORY_PAGE_DEFAULTS;
+    const seeded: StoryPagePrefs =
+      stored.pageWidthPx == null
+        ? { ...stored, pageWidthPx: clampPageWidth(appSettings.manuscriptPageWidth ?? 1000) }
+        : stored;
+    setPagePrefs(normalizeStoryPagePrefs(seeded));
   }, [appSettings, activeVaultRoot]);
 
   useEffect(() => {
@@ -989,18 +996,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   );
 
   const handlePagePrefsChange = useCallback((newPrefs: StoryPagePrefs) => {
-    setPagePrefs(newPrefs);
-    applyStoryPageTokens(newPrefs);
+    // M1-S3: every prefs writer (popover, ruler diamonds, toolbar, legacy
+    // strip) funnels through here — normalize keeps the canonical and legacy
+    // fields in agreement ("two controls, one pref").
+    const next = normalizeStoryPagePrefs(newPrefs, pagePrefs);
+    setPagePrefs(next);
+    applyStoryPageTokens(next);
     if (!appSettings || !activeVaultRoot) return;
     const updated = {
       ...appSettings,
       storyPagePrefsMap: {
         ...(appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap,
-        [activeVaultRoot]: newPrefs,
+        [activeVaultRoot]: next,
       },
     };
     window.api.settingsSet(updated as AppSettings).catch(() => {});
-  }, [appSettings, activeVaultRoot]);
+  }, [appSettings, activeVaultRoot, pagePrefs]);
 
   const handlePageDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -4359,15 +4370,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     refreshManuscriptSelection(renamed);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
-  // Beta 3 M10: manuscript sheet width (prototype pageW) persisted app-wide.
-  const handleManuscriptPageWidthChange = useCallback((px: number) => {
-    setAppSettings((prev) => {
-      if (!prev || prev.manuscriptPageWidth === px) return prev;
-      const updated: AppSettings = { ...prev, manuscriptPageWidth: px };
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
-    });
-  }, []);
 
   // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
   // same live-apply + persist shape as the width handler above, scoped to
@@ -5065,7 +5067,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               with the view into BookPreview — the tts/voice settings ride along. */}
           <BookPreview
             story={selectedStory ?? null}
-            pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+            pageWidth={resolvePageWidth(pagePrefs)}
             onExport={() => {
               if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
             }}
@@ -5340,8 +5342,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onRemoveParagraph={handleManuscriptRemoveParagraph}
                   onRenameScene={handleManuscriptRenameScene}
                   onRenameChapter={handleManuscriptRenameChapter}
-                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
-                  onPageWidthChange={handleManuscriptPageWidthChange}
+                  pagePrefs={pagePrefs}
+                  onPagePrefsChange={handlePagePrefsChange}
                   liquidNeon={appSettings?.liquidNeonV2}
                   onPageStyleChange={handleManuscriptPageStyleChange}
                   onPickPageTexture={handlePickPageTexture}
@@ -5352,7 +5354,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onToggleFocus={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
                   onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
                   onAddScene={() => {
-                    if (selectedStory && selectedChapter) void createScene(selectedStory.id, selectedChapter.id);
+                    if (!selectedStory) return;
+                    // The cursor's chapter is what row 3/4 show — selectedChapter
+                    // only syncs after a cursor change and is null on several
+                    // book/part-depth paths (adversarial S2 finding).
+                    const target = cursorChapter(selectedStory, manuscriptCursor) ?? selectedChapter;
+                    if (target) void createScene(selectedStory.id, target.id);
                   }}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}

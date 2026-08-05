@@ -440,6 +440,15 @@ const STORY_PAGE_FONT_STACKS: Record<string, string> = {
   mono: "'Courier New', Courier, monospace",
 };
 
+/** The four manuscript font choices on the row-5 format toolbar (M1). */
+export type StoryFontName = 'Lora' | 'Georgia' | 'Palatino Linotype' | 'Inter';
+export const STORY_FONT_NAMES: readonly StoryFontName[] = [
+  'Lora',
+  'Georgia',
+  'Palatino Linotype',
+  'Inter',
+];
+
 export interface StoryPagePrefs {
   sizePreset: 'letter' | 'a4' | 'a5' | 'manuscript' | 'custom';
   customWidthPx?: number;
@@ -448,6 +457,17 @@ export interface StoryPagePrefs {
   fontFamily: 'serif' | 'sans' | 'mono';
   fontSizePx: number;
   lineHeight: number;
+  // M1-S3 canonical page prefs (SKY-9013): the ONE pref set shared by the
+  // format toolbar, the ruler diamond pairs, and PageSetupPopover. Optional so
+  // maps persisted before S3 stay valid — read through the resolve* helpers.
+  // The pre-S3 fields above only feed the legacy scene branch's CSS vars and
+  // are deleted with that branch (M1-S4).
+  pageWidthPx?: number;
+  pageMarginPx?: number;
+  fontName?: StoryFontName;
+  /** The toolbar's "− 12 +" number; rendered px = step × 1.42 (prototype). */
+  fontSizeStep?: number;
+  lineHeightX?: number;
 }
 
 export const STORY_PAGE_DEFAULTS: StoryPagePrefs = {
@@ -459,20 +479,163 @@ export const STORY_PAGE_DEFAULTS: StoryPagePrefs = {
   lineHeight: 1.7,
 };
 
+// M1 page geometry (plan §9.5 + prototype): centered page, default 1000px,
+// margins stored as absolute px and carried unchanged when the page resizes.
+export const PAGE_WIDTH_MIN = 520;
+export const PAGE_WIDTH_MAX = 3000;
+export const PAGE_WIDTH_DEFAULT = 1000;
+export const PAGE_MARGIN_MIN = 12;
+export const PAGE_MARGIN_DEFAULT = 84;
+export const FONT_STEP_MIN = 9;
+export const FONT_STEP_MAX = 18;
+export const FONT_STEP_DEFAULT = 12;
+export const LINE_HEIGHT_DEFAULT = 1.85;
+/** Rendered page font px per font-size step (prototype fsize × 1.42). */
+export const FONT_STEP_PX_RATIO = 1.42;
+
+export const clampPageWidth = (w: number): number =>
+  Math.max(PAGE_WIDTH_MIN, Math.min(PAGE_WIDTH_MAX, Math.round(w)));
+
+/** Widest legal margin for a page width — keeps ≥120px of text column. */
+export const maxPageMargin = (widthPx: number): number => Math.floor(widthPx / 2) - 60;
+
+export const clampPageMargin = (m: number, widthPx: number): number =>
+  Math.max(PAGE_MARGIN_MIN, Math.min(maxPageMargin(widthPx), Math.round(m)));
+
+const clampFontStep = (s: number): number =>
+  Math.max(FONT_STEP_MIN, Math.min(FONT_STEP_MAX, Math.round(s)));
+
+const legacyEffectiveWidth = (p: StoryPagePrefs): number =>
+  p.sizePreset === 'custom' && p.customWidthPx != null
+    ? p.customWidthPx
+    : (STORY_PAGE_PRESET_WIDTHS[p.sizePreset] ?? STORY_PAGE_PRESET_WIDTHS.letter);
+
+export const resolvePageWidth = (p?: Partial<StoryPagePrefs> | null): number =>
+  clampPageWidth(p?.pageWidthPx ?? PAGE_WIDTH_DEFAULT);
+
+export const resolvePageMargin = (p?: Partial<StoryPagePrefs> | null): number =>
+  clampPageMargin(p?.pageMarginPx ?? PAGE_MARGIN_DEFAULT, resolvePageWidth(p));
+
+export const resolveFontName = (p?: Partial<StoryPagePrefs> | null): StoryFontName =>
+  p?.fontName && (STORY_FONT_NAMES as readonly string[]).includes(p.fontName)
+    ? p.fontName
+    : 'Lora';
+
+export const resolveFontStep = (p?: Partial<StoryPagePrefs> | null): number =>
+  clampFontStep(p?.fontSizeStep ?? FONT_STEP_DEFAULT);
+
+export const resolveLineHeight = (p?: Partial<StoryPagePrefs> | null): number =>
+  p?.lineHeightX ?? LINE_HEIGHT_DEFAULT;
+
+/** CSS stack for a manuscript font name (prototype's font select). */
+export function manuscriptFontStack(font: string): string {
+  if (font === 'Inter') return "'Inter',sans-serif";
+  if (font === 'Lora') return "'Lora',Georgia,serif";
+  return "'" + font + "',Georgia,serif";
+}
+
+/**
+ * Keep the canonical M1 fields and the legacy pre-S3 fields describing the
+ * same page ("two controls, one pref, always in agreement" — plan §M1 row 6).
+ * Canonical edits mirror down so the legacy scene branch tracks them until
+ * S4 deletes it; legacy edits (PageRuler, the chrome strip) mirror up so the
+ * unified shell tracks those too. Margins are clamped against the width last —
+ * the locked-pair rule: a narrower page clamps the margin down, never the
+ * reverse.
+ */
+export function normalizeStoryPagePrefs(
+  next: StoryPagePrefs,
+  prev?: StoryPagePrefs | null
+): StoryPagePrefs {
+  const p: StoryPagePrefs = { ...next };
+
+  // Seeding rule: a map with no canonical fields (pre-S3, prev == null) takes
+  // the unified editor's defaults — the legacy fields described the legacy
+  // scene sheet, which is not the surface that survives M1. Legacy→canonical
+  // mirroring applies only to observed edits (prev != null: PageRuler, the
+  // chrome strip) so those controls keep working until S4 deletes them.
+  const canonicalWidthEdited = p.pageWidthPx != null && p.pageWidthPx !== prev?.pageWidthPx;
+  const legacyWidthEdited =
+    prev != null &&
+    (p.sizePreset !== prev.sizePreset || p.customWidthPx !== prev.customWidthPx);
+  if (p.pageWidthPx == null) {
+    p.pageWidthPx = prev != null ? clampPageWidth(legacyEffectiveWidth(p)) : PAGE_WIDTH_DEFAULT;
+    p.sizePreset = 'custom';
+    p.customWidthPx = p.pageWidthPx;
+  } else if (!canonicalWidthEdited && legacyWidthEdited) {
+    p.pageWidthPx = clampPageWidth(legacyEffectiveWidth(p));
+  } else {
+    p.pageWidthPx = clampPageWidth(p.pageWidthPx);
+    if (canonicalWidthEdited) {
+      p.sizePreset = 'custom';
+      p.customWidthPx = p.pageWidthPx;
+    }
+  }
+
+  const canonicalMarginEdited = p.pageMarginPx != null && p.pageMarginPx !== prev?.pageMarginPx;
+  const legacyMarginEdited = prev != null && p.marginHorizPx !== prev.marginHorizPx;
+  if (p.pageMarginPx == null) {
+    p.pageMarginPx = clampPageMargin(
+      prev != null ? p.marginHorizPx : PAGE_MARGIN_DEFAULT,
+      p.pageWidthPx
+    );
+  } else if (!canonicalMarginEdited && legacyMarginEdited) {
+    p.pageMarginPx = clampPageMargin(p.marginHorizPx, p.pageWidthPx);
+  } else {
+    p.pageMarginPx = clampPageMargin(p.pageMarginPx, p.pageWidthPx);
+  }
+  p.marginHorizPx = p.pageMarginPx;
+  p.marginVertPx = p.pageMarginPx;
+
+  const canonicalFontEdited = p.fontSizeStep != null && p.fontSizeStep !== prev?.fontSizeStep;
+  const legacyFontEdited = prev != null && p.fontSizePx !== prev.fontSizePx;
+  if (p.fontSizeStep == null) {
+    p.fontSizeStep =
+      prev != null ? clampFontStep(p.fontSizePx / FONT_STEP_PX_RATIO) : FONT_STEP_DEFAULT;
+  } else if (!canonicalFontEdited && legacyFontEdited) {
+    p.fontSizeStep = clampFontStep(p.fontSizePx / FONT_STEP_PX_RATIO);
+  } else {
+    p.fontSizeStep = clampFontStep(p.fontSizeStep);
+  }
+  p.fontSizePx = Math.round(p.fontSizeStep * FONT_STEP_PX_RATIO);
+
+  if (p.lineHeightX != null && p.lineHeightX !== prev?.lineHeightX) {
+    p.lineHeight = p.lineHeightX;
+  } else if (prev != null && p.lineHeight !== prev.lineHeight) {
+    p.lineHeightX = p.lineHeight;
+  } else if (p.lineHeightX == null) {
+    p.lineHeightX = LINE_HEIGHT_DEFAULT;
+    p.lineHeight = LINE_HEIGHT_DEFAULT;
+  }
+
+  if (p.fontName == null) p.fontName = 'Lora';
+  p.fontFamily = p.fontName === 'Inter' ? 'sans' : 'serif';
+
+  return p;
+}
+
 export function applyStoryPageTokens(prefs: Partial<StoryPagePrefs> | null | undefined): void {
   if (typeof document === 'undefined') return;
   const p: StoryPagePrefs = { ...STORY_PAGE_DEFAULTS, ...prefs };
   const root = document.documentElement;
-  const widthPx =
-    p.sizePreset === 'custom' && p.customWidthPx != null
-      ? p.customWidthPx
-      : (STORY_PAGE_PRESET_WIDTHS[p.sizePreset] ?? STORY_PAGE_PRESET_WIDTHS.letter);
+  // Canonical M1 fields win; the pre-S3 fields are the fallback for maps
+  // persisted before S3 (see normalizeStoryPagePrefs).
+  const widthPx = p.pageWidthPx != null ? clampPageWidth(p.pageWidthPx) : legacyEffectiveWidth(p);
+  const padHoriz = p.pageMarginPx != null ? clampPageMargin(p.pageMarginPx, widthPx) : p.marginHorizPx;
+  const padVert = p.pageMarginPx != null ? padHoriz : p.marginVertPx;
+  const fontFamily = p.fontName
+    ? manuscriptFontStack(p.fontName)
+    : (STORY_PAGE_FONT_STACKS[p.fontFamily] ?? STORY_PAGE_FONT_STACKS.serif);
+  const fontSize =
+    p.fontSizeStep != null
+      ? `${(p.fontSizeStep * FONT_STEP_PX_RATIO).toFixed(1)}px`
+      : `${p.fontSizePx}px`;
   root.style.setProperty('--page-width-story', `${widthPx}px`);
-  root.style.setProperty('--story-page-pad-vert', `${p.marginVertPx}px`);
-  root.style.setProperty('--story-page-pad-horiz', `${p.marginHorizPx}px`);
-  root.style.setProperty('--story-page-font-family', STORY_PAGE_FONT_STACKS[p.fontFamily] ?? STORY_PAGE_FONT_STACKS.serif);
-  root.style.setProperty('--story-page-font-size', `${p.fontSizePx}px`);
-  root.style.setProperty('--story-page-line-height', String(p.lineHeight));
+  root.style.setProperty('--story-page-pad-vert', `${padVert}px`);
+  root.style.setProperty('--story-page-pad-horiz', `${padHoriz}px`);
+  root.style.setProperty('--story-page-font-family', fontFamily);
+  root.style.setProperty('--story-page-font-size', fontSize);
+  root.style.setProperty('--story-page-line-height', String(p.lineHeightX ?? p.lineHeight));
 }
 
 export function resetStoryPageTokens(): void {

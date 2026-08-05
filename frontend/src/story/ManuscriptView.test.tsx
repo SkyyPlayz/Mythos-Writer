@@ -218,9 +218,12 @@ describe('zoom navigation', () => {
     expect(props.onCursorChange).toHaveBeenLastCalledWith(cur('chapter', 0));
   });
 
-  it('hides chevrons and floating page arrows at book zoom', () => {
+  it('disables chevrons (depth-invariant chrome) and hides floating page arrows at book zoom', () => {
     renderView({ cursor: cur('book') });
-    expect(screen.queryByTestId('msv-zoom-next')).not.toBeInTheDocument();
+    // M1-S3 (AC #1): row 4 keeps the chevrons mounted at every depth — book
+    // scope has no siblings so they disable instead of unmounting.
+    expect(screen.getByTestId('msv-zoom-next')).toBeDisabled();
+    expect(screen.getByTestId('msv-zoom-prev')).toBeDisabled();
     expect(screen.queryByTestId('msv-page-next')).not.toBeInTheDocument();
   });
 
@@ -275,7 +278,7 @@ describe('page width', () => {
     const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
     expect(wrap.style.width).toBe('1000px');
     fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
-    const slider = screen.getByTestId('page-chrome-width-slider') as HTMLInputElement;
+    const slider = screen.getByLabelText('Page width slider') as HTMLInputElement;
     expect(slider.min).toBe('520');
     expect(slider.max).toBe('3000');
     fireEvent.change(slider, { target: { value: '1400' } });
@@ -283,21 +286,21 @@ describe('page width', () => {
     expect(screen.getByText('1400px')).toBeInTheDocument();
   });
 
-  it('honors the pageWidth prop as the initial width', () => {
-    renderView({ pageWidth: 760 });
+  it('honors the canonical pagePrefs width as the initial width', () => {
+    renderView({ pagePrefs: { pageWidthPx: 760 } });
     expect((document.querySelector('.msv-sheet-wrap') as HTMLElement).style.width).toBe('760px');
   });
 
   it('the margin ruler resizes the sheet by dragging a diamond handle (M7 §5.1)', () => {
-    const onPageWidthChange = vi.fn();
-    renderView({ onPageWidthChange });
+    const onPagePrefsChange = vi.fn();
+    renderView({ onPagePrefsChange });
     const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
     const handle = screen.getByTestId('margin-ruler-handle-r');
     fireEvent.mouseDown(handle, { clientX: 500 });
     fireEvent.mouseMove(window, { clientX: 550 });
     expect(wrap.style.width).toBe('1100px'); // +50 delta * side(1) * 2
     fireEvent.mouseUp(window, { clientX: 550 });
-    expect(onPageWidthChange).toHaveBeenCalledWith(1100);
+    expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 1100 }));
   });
 
   it('the margin ruler reserves the comments-gutter width while the gutter is open (open by default) and drops it once closed', () => {
@@ -317,8 +320,10 @@ describe('page width', () => {
     const onPageStyleChange = vi.fn();
     renderView({ onPageStyleChange, liquidNeon: { pageCfg: { mode: 'neon', bg: '#0a0d18', op: 66, blur: 0 } } });
     fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
-    expect(screen.getByTestId('page-chrome-style-neon').getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByTestId('page-chrome-style-scroll'));
+    expect(
+      screen.getByRole('button', { name: /^neon$/i }).getAttribute('aria-pressed')
+    ).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /^scroll$/i }));
     expect(onPageStyleChange).toHaveBeenCalledWith('scroll');
   });
 });
@@ -483,44 +488,44 @@ describe('page modes (M10, prototype sheetBoxSt 4607–4617)', () => {
 
 describe('page-edge drag (M10, prototype startDrag 3392–3400)', () => {
   it('drags the right edge to grow the width by 2× the delta and commits on release', () => {
-    const onPageWidthChange = vi.fn();
-    renderView({ onPageWidthChange });
+    const onPagePrefsChange = vi.fn();
+    renderView({ onPagePrefsChange });
     const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
     fireEvent.mouseDown(screen.getByTestId('msv-edge-r'), { clientX: 500 });
     fireEvent.mouseMove(window, { clientX: 550 });
     expect(wrap.style.width).toBe('1100px'); // 1000 + 50×2
-    expect(screen.getByTestId('msv-width-badge')).toHaveTextContent('1100 px');
+    expect(screen.getByTestId('msv-width-badge')).toHaveTextContent('1100 px page');
     fireEvent.mouseUp(window, { clientX: 550 });
-    expect(onPageWidthChange).toHaveBeenCalledWith(1100);
+    expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 1100 }));
     expect(screen.queryByTestId('msv-width-badge')).not.toBeInTheDocument();
   });
 
   it('left edge drags outward symmetrically and clamps at 520–3000', () => {
-    const onPageWidthChange = vi.fn();
-    renderView({ onPageWidthChange });
+    const onPagePrefsChange = vi.fn();
+    renderView({ onPagePrefsChange });
     const wrap = document.querySelector('.msv-sheet-wrap') as HTMLElement;
     fireEvent.mouseDown(screen.getByTestId('msv-edge-l'), { clientX: 300 });
     fireEvent.mouseMove(window, { clientX: 900 }); // +600 × −1 side × 2 = −1200 → clamp 520
     expect(wrap.style.width).toBe('520px');
     fireEvent.mouseUp(window, { clientX: 900 });
-    expect(onPageWidthChange).toHaveBeenCalledWith(520);
+    expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 520 }));
   });
 
   it('nudges the width with arrow keys on a focused edge handle', () => {
-    const onPageWidthChange = vi.fn();
-    renderView({ onPageWidthChange });
+    const onPagePrefsChange = vi.fn();
+    renderView({ onPagePrefsChange });
     fireEvent.keyDown(screen.getByTestId('msv-edge-r'), { key: 'ArrowRight' });
-    expect(onPageWidthChange).toHaveBeenCalledWith(1020);
+    expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 1020 }));
     fireEvent.keyDown(screen.getByTestId('msv-edge-r'), { key: 'ArrowLeft' });
-    expect(onPageWidthChange).toHaveBeenLastCalledWith(1000);
+    expect(onPagePrefsChange).toHaveBeenLastCalledWith(expect.objectContaining({ pageWidthPx: 1000 }));
   });
 
-  it('slider changes commit through onPageWidthChange too', () => {
-    const onPageWidthChange = vi.fn();
-    renderView({ onPageWidthChange });
+  it('slider changes commit through onPagePrefsChange too', () => {
+    const onPagePrefsChange = vi.fn();
+    renderView({ onPagePrefsChange });
     fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
-    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '2000' } });
-    expect(onPageWidthChange).toHaveBeenCalledWith(2000);
+    fireEvent.change(screen.getByLabelText('Page width slider'), { target: { value: '2000' } });
+    expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 2000 }));
   });
 });
 

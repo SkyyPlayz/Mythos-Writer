@@ -136,3 +136,23 @@
   color: var(--color-text, #333);
   background: var(--color-surface, #fff);
 }
+
+.page-setup-popover__select {
+  flex: 1;
+  padding: 2px 6px;
+  font-size: 12px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  color: var(--color-text, #333);
+  background: var(--color-surface, #fff);
+}
+
+/* M1-S3: anchored under the row-5 page chip when mounted inside the unified
+   editor's chip anchor (plan §M1 spec #5a "opened from a page chip in the
+   format toolbar") instead of the legacy fixed screen corner. */
+.msv-page-setup-anchor .page-setup-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+}

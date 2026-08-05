@@ -80,9 +80,16 @@
   padding: 0;
 }
 
-.msv-zoom-arrow:hover {
+.msv-zoom-arrow:hover:not(:disabled) {
   color: var(--n1, #00f0ff);
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+/* M1-S3: depth-invariant chrome — arrows dim where stepping is impossible
+   instead of unmounting and shifting row 4. */
+.msv-zoom-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .msv-crumbs {

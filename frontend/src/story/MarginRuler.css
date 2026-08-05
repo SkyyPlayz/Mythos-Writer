@@ -1,5 +1,6 @@
-/* Beta 4 M7 — Margin ruler (§5.1): ticks, end stops, glowing page-width span,
-   diamond resize handles, live px readout. */
+/* Beta 4 M7 / M1-S3 — Margin ruler (§5.1, plan §M1 row 6): ticks, end stops,
+   glowing page-width span, two diamond pairs on one track — outer drags page
+   width, inner drags margins. Live values render as the page-corner badge. */
 
 .mgr-root {
   flex: none;
@@ -56,6 +57,7 @@
 
 .mgr-handle:hover,
 .mgr-handle:focus-visible {
+  transform: translateY(-50%) rotate(45deg) scale(1.35);
   box-shadow: 0 0 14px -1px var(--g2, rgba(155, 95, 255, 0.9));
 }
 
@@ -64,19 +66,24 @@
   outline-offset: 3px;
 }
 
-.mgr-readout {
-  position: absolute;
-  top: -24px;
-  transform: translateX(-100%);
-  padding: 3px 8px;
-  border-radius: 7px;
-  background: rgba(15, 19, 33, 0.97);
-  border: 1px solid var(--b1, rgba(0, 240, 255, 0.5));
-  box-shadow: 0 6px 18px rgba(3, 5, 12, 0.5);
-  color: var(--n1, #00f0ff);
-  font-size: 10.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 5;
+/* Inner pair — margins. Same diamond, the page-width span's accent, so the
+   two pairs read as different controls on one track (prototype 5520). */
+.mgr-handle--margin {
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 9px -1px var(--g1, rgba(0, 240, 255, 0.75));
+}
+
+.mgr-handle--margin:hover,
+.mgr-handle--margin:focus-visible {
+  box-shadow: 0 0 14px -1px var(--g1, rgba(0, 240, 255, 0.9));
+}
+
+.mgr-handle--margin:focus-visible {
+  outline-color: var(--n1, #00f0ff);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mgr-handle {
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
 }

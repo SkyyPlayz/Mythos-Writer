@@ -10,7 +10,7 @@
 //
 // Self-contained: pure UI + local fold/width/toolbar state. Persistence stays
 // with the caller via onEditParagraph / onCycleStatus / onCursorChange /
-// onMoveParagraph / onPageWidthChange, plus the M8 editing-model callbacks
+// onMoveParagraph / onPagePrefsChange, plus the M8 editing-model callbacks
 // (onSplitParagraph / onMergeParagraph / onRemoveParagraph / onRenameScene /
 // onRenameChapter — prototype paraKey/editPara/editTitle 5095–5146).
 
@@ -44,8 +44,26 @@ import TitleRow from './TitleRow';
 import { countWords } from '../wordStats';
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
-import MarginRuler from './MarginRuler';
-import PageChrome from './PageChrome';
+import MarginRuler, { type RulerDrag } from './MarginRuler';
+import PageSetupPopover from '../PageSetupPopover';
+import {
+  FONT_STEP_MAX,
+  FONT_STEP_MIN,
+  PAGE_WIDTH_MIN,
+  PAGE_WIDTH_MAX,
+  STORY_FONT_NAMES,
+  STORY_PAGE_DEFAULTS,
+  clampPageMargin,
+  clampPageWidth,
+  manuscriptFontStack,
+  resolveFontName,
+  resolveFontStep,
+  resolveLineHeight,
+  resolvePageMargin,
+  resolvePageWidth,
+  type StoryFontName,
+  type StoryPagePrefs,
+} from '../theme';
 import {
   AGENT_ACTION_SUCCESS_TOAST,
   findAnchorSceneId,
@@ -85,10 +103,14 @@ export interface ManuscriptViewProps {
   onEditParagraph: (sceneId: string, blockId: string, newText: string) => void;
   /** Fired when a scene's status dot is clicked (todo → draft → done → todo). */
   onCycleStatus: (sceneId: string) => void;
-  /** Initial sheet width in px (prototype default 1000, range 520–3000). */
-  pageWidth?: number;
-  /** M10: fired when the width slider or a page-edge drag commits a new width. */
-  onPageWidthChange?: (px: number) => void;
+  /**
+   * M1-S3: the canonical page prefs (width/margin/font/size/line-height) —
+   * ONE pref set shared by the toolbar, the ruler diamond pairs, and
+   * PageSetupPopover. Absent → prototype defaults, local-only.
+   */
+  pagePrefs?: Partial<StoryPagePrefs>;
+  /** M1-S3: fired when any page-pref control commits a change. */
+  onPagePrefsChange?: (p: StoryPagePrefs) => void;
   /** M10: grip drag dropped one paragraph onto another (lands before target). */
   onMoveParagraph?: (from: ParagraphRef, to: ParagraphRef) => void;
   /**
@@ -185,12 +207,8 @@ const STATUS_TIP: Record<SceneStatus, string> = {
 //    paragraphs are plain text — no list/indent markup) and were removed.
 
 const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quote'];
-const FONT_OPTIONS = ['Lora', 'Georgia', 'Palatino Linotype', 'Inter'];
-const FSIZE_MIN = 9;
-const FSIZE_MAX = 18;
-// Spec order (§5.1): 1.85 is the toolbar default.
+// Spec order (§5.1): 1.85 is the toolbar default (LINE_HEIGHT_DEFAULT, theme.ts).
 const LINE_SPACING_OPTIONS = ['1.15', '1.3', '1.5', '1.85', '2', '2.5', '3', '3.5', '4', '5', '6'];
-const LINE_SPACING_DEFAULT = '1.85';
 
 type FmtKey = 'b' | 'i' | 'u' | 's';
 type AlignKey = 'left' | 'center' | 'right' | 'justify';
@@ -209,13 +227,6 @@ const ALIGN_PATHS: Array<{ k: AlignKey; label: string; p: string }> = [
   { k: 'justify', label: 'Justify', p: 'M4 7h16M4 12h16M4 17h16' },
 ];
 
-/** Prototype fam mapping (4117). */
-function fontStack(font: string): string {
-  if (font === 'Inter') return "'Inter',sans-serif";
-  if (font === 'Lora') return "'Lora',Georgia,serif";
-  return "'" + font + "',Georgia,serif";
-}
-
 // ── Lazy windowing (GH#843): render only ~WINDOW blocks around the viewport,
 //    replacing everything outside with top/bottom spacers sized from an
 //    average block-height estimate. Keeps a 1,000-scene story smooth.
@@ -224,10 +235,9 @@ const EST_BLOCK_H = 96;
 /** Re-window only after the start index moves this far (scroll hysteresis). */
 const WINDOW_HYSTERESIS = 24;
 
-// ── Page width (prototype state 3227 + startDrag 3392–3400) ──────────────────
-const PAGE_W_MIN = 520;
-const PAGE_W_MAX = 3000;
-const clampPageW = (w: number) => Math.max(PAGE_W_MIN, Math.min(PAGE_W_MAX, w));
+// ── Page geometry (prototype state 3227 + startDrag 3392–3400): the canonical
+//    clamps live in theme.ts beside StoryPagePrefs (M1-S3).
+const clampPageW = clampPageWidth;
 
 const CHEVRON_RIGHT = (size: number) => (
   <svg
@@ -300,8 +310,8 @@ export default function ManuscriptView({
   onCursorChange,
   onEditParagraph,
   onCycleStatus,
-  pageWidth = 1000,
-  onPageWidthChange,
+  pagePrefs,
+  onPagePrefsChange,
   onMoveParagraph,
   onSplitParagraph,
   onMergeParagraph,
@@ -325,7 +335,11 @@ export default function ManuscriptView({
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const [pageW, setPageW] = useState(() => clampPageW(pageWidth));
+  // M1-S3: page geometry + type mirror the canonical prefs; local state gives
+  // live drag feedback, the sync effects below follow external pref changes
+  // (popover, another control, settings load after mount).
+  const [pageW, setPageW] = useState(() => resolvePageWidth(pagePrefs));
+  const [marginPx, setMarginPx] = useState(() => resolvePageMargin(pagePrefs));
   const [winStart, setWinStart] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Last text committed per paragraph block — prevents Enter+blur double-fires.
@@ -333,11 +347,31 @@ export default function ManuscriptView({
 
   // M10 toolbar state (prototype 3251: styleSel/font/fsize/fmt/align).
   const [styleSel, setStyleSel] = useState('Body Text');
-  const [font, setFont] = useState('Lora');
-  const [fsize, setFsize] = useState(12);
-  const [lineSpacing, setLineSpacing] = useState(LINE_SPACING_DEFAULT);
+  const [font, setFont] = useState<StoryFontName>(() => resolveFontName(pagePrefs));
+  const [fsize, setFsize] = useState(() => resolveFontStep(pagePrefs));
+  const [lineSpacing, setLineSpacing] = useState(() => String(resolveLineHeight(pagePrefs)));
   const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
   const [align, setAlign] = useState<AlignKey>('left');
+
+  // M1-S3: one commit path for every page-pref control — toolbar selects,
+  // ruler diamonds, edge drags, and the popover all end here.
+  const commitPrefs = useCallback(
+    (patch: Partial<StoryPagePrefs>) => {
+      onPagePrefsChange?.({ ...STORY_PAGE_DEFAULTS, ...pagePrefs, ...patch });
+    },
+    [onPagePrefsChange, pagePrefs]
+  );
+
+  // Mirror a full prefs object into the local live state — used by the popover
+  // (which edits whole prefs) so the sheet follows instantly even when the
+  // view is uncontrolled, and by the sync effect below for external changes.
+  const applyPrefsLocal = useCallback((p: Partial<StoryPagePrefs> | undefined) => {
+    setPageW(resolvePageWidth(p));
+    setMarginPx(resolvePageMargin(p));
+    setFont(resolveFontName(p));
+    setFsize(resolveFontStep(p));
+    setLineSpacing(String(resolveLineHeight(p)));
+  }, []);
 
   // M7: "Page setup" popover (width + page style) — replaces the always-open
   // width strip so the control surface matches §5.1's "compact popover, not
@@ -346,6 +380,8 @@ export default function ManuscriptView({
 
   // M10 page-edge drag + paragraph grip drag state.
   const [edgeDragging, setEdgeDragging] = useState(false);
+  // M1-S3: live ruler-diamond drag — feeds the page-corner value badge.
+  const [rulerDrag, setRulerDrag] = useState<RulerDrag | null>(null);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
   // Mirror of dragPara so the row-facing drag handlers can stay
@@ -416,10 +452,11 @@ export default function ManuscriptView({
   // M7: display name for the Page setup popover's custom-texture row.
   const textureFileName = liquidNeon?.pageCfg?.textureUrl?.split(/[\\/]/).pop();
 
-  // Follow persisted width when it changes elsewhere (settings load after mount).
+  // Follow persisted prefs when they change elsewhere (popover edits, settings
+  // load after mount) — every control mirrors the one canonical pref set.
   useEffect(() => {
-    setPageW(clampPageW(pageWidth));
-  }, [pageWidth]);
+    applyPrefsLocal(pagePrefs);
+  }, [pagePrefs, applyPrefsLocal]);
 
   const toggleFold = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -686,10 +723,23 @@ export default function ManuscriptView({
   const commitPageWidth = useCallback(
     (w: number) => {
       const next = clampPageW(w);
+      // Locked pairs (plan §M1 row 6): margins are absolute px carried across
+      // page resizes — clamped down only when the new width no longer fits.
+      const nextMargin = clampPageMargin(marginPx, next);
       setPageW(next);
-      onPageWidthChange?.(next);
+      setMarginPx(nextMargin);
+      commitPrefs({ pageWidthPx: next, pageMarginPx: nextMargin });
     },
-    [onPageWidthChange]
+    [commitPrefs, marginPx]
+  );
+
+  const commitPageMargin = useCallback(
+    (m: number) => {
+      const next = clampPageMargin(m, pageW);
+      setMarginPx(next);
+      commitPrefs({ pageMarginPx: next });
+    },
+    [commitPrefs, pageW]
   );
 
   // Prototype startDrag (3392–3400): the page is centered, so each edge moves
@@ -858,9 +908,16 @@ export default function ManuscriptView({
   // Prototype sheetWrapSt (4118) + pSt (4119) — toolbar state applied to the sheet.
   const sheetWrapStyle: CSSProperties = {
     width: `${pageW}px`,
-    fontFamily: fontStack(font),
+    fontFamily: manuscriptFontStack(font),
     fontSize: `${(fsize * 1.42).toFixed(1)}px`,
     lineHeight: lineSpacing,
+  };
+  // M1-S3: margins are absolute px on the page surface (plan §M1 row 6) —
+  // horizontal padding tracks the margin diamonds; vertical stays the sheet's.
+  const sheetStyle: CSSProperties = {
+    ...pageChrome.sheetStyle,
+    paddingLeft: marginPx,
+    paddingRight: marginPx,
   };
   // Memoized so its identity only changes with the toolbar state — it is
   // shallow-compared by every ParagraphRow's memo gate.
@@ -1048,28 +1105,31 @@ export default function ManuscriptView({
             </button>
           ))}
         </div>
-        {cursor.zoom !== 'book' && (
-          <div className="msv-zoom-nav">
-            <button
-              type="button"
-              className="msv-zoom-arrow"
-              data-testid="msv-zoom-prev"
-              title="Previous (←)"
-              onClick={() => step(-1)}
-            >
-              {CHEVRON_LEFT(11)}
-            </button>
-            <button
-              type="button"
-              className="msv-zoom-arrow"
-              data-testid="msv-zoom-next"
-              title="Next (→)"
-              onClick={() => step(1)}
-            >
-              {CHEVRON_RIGHT(11)}
-            </button>
-          </div>
-        )}
+        {/* M1-S3: chrome is depth-invariant (AC #1) — the chevrons render at
+            every depth and disable where stepping is impossible (book scope
+            has no siblings) instead of unmounting and shifting the row. */}
+        <div className="msv-zoom-nav">
+          <button
+            type="button"
+            className="msv-zoom-arrow"
+            data-testid="msv-zoom-prev"
+            title="Previous (←)"
+            disabled={cursor.zoom === 'book'}
+            onClick={() => step(-1)}
+          >
+            {CHEVRON_LEFT(11)}
+          </button>
+          <button
+            type="button"
+            className="msv-zoom-arrow"
+            data-testid="msv-zoom-next"
+            title="Next (→)"
+            disabled={cursor.zoom === 'book'}
+            onClick={() => step(1)}
+          >
+            {CHEVRON_RIGHT(11)}
+          </button>
+        </div>
         <nav className="msv-crumbs" aria-label="Breadcrumbs" data-testid="msv-crumbs">
           {crumbs.map((c, i) => (
             <span key={`${c.cursor.zoom}-${c.label}`} className="msv-crumb-item">
@@ -1125,9 +1185,13 @@ export default function ManuscriptView({
           data-testid="msv-font-select"
           aria-label="Font"
           value={font}
-          onChange={(e) => setFont(e.target.value)}
+          onChange={(e) => {
+            const f = e.target.value as StoryFontName;
+            setFont(f);
+            commitPrefs({ fontName: f });
+          }}
         >
-          {FONT_OPTIONS.map((f) => (
+          {STORY_FONT_NAMES.map((f) => (
             <option key={f}>{f}</option>
           ))}
         </select>
@@ -1137,7 +1201,11 @@ export default function ManuscriptView({
             className="msv-tb-size-btn"
             data-testid="msv-size-down"
             aria-label="Decrease font size"
-            onClick={() => setFsize((s) => Math.max(FSIZE_MIN, s - 1))}
+            onClick={() => {
+              const s = Math.max(FONT_STEP_MIN, fsize - 1);
+              setFsize(s);
+              commitPrefs({ fontSizeStep: s });
+            }}
           >
             −
           </button>
@@ -1149,7 +1217,11 @@ export default function ManuscriptView({
             className="msv-tb-size-btn"
             data-testid="msv-size-up"
             aria-label="Increase font size"
-            onClick={() => setFsize((s) => Math.min(FSIZE_MAX, s + 1))}
+            onClick={() => {
+              const s = Math.min(FONT_STEP_MAX, fsize + 1);
+              setFsize(s);
+              commitPrefs({ fontSizeStep: s });
+            }}
           >
             +
           </button>
@@ -1159,7 +1231,10 @@ export default function ManuscriptView({
           data-testid="msv-line-spacing-select"
           aria-label="Line spacing"
           value={lineSpacing}
-          onChange={(e) => setLineSpacing(e.target.value)}
+          onChange={(e) => {
+            setLineSpacing(e.target.value);
+            commitPrefs({ lineHeightX: Number(e.target.value) });
+          }}
         >
           {LINE_SPACING_OPTIONS.map((ls) => (
             <option key={ls} value={ls}>
@@ -1202,7 +1277,7 @@ export default function ManuscriptView({
           type="button"
           className="msv-tb-add"
           data-testid="msv-add-part"
-          title="Start a new part after this one"
+          title="Add a part to the end of the story (parts arrive with the parts milestone)"
           disabled
         >
           + Part
@@ -1212,7 +1287,7 @@ export default function ManuscriptView({
             type="button"
             className="msv-tb-add"
             data-testid="msv-add-chapter"
-            title="Start a new chapter after this one"
+            title="Add a chapter to the end of the story"
             onClick={onAddChapter}
           >
             + Chapter
@@ -1254,15 +1329,24 @@ export default function ManuscriptView({
             </svg>
             <span className="msv-page-setup-readout">{pageW}px</span>
           </button>
-          <PageChrome
-            open={pageSetupOpen}
+          <PageSetupPopover
+            isOpen={pageSetupOpen}
             onClose={() => setPageSetupOpen(false)}
-            pageWidth={pageW}
-            min={PAGE_W_MIN}
-            max={PAGE_W_MAX}
-            onPageWidthChange={commitPageWidth}
-            pageStyleMode={onPageStyleChange ? pageChrome.mode : undefined}
-            onPageStyleChange={onPageStyleChange}
+            prefs={{
+              ...STORY_PAGE_DEFAULTS,
+              ...pagePrefs,
+              pageWidthPx: pageW,
+              pageMarginPx: marginPx,
+              fontName: font,
+              fontSizeStep: fsize,
+              lineHeightX: Number(lineSpacing),
+            }}
+            onPrefsChange={(p) => {
+              applyPrefsLocal(p);
+              onPagePrefsChange?.(p);
+            }}
+            pageStyle={pageChrome.mode}
+            onPageStyleChange={(mode) => onPageStyleChange?.(mode)}
             textureFileName={textureFileName}
             onPickPageTexture={onPickPageTexture}
           />
@@ -1347,15 +1431,20 @@ export default function ManuscriptView({
         )}
       </div>
 
-      {/* M7 (§5.1): margin ruler — ticks, end stops, glowing page-width span,
-          diamond resize handles, live px readout while dragging. */}
+      {/* M7 / M1-S3 (§5.1, plan row 6): ONE ruler, two diamond pairs on the
+          same track — outer drags page width, inner drags margins; live values
+          render as the page-corner badge. */}
       <MarginRuler
         pageWidth={pageW}
-        min={PAGE_W_MIN}
-        max={PAGE_W_MAX}
+        marginPx={marginPx}
+        min={PAGE_WIDTH_MIN}
+        max={PAGE_WIDTH_MAX}
         gutterOpen={commentsVisible}
         onChange={setPageW}
         onCommit={commitPageWidth}
+        onMarginChange={setMarginPx}
+        onMarginCommit={commitPageMargin}
+        onDragLive={setRulerDrag}
       />
 
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
@@ -1415,7 +1504,7 @@ export default function ManuscriptView({
           <div className="msv-sheet-wrap" style={sheetWrapStyle}>
             <div
               className="msv-sheet"
-              style={pageChrome.sheetStyle}
+              style={sheetStyle}
               data-testid="msv-sheet"
               data-page-mode={pageChrome.mode}
             >
@@ -1447,9 +1536,11 @@ export default function ManuscriptView({
               >
                 <div className="msv-edge-bar" />
               </div>
-              {edgeDragging && (
+              {(edgeDragging || rulerDrag) && (
                 <div className="msv-width-badge" data-testid="msv-width-badge">
-                  {pageW} px
+                  {rulerDrag?.kind === 'margin'
+                    ? `${rulerDrag.px} px margin`
+                    : `${rulerDrag?.px ?? pageW} px page`}
                 </div>
               )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />

@@ -1,23 +1,38 @@
+// M1-S3 (SKY-9013): THE page-setup popover — the plan names this component
+// canonical (§M1 spec #5a). Opened from the row-5 page chip in the unified
+// editor; edits the canonical StoryPagePrefs fields (pageWidthPx /
+// pageMarginPx / fontName / fontSizeStep), the same prefs the ruler diamond
+// pairs write — two controls, one pref, always in agreement. Page style
+// speaks the LiquidNeonPageCfg mode union (the engine ManuscriptView renders).
+
 import { useCallback, useId, useRef } from 'react';
-import { STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
+import {
+  FONT_STEP_MAX,
+  FONT_STEP_MIN,
+  PAGE_MARGIN_MIN,
+  PAGE_WIDTH_MAX,
+  PAGE_WIDTH_MIN,
+  STORY_FONT_NAMES,
+  maxPageMargin,
+  resolveFontName,
+  resolveFontStep,
+  resolvePageMargin,
+  resolvePageWidth,
+  type StoryFontName,
+  type StoryPagePrefs,
+} from './theme';
+import type { LiquidNeonPageCfg } from './theme/liquidNeonEngine';
 import './PageSetupPopover.css';
 
-export type PageStyle = 'neon' | 'no-glow' | 'scroll' | 'texture' | 'off';
+export type PageStyle = LiquidNeonPageCfg['mode'];
 
 const PAGE_STYLE_OPTIONS: Array<{ key: PageStyle; label: string; description: string }> = [
-  { key: 'neon',      label: 'Neon',        description: 'Glowing text on dark background' },
-  { key: 'no-glow',   label: 'No Glow',     description: 'Text without glow effect' },
-  { key: 'scroll',    label: 'Scroll',       description: 'Continuous scroll, no page boundaries' },
-  { key: 'texture',   label: 'Texture',      description: 'Custom background texture' },
-  { key: 'off',       label: 'Off',          description: 'Plain light background' },
+  { key: 'neon',    label: 'Neon',           description: 'Glowing text on dark background' },
+  { key: 'default', label: 'No Glow',        description: 'Text without glow effect' },
+  { key: 'scroll',  label: 'Scroll',         description: 'Continuous scroll, no page boundaries' },
+  { key: 'custom',  label: 'Custom texture', description: 'Custom background texture' },
+  { key: 'off',     label: 'Off',            description: 'Plain light background' },
 ];
-
-const MARGIN_MIN = 0;
-const MARGIN_MAX = 120;
-const FONT_MIN = 12;
-const FONT_MAX = 24;
-const WIDTH_MIN = 520;
-const WIDTH_MAX = 3000;
 
 interface Props {
   isOpen: boolean;
@@ -26,6 +41,10 @@ interface Props {
   onPrefsChange: (p: StoryPagePrefs) => void;
   pageStyle: PageStyle;
   onPageStyleChange: (s: PageStyle) => void;
+  /** Display name for the chosen custom texture image, if any. */
+  textureFileName?: string;
+  /** Native texture picker (IPC). Absent → the in-popover file input is used. */
+  onPickPageTexture?: () => void;
 }
 
 export default function PageSetupPopover({
@@ -35,30 +54,50 @@ export default function PageSetupPopover({
   onPrefsChange,
   pageStyle,
   onPageStyleChange,
+  textureFileName,
+  onPickPageTexture,
 }: Props) {
   const widthInputId = useId();
   const widthSliderId = useId();
   const marginSliderId = useId();
+  const fontNameId = useId();
   const fontSizeId = useId();
   const textureInputRef = useRef<HTMLInputElement>(null);
 
-  const effectiveWidthPx =
-    prefs.sizePreset === 'custom' && prefs.customWidthPx != null
-      ? prefs.customWidthPx
-      : (STORY_PAGE_PRESET_WIDTHS[prefs.sizePreset] ?? STORY_PAGE_PRESET_WIDTHS.letter);
+  const widthPx = resolvePageWidth(prefs);
+  const marginPx = resolvePageMargin(prefs);
+  const marginMax = maxPageMargin(widthPx);
+  const fontName = resolveFontName(prefs);
+  const fontStep = resolveFontStep(prefs);
 
-  const setWidth = useCallback((value: number) => {
-    const clamped = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, value));
-    onPrefsChange({ ...prefs, sizePreset: 'custom', customWidthPx: clamped });
-  }, [prefs, onPrefsChange]);
+  const setWidth = useCallback(
+    (value: number) => {
+      const clamped = Math.max(PAGE_WIDTH_MIN, Math.min(PAGE_WIDTH_MAX, value));
+      onPrefsChange({ ...prefs, pageWidthPx: clamped });
+    },
+    [prefs, onPrefsChange]
+  );
 
-  const setMargins = useCallback((value: number) => {
-    onPrefsChange({ ...prefs, marginVertPx: value, marginHorizPx: value });
-  }, [prefs, onPrefsChange]);
+  const setMargins = useCallback(
+    (value: number) => {
+      onPrefsChange({ ...prefs, pageMarginPx: value });
+    },
+    [prefs, onPrefsChange]
+  );
 
-  const setFontSize = useCallback((value: number) => {
-    onPrefsChange({ ...prefs, fontSizePx: value });
-  }, [prefs, onPrefsChange]);
+  const setFontName = useCallback(
+    (value: StoryFontName) => {
+      onPrefsChange({ ...prefs, fontName: value });
+    },
+    [prefs, onPrefsChange]
+  );
+
+  const setFontStep = useCallback(
+    (value: number) => {
+      onPrefsChange({ ...prefs, fontSizeStep: value });
+    },
+    [prefs, onPrefsChange]
+  );
 
   const handleTextureFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,8 +114,6 @@ export default function PageSetupPopover({
     };
     reader.readAsDataURL(file);
   }, []);
-
-  const currentMargin = Math.round((prefs.marginVertPx + prefs.marginHorizPx) / 2);
 
   if (!isOpen) return null;
 
@@ -124,23 +161,35 @@ export default function PageSetupPopover({
               </button>
             ))}
           </div>
-          {pageStyle === 'texture' && (
+          {pageStyle === 'custom' && (
             <div className="page-setup-popover__texture-upload">
-              <button
-                type="button"
-                className="page-setup-popover__upload-btn"
-                onClick={() => textureInputRef.current?.click()}
-              >
-                Choose texture image…
-              </button>
-              <input
-                ref={textureInputRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={handleTextureFile}
-                aria-label="Upload custom background texture"
-              />
+              {onPickPageTexture ? (
+                <button
+                  type="button"
+                  className="page-setup-popover__upload-btn"
+                  onClick={onPickPageTexture}
+                >
+                  {textureFileName ? `Texture: ${textureFileName}` : 'Choose texture image…'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="page-setup-popover__upload-btn"
+                    onClick={() => textureInputRef.current?.click()}
+                  >
+                    Choose texture image…
+                  </button>
+                  <input
+                    ref={textureInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleTextureFile}
+                    aria-label="Upload custom background texture"
+                  />
+                </>
+              )}
             </div>
           )}
         </section>
@@ -156,10 +205,10 @@ export default function PageSetupPopover({
               id={widthInputId}
               type="number"
               className="page-setup-popover__number-input"
-              min={WIDTH_MIN}
-              max={WIDTH_MAX}
+              min={PAGE_WIDTH_MIN}
+              max={PAGE_WIDTH_MAX}
               step={10}
-              value={effectiveWidthPx}
+              value={widthPx}
               onChange={e => setWidth(Number(e.target.value))}
               aria-label="Page width in pixels"
             />
@@ -168,20 +217,21 @@ export default function PageSetupPopover({
             id={widthSliderId}
             type="range"
             className="page-setup-popover__slider"
-            min={WIDTH_MIN}
-            max={WIDTH_MAX}
+            min={PAGE_WIDTH_MIN}
+            max={PAGE_WIDTH_MAX}
             step={10}
-            value={effectiveWidthPx}
+            value={widthPx}
             onChange={e => setWidth(Number(e.target.value))}
             aria-label="Page width slider"
-            aria-valuemin={WIDTH_MIN}
-            aria-valuemax={WIDTH_MAX}
-            aria-valuenow={effectiveWidthPx}
-            aria-valuetext={`${effectiveWidthPx}px`}
+            aria-valuemin={PAGE_WIDTH_MIN}
+            aria-valuemax={PAGE_WIDTH_MAX}
+            aria-valuenow={widthPx}
+            aria-valuetext={`${widthPx}px`}
           />
         </section>
 
-        {/* Margins */}
+        {/* Margins — absolute px, symmetric; same pref the ruler's inner
+            diamond pair writes, clamped against the current page width. */}
         <section className="page-setup-popover__section">
           <h3 className="page-setup-popover__section-title">Margins</h3>
           <div className="page-setup-popover__row">
@@ -192,23 +242,39 @@ export default function PageSetupPopover({
               id={marginSliderId}
               type="range"
               className="page-setup-popover__slider"
-              min={MARGIN_MIN}
-              max={MARGIN_MAX}
+              min={PAGE_MARGIN_MIN}
+              max={marginMax}
               step={4}
-              value={currentMargin}
+              value={marginPx}
               onChange={e => setMargins(Number(e.target.value))}
-              aria-valuemin={MARGIN_MIN}
-              aria-valuemax={MARGIN_MAX}
-              aria-valuenow={currentMargin}
-              aria-valuetext={`${currentMargin}px`}
+              aria-valuemin={PAGE_MARGIN_MIN}
+              aria-valuemax={marginMax}
+              aria-valuenow={marginPx}
+              aria-valuetext={`${marginPx}px`}
             />
-            <span className="page-setup-popover__slider-val" aria-hidden="true">{currentMargin}px</span>
+            <span className="page-setup-popover__slider-val" aria-hidden="true">{marginPx}px</span>
           </div>
         </section>
 
-        {/* Font size */}
+        {/* Font — same prefs the row-5 toolbar's font controls write. */}
         <section className="page-setup-popover__section">
-          <h3 className="page-setup-popover__section-title">Font size</h3>
+          <h3 className="page-setup-popover__section-title">Font</h3>
+          <div className="page-setup-popover__row">
+            <label className="page-setup-popover__label" htmlFor={fontNameId}>
+              Font
+            </label>
+            <select
+              id={fontNameId}
+              className="page-setup-popover__select"
+              value={fontName}
+              onChange={e => setFontName(e.target.value as StoryFontName)}
+              aria-label="Manuscript font"
+            >
+              {STORY_FONT_NAMES.map(f => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </div>
           <div className="page-setup-popover__row">
             <label className="page-setup-popover__label" htmlFor={fontSizeId}>
               Size
@@ -217,17 +283,17 @@ export default function PageSetupPopover({
               id={fontSizeId}
               type="range"
               className="page-setup-popover__slider"
-              min={FONT_MIN}
-              max={FONT_MAX}
+              min={FONT_STEP_MIN}
+              max={FONT_STEP_MAX}
               step={1}
-              value={prefs.fontSizePx}
-              onChange={e => setFontSize(Number(e.target.value))}
-              aria-valuemin={FONT_MIN}
-              aria-valuemax={FONT_MAX}
-              aria-valuenow={prefs.fontSizePx}
-              aria-valuetext={`${prefs.fontSizePx}px`}
+              value={fontStep}
+              onChange={e => setFontStep(Number(e.target.value))}
+              aria-valuemin={FONT_STEP_MIN}
+              aria-valuemax={FONT_STEP_MAX}
+              aria-valuenow={fontStep}
+              aria-valuetext={`${fontStep}`}
             />
-            <span className="page-setup-popover__slider-val" aria-hidden="true">{prefs.fontSizePx}px</span>
+            <span className="page-setup-popover__slider-val" aria-hidden="true">{fontStep}</span>
           </div>
         </section>
       </div>
