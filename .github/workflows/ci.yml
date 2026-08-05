@@ -409,6 +409,9 @@ jobs:
       - name: E2E — Notes Vault folder operations (SKY-7995)
         run: xvfb-run --auto-servernum npm run test:e2e:folder-ops
 
+      - name: E2E — Notes tree drag mechanics (SKY-8891)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-drag
+
       - name: E2E — draft version history snapshot and rollback (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:draft-history
 
@@ -1248,6 +1251,13 @@ jobs:
       - name: Folder-ops E2E on native Windows (SKY-8881)
         if: github.event_name != 'pull_request'
         run: npm run test:e2e:folder-ops
+
+      # SKY-8891: the drag suite persists tree order as POSIX paths in
+      # .vb-order.json — DR-02's exact-string assertions only catch a
+      # separator regression where path.join actually emits '\'.
+      - name: Notes-tree drag E2E on native Windows (SKY-8891)
+        if: github.event_name != 'pull_request'
+        run: npm run test:e2e:notes-drag
 
       - name: Package (Windows NSIS + ZIP)
         if: github.event_name != 'pull_request'

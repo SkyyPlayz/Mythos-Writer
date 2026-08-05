@@ -1369,6 +1369,11 @@ interface Window {
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
     mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean } | { error: string }>;
+    // SKY-8891: persisted manual order for the Notes Vault tree (.vb-order.json).
+    // Keys are '' (vault root) or a folder's relative POSIX path; values are
+    // that folder's immediate children (full relative POSIX paths) in order.
+    getNotesVaultOrder: () => Promise<Record<string, string[]>>;
+    reorderNotesVault: (parentPath: string, orderedPaths: string[]) => Promise<{ parentPath: string; orderedPaths: string[] } | { error: string }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)

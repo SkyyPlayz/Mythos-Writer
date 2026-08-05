@@ -8,6 +8,32 @@ import { NodeIcon } from '../../NodeIcon';
 // M15: 28px matches the Liquid Neon prototype tree row (12px type + 5.5px×2 padding).
 const ITEM_HEIGHT = 28;
 
+// SKY-8891: dwell time before a collapsed folder auto-expands under a drag.
+const HOVER_EXPAND_DELAY_MS = 500;
+
+/**
+ * SKY-8891: where on a row a drag is hovering. The middle third keeps the
+ * pre-existing nest-into-folder behavior; the top/bottom thirds reorder the
+ * dragged item above/below the row (neon insertion line).
+ */
+export type DropEdge = 'above' | 'below' | 'into';
+
+/**
+ * Resolve the drop zone from the pointer's Y position within the row. Points
+ * outside the row rect resolve to 'into' — synthetic DragEvents with no
+ * coordinates (clientY 0, the CI E2E suites' simulateRowDrag) must keep the
+ * pre-SKY-8891 whole-row nest semantics.
+ */
+function dropZoneFor(e: React.DragEvent, el: HTMLElement | null): DropEdge {
+  if (!el) return 'into';
+  const rect = el.getBoundingClientRect();
+  if (rect.height === 0 || e.clientY < rect.top || e.clientY > rect.bottom) return 'into';
+  const frac = (e.clientY - rect.top) / rect.height;
+  if (frac < 1 / 3) return 'above';
+  if (frac > 2 / 3) return 'below';
+  return 'into';
+}
+
 interface RowData {
   rows: FlatRow[];
   onToggle: (path: string) => void;
@@ -26,10 +52,11 @@ interface RowData {
   // Drag-and-drop
   draggedPath: string | null;
   dropTargetPath: string | null;
+  dropEdge: DropEdge;
   onDragStart: (path: string) => void;
   onDragEnd: () => void;
-  onDragOverRow: (path: string) => void;
-  onDropRow: (draggedPath: string, targetRow: FlatRow) => void;
+  onDragOverRow: (path: string, edge: DropEdge) => void;
+  onDropRow: (draggedPath: string, targetRow: FlatRow, edge: DropEdge) => void;
 }
 
 interface RowProps extends RowData {
@@ -52,7 +79,7 @@ function Row({
   index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
   focusedIdx, onMoveFocus, iconMap,
-  draggedPath, dropTargetPath, onDragStart, onDragEnd, onDragOverRow, onDropRow,
+  draggedPath, dropTargetPath, dropEdge, onDragStart, onDragEnd, onDragOverRow, onDropRow,
   // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
   // we emit role="treeitem" + aria-level instead.
 }: RowProps) {
@@ -79,6 +106,10 @@ function Row({
   const isEditing = editingPath === node.path;
   const isBeingDragged = draggedPath === node.path;
   const isDropTarget = dropTargetPath === node.path;
+  // SKY-8891: middle third keeps the dashed nest outline; top/bottom thirds
+  // draw the neon insertion line instead.
+  const isNestTarget = isDropTarget && dropEdge === 'into';
+  const insertEdge = isDropTarget && dropEdge !== 'into' ? dropEdge : null;
 
   function handleClick() {
     onMoveFocus(index);
@@ -135,8 +166,8 @@ function Row({
         gap: 7,
         paddingRight: 8,
         opacity: isBeingDragged ? 0.4 : 1,
-        outline: isDropTarget ? '2px dashed var(--accent, #00f0ff)' : undefined,
-        outlineOffset: isDropTarget ? '-1px' : undefined,
+        outline: isNestTarget ? '2px dashed var(--accent, #00f0ff)' : undefined,
+        outlineOffset: isNestTarget ? '-1px' : undefined,
       }}
       className={`vb-row${isSelected ? ' vb-selected' : ''}${node.isDirectory ? ' vb-dir' : ' vb-file'}${node.isDirectory && depth === 0 ? ' vb-root-dir' : ''}${isMd ? ' vb-md' : ''}`}
       data-testid={`vb-row-${node.path}`}
@@ -161,21 +192,28 @@ function Row({
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        onDragOverRow(node.path);
+        onDragOverRow(node.path, dropZoneFor(e, rowRef.current));
       }}
       onDragLeave={(e) => {
         // Only clear when leaving the row itself, not entering a child element
         if (!rowRef.current?.contains(e.relatedTarget as Node)) {
-          onDragOverRow('');
+          onDragOverRow('', 'into');
         }
       }}
       onDrop={(e) => {
         e.preventDefault();
         const from = e.dataTransfer.getData('text/plain');
-        if (from && from !== node.path) onDropRow(from, row);
+        if (from && from !== node.path) onDropRow(from, row, dropZoneFor(e, rowRef.current));
         onDragEnd();
       }}
     >
+      {insertEdge && (
+        <div
+          className={`vb-insert-line vb-insert-line--${insertEdge}`}
+          data-testid="vb-insert-line"
+          aria-hidden="true"
+        />
+      )}
       {node.isDirectory && (
         <span className={`vb-chevron${isExpanded ? ' vb-chevron--open' : ''}`} aria-hidden="true">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
@@ -216,6 +254,14 @@ interface VirtualTreeProps {
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
   /** M16: when this path is present in `rows`, scroll it into view (auto-reveal). */
   scrollToPath?: string | null;
+  /**
+   * SKY-8891: drop on a row's top/bottom third — reorder the dragged item
+   * above/below that row. Falls back to onMove (nest) when absent.
+   */
+  onEdgeDrop?: (fromPath: string, targetRow: FlatRow, edge: 'above' | 'below') => void;
+  /** SKY-8891: fires true on drag start, false on drop/drag end — lets the
+   *  parent show drag-only affordances like the root drop strip. */
+  onDragActiveChange?: (active: boolean) => void;
 }
 
 export default function VirtualTree({
@@ -235,36 +281,76 @@ export default function VirtualTree({
   iconMap,
   onMove,
   scrollToPath,
+  onEdgeDrop,
+  onDragActiveChange,
 }: VirtualTreeProps) {
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<ListImperativeAPI | null>(null);
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+  const [dropEdge, setDropEdge] = useState<DropEdge>('into');
+  // SKY-8891: hover auto-expand — pending dwell timer for the hovered folder.
+  const dwellRef = useRef<{ path: string; timer: number } | null>(null);
 
   const onMoveFocus = useCallback((newIdx: number) => {
     setFocusedIdx(newIdx);
     listRef.current?.scrollToRow({ index: newIdx, align: 'auto' });
   }, []);
 
+  const clearDwell = useCallback(() => {
+    if (dwellRef.current) {
+      window.clearTimeout(dwellRef.current.timer);
+      dwellRef.current = null;
+    }
+  }, []);
+
+  // Don't leave a pending expand behind if the tree unmounts mid-drag.
+  useEffect(() => clearDwell, [clearDwell]);
+
   const handleDragStart = useCallback((path: string) => {
     setDraggedPath(path);
     setDropTargetPath(null);
-  }, []);
+    setDropEdge('into');
+    onDragActiveChange?.(true);
+  }, [onDragActiveChange]);
 
   const handleDragEnd = useCallback(() => {
+    clearDwell();
     setDraggedPath(null);
     setDropTargetPath(null);
-  }, []);
+    setDropEdge('into');
+    onDragActiveChange?.(false);
+  }, [clearDwell, onDragActiveChange]);
 
-  const handleDragOverRow = useCallback((path: string) => {
+  const handleDragOverRow = useCallback((path: string, edge: DropEdge) => {
     setDropTargetPath(path || null);
-  }, []);
+    setDropEdge(edge);
+    // SKY-8891 hover auto-expand: dwelling on a collapsed folder expands it.
+    // dragover refires continuously while hovering — only (re)arm the timer
+    // when the hovered row actually changes, so the dwell can complete.
+    if (dwellRef.current?.path === path) return;
+    clearDwell();
+    if (!path) return;
+    const row = rows.find((r) => r.node.path === path);
+    if (!row || !row.node.isDirectory || row.isExpanded) return;
+    dwellRef.current = {
+      path,
+      timer: window.setTimeout(() => {
+        dwellRef.current = null;
+        onToggle(path);
+      }, HOVER_EXPAND_DELAY_MS),
+    };
+  }, [rows, onToggle, clearDwell]);
 
-  const handleDropRow = useCallback((from: string, targetRow: FlatRow) => {
+  const handleDropRow = useCallback((from: string, targetRow: FlatRow, edge: DropEdge) => {
+    clearDwell();
     setDraggedPath(null);
     setDropTargetPath(null);
-    onMove?.(from, targetRow);
-  }, [onMove]);
+    setDropEdge('into');
+    onDragActiveChange?.(false);
+    if (edge !== 'into' && onEdgeDrop) onEdgeDrop(from, targetRow, edge);
+    else onMove?.(from, targetRow);
+  }, [onMove, onEdgeDrop, clearDwell, onDragActiveChange]);
 
   // Clamp focusedIdx when rows shrink (e.g. parent folder collapses)
   useEffect(() => {
@@ -302,7 +388,7 @@ export default function VirtualTree({
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
           focusedIdx, onMoveFocus, iconMap,
-          draggedPath, dropTargetPath,
+          draggedPath, dropTargetPath, dropEdge,
           onDragStart: handleDragStart,
           onDragEnd: handleDragEnd,
           onDragOverRow: handleDragOverRow,

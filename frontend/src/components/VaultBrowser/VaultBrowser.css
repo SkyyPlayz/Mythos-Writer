@@ -879,6 +879,22 @@
   background: rgba(0, 240, 255, 0.06);
 }
 
+/* SKY-8891: neon insertion line — drag hovering a row's top/bottom third
+   reorders instead of nesting; the line marks the drop slot. */
+.vb-insert-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent, #00f0ff);
+  box-shadow: 0 0 6px var(--accent, #00f0ff);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.vb-insert-line--above { top: 0; }
+.vb-insert-line--below { bottom: 0; }
+
 /* SKY-204: Daily Notes banner */
 .vb-daily-banner {
   display: flex;

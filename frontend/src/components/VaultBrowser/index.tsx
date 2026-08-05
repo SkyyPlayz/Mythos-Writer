@@ -11,7 +11,7 @@ import {
   isStoryInternalTreeItem,
   mapUuidNamesToTitles,
 } from './treeUtils';
-import type { FlatRow, TreeNode, TreeSortMode, VaultListItem } from './treeUtils';
+import type { FlatRow, TreeNode, TreeSortMode, VaultListItem, VaultOrderMap } from './treeUtils';
 import VirtualTree from './VirtualTree';
 import ContextMenu from './ContextMenu';
 import { validateRenameName } from './renameUtils';
@@ -523,6 +523,9 @@ interface NotesVaultProps {
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
   /** SKY-7995: drop target for dragging an item back out to the vault root. */
   onMoveToRoot?: (fromPath: string) => void;
+  /** SKY-8891: direct move primitive (fromPath → explicit toPath) for
+   *  cross-parent edge drops, which target a slot rather than a row. */
+  onMoveTo?: (fromPath: string, toPath: string) => Promise<void> | void;
   /** M15: dedicated open-in-new-tab handler; falls back to onOpenFile. */
   onOpenInNewTab?: (path: string) => void;
   /** M15: queue the Beta Reader agent on a note (context menu). */
@@ -573,7 +576,7 @@ function addRecent(current: string[], path: string): string[] {
   return deduped.slice(0, RECENT_MAX);
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onMoveToRoot, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
@@ -604,14 +607,31 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     }).catch(() => setTagPaths(null));
   }, [activeTag]);
 
+  // SKY-8891: persisted manual order, loaded alongside each listing refresh —
+  // a move rewrites `.vb-order.json` in the main process, so the map must be
+  // refetched whenever the items reload.
+  const [orderMap, setOrderMap] = useState<VaultOrderMap>({});
+  useEffect(() => {
+    let alive = true;
+    window.api.getNotesVaultOrder?.()?.then((m) => {
+      if (alive && m && typeof m === 'object') setOrderMap(m as VaultOrderMap);
+    }).catch(() => { /* order store missing/corrupt → a–z fallback */ });
+    return () => { alive = false; };
+  }, [items]);
+
   const tagFilteredItems = tagPaths
     ? allNotesItems.filter((item) => !item.isDirectory && tagPaths.has(item.path))
     : allNotesItems;
-  // M16: pass sortMode to buildTree; filterTree handles the search query
-  const tree = useMemo(() => {
-    const built = buildTree(tagFilteredItems, sortMode);
-    return searchQuery.trim() ? filterTree(built, searchQuery) : built;
-  }, [tagFilteredItems, sortMode, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  // M16: pass sortMode to buildTree; filterTree handles the search query.
+  // SKY-8891: keep the unfiltered tree too — edge-drop reorder must compute
+  // sibling order from the full child list, not a search-filtered subset.
+  const { tree, unfilteredTree } = useMemo(() => {
+    const built = buildTree(tagFilteredItems, sortMode, orderMap);
+    return {
+      unfilteredTree: built,
+      tree: searchQuery.trim() ? filterTree(built, searchQuery) : built,
+    };
+  }, [tagFilteredItems, sortMode, searchQuery, orderMap]); // eslint-disable-line react-hooks/exhaustive-deps
   // Keep legacy alias for backward-compat (used in rename path-exists check below)
   const notesItems = tagFilteredItems;
 
@@ -630,6 +650,9 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   const [ctxPos, setCtxPos] = useState({ x: 0, y: 0 });
   // SKY-7995: root drop zone hover highlight.
   const [rootDropActive, setRootDropActive] = useState(false);
+  // SKY-8891: the root drop strip only renders while a tree row is being
+  // dragged — VirtualTree reports drag start/end via onDragActiveChange.
+  const [isDragging, setIsDragging] = useState(false);
 
   // ─── Template dialog state ───
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -810,6 +833,60 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     });
   }, []);
 
+  // SKY-8891: an edge drop is an explicit manual-ordering gesture — switch the
+  // tree to manual sort and persist it exactly like the toolbar toggle does.
+  const forceManualSort = useCallback(() => {
+    setSortMode('manual');
+    try { localStorage.setItem(SORT_MODE_KEY, 'manual'); } catch { /**/ }
+  }, []);
+
+  // SKY-8891: drop on a row's top/bottom third — insert the dragged item
+  // above/below that row. Same-parent drops are a pure reorder; cross-parent
+  // drops move the item into the target's folder first, then slot it.
+  const handleEdgeDrop = useCallback(
+    async (fromPath: string, targetRow: FlatRow, edge: 'above' | 'below') => {
+      const targetPath = targetRow.node.path;
+      // A folder can't be reordered relative to its own descendants.
+      if (targetPath === fromPath || targetPath.startsWith(`${fromPath}/`)) return;
+      const parentOf = (p: string) => {
+        const i = p.lastIndexOf('/');
+        return i > 0 ? p.slice(0, i) : '';
+      };
+      const targetParent = parentOf(targetPath);
+      const name = fromPath.split('/').pop()!;
+      const newPath = parentOf(fromPath) === targetParent
+        ? fromPath
+        : targetParent ? `${targetParent}/${name}` : name;
+      // Sibling order as currently displayed (unfiltered — a search must not
+      // truncate the persisted array), minus the dragged item, plus its new
+      // path at the slot the user dropped on.
+      const findChildren = (nodes: TreeNode[], parent: string): TreeNode[] => {
+        if (!parent) return nodes;
+        for (const n of nodes) {
+          if (n.path === parent) return n.children;
+          if (parent.startsWith(`${n.path}/`)) return findChildren(n.children, parent);
+        }
+        return [];
+      };
+      const siblings = findChildren(unfilteredTree, targetParent)
+        .map((n) => n.path)
+        .filter((p) => p !== fromPath && p !== newPath);
+      const at = siblings.indexOf(targetPath);
+      if (at < 0) return;
+      siblings.splice(edge === 'above' ? at : at + 1, 0, newPath);
+      if (newPath !== fromPath) await onMoveTo?.(fromPath, newPath);
+      try {
+        const res = await window.api.reorderNotesVault(targetParent, siblings);
+        if (res && 'error' in res) throw new Error(res.error);
+        setOrderMap((prev) => ({ ...prev, [targetParent]: siblings }));
+        forceManualSort();
+      } catch (e) {
+        showToast((e as Error).message || 'Reorder failed', 'error');
+      }
+    },
+    [unfilteredTree, onMoveTo, forceManualSort, showToast],
+  );
+
   const toggleAutoReveal = useCallback(() => {
     setAutoReveal((prev) => {
       const next = !prev;
@@ -987,12 +1064,16 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           iconMap={iconMap}
           onMove={onMove}
           scrollToPath={revealPath}
+          onEdgeDrop={handleEdgeDrop}
+          onDragActiveChange={setIsDragging}
         />
       )}
       {/* SKY-7995: root drop zone — the only way to drag an item out of a
           nested folder back to the vault root; row-level drop targets can
-          only move *into* a specific row. */}
-      {onMoveToRoot && allNotesItems.length > 0 && (
+          only move *into* a specific row.
+          SKY-8891: drag-only — the strip renders solely while a row drag is
+          in flight, instead of sitting under the tree permanently. */}
+      {isDragging && onMoveToRoot && allNotesItems.length > 0 && (
         <div
           className={`vb-root-drop-zone${rootDropActive ? ' vb-root-drop-zone--active' : ''}`}
           data-testid="vb-root-drop-zone"
@@ -1298,6 +1379,7 @@ export default function VaultBrowser({
                 iconMap={notesIconMap}
                 onMove={handleMove}
                 onMoveToRoot={handleMoveToRoot}
+                onMoveTo={moveNotesItem}
                 onOpenInNewTab={onOpenInNewTab}
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}

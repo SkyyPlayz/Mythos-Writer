@@ -90,6 +90,10 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-95: creates a directory without a .gitkeep placeholder, bypassing
   // the dotfile guard that blocked handleNewFolder from working.
   mkdirNotesVault: (dirPath: string) => ipcRenderer.invoke('notesVault:mkdir', { path: dirPath }),
+  // SKY-8891: persisted manual order for the Notes Vault tree (.vb-order.json).
+  getNotesVaultOrder: () => ipcRenderer.invoke('notesVault:getOrder', undefined),
+  reorderNotesVault: (parentPath: string, orderedPaths: string[]) =>
+    ipcRenderer.invoke('notesVault:reorder', { parentPath, orderedPaths }),
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),

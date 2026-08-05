@@ -330,6 +330,10 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_MOVE: 'notesVault:move',
   // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
   NOTES_VAULT_MKDIR: 'notesVault:mkdir',
+  // SKY-8891: persisted manual order for the Notes Vault tree, stored in
+  // `.vb-order.json` at the notes vault root (see vaultOrder.ts).
+  NOTES_VAULT_GET_ORDER: 'notesVault:getOrder',
+  NOTES_VAULT_REORDER: 'notesVault:reorder',
   NOTES_VAULT_WATCH_START: 'notesVault:watchStart',
   NOTES_VAULT_WATCH_STOP: 'notesVault:watchStop',
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
@@ -842,6 +846,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
+  [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (payload: never) => Record<string, string[]>;
+  [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload) => VaultReorderResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
@@ -1110,6 +1116,19 @@ export interface VaultMoveResponse {
   fromPath: string;
   toPath: string;
   moved: boolean;
+}
+
+// SKY-8891: set one folder's manual child order. `parentPath` is '' for the
+// vault root, else the folder's relative POSIX path; `orderedPaths` holds the
+// immediate children's full relative POSIX paths in display order.
+export interface VaultReorderPayload {
+  parentPath: string;
+  orderedPaths: string[];
+}
+
+export interface VaultReorderResponse {
+  parentPath: string;
+  orderedPaths: string[];
 }
 
 export interface VaultMkdirPayload {
