@@ -412,6 +412,9 @@ jobs:
       - name: E2E — Notes tree drag mechanics (SKY-8891)
         run: xvfb-run --auto-servernum npm run test:e2e:notes-drag
 
+      - name: E2E — Notes vault seed-once with external content (SKY-9028)
+        run: xvfb-run --auto-servernum npm run test:e2e:seed-once
+
       - name: E2E — draft version history snapshot and rollback (headless)
         run: xvfb-run --auto-servernum npm run test:e2e:draft-history
 
