@@ -203,6 +203,10 @@ export interface ManuscriptViewProps {
   snapshotSavedAt?: string | null;
   /** SKY-9404: the ⋯ menu's "History" action + the SceneHistory modal data. */
   sceneHistory?: ManuscriptHistoryControls;
+  /** SKY-9404 (M1-S4): When cursor.zoom === 'scene', render this slot instead of
+   *  the inline heading-zone block list — keeps TipTap/BlockEditor at scene depth
+   *  while ManuscriptView provides the chrome (title row, ruler, page prefs). */
+  sceneEditorSlot?: React.ReactNode;
 }
 
 /** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
@@ -388,6 +392,7 @@ export default function ManuscriptView({
   onManualSnapshot,
   snapshotSavedAt,
   sceneHistory,
+  sceneEditorSlot,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -1624,7 +1629,7 @@ export default function ManuscriptView({
                 </div>
               )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
-              {visible.map(renderBlock)}
+              {sceneEditorSlot ?? visible.map(renderBlock)}
               <div
                 style={{ height: bottomPad }}
                 data-testid="msv-spacer-bottom"

@@ -68,6 +68,7 @@ import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
 import TourModal from './TourModal';
 import PaneTip from './PaneTip';
+import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
@@ -677,7 +678,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M1: set by the two project-switch paths right before loadVault so
   // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
   const pendingVaultThemeRootRef = useRef<string | null>(null);
-  const [editorSelectionText] = useState<string>('');
+  const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
@@ -689,7 +690,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
+  const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
   const { toast: voiceToastState, showToast: showVoiceToast } = useToast(4000);
@@ -702,8 +703,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const voiceSessionRef = useRef<string | null>(null);
   const speechRecogRef = useRef<SpeechRecognition | null>(null);
   const pttDownRef = useRef(false);
-  const [, setBetaReadComments] = useState<BetaReadComment[]>([]);
-  const [betaReadLoading] = useState(false);
+  const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
+  const [betaReadLoading, setBetaReadLoading] = useState(false);
   const [exportScope, setExportScope] = useState<ExportScope | null>(null);
   const [focusModePrefsOpen, setFocusModePrefsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -721,7 +722,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
-  const [, setRestoreKey] = useState(0);
+  const [restoreKey, setRestoreKey] = useState(0);
   // Beta 4 M10 — Drafts v2 surfaces (compare split · full diff · popover) +
   // the exact-undo state for Load draft (CF-4). Undo survives split close.
   const [draftsSplitOpen, setDraftsSplitOpen] = useState(false);
@@ -888,6 +889,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const pendingCursorPosRef = useRef<number | null>(null);
   const sceneRestoreAttemptedRef = useRef(false);
   const restoreInProgressRef = useRef(false);
+  const saveCursorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
@@ -1087,6 +1089,31 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setRestoreKey(0);
   }, [selectedScene?.id]);
 
+
+  const handleBetaReadRequest = useCallback(async (selectedText: string) => {
+    if (!selectedScene || betaReadLoading) return;
+    setBetaReadLoading(true);
+    try {
+      const context = `You are a beta reader giving constructive feedback. Highlight strengths, flag anything confusing, and suggest one improvement. Be concise (2–4 sentences).\n\nPassage:\n\n${selectedText}`;
+      const res = await window.api.agentWritingAssistant(selectedText, context);
+      const commentText: string = res?.text ?? 'No feedback generated.';
+      await window.api.betaReadCreate(selectedScene.id, selectedText, commentText);
+      await loadBetaReadComments(selectedScene.id);
+    } catch {
+      // non-fatal
+    } finally {
+      setBetaReadLoading(false);
+    }
+  }, [selectedScene, betaReadLoading, loadBetaReadComments]);
+
+  const handleBetaReadDismiss = useCallback(async (id: string) => {
+    try {
+      await window.api.betaReadDismiss(id);
+      setBetaReadComments((prev) => prev.filter((c) => c.id !== id));
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   // Beta 4 M27 (SKY-6982): AgentHubPanel's "Beta Reader" row dispatches this
   // CustomEvent (it has no callback prop into DesktopShell) — listen here
@@ -2908,6 +2935,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     showLnToast('Undone — your current draft is back');
   }, [draftsUndo, selectedScene, applyDraftContent]);
 
+  const handleDraftStateChange = useCallback((state: DraftState) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    const updatedScene: Scene = { ...selectedScene, draftState: state, updatedAt: now() };
+    setSelectedScene(updatedScene);
+    const updatedStories = stories.map((story) =>
+      story.id !== selectedStory.id ? story : {
+        ...story,
+        chapters: story.chapters.map((ch) =>
+          ch.id !== selectedChapter.id ? ch : {
+            ...ch,
+            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+          }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
+
   /** Popover "Compare" → full diff against that draft (prototype 6426). */
   const handleDraftCompare = useCallback((draft: SceneDraftEntry) => {
     setDraftsSelectedTs(draft.ts);
@@ -2925,8 +2970,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene?.id]);
 
 
-  // SKY-3211 C2: Chapter continuous view — per-scene blocks change handler.
-
+  const handleCursorPosChange = useCallback((pos: number) => {
+    if (!selectedScene) return;
+    if (saveCursorDebounceRef.current) clearTimeout(saveCursorDebounceRef.current);
+    saveCursorDebounceRef.current = setTimeout(() => {
+      window.api.sessionSaveScene({
+        sceneId: selectedScene.id,
+        scenePath: selectedScene.path,
+        scrollTop: 0,
+        cursorLine: pos,
+      }).catch(() => {});
+    }, 1000);
+  }, [selectedScene]);
 
   const createStory = useCallback(async () => {
     const title = await requestText('Story title:');
@@ -5286,6 +5341,55 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     currentContent: editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
                     onRestore: handleSceneRestore,
                   } : undefined}
+                  sceneEditorSlot={selectedScene ? (
+                    <div
+                      className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
+                      style={{ position: 'relative' }}
+                    >
+                      <BlockEditor
+                        key={`${selectedScene.id}-${restoreKey}`}
+                        scene={selectedScene}
+                        enableHeadingFocus
+                        onBlocksChange={handleBlocksChange}
+                        onDraftStateChange={handleDraftStateChange}
+                        onEditorReady={handleEditorReady}
+                        onBetaReadRequest={handleBetaReadRequest}
+                        wikiLinkSuggestions={wikiLinkSuggestions}
+                        onAcceptWikiLink={handleEditorAcceptWikiLink}
+                        onRejectWikiLink={handleEditorRejectWikiLink}
+                        autoLinkerEntities={allEntities}
+                        autoLinkerMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                        initialCursorPos={pendingCursorPosRef.current ?? undefined}
+                        onCursorPosChange={handleCursorPosChange}
+                        onEntityClick={handleEntityMentionClick}
+                        onWikiLinkClick={handleWikiLinkClick}
+                        resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                        wikiLinkCandidates={wikiLinkCandidates}
+                        onSelectionChange={setEditorSelectionText}
+                        toolbarActions={manuscriptToolbarActions}
+                        emptySceneHint={
+                          isGettingStartedVisible(gettingStartedProgress) &&
+                          !seenEmptySceneHints.has(selectedScene.id)
+                            ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
+                            : ''
+                        }
+                      />
+                      {(betaReadComments.length > 0 || betaReadLoading) && (
+                        <div className="shell-beta-margin">
+                          {betaReadLoading && (
+                            <div className="br-loading" aria-live="polite">
+                              <span className="wa-spinner" aria-hidden="true" />
+                              Reading…
+                            </div>
+                          )}
+                          <BetaReadMargin
+                            comments={betaReadComments}
+                            onDismiss={handleBetaReadDismiss}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : undefined}
                 />
                 <DepthEdgeArrows
                   depth={viewDepth}
