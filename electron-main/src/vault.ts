@@ -278,6 +278,7 @@ export function listVaultFiles(
     }
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue; // skip symlinks — they may escape the vault
+      if (entry.name.startsWith('.trash-')) continue; // deleteVaultFile rename-to-trash artifacts
       const fullPath = path.join(dir, entry.name);
       // SKY-8881: listing paths cross the IPC boundary into the renderer,
       // which treats '/' as the only separator. path.join emits '\' on
@@ -289,7 +290,13 @@ export function listVaultFiles(
       let modifiedAt: string;
       try {
         modifiedAt = new Date(fs.statSync(fullPath).mtime).toISOString();
-      } catch {
+      } catch (err) {
+        // SKY-9027 (SKY-8909 class): a Windows delete-pending ghost is still
+        // enumerable in its parent but cannot be stat'd (EPERM/ENOENT). It is
+        // gone for every practical purpose — listing it resurrects deleted
+        // rows in the tree, so drop the entry entirely.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ENOENT' || code === 'EPERM' || code === 'EBUSY') continue;
         modifiedAt = new Date(0).toISOString();
       }
       items.push({
@@ -308,6 +315,13 @@ export function listVaultFiles(
 
 // SKY-7995: delete needs to handle directories too — unlinkSync throws EISDIR
 // for a directory target, which is how folder-delete silently failed before.
+// SKY-9027 (SKY-8909 class): on Windows, an external open handle (AV/indexer)
+// puts the removed entry in delete-pending state — stat fails but the NAME
+// stays enumerable in the parent for tens of seconds, so re-lists resurrect a
+// ghost row and re-creating the same name fails with EPERM. Rename-to-trash
+// first: renames succeed through permissive-sharing handles, so the ghost
+// lands on the throwaway `.trash-*` name and the original name frees
+// synchronously. If the rename itself fails, fall back to in-place delete.
 export function deleteVaultFile(vaultRoot: string, filePath: string): { path: string; deleted: boolean } {
   const fullPath = realSafePath(vaultRoot, filePath, true);
   let stat: fs.Stats | null = null;
@@ -317,10 +331,18 @@ export function deleteVaultFile(vaultRoot: string, filePath: string): { path: st
     // does not exist
   }
   if (!stat) return { path: filePath, deleted: false };
+  let target = fullPath;
+  const trash = path.join(vaultRoot, `.trash-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
+  try {
+    fs.renameSync(fullPath, trash);
+    target = trash;
+  } catch {
+    // rename blocked (e.g. open handle without delete sharing) — delete in place
+  }
   if (stat.isDirectory()) {
-    fs.rmSync(fullPath, { recursive: true, force: true });
+    fs.rmSync(target, { recursive: true, force: true });
   } else {
-    fs.unlinkSync(fullPath);
+    fs.unlinkSync(target);
   }
   return { path: filePath, deleted: true };
 }

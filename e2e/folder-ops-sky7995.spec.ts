@@ -309,8 +309,14 @@ test('FO-04b: dragging a folder to the root drop zone still moves it (folders ma
   // Clean up so the "New Folder" placeholder-name tests below start from a clean slate.
   await page.locator('[data-testid="vb-row-New Folder"]').click({ button: 'right' });
   await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-delete"]').click();
-  const deleted = await waitUntil(() => !fs.existsSync(path.join(notesVaultDir, 'New Folder')));
-  expect(deleted, 'cleanup delete of root "New Folder" failed').toBe(true);
+  // SKY-9027: existsSync goes false while a Windows delete-pending ghost still
+  // occupies the NAME (stat fails, readdir enumerates) — which broke FO-07's
+  // re-create of the same name. With rename-to-trash deletes the name frees
+  // synchronously; assert on enumeration so a regression fails HERE, not three
+  // tests downstream.
+  const deleted = await waitUntil(
+    () => !fs.readdirSync(notesVaultDir).includes('New Folder'), 15_000);
+  expect(deleted, 'cleanup delete of root "New Folder" left the name occupied (delete-pending ghost?)').toBe(true);
 });
 
 // ─── FO-05: Rename a folder ──────────────────────────────────────────────────
@@ -393,12 +399,10 @@ test('FO-08: Esc on a freshly-created folder removes the placeholder, not just t
 
   const removed = await waitUntil(() => !fs.existsSync(path.join(notesVaultDir, 'New Folder')));
   expect(removed, 'placeholder "New Folder" was not deleted on disk after Esc').toBe(true);
-  // SKY-9347 (SKY-8909 class): same delete-pending readdir ghost as FO-06's
-  // gated assert — the dir is gone from disk (checked above) but a scanner's
-  // open handle keeps the name enumerable, so the row survives the re-list.
-  if (process.platform !== 'win32') {
-    await expect(page.locator('[data-testid="vb-row-New Folder"]')).toHaveCount(0);
-  }
+  // SKY-9027: previously win32-gated (SKY-8909 delete-pending readdir ghost).
+  // deleteVaultFile now renames to `.trash-*` before removing and the listing
+  // drops un-stat-able ghosts, so the row must clear on every platform.
+  await expect(page.locator('[data-testid="vb-row-New Folder"]')).toHaveCount(0, { timeout: 8_000 });
 });
 
 // ─── FO-09: "Lore & Myth" can be renamed and moved like any other folder ────
@@ -508,14 +512,27 @@ test('FO-12 (SKY-8881): dragging a NESTED folder to the root drop zone moves it 
 });
 
 /** All directories under root as sorted POSIX-relative paths — for asserting
- *  a move neither creates nor destroys any folder anywhere in the vault. */
+ *  a move neither creates nor destroys any folder anywhere in the vault.
+ *  SKY-9027: a Windows delete-pending ghost stays enumerable in its parent but
+ *  EPERMs on scandir — treat such entries as nonexistent instead of crashing,
+ *  mirroring how the app's own listing now handles them. */
 function listDirsRecursive(root: string, prefix = ''): string[] {
   const out: string[] = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EPERM' || code === 'ENOENT' || code === 'EBUSY') return out;
+    throw err;
+  }
+  for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const nested = listDirsRecursive(path.join(root, entry.name), rel);
+    if (nested.length === 0 && !fs.existsSync(path.join(root, entry.name))) continue; // ghost
     out.push(rel);
-    out.push(...listDirsRecursive(path.join(root, entry.name), rel));
+    out.push(...nested);
   }
   return out.sort();
 }

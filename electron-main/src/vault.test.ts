@@ -244,6 +244,48 @@ describe('IPC vault round-trip', () => {
     expect(fs.existsSync(path.join(tmpDir, 'empty-folder'))).toBe(false);
   });
 
+  // SKY-9027 (SKY-8909 class): delete renames to `.trash-*` first so a Windows
+  // delete-pending ghost never occupies the original name. The trash name must
+  // be fully removed afterwards and must never leak into listings.
+  it('deleteVaultFile leaves no .trash-* residue and frees the original name', () => {
+    fs.mkdirSync(path.join(tmpDir, 'Doomed', 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'Doomed', 'nested', 'a.md'), 'a');
+    expect(deleteVaultFile(tmpDir, 'Doomed').deleted).toBe(true);
+    const names = fs.readdirSync(tmpDir);
+    expect(names).not.toContain('Doomed');
+    expect(names.filter((n) => n.startsWith('.trash-'))).toEqual([]);
+  });
+
+  it('listVaultFiles never lists .trash-* entries', () => {
+    fs.mkdirSync(path.join(tmpDir, '.trash-123-abc'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.trash-123-abc', 'ghost.md'), 'x');
+    writeVaultFileUnsafe_testOnly(tmpDir, 'real.md', 'x');
+    const paths = listVaultFiles(tmpDir).items.map((i) => i.path);
+    expect(paths).toContain('real.md');
+    expect(paths.some((p) => p.includes('.trash-'))).toBe(false);
+  });
+
+  it('listVaultFiles drops entries that enumerate but cannot be stat\'d (delete-pending ghosts)', () => {
+    fs.mkdirSync(path.join(tmpDir, 'Ghost'));
+    writeVaultFileUnsafe_testOnly(tmpDir, 'real.md', 'x');
+    const realStat = fs.statSync;
+    const spy = vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p).endsWith('Ghost')) {
+        const err = new Error('EPERM: operation not permitted, stat') as NodeJS.ErrnoException;
+        err.code = 'EPERM';
+        throw err;
+      }
+      return (realStat as (...a: unknown[]) => fs.Stats)(p, ...rest);
+    }) as typeof fs.statSync);
+    try {
+      const paths = listVaultFiles(tmpDir).items.map((i) => i.path);
+      expect(paths).toContain('real.md');
+      expect(paths).not.toContain('Ghost');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   // SKY-7995: moveVaultFile is also the rename primitive — cover directory
   // move/rename with real fs + a descendant-safety guard against orphaning.
   it('moveVaultFile relocates a directory and its contents', () => {
