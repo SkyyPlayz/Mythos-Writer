@@ -743,6 +743,50 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     setSavedOk(false);
   }, [resetConfirm]);
 
+  // M4 (§2-B): the Appearance tab honors its own subtitle — every change
+  // applies live, no Save click. Appearance-owned slices persist on a short
+  // debounce; the payload merges those slices onto the persisted baseline
+  // (settingsGet) so unsaved edits parked on credential/destructive tabs are
+  // never committed as a side effect. Other tabs keep the explicit footer.
+  const persistAppearanceLive = useCallback(async () => {
+    try {
+      const base = await window.api.settingsGet();
+      const payload: AppSettings = {
+        ...base,
+        theme: settings.theme,
+        liquidNeon: lg,
+        liquidNeonV2: settings.liquidNeonV2,
+        pageBackground: pageBg,
+        navConfig,
+        updateChannel: settings.updateChannel,
+        telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
+      };
+      await window.api.settingsSet(payload);
+      setSaveError(null);
+      onSaved?.(payload);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
+    }
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
+
+  // Seeded inside the settings-load effect's commit: the ref is true before
+  // any post-load run of the debounce effect, and the initial category is
+  // never 'appearance', so the load itself can't trigger a write.
+  const appearanceLiveReady = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!appearanceLiveReady.current) {
+      appearanceLiveReady.current = true;
+      return;
+    }
+    if (settingsCategory !== 'appearance') return;
+    const t = window.setTimeout(() => { void persistAppearanceLive(); }, 400);
+    return () => window.clearTimeout(t);
+    // Deliberately keyed to the appearance-owned slices only — a category
+    // switch or unrelated settings edit must not write.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, lg, pageBg, navConfig, telemetryEnabled, loading]);
+
   if (loading) {
     return (
       <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings">
@@ -1040,6 +1084,16 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
         </div>
 
+        {/* M4 (§2-B): the Appearance tab applies + persists live, so it has no
+            Cancel/Save footer — only a persist-failure alert when one occurs.
+            Tabs with credentials or destructive actions keep explicit save. */}
+        {settingsCategory === 'appearance' ? (
+          saveError && (
+            <div className="settings-footer">
+              <p className="settings-error-msg" role="alert">{saveError}</p>
+            </div>
+          )
+        ) : (
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
@@ -1075,6 +1129,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </button>
           </div>
         </div>
+        )}
       </div>
 
       {/* ── Advanced UI settings popover (MYT-716) ── */}
