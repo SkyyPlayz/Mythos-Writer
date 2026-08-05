@@ -1135,9 +1135,10 @@ describe('SettingsPanel', () => {
       'Account & profile', 'Appearance', 'AI Agents', 'Editor',
       'Vault & Files', 'Sync & Backup', 'Shortcuts', 'About',
     ]);
-    // Page header shows the prototype settingsMeta description for the page.
+    // Page header shows the prototype settingsMeta description for the page
+    // (M11a: prototype 6607 rewrote the AI Agents one-liner).
     expect(screen.getByTestId('settings-page-header')).toHaveTextContent(
-      'Providers, personas, and how much autonomy each agent gets.',
+      'Provider, models and autonomy. Pick an agent in the sidebar for its own page.',
     );
     // Right panel: live theme preview + reset (§13).
     expect(screen.getByTestId('settings-theme-preview')).toBeInTheDocument();
@@ -2292,5 +2293,29 @@ describe('SKY-3218 nav-bar configuration', () => {
     const notesItem = saved.navConfig?.items.find((i) => i.id === 'notes');
     expect(notesItem?.enabled).toBe(false);
   });
-});
 
+  // ── M11a (SKY-9160): master AI switch gates the AI Agents page ──
+  it('M11a: default-on — master switch checked, provider/agents sections mounted', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('switch', { name: 'AI features' }));
+    expect(screen.getByRole('switch', { name: 'AI features' })).toBeChecked();
+    expect(screen.getByText('Provider Configuration')).toBeInTheDocument();
+    expect(screen.queryByText('Manual mode is on')).not.toBeInTheDocument();
+  });
+
+  it('M11a: manual mode — everything below the master card unmounts, indicator + swapped subtitle show', async () => {
+    mockSettingsGet.mockResolvedValue({ ...defaultSettings, ai: { enabled: false } });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('switch', { name: 'AI features' }));
+
+    expect(screen.getByRole('switch', { name: 'AI features' })).not.toBeChecked();
+    expect(screen.getByText('Manual mode is on')).toBeInTheDocument();
+    // Prototype 2420: the rest of the page is removed from the DOM, not dimmed.
+    expect(screen.queryByText('Provider Configuration')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+    // Prototype 6607: page one-liner swaps while off.
+    expect(
+      screen.getByText('AI is switched off — every tool is manual. Turn it back on to configure provider, models and autonomy.'),
+    ).toBeInTheDocument();
+  });
+});

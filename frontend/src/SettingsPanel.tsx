@@ -17,6 +17,7 @@ import { detectCloudProvider } from './lib/cloudSync';
 import MoveVaultWizard from './MoveVaultWizard';
 import SecurityWarningDialog from './components/SettingsPanel/SecurityWarningDialog';
 import AdvancedAppearancePopover from './components/SettingsPanel/AdvancedAppearancePopover';
+import AiMasterSection from './components/SettingsPanel/sections/AiMasterSection';
 import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
 import AccountSection from './components/SettingsPanel/sections/AccountSection';
@@ -96,6 +97,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, []);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULTS);
+  // M11a (SKY-9160): master AI switch — absent means on. Gates every AI
+  // section below AiMasterSection on the AI Agents page.
+  const aiMasterOn = settings.ai?.enabled !== false;
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -799,12 +803,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.label}
             </div>
             <p className="settings-page-header__sub">
-              {SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.description}
+              {/* M11a: manual mode swaps the AI Agents one-liner (prototype 6607). */}
+              {settingsCategory === 'agents' && !aiMasterOn
+                ? 'AI is switched off — every tool is manual. Turn it back on to configure provider, models and autonomy.'
+                : SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.description}
             </p>
           </header>
 
           {settingsCategory === 'agents' && (
             <>
+              {/* M11a: master switch first; everything below unmounts in manual
+                  mode, exactly like the prototype's aiOn conditional (2420). */}
+              <AiMasterSection settings={settings} setSettings={setSettings} />
+              {aiMasterOn && (
+              <>
               <ProviderSection
                 providerKind={providerKind}
                 setProviderKind={setProviderKind}
@@ -876,6 +888,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onPickSttBinary={handlePickSttBinary}
                 onPickSttModel={handlePickSttModel}
               />
+              </>
+              )}
             </>
           )}
 

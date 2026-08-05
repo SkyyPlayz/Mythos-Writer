@@ -471,6 +471,11 @@ type SettingsStoryImportFormat = 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub';
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
+  /**
+   * M11a (SKY-9160): master AI switch — manual mode. Absent means enabled.
+   * Master off beats every per-agent enable; master on defers to them.
+   */
+  ai?: { enabled: boolean };
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderConfig;
   /** Sidebar heartbeat cadence: seconds, on-save, or manual. */

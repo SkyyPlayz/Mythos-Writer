@@ -58,8 +58,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     id: 'agents',
     label: 'AI Agents',
-    description: 'Providers, personas, and how much autonomy each agent gets.',
+    // M11a: prototype 6607 rewrote this one-liner alongside the master switch.
+    description: 'Provider, models and autonomy. Pick an agent in the sidebar for its own page.',
     sectionIds: [
+      'section-ai-master',
       'section-providers',
       'section-api-key',
       'section-agents',

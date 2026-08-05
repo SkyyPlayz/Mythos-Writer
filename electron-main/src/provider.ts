@@ -135,6 +135,7 @@ export type ListModelsResult =
  * before any fetch to block SSRF targets.
  */
 export async function listModels(payload: ListModelsPayload): Promise<ListModelsResult> {
+  if (!aiMasterGate()) return { ok: false, error: AI_DISABLED_MESSAGE };
   const { kind, baseUrl, apiKey } = payload;
 
   let resolvedBase: string;
@@ -509,6 +510,30 @@ export function createProvider(config: ProviderConfig): Provider {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+// ─── M11a master AI gate (SKY-9160) ──────────────────────────────────────────
+// Every provider network call funnels through streamFromProvider/listModels,
+// so this single gate makes "Nothing is sent anywhere" a guarantee, not a
+// convention. main.ts injects the real check at boot (reads ai.enabled from
+// app settings); the default keeps this module usable standalone in tests.
+
+/** Surfaced to the renderer when a call is rejected in manual mode. */
+export const AI_DISABLED_MESSAGE =
+  'AI features are off — every tool is manual. Turn them back on in Settings → AI Agents.';
+
+export class AiDisabledError extends Error {
+  constructor() {
+    super(AI_DISABLED_MESSAGE);
+    this.name = 'AiDisabledError';
+  }
+}
+
+let aiMasterGate: () => boolean = () => true;
+
+/** Inject the master `ai.enabled` check. Called once from main.ts at boot. */
+export function setAiMasterGate(gate: () => boolean): void {
+  aiMasterGate = gate;
+}
+
 /** Allowlist of valid model IDs for the Anthropic provider. */
 export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
   'claude-haiku-4-5-20251001',
@@ -538,6 +563,7 @@ export async function* streamFromProvider(
   config: ProviderConfig,
   req: StreamRequest,
 ): AsyncIterable<string> {
+  if (!aiMasterGate()) throw new AiDisabledError();
   if (config.kind === 'anthropic') {
     yield* runAnthropicStream(config, req);
   } else {
