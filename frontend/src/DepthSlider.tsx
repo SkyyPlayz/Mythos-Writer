@@ -1,18 +1,21 @@
 import { useEffect } from 'react';
+import type { ZoomLevel } from './story/manuscriptModel';
 import './DepthSlider.css';
 
-export type ViewDepth = 'book' | 'chapter' | 'scene';
 type WritingMode = 'normal' | 'focus' | 'edit';
 
-const POSITIONS: { value: ViewDepth; label: string }[] = [
+// M1 (SKY-9013): depth is the manuscript ZoomLevel — all four depths, always
+// visible ('part' renders ungrouped chapters until M2 lands the data model).
+const POSITIONS: { value: ZoomLevel; label: string }[] = [
   { value: 'book', label: 'Full Book' },
+  { value: 'part', label: 'Part' },
   { value: 'chapter', label: 'Chapter' },
   { value: 'scene', label: 'Scene' },
 ];
 
 export interface DepthSliderProps {
-  depth: ViewDepth;
-  onDepthChange: (depth: ViewDepth) => void;
+  depth: ZoomLevel;
+  onDepthChange: (depth: ZoomLevel) => void;
   canPrev: boolean;
   canNext: boolean;
   onPrev: () => void;

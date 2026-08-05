@@ -193,13 +193,14 @@ test('PC-05: page ruler drags width with live preview, snap-to-preset, and margi
     const ruler = page.locator('[data-testid="page-ruler"]');
     await expect(ruler).toBeVisible();
 
-    // Baseline: letter preset → 680px.
+    // Baseline: canonical page prefs seed 1000px on fresh profiles
+    // (M1-S3 / plan §9.5 — replaces the old letter-preset 680 default).
     const widthOf = () =>
       page
         .locator('.story-page-canvas')
         .evaluate((el) => getComputedStyle(el).getPropertyValue('--page-width-story').trim());
 
-    // Drag the right page edge outward by 100px → width grows by 2×∆ = 880px.
+    // Drag the right page edge outward by 100px → width grows by 2×∆ = 1200px.
     const edgeR = page.locator('[data-testid="pgr-edge-r"]');
     const box = await edgeR.boundingBox();
     expect(box).not.toBeNull();
@@ -209,20 +210,21 @@ test('PC-05: page ruler drags width with live preview, snap-to-preset, and margi
     await page.mouse.down();
     await page.mouse.move(startX + 100, startY, { steps: 5 });
     // Live preview updates before release.
-    expect(await widthOf()).toBe('880px');
+    expect(await widthOf()).toBe('1200px');
     await page.mouse.up();
-    expect(await widthOf()).toBe('880px');
+    expect(await widthOf()).toBe('1200px');
     // Commit landed in prefs: the toolbar width slider follows.
-    await expect(page.locator('[role="group"][aria-label="Page width"] input.pct-slider')).toHaveValue('880');
+    await expect(page.locator('[role="group"][aria-label="Page width"] input.pct-slider')).toHaveValue('1200');
 
     // Keyboard: focused edge handle nudges width by 10px per arrow (WCAG 2.1 AA).
     await edgeR.focus();
-    await expect(edgeR).toHaveAttribute('aria-valuenow', '880');
+    await expect(edgeR).toHaveAttribute('aria-valuenow', '1200');
     await page.keyboard.press('ArrowRight');
-    await expect(edgeR).toHaveAttribute('aria-valuenow', '890');
-    expect(await widthOf()).toBe('890px');
+    await expect(edgeR).toHaveAttribute('aria-valuenow', '1210');
+    expect(await widthOf()).toBe('1210px');
 
-    // Margin handle drag writes through to --story-page-pad-horiz (default 56).
+    // Margin handle drag writes through to --story-page-pad-horiz (canonical
+    // default 84 — M1-S3 pageMarginPx, mirrored into legacy marginHorizPx).
     const marginL = page.locator('[data-testid="pgr-margin-l"]');
     const mbox = await marginL.boundingBox();
     expect(mbox).not.toBeNull();
@@ -235,8 +237,8 @@ test('PC-05: page ruler drags width with live preview, snap-to-preset, and margi
     const pad = await page
       .locator('.story-page-canvas')
       .evaluate((el) => getComputedStyle(el).getPropertyValue('--story-page-pad-horiz').trim());
-    expect(pad).toBe('86px');
-    await expect(marginL).toHaveAttribute('aria-valuenow', '86');
+    expect(pad).toBe('114px');
+    await expect(marginL).toHaveAttribute('aria-valuenow', '114');
   } finally {
     await app.close().catch(() => undefined);
   }

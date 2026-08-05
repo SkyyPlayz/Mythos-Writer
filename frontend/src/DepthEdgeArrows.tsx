@@ -1,17 +1,18 @@
-import type { ViewDepth } from './DepthSlider';
+import type { ZoomLevel } from './story/manuscriptModel';
 
 // GH #631 / AC-C-4: on-canvas prev/next arrows at the left/right page edges.
 // Styling lives in DesktopShell.css (.edge-arrow); the buttons self-hide via
 // :disabled when stepping is not possible at the current depth boundary.
 
-const DEPTH_NOUN: Record<ViewDepth, string> = {
+const DEPTH_NOUN: Record<ZoomLevel, string> = {
   book: 'story',
+  part: 'part',
   chapter: 'chapter',
   scene: 'scene',
 };
 
 export interface DepthEdgeArrowsProps {
-  depth: ViewDepth;
+  depth: ZoomLevel;
   canPrev: boolean;
   canNext: boolean;
   onPrev: () => void;

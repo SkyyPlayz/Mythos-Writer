@@ -1,0 +1,123 @@
+/* M1 (SKY-9013) — canonical row 3: depth-invariant title row.
+   Prototype doc header (Liquid Neon 897–948): chip 899, title 901, ☆ 902,
+   words 929, Focus 936–938. The comment chip keeps its zoombar styling
+   (.msv-comments-chip in ManuscriptView.css) — only its row changed. */
+
+.msv-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 18px 0;
+  flex: none;
+  min-width: 0;
+}
+
+/* Prototype sceneChip (899): 10px/700, letter-spaced, neon-bordered. */
+.msv-depth-chip {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--n1, #00f0ff);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  background: var(--gs1, rgba(0, 240, 255, 0.08));
+  white-space: nowrap;
+}
+
+/* Prototype scopeTitle (901): Lora 21/600. */
+.msv-scope-title {
+  margin: 0;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: #e6ecf9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.msv-title-star {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
+  color: #8195b2;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.msv-title-star:hover {
+  color: rgb(255, 230, 128);
+}
+
+/* Status chip sits in the prototype's "Draft ▾" slot (904). */
+.msv-status-chip {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #aebad0;
+  white-space: nowrap;
+}
+
+.msv-status-chip:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.msv-status-chip--in-progress {
+  border-color: var(--b1, rgba(0, 240, 255, 0.4));
+  color: var(--n1, #00f0ff);
+}
+
+.msv-status-chip--review {
+  border-color: rgba(255, 211, 25, 0.5);
+  color: rgb(255, 230, 128);
+}
+
+.msv-status-chip--final {
+  border-color: rgba(84, 227, 152, 0.5);
+  color: rgb(120, 235, 175);
+}
+
+.msv-title-words {
+  flex: none;
+  font-size: 11.5px;
+  color: #8195b2;
+  white-space: nowrap;
+}
+
+.msv-title-focus {
+  flex: none;
+  padding: 4px 11px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #aebad0;
+  white-space: nowrap;
+}
+
+.msv-title-focus:hover {
+  color: #e8eefc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.msv-title-focus--on {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.4));
+}

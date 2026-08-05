@@ -1,9 +1,9 @@
 import type { Scene, Chapter, Story } from './types';
-import type { ViewDepth } from './DepthSlider';
+import type { ZoomLevel } from './story/manuscriptModel';
 
 export interface StepSceneContext {
   direction: 'prev' | 'next';
-  depth: ViewDepth;
+  depth: ZoomLevel;
   selectedScene: Scene | null;
   selectedChapter: Chapter | null;
   selectedStory: Story | null;
@@ -70,6 +70,10 @@ export function stepScene(ctx: StepSceneContext): StepSceneTarget | null {
     return { scene, chapter, story: selectedStory };
   }
 
+  // depth === 'part' — every story is one implicit part until M2 lands the
+  // Parts data model (SKY-9017), so there is never a sibling part to step to.
+  if (depth === 'part') return null;
+
   // depth === 'book' — Story has no order field; use array position (manifest order)
   const idx = stories.findIndex((s) => s.id === selectedStory.id);
   if (idx < 0) return null;
@@ -85,7 +89,7 @@ export function stepScene(ctx: StepSceneContext): StepSceneTarget | null {
  * Pure — no side effects.
  */
 export function computeStepState(
-  depth: ViewDepth,
+  depth: ZoomLevel,
   selectedScene: Scene | null,
   selectedChapter: Chapter | null,
   selectedStory: Story | null,
@@ -118,6 +122,11 @@ export function computeStepState(
       canNext: idx >= 0 && idx < sorted.length - 1,
       contextLabel: `${selectedStory.title} › ${selectedChapter.title}`,
     };
+  }
+
+  // depth === 'part' — single implicit part until M2 (SKY-9017): no stepping.
+  if (depth === 'part') {
+    return { canPrev: false, canNext: false, contextLabel: selectedStory.title };
   }
 
   // depth === 'book' — Story has no order field; use array position (manifest order)

@@ -323,7 +323,7 @@ describe('ManuscriptView row memoization (integration)', () => {
     vi.mocked(segmentsFor).mockClear();
 
     fireEvent.click(screen.getByTestId('msv-page-setup-btn'));
-    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '1400' } });
+    fireEvent.change(screen.getByLabelText('Page width slider'), { target: { value: '1400' } });
     expect(screen.getByText('1400px')).toBeInTheDocument(); // the view re-rendered …
     expect(vi.mocked(findAutoLinkHints)).not.toHaveBeenCalled(); // … the rows did not
     expect(vi.mocked(segmentsFor)).not.toHaveBeenCalled();
@@ -371,7 +371,7 @@ describe('ManuscriptView row memoization (integration)', () => {
         kind: 'archive',
       });
     });
-    fireEvent.change(screen.getByTestId('page-chrome-width-slider'), { target: { value: '1200' } });
+    fireEvent.change(screen.getByLabelText('Page width slider'), { target: { value: '1200' } });
 
     expect(para.textContent).toBe('work in progress'); // keystrokes intact
     expect(document.activeElement).toBe(para); // caret still in the row

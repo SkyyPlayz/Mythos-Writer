@@ -18,7 +18,7 @@
 // This module is pure UI-model: it never mutates the Story and owns no
 // persistence — callers persist via their own IPC.
 
-import type { Block, Chapter, Scene, Story } from '../types';
+import type { Block, Chapter, DraftState, Scene, Story } from '../types';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -544,4 +544,110 @@ export function breadcrumbs(story: Story, cursor: ManuscriptCursor): BreadcrumbE
     }
   }
   return trail;
+}
+
+// ─── M1 title row (SKY-9013 — prototype doc header 897–948) ──────────────────
+
+const PART_ORDINALS = [
+  'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN',
+];
+
+/** "PART ONE" … "PART TEN", numeric past that (prototype part.label style). */
+export function partLabel(index: number): string {
+  return `PART ${PART_ORDINALS[index] ?? String(index + 1)}`;
+}
+
+/** The cursor's current chapter, `order`-sorted. */
+export function cursorChapter(story: Story, cursor: ManuscriptCursor): Chapter | null {
+  return orderedChapters(story)[cursor.chapter] ?? null;
+}
+
+/** The cursor's current scene — the status chip's target at every depth. */
+export function cursorScene(story: Story, cursor: ManuscriptCursor): Scene | null {
+  const chapter = cursorChapter(story, cursor);
+  return chapter ? orderedScenes(chapter)[cursor.scene] ?? null : null;
+}
+
+/**
+ * Row-3 depth chip (prototype sceneChip 5948): book → none, part → "PART ONE",
+ * chapter → "CHAPTER N", scene → "SCENE N".
+ */
+export function titleChip(cursor: ManuscriptCursor): string | null {
+  switch (cursor.zoom) {
+    case 'book':
+      return null;
+    case 'part':
+      return partLabel(cursor.part);
+    case 'chapter':
+      return `CHAPTER ${cursor.chapter + 1}`;
+    case 'scene':
+      return `SCENE ${cursor.scene + 1}`;
+  }
+}
+
+/**
+ * Row-3 scope title (prototype scopeTitle 5949). The single implicit part is
+ * untitled until M2 (SKY-9017), so part depth shows the story title.
+ */
+export function scopeTitle(story: Story, cursor: ManuscriptCursor): string {
+  switch (cursor.zoom) {
+    case 'book':
+    case 'part':
+      return story.title;
+    case 'chapter':
+      return cursorChapter(story, cursor)?.title ?? story.title;
+    case 'scene':
+      return cursorScene(story, cursor)?.title ?? story.title;
+  }
+}
+
+/** Every scene inside the cursor's scope (book/part → all, chapter → one chapter's, scene → one). */
+export function scopeScenes(story: Story, cursor: ManuscriptCursor): Scene[] {
+  switch (cursor.zoom) {
+    case 'book':
+    case 'part':
+      return orderedChapters(story).flatMap(orderedScenes);
+    case 'chapter': {
+      const chapter = cursorChapter(story, cursor);
+      return chapter ? orderedScenes(chapter) : [];
+    }
+    case 'scene': {
+      const scene = cursorScene(story, cursor);
+      return scene ? [scene] : [];
+    }
+  }
+}
+
+// ─── M1 scene-status chip (full draftState vocabulary) ───────────────────────
+
+/**
+ * Status-chip cycle over the STORED vocabulary, so cycling never destroys
+ * 'review' (the old todo/draft/done round-trip collapsed review into draft):
+ * unset (Planned) → in-progress → review → final → unset.
+ */
+export function cycleDraftState(state: DraftState | undefined): DraftState | undefined {
+  switch (state) {
+    case undefined:
+      return 'in-progress';
+    case 'in-progress':
+      return 'review';
+    case 'review':
+      return 'final';
+    case 'final':
+      return undefined;
+  }
+}
+
+/** Chip / toast labels (prototype toast vocabulary + 'In review'). */
+export function draftStateLabel(state: DraftState | undefined): string {
+  switch (state) {
+    case 'in-progress':
+      return 'Drafting';
+    case 'review':
+      return 'In review';
+    case 'final':
+      return 'Complete';
+    default:
+      return 'Planned';
+  }
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, PAGE_BACKGROUND_DEFAULTS, pageBackgroundContrastRatio, applyPageBackgroundTokens, resetPageBackgroundTokens } from './theme';
+import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, PAGE_BACKGROUND_DEFAULTS, pageBackgroundContrastRatio, applyPageBackgroundTokens, resetPageBackgroundTokens, applyStoryPageTokens, resetStoryPageTokens, clampPageMargin, maxPageMargin, normalizeStoryPagePrefs, resolveFontName, resolveFontStep, resolveLineHeight, resolvePageMargin, resolvePageWidth, STORY_PAGE_DEFAULTS } from './theme';
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 const notesTabCss = readFileSync(join(__dirname, 'NotesTabPanel.css'), 'utf8');
@@ -555,5 +555,107 @@ describe('PAGE_BACKGROUND_DEFAULTS migration default (SKY-3625)', () => {
 
   it('default blur is 12px', () => {
     expect(PAGE_BACKGROUND_DEFAULTS.blur).toBe(12);
+  });
+});
+
+// ─── M1-S3 (SKY-9013): canonical StoryPagePrefs — resolve/normalize/apply ────
+
+describe('canonical page prefs (M1-S3)', () => {
+  it('resolves prototype defaults when canonical fields are absent', () => {
+    expect(resolvePageWidth(undefined)).toBe(1000);
+    expect(resolvePageMargin(undefined)).toBe(84);
+    expect(resolveFontName(undefined)).toBe('Lora');
+    expect(resolveFontStep(undefined)).toBe(12);
+    expect(resolveLineHeight(undefined)).toBe(1.85);
+  });
+
+  it('clamps width to [520, 3000] and margin to [12, floor(w/2)-60]', () => {
+    expect(resolvePageWidth({ pageWidthPx: 100 })).toBe(520);
+    expect(resolvePageWidth({ pageWidthPx: 9999 })).toBe(3000);
+    expect(resolvePageMargin({ pageWidthPx: 1000, pageMarginPx: 4 })).toBe(12);
+    expect(resolvePageMargin({ pageWidthPx: 1000, pageMarginPx: 999 })).toBe(440);
+    expect(maxPageMargin(1000)).toBe(440);
+    expect(clampPageMargin(200, 520)).toBe(200);
+    expect(clampPageMargin(999, 520)).toBe(Math.floor(520 / 2) - 60);
+  });
+
+  it('normalize seeds a pre-S3 map with the unified editor defaults, mirrored down', () => {
+    const p = normalizeStoryPagePrefs({ ...STORY_PAGE_DEFAULTS });
+    expect(p.pageWidthPx).toBe(1000);
+    expect(p.pageMarginPx).toBe(84);
+    expect(p.fontName).toBe('Lora');
+    expect(p.fontSizeStep).toBe(12);
+    expect(p.lineHeightX).toBe(1.85);
+    // both models describe the same page after the first normalize
+    expect(p.customWidthPx).toBe(1000);
+    expect(p.marginHorizPx).toBe(84);
+    expect(p.fontSizePx).toBe(Math.round(12 * 1.42));
+    expect(p.lineHeight).toBe(1.85);
+  });
+
+  it('normalize mirrors a canonical width edit into the legacy fields', () => {
+    const prev = normalizeStoryPagePrefs({ ...STORY_PAGE_DEFAULTS, pageWidthPx: 1000 });
+    const next = normalizeStoryPagePrefs({ ...prev, pageWidthPx: 1400 }, prev);
+    expect(next.sizePreset).toBe('custom');
+    expect(next.customWidthPx).toBe(1400);
+  });
+
+  it('normalize mirrors a legacy width edit back into pageWidthPx (PageRuler path)', () => {
+    const prev = normalizeStoryPagePrefs({ ...STORY_PAGE_DEFAULTS, pageWidthPx: 1000 });
+    const next = normalizeStoryPagePrefs(
+      { ...prev, sizePreset: 'custom', customWidthPx: 760 },
+      prev
+    );
+    expect(next.pageWidthPx).toBe(760);
+  });
+
+  it('normalize clamps the margin down when a width edit no longer fits it (locked pair)', () => {
+    const prev = normalizeStoryPagePrefs({
+      ...STORY_PAGE_DEFAULTS,
+      pageWidthPx: 1000,
+      pageMarginPx: 400,
+    });
+    const next = normalizeStoryPagePrefs({ ...prev, pageWidthPx: 520 }, prev);
+    expect(next.pageMarginPx).toBe(Math.floor(520 / 2) - 60);
+    expect(next.marginHorizPx).toBe(next.pageMarginPx);
+  });
+
+  it('normalize mirrors margin + font edits both ways', () => {
+    const prev = normalizeStoryPagePrefs({ ...STORY_PAGE_DEFAULTS, pageWidthPx: 1000 });
+    const canon = normalizeStoryPagePrefs({ ...prev, pageMarginPx: 120, fontSizeStep: 14 }, prev);
+    expect(canon.marginHorizPx).toBe(120);
+    expect(canon.marginVertPx).toBe(120);
+    expect(canon.fontSizePx).toBe(Math.round(14 * 1.42));
+    const legacy = normalizeStoryPagePrefs({ ...canon, marginHorizPx: 64 }, canon);
+    expect(legacy.pageMarginPx).toBe(64);
+  });
+
+  it('applyStoryPageTokens prefers canonical fields for the CSS vars', () => {
+    applyStoryPageTokens({
+      ...STORY_PAGE_DEFAULTS,
+      pageWidthPx: 1200,
+      pageMarginPx: 96,
+      fontName: 'Inter',
+      fontSizeStep: 14,
+      lineHeightX: 2,
+    });
+    const st = document.documentElement.style;
+    expect(st.getPropertyValue('--page-width-story')).toBe('1200px');
+    expect(st.getPropertyValue('--story-page-pad-horiz')).toBe('96px');
+    expect(st.getPropertyValue('--story-page-pad-vert')).toBe('96px');
+    expect(st.getPropertyValue('--story-page-font-family')).toContain('Inter');
+    expect(st.getPropertyValue('--story-page-font-size')).toBe(`${(14 * 1.42).toFixed(1)}px`);
+    expect(st.getPropertyValue('--story-page-line-height')).toBe('2');
+    resetStoryPageTokens();
+  });
+
+  it('applyStoryPageTokens falls back to the legacy fields for pre-S3 maps', () => {
+    applyStoryPageTokens({ ...STORY_PAGE_DEFAULTS });
+    const st = document.documentElement.style;
+    expect(st.getPropertyValue('--page-width-story')).toBe('680px');
+    expect(st.getPropertyValue('--story-page-pad-horiz')).toBe('56px');
+    expect(st.getPropertyValue('--story-page-pad-vert')).toBe('48px');
+    expect(st.getPropertyValue('--story-page-font-size')).toBe('16px');
+    resetStoryPageTokens();
   });
 });

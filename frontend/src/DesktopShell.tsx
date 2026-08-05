@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import { useToast } from './hooks/useToast';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
-import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
+import { applyTheme, applyLiquidNeonTokens, applyPageBackgroundTokens, applyStoryPageTokens, clampPageWidth, normalizeStoryPagePrefs, resolvePageWidth, STORY_PAGE_DEFAULTS, STORY_PAGE_PRESET_WIDTHS, type StoryPagePrefs } from './theme';
 import {
   applyLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
@@ -21,7 +22,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cycleStatus, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, sceneStatus, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cursorChapter, cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -82,7 +83,7 @@ import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import ProjectSwitcher from './ProjectSwitcher';
-import DepthSlider, { type ViewDepth } from './DepthSlider';
+import DepthSlider from './DepthSlider';
 import DepthEdgeArrows from './DepthEdgeArrows';
 import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
@@ -724,17 +725,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // showLeftSidebar below (focus/distraction-free rules unchanged).
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const [viewDepth, setViewDepthRaw] = useState<ViewDepth>('scene');
-  // SKY-6010: 'part' has no ViewDepth of its own (Parts don't exist in the
-  // data model yet — book zoom stands in for it), so it's tracked as a flag
-  // alongside viewDepth==='book' rather than folded into ViewDepth's union.
-  // Any navigation through setViewDepth that isn't the manuscript zoom bar
-  // itself must clear it, or the flag would go stale and misreport zoom.
-  const [manuscriptPartZoom, setManuscriptPartZoom] = useState(false);
-  const setViewDepth = useCallback((depth: ViewDepth) => {
-    setManuscriptPartZoom(false);
-    setViewDepthRaw(depth);
-  }, []);
+  // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
+  // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
+  // lands the Parts data model, part depth renders the story's chapters
+  // ungrouped (manuscriptModel's implicit single part).
+  const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
@@ -863,12 +858,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const pageDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
 
-  // SKY-3206: Sync page prefs from settings when vault/settings change
+  // SKY-3206: Sync page prefs from settings when vault/settings change.
+  // M1-S3: maps persisted before the canonical fields existed are seeded from
+  // the old app-wide manuscript width once, then normalized so the canonical
+  // and legacy fields describe the same page.
   useEffect(() => {
     if (!appSettings || !activeVaultRoot) return;
     const map = (appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap;
-    const prefs = map?.[activeVaultRoot] ?? STORY_PAGE_DEFAULTS;
-    setPagePrefs(prefs);
+    const stored = map?.[activeVaultRoot] ?? STORY_PAGE_DEFAULTS;
+    const seeded: StoryPagePrefs =
+      stored.pageWidthPx == null
+        ? { ...stored, pageWidthPx: clampPageWidth(appSettings.manuscriptPageWidth ?? 1000) }
+        : stored;
+    setPagePrefs(normalizeStoryPagePrefs(seeded));
   }, [appSettings, activeVaultRoot]);
 
   useEffect(() => {
@@ -995,18 +997,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   );
 
   const handlePagePrefsChange = useCallback((newPrefs: StoryPagePrefs) => {
-    setPagePrefs(newPrefs);
-    applyStoryPageTokens(newPrefs);
+    // M1-S3: every prefs writer (popover, ruler diamonds, toolbar, legacy
+    // strip) funnels through here — normalize keeps the canonical and legacy
+    // fields in agreement ("two controls, one pref").
+    const next = normalizeStoryPagePrefs(newPrefs, pagePrefs);
+    setPagePrefs(next);
+    applyStoryPageTokens(next);
     if (!appSettings || !activeVaultRoot) return;
     const updated = {
       ...appSettings,
       storyPagePrefsMap: {
         ...(appSettings as AppSettings & { storyPagePrefsMap?: Record<string, StoryPagePrefs> }).storyPagePrefsMap,
-        [activeVaultRoot]: newPrefs,
+        [activeVaultRoot]: next,
       },
     };
     window.api.settingsSet(updated as AppSettings).catch(() => {});
-  }, [appSettings, activeVaultRoot]);
+  }, [appSettings, activeVaultRoot, pagePrefs]);
 
   const handlePageDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -4115,7 +4121,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     );
   }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, applyStepTarget]);
 
-  const handleViewDepthChange = useCallback((newDepth: ViewDepth) => {
+  const handleViewDepthChange = useCallback((newDepth: ZoomLevel) => {
     setViewDepth(newDepth);
     if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
       const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
@@ -4142,17 +4148,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 3 M9: heading-zoom manuscript replaces the book/chapter depth views.
   // Cursor indices follow the model's order-field sorting.
   const manuscriptCursor = useMemo<ManuscriptCursor>(() => {
-    const zoom: ZoomLevel =
-      viewDepth === 'book'
-        ? (manuscriptPartZoom ? 'part' : 'book')
-        : viewDepth === 'chapter' ? 'chapter' : 'scene';
-    if (!selectedStory) return { zoom, part: 0, chapter: 0, scene: 0 };
+    if (!selectedStory) return { zoom: viewDepth, part: 0, chapter: 0, scene: 0 };
     const chapters = [...selectedStory.chapters].sort((a, b) => a.order - b.order);
     const ci = Math.max(0, selectedChapter ? chapters.findIndex((c) => c.id === selectedChapter.id) : 0);
     const scenes = chapters[ci] ? [...chapters[ci].scenes].sort((a, b) => a.order - b.order) : [];
     const si = Math.max(0, selectedScene ? scenes.findIndex((sc) => sc.id === selectedScene.id) : 0);
-    return { zoom, part: 0, chapter: ci, scene: si };
-  }, [viewDepth, manuscriptPartZoom, selectedStory, selectedChapter, selectedScene]);
+    return { zoom: viewDepth, part: 0, chapter: ci, scene: si };
+  }, [viewDepth, selectedStory, selectedChapter, selectedScene]);
 
   const handleManuscriptCursorChange = useCallback((cursor: ManuscriptCursor) => {
     if (!selectedStory) return;
@@ -4163,10 +4165,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const sc = scenes[Math.min(cursor.scene, Math.max(0, scenes.length - 1))];
       if (sc) handleSelectScene(sc, ch, selectedStory);
     }
-    // setViewDepth clears manuscriptPartZoom as a side effect, so the 'part'
-    // flag must be (re-)applied after it, not before — see SKY-6010.
-    setViewDepth(cursor.zoom === 'part' ? 'book' : cursor.zoom);
-    setManuscriptPartZoom(cursor.zoom === 'part');
+    setViewDepth(cursor.zoom);
   }, [selectedStory, handleSelectScene, setViewDepth]);
 
   // Beta 4 M8: shared follow-up for model-driven manuscript changes — the
@@ -4215,8 +4214,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
     const scene = owner?.scenes.find((sc) => sc.id === sceneId);
     if (!owner || !scene) return;
-    const next = cycleStatus(sceneStatus(scene));
-    const draftState = next === 'draft' ? 'in-progress' as const : next === 'done' ? 'final' as const : undefined;
+    // M1 (SKY-9013): cycle the STORED draftState vocabulary — the old
+    // todo/draft/done round-trip silently collapsed 'review' into 'in-progress'.
+    const draftState = cycleDraftState(scene.draftState);
     const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
     const updatedStories = stories.map((story) =>
       story.id !== selectedStory.id ? story : {
@@ -4232,7 +4232,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const cycledStory = updatedStories.find((st) => st.id === selectedStory.id);
     if (cycledStory) refreshManuscriptSelection(cycledStory);
     // Beta 4 M8 (§1.6): every dot click confirms — prototype cycleStatus toast.
-    showLnToast(`“${scene.title}” → ${next === 'done' ? 'Complete' : next === 'draft' ? 'Drafting' : 'Planned'}`);
+    showLnToast(`“${scene.title}” → ${draftStateLabel(draftState)}`);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 3 M10: paragraph grip drag — pure move via the model, then persist
@@ -4371,15 +4371,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     refreshManuscriptSelection(renamed);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
-  // Beta 3 M10: manuscript sheet width (prototype pageW) persisted app-wide.
-  const handleManuscriptPageWidthChange = useCallback((px: number) => {
-    setAppSettings((prev) => {
-      if (!prev || prev.manuscriptPageWidth === px) return prev;
-      const updated: AppSettings = { ...prev, manuscriptPageWidth: px };
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
-    });
-  }, []);
 
   // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
   // same live-apply + persist shape as the width handler above, scoped to
@@ -4444,12 +4435,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLeftSidebarLayout({ ...cur, panels, sidebarCollapsed: false });
   }, [persistLeftSidebarLayout]);
 
+  // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
+  // when the master AI toggle is off (undefined handler = no mount).
+  const aiEnabled = useAiEnabled();
   const manuscriptToolbarActions = useMemo(() => ({
     onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
-    onAssist: handleToolbarAssist,
-  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist]);
+    onAssist: aiEnabled ? handleToolbarAssist : undefined,
+  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
 
   // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Read/
   // Dictate handlers as the manuscript — no Assist button in the Notes surface.
@@ -5085,7 +5079,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               with the view into BookPreview — the tts/voice settings ride along. */}
           <BookPreview
             story={selectedStory ?? null}
-            pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
+            pageWidth={resolvePageWidth(pagePrefs)}
             onExport={() => {
               if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id });
             }}
@@ -5343,10 +5337,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   </button>
                 </div>
               </div>
-            ) : viewDepth === 'book' && selectedStory ? (
-              /* Beta 3 M9: the heading-zoom manuscript renders book zoom.
-                 book-outline-view stays as an E2E selector-compat anchor. */
-              <div className="shell-depth-view-wrap book-outline-view">
+            ) : viewDepth !== 'scene' && selectedStory ? (
+              /* M1 (SKY-9013): ONE ManuscriptView branch renders book, part and
+                 chapter depth — cursor.zoom carries the depth. Both legacy
+                 selector-compat anchors stay on the unified wrapper (CI). */
+              <div className="shell-depth-view-wrap book-outline-view chapter-continuous-view">
                 <ManuscriptView
                   story={selectedStory}
                   cursor={manuscriptCursor}
@@ -5359,8 +5354,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onRemoveParagraph={handleManuscriptRemoveParagraph}
                   onRenameScene={handleManuscriptRenameScene}
                   onRenameChapter={handleManuscriptRenameChapter}
-                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
-                  onPageWidthChange={handleManuscriptPageWidthChange}
+                  pagePrefs={pagePrefs}
+                  onPagePrefsChange={handlePagePrefsChange}
                   liquidNeon={appSettings?.liquidNeonV2}
                   onPageStyleChange={handleManuscriptPageStyleChange}
                   onPickPageTexture={handlePickPageTexture}
@@ -5368,51 +5363,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
                   focusMode={writingMode === 'focus'}
+                  onToggleFocus={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
+                  onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
+                  onAddScene={() => {
+                    if (!selectedStory) return;
+                    // The cursor's chapter is what row 3/4 show — selectedChapter
+                    // only syncs after a cursor change and is null on several
+                    // book/part-depth paths (adversarial S2 finding).
+                    const target = cursorChapter(selectedStory, manuscriptCursor) ?? selectedChapter;
+                    if (target) void createScene(selectedStory.id, target.id);
+                  }}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
                 />
                 <DepthEdgeArrows
-                  depth="book"
-                  canPrev={depthCanPrev}
-                  canNext={depthCanNext}
-                  onPrev={handleDepthPrev}
-                  onNext={handleDepthNext}
-                />
-              </div>
-            ) : viewDepth === 'chapter' && selectedChapter ? (
-              /* Beta 3 M9: chapter zoom of the same continuous manuscript.
-                 chapter-continuous-view stays as an E2E compat anchor. */
-              <div className="shell-depth-view-wrap chapter-continuous-view">
-                <ManuscriptView
-                  story={selectedStory!}
-                  cursor={manuscriptCursor}
-                  onCursorChange={handleManuscriptCursorChange}
-                  onEditParagraph={handleManuscriptEditParagraph}
-                  onCycleStatus={handleManuscriptCycleStatus}
-                  onMoveParagraph={handleManuscriptMoveParagraph}
-                  onSplitParagraph={handleManuscriptSplitParagraph}
-                  onMergeParagraph={handleManuscriptMergeParagraph}
-                  onRemoveParagraph={handleManuscriptRemoveParagraph}
-                  onRenameScene={handleManuscriptRenameScene}
-                  onRenameChapter={handleManuscriptRenameChapter}
-                  pageWidth={appSettings?.manuscriptPageWidth ?? 1000}
-                  onPageWidthChange={handleManuscriptPageWidthChange}
-                  liquidNeon={appSettings?.liquidNeonV2}
-                  onPageStyleChange={handleManuscriptPageStyleChange}
-                  onPickPageTexture={handlePickPageTexture}
-                  onDictate={manuscriptToolbarActions.onDictate}
-                  dictating={manuscriptToolbarActions.dictating}
-                  onAssist={manuscriptToolbarActions.onAssist}
-                  focusMode={writingMode === 'focus'}
-                  autoLinkEntities={allEntities}
-                  autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
-                  ttsSettings={appSettings?.tts}
-                  voicePrefs={appSettings?.voice}
-                />
-                <DepthEdgeArrows
-                  depth="chapter"
+                  depth={viewDepth}
                   canPrev={depthCanPrev}
                   canNext={depthCanNext}
                   onPrev={handleDepthPrev}
