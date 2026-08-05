@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import { useToast } from './hooks/useToast';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
@@ -4434,12 +4435,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLeftSidebarLayout({ ...cur, panels, sidebarCollapsed: false });
   }, [persistLeftSidebarLayout]);
 
+  // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
+  // when the master AI toggle is off (undefined handler = no mount).
+  const aiEnabled = useAiEnabled();
   const manuscriptToolbarActions = useMemo(() => ({
     onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
-    onAssist: handleToolbarAssist,
-  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist]);
+    onAssist: aiEnabled ? handleToolbarAssist : undefined,
+  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
 
   // Beta 3 M6 → Beta 4 M4: context-menu "Pop out into new window". Document
   // tabs have no dedicated window host yet, so they explain themselves (§1.2
