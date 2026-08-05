@@ -17,6 +17,12 @@ const storyId = 'aud-story-001';
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-a2-'));
 const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-'));
+// SKY-9028: the notes fixture needs its own root, declared in vault-settings.
+// Without `notesVaultRoot` the app falls back to a default under userData and
+// seeds it fresh — the Notes captures then show the SKY-15 seed layout instead
+// of the fixture below (the "audit's own test vault never appeared" failure
+// in PLAN.md GAP P0 #1).
+const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-'));
 
 const agentCfg = (extra = {}) => ({
   enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85,
@@ -29,7 +35,7 @@ fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
   agents: { writingAssistant: agentCfg({ scanIntervalSeconds: 30 }), brainstorm: agentCfg(), archive: agentCfg({ continuityCheckIntervalSeconds: 60 }) },
   theme: 'dark', snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 }, null, 2));
-fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify({ vaultRoot: vaultDir }, null, 2));
+fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesVaultDir }, null, 2));
 
 const PROSE = {
   s1: "Kael dealt cards the way other men made confessions — slowly, and only when cornered.",
@@ -69,7 +75,7 @@ const notes = [
   ['🌊 Emoji Folder Test/🔥 Emoji Note Test.md', '# 🔥 Emoji Note Test\n\nEmoji in title, folder and body 🎭.\n'],
 ];
 for (const [rel, body] of notes) {
-  const p = path.join(vaultDir, rel);
+  const p = path.join(notesVaultDir, rel);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, body);
 }
@@ -171,4 +177,5 @@ fs.writeFileSync(`${OUT}/app-text.json`, JSON.stringify(texts, null, 1));
 await app.close().catch(() => {});
 fs.rmSync(userData, { recursive: true, force: true });
 fs.rmSync(vaultDir, { recursive: true, force: true });
+fs.rmSync(notesVaultDir, { recursive: true, force: true });
 console.log('DONE');
