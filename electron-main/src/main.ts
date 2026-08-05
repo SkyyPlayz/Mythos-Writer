@@ -517,7 +517,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
-import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -2721,12 +2721,15 @@ const handlers: IpcHandlers = {
     )) {
       reportEvent(event);
     }
+    // M11a: flipping the master AI switch stops/starts both schedulers
+    // (start* early-returns when the master or per-agent flag is off).
+    const aiMasterChanged = isAiMasterEnabled(current) !== isAiMasterEnabled(updated);
     // Restart writing scan scheduler when scanIntervalSeconds or enabled flag changes.
     const prevInterval = current.agents.writingAssistant.scanIntervalSeconds;
     const newInterval = updated.agents.writingAssistant.scanIntervalSeconds;
     const prevEnabled = current.agents.writingAssistant.enabled;
     const newEnabled = updated.agents.writingAssistant.enabled;
-    if (prevInterval !== newInterval || prevEnabled !== newEnabled) {
+    if (prevInterval !== newInterval || prevEnabled !== newEnabled || aiMasterChanged) {
       startWritingScanScheduler();
     }
     // Restart archive continuity scheduler when relevant settings change.
@@ -2737,7 +2740,8 @@ const handlers: IpcHandlers = {
     if (
       prevArchiveInterval !== newArchiveInterval ||
       prevArchiveEnabled !== newArchiveEnabled ||
-      current.agents.archive.enabled !== updated.agents.archive.enabled
+      current.agents.archive.enabled !== updated.agents.archive.enabled ||
+      aiMasterChanged
     ) {
       startArchiveContScheduler();
     }
@@ -7335,6 +7339,8 @@ const AGENT_BUDGET_DEFAULTS = {
 
 const SETTINGS_DEFAULTS: AppSettings = {
   apiKey: '',
+  // M11a (SKY-9160): master AI switch — default on; off = manual mode.
+  ai: { enabled: true },
   waScanInterval: 'on-save',
   waEnabled: true,
   waModel: null,
@@ -7389,6 +7395,15 @@ function getBetaReaderSettings(settings: AppSettings): NonNullable<AppSettings['
 
 function getAppSettingsPath(): string {
   return path.join(app.getPath('userData'), 'app-settings.json');
+}
+
+/**
+ * M11a (SKY-9160): master AI gate. Absent field (pre-M11 settings file) means
+ * enabled. Checked above every per-agent enable: schedulers, on-demand agent
+ * handlers, and — via setAiMasterGate — every provider network call.
+ */
+function isAiMasterEnabled(settings?: AppSettings): boolean {
+  return (settings ?? loadAppSettings()).ai?.enabled !== false;
 }
 
 function loadAppSettings(): AppSettings {
@@ -7562,6 +7577,9 @@ function registerBrainstormExtractionHandlers(): void {
         if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
         assertBrainstormPayloadValid(payload);
 
+        // M11a: master off beats the per-agent enable — this direct Anthropic
+        // side-call is the one AI egress that bypasses provider.ts's gate.
+        if (!isAiMasterEnabled()) return { proposals: [] };
         const agentSettings = loadAppSettings().agents.brainstorm;
         if (!agentSettings.enabled) return { proposals: [] };
 
@@ -8512,6 +8530,7 @@ function stopWritingScanScheduler(): void {
 function startWritingScanScheduler(): void {
   stopWritingScanScheduler();
   const settings = loadAppSettings();
+  if (!isAiMasterEnabled(settings)) return; // M11a: manual mode — no scheduled AI work
   if (!settings.agents.writingAssistant.enabled) return;
 
   const intervalMs = (settings.agents.writingAssistant.scanIntervalSeconds ?? 30) * 1000;
@@ -8521,6 +8540,7 @@ function startWritingScanScheduler(): void {
     writingScanInFlight = true;
     try {
       const currentSettings = loadAppSettings();
+      if (!isAiMasterEnabled(currentSettings)) return; // M11a: manual mode
       if (!currentSettings.agents.writingAssistant.enabled) return;
       const budgetCheck = checkCallBudget('writing-assistant', currentSettings.agents.writingAssistant, getDb());
       if (!budgetCheck.allowed) {
@@ -9060,6 +9080,7 @@ function stopArchiveContScheduler(): void {
 function startArchiveContScheduler(): void {
   stopArchiveContScheduler();
   const settings = loadAppSettings();
+  if (!isAiMasterEnabled(settings)) return; // M11a: manual mode — no scheduled AI work
   if (!settings.archiveContinuityEnabled) return;
   if (!settings.agents.archive.enabled) return;
   const rawInterval = settings.archiveScanInterval;
@@ -9074,6 +9095,7 @@ function startArchiveContScheduler(): void {
     archiveContScanInFlight = true;
     try {
       const currentSettings = loadAppSettings();
+      if (!isAiMasterEnabled(currentSettings)) return; // M11a: manual mode
       if (!currentSettings.archiveContinuityEnabled) return;
       if (!currentSettings.agents.archive.enabled) return;
 
@@ -9358,6 +9380,8 @@ app.whenReady().then(async () => {
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerBetaReportRunHandler();
+  // M11a: arm the provider-level master gate before any AI handler can fire.
+  setAiMasterGate(() => isAiMasterEnabled());
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();

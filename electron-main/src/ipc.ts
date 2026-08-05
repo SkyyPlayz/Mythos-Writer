@@ -2147,6 +2147,12 @@ export interface PageBackgroundSettings {
 export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
+  /**
+   * M11a (SKY-9160): master AI switch — manual mode. Optional so pre-M11
+   * settings files remain valid; absent means enabled. Master off beats every
+   * per-agent enable; master on defers to per-agent settings.
+   */
+  ai?: { enabled: boolean };
   /** Active AI provider configuration. Defaults to Anthropic when absent. */
   provider?: ProviderSettings;
   /** Sidebar heartbeat cadence: seconds, on-save, or manual. Mirrors agents.writingAssistant.scanIntervalSeconds for numeric values. */

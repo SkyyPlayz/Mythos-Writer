@@ -206,6 +206,8 @@ export const BETA_READER_DEFAULTS: NonNullable<AppSettings['agents']['betaReader
 
 export const DEFAULTS: AppSettings = {
   apiKey: '',
+  // M11a (SKY-9160): master AI switch — default on; off = manual mode.
+  ai: { enabled: true },
   agents: {
     writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
     brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },

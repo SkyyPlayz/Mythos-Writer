@@ -1997,3 +1997,47 @@
     color: rgb(0,100,50);
   }
 }
+
+/* ── M11a (SKY-9160) — master AI switch card (prototype "AI master switch") ── */
+.ai-master-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.ai-master-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-master-title {
+  margin: 0;
+}
+
+.ai-master-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 3px 0 0;
+  line-height: 1.6;
+}
+
+.ai-master-manual-note {
+  margin-top: 13px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+
+.ai-master-manual-note__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-header);
+}
+
+.ai-master-manual-note__body {
+  font-size: 0.69rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.65;
+}
