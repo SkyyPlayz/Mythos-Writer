@@ -5002,6 +5002,10 @@ export interface AgentSessionCreatePayload {
   agent: string;
   title?: string;
   greeting?: string;
+  /** SKY-9028: preserve the renderer's deferred (in-memory) session id when
+   *  the first real user turn materializes it — surfaces pin this id at send
+   *  time, so the file must be created under it. UUID shape enforced. */
+  id?: string;
 }
 export interface AgentSessionCreateResponse {
   session: import('./mythosFormat/agentSessions.js').AgentSessionFile;

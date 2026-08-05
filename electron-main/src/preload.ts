@@ -1033,8 +1033,8 @@ contextBridge.exposeInMainWorld('api', {
   agentSessions: {
     list: (agent?: string) => ipcRenderer.invoke('agentSession:list', { agent }),
     read: (sessionId: string) => ipcRenderer.invoke('agentSession:read', { sessionId }),
-    create: (agent: string, title?: string, greeting?: string) =>
-      ipcRenderer.invoke('agentSession:create', { agent, title, greeting }),
+    create: (agent: string, title?: string, greeting?: string, id?: string) =>
+      ipcRenderer.invoke('agentSession:create', { agent, title, greeting, id }),
     rename: (sessionId: string, title: string) =>
       ipcRenderer.invoke('agentSession:rename', { sessionId, title }),
     duplicate: (sessionId: string) =>

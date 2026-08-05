@@ -80,15 +80,82 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     actions: null as unknown as AgentSessionStore['actions'],
   };
 
+  // SKY-9028 (GAP P0 #1): the auto-created first session lives ONLY in memory
+  // until the user actually writes to it. Mounting an agent surface (e.g. the
+  // Brainstorm panel inside the Notes tab) must never create a Sessions/*.md
+  // file in the user's vault — that was the boot path escaping the W0.1
+  // seed-once markers. `materialize()` turns the pending session into a real
+  // file on the first user-initiated mutation; ids pinned at send time are
+  // translated to the materialized id.
+  let pending: AgentSessionFile | null = null;
+  let materializing: Promise<string | null> | null = null;
+  // Pending-id → materialized-id. Callers pin a session id when they SEND a
+  // request; by the time the async reply appends its turn the pending session
+  // may have materialized under a new id, and the write must follow it.
+  const materializedIds = new Map<string, string>();
+
   const set = (patch: Partial<AgentSessionStoreState>) => {
     store.state = { ...store.state, ...patch };
     for (const fn of [...store.listeners]) fn();
+  };
+
+  const makePending = (): AgentSessionFile => {
+    const greeting = AGENT_GREETINGS[agent] ?? null;
+    const now = new Date().toISOString();
+    return {
+      id: crypto.randomUUID(),
+      agent,
+      startedAt: now,
+      updatedAt: now,
+      turns: greeting ? [{ role: 'agent', text: greeting, at: now }] : [],
+    };
+  };
+
+  /** Write the pending in-memory session to the vault; returns its real id. */
+  const materialize = async (): Promise<string | null> => {
+    const api = getApi();
+    const snapshot = pending;
+    if (!api || !snapshot) return null;
+    if (!materializing) {
+      const greeting = snapshot.turns.find((t) => t.role === 'agent')?.text;
+      // Pass the pending id so the file is created under the id every mounted
+      // surface already renders/pins — the conversation identity is stable
+      // across materialization (main enforces UUID shape).
+      materializing = api
+        .create(agent, snapshot.title, greeting, snapshot.id)
+        .then((res) => {
+          const wasActive = store.state.activeSessionId === snapshot.id;
+          materializedIds.set(snapshot.id, res.session.id);
+          pending = null;
+          set({
+            sessions: [
+              toSummary(res.session, res.relPath),
+              ...store.state.sessions.filter((s) => s.id !== snapshot.id),
+            ],
+            ...(wasActive
+              ? { activeSession: res.session, activeSessionId: res.session.id }
+              : {}),
+          });
+          return res.session.id;
+        })
+        .catch(() => {
+          // Vault unavailable — keep the pending session so a retry can work.
+          materializing = null;
+          return null;
+        });
+    }
+    return materializing;
   };
 
   /** Load the full session file (turns included) for the active id. */
   const hydrateActive = async (id: string | null) => {
     const api = getApi();
     if (!id || !api) return;
+    if (pending && id === pending.id) {
+      // The pending session only exists in memory — nothing to read.
+      if (store.state.activeSessionId === id) set({ activeSession: pending });
+      return;
+    }
     if (store.state.activeSession?.id === id) return;
     // Older preloads may not expose `read`; degrade to summaries-only.
     if (typeof api.read !== 'function') return;
@@ -108,7 +175,9 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     if (!api) return undefined;
     try {
       const { sessions: list } = await api.list(agent);
-      set({ sessions: list });
+      // The pending session is invisible to the vault listing; keep it first
+      // (it is the newest) so pickers don't drop the active conversation.
+      set({ sessions: pending ? [toSummary(pending, ''), ...list] : list });
       return list;
     } catch {
       return [];
@@ -126,13 +195,14 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
         set({ activeSessionId: list[0].id });
         await hydrateActive(list[0].id);
       } else if (autoCreate) {
-        // Auto-create the first session for this agent
-        const greeting = AGENT_GREETINGS[agent] ?? null;
-        const res = await api.create(agent, undefined, greeting ?? undefined);
+        // First session for this agent: greeting renders from memory only.
+        // The file is created on the user's first turn (materialize()) —
+        // never as a side effect of mounting (SKY-6945, SKY-9028).
+        pending = makePending();
         set({
-          sessions: [toSummary(res.session, res.relPath)],
-          activeSession: res.session,
-          activeSessionId: res.session.id,
+          sessions: [toSummary(pending, '')],
+          activeSession: pending,
+          activeSessionId: pending.id,
         });
       }
       // else: agent surface isn't active/enabled yet — leave sessions empty
@@ -155,6 +225,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   store.actions = {
     switchSession: async (id: string) => {
       if (store.state.activeSessionId === id) return;
+      if (pending && id === pending.id) {
+        // The pending session is already fully in memory — no read round-trip.
+        set({ activeSessionId: id, activeSession: pending, loading: false });
+        return;
+      }
       // Drop the stale transcript immediately so the feed never renders the
       // PREVIOUS session's turns under the newly-selected session's label
       // while the read resolves (the "wrong-transcript flash").
@@ -171,8 +246,12 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
       const effectiveGreeting = greeting ?? AGENT_GREETINGS[agent] ?? undefined;
       const res = await api.create(agent, undefined, effectiveGreeting);
       const summary = toSummary(res.session, res.relPath);
+      // An untouched pending greeting session is superseded by the explicit
+      // new session — drop it rather than leaving a phantom in the picker.
+      const dropId = pending?.id;
+      pending = null;
       set({
-        sessions: [summary, ...store.state.sessions],
+        sessions: [summary, ...store.state.sessions.filter((s) => s.id !== dropId)],
         activeSession: res.session,
         activeSessionId: res.session.id,
       });
@@ -180,6 +259,17 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     renameSession: async (id: string, title: string) => {
       const api = getApi();
       if (!api) return;
+      if (pending && id === pending.id) {
+        // Naming an unsaved session is user intent to keep it — persist it
+        // under the new title (materialize() reads pending at call time).
+        pending = { ...pending, title };
+        set({
+          sessions: store.state.sessions.map((s) => (s.id === id ? { ...s, title } : s)),
+          ...(store.state.activeSessionId === id ? { activeSession: pending } : {}),
+        });
+        await materialize();
+        return;
+      }
       await api.rename(id, title);
       set({
         sessions: store.state.sessions.map((s) => (s.id === id ? { ...s, title } : s)),
@@ -188,7 +278,13 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     duplicateSession: async (id: string) => {
       const api = getApi();
       if (!api) return;
-      const res = await api.duplicate(id);
+      let realId = id;
+      if (pending && id === pending.id) {
+        const materialized = await materialize();
+        if (!materialized) return;
+        realId = materialized;
+      }
+      const res = await api.duplicate(realId);
       const summary = toSummary(res.session, res.relPath);
       set({
         sessions: [summary, ...store.state.sessions],
@@ -199,6 +295,17 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     deleteSession: async (id: string) => {
       const api = getApi();
       if (!api) return;
+      if (pending && id === pending.id) {
+        // Nothing on disk yet — deleting the unsaved last session just resets
+        // it, mirroring the §11 delete-last replacement (still file-free).
+        pending = makePending();
+        set({
+          sessions: [toSummary(pending, ''), ...store.state.sessions.filter((s) => s.id !== id)],
+          activeSession: pending,
+          activeSessionId: pending.id,
+        });
+        return;
+      }
       const res = await api.delete(id);
       if (!res.ok) return;
       const remaining = store.state.sessions.filter((s) => s.id !== id);
@@ -220,8 +327,18 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
       const api = getApi();
       // Pin the write to the id the caller captured at send time; never to
       // whatever happens to be active when this promise settles.
-      const id = sessionId ?? store.state.activeSessionId;
+      let id = sessionId ?? store.state.activeSessionId;
       if (!api || !id) return;
+      // An id pinned before materialization must follow the real session.
+      id = materializedIds.get(id) ?? id;
+      if (pending && id === pending.id) {
+        // First real write to the deferred session: create the file now and
+        // land these turns on the materialized id. Concurrent sends share one
+        // create via the single-flight materialize() promise.
+        const materialized = await materialize();
+        if (!materialized) return;
+        id = materialized;
+      }
       const res = await api.appendTurns(id, turns);
       if (res.session) {
         const s = res.session;

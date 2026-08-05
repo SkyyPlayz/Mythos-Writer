@@ -79,7 +79,9 @@ describe('useAgentSessions', () => {
     __resetAgentSessionStores();
   });
 
-  it('auto-creates a session when none exist', async () => {
+  // SKY-9028 (GAP P0 #1): mounting a surface must NOT write a session file —
+  // the first session is in-memory (greeting included) until the user acts.
+  it('auto-creates an in-memory session when none exist — no file write on mount', async () => {
     const emptyApi = {
       list: vi.fn().mockResolvedValue({ sessions: [] }),
       read: vi.fn().mockResolvedValue({ session: null }),
@@ -97,9 +99,116 @@ describe('useAgentSessions', () => {
     const { result } = renderHook(() => useAgentSessions('coach'));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-    expect(emptyApi.create).toHaveBeenCalledWith('coach', undefined, expect.any(String));
+    expect(emptyApi.create).not.toHaveBeenCalled();
     expect(result.current.sessions).toHaveLength(1);
-    expect(result.current.activeSessionId).toBe('auto-1');
+    expect(result.current.activeSessionId).not.toBeNull();
+    // The greeting still renders — from memory.
+    expect(result.current.activeSession?.turns[0]?.text).toContain('Writing Coach');
+  });
+
+  it('SKY-9028: first appendTurns materializes the pending session, then appends to the real id', async () => {
+    const emptyApi = {
+      list: vi.fn().mockResolvedValue({ sessions: [] }),
+      read: vi.fn().mockResolvedValue({ session: null }),
+      create: vi.fn().mockImplementation(async (agent: string, title?: string, greeting?: string) => {
+        const s = makeMockSession({
+          id: 'real-1',
+          agent,
+          title,
+          turns: greeting ? [{ role: 'agent' as const, text: greeting, at: 't0' }] : [],
+        });
+        return { session: s, relPath: 'Sessions/real-1.md' };
+      }),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn().mockImplementation(async (sessionId: string, turns: AgentSessionTurn[]) => ({
+        session: { ...makeMockSession({ id: sessionId }), turns },
+      })),
+    };
+    (window as unknown as Record<string, unknown>).api = { agentSessions: emptyApi };
+
+    const { result } = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const pendingId = result.current.activeSessionId as string;
+
+    const turn: AgentSessionTurn = { role: 'user', text: 'First message', at: 't1' };
+    await act(async () => {
+      await result.current.appendTurns([turn], pendingId);
+    });
+
+    expect(emptyApi.create).toHaveBeenCalledTimes(1);
+    // The pending id travels to main so the file keeps the rendered identity.
+    expect(emptyApi.create).toHaveBeenCalledWith('coach', undefined, expect.any(String), pendingId);
+    // This mock ignores the requested id (returns 'real-1'), which also
+    // exercises the stale-id translation fallback.
+    expect(emptyApi.appendTurns).toHaveBeenCalledWith('real-1', [turn]);
+    expect(result.current.activeSessionId).toBe('real-1');
+    expect(result.current.sessions).toHaveLength(1);
+    expect(result.current.sessions[0].id).toBe('real-1');
+
+    // A reply pinned to the STALE pending id still lands on the real session.
+    const reply: AgentSessionTurn = { role: 'agent', text: 'Reply', at: 't2' };
+    await act(async () => {
+      await result.current.appendTurns([reply], pendingId);
+    });
+    expect(emptyApi.create).toHaveBeenCalledTimes(1);
+    expect(emptyApi.appendTurns).toHaveBeenLastCalledWith('real-1', [reply]);
+  });
+
+  it('SKY-9028: deleting the pending session resets it without any file I/O', async () => {
+    const emptyApi = {
+      list: vi.fn().mockResolvedValue({ sessions: [] }),
+      read: vi.fn().mockResolvedValue({ session: null }),
+      create: vi.fn(),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn(),
+    };
+    (window as unknown as Record<string, unknown>).api = { agentSessions: emptyApi };
+
+    const { result } = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const pendingId = result.current.activeSessionId as string;
+
+    await act(async () => {
+      await result.current.deleteSession(pendingId);
+    });
+
+    expect(emptyApi.delete).not.toHaveBeenCalled();
+    expect(emptyApi.create).not.toHaveBeenCalled();
+    expect(result.current.sessions).toHaveLength(1);
+    expect(result.current.activeSessionId).not.toBe(pendingId);
+    expect(result.current.activeSession?.turns[0]?.text).toContain('Writing Coach');
+  });
+
+  it('SKY-9028: renaming the pending session persists it under the new title', async () => {
+    const emptyApi = {
+      list: vi.fn().mockResolvedValue({ sessions: [] }),
+      read: vi.fn().mockResolvedValue({ session: null }),
+      create: vi.fn().mockImplementation(async (agent: string, title?: string) => ({
+        session: makeMockSession({ id: 'real-2', agent, title }),
+        relPath: 'Sessions/real-2.md',
+      })),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn(),
+    };
+    (window as unknown as Record<string, unknown>).api = { agentSessions: emptyApi };
+
+    const { result } = renderHook(() => useAgentSessions('coach'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const pendingId = result.current.activeSessionId as string;
+
+    await act(async () => {
+      await result.current.renameSession(pendingId, 'Kept thread');
+    });
+
+    expect(emptyApi.create).toHaveBeenCalledWith('coach', 'Kept thread', expect.any(String), pendingId);
+    expect(emptyApi.rename).not.toHaveBeenCalled();
+    expect(result.current.sessions[0].id).toBe('real-2');
   });
 
   it('renames a session and updates local state', async () => {
