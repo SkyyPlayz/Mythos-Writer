@@ -41,6 +41,10 @@ import {
   type ZoomLevel,
 } from './manuscriptModel';
 import TitleRow from './TitleRow';
+import DraftsCompareSplit from '../drafts/DraftsCompareSplit';
+import DraftDiffView from '../drafts/DraftDiffView';
+import type { SceneDraftEntry } from '../drafts/useSceneDrafts';
+import SceneHistory from '../SceneHistory';
 import { countWords } from '../wordStats';
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
@@ -187,6 +191,54 @@ export interface ManuscriptViewProps {
   ttsSettings?: TtsEngineSettings & { voiceId?: string };
   /** M13: stored voice prefs (AppSettings.voice) seed the reader's speed/voice. */
   voicePrefs?: TtsVoicePrefs;
+  /**
+   * SKY-9404 (M1-S4): Drafts v2 (title-row pill + popover, compare split,
+   * full diff) — relocated from the deleted legacy scene branch. Present
+   * only once a target scene resolves (the host gates this on its own scene
+   * selection, same as before the move).
+   */
+  drafts?: ManuscriptDraftsControls;
+  /** SKY-9404: the ⋯ menu's "Save snapshot now" action + its saved-at note. */
+  onManualSnapshot?: () => void;
+  snapshotSavedAt?: string | null;
+  /** SKY-9404: the ⋯ menu's "History" action + the SceneHistory modal data. */
+  sceneHistory?: ManuscriptHistoryControls;
+}
+
+/** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
+export interface ManuscriptDraftsControls {
+  drafts: SceneDraftEntry[];
+  currentLabel: string;
+  currentContent: string;
+  documentLabel: string;
+  error: string | null;
+  popoverOpen: boolean;
+  onTogglePopover: () => void;
+  onClosePopover: () => void;
+  onCompare: (draft: SceneDraftEntry) => void;
+  onRestore: (draft: SceneDraftEntry) => void;
+  splitOpen: boolean;
+  onToggleSplit: () => void;
+  onCloseSplit: () => void;
+  diffOpen: boolean;
+  onOpenDiff: () => void;
+  onCloseDiff: () => void;
+  selectedTs: string | null;
+  onSelectTs: (ts: string) => void;
+  onLoadDraft: (draft: SceneDraftEntry) => void;
+  undoLabel: string | null;
+  onUndo: () => void;
+}
+
+/** SKY-9404: SceneHistory modal data + handlers, moved from the scene branch. */
+export interface ManuscriptHistoryControls {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  sceneId: string;
+  scenePath: string;
+  currentContent: string;
+  onRestore: (content: string) => void;
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -332,6 +384,10 @@ export default function ManuscriptView({
   autoLinkMode = 'off',
   ttsSettings,
   voicePrefs,
+  drafts,
+  onManualSnapshot,
+  snapshotSavedAt,
+  sceneHistory,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -1088,6 +1144,26 @@ export default function ManuscriptView({
         onCycleStatus={onCycleStatus}
         focusActive={focusMode}
         onToggleFocus={onToggleFocus}
+        drafts={
+          drafts
+            ? {
+                drafts: drafts.drafts,
+                currentLabel: drafts.currentLabel,
+                currentContent: drafts.currentContent,
+                documentLabel: drafts.documentLabel,
+                popoverOpen: drafts.popoverOpen,
+                onTogglePopover: drafts.onTogglePopover,
+                onClosePopover: drafts.onClosePopover,
+                onCompare: drafts.onCompare,
+                onRestore: drafts.onRestore,
+                splitOpen: drafts.splitOpen,
+                onToggleSplit: drafts.onToggleSplit,
+              }
+            : undefined
+        }
+        onManualSnapshot={onManualSnapshot}
+        snapshotSavedAt={snapshotSavedAt}
+        onOpenSceneHistory={sceneHistory?.onOpen}
       />
       {/* M1 row 4 — zoom bar (prototype 949–970) */}
       <div className="msv-zoombar">
@@ -1449,6 +1525,10 @@ export default function ManuscriptView({
 
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
       <div className="msv-body">
+        {/* SKY-9404 (M1-S4): row wrapper — column layout normally; becomes a
+            flex row hosting the drafts compare split when it's open (moved
+            from the deleted legacy scene branch's shell-drafts-splitrow). */}
+        <div className={`shell-drafts-splitrow${drafts?.splitOpen ? ' shell-drafts-splitrow--open' : ''}`}>
         {/* page scroll area with floating arrows (prototype 808–810) */}
         <div
           className="msv-page"
@@ -1553,6 +1633,46 @@ export default function ManuscriptView({
             </div>
           </div>
         </div>
+        {/* SKY-9404 (M1-S4): drafts compare split, moved from the deleted
+            legacy scene branch — docked beside the page when open. */}
+        {drafts?.splitOpen && (
+          <DraftsCompareSplit
+            scopeLabel={drafts.documentLabel}
+            drafts={drafts.drafts}
+            currentLabel={drafts.currentLabel}
+            currentContent={drafts.currentContent}
+            selectedTs={drafts.selectedTs}
+            onSelectTs={drafts.onSelectTs}
+            onFullDiff={drafts.onOpenDiff}
+            onLoadDraft={drafts.onLoadDraft}
+            undoLabel={drafts.undoLabel}
+            onUndo={drafts.onUndo}
+            onClose={drafts.onCloseSplit}
+            error={drafts.error}
+          />
+        )}
+        {/* SKY-9404: full side-by-side diff — covers the page area (chrome
+            rows stay usable); current draft ALWAYS the left/green column. */}
+        {drafts?.diffOpen && (() => {
+          const diffDraft =
+            drafts.drafts.find((d) => d.ts === drafts.selectedTs) ?? drafts.drafts[0] ?? null;
+          return diffDraft ? (
+            <div className="shell-drafts-diff-cover" data-testid="shell-drafts-diff-cover">
+              <DraftDiffView
+                documentLabel={drafts.documentLabel}
+                currentLabel={drafts.currentLabel}
+                previousLabel={diffDraft.label}
+                currentText={drafts.currentContent}
+                previousText={diffDraft.content}
+                previousOptions={drafts.drafts.map((d) => ({ id: d.ts, label: d.label }))}
+                selectedPreviousId={diffDraft.ts}
+                onSelectPrevious={drafts.onSelectTs}
+                onClose={drafts.onCloseDiff}
+              />
+            </div>
+          ) : null;
+        })()}
+        </div>
         {/* M11: margin gutter dock (v2 prototype gutterOpen 6775): comments
             when visible, plus the Reader card while the reader is open —
             docked above the comments, centered when they're hidden. */}
@@ -1569,6 +1689,18 @@ export default function ManuscriptView({
           />
         )}
       </div>
+      {/* SKY-9404: scene history modal, moved from the deleted legacy scene
+          branch. `SceneHistory` renders via a portal (position: fixed), so
+          mount position within the tree doesn't affect layout. */}
+      {sceneHistory?.open && (
+        <SceneHistory
+          sceneId={sceneHistory.sceneId}
+          scenePath={sceneHistory.scenePath}
+          currentContent={sceneHistory.currentContent}
+          onRestore={sceneHistory.onRestore}
+          onClose={sceneHistory.onClose}
+        />
+      )}
     </div>
   );
 }
