@@ -196,11 +196,12 @@ test('UN-03: a note nested inside the emoji folder opens and displays its emoji 
   const row = pg.locator(`[data-testid="vb-row-${nestedPath}"]`);
   await expect(row).toBeVisible({ timeout: 8_000 });
 
-  // Open it — display name is preserved in the note viewer's filename header.
+  // Open it — M8d replaced .note-viewer-filename with a breadcrumb nav;
+  // the last breadcrumb item shows the note title (without .md extension).
   await row.click();
-  await expect(pg.locator('.note-viewer-filename', { hasText: `${EMOJI_NOTE}.md` })).toBeVisible({
-    timeout: 8_000,
-  });
+  await expect(
+    pg.locator('[data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_NOTE }),
+  ).toBeVisible({ timeout: 8_000 });
 });
 
 test('UN-04: renaming an existing note to an emoji name renames it on disk and in the tree', async () => {
@@ -268,8 +269,9 @@ test.describe('UN-05: wikilink-to-create with an emoji target', () => {
     await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
     await unresolved.click();
 
+    // M8d replaced .note-viewer-filename with a breadcrumb nav.
     await expect(
-      wlPage.locator('.note-viewer-filename', { hasText: `${EMOJI_WIKILINK_TARGET}.md` }),
+      wlPage.locator('[data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),
     ).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`))).toBe(true);
     expect(fs.readFileSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`), 'utf-8')).toContain(

@@ -322,13 +322,11 @@ test('FO-04b: dragging a folder to the root drop zone still moves it (folders ma
 // ─── FO-05: Rename a folder ──────────────────────────────────────────────────
 
 test('FO-05: renaming a folder renames the directory on disk, contents intact', async () => {
-  // SKY-9347: on the native-Windows runner the dblclick straddles the async
-  // expansion-state hydration re-layout, so the second click lands on the row
-  // that shifted into Worldbuilding's position ('Universes/My First Universe'
-  // received the rename IPC). Gated off win32 until the rename target is
-  // resolved from the event-target row / the suite waits for hydration.
-  test.fixme(process.platform === 'win32', 'SKY-9347: dblclick-rename hydration race on Windows');
-  await page.locator('[data-testid="vb-row-Worldbuilding"]').dblclick();
+  // SKY-9473: use right-click → Rename… instead of dblclick to avoid the
+  // click-toggle-rerender race (SKY-9347) that caused the second half of the
+  // dblclick to miss the Worldbuilding row on both Linux and Windows runners.
+  await page.locator('[data-testid="vb-row-Worldbuilding"]').click({ button: 'right' });
+  await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-rename"]').click();
   const input = page.locator('.vb-rename-input');
   await expect(input).toBeVisible({ timeout: 5_000 });
   await input.fill('Cosmology');
