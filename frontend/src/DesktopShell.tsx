@@ -5307,7 +5307,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
-                  drafts={selectedScene ? {
+                  drafts={viewDepth === 'scene' && selectedScene ? {
                     drafts: sceneDrafts.drafts,
                     currentLabel: sceneDrafts.currentLabel,
                     currentContent: selectedScene.blocks.map(b => b.content).join('\n\n'),
@@ -5330,9 +5330,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     undoLabel: draftsUndo && draftsUndo.sceneId === selectedScene.id ? draftsUndo.loadedLabel : null,
                     onUndo: handleDraftUndo,
                   } : undefined}
-                  onManualSnapshot={selectedScene ? handleManualSnapshot : undefined}
-                  snapshotSavedAt={snapshotSavedAt}
-                  sceneHistory={selectedScene ? {
+                  onManualSnapshot={viewDepth === 'scene' && selectedScene ? handleManualSnapshot : undefined}
+                  snapshotSavedAt={viewDepth === 'scene' ? snapshotSavedAt : null}
+                  sceneHistory={viewDepth === 'scene' && selectedScene ? {
                     open: showSceneHistory,
                     onOpen: () => setShowSceneHistory(true),
                     onClose: () => setShowSceneHistory(false),
@@ -5341,7 +5341,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     currentContent: editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
                     onRestore: handleSceneRestore,
                   } : undefined}
-                  sceneEditorSlot={selectedScene ? (
+                  sceneEditorSlot={viewDepth === 'scene' && selectedScene ? (
                     <div
                       className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
                       style={{ position: 'relative' }}
