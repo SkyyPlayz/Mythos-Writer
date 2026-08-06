@@ -876,10 +876,12 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
   const handleNoteCreated = useCallback(
     async (path: string) => {
       await onReload();
-      select(path);
+      // SKY-9473: reveal expands all ancestor folders so the new note row
+      // appears in the (virtualised) tree immediately after creation.
+      reveal(path);
       onOpenFile?.(path);
     },
-    [onReload, select, onOpenFile],
+    [onReload, reveal, onOpenFile],
   );
 
   // SKY-8892: create the folder immediately under a unique placeholder name
