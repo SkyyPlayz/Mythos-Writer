@@ -4,6 +4,7 @@
 // as the bundled note templates (quoted `title:` + `createdAt:`) plus the
 // entity `type:` field the Brainstorm agent writes (character/location/…).
 import React, { useState } from 'react';
+import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 import './TemplatePicker.css';
 
 export interface NoteTemplateDef {
@@ -25,16 +26,6 @@ export const NOTE_TEMPLATES: NoteTemplateDef[] = [
   { id: 'event-history', name: 'Event / History', description: 'Date, impact, witnesses', type: 'event', sections: ['Date', 'Impact', 'Witnesses'] },
   { id: 'blank', name: 'Blank note', description: 'Empty page', sections: [] },
 ];
-
-// Same slug rules as NoteTemplateDialog (components/NoteTemplateDialog).
-function slugify(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-_]/g, '')
-    .replace(/^-+|-+$/g, '') || 'note';
-}
 
 /** Render the full markdown (frontmatter + scaffold body) for a template. */
 export function buildTemplateNote(
@@ -84,7 +75,7 @@ export default function TemplatePicker({ onApplied, onClose, onCreated }: Props)
     try {
       const title =
         noteName.trim() || (selected.id === 'blank' ? 'Untitled note' : `New ${selected.name}`);
-      const path = `${slugify(title)}.md`;
+      const path = `${sanitizeVaultName(title, 'note')}.md`;
       await window.api.writeNotesVault(path, buildTemplateNote(selected, title));
       onCreated?.(path);
       onApplied();

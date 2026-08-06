@@ -55,6 +55,20 @@ describe('resolveProposalDestination', () => {
     });
   });
 
+  it('preserves emoji and full Unicode in the destination filename (SKY-9027)', () => {
+    const result = resolveProposalDestination({
+      kind: 'location',
+      title: '🌊 Sunken Reef',
+      notesVaultRoot: '/notes',
+      activeUniverse: 'Argent',
+    });
+
+    expect(result).toEqual({
+      status: 'resolved',
+      destinationPath: 'Universes/Argent/Locations/🌊 Sunken Reef.md',
+    });
+  });
+
   it('routes scene cards through the active story', () => {
     const result = resolveProposalDestination({
       kind: 'scene_card',

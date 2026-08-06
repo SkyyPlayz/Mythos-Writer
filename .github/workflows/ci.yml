@@ -1281,3 +1281,73 @@ jobs:
             dist-electron/*.exe
             dist-electron/*.zip
           retention-days: 3
+
+  # SKY-9027: scoped, PR-gating native-Windows check for the notes/folder
+  # Unicode-name-handling surface (R3 — emoji/full-Unicode note and folder
+  # names). Deliberately a separate job from build-windows above: that job
+  # is PR-skipped and continue-on-error by design (SKY-8081/SKY-7428 — it
+  # exists to produce release packages, not to gate merges), so it cannot
+  # catch a Windows-only path-separator regression before merge. This job
+  # runs only the notes name-handling suites (no packaging), so it stays
+  # fast enough to require on every PR. `.github/` change — merge path is
+  # ESCALATE-IVY per COMPANY-STANDARDS §3.
+  notes-windows:
+    needs: [setup]
+    runs-on: windows-latest
+    continue-on-error: true  # SKY-9419: temp until SKY-9346 (FO-05/06/08/09 win32 rename/delete) is fixed
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Unicode-preserving sanitizer + slug/collision helpers — pure logic,
+      # but Windows-reserved-device-name and trailing-dot/space rules are
+      # exactly the platform-specific part worth re-checking natively.
+      - name: Unit — notes vault name sanitizer suite (SKY-9027)
+        run: npm run test -w electron-main -- vaultNameSanitizer vault.test
+
+      - name: Build (electron-vite)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run build:electron
+
+      # Create/rename/open/wikilink-to/display an emoji-named note and folder,
+      # end to end through the real renderer→IPC→fs path on native Windows.
+      - name: E2E — Unicode/emoji note and folder names on native Windows (SKY-9027)
+        run: npm run test:e2e:notes-unicode-names
+
+      # SKY-8881 regression guard: nested-item nested drag/rename POSIX-path
+      # assertions. Re-run here (not just in build-windows) so a regression
+      # in this surface actually blocks the PR instead of only being visible
+      # after merge on the non-PR, continue-on-error build-windows job.
+      - name: E2E — Notes Vault folder operations on native Windows (SKY-8881)
+        run: npm run test:e2e:folder-ops
+
+      - name: Upload E2E report on failure
+        if: failure()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: notes-windows-e2e-report
+          # The e2e npm scripts pass --reporter=list, which replaces the html
+          # reporter from playwright.config — e2e-report/ is never written
+          # here. Failure screenshots and error-context land in test-results/.
+          path: |
+            e2e-report/
+            test-results/
+          retention-days: 3

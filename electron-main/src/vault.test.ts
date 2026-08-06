@@ -244,6 +244,48 @@ describe('IPC vault round-trip', () => {
     expect(fs.existsSync(path.join(tmpDir, 'empty-folder'))).toBe(false);
   });
 
+  // SKY-9027 (SKY-8909 class): delete renames to `.trash-*` first so a Windows
+  // delete-pending ghost never occupies the original name. The trash name must
+  // be fully removed afterwards and must never leak into listings.
+  it('deleteVaultFile leaves no .trash-* residue and frees the original name', () => {
+    fs.mkdirSync(path.join(tmpDir, 'Doomed', 'nested'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'Doomed', 'nested', 'a.md'), 'a');
+    expect(deleteVaultFile(tmpDir, 'Doomed').deleted).toBe(true);
+    const names = fs.readdirSync(tmpDir);
+    expect(names).not.toContain('Doomed');
+    expect(names.filter((n) => n.startsWith('.trash-'))).toEqual([]);
+  });
+
+  it('listVaultFiles never lists .trash-* entries', () => {
+    fs.mkdirSync(path.join(tmpDir, '.trash-123-abc'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.trash-123-abc', 'ghost.md'), 'x');
+    writeVaultFileUnsafe_testOnly(tmpDir, 'real.md', 'x');
+    const paths = listVaultFiles(tmpDir).items.map((i) => i.path);
+    expect(paths).toContain('real.md');
+    expect(paths.some((p) => p.includes('.trash-'))).toBe(false);
+  });
+
+  it('listVaultFiles drops entries that enumerate but cannot be stat\'d (delete-pending ghosts)', () => {
+    fs.mkdirSync(path.join(tmpDir, 'Ghost'));
+    writeVaultFileUnsafe_testOnly(tmpDir, 'real.md', 'x');
+    const realStat = fs.statSync;
+    const spy = vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, ...rest: unknown[]) => {
+      if (String(p).endsWith('Ghost')) {
+        const err = new Error('EPERM: operation not permitted, stat') as NodeJS.ErrnoException;
+        err.code = 'EPERM';
+        throw err;
+      }
+      return (realStat as (...a: unknown[]) => fs.Stats)(p, ...rest);
+    }) as typeof fs.statSync);
+    try {
+      const paths = listVaultFiles(tmpDir).items.map((i) => i.path);
+      expect(paths).toContain('real.md');
+      expect(paths).not.toContain('Ghost');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   // SKY-7995: moveVaultFile is also the rename primitive — cover directory
   // move/rename with real fs + a descendant-safety guard against orphaning.
   it('moveVaultFile relocates a directory and its contents', () => {
@@ -1823,6 +1865,61 @@ describe('moveVaultFile', () => {
   it('throws when source does not exist', () => {
     expect(() => moveVaultFile(tmpDir, 'missing.md', 'after.md'))
       .toThrow(/Source does not exist/);
+  });
+
+  // SKY-9027: Windows CI showed a folder rename failing with a one-shot EPERM
+  // while a scanner held a transient handle on the freshly created directory.
+  // The move path must retry briefly on EPERM/EBUSY/EACCES and then succeed.
+  it('retries a transient EPERM from renameSync and completes the move', () => {
+    fs.writeFileSync(path.join(tmpDir, 'locked.md'), '# body', 'utf-8');
+    const realRenameSync = fs.renameSync.bind(fs);
+    let failures = 2;
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (failures > 0) {
+        failures--;
+        throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+      }
+      return realRenameSync(from, to);
+    });
+
+    try {
+      const result = moveVaultFile(tmpDir, 'locked.md', 'moved.md');
+      expect(result.moved).toBe(true);
+      expect(renameSpy).toHaveBeenCalledTimes(3);
+      expect(fs.existsSync(path.join(tmpDir, 'moved.md'))).toBe(true);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  // Non-transient failures must not burn ~750ms of blocking retries.
+  it('does not retry a non-transient renameSync failure (ENOENT)', () => {
+    fs.writeFileSync(path.join(tmpDir, 'gone.md'), '', 'utf-8');
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error('no such file or directory'), { code: 'ENOENT' });
+    });
+
+    try {
+      expect(() => moveVaultFile(tmpDir, 'gone.md', 'after.md')).toThrow(/no such file/);
+      expect(renameSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('gives up after the bounded retry budget when EPERM persists', () => {
+    fs.writeFileSync(path.join(tmpDir, 'stuck.md'), '', 'utf-8');
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+    });
+
+    try {
+      expect(() => moveVaultFile(tmpDir, 'stuck.md', 'after.md')).toThrow(/not permitted/);
+      // 1 initial attempt + one per backoff delay, then the error surfaces.
+      expect(renameSpy).toHaveBeenCalledTimes(5);
+    } finally {
+      renameSpy.mockRestore();
+    }
   });
 });
 

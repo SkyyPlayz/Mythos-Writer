@@ -368,6 +368,11 @@ describe('notePathForUnresolvedLink', () => {
     expect(notePathForUnresolvedLink('   ')).toBeNull();
     expect(notePathForUnresolvedLink('..')).toBeNull();
   });
+
+  it('preserves emoji and full Unicode in the wikilink-created note name (SKY-9027)', () => {
+    expect(notePathForUnresolvedLink('🌊 Lost Civilization')).toBe('🌊 Lost Civilization.md');
+    expect(notePathForUnresolvedLink('日本語のノート')).toBe('日本語のノート.md');
+  });
 });
 
 describe('buildUnresolvedLinkNote', () => {

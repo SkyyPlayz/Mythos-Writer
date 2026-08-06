@@ -191,8 +191,9 @@ test('TC-NT-02: filling prompt fields and submitting creates a note on disk', as
   const files = findMdFiles(notesVaultDir);
   expect(files.length).toBeGreaterThan(0);
 
-  // Find the one with "the-opening" in its path
-  const noteFile = files.find((f) => f.includes('the-opening'));
+  // Find the one with "The Opening" in its path. SKY-9027: filenames preserve
+  // the typed title verbatim (case + spaces) instead of ASCII-slugifying it.
+  const noteFile = files.find((f) => f.includes('The Opening'));
   expect(noteFile).toBeDefined();
 
   // Verify it contains the resolved title
@@ -227,12 +228,13 @@ test('TC-NT-03: blank note fallback creates a plain note', async () => {
   // The vault may already contain seeded default-layout files (e.g. a
   // Templates/ readme) unrelated to this test, so diff against the
   // pre-submit snapshot rather than assuming any non-"the-opening" file is ours.
-  const newFile = after.find((f) => !before.includes(f) && !f.includes('the-opening'));
+  const newFile = after.find((f) => !before.includes(f) && !f.includes('The Opening'));
   expect(newFile).toBeDefined();
   // Blank notes intentionally carry no frontmatter/body — the dialog writes an
   // empty string when no template is selected (see NoteTemplateDialog's
   // handleSubmit: `content = ''` for the blank case). Existence + filename are
   // the load-bearing assertions for this test.
   expect(fs.existsSync(newFile!)).toBe(true);
-  expect(path.basename(newFile!)).toMatch(/my-research-notes/i);
+  // SKY-9027: filename preserves the typed title verbatim, no ASCII slug.
+  expect(path.basename(newFile!)).toMatch(/My Research Notes/i);
 });
