@@ -1380,6 +1380,22 @@ describe('resolveEpubExportPath — export:epub targetPath containment (MYT-675)
   });
 });
 
+// SKY-9469: On Windows CI, chokidar polling (500ms interval + 300ms awaitWriteFinish)
+// means events can arrive up to ~900ms after a write, plus OS scheduler jitter. Fixed
+// sleeps like 1000ms are too tight. Poll instead so the test passes as soon as the
+// event lands rather than racing against a hard deadline.
+async function waitForCondition(
+  check: () => boolean,
+  timeoutMs = 5000,
+  intervalMs = 50,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
 describe('startVaultWatcher — symlink containment (MYT-362)', () => {
   let vaultDir: string;
   let outsideDir: string;
@@ -1413,8 +1429,8 @@ describe('startVaultWatcher — symlink containment (MYT-362)', () => {
     // Modify the inside file as a positive-control signal.
     fs.writeFileSync(insideFile, 'updated content');
 
-    // Wait past awaitWriteFinish (300ms) + slack for any straggling emissions.
-    await new Promise((r) => setTimeout(r, 1500));
+    // Poll until the inside.md event arrives (avoids fixed-sleep races on slow CI).
+    await waitForCondition(() => events.some((p) => p.endsWith('inside.md')));
 
     const realOutsideDir = fs.realpathSync.native(outsideDir);
     const externalEvents = events.filter(
@@ -1460,8 +1476,8 @@ describe('startVaultWatcher — symlink containment (MYT-445 / MYT-362)', () => 
     // Modify the inside file as a positive-control signal.
     fs.writeFileSync(insideFile, 'updated content');
 
-    // Wait past awaitWriteFinish (300ms) + slack for any straggling emissions.
-    await new Promise((r) => setTimeout(r, 1500));
+    // Poll until the inside.md event arrives (avoids fixed-sleep races on slow CI).
+    await waitForCondition(() => events.some((p) => p.endsWith('inside.md')));
 
     const realOutsideDir = fs.realpathSync.native(outsideDir);
     const externalEvents = events.filter(
@@ -1507,8 +1523,8 @@ describe('startVaultWatcher — symlink containment (MYT-445 / MYT-362)', () => 
     // Modify the inside file as a positive-control signal.
     fs.writeFileSync(insideFile, 'updated content');
 
-    // Wait past awaitWriteFinish (300ms) + slack for any straggling emissions.
-    await new Promise((r) => setTimeout(r, 1500));
+    // Poll until the inside.md event arrives (avoids fixed-sleep races on slow CI).
+    await waitForCondition(() => events.some((p) => p.endsWith('inside.md')));
 
     const realOutsideDir = fs.realpathSync.native(outsideDir);
     const externalEvents = events.filter(
@@ -2237,8 +2253,8 @@ describe('startVaultWatcher — emits events for files below vault root (GH#892)
     // Modify the nested file.
     fs.writeFileSync(nestedFile, 'updated content');
 
-    // Wait past awaitWriteFinish (300ms) + slack.
-    await new Promise((r) => setTimeout(r, 1000));
+    // Poll until the event arrives (fixed sleeps race on Windows CI with 500ms polling).
+    await waitForCondition(() => events.some((p) => p.endsWith('scene.md')));
 
     const matched = events.filter((p) => p.endsWith('scene.md'));
     expect(matched.length).toBeGreaterThan(0);
@@ -2262,7 +2278,8 @@ describe('startVaultWatcher — emits events for files below vault root (GH#892)
     fs.writeFileSync(path.join(dotDir, 'COMMIT_EDITMSG'), 'abc');
     fs.writeFileSync(normalFile, 'updated');
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // Poll until the scene.md event arrives (fixed sleeps race on Windows CI with 500ms polling).
+    await waitForCondition(() => events.some((p) => p.endsWith('scene.md')));
 
     const dotEvents = events.filter(
       (p) => path.basename(p).startsWith('.') || p.includes(`${path.sep}.`),
@@ -2292,7 +2309,8 @@ describe('startVaultWatcher — emits events for files below vault root (GH#892)
     fs.writeFileSync(path.join(versionsDir, '2026-01-01T00-00-00.md'), 'snapshot');
     fs.writeFileSync(normalFile, 'updated');
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // Poll until the scene.md event arrives (fixed sleeps race on Windows CI with 500ms polling).
+    await waitForCondition(() => events.some((p) => p.endsWith('scene.md')));
 
     const versionsEvents = events.filter((p) => p.includes(`${path.sep}versions${path.sep}`));
     expect(versionsEvents).toEqual([]);
