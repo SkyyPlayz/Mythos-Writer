@@ -308,7 +308,7 @@ test('VR-02 editor — edit mode (scene open)', async () => {
 // ─── Writing mode: Focus (F11 or focus button, best-effort) ──────────────────
 
 test('VR-03 editor — focus mode', async () => {
-  const focusBtn = page.locator('[data-testid="focus-mode"], .btn-focus, .focus-mode-btn');
+  const focusBtn = page.locator('[data-testid="msv-title-focus"], [data-testid="focus-mode"], .btn-focus, .focus-mode-btn');
   const focusBtnVisible = await focusBtn.isVisible({ timeout: 1_000 }).catch(() => false);
 
   if (focusBtnVisible) {
