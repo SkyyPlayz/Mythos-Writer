@@ -44,11 +44,17 @@ export interface UseRichEditorOptions {
  * Read the current document as Markdown from a Tiptap editor.
  * Always appends a trailing newline for tooling compatibility
  * (tiptap-markdown v0.9 omits the trailing newline).
+ *
+ * SKY-9404: callers may hold a ref to a `BlockEditorApi` whose underlying
+ * editor was destroyed (scene depth unmounted the editor, then remounted it
+ * before the ref was refreshed) — `storage.markdown` is gone post-destroy,
+ * same destroyed-but-non-null hazard BlockEditor's own focus effect guards
+ * against. Fall back to an empty doc rather than crashing the render.
  */
 export function getEditorMarkdown(editor: Editor): string {
   // tiptap-markdown attaches storage.markdown at runtime — cast is unavoidable
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = (editor.storage as any).markdown.getMarkdown() as string;
+  const raw = ((editor.storage as any).markdown?.getMarkdown?.() ?? '') as string;
   return raw.endsWith('\n') ? raw : `${raw}\n`;
 }
 

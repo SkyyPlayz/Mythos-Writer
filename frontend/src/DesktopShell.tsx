@@ -74,7 +74,6 @@ import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import ProjectSwitcher from './ProjectSwitcher';
 import DepthSlider from './DepthSlider';
-import DepthEdgeArrows from './DepthEdgeArrows';
 import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
@@ -2862,6 +2861,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     );
     updateManifest(updatedStories);
+    // SKY-9404 (M1-S4): ManuscriptView's title-row word count (scopeWords)
+    // reads story.chapters[].scenes[].blocks off the `story` prop, not off
+    // selectedScene — updateManifest alone doesn't refresh selectedStory
+    // (same class of bug as SKY-8587 for paragraph edits), so live typing
+    // left the title row's word count stuck at its initial value.
+    const editedStory = updatedStories.find((st) => st.id === selectedStory.id);
+    if (editedStory) {
+      setSelectedStory(editedStory);
+      setSelectedChapter((prev) => (prev ? editedStory.chapters.find((ch) => ch.id === prev.id) ?? prev : prev));
+    }
     persistSceneMarkdown(updatedScene);
     if (isProvisional && provisionalScene) {
       // The scene is real now — its tab stops being provisional.
@@ -5390,13 +5399,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                       )}
                     </div>
                   ) : undefined}
-                />
-                <DepthEdgeArrows
-                  depth={viewDepth}
-                  canPrev={depthCanPrev}
-                  canNext={depthCanNext}
-                  onPrev={handleDepthPrev}
-                  onNext={handleDepthNext}
+                  edgeNav={{
+                    canPrev: depthCanPrev,
+                    canNext: depthCanNext,
+                    onPrev: handleDepthPrev,
+                    onNext: handleDepthNext,
+                  }}
                 />
               </div>
             ) : selectedEntity ? (
