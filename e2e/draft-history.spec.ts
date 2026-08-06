@@ -122,6 +122,29 @@ async function replaceEditorContent(pg: Page, text: string): Promise<void> {
   await pg.waitForTimeout(900);
 }
 
+// SKY-9404 (M1-S4): "Save snapshot now" and "History" moved from standalone
+// scene-toolbar buttons into the row-3 ⋯ menu shared by all four depths.
+async function openTitleMenu(pg: Page): Promise<void> {
+  await pg.locator('.msv-title-menu-btn').click();
+  await expect(pg.locator('[data-testid="msv-title-menu-popover"]')).toBeVisible({ timeout: 3_000 });
+}
+
+async function saveSnapshot(pg: Page): Promise<void> {
+  await openTitleMenu(pg);
+  await pg.locator('[data-testid="msv-title-menu-snapshot"]').click();
+  // The menu closes itself on click; reopen it to observe the "Snapshot
+  // saved" confirmation note, which only renders inside the open popover.
+  await openTitleMenu(pg);
+  await expect(pg.locator('.msv-title-menu-note')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await pg.keyboard.press('Escape');
+  await expect(pg.locator('[data-testid="msv-title-menu-popover"]')).not.toBeVisible({ timeout: 3_000 });
+}
+
+async function openHistoryPanel(pg: Page): Promise<void> {
+  await openTitleMenu(pg);
+  await pg.locator('[data-testid="msv-title-menu-history"]').click();
+}
+
 // ─── Suite state ──────────────────────────────────────────────────────────────
 
 let userData: string;
@@ -188,11 +211,10 @@ test('AC-DH-1: saving creates a snapshot — history panel shows at least one en
   await replaceEditorContent(page, PROSE_V1);
 
   // Trigger a manual snapshot (populated into the SQLite drafts store by handleManualSnapshot)
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
   // Open history panel
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 6_000 });
 
@@ -213,7 +235,7 @@ test('AC-DH-2: clicking history button reveals the Draft History panel', async (
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel, 'panel should not be visible before button click').not.toBeVisible();
 
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
   await panel.locator('[aria-label="Close draft history"]').click();
@@ -226,11 +248,10 @@ test('AC-DH-3: selecting a snapshot entry shows a content preview', async () => 
   // Add a second snapshot with different content
   await replaceEditorContent(page, PROSE_V2);
 
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
   // Open history
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
@@ -255,15 +276,14 @@ test('AC-DH-4: clicking Restore (with confirm) replaces editor content with snap
   // Ensure V1 prose is saved as a distinct snapshot
   const editor = page.locator('.ProseMirror');
   await replaceEditorContent(page, PROSE_V1);
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
   // Now change editor to V2
   await replaceEditorContent(page, PROSE_V2);
   // Do NOT save V2 — we want current content to differ from the saved snapshot
 
   // Open history
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
@@ -291,11 +311,10 @@ test('AC-DH-4: clicking Restore (with confirm) replaces editor content with snap
 
 test('AC-DH-5: after restore, history list has grown (pre-restore snapshot was created)', async () => {
   // Save a named snapshot
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
   // Open history and count entries
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
@@ -313,7 +332,7 @@ test('AC-DH-5: after restore, history list has grown (pre-restore snapshot was c
   await expect(panel).not.toBeVisible({ timeout: 5_000 });
 
   // Re-open history and verify entry count increased (pre-restore backup was created)
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel2 = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel2).toBeVisible({ timeout: 4_000 });
   const items2 = panel2.locator('.history-item');
@@ -332,16 +351,14 @@ test('AC-DH-6: history entries are listed newest-first', async () => {
 
   // Save older snapshot
   await replaceEditorContent(page, OLDER_TEXT);
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
   // Wait to guarantee distinct timestamps, then save newer snapshot
   await page.waitForTimeout(1_200);
   await replaceEditorContent(page, NEWER_TEXT);
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
@@ -376,10 +393,9 @@ test('AC-DH-7: the restore button has a descriptive aria-label', async () => {
   await editor.click();
   await selectAllEditorContent(page);
   await page.keyboard.type('Snapshot content for restore aria-label coverage.');
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
 
-  await page.locator('.btn-history').click();
+  await openHistoryPanel(page);
   const panel = page.locator('[role="dialog"][aria-label="Draft history"]');
   await expect(panel).toBeVisible({ timeout: 4_000 });
 
@@ -408,8 +424,7 @@ const M10_PROSE_NEW = 'M10 second pass: thunder rolled while the gate held.';
 test('AC-M10-1: Drafts button opens the compare split with Highlight changes ON', async () => {
   // Seed one M5 draft (versionSave rides on "Save snapshot now"), then move on.
   await replaceEditorContent(page, M10_PROSE_OLD);
-  await page.locator('.scene-snapshot-save').click();
-  await expect(page.locator('.scene-autosave')).toContainText('Snapshot saved', { timeout: 5_000 });
+  await saveSnapshot(page);
   await replaceEditorContent(page, M10_PROSE_NEW);
 
   await page.locator('[data-testid="scene-drafts-compare-btn"]').click();

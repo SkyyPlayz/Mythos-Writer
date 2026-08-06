@@ -208,8 +208,15 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
       await expect(prevArrow).toBeVisible();
       await expect(nextArrow).toBeVisible();
 
-      const pageBox = await page.locator('.shell-editor-beta-wrap--page-mode').boundingBox();
-      const canvasBox = await page.locator('.shell-editor-scene-wrap.story-page-canvas').boundingBox();
+      // SKY-9404 (M1-S4): the arrows now render inside .msv-sheet (the
+      // depth-invariant page rectangle — border/shadow/background, present
+      // at every depth), the same element the page-edge drag handles
+      // (.msv-edge-l/r) already hug. .shell-editor-beta-wrap--page-mode is
+      // just the scene editor's own inner wrapper nested inside that page's
+      // padding, no longer "the page" itself; .story-page-canvas was only
+      // ever paired with the deleted legacy scene-only branch.
+      const pageBox = await page.getByTestId('msv-sheet').boundingBox();
+      const canvasBox = await page.locator('.shell-editor-scene-wrap').boundingBox();
       const prevBox = await prevArrow.boundingBox();
       const nextBox = await nextArrow.boundingBox();
       if (!pageBox || !canvasBox || !prevBox || !nextBox) {

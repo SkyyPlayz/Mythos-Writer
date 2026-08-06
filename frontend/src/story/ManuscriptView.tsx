@@ -50,6 +50,7 @@ import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
 import MarginRuler, { type RulerDrag } from './MarginRuler';
 import PageSetupPopover from '../PageSetupPopover';
+import DepthEdgeArrows from '../DepthEdgeArrows';
 import {
   FONT_STEP_MAX,
   FONT_STEP_MIN,
@@ -207,6 +208,18 @@ export interface ManuscriptViewProps {
    *  the inline heading-zone block list — keeps TipTap/BlockEditor at scene depth
    *  while ManuscriptView provides the chrome (title row, ruler, page prefs). */
   sceneEditorSlot?: React.ReactNode;
+  /**
+   * SKY-9404 (M1-S4) / SKY-5904: on-canvas prev/next depth-step arrows, now
+   * anchored to `.msv-sheet` (the depth-invariant page box, present at every
+   * depth) instead of a scene-only wrapper — so they hug the page column at
+   * book/part/chapter/scene alike, not the full-width canvas behind it.
+   */
+  edgeNav?: {
+    canPrev: boolean;
+    canNext: boolean;
+    onPrev: () => void;
+    onNext: () => void;
+  };
 }
 
 /** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
@@ -393,6 +406,7 @@ export default function ManuscriptView({
   snapshotSavedAt,
   sceneHistory,
   sceneEditorSlot,
+  edgeNav,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -1594,6 +1608,18 @@ export default function ManuscriptView({
               data-page-mode={pageChrome.mode}
             >
               {pageChrome.mode === 'scroll' && <PageModeRunes sym={pageChrome.sym} />}
+              {/* SKY-9404/SKY-5904: anchored to .msv-sheet (depth-invariant,
+                  position: relative at every depth) so the arrows hug the
+                  actual page edges instead of the full-width canvas behind it. */}
+              {edgeNav && (
+                <DepthEdgeArrows
+                  depth={cursor.zoom}
+                  canPrev={edgeNav.canPrev}
+                  canNext={edgeNav.canNext}
+                  onPrev={edgeNav.onPrev}
+                  onNext={edgeNav.onNext}
+                />
+              )}
               {/* page-edge drag handles (prototype 861–865, startDrag 3392–3400) */}
               <div
                 className="msv-edge msv-edge--l"
