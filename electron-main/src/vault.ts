@@ -165,6 +165,40 @@ export function readVaultFile(vaultRoot: string, filePath: string): { content: s
   return { content: fs.readFileSync(fullPath, 'utf-8'), path: filePath };
 }
 
+// SKY-9463: on native Windows, a file that was just created (rename from .tmp)
+// can be transiently invisible to a follow-up readFileSync for a brief window
+// (antivirus scanner or NTFS metadata propagation). Retry on ENOENT with
+// bounded sync backoff so a create-then-immediately-open sequence reliably
+// shows the note's content in the viewer. Non-ENOENT errors and non-win32
+// platforms throw immediately with no retry overhead.
+const READ_RETRY_DELAYS_MS = [50, 150, 300];
+
+export function readVaultFileWithRetry(
+  vaultRoot: string,
+  filePath: string,
+): { content: string; path: string } {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return readVaultFile(vaultRoot, filePath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code ?? '';
+      if (
+        attempt >= READ_RETRY_DELAYS_MS.length ||
+        code !== 'ENOENT' ||
+        process.platform !== 'win32'
+      ) {
+        throw err;
+      }
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        READ_RETRY_DELAYS_MS[attempt],
+      );
+    }
+  }
+}
+
 /** Non-atomic write — leaves a torn file if the process crashes mid-write. Only for tests. */
 export function writeVaultFileUnsafe_testOnly(
   vaultRoot: string,
