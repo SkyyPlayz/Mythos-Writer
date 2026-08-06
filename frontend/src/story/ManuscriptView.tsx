@@ -888,8 +888,28 @@ export default function ManuscriptView({
 
   // ── M11 comment handlers ──
 
+  // SKY-9480: a plain click that lands inside an already-selected range
+  // doesn't reliably collapse the selection on mouseup (browser-dependent —
+  // see the analogous Control+End/ProseMirror resync race SKY-7550 already
+  // guards against for Enter). At scene depth, applying a heading level (or
+  // any block command that leaves its target selected) followed by a click
+  // to resume typing can therefore leave a stale, non-empty
+  // window.getSelection() at mouseup — nothing to do with a real drag
+  // selection. Track the mousedown point and only treat the mouseup as a
+  // comment-selection intent when the pointer actually moved (a drag) or
+  // this was a double/triple click (word/paragraph select), matching how
+  // real text selections are made; a bare click never qualifies.
+  const pageMouseDownPos = useRef<{ x: number; y: number } | null>(null);
+  const handlePageMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    pageMouseDownPos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
   // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
-  const handlePageMouseUp = useCallback(() => {
+  const handlePageMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const down = pageMouseDownPos.current;
+    pageMouseDownPos.current = null;
+    const dragged = !!down && (Math.abs(e.clientX - down.x) > 2 || Math.abs(e.clientY - down.y) > 2);
+    if (!dragged && e.detail < 2) return;
     const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
     const text = sel ? String(sel).trim() : '';
     if (isValidAnchor(text)) {
@@ -1553,6 +1573,7 @@ export default function ManuscriptView({
           className="msv-page"
           ref={scrollRef}
           onScroll={handleScroll}
+          onMouseDown={handlePageMouseDown}
           onMouseUp={handlePageMouseUp}
           data-testid="msv-page"
         >
