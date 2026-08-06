@@ -1420,7 +1420,10 @@ export async function startVaultWatcher(
     persistent: true,
     ignoreInitial: true,
     usePolling: usePollingOnWin,
-    interval: usePollingOnWin ? 2000 : undefined,
+    // SKY-9467: 500 ms keeps CPU overhead low while fitting inside the
+    // 1000 ms/1500 ms test wait windows (worst-case delivery = 500 + 300 = 800 ms).
+    // 2000 ms was too long: tests timed out before the first poll fired.
+    interval: usePollingOnWin ? 500 : undefined,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     followSymlinks: false, // MYT-445/MYT-362: don't recurse into symlinked dirs
   });
@@ -1674,7 +1677,7 @@ export async function startNotesVaultWatcher(
     persistent: true,
     ignoreInitial: true,
     usePolling: usePollingOnWinNotes,
-    interval: usePollingOnWinNotes ? 2000 : undefined,
+    interval: usePollingOnWinNotes ? 500 : undefined, // SKY-9467: match startVaultWatcher
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
     followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
   });
