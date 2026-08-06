@@ -212,28 +212,31 @@ test('TC-02: create story → chapter → scene and type text', async () => {
 
 // ─── TC-03: Save snapshot ─────────────────────────────────────────────────────
 //
-// Restored in SKY-17: the snapshot toolbar now lives in DesktopShell above the
-// BlockEditor. Selectors target `.scene-snapshot-toolbar` affordances wired in
-// that PR: `.scene-snapshot-save` button, `.scene-autosave` indicator, and
-// `.btn-history` button.
+// SKY-9404 (M1-S4): "Save snapshot now" / "History" moved from the deleted
+// legacy scene branch's `.scene-snapshot-toolbar` into the row-3 ⋯ menu
+// (`.msv-title-menu-btn` → `[data-testid="msv-title-menu-popover"]`) shared
+// by all four depths — same relocation e2e/draft-history.spec.ts already
+// tracks via its openTitleMenu/saveSnapshot/openHistoryPanel helpers.
 
 test('TC-03: save snapshot and verify in history panel', async () => {
-  // Toolbar must be visible once a scene is selected (set up in TC-02)
-  const toolbar = page.locator('.scene-snapshot-toolbar');
-  await expect(toolbar).toBeVisible({ timeout: 5_000 });
+  // ⋯ menu must be visible once a scene is selected (set up in TC-02)
+  const menuBtn = page.locator('.msv-title-menu-btn');
+  await expect(menuBtn).toBeVisible({ timeout: 5_000 });
 
-  // Click the manual-save button
-  const saveBtn = toolbar.locator('.scene-snapshot-save');
-  await expect(saveBtn).toBeVisible({ timeout: 5_000 });
-  await saveBtn.click();
+  // Click the manual-save action inside the ⋯ menu
+  await menuBtn.click();
+  const menuPopover = page.locator('[data-testid="msv-title-menu-popover"]');
+  await expect(menuPopover).toBeVisible({ timeout: 3_000 });
+  await menuPopover.locator('[data-testid="msv-title-menu-snapshot"]').click();
 
-  // Autosave indicator should show the saved timestamp
-  const autosaveIndicator = toolbar.locator('.scene-autosave');
-  await expect(autosaveIndicator).toContainText('Snapshot saved', { timeout: 10_000 });
+  // The menu closes itself on click; reopen it to observe the "Snapshot
+  // saved" confirmation note, which only renders inside the open popover.
+  await menuBtn.click();
+  await expect(menuPopover).toBeVisible({ timeout: 3_000 });
+  await expect(menuPopover.locator('.msv-title-menu-note')).toContainText('Snapshot saved', { timeout: 10_000 });
 
-  // Open the history panel via the History button
-  const historyBtn = toolbar.locator('.btn-history');
-  await historyBtn.click();
+  // Open the history panel via the History action
+  await menuPopover.locator('[data-testid="msv-title-menu-history"]').click();
 
   const historyPanel = page.getByRole('dialog', { name: /Draft history|Draft History|Scene History/ });
   await expect(historyPanel).toBeVisible({ timeout: 5_000 });
