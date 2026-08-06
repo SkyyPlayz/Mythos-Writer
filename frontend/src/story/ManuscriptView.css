@@ -446,7 +446,14 @@
 
 .msv-page {
   flex: 1;
-  min-width: 0;
+  /* SKY-9404 (M1-S4): floor so the page column can't be squeezed to an
+     unreadable/zero-width sliver when the M11 comments gutter (flex: none,
+     236px) shares the row at narrow window widths — .msv-sheet's 84px side
+     padding alone eats that much, so anything smaller leaves no room for
+     content and collapses BlockEditor's ProseMirror root to 0px. Below this
+     floor the row overflows .msv-body instead (existing overflow: hidden on
+     .shell-editor clips it), which beats unreadable single-character-wide text. */
+  min-width: 320px;
   min-height: 0;
   overflow-y: auto;
   padding: 22px 26px 60px;

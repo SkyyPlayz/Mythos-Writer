@@ -79,6 +79,7 @@
 
 .tiptap-editor-wrap {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding:
     var(--story-page-pad-vert, 1.5rem)
@@ -88,7 +89,21 @@
 }
 
 .tiptap-content {
-  width: 100%;
+  /* SKY-9404 (M1-S4) / SKY-9480: a percentage width here resolves to 0 once
+     the ancestor chain's definite width comes from flex-stretch rather than
+     an explicit CSS width (nesting inside ManuscriptView's msv-sheet after
+     SKY-9404's scene-chrome unification) — collapses the ProseMirror root to
+     0px. flex-basis + min-width sizes off the flex container's actual
+     available space instead of a percentage that doesn't reliably resolve.
+     The 160px min-width is a hard floor: .tiptap-editor-wrap's own
+     --story-page-pad-horiz padding (84px canonical default, each side) can
+     by itself consume the entire box handed to it by upstream flex ancestors
+     at narrow window widths (e.g. Electron's unconfigured 800x600 default),
+     leaving 0px for content — this lets the column overflow its padding
+     rather than disappear. No-op at any window size wide enough to matter;
+     doesn't affect VR baselines captured at 1440x900. */
+  flex: 1 1 auto;
+  min-width: 160px;
   max-width: 720px;
   background: var(--page-bg-fill);
   border-radius: var(--page-bg-radius, 8px);
