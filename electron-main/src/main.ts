@@ -358,6 +358,7 @@ import { saveVersion, listVersions, getVersion, rollbackVersion, pruneAllVersion
 import { buildMigrationPlans, applyMigrationPlan } from './migration.js';
 import {
   readVaultFile,
+  readVaultFileWithRetry,
   writeVaultFileAtomic,
   writeFileAtomic,
   listVaultFiles,
@@ -5437,7 +5438,9 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     safeVaultIpcJoin(root, payload.path, false);
-    return readVaultFile(root, payload.path);
+    // SKY-9463: use retry variant — a freshly created file can be transiently
+    // invisible on native Windows (antivirus / NTFS metadata propagation).
+    return readVaultFileWithRetry(root, payload.path);
   },
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload): VaultWriteResponse => {
     ensureNotesVaultDir();

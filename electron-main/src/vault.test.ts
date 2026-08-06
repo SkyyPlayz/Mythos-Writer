@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import {
   readVaultFile,
+  readVaultFileWithRetry,
   writeVaultFileUnsafe_testOnly,
   writeVaultFileAtomic,
   writeFileAtomic,
@@ -353,6 +354,24 @@ describe('IPC vault round-trip', () => {
 
   it('readVaultFile rejects path traversal', () => {
     expect(() => readVaultFile(tmpDir, '../../../etc/passwd')).toThrow('Path traversal denied');
+  });
+
+  it('readVaultFileWithRetry succeeds normally when file exists on first attempt', () => {
+    writeVaultFileUnsafe_testOnly(tmpDir, 'retry-ok.md', 'hello retry');
+    const result = readVaultFileWithRetry(tmpDir, 'retry-ok.md');
+    expect(result.content).toBe('hello retry');
+  });
+
+  it('readVaultFileWithRetry propagates non-ENOENT errors immediately without retrying', () => {
+    const eacces = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const spy = vi.spyOn(fs, 'statSync').mockImplementationOnce(() => { throw eacces; });
+    try {
+      expect(() => readVaultFileWithRetry(tmpDir, 'retry-ok.md')).toThrow('permission denied');
+      // statSync called exactly once — no retry loop
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('writeVaultFileAtomic succeeds and writes new content even when a stale .tmp file exists', () => {
