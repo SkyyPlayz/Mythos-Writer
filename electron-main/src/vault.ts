@@ -1443,6 +1443,12 @@ export async function startVaultWatcher(
   activeWatcher.on('unlinkDir', (filePath: string) => {
     onChanged(filePath);
   });
+
+  // SKY-9469: await ready so callers know the watcher is fully initialized.
+  // On Windows polling mode the initial scan takes ≥ poll-interval ms; without
+  // this await, tests writing files within 400 ms of startVaultWatcher() could
+  // race the scan and produce zero events.
+  await new Promise<void>((resolve) => activeWatcher!.on('ready', resolve));
 }
 
 export async function stopVaultWatcher(): Promise<void> {
@@ -1693,6 +1699,9 @@ export async function startNotesVaultWatcher(
   });
   activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
   activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
+
+  // SKY-9469: same fix as startVaultWatcher — await ready before returning.
+  await new Promise<void>((resolve) => activeNotesWatcher!.on('ready', resolve));
 }
 
 export async function stopNotesVaultWatcher(): Promise<void> {
