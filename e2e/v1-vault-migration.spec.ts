@@ -236,10 +236,10 @@ test('SKY-1409: v1 vault migrates cleanly to v2 (no schema corruption)', async (
     console.log('Verifying manifest integrity...');
     const manifestPath = path.join(vaultDir, 'manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-    // electron-main/src/manifest.ts SCHEMA_VERSION was bumped 1 -> 2 by an
-    // unrelated change; migration writes the current schema version, not the
-    // v1 fixture's original version.
-    expect(manifest.schemaVersion).toBe(2);
+    // electron-main/src/manifest.ts SCHEMA_VERSION was bumped 2 -> 3 by an
+    // unrelated change (SKY-9017); migration writes the current schema version,
+    // not the v1 fixture's original version.
+    expect(manifest.schemaVersion).toBe(3);
     expect(manifest.scenes.length).toBeGreaterThanOrEqual(2); // At least the 2 story scenes
     expect(manifest.entities.length).toBeGreaterThanOrEqual(2);  // At least the 2 entities
     // Verify that our story/chapter structure is preserved
