@@ -1444,11 +1444,13 @@ export async function startVaultWatcher(
     onChanged(filePath);
   });
 
-  // SKY-9469: await ready so callers know the watcher is fully initialized.
-  // On Windows polling mode the initial scan takes ≥ poll-interval ms; without
-  // this await, tests writing files within 400 ms of startVaultWatcher() could
-  // race the scan and produce zero events.
-  await new Promise<void>((resolve) => activeWatcher!.on('ready', resolve));
+  // SKY-9469/SKY-9587: await ready only in polling mode (Windows).
+  // On native fs-events (macOS/Linux) 'ready' fires in microseconds and
+  // blocking on it is unnecessary — the scan race only matters when the poll
+  // interval is long enough for a write to land before the first snapshot.
+  if (usePollingOnWin) {
+    await new Promise<void>((resolve) => activeWatcher!.on('ready', resolve));
+  }
 }
 
 export async function stopVaultWatcher(): Promise<void> {
@@ -1700,8 +1702,10 @@ export async function startNotesVaultWatcher(
   activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
   activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
 
-  // SKY-9469: same fix as startVaultWatcher — await ready before returning.
-  await new Promise<void>((resolve) => activeNotesWatcher!.on('ready', resolve));
+  // SKY-9469/SKY-9587: same narrowing as startVaultWatcher — poll mode only.
+  if (usePollingOnWinNotes) {
+    await new Promise<void>((resolve) => activeNotesWatcher!.on('ready', resolve));
+  }
 }
 
 export async function stopNotesVaultWatcher(): Promise<void> {
