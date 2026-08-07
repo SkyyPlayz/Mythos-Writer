@@ -380,61 +380,42 @@ describe('Accessibility — StoryNavigator (Editor tree)', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Surface 6 — LeftRail nav zone + panel zone (SKY-1694 Wave 2a)
+// Surface 6 — LeftRail three-zone layout (M6: panel system removed)
 // ══════════════════════════════════════════════════════════════════════════════
-import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
-import { PanelDragProvider } from './PanelDragContext';
+import LeftRail from './LeftRail';
 
 const DEFAULT_LEFT_RAIL_PROPS = {
-  leftSidebarLayout: DEFAULT_LEFT_SIDEBAR_LAYOUT,
-  onLeftSidebarLayoutChange: () => {},
-  renderPanelContent: (id: string) => <div data-testid={id}>{id}</div>,
-  rightPanelCount: 3,
+  stories: [],
+  selectedStory: null,
+  selectedScene: null,
+  selectedSceneId: null,
+  onSelectScene: () => {},
+  onCreateStory: () => {},
+  onCreateChapter: () => {},
+  onCreateScene: () => {},
+  sidebarCollapsed: false,
+  onToggleCollapsed: () => {},
 };
 
-describe('Accessibility — LeftRail nav + panel zone (WCAG 4.1.2)', () => {
+describe('Accessibility — LeftRail three-zone (WCAG 4.1.2)', () => {
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
 
-  it('default layout (entities panel) — no axe violations', async () => {
-    const { container } = render(
-      <PanelDragProvider onDrop={() => {}}><LeftRail {...DEFAULT_LEFT_RAIL_PROPS} /></PanelDragProvider>
-    );
+  it('default layout — no axe violations', async () => {
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} />);
     await act(async () => {});
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('with stories panel — no axe violations', async () => {
-    const layout: LeftSidebarLayout = {
-      panels: [{ id: 'stories', collapsed: false }],
-      sidebarCollapsed: false,
-    };
-    const { container } = render(
-      <PanelDragProvider onDrop={() => {}}>
-        <LeftRail {...DEFAULT_LEFT_RAIL_PROPS} leftSidebarLayout={layout} />
-      </PanelDragProvider>,
-    );
-    await act(async () => {});
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
-
-  it('legacy nav zone is absent after tab/sub-view migration', async () => {
-    const { container } = render(
-      <PanelDragProvider onDrop={() => {}}><LeftRail {...DEFAULT_LEFT_RAIL_PROPS} /></PanelDragProvider>
-    );
+  it('legacy nav zone is absent after M6 migration', async () => {
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} />);
     await act(async () => {});
     expect(container.querySelector('[aria-label="Main navigation"]')).toBeNull();
     expect(container.querySelector('[data-no-drop="true"]')).toBeNull();
   });
 
   it('collapsed sidebar renders icon-only rail', async () => {
-    const layout: LeftSidebarLayout = { ...DEFAULT_LEFT_SIDEBAR_LAYOUT, sidebarCollapsed: true };
-    const { container } = render(
-      <PanelDragProvider onDrop={() => {}}>
-        <LeftRail {...DEFAULT_LEFT_RAIL_PROPS} leftSidebarLayout={layout} />
-      </PanelDragProvider>,
-    );
+    const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} sidebarCollapsed />);
     await act(async () => {});
     expect(container.querySelector('.left-rail--collapsed')).not.toBeNull();
     expect(container.querySelector('.lr-panel-zone')).toBeNull();

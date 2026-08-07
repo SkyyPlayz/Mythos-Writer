@@ -484,3 +484,41 @@
   color: #8e9db8;
   text-align: center;
 }
+
+/* ── M6: Collapsible card header (Research Quick Links) ─────────────────── */
+
+.ahp-card--collapsible {
+  padding: 0;
+}
+
+.ahp-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--sp-2, 6px) var(--sp-3, 10px);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-body);
+  text-align: left;
+}
+
+.ahp-collapsible-header:hover {
+  background: var(--bg-elevated);
+}
+
+.ahp-collapsible-header:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.ahp-collapse-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ahp-quick-links-body {
+  padding: 0 var(--sp-3, 10px) var(--sp-2, 6px);
+}
