@@ -2863,6 +2863,104 @@ describe('BrainstormPage — M20 shared session store', () => {
     expect(sessionApi.appendTurns).not.toHaveBeenCalled();
   });
 
+  // SKY-8894: a fresh mount with NO legacy draft hydrates the greeting from
+  // the session, then the draft-persist effect mirrors that greeting back
+  // into `brainstorm:draft` (so it survives a crash). Reopening the app must
+  // not mistake that self-mirrored draft for a legacy transcript needing
+  // migration, or the greeting gets appended to the on-disk session twice.
+  it('does not re-append the greeting when a session-hydrated draft mirror is present on remount', async () => {
+    const sessionApi = makeSessionApi({
+      id: 's1',
+      turns: [{ role: 'agent', text: 'Hello! Share any idea.', at: '2026-01-01T00:00:00.000Z' }],
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Hello! Share any idea.')).toBeInTheDocument(),
+    );
+    // The draft-persist effect has now mirrored the hydrated greeting into
+    // localStorage — simulating what happens before the user ever types.
+    await waitFor(() => {
+      const raw = localStorage.getItem('brainstorm:draft');
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw!).messages).toMatchObject([{ text: 'Hello! Share any idea.' }]);
+    });
+    expect(localStorage.getItem('brainstorm:session-migrated')).toBe('1');
+    view.unmount();
+
+    // Reopen (remount) with the self-mirrored draft still in localStorage and
+    // the session still holding only the one greeting turn.
+    sessionApi.appendTurns.mockClear();
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalled());
+    expect(sessionApi.appendTurns).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Hello! Share any idea.')).toHaveLength(1);
+  });
+
+  // SKY-8894: no session exists on disk yet, so the session store seeds an
+  // in-memory `pending` session whose own greeting turn materialize() will
+  // write as the file's first turn. If a legacy draft is restored from a
+  // prior mount that already contains that SAME greeting followed by the
+  // user's real message, migrating it verbatim double-writes the greeting —
+  // once from materialize()'s seed, once from the migrated turns.
+  it('does not double-write the greeting when migrating a restored draft into a still-pending session', async () => {
+    const GREETING = "Hello! I'm the Brainstorm Agent — your vault curator. Share any idea and I'll help you develop it and file notes automatically.";
+    localStorage.setItem('brainstorm:draft', JSON.stringify({
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'assistant', text: GREETING },
+        { role: 'user', text: 'A pirate who fears water' },
+      ],
+      facts: [],
+    }));
+
+    let onDisk: AgentSessionFile | null = null;
+    const sessionApi = {
+      list: vi.fn().mockResolvedValue({ sessions: [] }),
+      read: vi.fn(),
+      create: vi.fn().mockImplementation(async (_agent: string, title?: string, greeting?: string, id?: string) => {
+        onDisk = {
+          id: id ?? 'materialized-1',
+          agent: 'brainstorm',
+          title,
+          startedAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          turns: greeting ? [{ role: 'agent', text: greeting, at: '2026-01-01T00:00:00.000Z' }] : [],
+        };
+        return { session: onDisk, relPath: 'Sessions/s.md' };
+      }),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn().mockImplementation(async (_id: string, turns: AgentSessionTurn[]) => {
+        onDisk = { ...onDisk!, turns: [...onDisk!.turns, ...turns] };
+        return { session: onDisk };
+      }),
+    };
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+
+    await waitFor(() => expect(sessionApi.create).toHaveBeenCalled());
+    await waitFor(() => expect(sessionApi.appendTurns).toHaveBeenCalled());
+    const [, migratedTurns] = sessionApi.appendTurns.mock.calls[0];
+    // The greeting must not be re-sent — only the real user turn migrates.
+    expect(migratedTurns).toMatchObject([{ role: 'user', text: 'A pirate who fears water' }]);
+    // On disk, the greeting appears exactly once.
+    const greetingCount = onDisk!.turns.filter((t) => t.text === GREETING).length;
+    expect(greetingCount).toBe(1);
+  });
+
   // SKY-6930: a passive mount (compact panel opened, never typed in) hydrates
   // the agent's auto-greeting into `messages` — that alone must not block the
   // window from closing, or the app hangs on every close (Electron never
