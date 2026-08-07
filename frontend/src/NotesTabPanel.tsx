@@ -164,6 +164,9 @@ export default function NotesTabPanel({
   // ── M16: note split + right-panel tab + hover-preview state ──
   const notesBodyRef = useRef<HTMLDivElement>(null);
   const splitRowRef = useRef<HTMLDivElement>(null);
+  // SKY-9710: bumped to ask VaultBrowser to open its new-note dialog from
+  // the editor pane's empty-state primary action.
+  const [newNoteRequestId, setNewNoteRequestId] = useState(0);
   const [noteSplitPath, setNoteSplitPath] = useState<string | null>(null);
   const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
   const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
@@ -363,7 +366,13 @@ export default function NotesTabPanel({
                 className="notes-sidebar-collapse-btn"
                 aria-label="Collapse notes sidebar"
                 data-testid="notes-sidebar-collapse"
-                onClick={() => onNotesSidebarCollapsedChange(true)}
+                onClick={() => {
+                  // SKY-9710: a pending new-note request from the editor
+                  // pane's empty state must not replay when the tree
+                  // remounts on the next expand.
+                  setNewNoteRequestId(0);
+                  onNotesSidebarCollapsedChange(true);
+                }}
               >
                 ‹
               </button>
@@ -384,6 +393,7 @@ export default function NotesTabPanel({
                 onOpenInNewTab={onOpenInNewTab}
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
+                newNoteRequestId={newNoteRequestId}
               />
             </div>
           </div>
@@ -473,13 +483,47 @@ export default function NotesTabPanel({
             </div>
           )}
           {notesSubView === 'editor' && !activeNotePath && (
+            // SKY-9710: prototype empty-state pattern — glyph + one-line
+            // hint + primary action. Same shape as the vault tree's own
+            // empty state (VaultBrowser/index.tsx NotesVaultEmptyState),
+            // shown here so an empty editor pane isn't a dead end.
             <div
               className="notes-editor-placeholder"
               data-testid="notes-editor-placeholder"
             >
-              <div className="notes-editor-placeholder-icon">📝</div>
-              <h2>Notes Editor</h2>
-              <p>Select a note from the sidebar to start editing.</p>
+              <span className="notes-editor-placeholder-icon" aria-hidden="true">
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <rect x="4" y="3" width="14" height="18" rx="2" />
+                  <line x1="7" y1="8" x2="14" y2="8" />
+                  <line x1="7" y1="12" x2="14" y2="12" />
+                  <line x1="7" y1="16" x2="11" y2="16" />
+                </svg>
+              </span>
+              <p className="notes-editor-placeholder-hint">
+                Select a note from the sidebar, or create a new one to start writing.
+              </p>
+              <button
+                type="button"
+                className="notes-editor-placeholder-cta"
+                data-testid="notes-editor-placeholder-create"
+                onClick={() => {
+                  if (notesSidebarCollapsed) onNotesSidebarCollapsedChange(false);
+                  setNewNoteRequestId((id) => id + 1);
+                }}
+              >
+                + New note
+              </button>
             </div>
           )}
           {notesSubView === 'graph' && (
