@@ -147,19 +147,19 @@ export type WorkspaceStripMode =
   | { kind: 'static'; label: string }
   | { kind: 'hidden' };
 
+// SKY-9019 M5: vault-graph is a standalone AppTab (hidden strip); notes is always
+// 'editor' subview now (graph→vault-graph rail, entities→tab strip).
 export function workspaceStripModeFor(
   activeTab: AppTab,
   storySubView: StorySubView,
-  notesSubView: NotesSubView,
+  _notesSubView: NotesSubView,
 ): WorkspaceStripMode {
-  if (activeTab === 'brainstorm') return { kind: 'hidden' };
+  if (activeTab === 'brainstorm' || activeTab === 'vault-graph') return { kind: 'hidden' };
   if (activeTab === 'story') {
     if (storySubView === 'timeline') return { kind: 'hidden' };
     if (storySubView === 'kanban') return { kind: 'static', label: 'Scene Crafter' };
     return { kind: 'docs', strip: 'story' };
   }
-  if (notesSubView === 'graph') return { kind: 'hidden' };
-  if (notesSubView === 'entities') return { kind: 'static', label: 'Entities' };
   return { kind: 'docs', strip: 'notes' };
 }
 

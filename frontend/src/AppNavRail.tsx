@@ -54,7 +54,7 @@ const SLOT_BY_MODULE: Partial<Record<NavRailModuleId, number>> = {
   crafter: 2,
   brainstorm: 2,
   timeline: 2,
-  graph: 3,
+  'vault-graph': 3,
 };
 
 /** Prototype 184: story-row book glyph (columns icon, slot-2 tinted). */
