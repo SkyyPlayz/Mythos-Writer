@@ -206,11 +206,21 @@ export default function VaultHealthSection(_props: VaultHealthSectionProps) {
               <p className="settings-hint" data-testid="clear-data-cancelled">Cancelled — your vaults and settings were kept.</p>
             ) : (
               <>
-                <p className="settings-saved-msg" data-testid="clear-data-success">
-                  {clearResult.deleted.length > 0
-                    ? `Deleted ${clearResult.deleted.length} location${clearResult.deleted.length !== 1 ? 's' : ''}. Restart the app to finish.`
-                    : 'App data cleared. Restart the app to finish.'}
-                </p>
+                {/* SKY-8882: a partial delete is a FAILURE headline, not a
+                    success with fine print — on Windows a locked vault can
+                    survive while the settings files delete fine. */}
+                {clearResult.errors.length > 0 ? (
+                  <p className="settings-error-msg" role="alert" data-testid="clear-data-partial">
+                    Some data could not be deleted — the locations below are still on disk.
+                    Close other programs using these folders and try again, or delete them manually.
+                  </p>
+                ) : (
+                  <p className="settings-saved-msg" data-testid="clear-data-success">
+                    {clearResult.deleted.length > 0
+                      ? `Deleted ${clearResult.deleted.length} location${clearResult.deleted.length !== 1 ? 's' : ''}. Restart the app to finish.`
+                      : 'App data cleared. Restart the app to finish.'}
+                  </p>
+                )}
                 {clearResult.errors.length > 0 && (
                   <ul className="settings-vault-health-list" data-testid="clear-data-errors">
                     {clearResult.errors.map((err, i) => (

@@ -57,6 +57,23 @@ describe('VaultHealthSection — Clear all data (SKY-5161 / GH#615)', () => {
     expect(screen.getByTestId('clear-data-success').textContent).toContain('Deleted 1 location');
   });
 
+  // SKY-8882: on Windows a locked vault can survive the delete while the
+  // settings files go — that outcome must read as a failure, never success.
+  it('renders a failure headline (not success) when some entries could not be deleted', async () => {
+    mockCleanUninstall.mockResolvedValue({
+      cancelled: false,
+      deleted: ['/data/app-settings.json'],
+      errors: ['/data/vaults: Entry still exists after delete (a file may be locked by another program)'],
+      customPathsWarning: [],
+    });
+    render(<VaultHealthSection />);
+    fireEvent.click(screen.getByTestId('clear-data-btn'));
+    fireEvent.click(screen.getByTestId('clear-data-confirm-btn'));
+    await waitFor(() => expect(screen.getByTestId('clear-data-partial')).toBeTruthy());
+    expect(screen.queryByTestId('clear-data-success')).toBeNull();
+    expect(screen.getByTestId('clear-data-errors').textContent).toContain('/data/vaults');
+  });
+
   it('surfaces the keep-vaults cancellation from the native dialog', async () => {
     mockCleanUninstall.mockResolvedValue({
       cancelled: true,

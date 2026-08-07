@@ -2319,3 +2319,38 @@ describe('startVaultWatcher — emits events for files below vault root (GH#892)
     expect(normalEvents.length).toBeGreaterThan(0);
   }, 10_000);
 });
+
+// SKY-9587: perf regression guard for the `await ready` path in polling mode.
+// We force usePolling by mocking process.platform to 'win32'; the budget of
+// 5 000 ms for 2 000 files gives ~20× headroom over the Linux baseline (~237 ms)
+// while catching any O(N²) regression or accidental blocking of native-mode callers.
+describe('startVaultWatcher — polling-mode ready perf guard (SKY-9587)', () => {
+  let vaultDir: string;
+  let platformSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-watcher-perf-'));
+    platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+  });
+
+  afterEach(async () => {
+    platformSpy.mockRestore();
+    await stopVaultWatcher();
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  it('resolves within 5 000 ms for a 2 000-file vault in polling mode', async () => {
+    // Create 2 000 .md files spread across subdirectories.
+    for (let i = 0; i < 2000; i++) {
+      const dir = path.join(vaultDir, `chapter-${Math.floor(i / 100)}`);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, `note-${i}.md`), `# Note ${i}`);
+    }
+
+    const start = Date.now();
+    await startVaultWatcher(vaultDir, () => {});
+    const elapsed = Date.now() - start;
+
+    expect(elapsed).toBeLessThan(5_000);
+  }, 15_000);
+});

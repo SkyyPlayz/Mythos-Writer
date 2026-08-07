@@ -256,6 +256,135 @@ test.describe.serial('MythosVault migration wizard (M5)', () => {
   });
 });
 
+// ─── SKY-8882: vault lifecycle regressions (owner bug, Windows beta test) ────
+//
+//   TC-MV-04  An in-app "new vault" (vault:createDefaultMythos — the
+//             ProjectSwitcher / title-bar flow) creates a REAL MythosVault v2:
+//             mythos.json on disk, detection says mythos-v2, and the freshly
+//             created vault NEVER shows the "upgrade to MythosVault" prompt.
+//             (It used to mkdir bare roots → v0.4 scaffold → upgrade nag.)
+//   TC-MV-05  Settings → Danger zone → "Clear all data" → Delete Everything
+//             actually removes <userData>/vaults + settings files from disk,
+//             and nothing resurrects them afterwards (the old handler re-ran
+//             ensureVaultDir in a finally and re-seeded the vault it had just
+//             deleted). Real IPC → real dialog gate (only the native
+//             MessageBox is patched — Playwright cannot drive OS dialogs).
+
+test('TC-MV-04: in-app new vault is a real MythosVault v2 and never prompts', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-mv-create-'));
+  const userData = path.join(tmp, 'user-data');
+  const vaultDir = path.join(tmp, 'Boot', 'Story Vault');
+  const notesVaultDir = path.join(tmp, 'Boot', 'Notes Vault');
+  fs.mkdirSync(vaultDir, { recursive: true });
+  fs.mkdirSync(notesVaultDir, { recursive: true });
+  seedUserData(userData, vaultDir, notesVaultDir);
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Create through the real preload → IPC → main → disk path (the same
+    // window.api call the ProjectSwitcher / title-bar prompt modal makes).
+    const created = await page.evaluate(async () => {
+      const api = (window as unknown as {
+        api: { vaultCreateDefaultMythos: (p: { vaultName?: string; seedMode?: string }) =>
+          Promise<{ mythosVaultRoot: string; vaultRoot: string; notesVaultRoot: string; error?: string }> };
+      }).api;
+      return api.vaultCreateDefaultMythos({ vaultName: 'Owner Test Vault', seedMode: 'default' });
+    });
+    expect(created.error).toBeUndefined();
+
+    // The bundle on disk is a canonical v2 vault, not two bare folders.
+    expect(fs.existsSync(path.join(created.mythosVaultRoot, 'mythos.json'))).toBe(true);
+    expect(fs.existsSync(path.join(created.mythosVaultRoot, 'settings.json'))).toBe(true);
+    expect(fs.existsSync(path.join(created.mythosVaultRoot, 'timelines.json'))).toBe(true);
+    expect(fs.existsSync(created.vaultRoot)).toBe(true);
+    expect(fs.existsSync(created.notesVaultRoot)).toBe(true);
+    // No legacy v0.4 manifest in the story root (regression signature).
+    expect(fs.existsSync(path.join(created.vaultRoot, 'manifest.json'))).toBe(false);
+
+    // The migration gate classifies the new ACTIVE vault as current format.
+    const status = await page.evaluate(async () => {
+      const api = (window as unknown as {
+        api: { mythosMigrationStatus: () => Promise<{ format: string; shouldPrompt: boolean }> };
+      }).api;
+      return api.mythosMigrationStatus();
+    });
+    expect(status.format).toBe('mythos-v2');
+    expect(status.shouldPrompt).toBe(false);
+
+    // A fresh boot against the new vault never volunteers the upgrade card.
+    await page.reload();
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(1_500);
+    await expect(page.locator('[data-testid="mythos-migration-prompt"]')).toHaveCount(0);
+  } finally {
+    const proc = app.process();
+    await Promise.race([
+      app.close().catch(() => undefined),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try { if (!proc.killed) proc.kill('SIGKILL'); } catch { /* exited */ }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('TC-MV-05: Delete Everything removes the vaults and nothing resurrects them', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-mv-clear-'));
+  const userData = path.join(tmp, 'user-data');
+  // Default layout: both vaults under <userData>/vaults so the whole parent
+  // is the delete target (the same layout the owner's machine uses).
+  const bundle = path.join(userData, 'vaults', 'Mythos Vault');
+  const vaultDir = path.join(bundle, 'Story Vault');
+  const notesVaultDir = path.join(bundle, 'Notes Vault');
+  fs.mkdirSync(vaultDir, { recursive: true });
+  fs.mkdirSync(notesVaultDir, { recursive: true });
+  seedUserData(userData, vaultDir, notesVaultDir);
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // The ONLY patch: auto-answer the native keep-vs-delete MessageBox with
+    // "Delete Everything" (button index 1). Everything downstream is real.
+    await app.evaluate(({ dialog }) => {
+      (dialog as unknown as Record<string, unknown>).showMessageBox =
+        async () => ({ response: 1, checkboxChecked: false });
+    });
+
+    // Drive the real Settings UI: gear → Vault & Files → Danger zone.
+    await page.locator('.app-menu-gear-btn').click();
+    await page.getByRole('tab', { name: 'Vault & Files' }).click();
+    const dangerZone = page.locator('[data-testid="clear-data-danger-zone"]');
+    await dangerZone.scrollIntoViewIfNeeded();
+    await page.locator('[data-testid="clear-data-btn"]').click();
+    await page.locator('[data-testid="clear-data-confirm-btn"]').click();
+
+    await expect(page.locator('[data-testid="clear-data-success"]')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('[data-testid="clear-data-errors"]')).toHaveCount(0);
+
+    // The vault data and settings files are actually gone from disk…
+    expect(fs.existsSync(path.join(userData, 'vaults'))).toBe(false);
+    expect(fs.existsSync(path.join(userData, 'vault-settings.json'))).toBe(false);
+    expect(fs.existsSync(path.join(userData, 'app-settings.json'))).toBe(false);
+
+    // …and STAY gone: the old handler's finally{ensureVaultDir()} used to
+    // re-scaffold a seeded vault immediately after deleting it.
+    await page.waitForTimeout(2_500);
+    expect(fs.existsSync(path.join(userData, 'vaults'))).toBe(false);
+  } finally {
+    const proc = app.process();
+    await Promise.race([
+      app.close().catch(() => undefined),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try { if (!proc.killed) proc.kill('SIGKILL'); } catch { /* exited */ }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('TC-MV-03: a fresh seed-only v0.4 vault shows no prompt', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-mv-fresh-'));
   const userData = path.join(tmp, 'user-data');
