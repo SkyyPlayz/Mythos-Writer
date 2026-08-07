@@ -295,9 +295,41 @@
 }
 
 .notes-editor-placeholder p {
-  margin: 0;
+  margin: 0 0 20px;
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+/* M8f: prototype empty-state pattern — glyph + hint + one primary action. */
+.notes-editor-placeholder-cta {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg-canvas);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-heading);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  min-height: 36px;
+  cursor: pointer;
+  transition:
+    background var(--dur-hover-in) var(--ease-standard),
+    box-shadow var(--dur-hover-in) var(--ease-standard);
+}
+
+.notes-editor-placeholder-cta:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: var(--neon-glow);
+}
+
+.notes-editor-placeholder-cta:active {
+  transform: scale(0.98);
+  transition-duration: var(--dur-press);
+}
+
+.notes-editor-placeholder-cta:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Graph + entities views fill the center */

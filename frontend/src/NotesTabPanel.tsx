@@ -167,6 +167,9 @@ export default function NotesTabPanel({
   const [noteSplitPath, setNoteSplitPath] = useState<string | null>(null);
   const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
   const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
+  // M8f: bumped by the editor empty-state "Create note" action to open the
+  // VaultBrowser new-note dialog.
+  const [newNoteRequestToken, setNewNoteRequestToken] = useState(0);
 
   const mdNotePaths = useMemo(
     () => (notePaths ?? []).filter((p) => p.toLowerCase().endsWith('.md')),
@@ -384,6 +387,7 @@ export default function NotesTabPanel({
                 onOpenInNewTab={onOpenInNewTab}
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
+                newNoteRequest={{ token: newNoteRequestToken }}
               />
             </div>
           </div>
@@ -480,6 +484,14 @@ export default function NotesTabPanel({
               <div className="notes-editor-placeholder-icon">📝</div>
               <h2>Notes Editor</h2>
               <p>Select a note from the sidebar to start editing.</p>
+              <button
+                type="button"
+                className="notes-editor-placeholder-cta"
+                data-testid="notes-editor-placeholder-create"
+                onClick={() => setNewNoteRequestToken((t) => t + 1)}
+              >
+                Create note
+              </button>
             </div>
           )}
           {notesSubView === 'graph' && (

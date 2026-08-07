@@ -1620,6 +1620,33 @@ describe('M8c (SKY-9335): footer', () => {
   });
 });
 
+describe('M8f (SKY-9710): newNoteRequest opens the new-note dialog', () => {
+  beforeEach(() => {
+    (window as unknown as { api: Record<string, unknown> }).api.noteTemplateList = vi
+      .fn()
+      .mockResolvedValue({ templates: [] });
+    // jsdom doesn't implement <dialog>.showModal()/close() — NoteTemplateDialog
+    // calls these when `open` toggles.
+    HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+      this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+      this.open = false;
+    });
+  });
+
+  it('opens the dialog when the token bumps, and ignores an unchanged token', async () => {
+    const { rerender } = render(
+      <VaultBrowser {...baseProps} initialScope="notes" newNoteRequest={{ token: 0 }} />,
+    );
+    await waitFor(() => expect(mockListNotesVault).toHaveBeenCalled());
+    expect(screen.queryByTestId('ntd-template-select')).not.toBeInTheDocument();
+
+    rerender(<VaultBrowser {...baseProps} initialScope="notes" newNoteRequest={{ token: 1 }} />);
+    expect(await screen.findByTestId('ntd-template-select')).toBeInTheDocument();
+  });
+});
+
 describe('M16: auto-reveal', () => {
   beforeEach(() => {
     localStorage.removeItem('vb-auto-reveal');

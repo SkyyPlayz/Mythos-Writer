@@ -547,6 +547,9 @@ interface NotesVaultProps {
   uuidTitleMap?: ReadonlyMap<string, string>;
   /** M16: active file path for auto-reveal. */
   activeFilePath?: string | null;
+  /** M8f: token bump opens the new-note dialog, e.g. from the editor's
+   * empty-state "Create note" action. */
+  newNoteRequest?: { token: number } | null;
 }
 
 const EMPTY_TITLE_MAP: ReadonlyMap<string, string> = new Map();
@@ -612,7 +615,7 @@ function formatRecentTime(atMs: number, nowMs: number): string {
   return `${Math.floor(diffSec / 86_400)}d ago`;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath, newNoteRequest }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
@@ -872,6 +875,15 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     },
     [],
   );
+
+  // M8f: editor empty-state "Create note" action bumps newNoteRequest.token;
+  // open the same new-note dialog the sidebar "+" and tree context menu use.
+  const appliedNewNoteTokenRef = useRef(0);
+  useEffect(() => {
+    if (!newNoteRequest || newNoteRequest.token === appliedNewNoteTokenRef.current) return;
+    appliedNewNoteTokenRef.current = newNoteRequest.token;
+    handleNewNote('');
+  }, [newNoteRequest, handleNewNote]);
 
   const handleNoteCreated = useCallback(
     async (path: string) => {
@@ -1308,6 +1320,9 @@ export interface VaultBrowserProps {
   onContinuityCheck?: (path: string) => void;
   /** M16: active file path for auto-reveal in the notes tree. */
   activeFilePath?: string | null;
+  /** M8f: token bump opens the new-note dialog, e.g. from the editor's
+   * empty-state "Create note" action. */
+  newNoteRequest?: { token: number } | null;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -1384,6 +1399,7 @@ export default function VaultBrowser({
   onBetaRead,
   onContinuityCheck,
   activeFilePath,
+  newNoteRequest,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -1541,6 +1557,7 @@ export default function VaultBrowser({
                 onContinuityCheck={onContinuityCheck}
                 uuidTitleMap={uuidTitleMap}
                 activeFilePath={activeFilePath}
+                newNoteRequest={newNoteRequest}
               />
             )}
           </div>
