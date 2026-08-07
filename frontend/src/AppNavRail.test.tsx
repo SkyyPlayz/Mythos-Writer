@@ -343,7 +343,7 @@ describe('AppNavRail', () => {
             { id: 'crafter', label: 'Scene Crafter', icon: '🗂️' },
             { id: 'brainstorm', label: 'Brainstorm', icon: '💡' },
             { id: 'timeline', label: 'Timeline', icon: '📅' },
-            { id: 'graph', label: 'Vault Graph', icon: '🕸️' },
+            { id: 'vault-graph', label: 'Vault Graph', icon: 'vault-graph' },
           ],
         })}
       />,
@@ -353,17 +353,17 @@ describe('AppNavRail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Timeline' }));
     expect(onSectionChange).toHaveBeenCalledWith('timeline');
     fireEvent.click(screen.getByRole('button', { name: 'Vault Graph' }));
-    expect(onSectionChange).toHaveBeenCalledWith('graph');
+    expect(onSectionChange).toHaveBeenCalledWith('vault-graph');
   });
 
-  it('tags crafter/timeline with slot 2 and graph with slot 3 (prototype modDefs)', () => {
+  it('tags crafter/timeline with slot 2 and vault-graph with slot 3 (prototype modDefs)', () => {
     render(
       <AppNavRail
         {...makeProps({
           navItems: [
             { id: 'crafter', label: 'Scene Crafter', icon: '🗂️' },
             { id: 'timeline', label: 'Timeline', icon: '📅' },
-            { id: 'graph', label: 'Vault Graph', icon: '🕸️' },
+            { id: 'vault-graph', label: 'Vault Graph', icon: 'vault-graph' },
           ],
         })}
       />,

@@ -2433,7 +2433,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
         if (tabShellRef.current.activeTab === 'notes') {
           e.preventDefault();
-          handleNotesSubViewChange('graph');
+          handleNavModuleChange('vault-graph');
         }
         return;
       }
@@ -4435,11 +4435,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange('story');
   }, [stories, handleNavSectionChange]);
 
-  // ── Beta 4 M3: six-module nav rail (FULL-SPEC §4; prototype navItems 5681) ──
-  // story/notes/brainstorm stay top-level tabs; crafter/timeline are Story
-  // sub-view surfaces and graph is the Notes graph surface. M4's document-tab
-  // model owns the strip (static pseudo-tab / hidden per view), so rail clicks
-  // switch section + sub-view directly instead of creating module tabs.
+  // SKY-9019 M5: each rail item is a first-class destination; no aliases.
+  // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
   const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
     switch (moduleId) {
       case 'crafter':
@@ -4450,36 +4447,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         handleNavSectionChange('story');
         handleSetView('timeline');
         break;
-      case 'graph':
-        handleNavSectionChange('notes');
-        handleNotesSubViewChange('graph');
+      case 'vault-graph':
+        handleTabChange('vault-graph');
         break;
       case 'story':
         handleNavSectionChange('story');
-        // Scene Crafter and Timeline have their own rail items now, so a
-        // Story Writer click always lands on the editor sub-view (the other
-        // Story sub-tabs — structure/book — still restore normally).
+        // Scene Crafter and Timeline have their own rail items — Story Writer
+        // always lands on the editor sub-view.
         if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
           handleSetView('editor');
         }
         break;
-      case 'notes':
-        handleNavSectionChange('notes');
-        // Vault Graph is its own rail item — a Notes Editor click shows notes.
-        if (tabShellRef.current.notesSubView === 'graph') handleNotesSubViewChange('editor');
-        break;
       default:
         handleNavSectionChange(moduleId);
     }
-  }, [handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
+  }, [handleNavSectionChange, handleSetView, handleTabChange]);
 
   // Which rail module is lit: derived from the actual displayed surface so
   // the slot-glow pill follows crafter/timeline/graph sub-views too.
+  // SKY-9019 M5: vault-graph is its own AppTab; crafter/timeline derive from storySubView.
   const activeNavModule: NavRailModuleId = tabShell.activeTab === 'story'
     ? (view === 'kanban' ? 'crafter' : view === 'timeline' ? 'timeline' : 'story')
-    : tabShell.activeTab === 'notes'
-      ? (tabShell.notesSubView === 'graph' ? 'graph' : 'notes')
-      : 'brainstorm';
+    : tabShell.activeTab === 'vault-graph'
+      ? 'vault-graph'
+      : tabShell.activeTab === 'brainstorm'
+        ? 'brainstorm'
+        : 'notes';
 
   // Beta 4 M3: rail edit popover rows — the full merged module config
   // (hidden items included) in user order; SKY-5903 merge semantics apply.

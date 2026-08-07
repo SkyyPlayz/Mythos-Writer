@@ -6,7 +6,6 @@
 // Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
-import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
@@ -27,10 +26,9 @@ const MIN_SIDEBAR_W = 160;
 const MAX_SIDEBAR_W = 500;
 const RIGHT_SIDEBAR_W = 340;
 
+// SKY-9019 M5: Graph→vault-graph rail, Entities→tab. Notes only has Editor mode.
 const NOTES_SUBVIEWS: { id: NotesSubView; label: string }[] = [
   { id: 'editor', label: 'Editor' },
-  { id: 'graph', label: 'Graph' },
-  { id: 'entities', label: 'Entities' },
 ];
 
 export interface NotesTabPanelProps {
@@ -107,6 +105,9 @@ export interface NotesTabPanelProps {
   archiveContinuityEnabled?: boolean;
   /** SKY-2585: active scene forwarded to ContinuityPanel for scene-scoped listing. */
   activeScene?: Scene | null;
+  // SKY-9019 M5: Entity Browser is now a tab document; when the active notes
+  // tab is kind 'entities', the main area renders EntityBrowser instead of note editor.
+  activeTabIsEntityBrowser?: boolean;
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
@@ -155,7 +156,7 @@ export default function NotesTabPanel({
   onCreateChapter,
   onCreateScene,
   onOpenFile,
-  onOpenScene,
+  onOpenScene: _onOpenScene,
   onExport,
   journalModeEnabled,
   onOpenInNewTab,
@@ -171,6 +172,7 @@ export default function NotesTabPanel({
   activeStorySlug,
   archiveContinuityEnabled,
   activeScene,
+  activeTabIsEntityBrowser,
   onSelectEntity,
   selectedEntityId,
   writingMode,
@@ -658,12 +660,7 @@ export default function NotesTabPanel({
               </button>
             </div>
           )}
-          {notesSubView === 'graph' && (
-            <div className="notes-graph-view" data-testid="notes-graph-view">
-              <VaultGraphView onOpenNote={onOpenFile} onOpenScene={onOpenScene} />
-            </div>
-          )}
-          {notesSubView === 'entities' && (
+          {activeTabIsEntityBrowser && (
             <div className="notes-entities-view" data-testid="notes-entities-view">
               <EntityBrowser
                 onSelectEntity={onSelectEntity}

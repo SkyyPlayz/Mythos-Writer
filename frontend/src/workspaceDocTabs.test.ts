@@ -171,15 +171,14 @@ describe('workspaceStripModeFor (§4: strip on Story + Notes only)', () => {
     expect(workspaceStripModeFor('notes', 'editor', 'editor')).toEqual({ kind: 'docs', strip: 'notes' });
   });
 
-  it('hides the strip on Brainstorm, Timeline and Graph', () => {
+  it('hides the strip on Brainstorm, Timeline and Vault Graph', () => {
     expect(workspaceStripModeFor('brainstorm', 'editor', 'editor')).toEqual({ kind: 'hidden' });
     expect(workspaceStripModeFor('story', 'timeline', 'editor')).toEqual({ kind: 'hidden' });
-    expect(workspaceStripModeFor('notes', 'editor', 'graph')).toEqual({ kind: 'hidden' });
+    expect(workspaceStripModeFor('vault-graph', 'editor', 'editor')).toEqual({ kind: 'hidden' });
   });
 
-  it('shows the static view pseudo-tab on Scene Crafter and Entities (prototype tabList fallback)', () => {
+  it('shows the static view pseudo-tab on Scene Crafter (prototype tabList fallback)', () => {
     expect(workspaceStripModeFor('story', 'kanban', 'editor')).toEqual({ kind: 'static', label: 'Scene Crafter' });
-    expect(workspaceStripModeFor('notes', 'editor', 'entities')).toEqual({ kind: 'static', label: 'Entities' });
   });
 });
 

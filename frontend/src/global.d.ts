@@ -674,14 +674,14 @@ interface AppSettings {
   navConfig?: NavRailConfig;
 }
 
-/** SKY-2094 (Phase 2 #1): The two top-level app sections. SKY-3623: brainstorm added as third tab. */
-type AppTab = 'story' | 'notes' | 'brainstorm';
+/** SKY-2094 (Phase 2 #1): Top-level app sections. SKY-9019 M5: vault-graph added as standalone destination. */
+type AppTab = 'story' | 'notes' | 'brainstorm' | 'vault-graph';
 
 /** SKY-2094: Sub-view within the Story tab. */
 type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
 
-/** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. */
-type NotesSubView = 'editor' | 'graph' | 'entities';
+/** SKY-2096 (Phase 2 #3): Sub-view within the Notes tab. SKY-9019 M5: graph→vault-graph rail, entities→tab. */
+type NotesSubView = 'editor';
 
 /** SKY-2094: Persisted two-tab app shell state. */
 interface AppTabShellState {
@@ -695,12 +695,11 @@ interface AppTabShellState {
 }
 
 /**
- * Beta 4 M3 (FULL-SPEC §4): the six nav-rail modules. story/notes/brainstorm
- * are top-level AppTabs; crafter/timeline are Story sub-view surfaces and
- * graph is the Notes graph surface — the rail routes them through the
- * workspace-tab create-or-focus path.
+ * Beta 4 M5 (SKY-9019): the six nav-rail modules, each a first-class destination.
+ * story/notes/brainstorm/vault-graph are AppTabs; crafter/timeline are Story
+ * sub-views routed through handleNavModuleChange. No aliases — one home per surface.
  */
-type NavRailModuleId = AppTab | 'crafter' | 'timeline' | 'graph';
+type NavRailModuleId = AppTab | 'crafter' | 'timeline';
 
 /** SKY-3096 (v0.3 AppNavRail): A single item in the persistent left nav rail. */
 interface NavRailItem {
