@@ -738,7 +738,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
    *  Cleared after BrainstormPage mounts so navigating back doesn't re-seed with stale text. */
   const [brainstormSeedPrompt, setBrainstormSeedPrompt] = useState<string | null>(null);
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
-  const [, setSceneFlashId] = useState<string | null>(null);
+  const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
@@ -5265,7 +5265,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               /* M1-S4 (SKY-9404): ONE ManuscriptView branch renders ALL four depths
                  (book/part/chapter/scene) — cursor.zoom carries the depth. Legacy
                  scene-branch chrome deleted; drafts/history wired via new props. */
-              <div className="shell-depth-view-wrap book-outline-view chapter-continuous-view shell-editor-scene-wrap">
+              <div className={`shell-depth-view-wrap book-outline-view chapter-continuous-view shell-editor-scene-wrap${viewDepth === 'scene' && selectedScene && sceneFlashId === selectedScene.id ? ' shell-editor-scene-wrap--flash' : ''}`}>
                 <ManuscriptView
                   story={selectedStory}
                   cursor={manuscriptCursor}
