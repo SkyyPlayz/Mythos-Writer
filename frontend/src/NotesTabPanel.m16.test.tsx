@@ -4,7 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import NotesTabPanel, { type NotesTabPanelProps } from './NotesTabPanel';
 
 vi.mock('./components/VaultBrowser', () => ({
-  default: () => <div data-testid="vault-browser-mock" />,
+  // SKY-9710: record newNoteRequestId so tests can assert the editor
+  // pane's empty-state CTA reaches the vault tree's new-note dialog.
+  default: (props: Record<string, unknown>) => (
+    <div data-testid="vault-browser-mock" data-new-note-request-id={String(props.newNoteRequestId ?? 0)} />
+  ),
 }));
 vi.mock('./VaultGraphView', () => ({
   default: () => <div data-testid="vault-graph-view-mock" />,
@@ -115,6 +119,45 @@ describe('NotesTabPanel — M16 note splits', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByTestId('notes-split-row')).not.toBeInTheDocument();
+  });
+});
+
+// SKY-9710 (M8f): the editor pane's empty state — prototype pattern
+// (glyph + one-line hint + primary "New note" action) instead of a dead-end
+// placeholder.
+describe('NotesTabPanel — notes editor empty state (SKY-9710)', () => {
+  it('renders a glyph, a one-line hint, and a primary "New note" action when no note is open', () => {
+    render(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
+    const placeholder = screen.getByTestId('notes-editor-placeholder');
+    expect(placeholder.querySelector('svg')).toBeInTheDocument();
+    expect(screen.getByText(/select a note from the sidebar, or create a new one/i)).toBeInTheDocument();
+    expect(screen.getByTestId('notes-editor-placeholder-create')).toHaveTextContent('+ New note');
+  });
+
+  it('does not render the placeholder once a note is open', () => {
+    render(<NotesTabPanel {...BASE_PROPS} />);
+    expect(screen.queryByTestId('notes-editor-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('clicking "New note" bumps the request id VaultBrowser uses to open its dialog', () => {
+    render(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
+    expect(screen.getByTestId('vault-browser-mock')).toHaveAttribute('data-new-note-request-id', '0');
+    fireEvent.click(screen.getByTestId('notes-editor-placeholder-create'));
+    expect(screen.getByTestId('vault-browser-mock')).toHaveAttribute('data-new-note-request-id', '1');
+  });
+
+  it('expands a collapsed sidebar before requesting a new note', () => {
+    const onNotesSidebarCollapsedChange = vi.fn();
+    render(
+      <NotesTabPanel
+        {...BASE_PROPS}
+        activeNotePath={null}
+        notesSidebarCollapsed
+        onNotesSidebarCollapsedChange={onNotesSidebarCollapsedChange}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('notes-editor-placeholder-create'));
+    expect(onNotesSidebarCollapsedChange).toHaveBeenCalledWith(false);
   });
 });
 

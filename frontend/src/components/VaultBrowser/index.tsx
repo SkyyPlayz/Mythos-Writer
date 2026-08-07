@@ -547,6 +547,9 @@ interface NotesVaultProps {
   uuidTitleMap?: ReadonlyMap<string, string>;
   /** M16: active file path for auto-reveal. */
   activeFilePath?: string | null;
+  /** SKY-9710: bump to open the new-note dialog from outside the tree
+   *  (e.g. the notes editor pane's empty-state "New note" button). */
+  newNoteRequestId?: number;
 }
 
 const EMPTY_TITLE_MAP: ReadonlyMap<string, string> = new Map();
@@ -612,7 +615,7 @@ function formatRecentTime(atMs: number, nowMs: number): string {
   return `${Math.floor(diffSec / 86_400)}d ago`;
 }
 
-function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath }: NotesVaultProps) {
+function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, onTagFilter, iconMap, onIconChange, onMove, onMoveToRoot, onMoveTo, onOpenInNewTab, onBetaRead, onContinuityCheck, uuidTitleMap, activeFilePath, newNoteRequestId }: NotesVaultProps) {
   const allNotesItems = mapUuidNamesToTitles(
     (items as VaultListItem[]).filter(isNotesItem),
     uuidTitleMap ?? EMPTY_TITLE_MAP,
@@ -872,6 +875,20 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     },
     [],
   );
+
+  // SKY-9710: the notes editor pane's empty state has its own "New note"
+  // button, outside this tree — bumping newNoteRequestId opens the same
+  // dialog this component already owns. `null` on the ref means "not seen
+  // a request yet"; a truthy (>0) id not yet handled fires the dialog even
+  // on first mount, so the request still lands after this tree remounts
+  // (e.g. the left sidebar was collapsed when the button was clicked).
+  const lastHandledNewNoteRequestId = useRef<number | null>(null);
+  useEffect(() => {
+    if (!newNoteRequestId) return;
+    if (lastHandledNewNoteRequestId.current === newNoteRequestId) return;
+    lastHandledNewNoteRequestId.current = newNoteRequestId;
+    handleNewNote('');
+  }, [newNoteRequestId, handleNewNote]);
 
   const handleNoteCreated = useCallback(
     async (path: string) => {
@@ -1308,6 +1325,9 @@ export interface VaultBrowserProps {
   onContinuityCheck?: (path: string) => void;
   /** M16: active file path for auto-reveal in the notes tree. */
   activeFilePath?: string | null;
+  /** SKY-9710: bump to open the new-note dialog from outside the tree
+   *  (e.g. the notes editor pane's empty-state "New note" button). */
+  newNoteRequestId?: number;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -1384,6 +1404,7 @@ export default function VaultBrowser({
   onBetaRead,
   onContinuityCheck,
   activeFilePath,
+  newNoteRequestId,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -1541,6 +1562,7 @@ export default function VaultBrowser({
                 onContinuityCheck={onContinuityCheck}
                 uuidTitleMap={uuidTitleMap}
                 activeFilePath={activeFilePath}
+                newNoteRequestId={newNoteRequestId}
               />
             )}
           </div>
