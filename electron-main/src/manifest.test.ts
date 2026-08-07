@@ -42,8 +42,8 @@ function makeScene(id: string, filePath: string): SceneEntry {
 }
 
 describe('SCHEMA_VERSION', () => {
-  it('is 2 (SKY-6596: structure-only manifest bump)', () => {
-    expect(SCHEMA_VERSION).toBe(2);
+  it('is 3 (SKY-9017 M2: Part tier + chapter/scene note slots)', () => {
+    expect(SCHEMA_VERSION).toBe(3);
   });
 });
 
@@ -94,13 +94,62 @@ describe('migrateManifest', () => {
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it('preserves all legacy fields after migration', () => {
+  it('preserves all legacy fields after migration and wraps chapters in a Part (v2→v3)', () => {
     const raw = {
       ...legacyManifest('/tmp/vault'),
-      stories: [{ id: 's1' }],
+      stories: [{ id: 's1', chapters: [] }],
     };
     const migrated = migrateManifest(raw as Record<string, unknown>);
-    expect((migrated as unknown as Record<string, unknown>).stories).toEqual([{ id: 's1' }]);
+    const stories = (migrated as unknown as Record<string, unknown>).stories as { id: string; parts: unknown[] }[];
+    expect(stories).toHaveLength(1);
+    expect(stories[0].id).toBe('s1');
+    expect(stories[0].parts).toHaveLength(1);
+    expect((stories[0].parts[0] as { title: string }).title).toBe('');
+  });
+
+  it('v2→v3 migration is idempotent (re-run leaves an already-migrated story unchanged)', () => {
+    const raw = {
+      ...legacyManifest('/tmp/vault'),
+      stories: [{ id: 's1', chapters: [], parts: [{ id: 'part-1', title: 'Part One', order: 0, note: [], chapters: [], createdAt: '2025-01-01', updatedAt: '2025-01-01' }] }],
+    };
+    const migrated = migrateManifest(raw as Record<string, unknown>);
+    const stories = (migrated as unknown as Record<string, unknown>).stories as { id: string; parts: unknown[] }[];
+    expect(stories[0].parts).toHaveLength(1);
+    expect((stories[0].parts[0] as { title: string }).title).toBe('Part One');
+  });
+
+  it('M2 lossless round-trip: pre-Part fixture chapters survive migration byte-identical (SKY-9017)', () => {
+    // Simulate a v2 vault with a story containing two chapters and scenes.
+    // After migration the chapters must appear inside the Part and be byte-identical.
+    const ch1: ChapterEntry = {
+      id: 'ch-1', title: 'The Quiet Before', path: 'stories/s1/ch-1.md',
+      order: 0, scenes: [
+        { id: 'sc-1', title: 'Scene 1', path: 'stories/s1/sc-1.md', order: 0, blocks: [], createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z', chapterId: 'ch-1', storyId: 's1' },
+      ],
+      createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z',
+    };
+    const ch2: ChapterEntry = {
+      id: 'ch-2', title: 'Ash and Oath', path: 'stories/s1/ch-2.md',
+      order: 1, scenes: [],
+      createdAt: '2025-01-02T00:00:00Z', updatedAt: '2025-01-02T00:00:00Z',
+    };
+    const raw = {
+      ...legacyManifest('/tmp/vault'),
+      schemaVersion: 2,
+      stories: [{ id: 's1', title: 'Test Story', path: 'stories/s1', chapters: [ch1, ch2], createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' }],
+    };
+    const migrated = migrateManifest(raw as Record<string, unknown>);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    const story = migrated.stories[0];
+    // Parts tier exists with one untitled part
+    expect(story.parts).toHaveLength(1);
+    const part = story.parts![0];
+    expect(part.title).toBe('');
+    // Chapters in the part are byte-identical to the originals
+    expect(JSON.stringify(part.chapters)).toBe(JSON.stringify([ch1, ch2]));
+    // Re-run: idempotency — migrating again must not change anything
+    const rerun = migrateManifest(migrated as unknown as Record<string, unknown>);
+    expect(JSON.stringify(rerun)).toBe(JSON.stringify(migrated));
   });
 });
 

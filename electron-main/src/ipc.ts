@@ -1244,11 +1244,30 @@ export interface StoryEntry {
   id: string;
   title: string;
   synopsis?: string;
+  /** M2 (SKY-9017): author byline; empty or absent → omitted from compile. */
+  author?: string;
   path: string;
+  /** M2 (SKY-9017): Part tier. Absent on pre-M2 vaults; migration wraps chapters into one untitled Part. */
+  parts?: PartEntry[];
   chapters: ChapterEntry[];
   createdAt: string;
   updatedAt: string;
   provenance?: AgentProvenance;
+}
+
+/**
+ * M2 (SKY-9017): a Part groups chapters under a heading + optional epigraph.
+ * A story whose only Part has `title === ""` renders no part chrome anywhere.
+ */
+export interface PartEntry {
+  id: string;
+  title: string;
+  order: number;
+  /** Part epigraph / note blocks (same Block model as scenes). Empty array = no note. */
+  note: BlockEntry[];
+  chapters: ChapterEntry[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ChapterEntry {
@@ -1257,6 +1276,8 @@ export interface ChapterEntry {
   path: string;
   order: number;
   scenes: SceneEntry[];
+  /** M2 (SKY-9017): chapter epigraph / note blocks. Empty array or absent = no note. */
+  note?: BlockEntry[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1271,6 +1292,8 @@ export interface SceneEntry {
   currentDraftId?: string;
   blocks: BlockEntry[];
   draftState?: 'in-progress' | 'review' | 'final';
+  /** M2 (SKY-9017): point-of-view label; absent = no POV chip in Structure view. */
+  pov?: string;
   card?: SceneCard;
   timestamp?: SceneTimestamp;
   createdAt: string;
