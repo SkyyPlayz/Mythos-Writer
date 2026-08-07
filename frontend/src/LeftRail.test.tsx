@@ -1,110 +1,102 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
-import { PanelDragProvider } from './PanelDragContext';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import LeftRail from './LeftRail';
+import type { Story } from './types';
 
-function renderLeftRail() {
-  render(
-    <PanelDragProvider onDrop={vi.fn()}>
-      <LeftRail
-        leftSidebarLayout={DEFAULT_LEFT_SIDEBAR_LAYOUT}
-        onLeftSidebarLayoutChange={vi.fn()}
-        renderPanelContent={() => null}
-        rightPanelCount={0}
-      />
-    </PanelDragProvider>,
-  );
-}
+const noop = vi.fn();
 
-describe('LeftRail panels', () => {
-  it('does not render the legacy fixed main navigation zone', () => {
-    renderLeftRail();
+const mockStory: Story = {
+  id: 's1',
+  title: 'The Great Novel',
+  genre: 'Fantasy',
+  path: '/stories/s1',
+  chapters: [
+    {
+      id: 'c1',
+      title: 'Chapter One',
+      order: 0,
+      path: '/chapters/c1',
+      createdAt: '',
+      updatedAt: '',
+      scenes: [
+        { id: 'sc1', title: 'Opening', path: '/scenes/sc1', blocks: [{ id: 'b1', type: 'prose' as const, content: 'Hello world', order: 0, updatedAt: '' }], order: 0, draftState: 'in-progress', createdAt: '', updatedAt: '' },
+      ],
+    },
+  ],
+  createdAt: '',
+  updatedAt: '',
+};
 
-    expect(screen.queryByRole('navigation', { name: /main navigation/i })).not.toBeInTheDocument();
+const baseProps = {
+  stories: [mockStory],
+  selectedStory: mockStory,
+  selectedScene: null,
+  selectedSceneId: null,
+  onSelectScene: noop,
+  onSelectStory: noop,
+  onCreateStory: noop,
+  onCreateChapter: noop,
+  onCreateScene: noop,
+  sidebarCollapsed: false,
+  onToggleCollapsed: noop,
+};
+
+// Mock window.api for StoryNavigator
+vi.stubGlobal('api', {});
+
+describe('LeftRail M6 — three-zone layout', () => {
+  it('renders the story card zone when a story is selected', () => {
+    render(<LeftRail {...baseProps} />);
+    expect(screen.getByTestId('lr-story-card')).toBeInTheDocument();
+    // Title appears in story card heading (zone 1) and StoryNavigator tree (zone 2) — use heading role
+    expect(screen.getByRole('heading', { name: 'The Great Novel' })).toBeInTheDocument();
+    expect(screen.getByText(/Fantasy/)).toBeInTheDocument();
   });
 
-  it('collapses the panel column when toggle button is clicked', () => {
-    const onLayoutChange = vi.fn();
-    render(
-      <PanelDragProvider onDrop={vi.fn()}>
-        <LeftRail
-          leftSidebarLayout={DEFAULT_LEFT_SIDEBAR_LAYOUT}
-          onLeftSidebarLayoutChange={onLayoutChange}
-          renderPanelContent={() => null}
-          rightPanelCount={0}
-        />
-      </PanelDragProvider>,
-    );
+  it('renders the STORY NAVIGATOR label', () => {
+    render(<LeftRail {...baseProps} />);
+    expect(screen.getByText('STORY NAVIGATOR')).toBeInTheDocument();
+    expect(screen.getByTestId('lr-nav-zone')).toBeInTheDocument();
+  });
+
+  it('renders the project footer zone', () => {
+    render(<LeftRail {...baseProps} />);
+    expect(screen.getByTestId('lr-project-footer')).toBeInTheDocument();
+    expect(screen.getByText('Words')).toBeInTheDocument();
+    expect(screen.getByText('Scenes')).toBeInTheDocument();
+    expect(screen.getByText('On Track')).toBeInTheDocument();
+  });
+
+  it('shows expand button and hides content when sidebarCollapsed', () => {
+    render(<LeftRail {...baseProps} sidebarCollapsed />);
+    expect(screen.getByTestId('left-rail-collapsed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /expand left sidebar/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('lr-story-card')).not.toBeInTheDocument();
+  });
+
+  it('calls onToggleCollapsed when collapse button is clicked', () => {
+    const onToggle = vi.fn();
+    render(<LeftRail {...baseProps} onToggleCollapsed={onToggle} />);
     fireEvent.click(screen.getByRole('button', { name: /collapse left sidebar/i }));
-    expect(onLayoutChange).toHaveBeenCalledWith(
-      expect.objectContaining({ sidebarCollapsed: true }),
-    );
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it('renders collapsed state when sidebarCollapsed is true', () => {
-    const { container } = render(
-      <PanelDragProvider onDrop={vi.fn()}>
-        <LeftRail
-          leftSidebarLayout={{ ...DEFAULT_LEFT_SIDEBAR_LAYOUT, sidebarCollapsed: true }}
-          onLeftSidebarLayoutChange={vi.fn()}
-          renderPanelContent={() => null}
-          rightPanelCount={0}
-        />
-      </PanelDragProvider>,
-    );
-    expect(container.querySelector('.left-rail--collapsed')).not.toBeNull();
-    expect(container.querySelector('.lr-panel-zone')).toBeNull();
+  it('calls onToggleCollapsed when expand button is clicked from collapsed state', () => {
+    const onToggle = vi.fn();
+    render(<LeftRail {...baseProps} sidebarCollapsed onToggleCollapsed={onToggle} />);
+    fireEvent.click(screen.getByRole('button', { name: /expand left sidebar/i }));
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it('registers vault-graph as an addable left sidebar panel id', () => {
-    renderLeftRail();
-
-    fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-
-    const picker = screen.getByRole('listbox', { name: /available panels/i });
-    expect(within(picker).getByRole('option', { name: 'Graph' })).toBeInTheDocument();
+  it('has no panel controls — no Add Panel, no drag handles, no float buttons', () => {
+    render(<LeftRail {...baseProps} />);
+    expect(screen.queryByText(/add panel/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('⧉')).not.toBeInTheDocument();
+    expect(screen.queryByText('⊞')).not.toBeInTheDocument();
   });
 
-  describe('GH #633 — Writing Coach / Continuity / Scene Preview in left sidebar picker', () => {
-    it('shows Writing Coach in the add-panel picker', () => {
-      renderLeftRail();
-      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-      const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).getByRole('option', { name: 'Writing Coach' })).toBeInTheDocument();
-    });
-
-    it('shows Continuity in the add-panel picker', () => {
-      renderLeftRail();
-      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-      const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).getByRole('option', { name: 'Continuity' })).toBeInTheDocument();
-    });
-
-    it('shows Scene Preview in the add-panel picker', () => {
-      renderLeftRail();
-      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-      const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).getByRole('option', { name: 'Scene Preview' })).toBeInTheDocument();
-    });
-
-    it('hides Writing Coach from picker when already in the layout', () => {
-      const layout = {
-        ...DEFAULT_LEFT_SIDEBAR_LAYOUT,
-        panels: [{ id: 'writing-assistant' as const, collapsed: false }],
-      };
-      render(
-        <PanelDragProvider onDrop={vi.fn()}>
-          <LeftRail
-            leftSidebarLayout={layout}
-            onLeftSidebarLayoutChange={vi.fn()}
-            renderPanelContent={() => null}
-            rightPanelCount={0}
-          />
-        </PanelDragProvider>,
-      );
-      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
-      const picker = screen.getByRole('listbox', { name: /available panels/i });
-      expect(within(picker).queryByRole('option', { name: 'Writing Coach' })).toBeNull();
-    });
+  it('renders no story card when no story selected', () => {
+    render(<LeftRail {...baseProps} selectedStory={null} />);
+    expect(screen.queryByTestId('lr-story-card')).not.toBeInTheDocument();
   });
 });

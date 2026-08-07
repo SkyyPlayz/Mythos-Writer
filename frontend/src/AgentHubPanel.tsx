@@ -104,6 +104,10 @@ interface Props {
   onOpenSuggestionInbox?: () => void;
   /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
   onOpenCoachPage?: () => void;
+  /** M6: Rendered at top of the Assistant tab hub view — Getting Started card. */
+  gettingStartedCard?: import('react').ReactNode;
+  /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
+  continuityPanel?: import('react').ReactNode;
 }
 
 export default function AgentHubPanel({
@@ -126,6 +130,8 @@ export default function AgentHubPanel({
   agentNames,
   onOpenSuggestionInbox,
   onOpenCoachPage,
+  gettingStartedCard,
+  continuityPanel,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
@@ -212,6 +218,8 @@ export default function AgentHubPanel({
                 scene={scene}
                 onOpenSuggestionInbox={onOpenSuggestionInbox}
                 onOpenCoachPage={onOpenCoachPage}
+                gettingStartedCard={gettingStartedCard}
+                continuityPanel={continuityPanel}
               />
         )}
         {activeTab === 'scenes' && <ScenesTab scene={scene} />}
@@ -219,6 +227,30 @@ export default function AgentHubPanel({
         {activeTab === 'references' && <ReferencesTab />}
       </div>
     </div>
+  );
+}
+
+// ── Research Quick Links card (M6) ──────────────────────────────────────────
+
+function ResearchQuickLinksCard() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <section className="ahp-card ahp-card--collapsible" aria-label="Research Quick Links">
+      <button
+        className="ahp-collapsible-header"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        type="button"
+      >
+        <span className="ahp-card-eyebrow">RESEARCH QUICK LINKS</span>
+        <span className="ahp-collapse-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="ahp-quick-links-body">
+          <p className="ahp-stub-text">Quick links to research sources — contents in M9.</p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -231,9 +263,11 @@ interface AgentHubViewProps {
   scene: Scene | null;
   onOpenSuggestionInbox?: () => void;
   onOpenCoachPage?: () => void;
+  gettingStartedCard?: import('react').ReactNode;
+  continuityPanel?: import('react').ReactNode;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
   // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
   // AGENTS card can derive each row's "needs attention" count from the same
   // poll instead of a second one.
@@ -246,6 +280,7 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
   return (
     <div className="ahp-hub">
+      {gettingStartedCard}
       {/* AGENTS card */}
       <section className="ahp-card" aria-label="Agents">
         <header className="ahp-card-header">
@@ -274,6 +309,8 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
       {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
       <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
+      {continuityPanel}
+      <ResearchQuickLinksCard />
     </div>
   );
 }
