@@ -3,10 +3,10 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import type { Manifest, SceneEntry, ChapterEntry, BlockEntry } from './ipc.js';
+import type { Manifest, StoryEntry, PartEntry, SceneEntry, ChapterEntry, BlockEntry } from './ipc.js';
 import { computeSceneBodyLayout } from './sceneBody.js';
 
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 type Raw = Record<string, unknown>;
 
@@ -24,6 +24,9 @@ interface Migration {
 // gets a guaranteed pre-write backup (via `openManifest`'s existing
 // backup-before-migrate path) before its manifest is ever rewritten under the
 // new write behavior.
+// The v2→v3 step (SKY-9017 / M2): wraps each story's flat chapters[] into a
+// single unnamed Part so the Part tier exists in the data model. Idempotent:
+// stories that already have parts[] are left untouched.
 const migrations: Migration[] = [
   {
     toVersion: 1,
@@ -41,6 +44,33 @@ const migrations: Migration[] = [
       ...m,
       schemaVersion: 2,
     }),
+  },
+  {
+    toVersion: 3,
+    // SKY-9017 M2: introduce Part tier. Wrap each story's chapters into one
+    // unnamed Part (title: ""). Idempotent: if parts[] already exists and is
+    // non-empty, skip that story — re-running migration never changes a vault
+    // that has already been migrated.
+    migrate: (m) => {
+      const stories = (m.stories as Raw[] | undefined) ?? [];
+      const migratedStories = stories.map((story) => {
+        const existingParts = story.parts as Raw[] | undefined;
+        if (existingParts && existingParts.length > 0) return story;
+        const chapters = (story.chapters as Raw[] | undefined) ?? [];
+        const now = new Date().toISOString();
+        const part: Raw = {
+          id: `part-migrated-${(story.id as string) ?? 'unknown'}`,
+          title: '',
+          order: 0,
+          note: [],
+          chapters,
+          createdAt: (story.createdAt as string | undefined) ?? now,
+          updatedAt: now,
+        };
+        return { ...story, parts: [part] };
+      });
+      return { ...m, schemaVersion: 3, stories: migratedStories };
+    },
   },
 ];
 
@@ -225,6 +255,10 @@ function stripChapterProse(chapter: ChapterEntry): ChapterEntry {
   return { ...chapter, scenes: (chapter.scenes ?? []).map(stripSceneProse) };
 }
 
+function stripPartProse(part: PartEntry): PartEntry {
+  return { ...part, chapters: (part.chapters ?? []).map(stripChapterProse) };
+}
+
 /**
  * Structure-only persistence (SKY-6596 / GH #893). Scene prose lives in each
  * scene's `.md` file — always written before, or as part of, any manifest
@@ -243,6 +277,7 @@ export function stripEmbeddedProseForPersist(manifest: Manifest): Manifest {
     ...manifest,
     stories: (manifest.stories ?? []).map((story) => ({
       ...story,
+      parts: (story.parts ?? []).map(stripPartProse),
       chapters: (story.chapters ?? []).map(stripChapterProse),
     })),
     chapters: (manifest.chapters ?? []).map(stripChapterProse),
@@ -361,18 +396,18 @@ export function pruneOrphanScenes(manifest: Manifest, vaultRoot: string): PruneR
 
   const cleanedScenes = filterScenes(manifest.scenes);
 
+  const cleanChapter = (ch: ChapterEntry) => ({ ...ch, scenes: filterScenes(ch.scenes) });
+
   const cleanedStories = (manifest.stories ?? []).map((story) => ({
     ...story,
-    chapters: (story.chapters ?? []).map((ch) => ({
-      ...ch,
-      scenes: filterScenes(ch.scenes),
+    parts: (story.parts ?? []).map((part) => ({
+      ...part,
+      chapters: (part.chapters ?? []).map(cleanChapter),
     })),
+    chapters: (story.chapters ?? []).map(cleanChapter),
   }));
 
-  const cleanedChapters = (manifest.chapters ?? []).map((ch) => ({
-    ...ch,
-    scenes: filterScenes(ch.scenes),
-  }));
+  const cleanedChapters = (manifest.chapters ?? []).map(cleanChapter);
 
   return {
     manifest: {

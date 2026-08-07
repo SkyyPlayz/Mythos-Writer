@@ -328,6 +328,57 @@
 .book-preview-empty__title { font-size: 1.1rem; font-weight: 600; color: var(--text-body); margin: 0; }
 .book-preview-empty__hint { font-size: 0.9rem; color: var(--text-muted); margin: 0; text-align: center; max-width: 360px; }
 
+/* ── M2: author byline ── */
+.book-preview__byline {
+  font-size: 1rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0 0 4px;
+  letter-spacing: 0.04em;
+}
+
+/* ── M2: part section ── */
+.book-preview__part { margin: 3rem 0; }
+
+.book-preview__part-head {
+  text-align: center;
+  padding: 2rem 0 1.5rem;
+  border-top: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.08));
+  margin-bottom: 2rem;
+}
+
+.book-preview__part-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--n1, #00f0ff);
+  margin-bottom: 0.5rem;
+}
+
+.book-preview__part-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-body);
+}
+
+/* ── M2: epigraphs (part + chapter) ── */
+.book-preview__epigraph {
+  margin: 1rem auto 1.5rem;
+  max-width: 32em;
+  padding: 0 1rem;
+  border-left: none;
+  font-style: italic;
+  color: var(--text-muted);
+  opacity: 0.85;
+  text-align: center;
+}
+
+.book-preview__epigraph--part { font-size: 0.95rem; }
+.book-preview__epigraph--chapter { font-size: 0.9rem; }
+
 @media (prefers-reduced-motion: reduce) {
   .book-preview__export { transition: none; }
   .book-preview__export:hover { transform: none; }

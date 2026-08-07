@@ -817,3 +817,64 @@
   background: var(--gs2, rgba(155, 95, 255, 0.12));
   border-bottom-style: solid;
 }
+
+/* ── M2 (SKY-9017): Part heading (H1), chapter/part epigraph, note affordance ── */
+
+.msv-part-heading {
+  margin: 2.8em 0 1.4em;
+  text-align: center;
+}
+
+.msv-part-heading-label {
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  color: var(--n1, #00f0ff);
+  text-shadow: 0 0 14px var(--g1, rgba(0, 240, 255, 0.4));
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+}
+
+.msv-part-heading-title {
+  font-size: 1.8em;
+  font-weight: 600;
+  color: var(--txH, #eef2fb);
+  margin-top: 0.3em;
+  line-height: 1.2;
+}
+
+/* Epigraph — filled note content: italic, centered, visually set apart. */
+.msv-epigraph {
+  font-style: italic;
+  text-align: center;
+  color: var(--txB, #c8d3e7);
+  opacity: 0.75;
+  margin: 0.8em auto 1.6em;
+  max-width: 70%;
+  font-size: 0.9em;
+  line-height: 1.65;
+  border-left: none;
+}
+
+/* "+ PART NOTE" / "+ CHAPTER NOTE" affordance (ghost button). */
+.msv-note-affordance {
+  display: block;
+  margin: 0.4em 0 1em;
+  padding: 0.3em 0.7em;
+  border-radius: 7px;
+  border: 1px dashed rgba(255, 255, 255, 0.13);
+  color: #7d8dab;
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  background: none;
+  text-transform: uppercase;
+}
+
+.msv-note-affordance:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.4));
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.05));
+}

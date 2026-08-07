@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { Story, Chapter, Scene } from './types';
+import type { Story, Chapter, Scene, Part } from './types';
 import { countWords } from './wordStats';
 import './StoryNavigator.css';
 
@@ -14,6 +14,11 @@ interface Props {
   onReorderScenes?: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
+  onCreatePart?: () => void;
+}
+
+function isSimpleSinglePart(story: Story): boolean {
+  return !story.parts || story.parts.length === 0 || (story.parts.length === 1 && story.parts[0].title === '');
 }
 
 export default function StoryNavigator({
@@ -27,10 +32,14 @@ export default function StoryNavigator({
   onReorderScenes,
   showTemplateCta = false,
   onTemplateCtaClick,
+  onCreatePart: _onCreatePart,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
     new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
+  );
+  const [expandedParts, setExpandedParts] = useState<Set<string>>(
+    new Set(stories.flatMap((s) => s.parts?.map((p) => p.id) ?? []))
   );
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
 
@@ -41,19 +50,30 @@ export default function StoryNavigator({
   // the touched scene's words are recounted on each edit.
   const sceneWordCounts = useMemo<Map<string, number>>(() => {
     const result = new Map<string, number>();
+
+    const processChapter = (chapter: Chapter) => {
+      for (const scene of chapter.scenes) {
+        if (result.has(scene.id)) continue; // deduplicate
+        const contentKey = scene.blocks.map((b) => b.content).join('\x00');
+        const cached = wordCountCacheRef.current.get(scene.id);
+        let count: number;
+        if (cached?.contentKey === contentKey) {
+          count = cached.count;
+        } else {
+          count = scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0);
+          wordCountCacheRef.current.set(scene.id, { contentKey, count });
+        }
+        result.set(scene.id, count);
+      }
+    };
+
     for (const story of stories) {
       for (const chapter of story.chapters) {
-        for (const scene of chapter.scenes) {
-          const contentKey = scene.blocks.map((b) => b.content).join('\x00');
-          const cached = wordCountCacheRef.current.get(scene.id);
-          let count: number;
-          if (cached?.contentKey === contentKey) {
-            count = cached.count;
-          } else {
-            count = scene.blocks.reduce((sum, b) => sum + countWords(b.content), 0);
-            wordCountCacheRef.current.set(scene.id, { contentKey, count });
-          }
-          result.set(scene.id, count);
+        processChapter(chapter);
+      }
+      for (const part of story.parts ?? []) {
+        for (const chapter of part.chapters) {
+          processChapter(chapter);
         }
       }
     }
@@ -101,6 +121,13 @@ export default function StoryNavigator({
 
   const toggleChapter = (id: string) =>
     setExpandedChapters((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const togglePart = (id: string) =>
+    setExpandedParts((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -156,7 +183,10 @@ export default function StoryNavigator({
         )}
 
         {stories.map((story) => {
-          const storyWordCount = story.chapters.reduce(
+          const allChapters = isSimpleSinglePart(story)
+            ? story.chapters
+            : (story.parts ?? []).flatMap((p) => p.chapters);
+          const storyWordCount = allChapters.reduce(
             (sum, ch) => sum + ch.scenes.reduce((s, sc) => s + (sceneWordCounts.get(sc.id) ?? 0), 0),
             0,
           );
@@ -189,7 +219,7 @@ export default function StoryNavigator({
               >+</button>
             </div>
 
-            {expandedStories.has(story.id) &&
+            {expandedStories.has(story.id) && isSimpleSinglePart(story) &&
               [...story.chapters].sort((a, b) => a.order - b.order).map((chapter) => {
                 const chapterWordCount = chapter.scenes.reduce(
                   (sum, sc) => sum + (sceneWordCounts.get(sc.id) ?? 0),
@@ -269,6 +299,104 @@ export default function StoryNavigator({
                   })()}
                 </div>
               )})}
+
+            {expandedStories.has(story.id) && !isSimpleSinglePart(story) &&
+              [...(story.parts ?? [])].sort((a, b) => a.order - b.order).map((part: Part, partIdx) => (
+                <div key={part.id} className="nav-part">
+                  <div className="nav-part-row">
+                    <button
+                      className="nav-part-toggle"
+                      aria-expanded={expandedParts.has(part.id)}
+                      onClick={() => togglePart(part.id)}
+                    >
+                      <span className="nav-chevron">{expandedParts.has(part.id) ? '▾' : '▸'}</span>
+                      <span className="nav-part-label">
+                        {part.title ? `Part ${partIdx + 1}: ${part.title}` : `Part ${partIdx + 1}`}
+                      </span>
+                    </button>
+                  </div>
+                  {expandedParts.has(part.id) &&
+                    [...part.chapters].sort((a, b) => a.order - b.order).map((chapter) => {
+                      const chapterWordCount = chapter.scenes.reduce(
+                        (sum, sc) => sum + (sceneWordCounts.get(sc.id) ?? 0),
+                        0,
+                      );
+                      return (
+                        <div key={chapter.id} className="nav-chapter">
+                          <div className="nav-chapter-row">
+                            <button
+                              className="nav-chapter-toggle"
+                              aria-expanded={expandedChapters.has(chapter.id)}
+                              onClick={() => toggleChapter(chapter.id)}
+                            >
+                              <span className="nav-chevron">{expandedChapters.has(chapter.id) ? '▾' : '▸'}</span>
+                              <span className="nav-chapter-title">{chapter.title}</span>
+                            </button>
+                            {chapterWordCount > 0 && (
+                              <span className="nav-wordcount" aria-label={`${chapterWordCount.toLocaleString()} words`}>
+                                {chapterWordCount.toLocaleString()}
+                              </span>
+                            )}
+                            <button
+                              className="nav-inline-add"
+                              onClick={(e) => { e.stopPropagation(); onCreateScene(story.id, chapter.id); }}
+                              aria-label="Add scene"
+                              title="Add scene"
+                            >+</button>
+                          </div>
+                          {expandedChapters.has(chapter.id) && (() => {
+                            const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
+                            return sortedScenes.map((scene) => {
+                              const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
+                              return (
+                                <div
+                                  key={scene.id}
+                                  className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
+                                  role="button"
+                                  tabIndex={0}
+                                  aria-current={selectedSceneId === scene.id ? 'true' : undefined}
+                                  aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
+                                  draggable
+                                  onDragStart={() => setDraggedSceneId(scene.id)}
+                                  onDragEnd={() => setDraggedSceneId(null)}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
+                                  onDrop={() => {
+                                    if (!draggedSceneId || draggedSceneId === scene.id) return;
+                                    const orderedSceneIds = [...chapter.scenes]
+                                      .sort((a, b) => a.order - b.order)
+                                      .map((s) => s.id);
+                                    const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
+                                    const targetIndex = orderedSceneIds.indexOf(scene.id);
+                                    if (sourceIndex === -1 || targetIndex === -1) return;
+                                    orderedSceneIds.splice(sourceIndex, 1);
+                                    orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
+                                    onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
+                                    setDraggedSceneId(null);
+                                  }}
+                                  onClick={() => onSelectScene(scene, chapter, story)}
+                                >
+                                  <span className="nav-scene-icon">◆</span>
+                                  <span className="nav-scene-title">{scene.title}</span>
+                                  {scene.draftState && scene.draftState !== 'in-progress' && (
+                                    <span className={`nav-draft-badge draft-${scene.draftState}`}>
+                                      {scene.draftState}
+                                    </span>
+                                  )}
+                                  {sceneWC > 0 && (
+                                    <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
+                                      {sceneWC.toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      );
+                    })}
+                </div>
+              ))}
           </div>
         )})}
       </div>

@@ -18,7 +18,7 @@
 // no-op (ReaderBar toasts instead of dying, §1.2).
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import type { Story } from '../types';
+import type { Story, Chapter } from '../types';
 import { segmentsFor, useStoryComments, type StoryComment } from '../comments';
 import { countWords } from '../wordStats';
 import ReaderBar from './ReaderBar';
@@ -82,6 +82,42 @@ const KIND_AUTHOR_FALLBACK: Record<string, string> = {
   beta: 'Beta Reader',
 };
 
+// M2 (SKY-9017): true when the story has no parts or exactly one untitled part.
+// In that case no part chrome is rendered anywhere.
+function isSimpleSinglePart(story: Story): boolean {
+  return !story.parts || story.parts.length === 0 || (story.parts.length === 1 && story.parts[0].title === '');
+}
+
+const ORDINAL_WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN'];
+
+function partLabel(index: number): string {
+  return `PART ${ORDINAL_WORDS[index] ?? String(index + 1)}`;
+}
+
+// Strip a leading "Chapter N:" or "Chapter N —" prefix from a chapter title for compile display.
+// Spec §6: "a chapter title beginning Chapter N: has that prefix stripped for display".
+function stripChapterNumberPrefix(title: string): string {
+  return title.replace(/^Chapter\s+\d+\s*[:—–-]\s*/i, '');
+}
+
+function computeChapterSections(chapters: Chapter[]) {
+  return chapters.map((ch) => ({
+    chapter: ch,
+    scenes: [...ch.scenes]
+      .sort((a, b) => a.order - b.order)
+      .filter((sc) => sc.blocks.some((b) => b.content.trim())),
+  }));
+}
+
+// Flatten all chapters from the story, respecting parts order when present
+function getOrderedChapters(story: Story): Chapter[] {
+  if (isSimpleSinglePart(story)) {
+    return [...story.chapters].sort((a, b) => a.order - b.order);
+  }
+  const parts = [...(story.parts ?? [])].sort((a, b) => a.order - b.order);
+  return parts.flatMap((p) => [...p.chapters].sort((a, b) => a.order - b.order));
+}
+
 export default function BookPreview({
   story,
   pageWidth,
@@ -131,19 +167,19 @@ export default function BookPreview({
   }, [readingKey, readingRange]);
 
   const chapters = useMemo(
-    () => (story ? [...story.chapters].sort((a, b) => a.order - b.order) : []),
+    () => (story ? getOrderedChapters(story) : []),
     [story],
   );
 
   const chapterSections = useMemo(
-    () =>
-      chapters.map((ch) => ({
-        chapter: ch,
-        scenes: [...ch.scenes]
-          .sort((a, b) => a.order - b.order)
-          .filter((sc) => sc.blocks.some((b) => b.content.trim())),
-      })),
+    () => computeChapterSections(chapters),
     [chapters],
+  );
+
+  // M2: sorted parts (only used when not simple)
+  const orderedParts = useMemo(
+    () => (story && !isSimpleSinglePart(story) ? [...(story.parts ?? [])].sort((a, b) => a.order - b.order) : null),
+    [story],
   );
 
   const totalWords = useMemo(
@@ -200,19 +236,93 @@ export default function BookPreview({
             <h1 ref={headerRef} className="book-preview__story-title" tabIndex={-1}>
               {story.title}
             </h1>
+            {story.author && <p className="book-preview__byline">{story.author}</p>}
             {story.synopsis && <p className="book-preview__synopsis">{story.synopsis}</p>}
           </header>
 
-          {chapterSections.map(({ chapter, scenes }, ci) => (
-            <section key={chapter.id} className="book-preview__chapter" aria-labelledby={`bp-ch-${chapter.id}`}>
-              <div className="book-preview__chapter-head">
-                <div className="book-preview__chapter-kicker" aria-hidden="true">CHAPTER {ci + 1}</div>
-                <h2 className="book-preview__chapter-title" id={`bp-ch-${chapter.id}`}>{chapter.title}</h2>
-              </div>
-              {scenes.length === 0 ? (
-                <p className="book-preview__no-content">— no written scenes in this chapter —</p>
-              ) : (
-                scenes.map((scene, si) => {
+          {orderedParts ? (
+            // M2: multi-part or titled-part — render Part heading pages
+            orderedParts.map((part, pi) => {
+              const partChapters = [...part.chapters].sort((a, b) => a.order - b.order);
+              const partSections = computeChapterSections(partChapters);
+              // Global chapter index for CHAPTER N label (continuous across parts)
+              const chapterOffset = orderedParts.slice(0, pi).reduce((s, p2) => s + p2.chapters.length, 0);
+              return (
+                <section key={part.id} className="book-preview__part">
+                  <div className="book-preview__part-head">
+                    <div className="book-preview__part-label" aria-hidden="true">{partLabel(pi)}</div>
+                    {part.title && <h2 className="book-preview__part-title">{part.title}</h2>}
+                  </div>
+                  {part.note && part.note.length > 0 && part.note[0].content.trim() && (
+                    <blockquote className="book-preview__epigraph book-preview__epigraph--part">
+                      {part.note[0].content}
+                    </blockquote>
+                  )}
+                  {partSections.map(({ chapter, scenes }, ci) => {
+                    const globalCi = chapterOffset + ci;
+                    const displayTitle = stripChapterNumberPrefix(chapter.title);
+                    return (
+                      <section key={chapter.id} className="book-preview__chapter" aria-labelledby={`bp-ch-${chapter.id}`}>
+                        <div className="book-preview__chapter-head">
+                          <div className="book-preview__chapter-kicker" aria-hidden="true">CHAPTER {globalCi + 1}</div>
+                          <h3 className="book-preview__chapter-title" id={`bp-ch-${chapter.id}`}>{displayTitle}</h3>
+                        </div>
+                        {chapter.note && chapter.note.length > 0 && chapter.note[0].content.trim() && (
+                          <blockquote className="book-preview__epigraph book-preview__epigraph--chapter">
+                            {chapter.note[0].content}
+                          </blockquote>
+                        )}
+                        {scenes.length === 0 ? (
+                          <p className="book-preview__no-content">— no written scenes in this chapter —</p>
+                        ) : (
+                          scenes.map((scene, si) => {
+                            const sceneComments = comments.filter((c) => c.sceneId === scene.id);
+                            const sortedBlocks = [...scene.blocks]
+                              .sort((a, b) => a.order - b.order)
+                              .filter((b) => b.content.trim());
+                            return (
+                              <article key={scene.id} className="book-preview__scene" aria-label={`Scene ${si + 1} of ${chapter.title}`}>
+                                {si > 0 && <div className="book-preview__scene-sep" aria-hidden="true">◆ ◆ ◆</div>}
+                                {sortedBlocks.map((block) => {
+                                  const segs = sceneComments.length > 0 ? segmentsFor(block.content, sceneComments) : null;
+                                  return (
+                                    <p key={block.id} data-fbp-block={block.id} className={`book-preview__para${readingKey === block.id ? ' book-preview__para--reading' : ''}`}>
+                                      {segs ? segs.map((s, i) => s.comment
+                                        ? <span key={`${s.comment.id}-${i}`} className={`book-anchor book-anchor--${s.comment.kind}`}>{s.text}</span>
+                                        : <span key={`t-${i}`}>{s.text}</span>
+                                      ) : block.content}
+                                    </p>
+                                  );
+                                })}
+                              </article>
+                            );
+                          })
+                        )}
+                      </section>
+                    );
+                  })}
+                </section>
+              );
+            })
+          ) : (
+            // Simple single-part (or no parts): current flat chapter render
+            chapterSections.map(({ chapter, scenes }, ci) => {
+              const displayTitle = stripChapterNumberPrefix(chapter.title);
+              return (
+              <section key={chapter.id} className="book-preview__chapter" aria-labelledby={`bp-ch-${chapter.id}`}>
+                <div className="book-preview__chapter-head">
+                  <div className="book-preview__chapter-kicker" aria-hidden="true">CHAPTER {ci + 1}</div>
+                  <h2 className="book-preview__chapter-title" id={`bp-ch-${chapter.id}`}>{displayTitle}</h2>
+                </div>
+                {chapter.note && chapter.note.length > 0 && chapter.note[0].content.trim() && (
+                  <blockquote className="book-preview__epigraph book-preview__epigraph--chapter">
+                    {chapter.note[0].content}
+                  </blockquote>
+                )}
+                {scenes.length === 0 ? (
+                  <p className="book-preview__no-content">— no written scenes in this chapter —</p>
+                ) : (
+                  scenes.map((scene, si) => {
                   const sceneComments = comments.filter((c) => c.sceneId === scene.id);
                   const sortedBlocks = [...scene.blocks]
                     .sort((a, b) => a.order - b.order)
@@ -267,7 +377,9 @@ export default function BookPreview({
                 })
               )}
             </section>
-          ))}
+              );
+            })
+          )}
 
           <div className="book-preview__end" aria-hidden="true">— END OF DRAFT —</div>
         </div>

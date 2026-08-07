@@ -70,8 +70,9 @@ export function stepScene(ctx: StepSceneContext): StepSceneTarget | null {
     return { scene, chapter, story: selectedStory };
   }
 
-  // depth === 'part' — every story is one implicit part until M2 lands the
-  // Parts data model (SKY-9017), so there is never a sibling part to step to.
+  // depth === 'part' — M2 (SKY-9017) landed the Parts data model; stepScene
+  // operates on Story-level navigation and does not resolve part siblings here
+  // (ManuscriptView's zoomStep / flatUnits handles intra-story part stepping).
   if (depth === 'part') return null;
 
   // depth === 'book' — Story has no order field; use array position (manifest order)
@@ -124,7 +125,8 @@ export function computeStepState(
     };
   }
 
-  // depth === 'part' — single implicit part until M2 (SKY-9017): no stepping.
+  // depth === 'part' — M2 (SKY-9017) landed; inter-story part stepping is not
+  // applicable here (ManuscriptView's zoomStep handles intra-story parts).
   if (depth === 'part') {
     return { canPrev: false, canNext: false, contextLabel: selectedStory.title };
   }
