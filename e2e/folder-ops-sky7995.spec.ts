@@ -343,9 +343,6 @@ test('FO-05: renaming a folder renames the directory on disk, contents intact', 
 // ─── FO-06: Delete a folder with contents ────────────────────────────────────
 
 test('FO-06: deleting a folder recursively removes it and its contents on disk', async () => {
-  // SKY-9347: depends on FO-05's Worldbuilding→Cosmology rename, which is
-  // win32-gated above — without it there is no Cosmology row to delete.
-  test.fixme(process.platform === 'win32', 'SKY-9347: depends on win32-gated FO-05');
   await page.locator('[data-testid="vb-row-Cosmology"]').click({ button: 'right' });
   await page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-delete"]').click();
 
