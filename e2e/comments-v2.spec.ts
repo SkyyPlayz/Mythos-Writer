@@ -209,7 +209,7 @@ async function openManuscript(pg: Page): Promise<void> {
   await sceneRow.click();
   await expect(pg.locator('.ProseMirror').first()).toBeVisible({ timeout: 15_000 });
   // Scene depth → chapter depth: the manuscript view with the comments gutter.
-  const chapterBtn = pg.getByTestId('depth-slider').getByRole('button', { name: /^chapter$/i });
+  const chapterBtn = pg.getByTestId('msv-zoom-chapter');
   await chapterBtn.click();
   await expect(pg.locator('.chapter-continuous-view')).toBeVisible({ timeout: 10_000 });
 }

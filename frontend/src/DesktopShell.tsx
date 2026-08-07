@@ -73,7 +73,6 @@ import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import ProjectSwitcher from './ProjectSwitcher';
-import DepthSlider from './DepthSlider';
 import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
@@ -4022,6 +4021,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Nav state + stepping are delegated to the pure stepScene selector so the
   // header arrows cross chapter/story boundaries within the active depth band
   // (bounded at the very first/last scene of the story). See stepScene.ts.
+  // SKY-9421: canPrev/canNext still drive ManuscriptView's edgeNav (the
+  // on-canvas page-edge arrows) even though the old DepthSlider is gone.
 
   const depthStepState = useMemo(
     () => computeStepState(viewDepth, selectedScene, selectedChapter, selectedStory, stories),
@@ -4029,13 +4030,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   );
   const depthCanPrev = depthStepState.canPrev;
   const depthCanNext = depthStepState.canNext;
-  const depthContextLabel = depthStepState.contextLabel;
-
-  // §6: empty state — depth=scene but selected chapter has no scenes
-  const depthIsEmpty = useMemo(
-    () => viewDepth === 'scene' && selectedChapter !== null && selectedChapter.scenes.length === 0,
-    [viewDepth, selectedChapter],
-  );
 
   // Apply a stepScene target: open the scene when present, otherwise focus the
   // chapter/story (empty chapter or scene-less story edge cases).
@@ -4062,14 +4056,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       stepScene({ direction: 'next', depth: viewDepth, selectedScene, selectedChapter, selectedStory, stories }),
     );
   }, [viewDepth, selectedScene, selectedChapter, selectedStory, stories, applyStepTarget]);
-
-  const handleViewDepthChange = useCallback((newDepth: ZoomLevel) => {
-    setViewDepth(newDepth);
-    if (newDepth === 'scene' && !selectedScene && selectedChapter && selectedStory) {
-      const first = [...selectedChapter.scenes].sort((a, b) => a.order - b.order)[0];
-      if (first) handleSelectScene(first, selectedChapter, selectedStory);
-    }
-  }, [selectedScene, selectedChapter, selectedStory, handleSelectScene, setViewDepth]);
 
   // SKY-1699: word counts for both panes in split mode — must be before early returns (rules-of-hooks).
   const splitWordCounts = useMemo(() => {
@@ -4715,6 +4701,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ),
   };
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
+  // "Show tabs" (FocusModeSection) used to gate only the DepthSlider; SKY-9421
+  // repoints it at the toolbar row that DepthSlider lived in, so the Focus
+  // Mode preference keeps doing something instead of going silently inert.
   const showTabBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTabBar);
   const showStatusOverlay = distractionFree && focusPrefs.showStatusBar;
 
@@ -5075,25 +5064,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         {/* Beta 3 M3: slot-B breathing border (prototype brC, delay .8) */}
         <BorderOverlay settings={appSettings?.liquidNeonV2} slot={2} delay={0.8} />
         <div className="shell-editor">
-          {/* SKY-1699/SKY-1700: Writing toolbar — DepthSlider + split toggle + layout picker */}
+          {/* SKY-1699/SKY-1700: Writing toolbar — split toggle + layout picker.
+              SKY-9421 (M1): the DepthSlider that used to special-case scene
+              depth here is gone — ManuscriptView's own row-4 zoom bar
+              (.msv-zoombar) is depth-invariant and is the single zoom bar at
+              every depth, including scene. showTabBar (Focus Mode's "Show
+              tabs" toggle) now gates this whole row instead of just
+              DepthSlider, so the preference keeps doing something. */}
+          {showTabBar && (
           <div className="shell-editor-toolbar">
-            {/* W0.4 (GAP P0#4): at book/chapter depth the ManuscriptView's own
-                doc header (zoom seg + breadcrumbs) is the single zoom bar —
-                the DepthSlider only mounts at scene depth, where that header
-                doesn't render. Exactly one zoom seg in the DOM at any time. */}
-            {selectedStory && showTabBar && !splitWindowEnabled && viewDepth === 'scene' && (
-              <DepthSlider
-                depth={viewDepth}
-                onDepthChange={handleViewDepthChange}
-                canPrev={depthCanPrev}
-                canNext={depthCanNext}
-                onPrev={handleDepthPrev}
-                onNext={handleDepthNext}
-                contextLabel={depthContextLabel}
-                writingMode={writingMode}
-                isEmpty={depthIsEmpty}
-              />
-            )}
             {/* SKY-3626: N/F/E writing-mode controls — Story editor only (center, above page) */}
             <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
               <button
@@ -5168,6 +5147,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               onManage={() => setLayoutManagerOpen(true)}
             />
           </div>
+          )}
 
           {splitWindowEnabled ? (
             /* SKY-1699: 2-pane split view */

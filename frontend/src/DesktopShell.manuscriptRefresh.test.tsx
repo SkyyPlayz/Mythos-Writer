@@ -11,7 +11,7 @@
 // ManuscriptView render — so it exercises the actual DesktopShell closures
 // that SKY-8587 found broken.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import App from './App';
 
 const STORY_ID = 'story-1';
@@ -87,6 +87,11 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
     writeVault: vi.fn().mockResolvedValue({ path: 'x.md', bytes: 10 }),
     onVaultFileChanged: () => () => {},
     entityList: vi.fn().mockResolvedValue({ entities: [] }),
+    // SKY-130: openChapterZoom now clicks the real msv-zoom-chapter button
+    // (SKY-9421 retired the DepthSlider it used to click instead), which
+    // resolves a scene at the target cursor and goes through
+    // handleSelectScene's session-restore save.
+    sessionSaveScene: vi.fn().mockResolvedValue({ saved: true }),
     ...overrides,
   };
 }
@@ -100,8 +105,8 @@ beforeEach(() => {
  * ManuscriptView render path with grips + contentEditable paragraph rows. */
 async function openChapterZoom(): Promise<void> {
   await screen.findByRole('navigation', { name: 'Main navigation' });
-  const depthSlider = await screen.findByTestId('depth-slider');
-  fireEvent.click(within(depthSlider).getByRole('button', { name: /^chapter$/i }));
+  const chapterZoomBtn = await screen.findByTestId('msv-zoom-chapter');
+  fireEvent.click(chapterZoomBtn);
   await screen.findByTestId(`msv-para-${BLOCK_A}`);
 }
 

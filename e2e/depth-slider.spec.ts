@@ -1,9 +1,23 @@
 /**
- * depth-slider.spec.ts — SKY-2441
+ * depth-slider.spec.ts — SKY-2441 (retargeted SKY-9421)
  *
- * E2E tests for the in-editor depth slider + left/right scene navigator.
+ * E2E tests for depth (zoom-level) switching + left/right scene navigation
+ * in the manuscript editor.
  *
- *   TC-DS-01  Visible on select   — depth slider bar appears when scene selected
+ * SKY-9421: the standalone shell-level DepthSlider component this file used
+ * to exercise (data-testid="depth-slider") is gone — it duplicated
+ * ManuscriptView's own depth-invariant row-4 zoom bar (.msv-zoombar,
+ * data-testid="msv-zoom-<level>") once that zoom bar started rendering at
+ * every depth including scene (M1-S3/M1-S4). Depth switching now goes
+ * through msv-zoom-<level>; prev/next sibling stepping (which the zoom bar's
+ * own chevrons don't reproduce — those wrap within the current depth band
+ * instead of crossing chapter/story boundaries) goes through the on-canvas
+ * edge arrows (data-testid="edge-arrow-prev"/"edge-arrow-next"), which share
+ * the same handleDepthPrev/handleDepthNext + depthCanPrev/depthCanNext state
+ * DepthSlider used to expose. Breadcrumbs (data-testid="msv-crumbs") replace
+ * the old .depth-context-label.
+ *
+ *   TC-DS-01  Visible on select   — the zoom bar appears when a scene is selected
  *   TC-DS-02  Scene→Chapter view  — clicking "Chapter" depth button shows chapter doc view
  *   TC-DS-03  Chapter→Book view   — clicking "Full Book" shows book outline view
  *   TC-DS-04  Book→Scene view     — clicking "Scene" returns to block editor
@@ -182,12 +196,13 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
 
   // ─── TC-DS-01 ─────────────────────────────────────────────────────────────
 
-  test('TC-DS-01: depth slider bar is visible after selecting a scene', async () => {
-    await expect(page.getByTestId('depth-slider')).toBeVisible({ timeout: 6_000 });
+  test('TC-DS-01: the manuscript zoom bar is visible after selecting a scene', async () => {
+    await expect(page.locator('.msv-zoombar')).toBeVisible({ timeout: 6_000 });
+    await expect(page.getByTestId('msv-zoom-scene')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('TC-DS-01b: context label shows chapter and scene name at depth=scene', async () => {
-    await expect(page.locator('.depth-context-label')).toContainText('Scene One', { timeout: 4_000 });
+  test('TC-DS-01b: breadcrumbs show chapter and scene name at depth=scene', async () => {
+    await expect(page.getByTestId('msv-crumbs')).toContainText('Scene One', { timeout: 4_000 });
   });
 
   // ─── SKY-5904 ─────────────────────────────────────────────────────────────
@@ -237,26 +252,21 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
   // ─── TC-DS-02 ─────────────────────────────────────────────────────────────
 
   test('TC-DS-02: clicking "Chapter" depth button shows chapter doc view', async () => {
-    const chapterBtn = page.getByRole('button', { name: /chapter/i }).filter({ hasNot: page.locator('.nav-chapter-toggle') });
-    // The depth slider track has a "Chapter" button — find it within the depth slider
-    const depthChapterBtn = page.getByTestId('depth-slider').getByRole('button', { name: /^chapter$/i });
-    await depthChapterBtn.click();
+    const chapterBtn = page.getByTestId('msv-zoom-chapter');
+    await chapterBtn.click();
     // SKY-3211: ChapterDocView was replaced with ChapterContinuousView (per-scene editable bands)
     await expect(page.locator('.chapter-continuous-view')).toBeVisible({ timeout: 4_000 });
   });
 
   // ─── TC-DS-03 ─────────────────────────────────────────────────────────────
-  // W0.4 (GAP P0#4): at chapter/book depth the manuscript's own doc header is
-  // the single zoom bar (the top-bar DepthSlider only mounts at scene depth),
-  // so zoom clicks from those depths go through the msv zoom segment.
+  // M1-S3/M1-S4 (SKY-9013/SKY-9404): the manuscript's own row-4 zoom bar
+  // (.msv-zoombar) is depth-invariant — it renders identically at every
+  // depth, including scene — so zoom clicks always go through msv-zoom-*.
 
   test('TC-DS-03: clicking "Full Book" zoom button shows book outline view', async () => {
     const msvBookBtn = page.getByTestId('msv-zoom-book');
     await msvBookBtn.click();
     await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
-    // W0.4 acceptance: exactly one zoom seg in the DOM — the DepthSlider is
-    // unmounted while the manuscript doc header shows its zoom segment.
-    await expect(page.getByTestId('depth-slider')).toHaveCount(0);
     await expect(page.getByTestId('msv-tb-read')).toHaveCount(1);
   });
 
@@ -266,45 +276,44 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
     const msvSceneBtn = page.getByTestId('msv-zoom-scene');
     await msvSceneBtn.click();
     await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
-    // The scene editor is where the DepthSlider (single zoom seg) mounts.
-    await expect(page.getByTestId('depth-slider')).toBeVisible({ timeout: 4_000 });
+    await expect(msvSceneBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
   // ─── TC-DS-07 boundary (before nav tests move us away from Scene One) ─────
 
-  test('TC-DS-07a: Prev button is disabled at the first scene', async () => {
-    await expect(page.getByTestId('depth-slider').getByRole('button', { name: /previous/i })).toBeDisabled({ timeout: 4_000 });
+  test('TC-DS-07a: Prev arrow is disabled at the first scene', async () => {
+    await expect(page.getByTestId('edge-arrow-prev')).toBeDisabled({ timeout: 4_000 });
   });
 
-  test('TC-DS-07b: Next button is enabled at the first scene', async () => {
-    await expect(page.getByTestId('depth-slider').getByRole('button', { name: /next/i })).toBeEnabled({ timeout: 4_000 });
+  test('TC-DS-07b: Next arrow is enabled at the first scene', async () => {
+    await expect(page.getByTestId('edge-arrow-next')).toBeEnabled({ timeout: 4_000 });
   });
 
   // ─── TC-DS-05 ─────────────────────────────────────────────────────────────
 
-  test('TC-DS-05: Next button advances to the next sibling scene', async () => {
-    await page.getByTestId('depth-slider').getByRole('button', { name: /next/i }).click();
-    // Context label must update to Scene Two
-    await expect(page.locator('.depth-context-label')).toContainText('Scene Two', { timeout: 4_000 });
+  test('TC-DS-05: Next arrow advances to the next sibling scene', async () => {
+    await page.getByTestId('edge-arrow-next').click();
+    // Breadcrumbs must update to Scene Two
+    await expect(page.getByTestId('msv-crumbs')).toContainText('Scene Two', { timeout: 4_000 });
     // Block editor is still showing (depth stays at scene)
     await expect(page.locator('.shell-editor-scene-wrap')).toBeVisible({ timeout: 4_000 });
   });
 
   // ─── TC-DS-07 boundary at Scene Two ──────────────────────────────────────
 
-  test('TC-DS-07c: Next button is disabled at the last scene', async () => {
-    await expect(page.getByTestId('depth-slider').getByRole('button', { name: /next/i })).toBeDisabled({ timeout: 4_000 });
+  test('TC-DS-07c: Next arrow is disabled at the last scene', async () => {
+    await expect(page.getByTestId('edge-arrow-next')).toBeDisabled({ timeout: 4_000 });
   });
 
-  test('TC-DS-07d: Prev button is enabled at the last scene', async () => {
-    await expect(page.getByTestId('depth-slider').getByRole('button', { name: /previous/i })).toBeEnabled({ timeout: 4_000 });
+  test('TC-DS-07d: Prev arrow is enabled at the last scene', async () => {
+    await expect(page.getByTestId('edge-arrow-prev')).toBeEnabled({ timeout: 4_000 });
   });
 
   // ─── TC-DS-06 ─────────────────────────────────────────────────────────────
 
-  test('TC-DS-06: Prev button navigates back to the previous scene', async () => {
-    await page.getByTestId('depth-slider').getByRole('button', { name: /previous/i }).click();
-    await expect(page.locator('.depth-context-label')).toContainText('Scene One', { timeout: 4_000 });
+  test('TC-DS-06: Prev arrow navigates back to the previous scene', async () => {
+    await page.getByTestId('edge-arrow-prev').click();
+    await expect(page.getByTestId('msv-crumbs')).toContainText('Scene One', { timeout: 4_000 });
   });
 
   // ─── SKY-6010 regression: Part zoom must not snap back to Book ────────────
@@ -316,8 +325,8 @@ test.describe('Depth Slider + Scene Navigator (SKY-2441)', () => {
   // revert to "Full Book" being the pressed option.
 
   test('TC-DS-08: clicking "Part" in the manuscript zoom bar stays active', async () => {
-    const depthBookBtn = page.getByTestId('depth-slider').getByRole('button', { name: /full book/i });
-    await depthBookBtn.click();
+    const msvBookBtn = page.getByTestId('msv-zoom-book');
+    await msvBookBtn.click();
     await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
 
     const partBtn = page.getByTestId('msv-zoom-part');
@@ -417,10 +426,9 @@ test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
   let app: ElectronApplication;
   let page: Page;
 
-  const depthSlider = () => page.getByTestId('depth-slider');
-  const nextBtn = () => depthSlider().getByRole('button', { name: /next/i });
-  const prevBtn = () => depthSlider().getByRole('button', { name: /previous/i });
-  const contextLabel = () => page.locator('.depth-context-label');
+  const nextBtn = () => page.getByTestId('edge-arrow-next');
+  const prevBtn = () => page.getByTestId('edge-arrow-prev');
+  const contextLabel = () => page.getByTestId('msv-crumbs');
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-xc-'));
@@ -437,7 +445,7 @@ test.describe('Depth Slider — cross-chapter navigation (SKY-5156)', () => {
     const sceneA = page.locator('.nav-scene-row').first();
     await expect(sceneA).toBeVisible({ timeout: 10_000 });
     await sceneA.click();
-    await expect(depthSlider()).toBeVisible({ timeout: 6_000 });
+    await expect(page.locator('.msv-zoombar')).toBeVisible({ timeout: 6_000 });
     await expect(contextLabel()).toContainText('Scene A', { timeout: 4_000 });
   });
 
@@ -586,7 +594,7 @@ test.describe('GH #843: type in Full Book view persists to the scene file', () =
 
   test('GH843-01: editing a paragraph at Full Book depth writes the owning scene file', async () => {
     // Enter Full Book depth → the continuous heading-zoom manuscript renders.
-    await page.getByTestId('depth-slider').getByRole('button', { name: /full book/i }).click();
+    await page.getByTestId('msv-zoom-book').click();
     await expect(page.locator('.book-outline-view')).toBeVisible({ timeout: 4_000 });
     await expect(page.getByTestId('msv-root')).toBeVisible({ timeout: 4_000 });
 

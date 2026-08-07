@@ -331,17 +331,12 @@
   border-color: var(--color-accent, var(--accent));
 }
 
-/* ── Shell editor toolbar (wraps DepthSlider + split toggle) ── */
+/* ── Shell editor toolbar (wraps the writing-mode controls + split toggle) ── */
 
 .shell-editor-toolbar {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-}
-
-.shell-editor-toolbar .depth-slider-bar {
-  flex: 1;
-  border-bottom: none;
 }
 
 .shell-editor-toolbar {
