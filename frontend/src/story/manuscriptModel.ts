@@ -8,9 +8,8 @@
 //
 // Prototype ⇄ repo mapping:
 //   Book   = Story
-//   Part   = (none yet) — the app has no Parts, so the model treats the whole
-//            Story as ONE implicit part at index 0. 'part' stays in ZoomLevel
-//            so real parts slot in later without changing any signature.
+//   Part   = Part (M2, SKY-9017) — single untitled part is treated as implicit
+//            (no part chrome). Real parts surface part headings and note slots.
 //   Chapter (H2) = Chapter
 //   Scene   (H3) = Scene
 //   Paragraph    = Block (Scene.blocks[n].content)
@@ -18,7 +17,7 @@
 // This module is pure UI-model: it never mutates the Story and owns no
 // persistence — callers persist via their own IPC.
 
-import type { Block, Chapter, DraftState, Scene, Story } from '../types';
+import type { Block, Chapter, DraftState, Part, Scene, Story } from '../types';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -83,7 +82,31 @@ export interface ParaBlock {
   first: boolean;
 }
 
-export type ManuscriptBlock = H2Block | H3Block | ParaBlock;
+/** M2 (SKY-9017): part heading block — emitted when parts are NOT simple (multi or titled). */
+export interface H1Block {
+  kind: 'h1';
+  id: string;
+  partId: string;
+  /** Kicker line, e.g. "PART ONE". */
+  label: string;
+  title: string;
+  note: Block[];
+}
+
+/**
+ * M2 (SKY-9017): note slot — part epigraph or chapter note.
+ * filled (note.length > 0): render epigraph content; empty: render affordance button.
+ */
+export interface NoteSlotBlock {
+  kind: 'note-slot';
+  id: string;
+  slotKind: 'part' | 'chapter';
+  partId?: string;
+  chapterId?: string;
+  note: Block[];
+}
+
+export type ManuscriptBlock = H1Block | H2Block | H3Block | NoteSlotBlock | ParaBlock;
 
 export interface BreadcrumbEntry {
   label: string;
@@ -96,6 +119,18 @@ export interface BreadcrumbEntry {
 
 export function orderedChapters(story: Story): Chapter[] {
   return [...story.chapters].sort((a, b) => a.order - b.order);
+}
+
+export function orderedParts(story: Story): Part[] {
+  return [...(story.parts ?? [])].sort((a, b) => a.order - b.order);
+}
+
+/**
+ * M2: true when the story has no parts or exactly one unnamed part.
+ * In that case no part chrome is rendered and chapters are shown at the top level.
+ */
+export function isSimpleSinglePart(story: Story): boolean {
+  return !story.parts || story.parts.length === 0 || (story.parts.length === 1 && story.parts[0].title === '');
 }
 
 export function orderedScenes(chapter: Chapter): Scene[] {
@@ -142,16 +177,35 @@ export function cycleStatus(status: SceneStatus): SceneStatus {
 
 /**
  * Ordered list of units at a zoom level. 'book' has no siblings → [] (the
- * prototype never steps at book zoom). 'part' yields the single implicit part.
+ * prototype never steps at book zoom). 'part' yields one unit per real part
+ * (or the single implicit part when the story is simple).
+ *
+ * M2 (SKY-9017): for multi-part stories, cursor.chapter is the global chapter
+ * index across all parts (matching the globalCi used in buildBlocks).
  */
 export function flatUnits(story: Story, level: ZoomLevel): ManuscriptUnit[] {
   const out: ManuscriptUnit[] = [];
-  // Single implicit part at index 0 — when Parts land, loop over them here.
-  if (level === 'part') out.push({ part: 0, chapter: 0, scene: 0 });
-  orderedChapters(story).forEach((c, ci) => {
-    if (level === 'chapter') out.push({ part: 0, chapter: ci, scene: 0 });
-    orderedScenes(c).forEach((_s, si) => {
-      if (level === 'scene') out.push({ part: 0, chapter: ci, scene: si });
+  if (isSimpleSinglePart(story)) {
+    // Single implicit part at index 0.
+    if (level === 'part') out.push({ part: 0, chapter: 0, scene: 0 });
+    orderedChapters(story).forEach((c, ci) => {
+      if (level === 'chapter') out.push({ part: 0, chapter: ci, scene: 0 });
+      orderedScenes(c).forEach((_s, si) => {
+        if (level === 'scene') out.push({ part: 0, chapter: ci, scene: si });
+      });
+    });
+    return out;
+  }
+  // Multi-part: enumerate real parts. chapter index is global across all parts.
+  let gci = 0;
+  orderedParts(story).forEach((p, pi) => {
+    if (level === 'part') out.push({ part: pi, chapter: 0, scene: 0 });
+    [...p.chapters].sort((a, b) => a.order - b.order).forEach((c) => {
+      const ci = gci++;
+      if (level === 'chapter') out.push({ part: pi, chapter: ci, scene: 0 });
+      orderedScenes(c).forEach((_s, si) => {
+        if (level === 'scene') out.push({ part: pi, chapter: ci, scene: si });
+      });
     });
   });
   return out;
@@ -183,11 +237,15 @@ export function zoomStep(story: Story, cursor: ManuscriptCursor, dir: 1 | -1): M
 
 /**
  * Ordered block list scoped to the cursor's zoom:
- *   book/part → every chapter (one implicit part), chapter → the cursor's
- *   chapter (H2 + children), scene → the cursor's scene only (H3 + paragraphs,
- *   no H2 — prototype emits H2 only when zoom !== 'scene').
+ *   book/part → all chapters (grouped into parts when applicable), chapter →
+ *   the cursor's chapter (H2 + children), scene → the cursor's scene only
+ *   (H3 + paragraphs, no H2 — prototype emits H2 only when zoom !== 'scene').
  * Children of folded headings (id ∈ collapsedIds) are skipped; the heading
  * block carries folded + childCount so the view can render the fold pill.
+ *
+ * M2 (SKY-9017): when the story has real parts (not simple/untitled), emits
+ * H1Block + NoteSlotBlock (part note) before each part's chapters, and
+ * NoteSlotBlock (chapter note) before each H2 at book/part/chapter depth.
  */
 export function buildBlocks(
   story: Story,
@@ -196,11 +254,62 @@ export function buildBlocks(
 ): ManuscriptBlock[] {
   const blocks: ManuscriptBlock[] = [];
   const { zoom } = cursor;
-  orderedChapters(story).forEach((c, ci) => {
+  const simple = isSimpleSinglePart(story);
+
+  // Build a flat list of { chapter, globalChapterIndex, partId? } respecting parts order
+  interface ChapterSlot { chapter: Chapter; globalCi: number; partId?: string; partIdx?: number }
+  const chapterSlots: ChapterSlot[] = [];
+  if (simple) {
+    orderedChapters(story).forEach((c, ci) => chapterSlots.push({ chapter: c, globalCi: ci }));
+  } else {
+    let gci = 0;
+    orderedParts(story).forEach((p, pi) => {
+      [...p.chapters].sort((a, b) => a.order - b.order).forEach((c) => {
+        chapterSlots.push({ chapter: c, globalCi: gci++, partId: p.id, partIdx: pi });
+      });
+    });
+  }
+
+  // When not simple, track the last-emitted part to know when to emit H1+part-note
+  let lastPartId: string | undefined;
+
+  chapterSlots.forEach(({ chapter: c, globalCi: ci, partId, partIdx }) => {
     if ((zoom === 'chapter' || zoom === 'scene') && ci !== cursor.chapter) return;
+
+    // M2: emit H1 + part-note-slot when we enter a new part (book/part depth only)
+    if (!simple && partId && partId !== lastPartId && zoom !== 'chapter' && zoom !== 'scene') {
+      const part = story.parts!.find((p) => p.id === partId);
+      if (part) {
+        blocks.push({
+          kind: 'h1',
+          id: `h1-${part.id}`,
+          partId: part.id,
+          label: partLabel(partIdx ?? 0),
+          title: part.title,
+          note: part.note,
+        });
+        blocks.push({
+          kind: 'note-slot',
+          id: `note-part-${part.id}`,
+          slotKind: 'part',
+          partId: part.id,
+          note: part.note,
+        });
+      }
+      lastPartId = partId;
+    }
+
     const scenes = orderedScenes(c);
     const cFolded = collapsedIds.has(c.id);
     if (zoom !== 'scene') {
+      // M2: emit chapter note slot before H2 at book/part/chapter depth
+      blocks.push({
+        kind: 'note-slot',
+        id: `note-chapter-${c.id}`,
+        slotKind: 'chapter',
+        chapterId: c.id,
+        note: c.note ?? [],
+      });
       blocks.push({
         kind: 'h2',
         id: `h2-${c.id}`,

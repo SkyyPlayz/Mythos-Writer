@@ -281,3 +281,8 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ─── M2 Part tier (SKY-9017) ─── */
+.nav-part-row { display: flex; align-items: center; padding: 2px 0 2px 8px; gap: 4px; }
+.nav-part-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+.nav-part-toggle { background: none; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 0; width: 100%; }

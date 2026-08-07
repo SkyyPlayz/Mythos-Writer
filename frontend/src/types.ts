@@ -119,6 +119,8 @@ export interface Scene {
   storyId?: string;
   blocks: Block[];
   draftState?: DraftState;
+  /** M2 (SKY-9017): point-of-view label — absent = no POV chip in Structure view. */
+  pov?: string;
   chronologicalTime?: ChronologicalTime;
   entityLinks?: SceneEntityLinks;
   timelineMetadata?: SceneTimelineMetadata;
@@ -140,6 +142,22 @@ export interface Chapter {
   path: string;
   order: number;
   scenes: Scene[];
+  /** M2 (SKY-9017): chapter epigraph / note blocks. */
+  note?: Block[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * M2 (SKY-9017): a Part groups chapters. A story whose only Part has
+ * `title === ""` renders no part chrome — simple stories stay clean.
+ */
+export interface Part {
+  id: string;
+  title: string;
+  order: number;
+  note: Block[];
+  chapters: Chapter[];
   createdAt: string;
   updatedAt: string;
 }
@@ -148,7 +166,11 @@ export interface Story {
   id: string;
   title: string;
   synopsis?: string;
+  /** M2 (SKY-9017): author byline; empty or absent → omitted from compile. */
+  author?: string;
   path: string;
+  /** M2 (SKY-9017): Part tier. Absent on pre-M2 vaults (migration wraps). */
+  parts?: Part[];
   chapters: Chapter[];
   createdAt: string;
   updatedAt: string;
