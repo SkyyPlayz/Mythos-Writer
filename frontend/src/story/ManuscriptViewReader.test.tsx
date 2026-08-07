@@ -217,7 +217,7 @@ describe('toolbar Read button + gutter Reader card', () => {
     const spy = vi
       .spyOn(window, 'getSelection')
       .mockReturnValue({ toString: () => 'rumor had teeth' } as unknown as Selection);
-    fireEvent.mouseUp(screen.getByTestId('msv-page'));
+    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     spy.mockRestore();
     fireEvent.change(screen.getByTestId('msv-selbar-input'), { target: { value: 'note' } });
     fireEvent.click(screen.getByTestId('msv-selbar-save'));
@@ -426,7 +426,7 @@ describe('selection-bar Read action', () => {
     const spy = vi
       .spyOn(window, 'getSelection')
       .mockReturnValue({ toString: () => text } as unknown as Selection);
-    fireEvent.mouseUp(screen.getByTestId('msv-page'));
+    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     spy.mockRestore();
   }
 

@@ -1476,18 +1476,19 @@
   box-shadow: 0 0 12px -3px var(--g1, rgba(0, 240, 255, .4));
 }
 
-/* Wrapper around the page area: transparent column normally, flex row when
-   the compare split is open (editor keeps the left, split takes the right). */
+/* Wrapper around the page area: transparent flex row normally (matching
+   msv-body's row direction so msv-page fills width identically), flex row
+   with gap when the compare split is open (editor left, split right). */
 .shell-drafts-splitrow {
   position: relative; /* anchors .shell-drafts-diff-cover to the page area */
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
+  min-width: 0;
 }
 
 .shell-drafts-splitrow--open {
-  flex-direction: row;
   gap: 12px;
   overflow: hidden;
 }

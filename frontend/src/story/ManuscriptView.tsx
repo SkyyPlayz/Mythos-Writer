@@ -41,11 +41,16 @@ import {
   type ZoomLevel,
 } from './manuscriptModel';
 import TitleRow from './TitleRow';
+import DraftsCompareSplit from '../drafts/DraftsCompareSplit';
+import DraftDiffView from '../drafts/DraftDiffView';
+import type { SceneDraftEntry } from '../drafts/useSceneDrafts';
+import SceneHistory from '../SceneHistory';
 import { countWords } from '../wordStats';
 import { pageModeChrome, PageModeRunes } from './pageMode';
 import type { LiquidNeonPageCfg, LiquidNeonV2Settings } from '../theme/liquidNeonEngine';
 import MarginRuler, { type RulerDrag } from './MarginRuler';
 import PageSetupPopover from '../PageSetupPopover';
+import DepthEdgeArrows from '../DepthEdgeArrows';
 import {
   FONT_STEP_MAX,
   FONT_STEP_MIN,
@@ -187,6 +192,70 @@ export interface ManuscriptViewProps {
   ttsSettings?: TtsEngineSettings & { voiceId?: string };
   /** M13: stored voice prefs (AppSettings.voice) seed the reader's speed/voice. */
   voicePrefs?: TtsVoicePrefs;
+  /**
+   * SKY-9404 (M1-S4): Drafts v2 (title-row pill + popover, compare split,
+   * full diff) — relocated from the deleted legacy scene branch. Present
+   * only once a target scene resolves (the host gates this on its own scene
+   * selection, same as before the move).
+   */
+  drafts?: ManuscriptDraftsControls;
+  /** SKY-9404: the ⋯ menu's "Save snapshot now" action + its saved-at note. */
+  onManualSnapshot?: () => void;
+  snapshotSavedAt?: string | null;
+  /** SKY-9404: the ⋯ menu's "History" action + the SceneHistory modal data. */
+  sceneHistory?: ManuscriptHistoryControls;
+  /** SKY-9404 (M1-S4): When cursor.zoom === 'scene', render this slot instead of
+   *  the inline heading-zone block list — keeps TipTap/BlockEditor at scene depth
+   *  while ManuscriptView provides the chrome (title row, ruler, page prefs). */
+  sceneEditorSlot?: React.ReactNode;
+  /**
+   * SKY-9404 (M1-S4) / SKY-5904: on-canvas prev/next depth-step arrows, now
+   * anchored to `.msv-sheet` (the depth-invariant page box, present at every
+   * depth) instead of a scene-only wrapper — so they hug the page column at
+   * book/part/chapter/scene alike, not the full-width canvas behind it.
+   */
+  edgeNav?: {
+    canPrev: boolean;
+    canNext: boolean;
+    onPrev: () => void;
+    onNext: () => void;
+  };
+}
+
+/** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
+export interface ManuscriptDraftsControls {
+  drafts: SceneDraftEntry[];
+  currentLabel: string;
+  currentContent: string;
+  documentLabel: string;
+  error: string | null;
+  popoverOpen: boolean;
+  onTogglePopover: () => void;
+  onClosePopover: () => void;
+  onCompare: (draft: SceneDraftEntry) => void;
+  onRestore: (draft: SceneDraftEntry) => void;
+  splitOpen: boolean;
+  onToggleSplit: () => void;
+  onCloseSplit: () => void;
+  diffOpen: boolean;
+  onOpenDiff: () => void;
+  onCloseDiff: () => void;
+  selectedTs: string | null;
+  onSelectTs: (ts: string) => void;
+  onLoadDraft: (draft: SceneDraftEntry) => void;
+  undoLabel: string | null;
+  onUndo: () => void;
+}
+
+/** SKY-9404: SceneHistory modal data + handlers, moved from the scene branch. */
+export interface ManuscriptHistoryControls {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  sceneId: string;
+  scenePath: string;
+  currentContent: string;
+  onRestore: (content: string) => void;
 }
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
@@ -332,6 +401,12 @@ export default function ManuscriptView({
   autoLinkMode = 'off',
   ttsSettings,
   voicePrefs,
+  drafts,
+  onManualSnapshot,
+  snapshotSavedAt,
+  sceneHistory,
+  sceneEditorSlot,
+  edgeNav,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -813,8 +888,28 @@ export default function ManuscriptView({
 
   // ── M11 comment handlers ──
 
+  // SKY-9480: a plain click that lands inside an already-selected range
+  // doesn't reliably collapse the selection on mouseup (browser-dependent —
+  // see the analogous Control+End/ProseMirror resync race SKY-7550 already
+  // guards against for Enter). At scene depth, applying a heading level (or
+  // any block command that leaves its target selected) followed by a click
+  // to resume typing can therefore leave a stale, non-empty
+  // window.getSelection() at mouseup — nothing to do with a real drag
+  // selection. Track the mousedown point and only treat the mouseup as a
+  // comment-selection intent when the pointer actually moved (a drag) or
+  // this was a double/triple click (word/paragraph select), matching how
+  // real text selections are made; a bare click never qualifies.
+  const pageMouseDownPos = useRef<{ x: number; y: number } | null>(null);
+  const handlePageMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    pageMouseDownPos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
   // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
-  const handlePageMouseUp = useCallback(() => {
+  const handlePageMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const down = pageMouseDownPos.current;
+    pageMouseDownPos.current = null;
+    const dragged = !!down && (Math.abs(e.clientX - down.x) > 2 || Math.abs(e.clientY - down.y) > 2);
+    if (!dragged && e.detail < 2) return;
     const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
     const text = sel ? String(sel).trim() : '';
     if (isValidAnchor(text)) {
@@ -1088,6 +1183,26 @@ export default function ManuscriptView({
         onCycleStatus={onCycleStatus}
         focusActive={focusMode}
         onToggleFocus={onToggleFocus}
+        drafts={
+          drafts
+            ? {
+                drafts: drafts.drafts,
+                currentLabel: drafts.currentLabel,
+                currentContent: drafts.currentContent,
+                documentLabel: drafts.documentLabel,
+                popoverOpen: drafts.popoverOpen,
+                onTogglePopover: drafts.onTogglePopover,
+                onClosePopover: drafts.onClosePopover,
+                onCompare: drafts.onCompare,
+                onRestore: drafts.onRestore,
+                splitOpen: drafts.splitOpen,
+                onToggleSplit: drafts.onToggleSplit,
+              }
+            : undefined
+        }
+        onManualSnapshot={onManualSnapshot}
+        snapshotSavedAt={snapshotSavedAt}
+        onOpenSceneHistory={sceneHistory?.onOpen}
       />
       {/* M1 row 4 — zoom bar (prototype 949–970) */}
       <div className="msv-zoombar">
@@ -1449,11 +1564,16 @@ export default function ManuscriptView({
 
       {/* M11: page + comments gutter share a row (prototype 806 / 911) */}
       <div className="msv-body">
+        {/* SKY-9404 (M1-S4): row wrapper — column layout normally; becomes a
+            flex row hosting the drafts compare split when it's open (moved
+            from the deleted legacy scene branch's shell-drafts-splitrow). */}
+        <div className={`shell-drafts-splitrow${drafts?.splitOpen ? ' shell-drafts-splitrow--open' : ''}`}>
         {/* page scroll area with floating arrows (prototype 808–810) */}
         <div
           className="msv-page"
           ref={scrollRef}
           onScroll={handleScroll}
+          onMouseDown={handlePageMouseDown}
           onMouseUp={handlePageMouseUp}
           data-testid="msv-page"
         >
@@ -1509,6 +1629,18 @@ export default function ManuscriptView({
               data-page-mode={pageChrome.mode}
             >
               {pageChrome.mode === 'scroll' && <PageModeRunes sym={pageChrome.sym} />}
+              {/* SKY-9404/SKY-5904: anchored to .msv-sheet (depth-invariant,
+                  position: relative at every depth) so the arrows hug the
+                  actual page edges instead of the full-width canvas behind it. */}
+              {edgeNav && (
+                <DepthEdgeArrows
+                  depth={cursor.zoom}
+                  canPrev={edgeNav.canPrev}
+                  canNext={edgeNav.canNext}
+                  onPrev={edgeNav.onPrev}
+                  onNext={edgeNav.onNext}
+                />
+              )}
               {/* page-edge drag handles (prototype 861–865, startDrag 3392–3400) */}
               <div
                 className="msv-edge msv-edge--l"
@@ -1544,7 +1676,7 @@ export default function ManuscriptView({
                 </div>
               )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
-              {visible.map(renderBlock)}
+              {sceneEditorSlot ?? visible.map(renderBlock)}
               <div
                 style={{ height: bottomPad }}
                 data-testid="msv-spacer-bottom"
@@ -1552,6 +1684,46 @@ export default function ManuscriptView({
               />
             </div>
           </div>
+        </div>
+        {/* SKY-9404 (M1-S4): drafts compare split, moved from the deleted
+            legacy scene branch — docked beside the page when open. */}
+        {drafts?.splitOpen && (
+          <DraftsCompareSplit
+            scopeLabel={drafts.documentLabel}
+            drafts={drafts.drafts}
+            currentLabel={drafts.currentLabel}
+            currentContent={drafts.currentContent}
+            selectedTs={drafts.selectedTs}
+            onSelectTs={drafts.onSelectTs}
+            onFullDiff={drafts.onOpenDiff}
+            onLoadDraft={drafts.onLoadDraft}
+            undoLabel={drafts.undoLabel}
+            onUndo={drafts.onUndo}
+            onClose={drafts.onCloseSplit}
+            error={drafts.error}
+          />
+        )}
+        {/* SKY-9404: full side-by-side diff — covers the page area (chrome
+            rows stay usable); current draft ALWAYS the left/green column. */}
+        {drafts?.diffOpen && (() => {
+          const diffDraft =
+            drafts.drafts.find((d) => d.ts === drafts.selectedTs) ?? drafts.drafts[0] ?? null;
+          return diffDraft ? (
+            <div className="shell-drafts-diff-cover" data-testid="shell-drafts-diff-cover">
+              <DraftDiffView
+                documentLabel={drafts.documentLabel}
+                currentLabel={drafts.currentLabel}
+                previousLabel={diffDraft.label}
+                currentText={drafts.currentContent}
+                previousText={diffDraft.content}
+                previousOptions={drafts.drafts.map((d) => ({ id: d.ts, label: d.label }))}
+                selectedPreviousId={diffDraft.ts}
+                onSelectPrevious={drafts.onSelectTs}
+                onClose={drafts.onCloseDiff}
+              />
+            </div>
+          ) : null;
+        })()}
         </div>
         {/* M11: margin gutter dock (v2 prototype gutterOpen 6775): comments
             when visible, plus the Reader card while the reader is open —
@@ -1569,6 +1741,18 @@ export default function ManuscriptView({
           />
         )}
       </div>
+      {/* SKY-9404: scene history modal, moved from the deleted legacy scene
+          branch. `SceneHistory` renders via a portal (position: fixed), so
+          mount position within the tree doesn't affect layout. */}
+      {sceneHistory?.open && (
+        <SceneHistory
+          sceneId={sceneHistory.sceneId}
+          scenePath={sceneHistory.scenePath}
+          currentContent={sceneHistory.currentContent}
+          onRestore={sceneHistory.onRestore}
+          onClose={sceneHistory.onClose}
+        />
+      )}
     </div>
   );
 }
