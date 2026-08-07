@@ -544,6 +544,7 @@ import {
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall } from './uninstallHelper.js';
+import { planUninstallRecovery } from './uninstallRecoveryPlan.js';
 import {
   loadBrainstormSettings,
   setCategoryRouting,
@@ -5874,19 +5875,32 @@ const handlers: IpcHandlers = {
       notesVaultRoot: getNotesVaultRoot(),
       userDataPath: app.getPath('userData'),
     });
-    if (fs.existsSync(getVaultRoot())) {
-      // Delete failed or was partial — the vault is still there, so bring the
-      // app back to a working state and let the renderer surface the errors.
+    // SKY-9730: story and notes vaults can live in separate custom locations
+    // (see uninstallHelper.ts resolveDeletePaths), so one can survive a failed
+    // delete while the other is fully gone. Check each root independently and
+    // only recover the side that's actually still on disk — recovering the
+    // side that's gone would re-scaffold a vault that was just deleted.
+    const { storyVaultSurvived, notesVaultSurvived, fullyCleared } = planUninstallRecovery(
+      getVaultRoot(),
+      getNotesVaultRoot(),
+    );
+    if (!fullyCleared) {
+      // Delete failed or was partial — bring the surviving side(s) back to a
+      // working state and let the renderer surface the errors.
       try {
-        ensureVaultDir();
-        ensureNotesVaultDir();
-        await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
-        await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
-        startWritingScanScheduler();
-        startArchiveContScheduler();
+        if (storyVaultSurvived) {
+          ensureVaultDir();
+          await startVaultWatcher(getVaultRoot(), notifyVaultChanged);
+          startWritingScanScheduler();
+          startArchiveContScheduler();
+        }
+        if (notesVaultSurvived) {
+          ensureNotesVaultDir();
+          await startNotesVaultWatcher(getNotesVaultRoot(), notifyNotesVaultChanged);
+        }
       } catch { /* non-fatal — the renderer already shows the delete errors */ }
     } else {
-      // Vault data is gone. Do NOT re-open/re-scaffold anything — the old
+      // Both sides are gone. Do NOT re-open/re-scaffold anything — the old
       // `finally { ensureVaultDir() }` here recreated a seeded vault right
       // after deleting it. The app stays in this drained state until restart.
       appDataCleared = true;
