@@ -110,6 +110,12 @@ interface Props {
   sceneNotesRefresh?: number;
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   onSceneNotesChanged?: () => void;
+  /** M6: Rendered at top of the Assistant tab hub view — Getting Started card. */
+  gettingStartedCard?: import('react').ReactNode;
+  /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
+  continuityPanel?: import('react').ReactNode;
+  /** M9a (SKY-9822): Rendered inside the References tab — wiki-link auto-collection. */
+  referencesPanel?: import('react').ReactNode;
 }
 
 export default function AgentHubPanel({
@@ -135,6 +141,9 @@ export default function AgentHubPanel({
   sceneNotesRefresh,
   onPromoteSceneNote,
   onSceneNotesChanged,
+  gettingStartedCard,
+  continuityPanel,
+  referencesPanel,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
@@ -221,6 +230,8 @@ export default function AgentHubPanel({
                 scene={scene}
                 onOpenSuggestionInbox={onOpenSuggestionInbox}
                 onOpenCoachPage={onOpenCoachPage}
+                gettingStartedCard={gettingStartedCard}
+                continuityPanel={continuityPanel}
               />
         )}
         {activeTab === 'scenes' && <ScenesTab scene={scene} />}
@@ -232,9 +243,33 @@ export default function AgentHubPanel({
             onNotesChanged={onSceneNotesChanged}
           />
         )}
-        {activeTab === 'references' && <ReferencesTab />}
+        {activeTab === 'references' && <ReferencesTab referencesPanel={referencesPanel} />}
       </div>
     </div>
+  );
+}
+
+// ── Research Quick Links card (M6) ──────────────────────────────────────────
+
+function ResearchQuickLinksCard() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <section className="ahp-card ahp-card--collapsible" aria-label="Research Quick Links">
+      <button
+        className="ahp-collapsible-header"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        type="button"
+      >
+        <span className="ahp-card-eyebrow">RESEARCH QUICK LINKS</span>
+        <span className="ahp-collapse-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="ahp-quick-links-body">
+          <p className="ahp-stub-text">Quick links to research sources — contents in M9.</p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -247,9 +282,11 @@ interface AgentHubViewProps {
   scene: Scene | null;
   onOpenSuggestionInbox?: () => void;
   onOpenCoachPage?: () => void;
+  gettingStartedCard?: import('react').ReactNode;
+  continuityPanel?: import('react').ReactNode;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
   // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
   // AGENTS card can derive each row's "needs attention" count from the same
   // poll instead of a second one.
@@ -262,6 +299,7 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
   return (
     <div className="ahp-hub">
+      {gettingStartedCard}
       {/* AGENTS card */}
       <section className="ahp-card" aria-label="Agents">
         <header className="ahp-card-header">
@@ -290,6 +328,8 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
       {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
       <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
+      {continuityPanel}
+      <ResearchQuickLinksCard />
     </div>
   );
 }
@@ -654,7 +694,13 @@ function ScenesTab({ scene }: { scene: Scene | null }) {
   );
 }
 
-function ReferencesTab() {
+// M9a (SKY-9822): the real References tab content (ReferencesPanel — wiki-link
+// auto-collection, typed roles, unresolved state) is passed in from
+// DesktopShell via `referencesPanel`, the same slot pattern M6 uses for
+// `continuityPanel`. Falls back to the pre-M9a stub when unset (e.g. in tests
+// that mount AgentHubPanel standalone).
+function ReferencesTab({ referencesPanel }: { referencesPanel?: import('react').ReactNode }) {
+  if (referencesPanel) return <>{referencesPanel}</>;
   return (
     <div className="ahp-stub-tab">
       <p className="ahp-stub-label">Wiki link targets — coming soon.</p>
