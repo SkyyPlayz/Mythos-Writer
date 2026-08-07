@@ -70,7 +70,7 @@ describe('NotesTabPanel — M16 note splits', () => {
     expect(screen.getByTestId('notes-split-toggle')).toBeInTheDocument();
     rerender(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
     expect(screen.queryByTestId('notes-split-toggle')).not.toBeInTheDocument();
-    rerender(<NotesTabPanel {...BASE_PROPS} notesSubView="graph" />);
+    rerender(<NotesTabPanel {...BASE_PROPS} activeTabIsEntityBrowser={true} />);
     expect(screen.queryByTestId('notes-split-toggle')).not.toBeInTheDocument();
   });
 

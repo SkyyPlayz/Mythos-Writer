@@ -16,7 +16,7 @@ import {
 describe('NAV_RAIL_DEFAULTS (Beta 4 M3)', () => {
   it('lists the six §4 modules in spec order', () => {
     expect(NAV_RAIL_DEFAULTS.items.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
     ]);
   });
 
@@ -99,7 +99,7 @@ describe('mergeNavConfigItems', () => {
     const merged = mergeNavConfigItems(legacyDefaults, NAV_RAIL_DEFAULTS.items);
 
     expect(merged.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
     ]);
   });
 
@@ -114,7 +114,7 @@ describe('mergeNavConfigItems', () => {
     const merged = mergeNavConfigItems(customized, NAV_RAIL_DEFAULTS.items);
     const sortedIds = [...merged].sort((a, b) => a.order - b.order).map((i) => i.id);
 
-    expect(sortedIds).toEqual(['brainstorm', 'story', 'notes', 'crafter', 'timeline', 'graph']);
+    expect(sortedIds).toEqual(['brainstorm', 'story', 'notes', 'crafter', 'timeline', 'vault-graph']);
   });
 
   it('treats a disabled item in the pre-Beta-4 defaults as a customization', () => {
@@ -128,7 +128,7 @@ describe('mergeNavConfigItems', () => {
 
     expect(merged.find((i) => i.id === 'brainstorm')!.enabled).toBe(false);
     const sortedIds = [...merged].sort((a, b) => a.order - b.order).map((i) => i.id);
-    expect(sortedIds).toEqual(['story', 'notes', 'brainstorm', 'crafter', 'timeline', 'graph']);
+    expect(sortedIds).toEqual(['story', 'notes', 'brainstorm', 'crafter', 'timeline', 'vault-graph']);
   });
 });
 
@@ -137,13 +137,13 @@ describe('reorderNavConfigItems (Beta 4 M3 edit popover)', () => {
 
   it('moves an item and re-normalizes order to array positions', () => {
     const result = reorderNavConfigItems(items(), 0, 2);
-    expect(result.map((i) => i.id)).toEqual(['notes', 'crafter', 'story', 'brainstorm', 'timeline', 'graph']);
+    expect(result.map((i) => i.id)).toEqual(['notes', 'crafter', 'story', 'brainstorm', 'timeline', 'vault-graph']);
     expect(result.map((i) => i.order)).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   it('moves an item up', () => {
     const result = reorderNavConfigItems(items(), 3, 1);
-    expect(result.map((i) => i.id)).toEqual(['story', 'brainstorm', 'notes', 'crafter', 'timeline', 'graph']);
+    expect(result.map((i) => i.id)).toEqual(['story', 'brainstorm', 'notes', 'crafter', 'timeline', 'vault-graph']);
   });
 
   it('ignores out-of-range targets but still normalizes order', () => {
@@ -169,7 +169,7 @@ describe('resolveNavRailItems', () => {
     const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
 
     expect(items.map((i) => i.id)).toEqual([
-      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'graph',
+      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
     ]);
   });
 
@@ -187,14 +187,14 @@ describe('resolveNavRailItems', () => {
     const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
 
     expect(items.map((i) => i.id)).toEqual([
-      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'graph',
+      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
     ]);
   });
 
   it('excludes hidden modules from the rendered rail', () => {
     const savedNavConfig: NavRailConfig = {
       items: NAV_RAIL_DEFAULTS.items.map((i) =>
-        i.id === 'timeline' || i.id === 'graph' ? { ...i, enabled: false } : { ...i },
+        i.id === 'timeline' || i.id === 'vault-graph' ? { ...i, enabled: false } : { ...i },
       ),
       collapsedDefault: false,
       showLabels: true,
