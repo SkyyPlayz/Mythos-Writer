@@ -837,15 +837,35 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
               text: m.text,
               at,
             }));
+          // The still-pending session (active.turns.length <= 1, checked
+          // above) already carries its own seed greeting, which appendTurns'
+          // materialize() writes as the file's first turn regardless of what
+          // is passed in. If the migrated draft's leading turn is that same
+          // greeting, drop it here or it lands on disk a second time
+          // (SKY-8894).
+          const seedGreeting = active.turns[0]?.role === 'agent' ? active.turns[0].text : undefined;
+          const dedupedTurns = seedGreeting && turns[0]?.role === 'agent' && turns[0].text === seedGreeting
+            ? turns.slice(1)
+            : turns;
           // SKY-9028: a draft holding only agent text (the greeting the feed
           // saved on a previous mount) is not user history — migrating it
           // would materialize a session file in a vault the user never chatted
           // in. Only a draft with at least one user turn is worth persisting.
-          if (turns.some((t) => t.role === 'user')) void sessionStoreRef.current.appendTurns(turns);
+          if (dedupedTurns.some((t) => t.role === 'user')) void sessionStoreRef.current.appendTurns(dedupedTurns);
           localStorage.setItem(SESSION_MIGRATED_KEY, '1');
         }
       } catch { /* draft unreadable — nothing to migrate */ }
       return;
+    }
+
+    if (firstAdoption) {
+      // No legacy draft was present to migrate on this first adoption (or the
+      // session already had real turns). The draft-persist effect below will
+      // now mirror the hydrated session turns (e.g. the greeting) back into
+      // DRAFT_KEY — that mirror must never be mistaken for a legacy draft
+      // needing migration on a later mount, or the greeting gets appended a
+      // second time (SKY-8894). Settle the one-shot flag now.
+      try { localStorage.setItem(SESSION_MIGRATED_KEY, '1'); } catch { /* best-effort */ }
     }
 
     // Fresh mount without a draft, or a real session switch: hydrate the feed.
