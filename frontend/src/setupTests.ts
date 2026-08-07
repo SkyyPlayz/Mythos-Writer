@@ -76,3 +76,12 @@ class ResizeObserverStub {
   disconnect() {}
 }
 Object.defineProperty(window, 'ResizeObserver', { value: ResizeObserverStub, writable: true, configurable: true });
+
+// jsdom does not implement IntersectionObserver; stub it so components that use it don't throw.
+// Tests that need to exercise intersection callbacks should override this with vi.stubGlobal.
+class IntersectionObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(window, 'IntersectionObserver', { value: IntersectionObserverStub, writable: true, configurable: true });

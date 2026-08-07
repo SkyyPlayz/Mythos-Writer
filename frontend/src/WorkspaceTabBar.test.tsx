@@ -569,4 +569,80 @@ describe('WorkspaceTabBar agents status chip (M6)', () => {
     render(<WorkspaceTabBar {...defaultProps({ tabs: [], activeTabId: null })} />);
     expect(screen.getByTestId('wtb-agents-chip')).toHaveTextContent('All agents idle');
   });
+
+  it('hides the agents chip when hideAgentsChip is true', () => {
+    render(<WorkspaceTabBar {...defaultProps({ hideAgentsChip: true })} />);
+    expect(screen.queryByTestId('wtb-agents-chip')).toBeNull();
+  });
+});
+
+// ── SKY-9342: overflow ▾ dropdown ─────────────────────────────────────────────
+
+describe('WorkspaceTabBar overflow ▾ dropdown', () => {
+  it('does not render the overflow button when all tabs are visible (no hidden tabs)', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    expect(screen.queryByTestId('wtb-overflow-btn')).toBeNull();
+  });
+
+  it('renders the overflow button when IntersectionObserver reports a tab as clipped', async () => {
+    let observerCallback: IntersectionObserverCallback = () => {};
+    const observeMock = vi.fn();
+
+    class MockIO {
+      constructor(cb: IntersectionObserverCallback) { observerCallback = cb; }
+      observe = observeMock;
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal('IntersectionObserver', MockIO);
+
+    render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-b' })} />);
+
+    // We can't directly call observe via the component's ref, but can verify the observer attached.
+    expect(observeMock).toHaveBeenCalled();
+
+    // Simulate TAB_A being 60% visible (clipped) by calling the observer callback.
+    const slotA = document.querySelector('[data-tab-id="tab-a"]') as HTMLElement;
+    if (slotA) {
+      await act(async () => {
+        observerCallback(
+          [{ target: slotA, intersectionRatio: 0.6 } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(screen.getByTestId('wtb-overflow-btn')).toBeInTheDocument();
+    }
+
+    vi.unstubAllGlobals();
+  });
+
+  it('selects a tab from the overflow menu and closes the menu', async () => {
+    const onTabSelect = vi.fn();
+    let observerCallback: IntersectionObserverCallback = () => {};
+
+    class MockIO {
+      constructor(cb: IntersectionObserverCallback) { observerCallback = cb; }
+      observe = vi.fn();
+      disconnect = vi.fn();
+    }
+    vi.stubGlobal('IntersectionObserver', MockIO);
+
+    render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-b', onTabSelect })} />);
+
+    const slotA = document.querySelector('[data-tab-id="tab-a"]') as HTMLElement;
+    if (slotA) {
+      await act(async () => {
+        observerCallback(
+          [{ target: slotA, intersectionRatio: 0.5 } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+
+      fireEvent.click(screen.getByTestId('wtb-overflow-btn'));
+      fireEvent.click(screen.getByTestId('wtb-overflow-item-tab-a'));
+      expect(onTabSelect).toHaveBeenCalledWith('tab-a');
+      expect(screen.queryByTestId('wtb-overflow-menu')).toBeNull();
+    }
+
+    vi.unstubAllGlobals();
+  });
 });

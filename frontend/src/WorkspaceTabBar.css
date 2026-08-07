@@ -331,3 +331,105 @@ html.ln-anim-paused .wtb-agents-dot {
   color: rgb(88, 106, 136); /* #586a88 */
   padding: 5px 10px 2px;
 }
+
+/* SKY-9342: overflow ▾ button + dropdown */
+.wtb-overflow-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+  margin-bottom: 5px;
+}
+
+.wtb-overflow-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: rgb(118, 134, 162);
+  cursor: pointer;
+  padding: 0;
+  -webkit-app-region: no-drag;
+}
+
+.wtb-overflow-btn:hover,
+.wtb-overflow-btn--open {
+  background: rgba(255, 255, 255, .08);
+  color: rgb(219, 228, 245);
+}
+
+.wtb-overflow-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.wtb-overflow-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 180px;
+  max-width: 260px;
+  z-index: 60;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 12px 36px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .12s ease;
+}
+
+.wtb-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  color: rgb(205, 216, 234);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wtb-overflow-item:hover {
+  background: rgba(255, 255, 255, .07);
+  color: rgb(255, 255, 255);
+}
+
+.wtb-overflow-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
+.wtb-overflow-item--active {
+  color: rgb(238, 242, 251);
+}
+
+.wtb-overflow-item--active .wtb-tab-dot {
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 6px var(--n1, #00f0ff);
+}
+
+.wtb-overflow-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wtb-tab-dot--inactive {
+  background: rgba(142, 157, 184, .4);
+  box-shadow: none;
+}

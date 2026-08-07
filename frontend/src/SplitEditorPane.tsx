@@ -6,6 +6,7 @@ import {
   useRef,
   useEffect,
   useMemo,
+  useCallback,
 } from 'react';
 import type { Scene, Chapter, Story, Block, EntityEntry } from './types';
 import type { WLSuggestion } from './WikiLinkHintExtension';
@@ -191,6 +192,10 @@ export interface SplitEditorPaneProps {
   onCreateNewDoc?: () => void;
   /** Empty-pane action card: "Close" — collapses this (empty) pane. */
   onCloseEmptyPane?: () => void;
+  /** SKY-9342: per-pane ⋮ menu — "Close pane" action (always-available). */
+  onClosePane?: () => void;
+  /** SKY-9342: per-pane ⋮ menu — "Split pane" action. */
+  onSplitPane?: () => void;
 }
 
 export default function SplitEditorPane({
@@ -224,6 +229,8 @@ export default function SplitEditorPane({
   onTabStripDrop,
   onCreateNewDoc,
   onCloseEmptyPane,
+  onClosePane,
+  onSplitPane,
 }: SplitEditorPaneProps) {
   const hasAnyScenes = useMemo(
     () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
@@ -231,6 +238,26 @@ export default function SplitEditorPane({
   );
   const paneLabel = `Pane ${paneNumber}`;
   const sceneSelectorRef = useRef<PaneSceneSelectorHandle>(null);
+
+  // ── SKY-9342: per-pane ⋮ menu ─────────────────────────────────────────────
+  const [paneMenuOpen, setPaneMenuOpen] = useState(false);
+  const paneMenuBtnRef = useRef<HTMLButtonElement>(null);
+  const paneMenuRef = useRef<HTMLDivElement>(null);
+
+  const closePaneMenu = useCallback(() => setPaneMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!paneMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (
+        paneMenuBtnRef.current?.contains(e.target as Node) ||
+        paneMenuRef.current?.contains(e.target as Node)
+      ) return;
+      setPaneMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [paneMenuOpen]);
 
   return (
     <div
@@ -246,7 +273,8 @@ export default function SplitEditorPane({
       />
 
       {/* SKY-8907: per-pane tab strip — sits above the pane header (Obsidian
-          layout), owned entirely by the shell (tab list/active id/handlers). */}
+          layout), owned entirely by the shell (tab list/active id/handlers).
+          SKY-9342: the strip also hosts the per-pane ⋮ menu button. */}
       {tabs && (
         <div
           className={`spe-tab-strip${acceptsTabDrop ? ' spe-tab-strip--drop-target' : ''}`}
@@ -268,7 +296,58 @@ export default function SplitEditorPane({
             onTabDragStart={onTabDragStart}
             newTabTitle="New scene in this pane"
             allowCloseLastTab
+            hideAgentsChip
           />
+
+          {/* SKY-9342: per-pane ⋮ menu */}
+          {(onClosePane ?? onSplitPane) && (
+            <div className="spe-pane-menu-wrap">
+              <button
+                ref={paneMenuBtnRef}
+                type="button"
+                className={['spe-pane-menu-btn', paneMenuOpen ? 'spe-pane-menu-btn--open' : ''].filter(Boolean).join(' ')}
+                aria-label={`Pane ${paneNumber} options`}
+                aria-haspopup="menu"
+                aria-expanded={paneMenuOpen}
+                onClick={() => setPaneMenuOpen((o) => !o)}
+                data-testid={`split-pane-${paneNumber}-pane-menu-btn`}
+              >
+                ⋮
+              </button>
+              {paneMenuOpen && (
+                <div
+                  ref={paneMenuRef}
+                  className="spe-pane-menu"
+                  role="menu"
+                  aria-label={`Pane ${paneNumber} options`}
+                  data-testid={`split-pane-${paneNumber}-pane-menu`}
+                >
+                  {onSplitPane && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="spe-pane-menu-item"
+                      onClick={() => { closePaneMenu(); onSplitPane(); }}
+                      data-testid={`split-pane-${paneNumber}-pane-menu-split`}
+                    >
+                      Split pane
+                    </button>
+                  )}
+                  {onClosePane && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="spe-pane-menu-item spe-pane-menu-item--close"
+                      onClick={() => { closePaneMenu(); onClosePane(); }}
+                      data-testid={`split-pane-${paneNumber}-pane-menu-close`}
+                    >
+                      Close pane
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

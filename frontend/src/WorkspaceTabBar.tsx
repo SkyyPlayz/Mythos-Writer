@@ -8,6 +8,7 @@
  * `closable: tabIds.length > 1`), drags carry the document identity for the
  * shell's split drop zones, `+` creates a provisional scene (§1.5), and
  * non-document views render a single static pseudo-tab (prototype ~5713).
+ * SKY-9342 (M8): overflow ▾ dropdown — tabs hidden by scroll appear in the list.
  *
  * Standalone component; wired into DesktopShell by PE-C (SKY-3098).
  * AC-LN-06: X closes immediately, no popover. Active-tab close selects left neighbor.
@@ -42,6 +43,8 @@ export interface WorkspaceTabBarProps {
   /** SKY-8907: per-pane strips allow closing the last tab (it collapses the
    * pane rather than orphaning a blank editor, unlike the single global strip). */
   allowCloseLastTab?: boolean;
+  /** SKY-9342: hide the agents status chip (per-pane strips don't carry it). */
+  hideAgentsChip?: boolean;
 }
 
 /** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
@@ -61,6 +64,7 @@ export default function WorkspaceTabBar({
   staticTabLabel,
   newTabTitle = 'New blank scene — it only saves once you type',
   allowCloseLastTab = false,
+  hideAgentsChip = false,
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -74,6 +78,57 @@ export default function WorkspaceTabBar({
   );
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // ── SKY-9342: overflow ▾ dropdown — tracks which tab slots are clipped ───
+  const [hiddenTabIds, setHiddenTabIds] = useState<Set<string>>(new Set());
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowBtnRef = useRef<HTMLButtonElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tabSlotRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // IntersectionObserver: watch each tab slot inside the scroll container.
+  // A slot that isn't fully visible means the user can't see or click it.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || tabs.length === 0) {
+      setHiddenTabIds(new Set());
+      return;
+    }
+    const newHidden = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const id = (entry.target as HTMLElement).dataset.tabId;
+          if (!id) return;
+          if (entry.intersectionRatio < 0.95) {
+            newHidden.add(id);
+          } else {
+            newHidden.delete(id);
+          }
+        });
+        setHiddenTabIds(new Set(newHidden));
+      },
+      { root, threshold: 0.95 },
+    );
+    tabSlotRefs.current.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs]);
+
+  // Dismiss overflow menu on outside click.
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (
+        overflowBtnRef.current?.contains(e.target as Node) ||
+        overflowMenuRef.current?.contains(e.target as Node)
+      ) return;
+      setOverflowOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [overflowOpen]);
 
   // ── Roving-tabIndex refs for arrow-key focus management ───────────────────
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -288,12 +343,14 @@ export default function WorkspaceTabBar({
   return (
     <div className="wtb-root" role="tablist" aria-label="Workspace tabs" ref={rootRef}>
       {/* SKY-5704: scrollable strip so overflow tabs stay reachable without
-          pushing the pinned + button off-screen. */}
+          pushing the pinned + button off-screen.
+          SKY-9342: ref wired for IntersectionObserver to detect clipped slots. */}
       <div
+        ref={scrollRef}
         className={['wtb-tabs-scroll', tabs.length === 0 && !staticTabLabel ? 'wtb-tabs-scroll--empty' : '']
           .filter(Boolean)
           .join(' ')}
-        onScroll={() => setCtxMenu(null)}
+        onScroll={() => { setCtxMenu(null); setOverflowOpen(false); }}
       >
         {/* Beta 4 M4: non-document views show the view name as a single static
             pseudo-tab (prototype tabList fallback, ~5713). */}
@@ -315,6 +372,11 @@ export default function WorkspaceTabBar({
              */
             <div
               key={tab.id}
+              data-tab-id={tab.id}
+              ref={(el) => {
+                if (el) tabSlotRefs.current.set(tab.id, el);
+                else tabSlotRefs.current.delete(tab.id);
+              }}
               className={[
                 'wtb-tab-slot',
                 isActive ? 'wtb-tab-slot--active' : '',
@@ -405,18 +467,70 @@ export default function WorkspaceTabBar({
         </svg>
       </button>
 
+      {/* SKY-9342: overflow ▾ — appears when any tabs are clipped by the scroll strip. */}
+      {hiddenTabIds.size > 0 && !staticTabLabel && (
+        <div className="wtb-overflow-wrap">
+          <button
+            ref={overflowBtnRef}
+            type="button"
+            className={['wtb-overflow-btn', overflowOpen ? 'wtb-overflow-btn--open' : ''].filter(Boolean).join(' ')}
+            aria-label="Show hidden tabs"
+            aria-haspopup="listbox"
+            aria-expanded={overflowOpen}
+            title="More tabs"
+            onClick={() => setOverflowOpen((o) => !o)}
+            data-testid="wtb-overflow-btn"
+          >
+            <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
+              <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+          </button>
+          {overflowOpen && (
+            <div
+              ref={overflowMenuRef}
+              className="wtb-overflow-menu"
+              role="listbox"
+              aria-label="Hidden tabs"
+              data-testid="wtb-overflow-menu"
+            >
+              {tabs
+                .filter((t) => hiddenTabIds.has(t.id))
+                .map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="option"
+                    aria-selected={t.id === activeTabId}
+                    className={['wtb-overflow-item', t.id === activeTabId ? 'wtb-overflow-item--active' : ''].filter(Boolean).join(' ')}
+                    onClick={() => {
+                      setOverflowOpen(false);
+                      onTabSelect(t.id);
+                    }}
+                    data-testid={`wtb-overflow-item-${t.id}`}
+                  >
+                    <span className={['wtb-tab-dot', t.id === activeTabId ? '' : 'wtb-tab-dot--inactive'].filter(Boolean).join(' ')} aria-hidden="true" />
+                    <span className="wtb-overflow-label">{t.title}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="wtb-spacer" />
 
       {/* Beta3 M6: agents status chip (prototype 161–164). */}
-      <div className="wtb-agents-chip" data-testid="wtb-agents-chip">
-        <span
-          className={['wtb-agents-dot', agentsActive ? 'wtb-agents-dot--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-hidden="true"
-        />
-        <span>{agentsActive ? 'Agents working' : 'All agents idle'}</span>
-      </div>
+      {!hideAgentsChip && (
+        <div className="wtb-agents-chip" data-testid="wtb-agents-chip">
+          <span
+            className={['wtb-agents-dot', agentsActive ? 'wtb-agents-dot--active' : '']
+              .filter(Boolean)
+              .join(' ')}
+            aria-hidden="true"
+          />
+          <span>{agentsActive ? 'Agents working' : 'All agents idle'}</span>
+        </div>
+      )}
 
       {/* Beta3 M6: tab context menu (prototype 141–145). */}
       {ctxMenu !== null && menuTab && (

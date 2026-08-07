@@ -298,3 +298,56 @@ describe('empty-pane action card', () => {
     expect(screen.queryByTestId('scene-editor-empty-actions')).toBeNull();
   });
 });
+
+// ── SKY-9342: per-pane ⋮ menu ──────────────────────────────────────────────────
+
+describe('per-pane ⋮ menu', () => {
+  const tab = (): WorkspaceTab => ({ id: 't1', kind: 'scene', title: 'Scene A', icon: '📄', docId: 's1' });
+
+  it('renders no pane menu button when neither onClosePane nor onSplitPane is provided', () => {
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1' })} />);
+    expect(screen.queryByTestId('split-pane-1-pane-menu-btn')).toBeNull();
+  });
+
+  it('renders the pane menu button when onClosePane is provided', () => {
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1', onClosePane: vi.fn() })} />);
+    expect(screen.getByTestId('split-pane-1-pane-menu-btn')).toBeInTheDocument();
+  });
+
+  it('toggles the pane menu on button click', () => {
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1', onClosePane: vi.fn() })} />);
+    expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-btn'));
+    expect(screen.getByTestId('split-pane-1-pane-menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-btn'));
+    expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+  });
+
+  it('calls onClosePane and closes the menu when "Close pane" is clicked', () => {
+    const onClosePane = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1', onClosePane })} />);
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-btn'));
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-close'));
+    expect(onClosePane).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+  });
+
+  it('shows "Split pane" only when onSplitPane is provided', () => {
+    const onSplitPane = vi.fn();
+    const onClosePane = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1', onClosePane, onSplitPane })} />);
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-btn'));
+    expect(screen.getByTestId('split-pane-1-pane-menu-split')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-split'));
+    expect(onSplitPane).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+  });
+
+  it('dismisses the menu on outside click', () => {
+    render(<SplitEditorPane {...defaultProps({ tabs: [tab()], activeTabId: 't1', onClosePane: vi.fn() })} />);
+    fireEvent.click(screen.getByTestId('split-pane-1-pane-menu-btn'));
+    expect(screen.getByTestId('split-pane-1-pane-menu')).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+  });
+});
