@@ -5214,6 +5214,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onTabStripDrop={() => handleSplitPaneTabDrop(1)}
                   onCreateNewDoc={handleNewProvisionalScene}
                   onCloseEmptyPane={() => collapseSplitPane(1)}
+                  onClosePane={() => collapseSplitPane(1)}
                 />
                 <div
                   className="split-window-divider"
@@ -5254,6 +5255,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onTabStripDrop={() => handleSplitPaneTabDrop(2)}
                   onCreateNewDoc={handlePane2NewScene}
                   onCloseEmptyPane={() => collapseSplitPane(2)}
+                  onClosePane={() => collapseSplitPane(2)}
                 />
               </div>
             </>

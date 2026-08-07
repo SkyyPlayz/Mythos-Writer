@@ -98,11 +98,107 @@
   flex-shrink: 0;
   border-bottom: 1px solid var(--border-subtle);
   transition: background var(--dur-hover-in) var(--ease-out);
+  display: flex;
+  align-items: stretch;
+}
+
+/* The WorkspaceTabBar inside the strip fills available width. */
+.spe-tab-strip > .wtb-root {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Cross-pane drag target highlight while a tab from the other pane hovers. */
 .spe-tab-strip--drop-target {
   background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, transparent);
+}
+
+/* SKY-9342: per-pane ⋮ menu */
+.spe-pane-menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding: 0 4px;
+  background: rgba(8, 10, 18, .35);
+  border-left: 1px solid rgba(255, 255, 255, .06);
+}
+
+.spe-pane-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: rgb(118, 134, 162);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  letter-spacing: 0;
+  -webkit-app-region: no-drag;
+}
+
+.spe-pane-menu-btn:hover,
+.spe-pane-menu-btn--open {
+  background: rgba(255, 255, 255, .08);
+  color: rgb(219, 228, 245);
+}
+
+.spe-pane-menu-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.spe-pane-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  z-index: 62;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 12px 36px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .12s ease;
+}
+
+.spe-pane-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  color: rgb(205, 216, 234);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.spe-pane-menu-item:hover {
+  background: rgba(255, 255, 255, .07);
+  color: rgb(255, 255, 255);
+}
+
+.spe-pane-menu-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
+.spe-pane-menu-item--close {
+  color: rgb(255, 157, 180);
+}
+
+.spe-pane-menu-item--close:hover {
+  background: rgba(255, 95, 143, .1);
 }
 
 /* ── Pane header ── */
