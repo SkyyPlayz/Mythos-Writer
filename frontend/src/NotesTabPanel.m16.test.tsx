@@ -1,5 +1,5 @@
 // M16 (Beta 3): NotesTabPanel — note splits + right-panel Agent/Properties tabs.
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import NotesTabPanel, { type NotesTabPanelProps } from './NotesTabPanel';
 
@@ -91,23 +91,31 @@ describe('NotesTabPanel — M16 note splits', () => {
     expect(viewers[0]).toHaveAttribute('data-path', 'Locations/The Sunken Gate.md');
     expect(viewers[1]).toHaveAttribute('data-path', 'Characters/Mira.md');
 
-    fireEvent.click(screen.getByTestId('note-split-close'));
+    // SKY-9784: split-pane close now lives behind the per-pane ⋮ menu
+    // ("Close pane"), same as the Story split editor's pane strip.
+    fireEvent.click(screen.getByTestId('notes-split-pane-2-pane-menu-btn'));
+    fireEvent.click(screen.getByTestId('notes-split-pane-2-pane-menu-close'));
     expect(screen.queryByTestId('notes-split-row')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('note-viewer-mock')).toHaveLength(1);
   });
 
-  it('switches the split note via the selector (md files only)', () => {
-    render(<NotesTabPanel {...BASE_PROPS} />);
+  it('SKY-9784: pane 2 is an Obsidian-parity tab strip — switching tabs changes the viewer', () => {
+    const { rerender } = render(<NotesTabPanel {...BASE_PROPS} />);
     fireEvent.click(screen.getByTestId('notes-split-toggle'));
-    const select = screen.getByTestId('note-split-select') as HTMLSelectElement;
-    const options = Array.from(select.options).map((o) => o.value);
-    expect(options).toContain('Locations/The Sunken Gate.md');
-    expect(options).toContain('Characters/Mira.md');
-    expect(options).not.toContain('assets/image.png');
+    // Defaults to the other note (Mira) active in pane 2.
+    expect(screen.getAllByTestId('note-viewer-mock')[1]).toHaveAttribute('data-path', 'Characters/Mira.md');
 
-    fireEvent.change(select, { target: { value: 'Locations/The Sunken Gate.md' } });
-    const viewers = screen.getAllByTestId('note-viewer-mock');
-    expect(viewers[1]).toHaveAttribute('data-path', 'Locations/The Sunken Gate.md');
+    // A shell-driven split request (drag/"Open to the side") upserts a
+    // second tab into pane 2 and focuses it.
+    rerender(<NotesTabPanel {...BASE_PROPS} noteSplitRequest={{ path: 'Locations/The Sunken Gate.md', token: 1 }} />);
+
+    const pane2Strip = screen.getByTestId('notes-split-pane-2-tab-strip');
+    expect(within(pane2Strip).getByRole('tab', { name: 'The Sunken Gate' })).toBeInTheDocument();
+    expect(screen.getAllByTestId('note-viewer-mock')[1]).toHaveAttribute('data-path', 'Locations/The Sunken Gate.md');
+
+    // Clicking the Mira tab switches pane 2's active document back to it.
+    fireEvent.click(within(pane2Strip).getByRole('tab', { name: 'Mira' }));
+    expect(screen.getAllByTestId('note-viewer-mock')[1]).toHaveAttribute('data-path', 'Characters/Mira.md');
   });
 
   it('toggle button reflects the open split via aria-pressed', () => {
