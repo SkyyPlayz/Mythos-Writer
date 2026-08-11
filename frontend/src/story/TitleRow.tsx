@@ -8,10 +8,17 @@
 // snapshot toolbar (M1 spec #5). They render only when the host supplies
 // `drafts` — i.e. only once a target scene resolves.
 
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import type { DraftState, Scene, Story } from '../types';
 import {
   draftStateLabel,
+  normalizeInlineTitle,
   scopeTitle,
   titleChip,
   type ManuscriptCursor,
@@ -56,6 +63,12 @@ export interface TitleRowProps {
   onManualSnapshot?: () => void;
   snapshotSavedAt?: string | null;
   onOpenSceneHistory?: () => void;
+  /**
+   * M3 (SKY-9021): inline rename of the scope's title (story at Full Book /
+   * Part depth, the cursor's chapter/scene otherwise). Same commit contract
+   * as the page headings: blur/Enter commits, empty reverts.
+   */
+  onRenameTitle?: (title: string) => void;
 }
 
 const COMMENT_ICON = (
@@ -87,6 +100,7 @@ export default function TitleRow({
   onManualSnapshot,
   snapshotSavedAt,
   onOpenSceneHistory,
+  onRenameTitle,
 }: TitleRowProps) {
   const chip = titleChip(cursor);
   const title = scopeTitle(story, cursor);
@@ -121,7 +135,38 @@ export default function TitleRow({
           {chip}
         </span>
       )}
-      <h1 className="msv-scope-title" data-testid="msv-scope-title">
+      {/* M3 (SKY-9021): the title is inline-editable when a rename handler is
+          wired — same blur/Enter contract as the page's heading renames.
+          Children stay the committed title; mid-edit text lives in the DOM. */}
+      <h1
+        className="msv-scope-title"
+        data-testid="msv-scope-title"
+        contentEditable={!!onRenameTitle}
+        suppressContentEditableWarning
+        spellCheck={false}
+        {...(onRenameTitle
+          ? {
+              role: 'textbox' as const,
+              'aria-label': 'Title — Enter commits',
+              onBlur: (e: ReactFocusEvent<HTMLElement>) => {
+                const el = e.currentTarget;
+                const next = normalizeInlineTitle(el.textContent ?? '');
+                if (!next) {
+                  el.textContent = title;
+                  return;
+                }
+                if (next !== (el.textContent ?? '')) el.textContent = next;
+                if (next !== title) onRenameTitle(next);
+              },
+              onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+              },
+            }
+          : {})}
+      >
         {title}
       </h1>
       {/* Prototype ☆ (:902) — same inert affordance as the legacy DocHeader's;

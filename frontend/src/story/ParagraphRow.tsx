@@ -73,6 +73,11 @@ export interface ParagraphRowProps {
    * (suppressed while comment anchors segment the text, like the prototype).
    */
   dropCap: boolean;
+  /**
+   * M3 (SKY-9021) — ghost text rendered via CSS while the paragraph is empty
+   * (`:empty::before`), e.g. "Start writing…" on a scene's first paragraph.
+   */
+  placeholder?: string;
   /** Toolbar-driven paragraph style (memoized by the parent). */
   paraStyle: CSSProperties;
   onCommit: (sceneId: string, blockId: string, original: string, el: HTMLElement) => void;
@@ -171,6 +176,7 @@ export function paragraphRowPropsEqual(
     prev.showDropLine !== next.showDropLine ||
     prev.dragging !== next.dragging ||
     prev.dropCap !== next.dropCap ||
+    prev.placeholder !== next.placeholder ||
     prev.paraStyle !== next.paraStyle ||
     prev.autoLinkTerms !== next.autoLinkTerms ||
     prev.onCommit !== next.onCommit ||
@@ -200,6 +206,7 @@ export function ParagraphRowBase({
   showDropLine,
   dragging,
   dropCap,
+  placeholder,
   paraStyle,
   onCommit,
   onSplit,
@@ -302,6 +309,7 @@ export function ParagraphRowBase({
           className={textClass}
           style={paraStyle}
           data-testid={`msv-para-${blockId}`}
+          data-placeholder={placeholder}
           contentEditable
           suppressContentEditableWarning
           role="textbox"

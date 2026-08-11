@@ -39,6 +39,17 @@
   min-width: 0;
 }
 
+/* M3 (SKY-9021): inline title rename — match the page headings' focus
+   affordance (outline-free, subtle underline while editing). */
+.msv-scope-title[contenteditable='true'] {
+  cursor: text;
+  outline: none;
+}
+
+.msv-scope-title[contenteditable='true']:focus {
+  border-bottom: 1px solid var(--n1, #00f0ff);
+}
+
 .msv-title-star {
   flex: none;
   background: none;

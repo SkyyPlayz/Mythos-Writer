@@ -2286,6 +2286,13 @@ export interface AppSettings {
   pageBackground?: PageBackgroundSettings;
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
+  /**
+   * M3 (SKY-9021) rollout flag, OFF by default: create story → instantly
+   * writable (one-transaction scaffold, Full Book depth, caret in the empty
+   * scene). Absent/false keeps the pre-M3 flows. Removing this flag (and the
+   * legacy paths it guards) is part of the milestone's done-criteria.
+   */
+  instantCreateStory?: boolean;
   /** SKY-204: opt-in daily notes / journal mode. */
   journalMode?: JournalModeSettings;
   /** SKY-627: author name entered during onboarding (optional). */
@@ -2346,6 +2353,12 @@ export interface LastOpenedScene {
   scenePath: string;
   scrollTop: number;
   cursorLine: number;
+  /**
+   * M3 (SKY-9021): one-shot — onboarding's create-story sets 'book' so the
+   * first open lands at Full Book depth with the caret in the scaffolded
+   * scene. Cleared implicitly by the next session scene save.
+   */
+  openAtDepth?: 'book';
 }
 
 /** SKY-627 / SKY-906: onboarding orchestration payload.
