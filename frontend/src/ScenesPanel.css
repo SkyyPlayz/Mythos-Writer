@@ -28,8 +28,113 @@
   height: auto;
 }
 
+.scenes-panel-boards {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.scenes-panel-boards-label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.scenes-panel-board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.scenes-panel-board {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-body);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.scenes-panel-board:hover,
+.scenes-panel-board[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+
+.scenes-panel-board-glyph {
+  flex: none;
+  color: var(--accent);
+}
+
+.scenes-panel-board-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.scenes-panel-board-count {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* Prototype Scenes-tab empty state: dashed card, glyph + hint + inline action. */
+.scenes-panel-empty-boards {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.scenes-panel-empty-boards .scenes-panel-empty-icon {
+  margin-bottom: var(--space-2);
+}
+
+.scenes-panel-empty-boards p {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.scenes-panel-empty-action {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scenes-panel-empty-action:hover {
+  text-decoration: underline;
+}
+
 .scenes-panel-open-full {
   flex: none;
+  margin-top: auto;
   align-self: stretch;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-default);
