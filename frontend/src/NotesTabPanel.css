@@ -356,6 +356,12 @@
   border-bottom: 1px solid var(--glass-border);
 }
 
+/* R11 (SKY-9826): with AI off the tab strip is gone; keep the lone collapse
+   chevron pinned top-right like the prototype's manual-mode panel. */
+.notes-right-sidebar-header .notes-sidebar-collapse-btn {
+  margin-left: auto;
+}
+
 .notes-right-sidebar-title {
   font-size: 0.75rem;
   font-weight: 600;

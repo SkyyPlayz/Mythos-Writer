@@ -363,6 +363,10 @@ interface Props {
    *  Story-side embeddings (Brainstorm Center, right-sidebar tab, split pane)
    *  keep the default "Talk through your story" subtitle. */
   curatorGreeting?: boolean;
+  /** SKY-9826 (M9e): prompt placeholder override — the Notes right-panel
+   *  embedding uses the prototype's curator copy (line 3221); story-side
+   *  embeddings keep the default. */
+  inputPlaceholder?: string;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -376,7 +380,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…' }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -2426,7 +2430,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                   }
                 }}
                 onKeyDown={handleKey}
-                placeholder="Ask about your story — characters, plot, world-building…"
+                placeholder={inputPlaceholder}
                 rows={3}
                 maxLength={PROMPT_MAX_CHARS}
                 disabled={loading}

@@ -1174,6 +1174,20 @@ describe('BrainstormPage — curatorGreeting (Notes right panel)', () => {
   });
 });
 
+// M9e (SKY-9826): the Notes right-panel embedding overrides the prompt
+// placeholder with the prototype's curator copy (line 3221).
+describe('BrainstormPage — inputPlaceholder (Notes right panel)', () => {
+  it('uses the default story placeholder when not set', () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(screen.getByPlaceholderText('Ask about your story — characters, plot, world-building…')).toBeInTheDocument();
+  });
+
+  it('renders the override on the prompt textarea when set', () => {
+    render(<BrainstormPage onClose={() => {}} inputPlaceholder="Tell me about your world — I'll file it…" />);
+    expect(screen.getByPlaceholderText("Tell me about your world — I'll file it…")).toBeInTheDocument();
+  });
+});
+
 describe('BrainstormPage — prompt char counter', () => {
   it('shows 0 / 2,000 counter when textarea is empty', () => {
     render(<BrainstormPage onClose={() => {}} />);
