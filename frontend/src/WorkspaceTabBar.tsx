@@ -409,6 +409,14 @@ export default function WorkspaceTabBar({
                   if (e.shiftKey && onTabOpenInSplit) onTabOpenInSplit(tab.id);
                   else onTabSelect(tab.id);
                 }}
+                onAuxClick={(e) => {
+                  // M7 (PLAN.md §4/M7 item 5): middle-click closes the tab,
+                  // same as clicking its X — Obsidian/browser-tab parity.
+                  if (e.button === 1 && closable) {
+                    e.preventDefault();
+                    handleClose(tab.id);
+                  }
+                }}
                 onContextMenu={(e) => handleTabContextMenu(e, tab.id)}
                 onKeyDown={(e) => handleTabKeyDown(e, i)}
                 title={onTabOpenInSplit ? `${tab.title} (Shift+click: open in split pane)` : tab.title}
