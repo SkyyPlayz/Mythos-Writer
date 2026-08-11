@@ -2351,6 +2351,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setActivePane2TabId(null);
   }, [pane2Scene, pane2Chapter, pane2Story, pane2Tabs, activePane2TabId, persistDocTabs]);
 
+  // SKY-9019 M5: each rail item is a first-class destination; no aliases.
+  // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    switch (moduleId) {
+      case 'crafter':
+        handleNavSectionChange('story');
+        handleSetView('kanban');
+        break;
+      case 'timeline':
+        handleNavSectionChange('story');
+        handleSetView('timeline');
+        break;
+      case 'vault-graph':
+        handleTabChange('vault-graph');
+        break;
+      case 'story':
+        handleNavSectionChange('story');
+        // Scene Crafter and Timeline have their own rail items — Story Writer
+        // always lands on the editor sub-view.
+        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
+          handleSetView('editor');
+        }
+        break;
+      default:
+        handleNavSectionChange(moduleId);
+    }
+  }, [handleNavSectionChange, handleSetView, handleTabChange]);
+
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2546,7 +2574,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNavModuleChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -3263,8 +3291,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(null);
     setSelectedEntity(null);
     setOpenedNotePath(scenePath);
+    // SKY-9019 M5: Vault Graph (and other non-Notes surfaces this handler is
+    // wired to, e.g. the Story tab's Vault Browser panel) are no longer
+    // nested under the Notes tab, so opening a note has to switch there
+    // itself instead of relying on already being on it.
+    handleTabChange('notes');
     checkGettingStartedItem('notes-vault');
-  }, [stories, handleSelectScene, checkGettingStartedItem]);
+  }, [stories, handleSelectScene, handleTabChange, checkGettingStartedItem]);
 
   // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
   const handleOpenSceneById = useCallback((sceneId: string) => {
@@ -4435,34 +4468,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange('story');
   }, [stories, handleNavSectionChange]);
 
-  // SKY-9019 M5: each rail item is a first-class destination; no aliases.
-  // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
-  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
-    switch (moduleId) {
-      case 'crafter':
-        handleNavSectionChange('story');
-        handleSetView('kanban');
-        break;
-      case 'timeline':
-        handleNavSectionChange('story');
-        handleSetView('timeline');
-        break;
-      case 'vault-graph':
-        handleTabChange('vault-graph');
-        break;
-      case 'story':
-        handleNavSectionChange('story');
-        // Scene Crafter and Timeline have their own rail items — Story Writer
-        // always lands on the editor sub-view.
-        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
-          handleSetView('editor');
-        }
-        break;
-      default:
-        handleNavSectionChange(moduleId);
-    }
-  }, [handleNavSectionChange, handleSetView, handleTabChange]);
-
   // Which rail module is lit: derived from the actual displayed surface so
   // the slot-glow pill follows crafter/timeline/graph sub-views too.
   // SKY-9019 M5: vault-graph is its own AppTab; crafter/timeline derive from storySubView.
@@ -5620,6 +5625,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
             seedPrompt={brainstormSeedPrompt ?? undefined}
           />
+        </div>
+      )}
+      {/* SKY-9019 M5: Vault Graph is a standalone top-level tab (no longer a Notes sub-view). */}
+      {tabShell.activeTab === 'vault-graph' && (
+        <div
+          id="app-tabpanel-vault-graph"
+          role="tabpanel"
+          aria-labelledby="app-tab-vault-graph"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+        >
+          <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
         </div>
       )}
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.

@@ -76,6 +76,84 @@ function StoryGlyph() {
   );
 }
 
+/** Prototype modDefs.editor icon (`this.icons.quill`): Story Writer rail item. */
+function QuillGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 4c-6 .5-11 4-13 10l-3.5 6" />
+      <path d="M20 4c-.5 6-4 11-10 13" />
+      <path d="M9.5 12.5L14 8" />
+    </svg>
+  );
+}
+
+/** Prototype modDefs.notes icon (`this.icons.note`): Notes Editor rail item. */
+function NoteGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="3.5" />
+      <path d="M8.5 9.5h7M8.5 13.5h5" />
+    </svg>
+  );
+}
+
+/** Prototype modDefs.crafter icon (`this.icons.part`): Scene Crafter rail item. */
+function PartGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 20V7l7-3.5V20M12 20V3.5L19 7v13" />
+      <path d="M3 20h18" />
+    </svg>
+  );
+}
+
+/** Prototype modDefs.brainstorm icon (`this.icons.bulb`): Brainstorm rail item. */
+function BulbGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="10" r="5" />
+      <path d="M10 17.5h4M10.5 20.5h3" />
+    </svg>
+  );
+}
+
+/** Prototype modDefs.timeline icon (`this.icons.tline`): Timeline rail item. */
+function TimelineGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 12h17" />
+      <circle cx="8" cy="12" r="2.2" />
+      <circle cx="16" cy="12" r="2.2" />
+      <path d="M8 12V7.5M16 12v4.5" />
+    </svg>
+  );
+}
+
+/** Prototype modDefs.graph icon (`this.icons.graph`): Vault Graph rail item. */
+function VaultGraphGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6.5" r="2.4" />
+      <circle cx="18" cy="9" r="2.4" />
+      <circle cx="10" cy="17.5" r="2.4" />
+      <path d="M8.2 7.2l7.5 1.4M7 8.6l2.2 6.7M16.4 10.9l-4.6 5" />
+    </svg>
+  );
+}
+
+/** SKY-9019 M5: drawn glyphs for the six rail modules, replacing the old
+ *  emoji `icon` field (prototype `this.icons`, HTML 4112-4118). Keyed by
+ *  NavRailModuleId rather than the config's `icon` string so a stale/custom
+ *  icon value in persisted settings can't blank the glyph out. */
+const RAIL_GLYPH_BY_ID: Partial<Record<NavRailModuleId, () => ReactNode>> = {
+  story: QuillGlyph,
+  notes: NoteGlyph,
+  crafter: PartGlyph,
+  brainstorm: BulbGlyph,
+  timeline: TimelineGlyph,
+  'vault-graph': VaultGraphGlyph,
+};
+
 /** Prototype 213: settings sliders glyph. */
 function SettingsGlyph() {
   return (
@@ -272,6 +350,7 @@ export default function AppNavRail({
           const active = activeSection === item.id;
           const slot = SLOT_BY_MODULE[item.id] ?? 1;
           const hasStories = storiesEnabled && item.id === 'story';
+          const Glyph = RAIL_GLYPH_BY_ID[item.id];
           return (
             <button
               key={item.id}
@@ -289,7 +368,7 @@ export default function AppNavRail({
               title={item.label}
             >
               {renderIcons && (
-                <span className="nav-rail__item-icon" aria-hidden="true">{item.icon}</span>
+                <span className="nav-rail__item-icon" aria-hidden="true">{Glyph ? <Glyph /> : item.icon}</span>
               )}
               {renderLabels && (
                 <span className="nav-rail__item-label">{item.label}</span>

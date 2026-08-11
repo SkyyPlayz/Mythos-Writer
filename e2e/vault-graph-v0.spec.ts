@@ -111,7 +111,7 @@ async function navigateToGraph(page: Page): Promise<void> {
   const mainNav = page.locator('nav[aria-label="Main navigation"]');
   await expect(mainNav).toBeVisible({ timeout: 12_000 });
   const storyTab = mainNav.getByRole('button', { name: 'Story Writer', exact: true });
-  const notesTab = mainNav.getByRole('button', { name: 'Notes Editor', exact: true });
+  const graphTab = mainNav.getByRole('button', { name: 'Vault Graph', exact: true });
 
   // Navigate away to reset state — use the Story Timeline sub-view (exists in every fixture).
   // Nav rail v2 treats a re-click of the ACTIVE Story item as a Stories-popover
@@ -136,10 +136,10 @@ async function navigateToGraph(page: Page): Promise<void> {
     await expect(storiesBackdrop).toHaveCount(0);
   }
 
-  // Graph now lives under the Notes tab's Graph sub-view.
-  await expect(notesTab).toBeVisible({ timeout: 5_000 });
-  await notesTab.click();
-  await page.locator('[data-testid="notes-subview-graph"]').click();
+  // SKY-9019 M5: Vault Graph is a standalone top-level rail destination now,
+  // not a Notes sub-view.
+  await expect(graphTab).toBeVisible({ timeout: 5_000 });
+  await graphTab.click();
   // vault-graph-view is the panel's root section, rendered for both the empty
   // and populated states (the empty state nests vault-graph-empty inside it) —
   // matching it alone avoids a strict-mode violation on the OR-selector.
@@ -251,15 +251,15 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
   // AC-GV-01: Graph icon in left sidebar nav zone opens graph panel;
   //           panel id is `vault-graph`; panel is dockable.
 
-  test('TC-GV-01: Notes tab Graph sub-view opens vault-graph panel', async () => {
+  test('TC-GV-01: Vault Graph rail item opens the standalone vault-graph panel', async () => {
     await navigateToGraph(page);
 
     // Graph panel must mount
     const graphView = page.locator('[data-testid="vault-graph-view"]');
     await expect(graphView).toBeVisible({ timeout: 15_000 });
 
-    // Notes graph container is present
-    await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
+    // The standalone top-level tabpanel wraps it (SKY-9019 M5 — no longer nested under Notes).
+    await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible();
   });
 
   // ── TC-GV-02 ─────────────────────────────────────────────────────────────────

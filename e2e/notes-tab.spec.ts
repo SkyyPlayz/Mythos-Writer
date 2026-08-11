@@ -55,7 +55,10 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('Notes tab shows sub-view toggles (Editor · Graph · Entities)', async () => {
+  // SKY-9019 M5: nav rail and sub-tabs became orthogonal — Vault Graph and
+  // Entity Browser are no longer Notes sub-views (they moved to their own
+  // rail/tab destinations), so Notes only has the Editor sub-view left.
+  test('Notes tab shows only the Editor sub-view', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
@@ -65,8 +68,8 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
 
       await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toBeVisible();
-      await expect(page.locator('[data-testid="notes-subview-entities"]')).toBeVisible();
+      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveCount(0);
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -86,106 +89,79 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     }
   });
 
-  test('Notes sub-view: switching to Graph shows graph view', async () => {
+  // SKY-9019 M5: Vault Graph is a standalone top-level nav-rail destination.
+  test('Vault Graph rail item shows the graph view (standalone, not a Notes sub-view)', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
-
-      await page.locator('[data-testid="notes-subview-graph"]').click();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
-      await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
-      await expect(page.locator('[data-testid="notes-editor-placeholder"]')).not.toBeVisible();
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="vault-graph-view"], .vgv-state').first()).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('#app-tabpanel-notes')).toHaveCount(0);
     } finally {
       await app.close().catch(() => undefined);
     }
   });
 
-  // Acceptance criterion from spec (SKY-2096, updated for Beta 4 M3 #911):
-  // open Notes tab → pick a sub-view → switch tabs → switch back → the
-  // selection survives. Since the six-module nav rail gave Vault Graph its
-  // own rail item (prototype navItems, "Liquid Neon.dc.html" 5680–5687), a
-  // "Notes Editor" rail click intentionally lands on the editor sub-view —
-  // so the preserved-selection contract is exercised with Entities, and the
-  // graph surface is asserted through its own Vault Graph rail route plus
-  // the intentional graph→editor reset on a Notes Editor click.
-  test('Notes sub-view selection is preserved when switching tabs and back', async () => {
+  // Acceptance criterion from spec (SKY-2096), updated for SKY-9019 M5: Vault
+  // Graph is now a fully standalone rail destination (its own AppTab, no
+  // longer routed through Notes at all) — so the "does the surface survive a
+  // round trip through Story" contract is exercised on both first-class
+  // destinations independently rather than via a Notes-owned sub-view.
+  test('Notes Editor and Vault Graph selections each survive a round trip through Story', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      // Switch to Notes tab
+      // Notes tab → Story → back: still on the (only) Editor sub-view.
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
-
-      // Switch to Entities sub-view
-      await page.locator('[data-testid="notes-subview-entities"]').click();
-      await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveAttribute('aria-selected', 'true');
-
-      // Switch to Story tab
+      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
       await clickStoryNav(page);
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
-
-      // Switch back to Notes tab — Entities must still be selected
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
 
-      // Beta 4 M3: the graph is a dedicated rail module. Select Graph, leave
-      // for Story, and return through the "Vault Graph" rail item — the graph
-      // surface is shown and selected.
-      await page.locator('[data-testid="notes-subview-graph"]').click();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
+      // Vault Graph → Story → back: Vault Graph rail item relights and its
+      // panel remounts, independent of the Notes tab's own state.
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 3_000 });
       await clickStoryNav(page);
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-      await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible();
-
-      // …while a "Notes Editor" rail click intentionally resets graph → editor
-      // (DesktopShell handleNavModuleChange: "Vault Graph is its own rail item
-      // — a Notes Editor click shows notes").
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-      await expect(page.locator('[data-testid="notes-graph-view"]')).not.toBeVisible();
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]')).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible();
     } finally {
       await app.close().catch(() => undefined);
     }
   });
 
-  test('Notes sub-view persists across app restart', async () => {
-    // First launch: switch to Notes → Graph
+  // SKY-9019 M5: Vault Graph is its own AppTab now, so the persisted
+  // activeTab is 'vault-graph' directly — no Notes sub-view involved.
+  test('Vault Graph tab persists across app restart', async () => {
+    // First launch: switch to Vault Graph
     let app = await launchApp(userData);
     try {
-      let page = await firstWindow(app);
+      const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible({ timeout: 5_000 });
-      await page.locator('[data-testid="notes-subview-graph"]').click();
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true');
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 5_000 });
       // Wait for settings debounce to flush
       await page.waitForTimeout(600);
     } finally {
       await app.close().catch(() => undefined);
     }
 
-    // Second launch: Notes tab should show Graph sub-view
+    // Second launch: Vault Graph tab should still be active
     app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      // Notes tab should still be active…
-      await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
-      // …and with the Beta 4 M3 six-module rail (#911), the lit rail module
-      // for the restored Notes → Graph surface is "Vault Graph" (the graph
-      // has its own rail item now), not "Notes Editor".
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      // Graph sub-view should still be selected
-      await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 3_000 });
     } finally {
       await app.close().catch(() => undefined);
     }
