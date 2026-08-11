@@ -49,6 +49,16 @@ interface SceneGridProps {
   announce: (msg: string) => void;
 }
 
+const ORDINAL_WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN'];
+
+function partOrdinal(n: number): string {
+  return n <= ORDINAL_WORDS.length ? ORDINAL_WORDS[n - 1] : String(n);
+}
+
+function isSimpleSinglePart(story: Story): boolean {
+  return !story.parts || story.parts.length === 0 || (story.parts.length === 1 && story.parts[0].title === '');
+}
+
 /** Act of a beat id — searched across every template (ids are globally unique). */
 function resolveBeatActId(beatId: string): string | null {
   return ALL_BEATS.find((b) => b.id === beatId)?.act ?? null;
@@ -243,6 +253,25 @@ export function SceneGrid({
     );
   }
 
+  const simple = isSimpleSinglePart(story);
+
+  // Build a flat list of { part?, partIdx, chapter, chapterIdx } for rendering
+  type ChapterEntry = { partId?: string; partIdx?: number; chapter: Chapter; chapterIdx: number };
+  const chapterEntries: ChapterEntry[] = simple
+    ? story.chapters
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((chapter, chapterIdx) => ({ chapter, chapterIdx }))
+    : (story.parts ?? [])
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .flatMap((part, partIdx) =>
+          part.chapters
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((chapter, chapterIdx) => ({ partId: part.id, partIdx, chapter, chapterIdx })),
+        );
+
   return (
     <div
       className="scene-grid"
@@ -250,10 +279,11 @@ export function SceneGrid({
       aria-label={`Scenes in ${story.title}`}
       onClick={contextMenu ? closeContextMenu : undefined}
     >
-      {story.chapters
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map((chapter, chapterIdx) => {
+      {chapterEntries.map(({ partId, partIdx, chapter, chapterIdx }, entryIdx) => {
+        const isFirstInPart =
+          !simple &&
+          partId !== undefined &&
+          (entryIdx === 0 || chapterEntries[entryIdx - 1].partId !== partId);
           const isCollapsed = collapsedChapters.has(chapter.id);
           const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
           const totalWords = computeChapterWords(chapter);
@@ -261,8 +291,11 @@ export function SceneGrid({
             dropTarget?.kind === 'append' && dropTarget.chapterId === chapter.id;
 
           return (
+            <div key={`${partId ?? 'flat'}-${chapter.id}`}>
+              {isFirstInPart && partIdx !== undefined && (
+                <div className="msv-struct-part-header">PART {partOrdinal(partIdx + 1)}</div>
+              )}
             <section
-              key={chapter.id}
               className={`chapter-section${isChapterDropTarget ? ' chapter-section--drop-target' : ''}`}
             >
               <div
@@ -371,6 +404,7 @@ export function SceneGrid({
                 </div>
               )}
             </section>
+            </div>
           );
         })}
 

@@ -235,17 +235,17 @@ describe('cycleStatus', () => {
 describe('buildBlocks', () => {
   const story = mkStory();
 
-  it('emits every chapter/scene/paragraph in order at book zoom', () => {
+  it('emits every chapter/scene/paragraph in order at book zoom (M2: note-slot before each H2)', () => {
     const blocks = buildBlocks(story, cur('book'), NONE);
     expect(blocks.map((b) => `${b.kind}:${b.id}`)).toEqual([
-      'h2:h2-ch1',
+      'note-slot:note-chapter-ch1', 'h2:h2-ch1',
       'h3:h3-s1', 'para:p-s1-b0', 'para:p-s1-b1',
       'h3:h3-s2', 'para:p-s2-b0',
-      'h2:h2-ch2',
+      'note-slot:note-chapter-ch2', 'h2:h2-ch2',
       'h3:h3-s3', 'para:p-s3-b0',
       'h3:h3-s4', 'para:p-s4-b0', 'para:p-s4-b1', 'para:p-s4-b2',
       'h3:h3-s5', 'para:p-s5-b0',
-      'h2:h2-ch3',
+      'note-slot:note-chapter-ch3', 'h2:h2-ch3',
       'h3:h3-s6', 'para:p-s6-b0',
       'h3:h3-s7', 'para:p-s7-b0',
     ]);
@@ -255,9 +255,11 @@ describe('buildBlocks', () => {
     expect(buildBlocks(story, cur('part'), NONE)).toEqual(buildBlocks(story, cur('book'), NONE));
   });
 
-  it('scopes chapter zoom to the cursor chapter, including its H2', () => {
+  it('scopes chapter zoom to the cursor chapter, including its H2 (M2: note-slot precedes H2)', () => {
     const blocks = buildBlocks(story, cur('chapter', 1), NONE);
-    expect(blocks[0]).toMatchObject({
+    // M2: a note-slot for the chapter precedes the H2 at chapter depth
+    const h2 = blocks.find((b) => b.kind === 'h2');
+    expect(h2).toMatchObject({
       kind: 'h2',
       chapterId: 'ch2',
       label: 'CHAPTER 2',
@@ -270,7 +272,7 @@ describe('buildBlocks', () => {
     expect(blocks.filter((b) => b.kind === 'h3').map((b) => b.id)).toEqual([
       'h3-s3', 'h3-s4', 'h3-s5',
     ]);
-    expect(blocks.every((b) => b.kind === 'h2' || b.chapterId === 'ch2')).toBe(true);
+    expect(blocks.every((b) => b.kind === 'h2' || b.kind === 'note-slot' || ('chapterId' in b && b.chapterId === 'ch2'))).toBe(true);
   });
 
   it('scopes scene zoom to one scene with no H2 (prototype: H2 only when zoom !== scene)', () => {
@@ -298,7 +300,7 @@ describe('buildBlocks', () => {
     const blocks = buildBlocks(story, cur('book'), new Set(['ch2']));
     const h2 = blocks.find((b) => b.kind === 'h2' && b.chapterId === 'ch2');
     expect(h2).toMatchObject({ folded: true, childCount: 3 });
-    expect(blocks.some((b) => b.kind !== 'h2' && b.chapterId === 'ch2')).toBe(false);
+    expect(blocks.some((b) => b.kind !== 'h2' && b.kind !== 'note-slot' && ('chapterId' in b && b.chapterId === 'ch2'))).toBe(false);
     // Sibling chapters are untouched.
     expect(blocks.filter((b) => b.kind === 'h3' && b.chapterId === 'ch1')).toHaveLength(2);
     expect(blocks.filter((b) => b.kind === 'h3' && b.chapterId === 'ch3')).toHaveLength(2);

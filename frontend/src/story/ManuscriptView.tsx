@@ -178,6 +178,12 @@ export interface ManuscriptViewProps {
   onAddChapter?: () => void;
   /** M1 row 5 (SKY-9013): "+ Scene" — adds a scene to the cursor's chapter. */
   onAddScene?: () => void;
+  /** M2 (SKY-9017): creates a new Part (titles the first if untitled, else appends). */
+  onAddPart?: () => void;
+  /** M2: edit/create the part note (partId, existing text or '' for new). */
+  onEditPartNote?: (partId: string, text: string) => void;
+  /** M2: edit/create the chapter note (chapterId, existing text or '' for new). */
+  onEditChapterNote?: (chapterId: string, text: string) => void;
   /**
    * M23: archive auto-[[link]]ing in the continuous manuscript (same entity
    * matching as the scene editor's AutoLinkerExtension). 'suggest' underlines
@@ -397,6 +403,9 @@ export default function ManuscriptView({
   onToggleFocus,
   onAddChapter,
   onAddScene,
+  onAddPart,
+  onEditPartNote,
+  onEditChapterNote,
   autoLinkEntities,
   autoLinkMode = 'off',
   ttsSettings,
@@ -1042,6 +1051,43 @@ export default function ManuscriptView({
 
   const renderBlock = (b: ManuscriptBlock) => {
     switch (b.kind) {
+      case 'h1':
+        // M2 (SKY-9017): Part heading — emitted only for multi-part stories.
+        return (
+          <div key={b.id} className="msv-part-heading" role="heading" aria-level={1} data-testid={`msv-h1-${b.partId}`}>
+            <div className="msv-part-heading-label">{b.label}</div>
+            {b.title && <div className="msv-part-heading-title">{b.title}</div>}
+          </div>
+        );
+      case 'note-slot': {
+        // M2 (SKY-9017): chapter/part note — epigraph when filled, affordance when empty.
+        const hasNote = b.note.length > 0;
+        if (hasNote) {
+          return (
+            <div key={b.id} className="msv-epigraph" data-testid={`msv-note-${b.slotKind}-${b.partId ?? b.chapterId}`}>
+              {b.note[0].content}
+            </div>
+          );
+        }
+        // Empty affordance: only show when the edit handler is wired.
+        const canEdit =
+          b.slotKind === 'part' ? !!onEditPartNote : !!onEditChapterNote;
+        if (!canEdit) return null;
+        return (
+          <button
+            key={b.id}
+            type="button"
+            className="msv-note-affordance"
+            data-testid={`msv-note-affordance-${b.slotKind}-${b.partId ?? b.chapterId}`}
+            onClick={() => {
+              if (b.slotKind === 'part' && b.partId) onEditPartNote?.(b.partId, '');
+              else if (b.slotKind === 'chapter' && b.chapterId) onEditChapterNote?.(b.chapterId, '');
+            }}
+          >
+            {b.slotKind === 'part' ? '+ PART NOTE' : '+ CHAPTER NOTE'}
+          </button>
+        );
+      }
       case 'h2':
         return (
           <div key={b.id}>
@@ -1387,13 +1433,14 @@ export default function ManuscriptView({
         ))}
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
         {/* M1 row 5 (SKY-9013): structure actions (prototype 1003–1011).
-            "+ Part" enables when M2 (SKY-9017) lands the Parts data model. */}
+            "+ Part" is enabled now that M2 (SKY-9017) landed the Parts data model. */}
         <button
           type="button"
           className="msv-tb-add"
           data-testid="msv-add-part"
-          title="Add a part to the end of the story (parts arrive with the parts milestone)"
-          disabled
+          title="Add a part to the story"
+          disabled={!onAddPart}
+          onClick={onAddPart}
         >
           + Part
         </button>

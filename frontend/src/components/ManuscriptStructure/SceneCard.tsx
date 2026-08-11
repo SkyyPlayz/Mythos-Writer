@@ -121,6 +121,7 @@ export function SceneCard({
     >
       <div className="scene-card__header">
         <StatusChip status={status} />
+        {scene.pov && <span className="msv-struct-pov-chip">{scene.pov}</span>}
         {pov && <span className="scene-card__pov">{pov}</span>}
       </div>
       <p className="scene-card__title">Scene {sceneNumber} · {scene.title}</p>
