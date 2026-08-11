@@ -118,6 +118,25 @@ describe('WorkspaceTabBar tab close (AC-LN-06)', () => {
     expect(onTabClose).toHaveBeenCalledWith('tab-a');
   });
 
+  it('M7: middle-click (auxclick, button 1) on a tab closes it like the X button', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabClose, onTabSelect })} />);
+    const tab = screen.getByRole('tab', { name: 'Chapter Two' });
+    tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(onTabClose).toHaveBeenCalledWith('tab-b');
+  });
+
+  it('M7: middle-click does nothing on a non-closable last tab', () => {
+    const onTabClose = vi.fn();
+    render(
+      <WorkspaceTabBar {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a', onTabClose })} />,
+    );
+    const tab = screen.getByRole('tab', { name: 'Chapter One' });
+    tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(onTabClose).not.toHaveBeenCalled();
+  });
+
   it('Beta 4 M4: the last remaining tab shows no close button (prototype closable rule)', () => {
     render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a' })} />);
     expect(screen.queryByRole('button', { name: 'Close Chapter One' })).toBeNull();
