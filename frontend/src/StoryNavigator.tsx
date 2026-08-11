@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Part } from './types';
 import { countWords } from './wordStats';
+import { SCENE_NOTE_DRAG_MIME, type SceneNoteDragPayload } from './sceneNotes';
 import './StoryNavigator.css';
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
   onCreatePart?: () => void;
+  /** M9b (SKY-9823): a scene note dropped anywhere on the navigator promotes it to the vault. */
+  onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
 }
 
 function isSimpleSinglePart(story: Story): boolean {
@@ -33,6 +36,7 @@ export default function StoryNavigator({
   showTemplateCta = false,
   onTemplateCtaClick,
   onCreatePart: _onCreatePart,
+  onPromoteSceneNote,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -42,6 +46,38 @@ export default function StoryNavigator({
     new Set(stories.flatMap((s) => s.parts?.map((p) => p.id) ?? []))
   );
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+  const [noteDropActive, setNoteDropActive] = useState(false);
+
+  // M9b (SKY-9823): the whole navigator is one drop target for scene-note
+  // drags (filtered by MIME so scene-reorder drags never hit this path).
+  const isSceneNoteDrag = (e: React.DragEvent) =>
+    !!onPromoteSceneNote && e.dataTransfer.types.includes(SCENE_NOTE_DRAG_MIME);
+
+  const handleNoteDragOver = (e: React.DragEvent) => {
+    if (!isSceneNoteDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setNoteDropActive(true);
+  };
+
+  const handleNoteDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setNoteDropActive(false);
+  };
+
+  const handleNoteDrop = (e: React.DragEvent) => {
+    setNoteDropActive(false);
+    if (!isSceneNoteDrag(e)) return;
+    e.preventDefault();
+    let payload: SceneNoteDragPayload;
+    try {
+      payload = JSON.parse(e.dataTransfer.getData(SCENE_NOTE_DRAG_MIME));
+    } catch {
+      return;
+    }
+    if (!payload || typeof payload.sceneId !== 'string' || typeof payload.text !== 'string') return;
+    onPromoteSceneNote?.(payload);
+  };
 
   // Per-scene word count cache: only recomputes scenes whose block content changed
   const wordCountCacheRef = useRef<Map<string, { contentKey: string; count: number }>>(new Map());
@@ -162,7 +198,12 @@ export default function StoryNavigator({
   };
 
   return (
-    <nav className="story-navigator">
+    <nav
+      className={`story-navigator${noteDropActive ? ' story-navigator--note-drop' : ''}`}
+      onDragOver={handleNoteDragOver}
+      onDragLeave={handleNoteDragLeave}
+      onDrop={handleNoteDrop}
+    >
       <div className="nav-header">
         <span className="nav-title">Stories</span>
         <button className="nav-add-btn" onClick={onCreateStory} aria-label="New story" title="New story">+</button>
