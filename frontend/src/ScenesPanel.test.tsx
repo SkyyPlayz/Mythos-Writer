@@ -1,6 +1,7 @@
-// Beta 4/M19 (§7.1) — editor right-panel Scenes tab: mini canvas + "Open full".
+// Beta 4/M19 (§7.1) + M9c — editor right-panel Scenes tab: canvas-board list,
+// mini canvas preview, "Open full", and the prototype empty state.
 
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ScenesPanel from './ScenesPanel';
 import type { Story } from './types';
@@ -54,9 +55,14 @@ describe('ScenesPanel', () => {
     expect(screen.getByText(/select a story/i)).toBeInTheDocument();
   });
 
-  it('shows an empty state when the story has no scene boards yet', async () => {
-    render(<ScenesPanel story={STORY} onOpenFull={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText(/no scene boards yet/i)).toBeInTheDocument());
+  it('shows the prototype empty state with a Scene Crafter action when there are no boards', async () => {
+    const onOpenFull = vi.fn();
+    render(<ScenesPanel story={STORY} onOpenFull={onOpenFull} />);
+    const empty = await screen.findByTestId('scenes-panel-empty-boards');
+    expect(within(empty).getByText(/no canvas boards yet/i)).toBeInTheDocument();
+    expect(within(empty).getByText(/and it appears here/i)).toBeInTheDocument();
+    fireEvent.click(within(empty).getByRole('button', { name: 'Scene Crafter' }));
+    expect(onOpenFull).toHaveBeenCalledTimes(1);
   });
 
   it('renders the latest board read-only and wires "Open full" + note clicks through', async () => {
@@ -78,5 +84,57 @@ describe('ScenesPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /open full/i }));
     expect(onOpenFull).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists every drafted board with its card count and previews the picked board', async () => {
+    const gate = {
+      content: JSON.stringify({
+        nodes: [
+          { id: 'gate-1', type: 'text', x: 0, y: 0, width: 200, height: 80, text: 'Gate beat' },
+        ],
+        edges: [],
+      }),
+      path: 'Boards/Skyfall Chronicles/Gate.canvas.json',
+    };
+    const storm = {
+      content: JSON.stringify({
+        nodes: [
+          { id: 'storm-1', type: 'text', x: 0, y: 0, width: 200, height: 80, text: 'Storm beat' },
+          { id: 'storm-2', type: 'text', x: 0, y: 120, width: 200, height: 80, text: 'Storm aftermath' },
+        ],
+        edges: [],
+      }),
+      path: 'Boards/Skyfall Chronicles/Storm.canvas.json',
+    };
+    installApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          { path: gate.path, name: 'Gate.canvas.json', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+          { path: storm.path, name: 'Storm.canvas.json', isDirectory: false, modifiedAt: '2026-01-02T00:00:00.000Z' },
+        ],
+      }),
+      readNotesVault: vi.fn().mockImplementation((path: string) =>
+        Promise.resolve(path === gate.path ? gate : storm),
+      ),
+    });
+    render(<ScenesPanel story={STORY} onOpenFull={vi.fn()} />);
+
+    const list = await screen.findByTestId('scenes-panel-boards');
+    const gateRow = within(list).getByRole('button', { name: /Gate 1 cards/ });
+    expect(within(list).getByRole('button', { name: /Storm 2 cards/ })).toBeInTheDocument();
+
+    // No board picked → the latest board (last in path order) is previewed.
+    const mini = screen.getByTestId('scenes-panel-mini');
+    expect(within(mini).getByTestId('canvas-card-storm-1')).toBeInTheDocument();
+
+    // Picking a row previews that board and marks the row pressed.
+    fireEvent.click(gateRow);
+    expect(gateRow).toHaveAttribute('aria-pressed', 'true');
+    expect(within(screen.getByTestId('scenes-panel-mini')).getByTestId('canvas-card-gate-1')).toBeInTheDocument();
+
+    // Picking it again unpicks and falls back to the latest board.
+    fireEvent.click(gateRow);
+    expect(gateRow).toHaveAttribute('aria-pressed', 'false');
+    expect(within(screen.getByTestId('scenes-panel-mini')).getByTestId('canvas-card-storm-1')).toBeInTheDocument();
   });
 });

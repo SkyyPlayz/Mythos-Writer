@@ -137,6 +137,44 @@ describe('WorkspaceTabBar tab close (AC-LN-06)', () => {
     expect(onTabClose).not.toHaveBeenCalled();
   });
 
+  it('SKY-9786: middle-click on the active tab selects the left neighbor before closing', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({ tabs: [TAB_A, TAB_B, TAB_C], activeTabId: 'tab-b', onTabClose, onTabSelect })}
+      />,
+    );
+    const tab = screen.getByRole('tab', { name: 'Chapter Two' });
+    tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(onTabSelect).toHaveBeenCalledWith('tab-a');
+    expect(onTabClose).toHaveBeenCalledWith('tab-b');
+  });
+
+  it('SKY-9786: left-button auxclick (button 0) is a no-op', () => {
+    const onTabClose = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onTabClose })} />);
+    const tab = screen.getByRole('tab', { name: 'Chapter Two' });
+    tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 0 }));
+    expect(onTabClose).not.toHaveBeenCalled();
+  });
+
+  it('SKY-9786: middle-click closes the last tab when allowCloseLastTab is set', () => {
+    const onTabClose = vi.fn();
+    const onTabSelect = vi.fn();
+    render(
+      <WorkspaceTabBar
+        {...defaultProps({
+          tabs: [TAB_A], activeTabId: 'tab-a', allowCloseLastTab: true, onTabClose, onTabSelect,
+        })}
+      />,
+    );
+    const tab = screen.getByRole('tab', { name: 'Chapter One' });
+    tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+    expect(onTabClose).toHaveBeenCalledWith('tab-a');
+    expect(onTabSelect).not.toHaveBeenCalled();
+  });
+
   it('Beta 4 M4: the last remaining tab shows no close button (prototype closable rule)', () => {
     render(<WorkspaceTabBar {...defaultProps({ tabs: [TAB_A], activeTabId: 'tab-a' })} />);
     expect(screen.queryByRole('button', { name: 'Close Chapter One' })).toBeNull();

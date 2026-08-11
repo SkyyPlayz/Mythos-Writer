@@ -807,6 +807,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [splitDirection, setSplitDirection] = useState<SplitDropZone>('right');
   // Beta 4 M4: shell-driven note split request (note tab dropped on a zone).
   const [noteSplitRequest, setNoteSplitRequest] = useState<{ path: string; token: number } | null>(null);
+  // SKY-9784: whether the Notes split (NotesTabPanel's own pane 1/pane 2 tab
+  // strips) is active — hides the global strip while each pane owns its own,
+  // mirroring splitWindowEnabled for the Story split editor.
+  const [notesSplitActive, setNotesSplitActive] = useState(false);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -4794,10 +4798,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             Brainstorm/Timeline/Graph (Settings/Beta are overlays). */}
         {/* SKY-8907: while the Story split editor is active, pane 1 renders its
             own copy of this strip (storyDocTabs) — hide the global one so
-            there aren't two. Notes/static strips are unaffected (split is a
-            Story-editor-only feature). */}
+            there aren't two.
+            SKY-9784: same for the Notes split — NotesTabPanel's own pane 1/
+            pane 2 strips take over while notesSplitActive. */}
         {showTitleBar && workspaceStripMode.kind !== 'hidden' &&
-          !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') && (
+          !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') &&
+          !(notesSplitActive && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
           <WorkspaceTabBar
             tabs={
               workspaceStripMode.kind === 'docs'
@@ -5510,6 +5516,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           resolveWikiLinkPreview={resolveNotesWikiLinkPreview}
           notePaths={allNotePaths}
           noteSplitRequest={noteSplitRequest}
+          pane1Tabs={notesDocTabs}
+          activePane1TabId={activeNotesDocTabId}
+          onPane1TabSelect={handleWorkspaceTabSelect}
+          onPane1TabClose={handleWorkspaceTabClose}
+          onPane1TabReorder={handleWorkspaceTabReorder}
+          onPane1NewTab={handleNewWorkspaceTab}
+          onNoteSplitActiveChange={setNotesSplitActive}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}

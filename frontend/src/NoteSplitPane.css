@@ -8,59 +8,113 @@
   overflow: hidden;
 }
 
-.nsp-header {
+/* SKY-9784: per-pane Obsidian-parity tab strip (WorkspaceTabBar + ⋮ menu) —
+ * same shape as SplitEditorPane's .spe-tab-strip, reused for both Notes
+ * panes via NotesPaneTabStrip (NoteSplitPane.tsx). Replaces the old bare
+ * SPLIT badge + <select> + single ✕ header. */
+.nsp-tab-strip {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--dur-hover-in) var(--ease-out);
+  display: flex;
+  align-items: stretch;
+}
+
+.nsp-tab-strip > .wtb-root {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Cross-pane drag target highlight while a tab from the other Notes pane hovers. */
+.nsp-tab-strip--drop-target {
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, transparent);
+}
+
+.nsp-pane-menu-wrap {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px 6px;
   flex: none;
+  padding: 0 4px;
+  background: rgba(8, 10, 18, .35);
+  border-left: 1px solid rgba(255, 255, 255, .06);
 }
 
-.nsp-badge {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--n1, #00f0ff);
-  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5)); /* prototype rgba(0,240,255,.5) */
-  border-radius: 6px;
-  padding: 2px 7px;
-  flex: none;
-}
-
-.nsp-select {
-  height: 26px;
-  max-width: 220px;
-  background: rgb(255 255 255 / 0.05); /* prototype rgba(255,255,255,.05) */
-  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.4)); /* prototype rgba(0,240,255,.4) */
-  border-radius: 8px;
-  color: rgb(219 228 245); /* prototype #dbe4f5 */
-  font-size: 11px;
-  padding: 0 7px;
-  cursor: pointer;
-}
-
-.nsp-spacer {
-  flex: 1;
-}
-
-.nsp-close {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
+.nsp-pane-menu-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgb(142 157 184); /* prototype #8e9db8 */
-  cursor: pointer;
-  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.3)); /* prototype rgba(0,240,255,.3) */
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
   background: none;
-  font-size: 11px;
-  flex: none;
+  color: rgb(118, 134, 162);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  letter-spacing: 0;
+  -webkit-app-region: no-drag;
 }
 
-.nsp-close:hover {
-  color: rgb(255 255 255);
-  background: rgb(255 255 255 / 0.08); /* prototype rgba(255,255,255,.08) */
+.nsp-pane-menu-btn:hover,
+.nsp-pane-menu-btn--open {
+  background: rgba(255, 255, 255, .08);
+  color: rgb(219, 228, 245);
+}
+
+.nsp-pane-menu-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
+
+.nsp-pane-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  z-index: 62;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 12px 36px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .12s ease;
+}
+
+.nsp-pane-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  color: rgb(205, 216, 234);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.nsp-pane-menu-item:hover {
+  background: rgba(255, 255, 255, .07);
+  color: rgb(255, 255, 255);
+}
+
+.nsp-pane-menu-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
+.nsp-pane-menu-item--close {
+  color: rgb(255, 157, 180);
+}
+
+.nsp-pane-menu-item--close:hover {
+  background: rgba(255, 95, 143, .1);
 }
 
 .nsp-body {
@@ -92,6 +146,12 @@
 .notes-split-main > * {
   flex: 1;
   min-height: 0;
+}
+
+/* SKY-9784: pane 1's own tab strip while split — fixed height, doesn't
+ * stretch to fill the pane like the NoteViewer below it does. */
+.notes-split-main > .nsp-tab-strip {
+  flex: none;
 }
 
 .notes-split-divider {
