@@ -413,6 +413,36 @@ describe('BrainstormPage', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('Escape closes the page when focus is inside it (or nowhere)', () => {
+    const onClose = vi.fn();
+    render(<BrainstormPage onClose={onClose} />);
+    fireEvent.keyDown(document.body, { key: 'Escape', bubbles: true });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    screen.getByLabelText(/brainstorm prompt/i).focus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape', bubbles: true });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('SKY-9781: Escape yields to a focused control outside the page instead of closing it', () => {
+    // The compact notes-sidebar instance shares the document with other
+    // Escape-owning surfaces (e.g. the vault tree's inline rename input) —
+    // its capture-phase ESC handler must not swallow their key.
+    const onClose = vi.fn();
+    render(
+      <div>
+        <input aria-label="Rename" className="vb-rename-input" />
+        <BrainstormPage onClose={onClose} compact />
+      </div>,
+    );
+    const outside = screen.getByLabelText('Rename');
+    outside.focus();
+    const stopPropagation = vi.spyOn(Event.prototype, 'stopPropagation');
+    fireEvent.keyDown(outside, { key: 'Escape', bubbles: true });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(stopPropagation).not.toHaveBeenCalled();
+    stopPropagation.mockRestore();
+  });
+
   it('sends the tuned stream payload: fact-tag coverage prompt, 2048 budget, no thinking', async () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {

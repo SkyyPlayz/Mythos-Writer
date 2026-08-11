@@ -112,30 +112,38 @@ describe('AppNavRail', () => {
   });
 
   // ─── SKY-3218: navConfig showLabels / showIcons ──────────────────────────────
+  // SKY-9019 M5: known module ids render drawn SVG glyphs (RAIL_GLYPH_BY_ID),
+  // not the config's emoji `icon` string — so assert on the icon container.
+
+  function storyItemIcon() {
+    return screen
+      .getByRole('button', { name: 'Story' })
+      .querySelector('.nav-rail__item-icon');
+  }
 
   it('hides item labels when showLabels=false (icons remain)', () => {
     render(<AppNavRail {...makeProps({ showLabels: false })} />);
     expect(screen.queryByText('Story')).not.toBeInTheDocument();
-    expect(screen.getByText('📖')).toBeInTheDocument();
+    expect(storyItemIcon()).not.toBeNull();
     // Buttons stay accessible via aria-label.
     expect(screen.getByRole('button', { name: 'Story' })).toBeInTheDocument();
   });
 
   it('hides item icons when showIcons=false (labels remain)', () => {
     render(<AppNavRail {...makeProps({ showIcons: false })} />);
-    expect(screen.queryByText('📖')).not.toBeInTheDocument();
+    expect(storyItemIcon()).toBeNull();
     expect(screen.getByText('Story')).toBeInTheDocument();
   });
 
   it('still renders icons when collapsed even if showIcons=false', () => {
     render(<AppNavRail {...makeProps({ showIcons: false, collapsed: true })} />);
-    expect(screen.getByText('📖')).toBeInTheDocument();
+    expect(storyItemIcon()).not.toBeNull();
     expect(screen.queryByText('Story')).not.toBeInTheDocument();
   });
 
   it('falls back to icons when both labels and icons are hidden', () => {
     render(<AppNavRail {...makeProps({ showLabels: false, showIcons: false })} />);
-    expect(screen.getByText('📖')).toBeInTheDocument();
+    expect(storyItemIcon()).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Story' })).toBeInTheDocument();
   });
 
