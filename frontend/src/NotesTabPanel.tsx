@@ -12,7 +12,8 @@ import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
 import type { FormatToolbarActions } from './FormatToolbar';
-import NoteSplitPane from './NoteSplitPane';
+import NoteSplitPane, { NotesPaneTabStrip } from './NoteSplitPane';
+import { makeNoteTab, upsertNoteTab } from './workspaceDocTabs';
 import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
 import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
@@ -59,6 +60,20 @@ export interface NotesTabPanelProps {
    * a split drop zone or "Open to the side" is picked; the token makes
    * repeated requests for the same path re-apply. */
   noteSplitRequest?: { path: string; token: number } | null;
+  // ─── SKY-9784: Obsidian-parity per-pane tab strips for the Notes split ───
+  /** Pane 1's own document tabs (the shell's Notes doc strip — same list the
+   * global WorkspaceTabBar shows when Notes isn't split). Omitted in tests
+   * that never exercise the split — falls back to an empty/no-op strip. */
+  pane1Tabs?: WorkspaceTab[];
+  activePane1TabId?: string | null;
+  onPane1TabSelect?: (tabId: string) => void;
+  onPane1TabClose?: (tabId: string) => void;
+  onPane1TabReorder?: (fromIndex: number, toIndex: number) => void;
+  onPane1NewTab?: () => void;
+  /** Notifies the shell whether the Notes split is active, so it can hide
+   * the global tab strip while each pane owns its own (mirrors the Story
+   * split editor hiding the global strip for storyDocTabs). */
+  onNoteSplitActiveChange?: (active: boolean) => void;
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
@@ -124,6 +139,13 @@ export default function NotesTabPanel({
   resolveWikiLinkPreview,
   notePaths,
   noteSplitRequest,
+  pane1Tabs = [],
+  activePane1TabId = null,
+  onPane1TabSelect = () => {},
+  onPane1TabClose = () => {},
+  onPane1TabReorder = () => {},
+  onPane1NewTab = () => {},
+  onNoteSplitActiveChange,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
   stories,
@@ -167,23 +189,41 @@ export default function NotesTabPanel({
   // SKY-9710: bumped to ask VaultBrowser to open its new-note dialog from
   // the editor pane's empty-state primary action.
   const [newNoteRequestId, setNewNoteRequestId] = useState(0);
-  const [noteSplitPath, setNoteSplitPath] = useState<string | null>(null);
+  // SKY-9784: pane 2's own tab strip — session-only, mirrors SplitEditorPane
+  // pane 2's tab list (SKY-8907), just scoped to note documents.
+  const [noteSplitTabs, setNoteSplitTabs] = useState<WorkspaceTab[]>([]);
+  const [activeNoteSplitTabId, setActiveNoteSplitTabId] = useState<string | null>(null);
   const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
   const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
+  // SKY-9784: drag-in-flight between the two Notes panes' own strips (mirrors
+  // the shell's tabDragPayload/tabDragSourcePane for the Story split editor).
+  const [noteTabDragPayload, setNoteTabDragPayload] = useState<WorkspaceTab | null>(null);
+  const [noteTabDragSourcePane, setNoteTabDragSourcePane] = useState<1 | 2 | null>(null);
+
+  const noteSplitPath = noteSplitTabs.find((t) => t.id === activeNoteSplitTabId)?.docPath ?? null;
 
   const mdNotePaths = useMemo(
     () => (notePaths ?? []).filter((p) => p.toLowerCase().endsWith('.md')),
     [notePaths],
   );
 
+  useEffect(() => {
+    onNoteSplitActiveChange?.(noteSplitTabs.length > 0);
+  }, [noteSplitTabs.length, onNoteSplitActiveChange]);
+
   const handleToggleNoteSplit = useCallback(() => {
-    setNoteSplitPath((prev) => {
-      if (prev) return null;
-      // Prototype toggleNSplit: default to another note when one exists.
-      const other = mdNotePaths.find((p) => p !== activeNotePath);
-      return other ?? activeNotePath;
-    });
-  }, [mdNotePaths, activeNotePath]);
+    if (noteSplitTabs.length > 0) {
+      setNoteSplitTabs([]);
+      setActiveNoteSplitTabId(null);
+      return;
+    }
+    // Prototype toggleNSplit: default to another note when one exists.
+    const other = mdNotePaths.find((p) => p !== activeNotePath) ?? activeNotePath;
+    if (!other) return;
+    const tab = makeNoteTab(other);
+    setNoteSplitTabs([tab]);
+    setActiveNoteSplitTabId(tab.id);
+  }, [noteSplitTabs, mdNotePaths, activeNotePath]);
 
   // Beta 4 M4: apply a shell-driven split request (note tab dragged onto a
   // split drop zone / context-menu "Open to the side").
@@ -191,8 +231,79 @@ export default function NotesTabPanel({
   useEffect(() => {
     if (!noteSplitRequest || noteSplitRequest.token === appliedSplitTokenRef.current) return;
     appliedSplitTokenRef.current = noteSplitRequest.token;
-    setNoteSplitPath(noteSplitRequest.path);
+    setNoteSplitTabs((prev) => {
+      const result = upsertNoteTab(prev, noteSplitRequest.path);
+      setActiveNoteSplitTabId(result.activeId);
+      return result.tabs;
+    });
   }, [noteSplitRequest]);
+
+  // SKY-9784: pane 2 strip — select/close/reorder mirror the pane 1 (shell)
+  // strip's handlers but target this component's own session-only tab list.
+  const handleSplitTabSelect = useCallback((tabId: string) => {
+    setActiveNoteSplitTabId(tabId);
+  }, []);
+
+  const handleSplitTabClose = useCallback((tabId: string) => {
+    setNoteSplitTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (next.length === 0) {
+        setActiveNoteSplitTabId(null);
+        return next;
+      }
+      setActiveNoteSplitTabId((cur) => {
+        if (cur !== tabId) return cur;
+        const idx = prev.findIndex((t) => t.id === tabId);
+        return idx > 0 ? prev[idx - 1].id : next[0].id;
+      });
+      return next;
+    });
+  }, []);
+
+  const handleSplitTabReorder = useCallback((fromIndex: number, toIndex: number) => {
+    setNoteSplitTabs((prev) => {
+      const arr = [...prev];
+      const [moved] = arr.splice(fromIndex, 1);
+      arr.splice(toIndex, 0, moved);
+      return arr;
+    });
+  }, []);
+
+  // SKY-9784: dropping a tab dragged from the OTHER Notes pane's strip onto
+  // this one moves it (Obsidian behaviour), mirroring handleSplitPaneTabDrop
+  // for the Story split editor.
+  const handlePane1StripDrop = useCallback(() => {
+    const payload = noteTabDragPayload;
+    const sourcePane = noteTabDragSourcePane;
+    setNoteTabDragPayload(null);
+    setNoteTabDragSourcePane(null);
+    if (!payload?.docPath || sourcePane !== 2) return;
+    setNoteSplitTabs((prev) => {
+      const next = prev.filter((t) => t.id !== payload.id);
+      setActiveNoteSplitTabId((cur) => {
+        if (next.length === 0) return null;
+        if (cur !== payload.id) return cur;
+        const idx = prev.findIndex((t) => t.id === payload.id);
+        return idx > 0 ? prev[idx - 1].id : next[0].id;
+      });
+      return next;
+    });
+    (onOpenInNewTab ?? onOpenFile)?.(payload.docPath);
+  }, [noteTabDragPayload, noteTabDragSourcePane, onOpenInNewTab, onOpenFile]);
+
+  const handleSplitStripDrop = useCallback(() => {
+    const payload = noteTabDragPayload;
+    const sourcePane = noteTabDragSourcePane;
+    setNoteTabDragPayload(null);
+    setNoteTabDragSourcePane(null);
+    if (!payload?.docPath || sourcePane !== 1) return;
+    onPane1TabClose(payload.id);
+    setNoteSplitTabs((prev) => {
+      const result = upsertNoteTab(prev, payload.docPath!);
+      setActiveNoteSplitTabId(result.activeId);
+      return result.tabs;
+    });
+  }, [noteTabDragPayload, noteTabDragSourcePane, onPane1TabClose]);
 
   const handleSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -436,10 +547,24 @@ export default function NotesTabPanel({
               toolbarActions={noteToolbarActions}
             />
           )}
-          {/* M16: note split — active note + a second note side by side. */}
+          {/* M16 / SKY-9784: note split — active note + a second note side by
+              side, each pane owning an Obsidian-parity tab strip. */}
           {notesSubView === 'editor' && activeNotePath && noteSplitPath && (
             <div className="notes-split-row" ref={splitRowRef} data-testid="notes-split-row">
               <div className="notes-split-main" style={{ flex: noteSplitRatio }}>
+                <NotesPaneTabStrip
+                  paneNumber={1}
+                  tabs={pane1Tabs}
+                  activeTabId={activePane1TabId}
+                  onTabSelect={onPane1TabSelect}
+                  onTabClose={onPane1TabClose}
+                  onTabReorder={onPane1TabReorder}
+                  onNewTab={onPane1NewTab}
+                  onTabDragStart={(tab) => { setNoteTabDragPayload(tab); setNoteTabDragSourcePane(1); }}
+                  acceptsTabDrop={noteTabDragSourcePane === 2}
+                  onTabStripDrop={handlePane1StripDrop}
+                  onClosePane={handleToggleNoteSplit}
+                />
                 <NoteViewer
                   key={activeNotePath}
                   path={activeNotePath}
@@ -471,10 +596,17 @@ export default function NotesTabPanel({
               </div>
               <NoteSplitPane
                 style={{ flex: 1 - noteSplitRatio }}
+                tabs={noteSplitTabs}
+                activeTabId={activeNoteSplitTabId}
+                onTabSelect={handleSplitTabSelect}
+                onTabClose={handleSplitTabClose}
+                onTabReorder={handleSplitTabReorder}
+                onNewTab={onPane1NewTab}
+                onTabDragStart={(tab) => { setNoteTabDragPayload(tab); setNoteTabDragSourcePane(2); }}
+                acceptsTabDrop={noteTabDragSourcePane === 1}
+                onTabStripDrop={handleSplitStripDrop}
                 path={noteSplitPath}
-                notePaths={mdNotePaths}
-                onChangePath={setNoteSplitPath}
-                onClose={() => setNoteSplitPath(null)}
+                onClose={handleToggleNoteSplit}
                 onWikiLinkClick={onWikiLinkClick}
                 resolvedWikiLinkTitles={resolvedWikiLinkTitles}
                 sceneWikiLinkTitles={sceneWikiLinkTitles}
