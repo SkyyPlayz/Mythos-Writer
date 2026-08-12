@@ -328,8 +328,13 @@ test('SKY-214-04: WikiLink autocomplete in scene editor', async () => {
   await sceneRow.click();
   await page.waitForTimeout(1_000);
 
-  // Type [[ in editor to trigger autocomplete hint
-  const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
+  // Type [[ in editor to trigger autocomplete hint.
+  // Scene depth renders the tiptap BlockEditor (.ProseMirror); the combined
+  // `.ProseMirror, [contenteditable="true"]` selector used to match this, but
+  // now also matches the hidden ManuscriptView scope-title h1 (also
+  // contenteditable), which sorts first in DOM order and never becomes
+  // visible at scene depth — so `.first()` waited on the wrong node.
+  const editor = page.locator('.ProseMirror');
   await editor.waitFor({ state: 'visible', timeout: 6_000 });
   await editor.click();
   await page.keyboard.press('Control+End');
