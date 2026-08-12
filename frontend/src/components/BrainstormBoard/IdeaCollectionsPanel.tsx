@@ -30,6 +30,9 @@ interface Props {
   placedTitles: ReadonlySet<string>;
   onPlace: (idea: CollectionIdea) => void;
   showToast: (message: string) => void;
+  /** R11: true when the master AI toggle is off — Agent Chat is unreachable,
+   * so the footer copy shouldn't promise a chat-driven capture flow. */
+  manualOnly?: boolean;
 }
 
 interface GroupDef {
@@ -39,7 +42,7 @@ interface GroupDef {
   ideas: CollectionIdea[];
 }
 
-export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, showToast }: Props) {
+export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, showToast, manualOnly }: Props) {
   const [query, setQuery] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
@@ -145,8 +148,9 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
         })}
       </div>
       <div className="bs-collections-foot">
-        Ideas the agent captures in chat land in your Notes Vault and appear here — click + to
-        place one on the board.
+        {manualOnly
+          ? 'Click + to place an idea on the board, or add one straight from the board with + Idea.'
+          : 'Ideas the agent captures in chat land in your Notes Vault and appear here — click + to place one on the board.'}
       </div>
     </aside>
   );
