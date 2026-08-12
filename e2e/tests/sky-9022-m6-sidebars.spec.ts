@@ -14,18 +14,67 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
+const STORY_ID = 'sky9022-m6-story';
+const STORY_TITLE = 'M6 Sidebar Story';
+
+function seedUserData(
+  userData: string,
+  vaultDir: string,
+  notesVaultDir: string,
+  withStory = false,
+): void {
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(vaultDir, { recursive: true });
   fs.mkdirSync(notesVaultDir, { recursive: true });
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
-    JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
+    JSON.stringify(
+      {
+        onboardingComplete: true,
+        theme: 'dark',
+        // GRS (GlobalRightSidebar) only mounts once rightSidebarVisible is an
+        // explicit boolean — see DesktopShell.tsx loadVault(). Onboarding sets
+        // this normally; seeding settings directly bypasses that, so it must
+        // be set here (mirrors writing-assistant.spec.ts's seedUserData).
+        rightSidebarVisible: true,
+        notesTabUpgradeToastShown: true,
+      },
+      null,
+      2,
+    ),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
     JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesVaultDir }, null, 2),
   );
+  if (withStory) {
+    fs.writeFileSync(
+      path.join(vaultDir, 'manifest.json'),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          version: '2.0.0',
+          vaultRoot: vaultDir,
+          stories: [
+            {
+              id: STORY_ID,
+              title: STORY_TITLE,
+              path: `stories/${STORY_ID}`,
+              chapters: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+          entities: [],
+          suggestions: [],
+          scenes: [],
+          chapters: [],
+        },
+        null,
+        2,
+      ),
+    );
+  }
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
@@ -50,10 +99,13 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
   test.beforeAll(async () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-left-'));
     const userData = path.join(tempRoot, 'userData');
-    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
+    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'), true);
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.locator('[data-testid="left-rail"]')).toBeVisible({ timeout: 15_000 });
+    // The story card zone only renders once a story is selected — the app
+    // never auto-selects on load, so drive the same click a user would make.
+    await page.locator('.nav-story-title', { hasText: STORY_TITLE }).click();
   });
 
   test.afterAll(async () => {

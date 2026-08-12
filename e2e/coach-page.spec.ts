@@ -155,10 +155,6 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 
 /** M13: surface the agent hub's Scene Analysis card in the right panel. */
 async function openSceneAnalysisCard(page: Page): Promise<void> {
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
   // A previous test may have left the hub inside an agent chat view.
   const backBtn = page.locator('.ahp-back-btn');
   if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
@@ -235,10 +231,6 @@ test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation',
   await openCoachPage(page);
 
   // Open the right-panel agent hub → Writing Coach chat
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
   const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
   if (await agentRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
     await agentRow.click();

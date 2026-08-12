@@ -5975,7 +5975,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           voicePrefs={appSettings?.voice}
           agentNames={appSettings?.agentNames}
           onOpenSuggestionInbox={() => handleTabChange('story')}
-          onOpenCoachPage={() => handleTabChange('story')}
+          onOpenCoachPage={() => { handleTabChange('story'); handleOpenCoachPage(); }}
           gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
             <GettingStartedPanel
               progress={gettingStartedProgress!}
