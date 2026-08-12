@@ -26,6 +26,8 @@ import {
   useSceneAnalysisPending,
 } from './coach/sceneAnalysis';
 import { showLnToast } from './theme/lnToast';
+import SceneNotesPanel from './SceneNotesPanel';
+import type { SceneNoteDragPayload } from './sceneNotes';
 import './AgentHubPanel.css';
 
 const SUGGESTION_POLL_MS = 30_000;
@@ -104,6 +106,10 @@ interface Props {
   onOpenSuggestionInbox?: () => void;
   /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
   onOpenCoachPage?: () => void;
+  /** M9b (SKY-9823): pass-throughs for the Notes tab's SceneNotesPanel. */
+  sceneNotesRefresh?: number;
+  onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
+  onSceneNotesChanged?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -126,6 +132,9 @@ export default function AgentHubPanel({
   agentNames,
   onOpenSuggestionInbox,
   onOpenCoachPage,
+  sceneNotesRefresh,
+  onPromoteSceneNote,
+  onSceneNotesChanged,
 }: Props) {
   const [activeTab, setActiveTab] = useState<HubTab>('assistant');
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
@@ -215,7 +224,14 @@ export default function AgentHubPanel({
               />
         )}
         {activeTab === 'scenes' && <ScenesTab scene={scene} />}
-        {activeTab === 'notes' && <NotesTab />}
+        {activeTab === 'notes' && (
+          <SceneNotesPanel
+            scene={scene}
+            refreshToken={sceneNotesRefresh}
+            onPromoteNote={onPromoteSceneNote}
+            onNotesChanged={onSceneNotesChanged}
+          />
+        )}
         {activeTab === 'references' && <ReferencesTab />}
       </div>
     </div>
@@ -634,14 +650,6 @@ function ScenesTab({ scene }: { scene: Scene | null }) {
       <p className="ahp-stub-label">
         {scene ? `Open scene: ${scene.title}` : 'No scene open.'}
       </p>
-    </div>
-  );
-}
-
-function NotesTab() {
-  return (
-    <div className="ahp-stub-tab">
-      <p className="ahp-stub-label">Quick notes — coming in M18.</p>
     </div>
   );
 }

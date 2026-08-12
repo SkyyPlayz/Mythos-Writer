@@ -16,6 +16,14 @@ import {
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitcher';
 import { stripManifestContentForIpc } from './manifestIpc';
+import {
+  parseSceneNotes,
+  serializeSceneNotes,
+  promotedSceneNoteName,
+  buildPromotedSceneNoteContent,
+  type SceneNoteDragPayload,
+} from './sceneNotes';
+import { findAvailablePromotedNotePath } from './EntriesPanel';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -2326,6 +2334,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return null;
   }, [stories]);
 
+  // M9b (SKY-9823): scene note dropped on the story navigator → real .md file
+  // in the notes vault, then unpin from the scene. Vault write comes FIRST so
+  // a failure can never lose the note (SKY-5154: artifact before index).
+  const [sceneNotesRefresh, setSceneNotesRefresh] = useState(0);
+  const handleSceneNotesChanged = useCallback(() => setSceneNotesRefresh((n) => n + 1), []);
+  const handlePromoteSceneNote = useCallback(async (payload: SceneNoteDragPayload) => {
+    let sceneTitle = '';
+    let storyTitle = '';
+    outer: for (const story of stories) {
+      const chapters = [...story.chapters, ...(story.parts ?? []).flatMap((p) => p.chapters)];
+      for (const chapter of chapters) {
+        const sc = chapter.scenes.find((candidate) => candidate.id === payload.sceneId);
+        if (sc) { sceneTitle = sc.title; storyTitle = story.title; break outer; }
+      }
+    }
+    try {
+      const name = promotedSceneNoteName(payload.text);
+      const notePath = await findAvailablePromotedNotePath(`${name}.md`, async (p) => {
+        const existing = await window.api.readNotesVault(p);
+        return !('error' in existing);
+      });
+      const written = await window.api.writeNotesVault(
+        notePath,
+        buildPromotedSceneNoteContent(payload.text, sceneTitle, storyTitle),
+      );
+      if ('error' in written) throw new Error(written.error);
+      const res = await window.api.notesGet?.(payload.sceneId);
+      if (res) {
+        const notes = parseSceneNotes(res.content);
+        const idx = notes[payload.index] === payload.text ? payload.index : notes.indexOf(payload.text);
+        if (idx !== -1) {
+          notes.splice(idx, 1);
+          await window.api.notesSet?.(payload.sceneId, serializeSceneNotes(notes));
+        }
+      }
+      setSceneNotesRefresh((n) => n + 1);
+      showLnToast(`Promoted to vault: ${notePath}`);
+    } catch {
+      showLnToast('Could not promote the note to the vault.');
+    }
+  }, [stories]);
+
   // SKY-8907: closing a pane's last tab collapses that pane (Obsidian
   // behaviour) — pane 1 closing promotes pane 2's tabs/scene to primary;
   // pane 2 closing just exits split (pane 1 already holds the primary state).
@@ -3896,6 +3946,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onReorderScenes={handleReorderScenes}
             showTemplateCta={showTemplateCta}
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onPromoteSceneNote={handlePromoteSceneNote}
           />
         );
       case 'entities':
@@ -3956,6 +4007,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             agentNames={appSettings?.agentNames}
             onOpenSuggestionInbox={handleOpenSuggestionInbox}
             onOpenCoachPage={handleOpenCoachPage}
+            sceneNotesRefresh={sceneNotesRefresh}
+            onPromoteSceneNote={handlePromoteSceneNote}
+            onSceneNotesChanged={handleSceneNotesChanged}
           />
         );
       case 'archive-continuity':
@@ -3978,7 +4032,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         );
       case 'scene-notes':
-        return <SceneNotesPanel scene={activeSceneForSidebar} />;
+        return (
+          <SceneNotesPanel
+            scene={activeSceneForSidebar}
+            refreshToken={sceneNotesRefresh}
+            onPromoteNote={handlePromoteSceneNote}
+            onNotesChanged={handleSceneNotesChanged}
+          />
+        );
       case 'scene-properties':
         return (
           <ScenePropertiesPanel
@@ -4036,6 +4097,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
     handleOpenCoachPage,
     handleNavSectionChange, handleSetView,
+    sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
