@@ -135,6 +135,30 @@ describe('NotesTabPanel — M16 note splits', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByTestId('notes-split-row')).not.toBeInTheDocument();
   });
+
+  // SKY-9920: opening Entity Browser in pane 1 while a split is already
+  // active must NOT collapse the split — it previously took pane 2, both
+  // panes' tab strips, and the split-toggle button down with it, since they
+  // were all gated on `!activeTabIsEntityBrowser`.
+  it('SKY-9920: pane 1 switching to Entity Browser mid-split keeps pane 2 and both strips visible', () => {
+    const { rerender } = render(<NotesTabPanel {...BASE_PROPS} />);
+    fireEvent.click(screen.getByTestId('notes-split-toggle'));
+    expect(screen.getByTestId('notes-split-row')).toBeInTheDocument();
+
+    // Mirrors what the shell does when pane 1's + picker opens Entity
+    // Browser: openedNotePath (activeNotePath) clears, activeTabIsEntityBrowser flips true.
+    rerender(<NotesTabPanel {...BASE_PROPS} activeTabIsEntityBrowser activeNotePath={null} />);
+
+    expect(screen.getByTestId('notes-split-row')).toBeInTheDocument();
+    expect(screen.getByTestId('note-split-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('entity-browser-mock')).toBeInTheDocument();
+    // Pane 2's own note survives untouched — only pane 1's content changed.
+    const viewers = screen.getAllByTestId('note-viewer-mock');
+    expect(viewers).toHaveLength(1);
+    expect(viewers[0]).toHaveAttribute('data-path', 'Characters/Mira.md');
+    // The toggle stays reachable so the user can still collapse the split.
+    expect(screen.getByTestId('notes-split-toggle')).toBeInTheDocument();
+  });
 });
 
 // SKY-9710 (M8f): the editor pane's empty state — prototype pattern

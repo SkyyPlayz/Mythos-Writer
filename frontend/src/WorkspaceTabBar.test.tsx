@@ -465,6 +465,93 @@ describe('WorkspaceTabBar + button', () => {
   });
 });
 
+// ── + picker (SKY-9920: Entity Browser as an openable document tab) ──────────
+
+describe('WorkspaceTabBar + picker', () => {
+  it('stays a single-click button when newTabPickerItems is omitted (back-compat)', () => {
+    const onNewTab = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({ onNewTab })} />);
+    expect(screen.queryByTestId('wtb-new-tab-menu')).not.toBeInTheDocument();
+    expect(screen.getByTestId('wtb-new-tab-btn').getAttribute('aria-haspopup')).toBeNull();
+  });
+
+  it('opens a picker instead of firing onNewTab when items are provided', () => {
+    const onNewTab = vi.fn();
+    const onSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({
+      onNewTab,
+      newTabPrimaryLabel: 'New scene',
+      newTabPickerItems: [{ key: 'entities', label: 'Entity Browser', onSelect }],
+    })} />);
+    const btn = screen.getByTestId('wtb-new-tab-btn');
+    expect(btn.getAttribute('aria-haspopup')).toBe('listbox');
+    fireEvent.click(btn);
+    expect(onNewTab).not.toHaveBeenCalled();
+    expect(screen.getByTestId('wtb-new-tab-menu')).toBeInTheDocument();
+    expect(screen.getByTestId('wtb-new-tab-menu-primary')).toHaveTextContent('New scene');
+    expect(screen.getByTestId('wtb-new-tab-menu-item-entities')).toHaveTextContent('Entity Browser');
+  });
+
+  it('the primary item calls onNewTab and closes the menu', () => {
+    const onNewTab = vi.fn();
+    const onSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({
+      onNewTab,
+      newTabPickerItems: [{ key: 'entities', label: 'Entity Browser', onSelect }],
+    })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    fireEvent.click(screen.getByTestId('wtb-new-tab-menu-primary'));
+    expect(onNewTab).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('wtb-new-tab-menu')).not.toBeInTheDocument();
+  });
+
+  it('an extra item calls its own onSelect (not onNewTab) and closes the menu', () => {
+    const onNewTab = vi.fn();
+    const onSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({
+      onNewTab,
+      newTabPickerItems: [{ key: 'entities', label: 'Entity Browser', onSelect }],
+    })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    fireEvent.click(screen.getByTestId('wtb-new-tab-menu-item-entities'));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onNewTab).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('wtb-new-tab-menu')).not.toBeInTheDocument();
+  });
+
+  it('dismisses the picker on outside click without firing any action', () => {
+    const onNewTab = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <div>
+        <button data-testid="outside">outside</button>
+        <WorkspaceTabBar {...defaultProps({
+          onNewTab,
+          newTabPickerItems: [{ key: 'entities', label: 'Entity Browser', onSelect }],
+        })} />
+      </div>,
+    );
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    expect(screen.getByTestId('wtb-new-tab-menu')).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId('outside'));
+    expect(screen.queryByTestId('wtb-new-tab-menu')).not.toBeInTheDocument();
+    expect(onNewTab).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the picker on Escape', () => {
+    const onSelect = vi.fn();
+    render(<WorkspaceTabBar {...defaultProps({
+      newTabPickerItems: [{ key: 'entities', label: 'Entity Browser', onSelect }],
+    })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    expect(screen.getByTestId('wtb-new-tab-menu')).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByTestId('wtb-new-tab-menu')).not.toBeInTheDocument();
+  });
+});
+
 // ── Tab context menu (Beta 3 M6) ──────────────────────────────────────────────
 
 describe('WorkspaceTabBar context menu (M6)', () => {

@@ -10,6 +10,8 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import NoteViewer from './NoteViewer';
 import WorkspaceTabBar from './WorkspaceTabBar';
+import EntityBrowser from './EntityBrowser';
+import type { EntityEntry } from './types';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import './NoteSplitPane.css';
 
@@ -28,6 +30,9 @@ export interface NotesPaneTabStripProps {
   onTabStripDrop?: () => void;
   /** Per-pane ⋮ menu — "Close pane" (always available; closes the Notes split). */
   onClosePane: () => void;
+  /** SKY-9920: + picker — opens/focuses the Entity Browser tab in this pane.
+   * Omitted → the + button stays a single-click "new note" action. */
+  onOpenEntityBrowser?: () => void;
 }
 
 /** SKY-9784: shared per-pane tab strip for the Notes split — same shape as
@@ -45,6 +50,7 @@ export function NotesPaneTabStrip({
   acceptsTabDrop = false,
   onTabStripDrop,
   onClosePane,
+  onOpenEntityBrowser,
 }: NotesPaneTabStripProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -85,6 +91,10 @@ export function NotesPaneTabStrip({
         newTabTitle="New note — via the notes explorer"
         allowCloseLastTab
         hideAgentsChip
+        newTabPrimaryLabel="New note"
+        newTabPickerItems={onOpenEntityBrowser ? [
+          { key: 'entities', label: 'Entity Browser', onSelect: onOpenEntityBrowser },
+        ] : undefined}
       />
       <div className="nsp-pane-menu-wrap">
         <button
@@ -135,7 +145,8 @@ export interface NoteSplitPaneProps {
   onTabDragStart?: (tab: WorkspaceTab) => void;
   acceptsTabDrop?: boolean;
   onTabStripDrop?: () => void;
-  /** Notes-Vault-relative path of the active tab, shown in this pane. */
+  /** Notes-Vault-relative path of the active tab, shown in this pane.
+   * Empty/unused when activeTabIsEntityBrowser is true. */
   path: string;
   onClose: () => void;
   // NoteViewer passthrough (same wiring as the primary pane).
@@ -144,6 +155,14 @@ export interface NoteSplitPaneProps {
   sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
   style?: CSSProperties;
+
+  // ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
+  /** True when this pane's active tab is the Entity Browser. */
+  activeTabIsEntityBrowser?: boolean;
+  onSelectEntity?: (entity: EntityEntry) => void;
+  selectedEntityId?: string | null;
+  /** + picker: opens/focuses the Entity Browser tab in this pane. */
+  onOpenEntityBrowser?: () => void;
 }
 
 export default function NoteSplitPane({
@@ -163,6 +182,10 @@ export default function NoteSplitPane({
   sceneWikiLinkTitles,
   wikiLinkCandidates,
   style,
+  activeTabIsEntityBrowser = false,
+  onSelectEntity,
+  selectedEntityId = null,
+  onOpenEntityBrowser,
 }: NoteSplitPaneProps) {
   return (
     <div className="nsp-pane" data-testid="note-split-pane" style={style}>
@@ -178,16 +201,24 @@ export default function NoteSplitPane({
         acceptsTabDrop={acceptsTabDrop}
         onTabStripDrop={onTabStripDrop}
         onClosePane={onClose}
+        onOpenEntityBrowser={onOpenEntityBrowser}
       />
       <div className="nsp-body">
-        <NoteViewer
-          key={path}
-          path={path}
-          onWikiLinkClick={onWikiLinkClick}
-          resolvedWikiLinkTitles={resolvedWikiLinkTitles}
-          sceneWikiLinkTitles={sceneWikiLinkTitles}
-          wikiLinkCandidates={wikiLinkCandidates}
-        />
+        {activeTabIsEntityBrowser ? (
+          <EntityBrowser
+            onSelectEntity={onSelectEntity ?? (() => {})}
+            selectedEntityId={selectedEntityId}
+          />
+        ) : (
+          <NoteViewer
+            key={path}
+            path={path}
+            onWikiLinkClick={onWikiLinkClick}
+            resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+            sceneWikiLinkTitles={sceneWikiLinkTitles}
+            wikiLinkCandidates={wikiLinkCandidates}
+          />
+        )}
       </div>
     </div>
   );

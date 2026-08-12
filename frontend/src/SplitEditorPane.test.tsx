@@ -14,6 +14,15 @@ vi.mock('./BlockEditor', () => ({
   ),
 }));
 
+// ── Mock EntityBrowser — SKY-9920: SplitEditorPane just needs to know it
+// rendered EntityBrowser with the right props, not exercise its internals
+// (which have their own component behavior, not this pane's responsibility).
+vi.mock('./EntityBrowser', () => ({
+  default: ({ selectedEntityId }: { onSelectEntity: () => void; selectedEntityId: string | null }) => (
+    <div data-testid="mock-entity-browser" data-selected-entity-id={selectedEntityId ?? ''} />
+  ),
+}));
+
 // ── Fixture helpers ──────────────────────────────────────────────────────────
 
 function makeScene(overrides: Partial<Scene> = {}): Scene {
@@ -349,5 +358,47 @@ describe('per-pane ⋮ menu', () => {
     expect(screen.getByTestId('split-pane-1-pane-menu')).toBeInTheDocument();
     fireEvent.mouseDown(document.body);
     expect(screen.queryByTestId('split-pane-1-pane-menu')).toBeNull();
+  });
+});
+
+// ── Entity Browser as a document tab (SKY-9920, M5 item 5) ───────────────────
+
+describe('Entity Browser tab', () => {
+  it('renders EntityBrowser instead of the scene editor when activeTabIsEntityBrowser', () => {
+    render(<SplitEditorPane {...defaultProps({ activeTabIsEntityBrowser: true })} />);
+    expect(screen.getByTestId('mock-entity-browser')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-block-editor')).toBeNull();
+  });
+
+  it('forwards selectedEntityId to EntityBrowser', () => {
+    render(<SplitEditorPane {...defaultProps({ activeTabIsEntityBrowser: true, selectedEntityId: 'ent-1' })} />);
+    expect(screen.getByTestId('mock-entity-browser').dataset.selectedEntityId).toBe('ent-1');
+  });
+
+  it('hides the per-pane scene selector while showing the Entity Browser', () => {
+    render(<SplitEditorPane {...defaultProps({ activeTabIsEntityBrowser: true })} />);
+    expect(screen.queryByTestId('spe-scene-btn')).toBeNull();
+  });
+
+  it('renders the scene editor (not EntityBrowser) when activeTabIsEntityBrowser is false/omitted', () => {
+    render(<SplitEditorPane {...defaultProps()} />);
+    expect(screen.getByTestId('mock-block-editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-entity-browser')).toBeNull();
+  });
+
+  it('+ stays a single-click "new scene" action when onOpenEntityBrowser is omitted', () => {
+    const onNewTab = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [], activeTabId: null, onNewTab })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    expect(onNewTab).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('wtb-new-tab-menu')).toBeNull();
+  });
+
+  it('+ opens a picker offering Entity Browser when onOpenEntityBrowser is provided', () => {
+    const onOpenEntityBrowser = vi.fn();
+    render(<SplitEditorPane {...defaultProps({ tabs: [], activeTabId: null, onOpenEntityBrowser })} />);
+    fireEvent.click(screen.getByTestId('wtb-new-tab-btn'));
+    fireEvent.click(screen.getByTestId('wtb-new-tab-menu-item-entities'));
+    expect(onOpenEntityBrowser).toHaveBeenCalledOnce();
   });
 });

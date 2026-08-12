@@ -15,6 +15,7 @@ import type { WikiLinkCandidate } from './crossTabLinkResolver';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import { SceneEditorEmptyState } from './SceneEditorEmptyState';
 import WorkspaceTabBar from './WorkspaceTabBar';
+import EntityBrowser from './EntityBrowser';
 import './SplitEditorPane.css';
 
 // ─── Compact per-pane scene selector ───
@@ -196,6 +197,16 @@ export interface SplitEditorPaneProps {
   onClosePane?: () => void;
   /** SKY-9342: per-pane ⋮ menu — "Split pane" action. */
   onSplitPane?: () => void;
+
+  // ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
+  /** True when the active tab in THIS pane is the Entity Browser — renders
+   * it in place of the scene editor. */
+  activeTabIsEntityBrowser?: boolean;
+  onSelectEntity?: (entity: EntityEntry) => void;
+  selectedEntityId?: string | null;
+  /** + picker: opens/focuses the Entity Browser tab in this pane. Omitted →
+   * the + button stays a single-click "new scene" action (back-compat). */
+  onOpenEntityBrowser?: () => void;
 }
 
 export default function SplitEditorPane({
@@ -231,6 +242,10 @@ export default function SplitEditorPane({
   onCloseEmptyPane,
   onClosePane,
   onSplitPane,
+  activeTabIsEntityBrowser = false,
+  onSelectEntity,
+  selectedEntityId = null,
+  onOpenEntityBrowser,
 }: SplitEditorPaneProps) {
   const hasAnyScenes = useMemo(
     () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
@@ -297,6 +312,10 @@ export default function SplitEditorPane({
             newTabTitle="New scene in this pane"
             allowCloseLastTab
             hideAgentsChip
+            newTabPrimaryLabel="New scene"
+            newTabPickerItems={onOpenEntityBrowser ? [
+              { key: 'entities', label: 'Entity Browser', onSelect: onOpenEntityBrowser },
+            ] : undefined}
           />
 
           {/* SKY-9342: per-pane ⋮ menu */}
@@ -359,16 +378,23 @@ export default function SplitEditorPane({
           {paneLabel}
         </span>
         {isFocused && <span className="spe-focused-badge" aria-hidden="true">●</span>}
-        <PaneSceneSelector
-          ref={sceneSelectorRef}
-          scene={scene}
-          stories={stories}
-          onSelect={onSelectScene}
-        />
+        {!activeTabIsEntityBrowser && (
+          <PaneSceneSelector
+            ref={sceneSelectorRef}
+            scene={scene}
+            stories={stories}
+            onSelect={onSelectScene}
+          />
+        )}
       </div>
 
       <div className="spe-content" onClick={onFocus}>
-        {scene && !sceneLoading ? (
+        {activeTabIsEntityBrowser ? (
+          <EntityBrowser
+            onSelectEntity={onSelectEntity ?? (() => {})}
+            selectedEntityId={selectedEntityId}
+          />
+        ) : scene && !sceneLoading ? (
           <BlockEditor
             key={scene.id}
             scene={scene}
