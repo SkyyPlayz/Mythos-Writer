@@ -44,6 +44,26 @@ export interface CanvasBoardData {
   links: CanvasLink[];
 }
 
+/**
+ * MIME type for a card dragged onto the canvas from an external rail (SKY-9878
+ * — Scene Crafter's SUGGESTED CARDS panel). Namespaced so canvas drag/drop
+ * never mistakes a foreign drag payload (e.g. an OS file drop) for a card.
+ */
+export const CANVAS_CARD_DRAG_MIME = 'application/x-mythos-canvas-card-seed';
+
+/**
+ * Card fields an external rail supplies when placing a new card onto the
+ * canvas — everything `CanvasCard` needs except the engine-owned id/position/
+ * size (prototype `suggAll`/`c.pick`/`c.down`, SKY-9878).
+ */
+export interface CanvasCardSeed {
+  t: string;
+  d: string;
+  av: string;
+  c: number;
+  nid: string | null;
+}
+
 // ─── Obsidian-canvas JSON (`.canvas`) ────────────────────────────────────────
 
 export interface ObsidianCanvasNode {

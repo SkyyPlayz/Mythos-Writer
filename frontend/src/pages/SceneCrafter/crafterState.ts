@@ -7,7 +7,7 @@
 //   suggested-card search filter + grouping  . . . . . . . . . lines 4527–4529
 //   draftBoard() card layout + busy delay  . . . . . . . . . . lines 3403–3423
 
-import type { CanvasBoardData, CanvasCard, CanvasLink } from '../../canvas/canvasTypes';
+import type { CanvasBoardData, CanvasCard, CanvasCardSeed, CanvasLink } from '../../canvas/canvasTypes';
 import { avatarForTitle } from '../../canvas/canvasTypes';
 
 // ─── Setup state ─────────────────────────────────────────────────────────────
@@ -193,6 +193,33 @@ export function groupSuggested(cards: SuggestedCard[]): SuggestedGroup[] {
     bucket.push(card);
   }
   return order.map((title) => ({ title, cards: byGroup.get(title) as SuggestedCard[] }));
+}
+
+/**
+ * Canvas color slot for a suggested-card group (SKY-9878, canvas spec §5):
+ * Characters = A(0), Locations = B(1), Items & Systems = D(3) — matching the
+ * "Characters card and a Locations card ... carry different slot colors (A
+ * and B respectively)" sample-data mapping, with Items & Systems on the
+ * slot the spec's table names for that vault column. Any other/future vault
+ * folder falls back to slot 4, the same default `onAddCard` uses for a blank
+ * canvas card.
+ */
+export function slotForSuggestedGroup(group: string): number {
+  switch (group) {
+    case 'CHARACTERS':
+      return 0;
+    case 'LOCATIONS':
+      return 1;
+    case 'ITEMS & SYSTEMS':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+/** Canvas-card seed for a suggested card placed on the board (SKY-9878). */
+export function cardSeedFromSuggested(card: SuggestedCard): CanvasCardSeed {
+  return { t: card.t, d: card.d, av: card.av, c: slotForSuggestedGroup(card.group), nid: card.nid };
 }
 
 // ─── Plan cards (prototype `planNotes`, lines 4717–4720) ─────────────────────
