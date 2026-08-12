@@ -125,6 +125,10 @@ test.describe('Shell relayout — Story sub-view render sweep', () => {
   });
 
   test('Structure sub-view renders unchanged', async () => {
+    // SKY-9019/M5: the previous test left the shell on rail-only kanban where the
+    // sub-view bar is hidden — return to the Story section first.
+    await clickStoryNav(page);
+    await expect(page.locator('[data-testid="story-subview-bar"]')).toBeVisible({ timeout: 5_000 });
     await page.locator('[data-testid="story-subview-structure"]').click();
     await expect(page.locator('[data-testid="story-subview-structure"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     await expect(page.locator('.shell-structure')).toBeVisible({ timeout: 5_000 });
