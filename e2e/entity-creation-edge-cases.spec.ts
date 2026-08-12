@@ -102,11 +102,11 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 async function openEntityDialog(page: Page): Promise<void> {
-  // SKY-1694: Entities is now a panel in the panel zone; expand it if collapsed.
-  const entitiesPanel = page.locator('[data-panel-id="entities"]');
-  const isCollapsed = await entitiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-  if (isCollapsed) await entitiesPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 8_000 });
+  // SKY-9022/M6: the old panel-zone Entities panel is gone. Entity Browser is
+  // now opened as a Story-pane doc tab via the "+" new-tab picker.
+  await page.locator('[data-testid="wtb-new-tab-btn"]').click();
+  await page.locator('[data-testid="wtb-new-tab-menu-item-entities"]').click();
+  await expect(page.locator('[data-testid="story-entities-view"] .entity-browser')).toBeVisible({ timeout: 8_000 });
   await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
   const dialog = page.locator('[role="dialog"]');
   await expect(dialog).toBeVisible({ timeout: 6_000 });

@@ -153,12 +153,12 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 }
 
-/** M13: surface the agent hub's Scene Analysis card in the right panel. */
+/** M13: surface the agent hub's Scene Analysis card in the right panel.
+ *  SKY-9022/M6: panel-stack removed — the hub view (AGENTS / Suggestions /
+ *  Scene Analysis cards) lives under the sidebar's always-expanded Assistant
+ *  tab; there is no collapse toggle anymore. */
 async function openSceneAnalysisCard(page: Page): Promise<void> {
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
+  await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
   // A previous test may have left the hub inside an agent chat view.
   const backBtn = page.locator('.ahp-back-btn');
   if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
@@ -234,15 +234,15 @@ test('M12: sending a prompt renders user bubble then coach reply in the feed', a
 test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation', async () => {
   await openCoachPage(page);
 
-  // Open the right-panel agent hub → Writing Coach chat
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
+  // Open the right-panel agent hub → Writing Coach chat.
+  // SKY-9022/M6: panel-stack removed — the always-expanded Assistant tab hosts
+  // the AGENTS card; the Writing Coach row swaps the hub for its chat view.
+  await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
+  const backBtn = page.locator('.ahp-back-btn');
+  if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await backBtn.click();
   }
-  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
-  if (await agentRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
+  await page.locator('[data-testid="ahp-agent-row-writing-assistant"]').click();
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
   // The exchange sent from the COACH PAGE is visible in the PANEL chat.

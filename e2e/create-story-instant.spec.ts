@@ -297,7 +297,9 @@ test.describe('M3: create story → instantly writable (navigator +)', () => {
   test('AC1: navigator + → type "hello" with zero interposed clicks → prose + scaffold on disk', async () => {
     await ensureStoriesPanel(page);
 
-    const addBtn = page.locator('[aria-label="New story"]');
+    // M6: LeftRail also shows aria-label="New story" when no story is selected;
+    // scope to StoryNavigator to avoid strict-mode violation.
+    const addBtn = page.locator('.story-navigator [aria-label="New story"]');
     await expect(addBtn).toBeVisible({ timeout: 10_000 });
     await expectNoInterposedSurfaces(page);
 
@@ -328,7 +330,7 @@ test.describe('M3: create story → instantly writable (navigator +)', () => {
     // Create a second story from the same entry point and inspect the
     // freshly-created state (AC1 above already blurred its story's caret).
     await ensureStoriesPanel(page);
-    await page.locator('[aria-label="New story"]').click();
+    await page.locator('.story-navigator [aria-label="New story"]').click();
     await waitForWriterCaret(page);
 
     // Full Book depth every time.

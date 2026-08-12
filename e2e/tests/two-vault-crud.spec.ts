@@ -129,12 +129,18 @@ async function waitUntil(
   return false;
 }
 
-async function openVaultTab(pg: Page): Promise<void> {
-  // SKY-1694: Vault Browser is in the panel zone (collapsed by default); expand it.
-  const vaultPanel = pg.locator('[data-panel-id="vault"]');
-  const isCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-  if (isCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+// SKY-9022/M6: the old unlocked (Story/Notes/Both scope) VaultBrowser panel
+// this suite exercised no longer exists. Per the M6 spec
+// (plans/fidelity-rebuild/PLAN.md §M6: "Vault Browser's function = the Notes
+// workspace sidebar, which is its one home"), VaultBrowser is reachable only
+// via the Notes Editor rail tab, always locked to notes scope — no scope
+// bar, no Story-side split. openNotesVaultTab replaces openVaultTab for the
+// Notes-only cases (TC-VB-06); the Story-side cases were rewritten to use
+// StoryNavigator or skipped where they test scope-switching itself — see
+// each test below.
+async function openNotesVaultTab(pg: Page): Promise<void> {
+  await pg.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
+  await expect(pg.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
 }
 
 // ─── Suite-level state ────────────────────────────────────────────────────────
@@ -170,98 +176,69 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-// ─── TC-VB-01: VaultBrowser renders in "Both" scope by default ───────────────
+// ─── TC-VB-01..03: SKIPPED — SKY-9022/M6 ─────────────────────────────────────
+//
+// These cases test the Story/Notes/Both scope-switching UI itself
+// (`vb-scope-*`, the side-by-side split). M6 removed scope-switching
+// entirely — VaultBrowser is now always locked to notes scope, so there is
+// no "Both" or "Story" scope to switch to anymore. This isn't a locator
+// fixup; the feature under test no longer exists. Skipped rather than
+// deleted so the gap stays visible/traceable.
 
-test('TC-VB-01: Vault tab shows Story Vault + Notes Vault split in Both scope', async () => {
+test.skip('TC-VB-01: Vault tab shows Story Vault + Notes Vault split in Both scope', async () => {
+  // See SKY-9022/M6 skip note above — scope-switching UI no longer exists.
+});
+
+test.skip('TC-VB-02: switching to Story scope hides Notes Vault panel', async () => {
+  // See SKY-9022/M6 skip note above.
+});
+
+test.skip('TC-VB-03: switching to Notes scope hides Story Vault panel', async () => {
+  // See SKY-9022/M6 skip note above.
+});
+
+// ─── TC-VB-04: Create story via StoryNavigator ───────────────────────────────
+// SKY-9022/M6: story creation now happens via StoryNavigator, not the dead
+// VaultBrowser "vault" panel's Story Vault section.
+
+test('TC-VB-04: create story via StoryNavigator, story row appears', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await openVaultTab(page);
 
-  // "Both" scope is the default — aria-pressed reflects the active state
-  await expect(page.locator('[data-testid="vb-scope-both"]')).toHaveAttribute('aria-pressed', 'true');
+  // M3 instant-create: no prompt — story appears immediately as "Untitled
+  // Story" (single story in this fixture vault, so match positionally
+  // rather than by a title no create flow ever sets).
+  await page.locator('.nav-add-btn').first().click();
 
-  // Both vault sections rendered simultaneously
-  await expect(page.locator('[data-testid="vb-story-vault"]')).toBeVisible({ timeout: 6_000 });
-  await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 6_000 });
-});
-
-// ─── TC-VB-02: Story scope — Notes Vault panel hidden ────────────────────────
-
-test('TC-VB-02: switching to Story scope hides Notes Vault panel', async () => {
-  await openVaultTab(page);
-  await page.locator('[data-testid="vb-scope-story"]').click();
-
-  await expect(page.locator('[data-testid="vb-scope-story"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-testid="vb-story-vault"]')).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('[data-testid="vb-notes-vault"]')).not.toBeVisible({ timeout: 4_000 });
-
-  // Restore for subsequent tests
-  await page.locator('[data-testid="vb-scope-both"]').click();
-  await expect(page.locator('[data-testid="vb-scope-both"]')).toHaveAttribute('aria-pressed', 'true');
-});
-
-// ─── TC-VB-03: Notes scope — Story Vault panel hidden ────────────────────────
-
-test('TC-VB-03: switching to Notes scope hides Story Vault panel', async () => {
-  await openVaultTab(page);
-  await page.locator('[data-testid="vb-scope-notes"]').click();
-
-  await expect(page.locator('[data-testid="vb-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator('[data-testid="vb-story-vault"]')).not.toBeVisible({ timeout: 4_000 });
-
-  // Restore for subsequent tests
-  await page.locator('[data-testid="vb-scope-both"]').click();
-  await expect(page.locator('[data-testid="vb-scope-both"]')).toHaveAttribute('aria-pressed', 'true');
-});
-
-// ─── TC-VB-04: Create story via VaultBrowser Story Vault ─────────────────────
-
-test('TC-VB-04: create story via VaultBrowser Story Vault panel, story row appears', async () => {
-  await openVaultTab(page);
-
-  // New Story button lives in the Story Vault section header.
-  // M3 instant-create: no prompt — story appears immediately as "Untitled Story".
-  await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-
-  // Any story row in the panel confirms the create succeeded.
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
+    page.locator('.nav-story-row').first(),
   ).toBeVisible({ timeout: 8_000 });
 });
 
 // ─── TC-VB-05: Create chapter + scene → scene file lands in Story Vault ──────
 
-test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Vault, notesVaultDir untouched', async () => {
-  await openVaultTab(page);
-
+test('TC-VB-05: chapter + scene created via StoryNavigator; scene file in Story Vault, notesVaultDir untouched', async () => {
   // Capture baseline before story write operations (notesVaultDir may already hold the TC-VB-06 seed)
   const notesCountBefore = findMdFiles(notesVaultDir).length;
 
   // Story from TC-VB-04 must be present (single story auto-expands).
   // M3 instant-create leaves it named "Untitled Story" — match positionally
   // rather than by a title no create flow ever sets.
-  const storyNameEl = page.locator('[data-testid="vb-story-vault"] .vb-name').first();
-  await expect(storyNameEl).toBeVisible({ timeout: 6_000 });
+  const storyRow = page.locator('.nav-story-row').first();
+  await expect(storyRow).toBeVisible({ timeout: 6_000 });
 
-  // Create chapter via the story's inline-add button (only story in this vault).
-  await page.locator('[data-testid="vb-story-vault"] .vb-inline-add').first().click();
+  // Create chapter via the story's inline-add button
+  await storyRow.locator('.nav-inline-add').click();
   await fillPrompt(page, CHAPTER_TITLE);
 
-  await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: CHAPTER_TITLE }),
-  ).toBeVisible({ timeout: 6_000 });
-
-  // Expand chapter by clicking its toggle (contains chapter title text)
-  await page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE }).click();
+  const chapterRow = page.locator('.nav-chapter-row', { hasText: CHAPTER_TITLE });
+  await expect(chapterRow).toBeVisible({ timeout: 6_000 });
 
   // Create scene under the chapter
-  await page.locator('[data-testid="vb-story-vault"]')
-    .locator(`[aria-label="New scene in ${CHAPTER_TITLE}"]`)
-    .click();
+  await chapterRow.locator('.nav-inline-add').click();
   await fillPrompt(page, SCENE_TITLE);
 
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-scene-row .vb-name', { hasText: SCENE_TITLE }),
+    page.locator('.nav-scene-row', { hasText: SCENE_TITLE }),
   ).toBeVisible({ timeout: 6_000 });
 
   // Scene .md file written under Story Vault path (stories/.../scenes/...)
@@ -279,13 +256,10 @@ test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Va
 });
 
 // ─── TC-VB-06: Pre-seeded worldbuilding note appears in Notes Vault tree ─────
+// SKY-9022/M6: VaultBrowser's one home is the Notes Editor rail tab.
 
 test('TC-VB-06: pre-seeded worldbuilding note visible in Notes Vault file tree', async () => {
-  await openVaultTab(page);
-
-  // Switch to Notes scope so the Notes panel fills the width
-  await page.locator('[data-testid="vb-scope-notes"]').click();
-  await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 4_000 });
+  await openNotesVaultTab(page);
 
   // worldbuilding/ directory row — auto-expanded on first load via initExpand
   await expect(
@@ -296,18 +270,19 @@ test('TC-VB-06: pre-seeded worldbuilding note visible in Notes Vault file tree',
   await expect(
     page.locator(`[data-testid="vb-row-${NOTE_DIR}/${NOTE_FILE}"]`),
   ).toBeVisible({ timeout: 8_000 });
-
-  // Restore scope
-  await page.locator('[data-testid="vb-scope-both"]').click();
 });
 
 // ─── TC-VB-07: Markdown round-trip — prose survives full restart ──────────────
+// SKY-9022/M6: navigate scenes via StoryNavigator, not the dead VaultBrowser
+// Story Vault tree.
 
 test('TC-VB-07: prose typed in scene editor survives full app restart (markdown round-trip)', async () => {
-  await openVaultTab(page);
+  // TC-VB-06 (above) leaves the app on the Notes Editor tab; navigate back
+  // to Story Writer so StoryNavigator (and the scene from TC-VB-05) is visible.
+  await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
 
   // Open the scene created in TC-VB-05
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row').first();
+  const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await sceneRow.click();
 
@@ -331,18 +306,9 @@ test('TC-VB-07: prose typed in scene editor survives full app restart (markdown 
   page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Navigate to VaultBrowser; localStorage persists expanded state across restarts
-  await openVaultTab(page);
-
-  // Chapter may need expanding if localStorage did not carry the expanded state
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  if (await chapterToggle.isVisible()) {
-    const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-    if (isExpanded !== 'true') await chapterToggle.click();
-  }
-
-  const sceneRowAfter = page.locator('[data-testid="vb-story-vault"] .vb-scene-row').first();
-  await expect(sceneRowAfter).toBeVisible({ timeout: 6_000 });
+  // Navigate to the scene via StoryNavigator; localStorage persists expanded state across restarts
+  const sceneRowAfter = page.locator('.nav-scene-row').first();
+  await expect(sceneRowAfter).toBeVisible({ timeout: 8_000 });
   await sceneRowAfter.click();
 
   // Prose must still be present — markdown serializer must not reformat content

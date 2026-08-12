@@ -5,10 +5,12 @@
 // open scene and `View Full Analysis` posts the full card into the Coach page.
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Scene } from './types';
+import type { Scene, Story } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import ScenesPanel from './ScenesPanel';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
@@ -28,6 +30,7 @@ import {
 import { showLnToast } from './theme/lnToast';
 import SceneNotesPanel from './SceneNotesPanel';
 import type { SceneNoteDragPayload } from './sceneNotes';
+import SuggestionReview from './SuggestionReview';
 import './AgentHubPanel.css';
 
 const SUGGESTION_POLL_MS = 30_000;
@@ -87,6 +90,12 @@ const AGENT_DEFS: AgentDef[] = [
 
 interface Props {
   scene: Scene | null;
+  /** M9c/M6: drives the Scenes tab's canvas-board list. */
+  story?: Story | null;
+  /** M9c/M6: Scenes tab empty-state + "Open full" → Scene Crafter. */
+  onOpenScenesFull?: () => void;
+  /** M9c/M6: Scenes tab canvas board note links. */
+  onOpenSceneNote?: (notePath: string) => void;
   enabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
@@ -103,17 +112,31 @@ interface Props {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  /** SKY-10057: notified when the Review Inbox drill-down opens (side-effect hook — the
+   *  drill-down itself is rendered internally, this is not the render target). */
   onOpenSuggestionInbox?: () => void;
+  /** SKY-10057: opens a suggestion's target file — passed through to the
+   *  in-panel Review Inbox drill-down (SuggestionReview). */
+  onOpenVaultPath?: (path: string) => void;
   /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
   onOpenCoachPage?: () => void;
   /** M9b (SKY-9823): pass-throughs for the Notes tab's SceneNotesPanel. */
   sceneNotesRefresh?: number;
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   onSceneNotesChanged?: () => void;
+  /** M6: Rendered at top of the Assistant tab hub view — Getting Started card. */
+  gettingStartedCard?: import('react').ReactNode;
+  /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
+  continuityPanel?: import('react').ReactNode;
+  /** M9a (SKY-9822): Rendered inside the References tab — wiki-link auto-collection. */
+  referencesPanel?: import('react').ReactNode;
 }
 
 export default function AgentHubPanel({
   scene,
+  story = null,
+  onOpenScenesFull,
+  onOpenSceneNote,
   enabled = true,
   scanIntervalSeconds = 60,
   waScanInterval,
@@ -131,13 +154,39 @@ export default function AgentHubPanel({
   onAutoApplyCategoriesChange,
   agentNames,
   onOpenSuggestionInbox,
+  onOpenVaultPath,
   onOpenCoachPage,
   sceneNotesRefresh,
   onPromoteSceneNote,
   onSceneNotesChanged,
+  gettingStartedCard,
+  continuityPanel,
+  referencesPanel,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<HubTab>('assistant');
+  // R11/M11a/M11b: master AI toggle off removes the Assistant tab (AGENTS,
+  // Suggestions, Scene Analysis, Continuity, Getting Started all live inside
+  // it) — "right panel collapses cleanly, no dead bands." Scenes/Notes/
+  // References are utility tabs, not AI, and stay either way.
+  const aiEnabled = useAiEnabled();
+  const [activeTab, setActiveTabState] = useState<HubTab>('assistant');
+  const setActiveTab = useCallback((tab: HubTab) => {
+    setActiveTabState(tab === 'assistant' && !aiEnabled ? 'scenes' : tab);
+  }, [aiEnabled]);
+  useEffect(() => {
+    if (!aiEnabled) setActiveTabState((cur) => (cur === 'assistant' ? 'scenes' : cur));
+  }, [aiEnabled]);
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
+
+  // SKY-10057: "See All Suggestions" drills into a self-contained Review
+  // Inbox in place — mirrors the AgentHubView <-> AgentChatView swap above.
+  // The panel-stack home this used to expand (SKY-6321's setGrsPanels) was
+  // removed by M6 with no replacement, leaving the button a same-tab no-op.
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const handleOpenInbox = useCallback(() => {
+    setInboxOpen(true);
+    onOpenSuggestionInbox?.();
+  }, [onOpenSuggestionInbox]);
+  const handleInboxBack = useCallback(() => setInboxOpen(false), []);
 
   const coachSessionStore = useAgentSessions('coach');
 
@@ -164,8 +213,10 @@ export default function AgentHubPanel({
     }
   }, [activeAgent]);
 
+  // M11b surface contract: "Assistant" tab is AI-bearing chrome — gone when
+  // the master toggle is off. Scenes/Notes/References stay either way.
   const TABS: { id: HubTab; label: string }[] = [
-    { id: 'assistant', label: 'Assistant' },
+    ...(aiEnabled ? [{ id: 'assistant' as const, label: 'Assistant' }] : []),
     { id: 'scenes', label: 'Scenes' },
     { id: 'notes', label: 'Notes' },
     { id: 'references', label: 'References' },
@@ -179,7 +230,7 @@ export default function AgentHubPanel({
             key={t.id}
             type="button"
             className={`ahp-tab${activeTab === t.id ? ' ahp-tab--active' : ''}`}
-            onClick={() => { setActiveTab(t.id); setActiveAgent(null); }}
+            onClick={() => { setActiveTab(t.id); setActiveAgent(null); setInboxOpen(false); }}
             aria-selected={activeTab === t.id}
             role="tab"
           >
@@ -189,8 +240,10 @@ export default function AgentHubPanel({
       </nav>
 
       <div className="ahp-body">
-        {activeTab === 'assistant' && (
-          activeAgent
+        {activeTab === 'assistant' && aiEnabled && (
+          inboxOpen
+            ? <ReviewInboxView onBack={handleInboxBack} onOpenVaultPath={onOpenVaultPath} />
+          : activeAgent
             ? <AgentChatView
                 agentId={activeAgent}
                 agentDef={AGENT_DEFS.find((a) => a.id === activeAgent)!}
@@ -219,11 +272,15 @@ export default function AgentHubPanel({
                 agentNames={agentNames}
                 onAgentClick={handleAgentClick}
                 scene={scene}
-                onOpenSuggestionInbox={onOpenSuggestionInbox}
+                onOpenSuggestionInbox={handleOpenInbox}
                 onOpenCoachPage={onOpenCoachPage}
+                gettingStartedCard={gettingStartedCard}
+                continuityPanel={continuityPanel}
               />
         )}
-        {activeTab === 'scenes' && <ScenesTab scene={scene} />}
+        {activeTab === 'scenes' && (
+          <ScenesPanel story={story} onOpenFull={onOpenScenesFull ?? (() => {})} onOpenNote={onOpenSceneNote} />
+        )}
         {activeTab === 'notes' && (
           <SceneNotesPanel
             scene={scene}
@@ -232,9 +289,33 @@ export default function AgentHubPanel({
             onNotesChanged={onSceneNotesChanged}
           />
         )}
-        {activeTab === 'references' && <ReferencesTab />}
+        {activeTab === 'references' && <ReferencesTab referencesPanel={referencesPanel} />}
       </div>
     </div>
+  );
+}
+
+// ── Research Quick Links card (M6) ──────────────────────────────────────────
+
+function ResearchQuickLinksCard() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <section className="ahp-card ahp-card--collapsible" aria-label="Research Quick Links">
+      <button
+        className="ahp-collapsible-header"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        type="button"
+      >
+        <span className="ahp-card-eyebrow">RESEARCH QUICK LINKS</span>
+        <span className="ahp-collapse-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+      </button>
+      {expanded && (
+        <div className="ahp-quick-links-body">
+          <p className="ahp-stub-text">Quick links to research sources — contents in M9.</p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -247,9 +328,11 @@ interface AgentHubViewProps {
   scene: Scene | null;
   onOpenSuggestionInbox?: () => void;
   onOpenCoachPage?: () => void;
+  gettingStartedCard?: import('react').ReactNode;
+  continuityPanel?: import('react').ReactNode;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
   // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
   // AGENTS card can derive each row's "needs attention" count from the same
   // poll instead of a second one.
@@ -262,6 +345,7 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
   return (
     <div className="ahp-hub">
+      {gettingStartedCard}
       {/* AGENTS card */}
       <section className="ahp-card" aria-label="Agents">
         <header className="ahp-card-header">
@@ -290,6 +374,8 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
 
       {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
       <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
+      {continuityPanel}
+      <ResearchQuickLinksCard />
     </div>
   );
 }
@@ -642,19 +728,47 @@ function AgentChatView({
   );
 }
 
-// ── Stub tabs ───────────────────────────────────────────────────────────────
+// ── Review Inbox drill-down (SKY-10057) ─────────────────────────────────────
+//
+// "See All Suggestions" used to expand a panel-stack entry that M6 removed
+// from rendering; this renders the same SuggestionReview inbox (filters,
+// accept/reject/ignore, audit trail) in place, mirroring the AgentChatView
+// back-navigation pattern above.
 
-function ScenesTab({ scene }: { scene: Scene | null }) {
+function ReviewInboxView({
+  onBack,
+  onOpenVaultPath,
+}: {
+  onBack: () => void;
+  onOpenVaultPath?: (path: string) => void;
+}) {
   return (
-    <div className="ahp-stub-tab">
-      <p className="ahp-stub-label">
-        {scene ? `Open scene: ${scene.title}` : 'No scene open.'}
-      </p>
+    <div className="ahp-chat-view">
+      <div className="ahp-chat-header">
+        <button
+          type="button"
+          className="ahp-back-btn"
+          onClick={onBack}
+          aria-label="Back to agents"
+        >
+          ‹ Back
+        </button>
+        <span className="ahp-chat-agent-name">Review Inbox</span>
+      </div>
+      <SuggestionReview onOpenVaultPath={onOpenVaultPath} />
     </div>
   );
 }
 
-function ReferencesTab() {
+// ── Stub tabs ───────────────────────────────────────────────────────────────
+
+// M9a (SKY-9822): the real References tab content (ReferencesPanel — wiki-link
+// auto-collection, typed roles, unresolved state) is passed in from
+// DesktopShell via `referencesPanel`, the same slot pattern M6 uses for
+// `continuityPanel`. Falls back to the pre-M9a stub when unset (e.g. in tests
+// that mount AgentHubPanel standalone).
+function ReferencesTab({ referencesPanel }: { referencesPanel?: import('react').ReactNode }) {
+  if (referencesPanel) return <>{referencesPanel}</>;
   return (
     <div className="ahp-stub-tab">
       <p className="ahp-stub-label">Wiki link targets — coming soon.</p>

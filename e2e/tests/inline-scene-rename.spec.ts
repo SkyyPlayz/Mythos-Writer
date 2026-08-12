@@ -1,9 +1,31 @@
 /**
- * inline-scene-rename.spec.ts — SKY-115
+ * inline-scene-rename.spec.ts — SKY-115, updated for SKY-9022/M6
  *
  * E2E regression coverage for inline scene rename feature (Story Vault).
  *
- * Test cases verify:
+ * SKY-9022/M6 removed the old panel-stack system entirely, including the
+ * unlocked (Story/Notes/Both scope) VaultBrowser that used to live in the
+ * Story Writer sidebar's "vault" panel. Per the M6 spec
+ * (plans/fidelity-rebuild/PLAN.md §M6: "Vault Browser's function = the Notes
+ * workspace sidebar, which is its one home"), that story-side tree —
+ * `vb-story-vault`, `vb-scope-*`, and double-click-to-rename via
+ * `.vb-rename-input` — has no replacement UI. Story/chapter/scene creation
+ * now happens via StoryNavigator (`frontend/src/StoryNavigator.tsx`), and
+ * renaming a scene/chapter/story now happens inside the editor itself
+ * (`ManuscriptView`'s `onRenameScene`/`onRenameChapter`/`onRenameStory`,
+ * wired in DesktopShell.tsx) — there is no tree-based double-click rename
+ * for the Story side anymore, and currently no e2e coverage of the new
+ * editor-based rename either.
+ *
+ * The Setup test below was rewritten to build its story/chapter/scene
+ * fixture through StoryNavigator instead of the dead VaultBrowser tree. The
+ * TC-ISR-* cases test a UI surface (`.vb-rename-input` on `vb-story-vault`
+ * rows) that no longer exists anywhere in the app, so they're skipped rather
+ * than deleted — this keeps the coverage gap visible/traceable instead of
+ * silently dropping it. Follow-up: SKY-9022 M6 replacement — add e2e
+ * coverage for the new editor-based rename flow.
+ *
+ * Original test cases (now skipped, see above):
  *   TC-ISR-01  Double-click scene → inline input appears with name pre-filled
  *   TC-ISR-02  Type new name in input → input accepts the text value
  *   TC-ISR-03  Press Escape during rename → cancels edit and reverts name
@@ -11,12 +33,6 @@
  *   TC-ISR-05  Rename input receives autofocus when opened
  *   TC-ISR-06  Invalid characters (e.g., /) trigger validation error
  *   Setup      Create story, chapter, and scene for tests
- *
- * Validation:
- * - Empty names are rejected with "cannot be empty" error
- * - Invalid characters (/ \ : * ? " < > |) are rejected
- * - Escape key cancels rename without changes
- * - Input receives autofocus for immediate typing
  */
 
 import path from 'path';
@@ -140,18 +156,6 @@ async function waitUntil(
   return false;
 }
 
-// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
-// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
-// "vault" panel of the Story Writer section (collapsed by default) — the same
-// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
-async function openVaultTab(pg: Page): Promise<void> {
-  const vaultPanel = pg.locator('[data-panel-id="vault"]');
-  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
-  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
-}
-
 // ─── Suite-level state ────────────────────────────────────────────────────────
 
 let userData: string;
@@ -189,236 +193,58 @@ test.afterAll(async () => {
 
 test('Setup: Create story, chapter, and scene', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await openVaultTab(page);
 
-  // Create story. M3 instant-create: no prompt — story appears immediately
-  // as "Untitled Story" (single story in this vault, so match positionally).
-  await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-  await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
-  ).toBeVisible({ timeout: 8_000 });
+  // Create story via StoryNavigator (replaces the dead VaultBrowser story
+  // tree). M3 instant-create: no prompt — story appears immediately as
+  // "Untitled Story" (single story in this vault, so match positionally).
+  await page.locator('.nav-add-btn').first().click();
+  const storyRow = page.locator('.nav-story-row').first();
+  await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter via the story's inline-add button (only story in this vault).
-  await page.locator('[data-testid="vb-story-vault"] .vb-inline-add').first().click();
+  // Create chapter
+  await storyRow.locator('.nav-inline-add').click();
   await fillPrompt(page, CHAPTER_TITLE);
-  await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: CHAPTER_TITLE }),
-  ).toBeVisible({ timeout: 6_000 });
-
-  // Expand chapter
-  await page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE }).click();
+  const chapterRow = page.locator('.nav-chapter-row', { hasText: CHAPTER_TITLE });
+  await expect(chapterRow).toBeVisible({ timeout: 6_000 });
 
   // Create scene
-  await page.locator('[data-testid="vb-story-vault"]')
-    .locator(`[aria-label="New scene in ${CHAPTER_TITLE}"]`)
-    .click();
+  await chapterRow.locator('.nav-inline-add').click();
   await fillPrompt(page, SCENE_TITLE);
 
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row .vb-name', { hasText: SCENE_TITLE });
+  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
 });
 
-// ─── TC-ISR-01: Double-click scene → inline input appears with name pre-filled ─
+// ─── TC-ISR-01..06: SKIPPED — SKY-9022/M6 ────────────────────────────────────
+//
+// These cases test the old VaultBrowser story-side tree's double-click
+// inline-rename (`.vb-rename-input` on `vb-story-vault` rows), which SKY-9022
+// M6 removed with no direct replacement (renaming now happens in the editor
+// via onRenameScene/onRenameChapter/onRenameStory — see DesktopShell.tsx).
+// Skipped rather than deleted so this coverage gap stays visible/traceable.
+// Follow-up: add e2e coverage for the new editor-based rename flow.
 
-test('TC-ISR-01: double-click scene node shows inline input with name pre-filled', async () => {
-  await openVaultTab(page);
-
-  // Find the chapter and ensure it's expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-  }
-
-  // Find and double-click the scene
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Rename input appears
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-
-  // Input value contains the original scene name (without .md extension)
-  const inputValue = await renameInput.inputValue();
-  expect(inputValue).toBe(SCENE_TITLE);
-
-  // Cancel rename by pressing Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-ISR-01: double-click scene node shows inline input with name pre-filled', async () => {
+  // See SKY-9022/M6 skip note above — .vb-story-vault / .vb-rename-input no longer exist.
 });
 
-// ─── TC-ISR-02: Type new name + Enter → rename input accepts value ──────────
-
-test('TC-ISR-02: typing in rename input updates the input value', async () => {
-  await openVaultTab(page);
-
-  // Ensure chapter is expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-    await page.waitForTimeout(500);
-  }
-
-  // Double-click scene to start rename
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Type new name
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-  await renameInput.fill(SCENE_RENAMED);
-
-  // Verify input value was updated
-  const inputValue = await renameInput.inputValue();
-  expect(inputValue).toBe(SCENE_RENAMED);
-
-  // Cancel by pressing Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-ISR-02: typing in rename input updates the input value', async () => {
+  // See SKY-9022/M6 skip note above.
 });
 
-// ─── TC-ISR-03: Press Escape cancels rename without changes ────────────────
-
-test('TC-ISR-03: press Escape during rename cancels edit and reverts name', async () => {
-  await openVaultTab(page);
-
-  // Ensure chapter is expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-    await page.waitForTimeout(500);
-  }
-
-  // Double-click scene to start rename
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Start typing a new name
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-  await renameInput.fill('This Name Will Be Cancelled');
-
-  // Press Escape to cancel
-  await renameInput.press('Escape');
-
-  // Input disappears
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
-
-  // Scene still shows the original name
-  await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE }),
-  ).toBeVisible({ timeout: 6_000 });
+test.skip('TC-ISR-03: press Escape during rename cancels edit and reverts name', async () => {
+  // See SKY-9022/M6 skip note above.
 });
 
-// ─── TC-ISR-04: Empty name validation shows error ────────────────────────
-
-test('TC-ISR-04: submit empty name shows error message', async () => {
-  await openVaultTab(page);
-
-  // Ensure chapter is expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-    await page.waitForTimeout(500);
-  }
-
-  // Double-click scene to start rename
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Clear the input to make it empty
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-  await renameInput.fill('');
-
-  // Press Enter to attempt submission
-  await renameInput.press('Enter');
-
-  // Rename input should still be visible (error state)
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-
-  // Error message should be displayed
-  const errorMsg = page.locator('.vb-rename-error');
-  await expect(errorMsg).toBeVisible({ timeout: 4_000 });
-
-  // Cancel by pressing Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-ISR-04: submit empty name shows error message', async () => {
+  // See SKY-9022/M6 skip note above.
 });
 
-// ─── TC-ISR-05: Rename input shows with focus and autoFocus ────────────────
-
-test('TC-ISR-05: rename input receives autofocus when opened', async () => {
-  await openVaultTab(page);
-
-  // Ensure chapter is expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-    await page.waitForTimeout(500);
-  }
-
-  // Double-click scene to start rename
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Input should appear and have focus
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-
-  // Input should be focused (can type immediately)
-  const isFocused = await renameInput.evaluate((el) => el === document.activeElement);
-  expect(isFocused).toBe(true);
-
-  // Cancel by pressing Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-ISR-05: rename input receives autofocus when opened', async () => {
+  // See SKY-9022/M6 skip note above.
 });
 
-// ─── TC-ISR-06: Invalid characters are rejected by validator ────────────────
-
-test('TC-ISR-06: rename validator rejects invalid characters', async () => {
-  await openVaultTab(page);
-
-  // Ensure chapter is expanded
-  const chapterToggle = page.locator('[data-testid="vb-story-vault"] .vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  const isExpanded = await chapterToggle.getAttribute('aria-expanded');
-  if (isExpanded !== 'true') {
-    await chapterToggle.click();
-    await page.waitForTimeout(500);
-  }
-
-  // Double-click scene to start rename
-  const sceneRow = page.locator('[data-testid="vb-story-vault"] .vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-  await sceneRow.dblclick();
-
-  // Type invalid name with forward slash
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-  await renameInput.fill('Invalid/Name');
-
-  // Press Enter to attempt submission
-  await renameInput.press('Enter');
-
-  // Rename input should still be visible with an error message
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-
-  // Error message should be displayed
-  const errorMsg = page.locator('.vb-rename-error');
-  await expect(errorMsg).toBeVisible({ timeout: 4_000 });
-
-  // Cancel by pressing Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-ISR-06: rename validator rejects invalid characters', async () => {
+  // See SKY-9022/M6 skip note above.
 });
 

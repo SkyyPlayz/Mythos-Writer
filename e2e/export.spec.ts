@@ -297,11 +297,6 @@ test('AC-EXQ-1: ExportDialog opens and renders DOCX, PDF, EPUB, MD and TXT forma
   // Select the seeded story so selectedStoryId is set in AppMenuBar.
   // Must click .nav-story-title (not .nav-story-row) — the title button calls
   // onSelectStory with stopPropagation; the row div has no click handler.
-  const storyPanel = page.locator('[data-panel-id="stories"]');
-  if (await storyPanel.isVisible().catch(() => false)) {
-    const collapsed = await storyPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-    if (collapsed) await storyPanel.locator('.lr-panel-collapse-btn').click();
-  }
   const storyTitle = page.locator('.nav-story-title').first();
   await expect(storyTitle).toBeVisible({ timeout: 10_000 });
   await storyTitle.click();
@@ -491,64 +486,36 @@ test('AC-EXQ-4: selecting EPUB and clicking Export writes EPUB file', async () =
   expect(fs.existsSync(epubCall!.filePath!), 'Exported EPUB stub file must exist on disk').toBe(true);
 });
 
-// ─── AC-EXQ-5: EPUB radio disabled for scene/chapter scope ───────────────────
-// Opens ExportDialog via VaultBrowser right-click context menu which passes
-// the scope directly. The 'vault' panel renders VaultBrowser with onExport.
+// ─── AC-EXQ-5: EPUB radio disabled for chapter scope ─────────────────────────
+// SKY-9022/M6: the old VaultBrowser story-side tree (right-click a scene row
+// → "Export…" context-menu item) no longer exists — Vault Browser's only
+// remaining home is the Notes workspace sidebar (locked to notes scope).
+// The current UI path to a narrower-than-full-book export scope is the
+// ExportDialog's own "Current chapter" scope segment (ExportDialog.tsx),
+// which activates once a chapter is open in the editor. That still exercises
+// the same `epubDisabled` behavior (disabled for scene *or* chapter scope).
 
-test('AC-EXQ-5: EPUB radio is disabled when scope is scene or chapter', async () => {
-  // Expand the vault panel (collapsed by default in the left sidebar).
-  const vaultPanel = page.locator('[data-panel-id="vault"]');
-  const vaultCollapsed = await vaultPanel.evaluate(
-    (el) => el.classList.contains('lr-panel--collapsed'),
-  ).catch(() => true);
-  if (vaultCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first()).toBeVisible({ timeout: 6_000 });
+test('AC-EXQ-5: EPUB radio is disabled when scope is Current chapter', async () => {
+  // Open the seeded scene so the editor's selected chapter becomes the
+  // dialog's `currentChapterId`, enabling the "Current chapter" segment.
+  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
 
-  // Expand story → chapter → scenes in VaultBrowser. The sole story is
-  // auto-expanded by a StoryVault mount effect right after the panel expand
-  // above mounts VaultBrowser. Reading aria-expanded and then clicking races
-  // that effect: the read can see the pre-effect "false" while the click lands
-  // after the effect, collapsing the story again (seen on CI, where the Beta 3
-  // Liquid Neon ambience delays React's passive-effect flush under xvfb).
-  // Instead, wait for the auto-expand to settle and only click if the story
-  // genuinely stayed collapsed.
-  const storyToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="1"]').first();
-  await expect(storyToggle)
-    .toHaveAttribute('aria-expanded', 'true', { timeout: 3_000 })
-    .catch(async () => { await storyToggle.click(); });
-  await expect(storyToggle).toHaveAttribute('aria-expanded', 'true', { timeout: 3_000 });
-  const chapterToggle = vaultPanel.locator('.vb-tree-toggle[aria-level="2"]').first();
-  await expect(chapterToggle).toBeVisible({ timeout: 3_000 });
-  if ((await chapterToggle.getAttribute('aria-expanded')) !== 'true') await chapterToggle.click();
-
-  // ── Scene scope ─────────────────────────────────────────────────────────────
-  const sceneRow = vaultPanel.locator(`[data-testid="vb-scene-${SCENE_ID}"]`);
-  await expect(sceneRow).toBeVisible({ timeout: 3_000 });
-  await sceneRow.click({ button: 'right' });
-
-  const ctxMenu = page.locator('[data-testid="story-context-menu"]');
-  await expect(ctxMenu).toBeVisible({ timeout: 3_000 });
-  await ctxMenu.locator('button[role="menuitem"]', { hasText: 'Export…' }).click();
+  await openExportDialog(page);
 
   const dialog = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
   await expect(dialog).toBeVisible({ timeout: 6_000 });
+
+  // Full-book scope: EPUB stays enabled.
+  await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeEnabled();
+
+  // Switch to Current chapter scope — EPUB becomes disabled.
+  const chapterSegBtn = dialog.getByRole('button', { name: 'Current chapter' });
+  await expect(chapterSegBtn).toBeEnabled({ timeout: 6_000 });
+  await chapterSegBtn.click();
   await expect(dialog.locator('input[type="radio"][value="epub"]')).toBeDisabled();
 
   await dialog.locator('button[aria-label="Close"]').click();
   await dialog.waitFor({ state: 'detached', timeout: 4_000 });
-
-  // ── Chapter scope ────────────────────────────────────────────────────────────
-  await expect(chapterToggle).toBeVisible({ timeout: 3_000 });
-  await chapterToggle.click({ button: 'right' });
-
-  const ctxMenu2 = page.locator('[data-testid="story-context-menu"]');
-  await expect(ctxMenu2).toBeVisible({ timeout: 3_000 });
-  await ctxMenu2.locator('button[role="menuitem"]', { hasText: 'Export…' }).click();
-
-  const dialog2 = page.locator('[role="dialog"][aria-labelledby="export-dialog-title"]');
-  await expect(dialog2).toBeVisible({ timeout: 6_000 });
-  await expect(dialog2.locator('input[type="radio"][value="epub"]')).toBeDisabled();
-
-  await dialog2.locator('button[aria-label="Close"]').click();
-  await dialog2.waitFor({ state: 'detached', timeout: 4_000 });
 });

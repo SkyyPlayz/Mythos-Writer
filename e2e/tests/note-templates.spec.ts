@@ -89,16 +89,12 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
-// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
-// "vault" panel of the Story Writer section (collapsed by default) — the same
-// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
+// SKY-9022/M6: Vault Browser's function is the Notes workspace sidebar, its
+// one home — navigate to the Notes Editor tab to reach it (lockScope +
+// initialScope="notes", so vb-notes-vault renders directly, no scope-switch).
 async function openVaultTab(pg: Page): Promise<void> {
-  const vaultPanel = pg.locator('[data-panel-id="vault"]');
-  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
-  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+  await pg.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
+  await expect(pg.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
 }
 
 function findMdFiles(dir: string): string[] {
@@ -144,11 +140,6 @@ test.afterAll(async () => {
 
 test('TC-NT-01: clicking + in Notes Vault opens the template dialog', async () => {
   await openVaultTab(pg);
-
-  // Switch to Notes scope so the "+" button is accessible
-  const notesBtn = pg.locator('[data-testid="vb-scope-notes"]');
-  await expect(notesBtn).toBeVisible({ timeout: 6_000 });
-  await notesBtn.click();
 
   // Click the "New note" toolbar button
   const addBtn = pg.locator('[data-testid="vb-btn-new-note"]').first();

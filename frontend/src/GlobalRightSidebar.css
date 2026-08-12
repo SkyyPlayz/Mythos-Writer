@@ -215,3 +215,80 @@
 .grs-panel--collapsed .grs-panel-header {
   border-bottom: none;
 }
+
+/* ── M6: sidebar shell ───────────────────────────────────────────────────── */
+
+.grs-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--glass, rgba(13, 16, 28, .72));
+  border: var(--bw, 1px) solid var(--b3, rgba(255, 77, 255, .5));
+  box-shadow: 0 0 var(--gr, 26px) -7px var(--g3, rgba(255, 77, 255, .4)), inset 0 1px 0 rgba(255, 255, 255, .08);
+  flex-shrink: 0;
+  min-width: 200px;
+  max-width: 600px;
+}
+
+.grs-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+  z-index: 10;
+}
+
+.grs-resize-handle:hover {
+  background: var(--color-accent, #7c6af7);
+  opacity: 0.5;
+}
+
+/* ── M6: content slot ────────────────────────────────────────────────────── */
+
+.grs-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── M6: topbar (hide button) ────────────────────────────────────────────── */
+
+.grs-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 6px;
+  flex-shrink: 0;
+}
+
+.grs-hide-btn,
+.grs-show-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-hover-in);
+  line-height: 1;
+}
+
+.grs-hide-btn:hover,
+.grs-show-btn:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.grs-hide-btn:focus-visible,
+.grs-show-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

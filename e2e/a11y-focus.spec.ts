@@ -1,10 +1,19 @@
 /**
- * a11y-focus.spec.ts — SKY-143
+ * a11y-focus.spec.ts — SKY-143, updated for SKY-9022/M6
  *
  * Regression tests verifying keyboard tab-focus navigation through VaultBrowser.
  *
- *   TC-A11Y-01  Scope bar tab order    — Tab cycles through Story/Notes/Both buttons
- *   TC-A11Y-02  Section button reachable — Tab after scope bar reaches the section "+" button
+ * SKY-9022/M6 removed the old panel-stack system; Vault Browser's function is
+ * now the Notes workspace sidebar (its one home), reached via the Notes
+ * Editor rail tab and always rendered with `lockScope initialScope="notes"`.
+ * In that mode the Story/Notes/Both scope bar (`vb-scope-*`) never renders
+ * (see `VaultBrowser/index.tsx`, `{!lockScope && ...}`), so the original
+ * scope-bar tab-order assertions no longer have anything to test. These
+ * cases were rewritten to cover the toolbar that replaced it as the first
+ * keyboard-focusable region of the Notes Vault panel.
+ *
+ *   TC-A11Y-01  Notes toolbar tab order — Tab cycles through the 5-button toolbar in DOM order
+ *   TC-A11Y-02  Tree reachable by Tab   — Tab past the toolbar reaches the notes tree content
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/a11y-focus.spec.ts --reporter=list
@@ -80,12 +89,12 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-// SKY-1694: Vault Browser is now a panel in the left sidebar panel zone.
-// Expand it if collapsed; no-op if already expanded.
+// SKY-9022/M6: Vault Browser's function is the Notes workspace sidebar, its
+// one home — navigate to the Notes Editor tab to reach it (lockScope +
+// initialScope="notes", so `vb-notes-vault` renders directly, no scope-switch).
 async function openVaultPanel(pg: Page): Promise<void> {
-  const vaultPanel = pg.locator('[data-panel-id="vault"]');
-  const isCollapsed = await vaultPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-  if (isCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
+  await pg.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
+  await expect(pg.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
 }
 
 let userData: string;
@@ -110,62 +119,74 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-// ─── TC-A11Y-01: VaultBrowser scope bar tab order ────────────────────────────
+// ─── TC-A11Y-01: Notes Vault toolbar tab order ────────────────────────────────
 //
-// Verifies all three scope buttons (Story / Notes / Both) are in the tab order
-// and that Tab moves focus through them in DOM order.
+// Verifies the 5-button toolbar (New note / New folder / Sort / Auto-reveal /
+// Collapse all / Expand all) is in the tab order and that Tab moves focus
+// through the buttons in DOM order. This replaces the old scope-bar tab-order
+// coverage, which no longer applies once VaultBrowser is locked to notes scope.
 
-test('TC-A11Y-01: VaultBrowser scope bar buttons are keyboard-focusable via Tab', async () => {
+test('TC-A11Y-01: Notes Vault toolbar buttons are keyboard-focusable via Tab', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // SKY-1694: Vault Browser is now a panel in the panel zone; expand it.
   await openVaultPanel(page);
 
-  const storyScopeBtn = page.locator('[data-testid="vb-scope-story"]');
-  await expect(storyScopeBtn).toBeVisible({ timeout: 6_000 });
+  const newNoteBtn = page.locator('[data-testid="vb-btn-new-note"]');
+  await expect(newNoteBtn).toBeVisible({ timeout: 6_000 });
 
-  // Anchor the traversal only once focus RESTS on the scope button: startup
-  // steals focus once, deterministically but late (the editor auto-focuses
-  // when its data finishes loading — slower since the Liquid Neon shell), so
-  // re-focus until it survives a settle window before pressing Tab.
+  // Anchor the traversal only once focus RESTS on the button: startup steals
+  // focus once, deterministically but late (the editor auto-focuses when its
+  // data finishes loading — slower since the Liquid Neon shell), so re-focus
+  // until it survives a settle window before pressing Tab.
   await expect(async () => {
-    await storyScopeBtn.focus();
+    await newNoteBtn.focus();
     await page.waitForTimeout(200);
     const active = await page.evaluate(
       () => (document.activeElement as HTMLElement | null)?.dataset?.testid
         ?? document.activeElement?.tagName ?? 'none',
     );
-    expect(active, `focus stolen by: ${active}`).toBe('vb-scope-story');
+    expect(active, `focus stolen by: ${active}`).toBe('vb-btn-new-note');
   }).toPass({ timeout: 15_000 });
 
-  // Tab → Notes scope button
+  // Tab → New folder button
   await page.keyboard.press('Tab');
-  await expect(page.locator('[data-testid="vb-scope-notes"]')).toBeFocused();
+  await expect(page.locator('[data-testid="vb-btn-new-folder"]')).toBeFocused();
 
-  // Tab → Both scope button
+  // Tab → Sort button
   await page.keyboard.press('Tab');
-  await expect(page.locator('[data-testid="vb-scope-both"]')).toBeFocused();
+  await expect(page.locator('[data-testid="vb-btn-sort"]')).toBeFocused();
 });
 
-// ─── TC-A11Y-02: VaultBrowser section action button reachable by Tab ─────────
+// ─── TC-A11Y-02: Search field reachable by Tab past the toolbar ──────────────
 //
-// Verifies that Tab navigation past the scope bar reaches the first section
-// action button (Story Vault "New Story" +), confirming VaultBrowser items
-// beyond the scope bar are part of the natural tab order.
+// Verifies that Tab navigation past the toolbar reaches the notes search
+// input, confirming VaultBrowser content beyond the toolbar is part of the
+// natural tab order.
 
-test('TC-A11Y-02: Tab past scope bar reaches the Story Vault "New Story" button', async () => {
-  // SKY-1694: Vault Browser is now a panel in the panel zone; expand it if needed.
+test('TC-A11Y-02: Tab past the toolbar reaches the notes search input', async () => {
   await openVaultPanel(page);
-  await page.locator('[data-testid="vb-scope-story"]').click();
 
-  // Anchor on the Story scope button, then Tab through Notes and Both buttons
-  const storyScopeBtn = page.locator('[data-testid="vb-scope-story"]');
-  await storyScopeBtn.focus();
-  await page.keyboard.press('Tab'); // → Notes scope btn
-  await page.keyboard.press('Tab'); // → Both scope btn
-  await page.keyboard.press('Tab'); // → Story Vault "New Story" (+) button
+  const newNoteBtn = page.locator('[data-testid="vb-btn-new-note"]');
 
-  // The focused element should be the section-add button inside Story Vault
-  const newStoryBtn = page.locator('.vb-section-add').first();
-  await expect(newStoryBtn).toBeFocused();
+  // Same anchor-then-settle as TC-A11Y-01: a late async re-focus (editor
+  // data finishing load) can steal focus right after we set it, so verify
+  // it survives a settle window before starting the Tab traversal.
+  await expect(async () => {
+    await newNoteBtn.focus();
+    await page.waitForTimeout(200);
+    const active = await page.evaluate(
+      () => (document.activeElement as HTMLElement | null)?.dataset?.testid
+        ?? document.activeElement?.tagName ?? 'none',
+    );
+    expect(active, `focus stolen by: ${active}`).toBe('vb-btn-new-note');
+  }).toPass({ timeout: 15_000 });
+
+  await page.keyboard.press('Tab'); // → New folder btn
+  await page.keyboard.press('Tab'); // → Sort btn
+  await page.keyboard.press('Tab'); // → Auto-reveal btn
+  await page.keyboard.press('Tab'); // → Collapse all btn
+  await page.keyboard.press('Tab'); // → Expand all btn
+  await page.keyboard.press('Tab'); // → search input
+
+  await expect(page.locator('[data-testid="vb-search-input"]')).toBeFocused();
 });

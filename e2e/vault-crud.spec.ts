@@ -401,35 +401,20 @@ test('TC-V-05: prose persists after full app restart (same userData)', async () 
 
 
 // ─── TC-V-07: Double-click scene in Vault tab → inline rename UI works ────────
+//
+// SKY-9022/M6 removed the old panel-stack system, including the unlocked
+// Story-side VaultBrowser tree this test drove (`vb-story-vault`,
+// `.vb-rename-input`). Per the M6 spec (plans/fidelity-rebuild/PLAN.md §M6:
+// "Vault Browser's function = the Notes workspace sidebar, which is its one
+// home"), that surface has no replacement — renaming a scene now happens
+// inside the editor (onRenameScene, wired in DesktopShell.tsx), and there is
+// currently no e2e coverage of that flow. Skipped rather than deleted so the
+// gap stays visible/traceable; see e2e/tests/inline-scene-rename.spec.ts for
+// the equivalent (and more complete) skip. Follow-up: SKY-9022 M6
+// replacement — add e2e coverage for the new editor-based rename flow.
 
-test('TC-V-07: double-click scene in Vault tab shows rename input with pre-filled name', async () => {
-  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-
-  // SKY-1694: Vault Browser is in the panel zone (collapsed by default); expand it.
-  const vaultPanel = page.locator('[data-panel-id="vault"]');
-  const vaultPanelCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (vaultPanelCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(page.locator('[data-testid="vb-story-vault"]')).toBeVisible({ timeout: 6_000 });
-
-  const chapterToggle = page.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE });
-  await expect(chapterToggle).toBeVisible({ timeout: 6_000 });
-  await chapterToggle.click();
-
-  const sceneRow = page.locator('.vb-scene-row', { hasText: SCENE_TITLE });
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-
-  await sceneRow.dblclick();
-
-  const renameInput = page.locator('.vb-rename-input');
-  await expect(renameInput).toBeVisible({ timeout: 4_000 });
-
-  // Verify input is pre-filled with current scene name
-  const inputValue = await renameInput.inputValue();
-  expect(inputValue).toBe(SCENE_TITLE);
-
-  // Cancel rename with Escape
-  await renameInput.press('Escape');
-  await expect(renameInput).not.toBeVisible({ timeout: 4_000 });
+test.skip('TC-V-07: double-click scene in Vault tab shows rename input with pre-filled name', async () => {
+  // See SKY-9022/M6 skip note above — vb-story-vault / .vb-rename-input no longer exist.
 });
 
 // ─── TC-V-06: Create note in Notes Vault → appears in browser sidebar ─────────
@@ -440,12 +425,18 @@ test('TC-V-07: double-click scene in Vault tab shows rename input with pre-fille
 // single-vault-root implementation). When the two-vault IPC is fully wired, they
 // will go to notesVaultRoot instead.
 
-test('TC-V-06: create entity (note), entity shown in Entities tab, file written to disk', async () => {
-  // SKY-1694: Entity Browser is in the panel zone (collapsed by default); expand it.
-  const entitiesPanel = page.locator('[data-panel-id="entities"]');
-  const entitiesPanelCollapsed = await entitiesPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (entitiesPanelCollapsed) await entitiesPanel.locator('.lr-panel-collapse-btn').click();
-
+// SKY-9022/M6 removed the old panel-stack system, including the Entity
+// Browser's `[data-panel-id="entities"]` sidebar-panel home. Per
+// plans/fidelity-rebuild/PLAN.md §M5 ("Entity Browser (K6) relocates, not
+// deletes... opens as a tab from `+`... — see M5.5"), its replacement (an
+// openable document-tab type in the Notes/Story workspace `+` picker) is a
+// separate, not-yet-implemented milestone: no `+`/Insert-menu entry, command,
+// or shortcut currently creates a `kind: 'entities'` workspace tab anywhere
+// in DesktopShell.tsx — `.entity-browser` is only reachable today via a
+// saved-layout `workspaceSplitPane.kind === 'entities'` restore path, which
+// isn't a real user-driven flow. Skipping rather than deleting so this
+// coverage gap stays visible until M5.5 ships; see SKY-9022/M6.
+test.skip('TC-V-06: create entity (note), entity shown in Entities tab, file written to disk', async () => {
   // Wait for entity browser toolbar
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
@@ -506,11 +497,9 @@ test('TC-V-08: Notes tree never shows UUID-pattern folders; seed-once markers on
   expect(notesMarker, `.mythos-seeded not found in Notes Vault: ${notesVaultDir}`).toBe(true);
   expect(fs.existsSync(path.join(notesVaultDir, 'Universes'))).toBe(false);
 
-  // Open the Vault panel and switch to the Notes scope.
-  const vaultPanel = page.locator('[data-panel-id="vault"]');
-  const vaultPanelCollapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (vaultPanelCollapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await page.locator('[data-testid="vb-scope-notes"]').click();
+  // SKY-9022/M6: Vault Browser's function is the Notes workspace sidebar,
+  // its one home — navigate to the Notes Editor tab to reach it.
+  await page.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
   await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 6_000 });
 
   // The legitimate note renders (VirtualTree strips the .md extension) …

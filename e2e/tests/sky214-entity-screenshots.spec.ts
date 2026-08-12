@@ -1,10 +1,10 @@
 /**
  * sky214-entity-screenshots.spec.ts — SKY-214
  *
- * Captures 5 screenshots of the entity system surfaces for the user guide:
+ * Captures screenshots of the entity system surfaces for the user guide:
  *   1. EntityBrowser + New Entity dialog (create flow)
  *   2. EntityBrowser grouped tree (all 7 types visible)
- *   3. Entity card with Connections + Backlinks panels
+ *   3. Entity card — SKIPPED (M5.5 product gap, see SKY-214-03 below)
  *   4. Scene editor with [[...]] wiki-link autocomplete hint
  *   5. Global search panel with entity results
  *
@@ -232,11 +232,15 @@ test.beforeAll(async () => {
   seedUserData(userData, vaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
-  // SKY-9019 M5: Entities is no longer a Notes-tab sub-view — expand the
-  // "Entity Browser" left-rail panel on the (default, already-active) Story
-  // Writer section instead (LeftRail.tsx DEFAULT_LEFT_SIDEBAR_LAYOUT ships it
-  // pre-docked, collapsed).
-  await page.locator('button.lr-panel-collapse-btn[aria-label="Expand Entity Browser"]').click();
+  // M6 (SKY-9022): the sidebar panel stack is gone — Entity Browser opens as
+  // a workspace tab via the + picker instead (SKY-9920, same entry as
+  // entity-system.spec.ts TC-E-01).
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  const newTabBtn = page.locator('[data-testid="wtb-new-tab-btn"]');
+  await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
+  await newTabBtn.click();
+  await page.locator('[data-testid="wtb-new-tab-menu-item-entities"]').click();
+  await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
   // Wait for entities to load and all 7 type groups to render
   await page.waitForTimeout(1_200);
 });
@@ -247,20 +251,22 @@ test.afterAll(async () => {
   if (vaultDir) fs.rmSync(path.dirname(vaultDir), { recursive: true, force: true });
 });
 
-test('SKY-214-01: EntityBrowser + New Entity type picker', async () => {
-  // Click "+ New Entity" to reveal the TypePickerPopover
-  await page.locator('button:has-text("+ New Entity")').click();
+test('SKY-214-01: EntityBrowser + New Entity create dialog', async () => {
+  // "+ New Entity" opens the SKY-619 CreateDialog (role="dialog") — the old
+  // TypePickerPopover is gone (selectors per entity-system.spec.ts TC-E-01).
+  await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
   await page.waitForTimeout(400);
-  // TypePickerPopover is visible — screenshot the full window to capture the popover
+  // Dialog is open — screenshot the full window to capture it in context
   await page.screenshot({
     path: path.join(OUT_DIR, 'entity-01-create-dialog.png'),
     clip: { x: 0, y: 0, width: 1280, height: 800 },
   });
-  // Dismiss by clicking outside the popover
-  await page.mouse.click(800, 400);
-  await page.waitForTimeout(500);
-  // Ensure picker is gone before next test
-  await page.waitForSelector('.entity-type-picker', { state: 'hidden', timeout: 3_000 }).catch(() => undefined);
+  // The modal overlay would swallow 214-02/03's pointer events if left open —
+  // dismiss via Escape (wired to onCancel) and confirm it is gone.
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible({ timeout: 3_000 });
 });
 
 test('SKY-214-02: EntityBrowser grouped tree', async () => {
@@ -268,21 +274,16 @@ test('SKY-214-02: EntityBrowser grouped tree', async () => {
   await page.locator('.entity-browser').screenshot({ path: path.join(OUT_DIR, 'entity-02-browser-tree.png') });
 });
 
-test('SKY-214-03: Entity card with Connections + Backlinks', async () => {
-  const firstItem = page.locator('.entity-item-select').first();
-  await firstItem.click();
-  await page.waitForTimeout(1_000);
-
-  // Selecting an entity from the Notes-tab Entities sub-view only updates the
-  // shared `selectedEntity` state — the EntityDetail card itself renders in
-  // the Story Writer section's main pane (nav-rail rewrite, SKY-3098/3218).
-  await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
-  await page.waitForTimeout(500);
-
-  const card = page.locator('.entity-detail');
-  await expect(card).toBeVisible({ timeout: 8_000 });
-  await card.screenshot({ path: path.join(OUT_DIR, 'entity-03-entity-card.png') });
-});
+// M5 (SKY-9920, already on main) made the tab-hosted Entity Browser's click
+// only highlight the row (handleSelectEntityInTab) instead of opening
+// EntityDetail, and M6 removed the sidebar panel stack — the last surface
+// where clicking an entity still opened EntityDetail. Confirmed locally at
+// this branch: `.entity-detail` never renders, so there is nothing to
+// screenshot until Entity Browser relocation lands (M5.5 — see
+// plans/fidelity-rebuild/PLAN.md §4, "Entity Browser lives on per M5.5").
+// Same deferred product gap as entity-system.spec.ts TC-E-02; re-enable and
+// recapture entity-03-entity-card.png when M5.5 lands.
+test.skip('SKY-214-03: Entity card with Connections + Backlinks — product gap, no UI path opens EntityDetail until M5.5 lands', () => {});
 
 test('SKY-214-04: WikiLink autocomplete in scene editor', async () => {
   // Switch to the Story Writer section (nav-rail rewrite, SKY-3098/3218).

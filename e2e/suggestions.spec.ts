@@ -8,6 +8,10 @@
  * accept/reject them. Post-condition checks read disk state directly and
  * query the audit log via IPC — no mocking of Electron internals.
  *
+ * SKY-9022/M6: the in-shell panel stack was removed, so the Review Inbox UI is
+ * driven through its floating panel window (#/floating-panel/review) — see
+ * openReviewWindow() below.
+ *
  * Coverage:
  *   TC-S-01  accept vault suggestion → vault file updated, audit row (action=apply), snapshot created
  *   TC-S-02  reject → suggestion archived (status=rejected), no vault write, audit row (action=reject)
@@ -153,6 +157,35 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
+/**
+ * SKY-9022/M6: the in-shell panel stack ("expand suggestion review", "Add
+ * panel") is gone, and the Review Inbox has no docked home in the three-zone
+ * right rail yet. Its remaining product surface is the floating panel window —
+ * the same #/floating-panel/review route DesktopShell restores from
+ * activeLayout.floatingPanels on boot. Open it via the real panelFloat IPC and
+ * return the floating window's Page (same preload, so window.api works there
+ * too). When it is already open, reload it instead: a fresh mount re-fetches
+ * from the DB, which is what the old collapse/expand cycle existed to do.
+ */
+async function openReviewWindow(app: ElectronApplication, fromPage: Page): Promise<Page> {
+  const existing = app.windows().find((w) => w.url().includes('floating-panel/review'));
+  if (existing) {
+    await existing.reload();
+    await existing.waitForLoadState('domcontentloaded');
+    await expect(existing.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 8_000 });
+    return existing;
+  }
+  const windowPromise = app.waitForEvent('window', { timeout: 15_000 });
+  await fromPage.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).api.panelFloat('review', { x: 80, y: 80, width: 980, height: 720 });
+  });
+  const win = await windowPromise;
+  await win.waitForLoadState('domcontentloaded');
+  await expect(win.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 8_000 });
+  return win;
+}
+
 /** Poll predicate until it returns true or timeoutMs elapses. */
 async function waitUntil(
   predicate: () => boolean,
@@ -173,6 +206,8 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   let userData: string;
   let vaultDir: string;
   let app: ElectronApplication | undefined;
+  let mainPage: Page;
+  /** The floating Review window — all UI interaction and IPC below runs here. */
   let page: Page;
 
   test.beforeAll(async () => {
@@ -180,8 +215,9 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-vault-'));
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
-    page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    mainPage = await firstWindow(app);
+    await expect(mainPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    page = await openReviewWindow(app, mainPage);
   });
 
   test.afterAll(async () => {
@@ -191,28 +227,11 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
   });
 
   /**
-   * Navigate to the Review tab, forcing a remount of SuggestionReview so it
-   * fetches a fresh list from the DB. Switches to Stories first to ensure
-   * the component actually unmounts.
+   * Remount SuggestionReview so it fetches a fresh list from the DB —
+   * post-M6 that means reloading the floating Review window.
    */
   async function openReviewTab(): Promise<void> {
-    if (await page.locator('.suggestion-review .sr-list').isVisible()) {
-      await page.getByRole('button', { name: /collapse suggestion review/i }).click();
-      await page.getByRole('button', { name: /expand suggestion review/i }).click();
-      await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
-      return;
-    }
-
-    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
-    if (await expandReview.isVisible()) {
-      await expandReview.click();
-    } else {
-      await page.getByRole('button', { name: /^Add panel$/ }).click();
-      await page.getByRole('option', { name: 'Suggestion Review' }).click();
-    }
-
-    // Wait for the list to render (disappearance of loading spinner)
-    await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+    page = await openReviewWindow(app!, mainPage);
   }
 
   // ── TC-S-01 ─────────────────────────────────────────────────────────────────
@@ -539,16 +558,10 @@ test.describe('Budget cap enforcement (TC-S-04)', () => {
   // resolve it manually.
 
   test('AC-EPIC-14: budget-exceeded suggestion shows a visible warning badge, not blocked', async () => {
-    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
-    if (await expandReview.isVisible()) {
-      await expandReview.click();
-    } else {
-      await page.getByRole('button', { name: /^Add panel$/ }).click();
-      await page.getByRole('option', { name: 'Suggestion Review' }).click();
-    }
-    await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+    // SKY-9022/M6: the Review Inbox now lives in the floating panel window.
+    const review = await openReviewWindow(app!, page);
 
-    const row = page.locator('.sr-row', { hasText: 'TC-S-04 budget cap test' });
+    const row = review.locator('.sr-row', { hasText: 'TC-S-04 budget cap test' });
     await expect(row).toBeVisible({ timeout: 8_000 });
 
     const badge = row.locator('.sr-budget-held');
@@ -570,25 +583,16 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
   let userData: string;
   let vaultDir: string;
   let app: ElectronApplication | undefined;
+  let mainPage: Page;
+  /** The floating Review window — all UI interaction and IPC below runs here. */
   let page: Page;
 
+  /**
+   * Remount SuggestionReview so it fetches a fresh list from the DB —
+   * post-M6 that means reloading the floating Review window.
+   */
   async function openReviewTab(): Promise<void> {
-    if (await page.locator('.suggestion-review .sr-list').isVisible()) {
-      await page.getByRole('button', { name: /collapse suggestion review/i }).click();
-      await page.getByRole('button', { name: /expand suggestion review/i }).click();
-      await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
-      return;
-    }
-
-    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
-    if (await expandReview.isVisible()) {
-      await expandReview.click();
-    } else {
-      await page.getByRole('button', { name: /^Add panel$/ }).click();
-      await page.getByRole('option', { name: 'Suggestion Review' }).click();
-    }
-
-    await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+    page = await openReviewWindow(app!, mainPage);
   }
 
   async function setMinimumConfidence(value: number): Promise<void> {
@@ -609,8 +613,9 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-vault-'));
     seedUserData(userData, vaultDir);
     app = await launchApp(userData);
-    page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    mainPage = await firstWindow(app);
+    await expect(mainPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    page = await openReviewWindow(app, mainPage);
 
     await page.evaluate(async () => {
       const api = (window as any).api;
@@ -747,10 +752,11 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
 
   // ── AC-EPIC-1 ────────────────────────────────────────────────────────────────
   //
-  // Review Inbox is reachable from the nav rail's "Add panel" flow (exercised by
-  // openReviewTab's cold-open branch in TC-S-06 above) and remounts cleanly on
-  // repeat visits. This test gives that path its own named assertion for
-  // traceability against AC-EPIC-1.
+  // SKY-9022/M6: the "Add panel" flow is gone with the panel stack. The Review
+  // Inbox's remaining surface is the floating panel window (exercised by
+  // openReviewWindow's cold-open branch in beforeAll above) and it remounts
+  // cleanly on repeat visits. This test gives that path its own named
+  // assertion for traceability against AC-EPIC-1.
 
   test('AC-EPIC-1: Review tab is reachable and renders the inbox header', async () => {
     await openReviewTab();
@@ -1108,6 +1114,8 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
   let userData: string;
   let vaultDir: string;
   let app: ElectronApplication | undefined;
+  let mainPage: Page;
+  /** The floating Review window — all UI interaction below runs here. */
   let page: Page;
 
   const CONTINUITY_ID = 'ac-epic-3-continuity-1';
@@ -1180,22 +1188,12 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
     }
   }
 
+  /**
+   * Remount SuggestionReview so it fetches a fresh list from the DB —
+   * post-M6 that means reloading the floating Review window.
+   */
   async function openReviewTab(): Promise<void> {
-    if (await page.locator('.suggestion-review .sr-list').isVisible()) {
-      await page.getByRole('button', { name: /collapse suggestion review/i }).click();
-      await page.getByRole('button', { name: /expand suggestion review/i }).click();
-      await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
-      return;
-    }
-
-    const expandReview = page.getByRole('button', { name: /expand suggestion review/i });
-    if (await expandReview.isVisible()) {
-      await expandReview.click();
-    } else {
-      await page.getByRole('button', { name: /^Add panel$/ }).click();
-      await page.getByRole('option', { name: 'Suggestion Review' }).click();
-    }
-    await expect(page.locator('.suggestion-review .sr-list')).toBeVisible({ timeout: 6_000 });
+    page = await openReviewWindow(app!, mainPage);
   }
 
   test.beforeAll(async () => {
@@ -1204,8 +1202,8 @@ test.describe('Unified inbox: continuity issues + wiki-link suggestions (AC-EPIC
     seedUserData(userData, vaultDir);
     seedUnifiedSourceTables(vaultDir);
     app = await launchApp(userData);
-    page = await firstWindow(app);
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    mainPage = await firstWindow(app);
+    await expect(mainPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
   });
 
   test.afterAll(async () => {

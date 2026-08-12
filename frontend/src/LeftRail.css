@@ -361,3 +361,213 @@
   margin-left: 4px;
   pointer-events: none;
 }
+
+/* ── M6: Story Card (Zone 1) ─────────────────────────────────────────────── */
+
+.lr-story-card {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.lr-story-card--empty {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+}
+
+.lr-story-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lr-story-icon {
+  font-size: 1rem;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.lr-story-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lr-story-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-body);
+  margin: 0 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lr-story-meta {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lr-story-collapse {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color var(--dur-hover-in);
+}
+
+.lr-story-collapse:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.lr-story-collapse--standalone {
+  margin-left: auto;
+}
+
+.lr-progress-bar {
+  height: 3px;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.lr-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── M6: Story Navigator (Zone 2) ────────────────────────────────────────── */
+
+.lr-nav-zone {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lr-nav-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px 4px;
+  flex-shrink: 0;
+}
+
+.lr-nav-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.lr-nav-add,
+.lr-nav-collapse-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 5px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  transition: color var(--dur-hover-in);
+}
+
+.lr-nav-add:hover,
+.lr-nav-collapse-btn:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.lr-nav-add:focus-visible,
+.lr-nav-collapse-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.lr-nav-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── M6: Project Footer (Zone 3) ─────────────────────────────────────────── */
+
+.lr-project-footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--glass-border);
+  padding: 8px 12px;
+}
+
+.lr-footer-stats {
+  display: flex;
+  gap: 0;
+}
+
+.lr-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.lr-stat + .lr-stat {
+  border-left: 1px solid var(--glass-border);
+}
+
+.lr-stat-val {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-body);
+  line-height: 1.2;
+}
+
+.lr-stat-key {
+  font-size: 0.5625rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── M6: Expand button (collapsed state) ────────────────────────────────── */
+
+.lr-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.65rem;
+  padding: 6px 4px;
+  width: 100%;
+  margin-top: 8px;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-hover-in);
+}
+
+.lr-expand-btn:hover {
+  color: var(--text-body);
+  background: var(--bg-elevated);
+}
+
+.lr-expand-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

@@ -45,6 +45,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -132,6 +133,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -167,6 +169,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -205,6 +208,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -290,6 +294,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -373,6 +378,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -541,6 +547,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -697,6 +704,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
@@ -771,6 +779,9 @@ jobs:
 
       - name: E2E — Shell relayout regression (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:shell-relayout-regression
+
+      - name: E2E — SKY-9022/M6 sidebars (three zones, tab order, single Continuity header)
+        run: xvfb-run --auto-servernum npm run test:e2e:sky-9022-m6-sidebars
 
       - name: E2E — Auto-linker (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:auto-linker
@@ -865,6 +876,7 @@ jobs:
             frontend/node_modules
             electron-main/node_modules
             shared/node_modules
+            ~/.cache/electron
           key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies

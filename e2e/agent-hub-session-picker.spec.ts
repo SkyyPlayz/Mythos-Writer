@@ -175,11 +175,6 @@ async function navigateToEditorView(page: Page): Promise<void> {
 async function openWritingCoachChat(page: Page): Promise<void> {
   await navigateToEditorView(page);
 
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
-
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 

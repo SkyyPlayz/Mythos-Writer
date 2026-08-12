@@ -1740,23 +1740,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistGrsSettings({ width });
   }, [persistGrsSettings]);
 
+  // M6: panel system removed from GRS. Kept for potential undo/redo restore paths.
   const handleGrsPanelsChange = useCallback((panels: PanelConfig[]) => {
     setGrsPanels(panels);
     persistGrsSettings({ panels });
   }, [persistGrsSettings]);
-
-  // SKY-6321: "See All Suggestions" (Agent Hub) opens/expands the Suggestion
-  // Review panel in the same (right) sidebar instead of navigating away.
-  const handleOpenSuggestionInbox = useCallback(() => {
-    setGrsPanels((prev) => {
-      const exists = prev.some((p) => p.id === 'review');
-      const next = exists
-        ? prev.map((p) => (p.id === 'review' ? { ...p, collapsed: false } : p))
-        : [...prev, { id: 'review' as SidebarPanelId, collapsed: false }];
-      persistGrsSettings({ panels: next });
-      return next;
-    });
-  }, [persistGrsSettings]);
+  // Suppress unused-locals warning: retained for restore paths, not wired to UI post-M6.
+  void handleGrsPanelsChange;
 
   // SKY-1695: Unified drop handler for panel drag-and-drop across both sidebars.
   const handlePanelDrop = useCallback((
@@ -2127,9 +2117,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [removePanelFromSource, persistDockedTabs]);
 
   // SKY-1698: "Dock as tab" from panel ⋮ menu — appends as new tab at end (AC-T-08).
+  // M6: panel system removed; retained for handleFloatPanel which still calls handleTabBarDrop.
   const handleDockPanelAsTab = useCallback((panelId: SidebarPanelId, sourceSidebar: DragSidebar) => {
     handleTabBarDrop(panelId, sourceSidebar, -1);
   }, [handleTabBarDrop]);
+  void handleDockPanelAsTab;
 
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
   // SKY-2094: also persists story sub-view to tab shell state.
@@ -4196,7 +4188,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             voiceEnabled={appSettings?.voice?.enabled ?? false}
             voicePrefs={appSettings?.voice}
             agentNames={appSettings?.agentNames}
-            onOpenSuggestionInbox={handleOpenSuggestionInbox}
+            onOpenVaultPath={handleOpenSceneByPath}
             onOpenCoachPage={handleOpenCoachPage}
             sceneNotesRefresh={sceneNotesRefresh}
             onPromoteSceneNote={handlePromoteSceneNote}
@@ -4296,7 +4288,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
-    betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
+    betaReadNote, continuityCheckNote,
     handleOpenCoachPage,
     handleNavSectionChange, handleSetView,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
@@ -5294,13 +5286,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           {/* Beta 3 M3: slot-A breathing border (prototype brL, delay 0) */}
           <BorderOverlay settings={appSettings?.liquidNeonV2} slot={1} delay={0} />
           <LeftRail
-            leftSidebarLayout={leftSidebarLayout}
-            onLeftSidebarLayoutChange={persistLeftSidebarLayout}
-            renderPanelContent={renderSidebarPanel}
-            rightPanelCount={grsPanels.length}
-            onFloatPanel={(id) => handleFloatPanel(id, 'left')}
-            onDockAsTab={(id) => handleDockPanelAsTab(id, 'left')}
-            panelBadgeCounts={{ review: proposedCount }}
+            stories={stories}
+            selectedStory={selectedStory}
+            selectedScene={selectedScene}
+            selectedSceneId={selectedScene?.id ?? null}
+            onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+            onSelectStory={(st) => setSelectedStory(st)}
+            onCreateStory={createStory}
+            onCreateChapter={createChapter}
+            onCreateScene={createScene}
+            onReorderScenes={handleReorderScenes}
+            showTemplateCta={
+              (appSettings?.onboardingStartMode === 'start-fresh' || appSettings?.onboardingStartMode === 'blank') &&
+              !(gettingStartedProgress?.completedItems.includes('write-scene'))
+            }
+            onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onPromoteSceneNote={handlePromoteSceneNote}
+            sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
+            onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
+            reviewBadgeCount={proposedCount}
           />
         </div>
       )}
@@ -5933,26 +5937,71 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {grsVisible !== undefined && <GlobalRightSidebar
         visible={(grsVisible as boolean) && !distractionFree && (writingMode !== 'focus' || focusPrefs.showRightSidebar) && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed)}
         width={grsWidth}
-        panels={grsPanels}
         onVisibilityChange={handleGrsVisibilityChange}
         onWidthChange={handleGrsWidthChange}
-        onPanelsChange={handleGrsPanelsChange}
-        renderPanelContent={renderSidebarPanel}
-        continuityIssueCount={continuityCount}
-        reviewBadgeCount={proposedCount}
-        leftPanelCount={leftSidebarLayout.panels.length}
-        onFloatPanel={(id) => handleFloatPanel(id, 'right')}
-        onDockAsTab={(id) => handleDockPanelAsTab(id, 'right')}
         neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={3} delay={1.6} />}
-        headerContent={isGettingStartedVisible(gettingStartedProgress) ? (
-          <GettingStartedPanel
-            progress={gettingStartedProgress!}
-            onAction={handleGettingStartedAction}
-            onDismiss={handleDismissGettingStarted}
-            onToggleCollapse={handleToggleGsCollapsed}
-          />
-        ) : undefined}
-      />}
+      >
+        <AgentHubPanel
+          scene={activeSceneForSidebar}
+          story={selectedStory}
+          onOpenScenesFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+          onOpenSceneNote={handleOpenSceneByPath}
+          enabled={appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true}
+          scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+          waScanInterval={appSettings?.waScanInterval}
+          cadenceTrigger={appSettings?.waCadenceTrigger ?? appSettings?.agents?.writingAssistant?.cadenceTrigger}
+          idleHeartbeatConstantInterval={appSettings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+          idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
+          isActive={view === 'editor'}
+          isPageFocused={view === 'editor'}
+          onJumpToText={handleJumpToText}
+          autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
+          autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
+          onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
+          ttsSettings={appSettings?.tts}
+          voiceEnabled={appSettings?.voice?.enabled ?? false}
+          voicePrefs={appSettings?.voice}
+          agentNames={appSettings?.agentNames}
+          onOpenVaultPath={handleOpenSceneByPath}
+          // M13 §5.4: "View Full Analysis" must land on the Coach page — the
+          // Story tab alone leaves the writer on whatever sub-view was open.
+          onOpenCoachPage={() => { handleTabChange('story'); handleOpenCoachPage(); }}
+          // M9b (SKY-9823): without these the sidebar's Notes tab never sees
+          // the refresh bump after a drag-promote, so the promoted card stays
+          // pinned until a manual reload (SKY-10053).
+          sceneNotesRefresh={sceneNotesRefresh}
+          onPromoteSceneNote={handlePromoteSceneNote}
+          onSceneNotesChanged={handleSceneNotesChanged}
+          gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
+            <GettingStartedPanel
+              progress={gettingStartedProgress!}
+              onAction={handleGettingStartedAction}
+              onDismiss={handleDismissGettingStarted}
+              onToggleCollapse={handleToggleGsCollapsed}
+            />
+          ) : undefined}
+          continuityPanel={
+            <ContinuityPanel
+              scene={activeSceneForSidebar}
+              enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+              archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
+              archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
+              onCountChange={setContinuityCount}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          }
+          referencesPanel={
+            <ReferencesPanel
+              story={selectedStory}
+              activeScene={activeSceneForSidebar}
+              stories={stories}
+              entities={allEntities}
+              notePaths={allNotePaths}
+              onPickReference={handleNotesWikiLinkClick}
+            />
+          }
+        />
+      </GlobalRightSidebar>}
 
       {continuityPeekOverlayOpen && (
         <div
