@@ -246,13 +246,9 @@ test.beforeAll(async () => {
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 8_000 });
 
   // SKY-3177: RightSidebar removed; WA panel is in GlobalRightSidebar.
+  // SKY-9022/M6: panel-stack removed — the sidebar's "Assistant" tab (default,
+  // always expanded) is now the sole home for the agent hub.
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
-  const waPanel = page.locator('[data-panel-id="writing-assistant"]');
-  await expect(waPanel).toBeVisible({ timeout: 4_000 });
-  const waPanelHeader = waPanel.locator('[aria-label="Writing Coach panel"]');
-  if ((await waPanelHeader.getAttribute('aria-expanded')) === 'false') {
-    await waPanelHeader.click();
-  }
 
   // SKY-6228: right panel is now the agent hub — the Writing Assistant chat
   // (heartbeat/scan-now) is behind the "Writing Assistant" agent row.

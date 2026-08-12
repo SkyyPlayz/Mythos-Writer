@@ -301,8 +301,6 @@ test('TC-CP-01: right sidebar renders the Continuity panel empty state', async (
     app = opened.app;
     const page = opened.page;
     const sidebar = page.getByTestId('global-right-sidebar');
-    await expect(sidebar.getByRole('button', { name: /continuity panel/i })).toBeVisible();
-    await expect(sidebar.locator('[data-panel-id="archive-continuity"]')).toBeVisible();
     await expect(sidebar.getByText('Save your scene to check for continuity issues.')).toBeVisible();
     await expect(sidebar.getByRole('button', { name: /scan now for continuity issues/i })).toBeVisible();
   } finally {
