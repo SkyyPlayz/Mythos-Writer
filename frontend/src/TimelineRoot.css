@@ -362,6 +362,12 @@
   margin: 12px 0 2px;
 }
 
+/* TIMELINE NAVIGATOR header (prototype line 379) — sits above the Overview
+ * card, so it uses the top margin instead of the mid-list PLOTLINES spacing. */
+.tlr-aside-head--top {
+  margin: 0 0 4px;
+}
+
 .tlr-aside-hint {
   font-size: 9.5px;
   color: #586a88;

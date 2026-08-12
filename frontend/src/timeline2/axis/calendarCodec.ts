@@ -107,6 +107,16 @@ export function safeEncodeWhen(
   return roundWhen(absoluteHours / 10);
 }
 
+/** TIMELINE NAVIGATOR book-card estimate (prototype `tlBooks0` sub, "Est. 12
+ *  days"): a book's `when` span converted to whole calendar days. `when` is
+ *  hours/10 (see the unit contract above), so days = whenSpan × 10 / hoursPerDay.
+ *  NaN/negative spans fall back to 0 (§8.2 — never blank the app). */
+export function whenSpanToDays(whenSpan: number, calendar: TimelineCalendar): number {
+  if (!Number.isFinite(whenSpan) || whenSpan <= 0) return 0;
+  const cal = safeCalendar(calendar);
+  return Math.max(0, Math.round((whenSpan * 10) / cal.hoursPerDay));
+}
+
 /** Prototype `fmtWhen`: `Y871 · M3 · D14 · 06:00`. */
 export function formatWhen(when: number | null | undefined, calendar: TimelineCalendar, fallback = 0): string {
   const v = safeDecodeWhen(when, calendar, fallback);

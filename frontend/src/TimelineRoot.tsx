@@ -77,8 +77,8 @@ import {
   type QuickAddContext,
 } from './timeline2/panel/quickAdd';
 import { deriveAxisDomain } from './timeline2/axis/domain';
-import { safeCalendar, safeDecodeWhen, formatWhen, roundWhen } from './timeline2/axis/calendarCodec';
-import { chapterWhen, plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
+import { safeCalendar, formatWhen, roundWhen, whenSpanToDays } from './timeline2/axis/calendarCodec';
+import { bookChapterRanges, chapterWhen, plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
 import { laneColor } from './timeline2/axis/palette';
 import {
   PLOT_TEMPLATES,
@@ -877,7 +877,22 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     );
   }, [viewMode, aeonData.hereLabel]);
 
-  const yearOf = (when: number) => safeDecodeWhen(when, calendar, 0).year;
+  // TIMELINE NAVIGATOR book-card sub-labels (prototype `tlBooks0`,
+  // "Ch. 1–15 · Est. 12 days") — one entry per sorted book, aligned by index.
+  const bookNavRanges = useMemo(
+    () => bookChapterRanges(axisChapters.length, books),
+    [axisChapters.length, books],
+  );
+  const bookNavSub = useCallback(
+    (book: TimelineSpan, index: number): string => {
+      const range = bookNavRanges[index];
+      const days = whenSpanToDays(book.endWhen - book.startWhen, calendar);
+      const chPart = range ? `Ch. ${range.firstChapter}–${range.lastChapter}` : null;
+      const dayPart = `Est. ${days} day${days === 1 ? '' : 's'}`;
+      return chPart ? `${chPart} · ${dayPart}` : dayPart;
+    },
+    [bookNavRanges, calendar],
+  );
 
   // ── M25 (design §4): shared canvas states for the lanes viewport. ──
   const activeTimelineIsEmpty = useMemo(() => {
@@ -1155,6 +1170,9 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             <div className="tlr-lanes-wrap" data-testid="tlr-lanes-wrap">
               {isStoryTimeline && (
                 <aside className="tlr-aside" data-testid="tlr-aside" aria-label="Timeline focus">
+                  <div className="tlr-aside-head tlr-aside-head--top" data-testid="tl-navigator-head">
+                    TIMELINE NAVIGATOR
+                  </div>
                   <button
                     type="button"
                     className={`tlr-book-card${bookFocus == null ? ' tlr-book-card--active' : ''}`}
@@ -1175,9 +1193,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
                       data-testid={`tl-book-card-${b.id}`}
                     >
                       <span className="tlr-book-title">{b.name}</span>
-                      <span className="tlr-book-sub">
-                        Y{yearOf(b.startWhen)}–Y{yearOf(b.endWhen)}
-                      </span>
+                      <span className="tlr-book-sub">{bookNavSub(b, i)}</span>
                     </button>
                   ))}
                   <div className="tlr-aside-head">PLOTLINES</div>

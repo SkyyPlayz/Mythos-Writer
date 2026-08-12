@@ -904,6 +904,184 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   });
 });
 
+// ─── SKY-9877 (M10-S2) — TIMELINE NAVIGATOR fidelity (`rail-timeline`) ────────
+//
+// Closes the gap the prototype's `rail-timeline` capture (plans/design-handoff
+// /v2/prototype "TIMELINE NAVIGATOR" left panel, tlBooks0/tlEraData) flagged
+// against the current app: the aside was missing its "TIMELINE NAVIGATOR"
+// header, and the book cards showed a bare year range instead of the
+// prototype's "Ch. 1–3 · Est. 10 days" chapter-range + estimated-days
+// sub-label. Both now come from real data (manifest chapter count, the
+// timelines.json book spans' calendar-converted day span) rather than being
+// hardcoded — verified end-to-end here, not through a stubbed `window.api`
+// seam (SKY-7994 E2E standard: real vault on disk → real Electron boot →
+// real render).
+test.describe('SKY-9877 — TIMELINE NAVIGATOR fidelity (rail-timeline)', () => {
+  const NAV_STORY_ID = 'story-nav-e2e';
+  const NAV_STORY_TITLE = 'Chronicles of the Navigator';
+  const NAV_SCENE = { id: 'sc-nav-1', title: 'Departure', date: '2340-01-01' };
+
+  /** Six real manifest chapters (no scenes needed beyond the anchor) so the
+   *  CHAPTERS row has a real count to distribute across the two seeded
+   *  book spans — 3 chapters per book, matching the prototype's per-book
+   *  chapter-range convention. */
+  function seedNavVault(vaultDir: string): void {
+    const now = new Date().toISOString();
+    fs.mkdirSync(vaultDir, { recursive: true });
+
+    const chapters = Array.from({ length: 6 }, (_, i) => {
+      const chapterId = `ch-nav-${i + 1}`;
+      const scenes = i === 0
+        ? [{
+            id: NAV_SCENE.id,
+            title: NAV_SCENE.title,
+            path: `stories/${NAV_STORY_ID}/chapters/${chapterId}/scenes/${NAV_SCENE.id}.md`,
+            order: 0,
+            chapterId,
+            storyId: NAV_STORY_ID,
+            blocks: [],
+            createdAt: now,
+            updatedAt: now,
+          }]
+        : [];
+      return {
+        id: chapterId,
+        title: `Chapter ${i + 1}`,
+        path: `stories/${NAV_STORY_ID}/chapters/${chapterId}`,
+        order: i,
+        scenes,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    const manifest = {
+      schemaVersion: 1,
+      version: '2.0.0',
+      vaultRoot: vaultDir,
+      stories: [{
+        id: NAV_STORY_ID,
+        title: NAV_STORY_TITLE,
+        path: `stories/${NAV_STORY_ID}`,
+        chapters,
+        createdAt: now,
+        updatedAt: now,
+      }],
+      entities: [],
+      suggestions: [],
+      scenes: [],
+      chapters: [],
+      provenance: {},
+      boardReferences: [],
+      smartFolders: [],
+    };
+    fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
+    const scenePath = path.join(
+      vaultDir, 'stories', NAV_STORY_ID, 'chapters', 'ch-nav-1', 'scenes', `${NAV_SCENE.id}.md`,
+    );
+    fs.mkdirSync(path.dirname(scenePath), { recursive: true });
+    fs.writeFileSync(scenePath, [
+      '---',
+      `id: ${NAV_SCENE.id}`,
+      `title: ${NAV_SCENE.title}`,
+      'chapterId: ch-nav-1',
+      `storyId: ${NAV_STORY_ID}`,
+      `chronologicalDate: ${NAV_SCENE.date}`,
+      'updatedAt: ' + now,
+      '---',
+      '',
+      'Departure prose body.',
+      '',
+    ].join('\n'));
+  }
+
+  /** Two book spans (0–24 / 24–48 `when`) — at 24h/day (standard calendar,
+   *  10h per `when` tick) that is exactly 10 days each — plus the three
+   *  prototype-named story eras (tlEraData, "AGE OF ASH / THE VEIL /
+   *  RECKONING") and one plotline with two cards (for the PLOTLINES count). */
+  function seedNavTimeline(vaultDir: string): void {
+    const now = new Date().toISOString();
+    const store = {
+      schemaVersion: 1,
+      activeTimelineId: 'tl-nav',
+      timelines: [{
+        id: 'tl-nav', name: NAV_STORY_TITLE, kind: 'story', axis: 'calendar',
+        calendar: { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 },
+        createdAt: now, updatedAt: now,
+      }],
+      eras: [
+        { id: 'era-ash', timelineId: 'tl-nav', name: 'AGE OF ASH', startWhen: 0, endWhen: 16 },
+        { id: 'era-veil', timelineId: 'tl-nav', name: 'THE VEIL', startWhen: 16, endWhen: 32 },
+        { id: 'era-reckoning', timelineId: 'tl-nav', name: 'RECKONING', startWhen: 32, endWhen: 48 },
+      ],
+      spans: [
+        { id: 'book-nav-1', timelineId: 'tl-nav', name: 'BOOK ONE', startWhen: 0, endWhen: 24 },
+        { id: 'book-nav-2', timelineId: 'tl-nav', name: 'BOOK TWO', startWhen: 24, endWhen: 48 },
+      ],
+      rows: [
+        { id: 'row-main', timelineId: 'tl-nav', name: 'Main Plot', kind: 'plotline', color: '#00f0ff' },
+      ],
+      events: [
+        { id: 'card-1', timelineId: 'tl-nav', name: 'The Call', when: 4, chapter: 1, rowId: 'row-main' },
+        { id: 'card-2', timelineId: 'tl-nav', name: 'The Crossing', when: 28, chapter: 4, rowId: 'row-main' },
+      ],
+    };
+    fs.writeFileSync(path.join(vaultDir, 'timelines.json'), JSON.stringify(store, null, 2));
+  }
+
+  let navUserData: string;
+  let navVaultDir: string;
+  let navNotesVaultDir: string;
+  let navApp: ElectronApplication | undefined;
+  let navPage: Page;
+
+  test.beforeAll(async () => {
+    navUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nav-user-'));
+    navVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nav-vault-'));
+    navNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nav-notes-'));
+    seedUserData(navUserData, navVaultDir, navNotesVaultDir);
+    seedNavVault(navVaultDir);
+    seedNavTimeline(navVaultDir);
+    navApp = await launchApp(navUserData);
+    navPage = await firstWindow(navApp);
+    await openTimeline(navPage, NAV_SCENE.title, 'progress');
+  });
+
+  test.afterAll(async () => {
+    await navApp?.close().catch(() => {});
+    fs.rmSync(navUserData, { recursive: true, force: true });
+    fs.rmSync(navVaultDir, { recursive: true, force: true });
+    fs.rmSync(navNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('TC-TL-NAV-01: TIMELINE NAVIGATOR header sits above the Overview card', async () => {
+    const aside = navPage.locator('[data-testid="tlr-aside"]');
+    await expect(aside).toBeVisible({ timeout: 8_000 });
+    const head = navPage.locator('[data-testid="tl-navigator-head"]');
+    await expect(head).toHaveText('TIMELINE NAVIGATOR');
+    await expect(navPage.locator('[data-testid="tl-overview-card"]')).toBeVisible();
+  });
+
+  test('TC-TL-NAV-02: book cards show real chapter ranges + estimated days (prototype tlBooks0 shape)', async () => {
+    await expect(navPage.locator('[data-testid="tl-book-card-book-nav-1"]')).toContainText('Ch. 1–3 · Est. 10 days');
+    await expect(navPage.locator('[data-testid="tl-book-card-book-nav-2"]')).toContainText('Ch. 4–6 · Est. 10 days');
+  });
+
+  test('TC-TL-NAV-03: era bands render with the prototype names (AGE OF ASH / THE VEIL / RECKONING)', async () => {
+    await expect(navPage.locator('[data-testid="ax-era-era-ash"]')).toHaveText('AGE OF ASH');
+    await expect(navPage.locator('[data-testid="ax-era-era-veil"]')).toHaveText('THE VEIL');
+    await expect(navPage.locator('[data-testid="ax-era-era-reckoning"]')).toHaveText('RECKONING');
+  });
+
+  test('TC-TL-NAV-04: PLOTLINES lists the plotline with its real card count', async () => {
+    const row = navPage.locator('[data-testid="tl-pl-row-row-main"]');
+    await expect(row).toBeVisible({ timeout: 6_000 });
+    await expect(row).toContainText('Main Plot');
+    await expect(row.locator('.tlr-pl-count')).toHaveText('2');
+  });
+});
+
 // ─── Archive Agent chat — SKY-8886 ───────────────────────────────────────────
 //
 // Verifies the Archive Agent right-panel chat surface introduced in SKY-8886:
