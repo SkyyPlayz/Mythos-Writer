@@ -1,12 +1,13 @@
 /**
- * story-tab-subview.spec.ts — SKY-2095
+ * story-tab-subview.spec.ts — SKY-2095, SKY-9019
  *
  * E2E tests for Story tab sub-view bar: defaults, switching, and round-trip persistence.
  *
  *   AC-SV-01  Story tab is active by default on launch
  *   AC-SV-02  Sub-view bar is visible inside the Story tab
- *   AC-SV-03  Default sub-view is Editor (aria-selected=true)
- *   AC-SV-04  Clicking Scene Crafter switches to kanban view
+ *   AC-SV-03  Default sub-view is Editor (aria-selected=true); exactly four tabs in strip
+ *   AC-SV-04  Clicking Scene Crafter RAIL item switches to kanban view; sub-view bar hidden
+ *             (SKY-9019/M5: Scene Crafter is a rail destination, no longer a sub-tab)
  *   AC-SV-05  Story Writer rail click after a Notes round-trip lands on the
  *             editor (Beta 4 M3 — Scene Crafter has its own rail module now)
  */
@@ -133,26 +134,40 @@ test('AC-SV-02: Story sub-view bar is visible', async () => {
   await expect(bar).toBeVisible({ timeout: 5_000 });
 });
 
-// ─── AC-SV-03: Default sub-view is Editor ────────────────────────────────────
+// ─── AC-SV-03: Default sub-view is Editor; exactly four tabs ─────────────────
+// SKY-9019/M5: Scene Crafter and Timeline are rail destinations only —
+// exactly four tabs remain in the strip: Editor, Coach, Structure, Book.
 
-test('AC-SV-03: Editor sub-view is selected by default', async () => {
+test('AC-SV-03: Editor sub-view is selected by default; strip has exactly four tabs', async () => {
   const editorTab = page.locator('[data-testid="story-subview-editor"]');
   await expect(editorTab).toBeVisible({ timeout: 5_000 });
   await expect(editorTab).toHaveAttribute('aria-selected', 'true');
 
-  const sceneTab = page.locator('[data-testid="story-subview-kanban"]');
-  await expect(sceneTab).toHaveAttribute('aria-selected', 'false');
+  // Exactly four tabs — Scene Crafter and Timeline removed from strip.
+  const allTabs = page.locator('[data-testid="story-subview-bar"] [role="tab"]');
+  await expect(allTabs).toHaveCount(4);
+
+  // Scene Crafter and Timeline must NOT be in the sub-tab strip (rail only).
+  await expect(page.locator('[data-testid="story-subview-kanban"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="story-subview-timeline"]')).toHaveCount(0);
 });
 
-// ─── AC-SV-04: Clicking Scene Crafter switches sub-view ──────────────────────
+// ─── AC-SV-04: Scene Crafter rail item switches to kanban; sub-view bar hidden ──
+// SKY-9019/M5: Scene Crafter is a standalone rail destination.
+// Clicking it navigates to the kanban canvas; the story sub-view bar is hidden
+// because kanban has no sub-tabs of its own.
 
-test('AC-SV-04: clicking Scene Crafter switches to kanban view', async () => {
-  const kanbanTab = page.locator('[data-testid="story-subview-kanban"]');
-  await kanbanTab.click();
-  await expect(kanbanTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+test('AC-SV-04: clicking Scene Crafter RAIL item switches to kanban; sub-view bar hidden', async () => {
+  const nav = page.locator('nav[aria-label="Main navigation"]');
+  const sceneCrafterRailBtn = nav.locator('button[aria-label="Scene Crafter"]');
+  await expect(sceneCrafterRailBtn).toBeVisible({ timeout: 5_000 });
+  await sceneCrafterRailBtn.click();
 
-  const editorTab = page.locator('[data-testid="story-subview-editor"]');
-  await expect(editorTab).toHaveAttribute('aria-selected', 'false');
+  // Kanban content renders.
+  await expect(page.locator('.shell-kanban')).toBeVisible({ timeout: 5_000 });
+
+  // Sub-view bar is hidden when on a rail-only destination.
+  await expect(page.locator('[data-testid="story-subview-bar"]')).not.toBeVisible({ timeout: 3_000 });
 });
 
 // ─── AC-SV-05: Story Writer rail click lands on the editor (Beta 4 M3) ───────
@@ -161,9 +176,8 @@ test('AC-SV-04: clicking Scene Crafter switches to kanban view', async () => {
 // the EDITOR sub-view — kanban no longer piggybacks on the Story restore.
 
 test('AC-SV-05: Story Writer rail click lands on the editor after a Notes round-trip', async () => {
-  // Precondition: Scene Crafter should be active from AC-SV-04; confirm it.
-  const kanbanTab = page.locator('[data-testid="story-subview-kanban"]');
-  await expect(kanbanTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+  // Precondition: Scene Crafter should be active from AC-SV-04; confirm kanban content visible.
+  await expect(page.locator('.shell-kanban')).toBeVisible({ timeout: 3_000 });
 
   // Switch to Notes tab.
   const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
@@ -179,7 +193,7 @@ test('AC-SV-05: Story Writer rail click lands on the editor after a Notes round-
   await clickStoryNav(page);
   await expect(storyTab).toHaveAttribute('aria-current', 'page', { timeout: 3_000 });
 
-  // Story Writer is the editor module — the editor sub-view is selected.
+  // Story Writer is the editor module — the editor sub-view is selected and bar is visible.
   await expect(bar).toBeVisible({ timeout: 3_000 });
   const editorTab = page.locator('[data-testid="story-subview-editor"]');
   await expect(editorTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });

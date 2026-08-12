@@ -296,7 +296,8 @@ async function openSpreadsheet(pg: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 
   await activateStorySection(pg);
-  const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
+  // SKY-9019/M5: Timeline left the sub-tab strip — it is a rail-only destination now.
+  const timelineBtn = pg.locator('nav[aria-label="Main navigation"] button[aria-label="Timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
 
@@ -323,7 +324,8 @@ async function openTimeline(
   await sceneRow.click();
 
   await activateStorySection(pg);
-  const timelineBtn = pg.locator('[data-testid="story-subview-timeline"]');
+  // SKY-9019/M5: Timeline left the sub-tab strip — it is a rail-only destination now.
+  const timelineBtn = pg.locator('nav[aria-label="Main navigation"] button[aria-label="Timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
 

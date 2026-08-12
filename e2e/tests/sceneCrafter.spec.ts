@@ -140,10 +140,11 @@ async function selectStory(pg: Page, title: string): Promise<void> {
   await pg.locator('.nav-story-title', { hasText: title }).click();
 }
 
-/** Navigate to the Scene Crafter (Board) view via the toolbar. */
+/** Navigate to the Scene Crafter (Board) view via the nav rail.
+ *  SKY-9019/M5: Scene Crafter left the sub-tab strip — it is rail-only now. */
 async function openBoardView(pg: Page): Promise<void> {
   await clickStoryNav(pg);
-  await pg.locator('[data-testid="story-subview-kanban"]').click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
   // Wait for the M18/M19 Scene Setup column, which only renders once the
   // board has fully loaded (the loading state renders .scene-crafter-page
   // but not .sc-columns). The lanes board is retired — see SKY-7601.

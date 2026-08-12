@@ -59,6 +59,8 @@ describe('DesktopShell voice capture shortcuts (SKY-7771)', () => {
 
     fireEvent.keyDown(window, { key: 'v', ctrlKey: true, shiftKey: true });
 
-    await waitFor(() => expect(window.api.voiceStart).toHaveBeenCalled());
+    // startVoice resolves settings + IPC mocks asynchronously; the default 1s
+    // waitFor window expires on loaded CI runners (SKY-9893).
+    await waitFor(() => expect(window.api.voiceStart).toHaveBeenCalled(), { timeout: 5_000 });
   });
 });
