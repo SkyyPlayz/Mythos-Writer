@@ -4974,12 +4974,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* SKY-9019/M5: sub-view bar hidden for rail-only destinations (kanban/timeline have their own full view). */}
       {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles + writing mode. */}
-      <StorySubViewBar
+      {view !== 'kanban' && view !== 'timeline' && <StorySubViewBar
         activeSubView={view}
         onSubViewChange={handleSetView}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
-      />
+      />}
       {showSampleProjectBanner && (
         <div
           className="sample-project-banner"

@@ -118,8 +118,8 @@ test.describe('Shell relayout — Story sub-view render sweep', () => {
   });
 
   test('Scene Board (kanban) sub-view renders unchanged', async () => {
-    await page.locator('[data-testid="story-subview-kanban"]').click();
-    await expect(page.locator('[data-testid="story-subview-kanban"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+    await expect(page.locator('[data-testid="story-subview-bar"]')).not.toBeVisible({ timeout: 3_000 });
     await expect(page.locator('.shell-kanban')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.shell-panels')).not.toBeVisible();
   });
@@ -132,13 +132,15 @@ test.describe('Shell relayout — Story sub-view render sweep', () => {
   });
 
   test('Timeline sub-view renders unchanged', async () => {
-    await page.locator('[data-testid="story-subview-timeline"]').click();
-    await expect(page.locator('[data-testid="story-subview-timeline"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Timeline"]').click();
+    await expect(page.locator('[data-testid="story-subview-bar"]')).not.toBeVisible({ timeout: 3_000 });
     await expect(page.locator('.shell-timeline')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.shell-structure')).not.toBeVisible();
   });
 
   test('returning to Editor sub-view renders unchanged', async () => {
+    await clickStoryNav(page);
+    await expect(page.locator('[data-testid="story-subview-bar"]')).toBeVisible({ timeout: 5_000 });
     await page.locator('[data-testid="story-subview-editor"]').click();
     await expect(page.locator('[data-testid="story-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
     await expect(page.locator('.shell-panels')).toBeVisible({ timeout: 5_000 });
@@ -176,14 +178,14 @@ test.describe('Shell relayout — M4 workspace tab strip visibility', () => {
   });
 
   test('Scene Crafter (kanban) shows the static view pseudo-tab', async () => {
-    await page.locator('[data-testid="story-subview-kanban"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
     await expect(page.locator('[data-testid="wtb-static-tab"]')).toHaveText(/Scene Crafter/, { timeout: 5_000 });
     // The + (provisional scene) stays available (prototype 512).
     await expect(page.locator('[data-testid="wtb-new-tab-btn"]')).toBeVisible();
   });
 
   test('the strip is hidden on the Timeline sub-view', async () => {
-    await page.locator('[data-testid="story-subview-timeline"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Timeline"]').click();
     await expect(page.locator('.shell-timeline')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('tablist', { name: 'Workspace tabs' })).toHaveCount(0);
   });
