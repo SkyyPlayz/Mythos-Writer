@@ -29,6 +29,7 @@ import {
 import {
   breadcrumbs,
   buildBlocks,
+  cursorChapter,
   cursorScene,
   normalizeInlineTitle,
   scopeScenes,
@@ -149,6 +150,22 @@ export interface ManuscriptViewProps {
   onRenameScene?: (sceneId: string, title: string) => void;
   /** M8: inline chapter-heading rename. */
   onRenameChapter?: (chapterId: string, title: string) => void;
+  /** M3 (SKY-9021): inline story rename — row 3's title at book/part depth. */
+  onRenameStory?: (title: string) => void;
+  /**
+   * M3 (SKY-9021): enables row 3's inline title rename. Gated separately from
+   * onRenameScene/onRenameChapter (which the heading renames share, flag-off)
+   * so the scope title stays a plain heading while `instantCreateStory` is
+   * off — deleted with the flag.
+   */
+  inlineTitleRename?: boolean;
+  /**
+   * M3 (SKY-9021): one-shot caret hand-off — place the caret at the start of
+   * this paragraph once it exists in the DOM (create-story lands the caret in
+   * the new scene's empty first paragraph). `seq` distinguishes repeat
+   * requests for the same block.
+   */
+  caretRequest?: { blockId: string; seq: number } | null;
   /** M10: Liquid Neon v2 settings driving the page-mode sheet chrome (M4's pageCfg). */
   liquidNeon?: Partial<LiquidNeonV2Settings> | null;
   /**
@@ -263,6 +280,10 @@ export interface ManuscriptHistoryControls {
   currentContent: string;
   onRestore: (content: string) => void;
 }
+
+// M3 (SKY-9021): ghost text on a scene's empty first paragraph (PLAN.md M3
+// spec string; shown via CSS :empty so it vanishes on the first keystroke).
+const PARA_PLACEHOLDER = 'Start writing…';
 
 const ZOOM_LEVELS: Array<[ZoomLevel, string]> = [
   ['book', 'Full Book'],
@@ -393,6 +414,9 @@ export default function ManuscriptView({
   onRemoveParagraph,
   onRenameScene,
   onRenameChapter,
+  onRenameStory,
+  inlineTitleRename = false,
+  caretRequest,
   liquidNeon,
   onPageStyleChange,
   onPickPageTexture,
@@ -717,7 +741,7 @@ export default function ManuscriptView({
   // claimed by the effect below once its paragraph exists in the DOM.
   const pendingCaretRef = useRef<{ blockId: string; place: 'start' | 'end' } | null>(null);
 
-  useEffect(() => {
+  const claimPendingCaret = useCallback(() => {
     const pending = pendingCaretRef.current;
     if (!pending) return;
     const el = scrollRef.current?.querySelector<HTMLElement>(
@@ -738,7 +762,22 @@ export default function ManuscriptView({
     } catch {
       // jsdom's Selection API is partial — focus alone is enough there.
     }
-  }, [blocks]);
+  }, []);
+
+  useEffect(() => {
+    claimPendingCaret();
+  }, [blocks, claimPendingCaret]);
+
+  // M3 (SKY-9021): host-driven caret hand-off — same park-and-claim path the
+  // split/merge follow-up uses, so create-story lands the caret in the new
+  // scene's first paragraph without a competing focus mechanism.
+  const caretRequestSeqRef = useRef(0);
+  useEffect(() => {
+    if (!caretRequest || caretRequest.seq === caretRequestSeqRef.current) return;
+    caretRequestSeqRef.current = caretRequest.seq;
+    pendingCaretRef.current = { blockId: caretRequest.blockId, place: 'start' };
+    claimPendingCaret();
+  }, [caretRequest, claimPendingCaret]);
 
   const handleRowSplit = useCallback(
     (sceneId: string, blockId: string, text: string, offset: number, el: HTMLElement) => {
@@ -803,6 +842,30 @@ export default function ManuscriptView({
       e.currentTarget.blur();
     }
   }, []);
+
+  // M3 (SKY-9021): row 3's title commits an inline rename of whatever the
+  // depth scopes it to — story at book/part depth (Full Book title = story
+  // title), the cursor's chapter/scene otherwise. One editable title, one
+  // commit path, no depth-specific chrome (§2). `onRenameStory` is the host's
+  // M3 opt-in: without it the title stays a plain heading at every depth, so
+  // the flag-off DOM keeps no extra `[contenteditable]` element (onRenameScene
+  // and onRenameChapter predate M3 and are wired flag-off).
+  const scopeTitleRename = useMemo(() => {
+    if (!onRenameStory) return undefined;
+    switch (cursor.zoom) {
+      case 'book':
+      case 'part':
+        return onRenameStory;
+      case 'chapter': {
+        const ch = cursorChapter(story, cursor);
+        return ch && onRenameChapter ? (title: string) => onRenameChapter(ch.id, title) : undefined;
+      }
+      case 'scene': {
+        const sc = cursorScene(story, cursor);
+        return sc && onRenameScene ? (title: string) => onRenameScene(sc.id, title) : undefined;
+      }
+    }
+  }, [cursor, story, onRenameStory, onRenameChapter, onRenameScene]);
 
   const commitPageWidth = useCallback(
     (w: number) => {
@@ -1201,6 +1264,7 @@ export default function ManuscriptView({
               !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
             }
             dropCap={b.first && (cursor.zoom === 'scene' || cursor.zoom === 'chapter')}
+            placeholder={b.first ? PARA_PLACEHOLDER : undefined}
             paraStyle={paraStyle}
             onCommit={commitParagraph}
             onSplit={onSplitParagraph ? handleRowSplit : undefined}
@@ -1249,6 +1313,7 @@ export default function ManuscriptView({
         onManualSnapshot={onManualSnapshot}
         snapshotSavedAt={snapshotSavedAt}
         onOpenSceneHistory={sceneHistory?.onOpen}
+        onRenameTitle={inlineTitleRename ? scopeTitleRename : undefined}
       />
       {/* M1 row 4 — zoom bar (prototype 949–970) */}
       <div className="msv-zoombar">

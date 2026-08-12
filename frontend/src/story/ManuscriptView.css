@@ -741,6 +741,16 @@
   box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
 }
 
+/* M3 (SKY-9021): ghost text on an empty first paragraph ("Start writing…").
+   Rendered via ::before so it never enters the contenteditable's text —
+   the first keystroke un-empties the element and the ghost disappears. */
+.msv-para-text[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #7d8dab;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
 /* ── M8: drop cap on a scene's first paragraph (prototype 1137: floated
       3.55em first character) — pure CSS so the caret/segment offsets and
       split/merge text math stay untouched. ── */

@@ -489,7 +489,8 @@ describe('BlockEditor empty-scene entry', () => {
       />
     );
 
-    expect(screen.getByText(/start typing to begin/i)).toBeInTheDocument();
+    // M3 (SKY-9021): the default empty-scene hint is the spec's placeholder.
+    expect(screen.getByText(/start writing…/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(document.activeElement).toHaveClass('ProseMirror');

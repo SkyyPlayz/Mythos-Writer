@@ -107,7 +107,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start typing to begin.', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start writing…', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   // Beta 4 M2: the toolbar word-count badge is gone — the app status bar is

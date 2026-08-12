@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type Rea
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { Toast } from './components/Toast/Toast';
-import type { Story, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
+import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
 import KeyboardShortcutsDialog from './KeyboardShortcutsDialog';
@@ -53,6 +53,8 @@ import {
 } from './workspaceDocTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 import AccountModal from './AccountModal';
+// M3 (SKY-9021): the wizard is the legacy flag-OFF path only — it (and the
+// newStoryFlow helpers) leave with the instantCreateStory rollout flag.
 import NewStoryWizard from './NewStoryWizard';
 import { buildNewStoryPlanNote, dedupePlanRelPath, makeStoryFromDraft } from './newStoryFlow';
 import type { NewStoryDraft } from './newStoryFlow';
@@ -727,6 +729,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // lands the Parts data model, part depth renders the story's chapters
   // ungrouped (manuscriptModel's implicit single part).
   const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
+  // M3 (SKY-9021): one-shot caret hand-off into ManuscriptView — create-story
+  // (and the post-onboarding first open) land the caret in the new scene's
+  // empty first paragraph. seq increments per request; the view claims it
+  // once the paragraph exists in the DOM.
+  const [manuscriptCaretRequest, setManuscriptCaretRequest] =
+    useState<{ blockId: string; seq: number } | null>(null);
+  const caretSeqRef = useRef(0);
   const [showSceneHistory, setShowSceneHistory] = useState(false);
   const [snapshotSavedAt, setSnapshotSavedAt] = useState<string | null>(null);
   const [restoreKey, setRestoreKey] = useState(0);
@@ -754,7 +763,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-3177: AppNavRail collapse state + account modal
   const [navRailCollapsed, setNavRailCollapsed] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
-  // Beta 4 M3: New Story wizard (rail stories switcher → "New Story…").
+  // Beta 4 M3 legacy (flag-off only): New Story wizard (rail stories
+  // switcher → "New Story…"). Leaves with the instantCreateStory flag.
   const [newStoryOpen, setNewStoryOpen] = useState(false);
   const leftSidebarLayoutRef = useRef<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3207 (B4): top bar hidden state
@@ -3074,17 +3084,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }, 1000);
   }, [selectedScene]);
 
-  const createStory = useCallback(async () => {
-    const title = await requestText('Story title:');
-    if (!title?.trim()) return;
-    const id = generateId();
-    const story: Story = {
-      id, title: title.trim(), path: `stories/${id}`,
-      chapters: [], createdAt: now(), updatedAt: now(),
-    };
-    updateManifest([...stories, story]);
-  }, [stories, updateManifest, requestText]);
-
   // SKY-320/SKY-906 parity for the Liquid Neon title bar: the legacy
   // ProjectSwitcher's "+ Create new Mythos Vault" flow, driven through the
   // same useTextPrompt modal and vaultCreateDefaultMythos IPC. Main persists
@@ -3234,6 +3233,69 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
 
+  // M3 (SKY-9021) rollout flag, OFF by default. Flag-on: create story →
+  // instantly writable. Flag-off: every pre-M3 flow, byte-for-byte. The flag
+  // (and the legacy paths it guards) is removed as part of M3's done-criteria.
+  const instantCreateStory = !!appSettings?.instantCreateStory;
+
+  // M3 (SKY-9021): create story → instantly writable. ONE transaction builds
+  // story + Part 1 (title: "", the v3 single-untitled-part shape) + Chapter 1
+  // + one untitled scene holding a single empty paragraph, then opens the
+  // Story Writer at Full Book depth with the caret in that paragraph
+  // ("Start writing…" ghost). Every entry point — navigator +, File menu,
+  // command palette, empty-state CTA, nav rail — runs this same action; no
+  // prompt, wizard, toast, or panel between the click and the caret.
+  const createStory = useCallback(async () => {
+    if (!instantCreateStory) {
+      // Pre-M3 path (flag off): title prompt, story created empty.
+      const title = await requestText('Story title:');
+      if (!title?.trim()) return;
+      const id = generateId();
+      const story: Story = {
+        id, title: title.trim(), path: `stories/${id}`,
+        chapters: [], createdAt: now(), updatedAt: now(),
+      };
+      updateManifest([...stories, story]);
+      return;
+    }
+    const stamp = now();
+    const storyId = generateId();
+    const chapterId = generateId();
+    const sceneId = generateId();
+    const blockId = generateId();
+    const scene: Scene = {
+      id: sceneId, title: 'Untitled Scene',
+      path: `stories/${storyId}/chapters/${chapterId}/scenes/${sceneId}.md`,
+      order: 0, chapterId, storyId,
+      blocks: [{ id: blockId, type: 'prose', content: '', order: 0, updatedAt: stamp }],
+      draftState: 'in-progress', createdAt: stamp, updatedAt: stamp,
+    };
+    const chapter: Chapter = {
+      id: chapterId, title: 'Chapter 1',
+      path: `stories/${storyId}/chapters/${chapterId}`,
+      order: 0, scenes: [scene], createdAt: stamp, updatedAt: stamp,
+    };
+    const part: Part = {
+      id: generateId(), title: '', order: 0, note: [],
+      chapters: [chapter], createdAt: stamp, updatedAt: stamp,
+    };
+    const story: Story = {
+      id: storyId, title: 'Untitled Story', path: `stories/${storyId}`,
+      parts: [part], chapters: [chapter], createdAt: stamp, updatedAt: stamp,
+    };
+    // Scene file before manifest (SKY-5154: never a manifest entry without a
+    // backing file). The awaited write also guarantees the E2E disk contract.
+    try {
+      await window.api?.writeVault?.(scene.path, blocksToMarkdown(scene));
+    } catch { /* the debounced manifest write proceeds; scene:save re-creates the file */ }
+    updateManifest([...stories, story]);
+    handleSelectScene(scene, chapter, story);
+    handleNavSectionChange('story');
+    setViewDepth('book');
+    caretSeqRef.current += 1;
+    setManuscriptCaretRequest({ blockId, seq: caretSeqRef.current });
+  }, [instantCreateStory, stories, updateManifest, requestText, handleSelectScene, handleNavSectionChange, setViewDepth]);
+
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
       s.id !== storyId ? s : {
@@ -3304,7 +3366,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (loading || sceneRestoreAttemptedRef.current) return;
     if (!appSettings?.lastOpenedScene || stories.length === 0) return;
     sceneRestoreAttemptedRef.current = true;
-    const { sceneId, cursorLine } = appSettings.lastOpenedScene;
+    const { sceneId, cursorLine, openAtDepth } = appSettings.lastOpenedScene;
     for (const story of stories) {
       for (const chapter of story.chapters) {
         const scene = chapter.scenes.find((sc) => sc.id === sceneId);
@@ -3313,6 +3375,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           pendingCursorPosRef.current = cursorLine;
           handleSelectScene(scene, chapter, story);
           restoreInProgressRef.current = false;
+          // M3 (SKY-9021): onboarding's create-story lands at Full Book depth
+          // with the caret in the scaffolded scene's first paragraph — same
+          // contract as every other create entry point. One-shot: the next
+          // sessionSaveScene writes lastOpenedScene without openAtDepth.
+          if (openAtDepth === 'book') {
+            setViewDepth('book');
+            const firstBlock = scene.blocks[0];
+            if (firstBlock) {
+              caretSeqRef.current += 1;
+              setManuscriptCaretRequest({ blockId: firstBlock.id, seq: caretSeqRef.current });
+            }
+          }
           return;
         }
       }
@@ -4411,6 +4485,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     refreshManuscriptSelection(renamed);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
+  // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
+  // story title). TitleRow reverts empties/normalizes before committing here.
+  const handleManuscriptRenameStory = useCallback((title: string) => {
+    if (!selectedStory || title === selectedStory.title) return;
+    const renamed: Story = { ...selectedStory, title, updatedAt: now() };
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
+
 
   // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
   // same live-apply + persist shape as the width handler above, scoped to
@@ -4574,9 +4657,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-  // Beta 4 M3: New Story wizard create — the story AND its Story Plan note
-  // (import-flow convention: Notes Vault `Plans/Plan — <name>.md`, which
-  // Scene Crafter and the timeline auto-build already read).
+  // Beta 4 M3 legacy (flag-off only): New Story wizard create — the story AND
+  // its Story Plan note (import-flow convention: Notes Vault
+  // `Plans/Plan — <name>.md`, which Scene Crafter and the timeline auto-build
+  // already read). Leaves with the instantCreateStory flag.
   const handleCreateStoryFromWizard = useCallback(async (draft: NewStoryDraft) => {
     const story = makeStoryFromDraft(draft, { id: generateId(), createdAt: now() });
     updateManifest([...stories, story]);
@@ -4860,7 +4944,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             neonOverlay={<BorderOverlay settings={appSettings?.liquidNeonV2} slot={6} delay={2.2} />}
             stories={navRailStories}
             onStorySelect={handleRailStorySelect}
-            onNewStory={() => setNewStoryOpen(true)}
+            onNewStory={() => {
+              // M3 (SKY-9021): flag-on runs the instant create like every
+              // other entry point; flag-off keeps the legacy wizard.
+              if (instantCreateStory) void createStory();
+              else setNewStoryOpen(true);
+            }}
             editableItems={railEditItems}
             onEditableItemsChange={persistNavRailConfigItems}
           />
@@ -5357,6 +5446,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onRemoveParagraph={handleManuscriptRemoveParagraph}
                   onRenameScene={handleManuscriptRenameScene}
                   onRenameChapter={handleManuscriptRenameChapter}
+                  onRenameStory={instantCreateStory ? handleManuscriptRenameStory : undefined}
+                  inlineTitleRename={instantCreateStory}
+                  caretRequest={manuscriptCaretRequest}
                   pagePrefs={pagePrefs}
                   onPagePrefsChange={handlePagePrefsChange}
                   liquidNeon={appSettings?.liquidNeonV2}
@@ -5441,7 +5533,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                           isGettingStartedVisible(gettingStartedProgress) &&
                           !seenEmptySceneHints.has(selectedScene.id)
                             ? 'Start writing here, or open Brainstorm (Ctrl+B) to spark ideas.'
-                            : ''
+                            : 'Start writing…'
                         }
                       />
                       {(betaReadComments.length > 0 || betaReadLoading) && (
@@ -5860,8 +5952,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {accountModalOpen && (
         <AccountModal open={accountModalOpen} onClose={() => setAccountModalOpen(false)} />
       )}
-      {/* Beta 4 M3: New Story wizard — rail stories switcher → "New Story…" */}
-      {newStoryOpen && (
+      {/* M3 (SKY-9021): flag-on, the wizard never mounts — every create-story
+          entry point runs the instant createStory transaction; no dialog may
+          interpose between click and caret. Flag-off keeps the legacy rail
+          wizard until the flag (and this mount) is removed. */}
+      {!instantCreateStory && newStoryOpen && (
         <NewStoryWizard
           open={newStoryOpen}
           onClose={() => setNewStoryOpen(false)}
