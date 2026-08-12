@@ -153,6 +153,13 @@ export interface ManuscriptViewProps {
   /** M3 (SKY-9021): inline story rename — row 3's title at book/part depth. */
   onRenameStory?: (title: string) => void;
   /**
+   * M3 (SKY-9021): enables row 3's inline title rename. Gated separately from
+   * onRenameScene/onRenameChapter (which the heading renames share, flag-off)
+   * so the scope title stays a plain heading while `instantCreateStory` is
+   * off — deleted with the flag.
+   */
+  inlineTitleRename?: boolean;
+  /**
    * M3 (SKY-9021): one-shot caret hand-off — place the caret at the start of
    * this paragraph once it exists in the DOM (create-story lands the caret in
    * the new scene's empty first paragraph). `seq` distinguishes repeat
@@ -408,6 +415,7 @@ export default function ManuscriptView({
   onRenameScene,
   onRenameChapter,
   onRenameStory,
+  inlineTitleRename = false,
   caretRequest,
   liquidNeon,
   onPageStyleChange,
@@ -838,8 +846,12 @@ export default function ManuscriptView({
   // M3 (SKY-9021): row 3's title commits an inline rename of whatever the
   // depth scopes it to — story at book/part depth (Full Book title = story
   // title), the cursor's chapter/scene otherwise. One editable title, one
-  // commit path, no depth-specific chrome (§2).
+  // commit path, no depth-specific chrome (§2). `onRenameStory` is the host's
+  // M3 opt-in: without it the title stays a plain heading at every depth, so
+  // the flag-off DOM keeps no extra `[contenteditable]` element (onRenameScene
+  // and onRenameChapter predate M3 and are wired flag-off).
   const scopeTitleRename = useMemo(() => {
+    if (!onRenameStory) return undefined;
     switch (cursor.zoom) {
       case 'book':
       case 'part':
@@ -1301,7 +1313,7 @@ export default function ManuscriptView({
         onManualSnapshot={onManualSnapshot}
         snapshotSavedAt={snapshotSavedAt}
         onOpenSceneHistory={sceneHistory?.onOpen}
-        onRenameTitle={scopeTitleRename}
+        onRenameTitle={inlineTitleRename ? scopeTitleRename : undefined}
       />
       {/* M1 row 4 — zoom bar (prototype 949–970) */}
       <div className="msv-zoombar">

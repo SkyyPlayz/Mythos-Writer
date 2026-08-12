@@ -5373,7 +5373,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onRemoveParagraph={handleManuscriptRemoveParagraph}
                   onRenameScene={handleManuscriptRenameScene}
                   onRenameChapter={handleManuscriptRenameChapter}
-                  onRenameStory={handleManuscriptRenameStory}
+                  onRenameStory={instantCreateStory ? handleManuscriptRenameStory : undefined}
+                  inlineTitleRename={instantCreateStory}
                   caretRequest={manuscriptCaretRequest}
                   pagePrefs={pagePrefs}
                   onPagePrefsChange={handlePagePrefsChange}
