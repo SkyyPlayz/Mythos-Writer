@@ -146,16 +146,16 @@ async function waitUntil(
   return false;
 }
 
-// SKY-3098/3218: the standalone "Vault" rail tab was removed by the nav-rail
-// rewrite. The unlocked (both-scope) VaultBrowser now lives in the LeftRail's
-// "vault" panel of the Story Writer section (collapsed by default) — the same
-// panel exercised by e2e/vault-crud.spec.ts's TC-V-07.
-async function openVaultTab(pg: Page): Promise<void> {
-  const vaultPanel = pg.locator('[data-panel-id="vault"]');
-  await expect(vaultPanel).toBeVisible({ timeout: 8_000 });
-  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await expect(pg.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+// SKY-9022/M6: the old panel-stack system (and the unlocked, both-scope
+// VaultBrowser it hosted in the Story Writer sidebar's "vault" panel) was
+// removed entirely. Per the M6 spec (plans/fidelity-rebuild/PLAN.md §M6:
+// "Vault Browser's function = the Notes workspace sidebar, which is its one
+// home"), VaultBrowser is now reachable only via the Notes Editor rail tab,
+// always locked to notes scope (`lockScope initialScope="notes"` in
+// NotesTabPanel.tsx) — no scope bar, no Story-side tree.
+async function openNotesVaultTab(pg: Page): Promise<void> {
+  await pg.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
+  await expect(pg.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
 }
 
 // ─── Suite A: Empty Notes Vault (TC-SKY84-02) ────────────────────────────────
@@ -186,11 +186,7 @@ test.describe('TC-SKY84-02: Empty Notes Vault', () => {
 
   test('TC-SKY84-02: empty notesVaultDir → Notes panel shows empty-state placeholder', async () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-    await openVaultTab(page);
-
-    // Switch to Notes scope to isolate the Notes panel.
-    await page.locator('[data-testid="vb-scope-notes"]').click();
-    await expect(page.locator('[data-testid="vb-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
+    await openNotesVaultTab(page);
 
     const notesPanel = page.locator('[data-testid="vb-notes-vault"]');
     await expect(notesPanel).toBeVisible({ timeout: 6_000 });
@@ -256,11 +252,7 @@ test.describe('populated vaults: routing regression', () => {
 
   test('TC-SKY84-01: Notes panel shows characters/alice from notesVaultDir, not lore/world from storyVaultDir', async () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-    await openVaultTab(page);
-
-    // Switch to Notes scope for a clean view of the Notes panel.
-    await page.locator('[data-testid="vb-scope-notes"]').click();
-    await expect(page.locator('[data-testid="vb-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
+    await openNotesVaultTab(page);
 
     const notesPanel = page.locator('[data-testid="vb-notes-vault"]');
     await expect(notesPanel).toBeVisible({ timeout: 6_000 });
@@ -277,62 +269,47 @@ test.describe('populated vaults: routing regression', () => {
       notesPanel.locator(`[data-testid="vb-row-${STORY_SEED_DIR}/${STORY_SEED_FILE}"]`),
     ).not.toBeVisible({ timeout: 4_000 });
 
-    // StoryVault panel in Story scope should not expose notesVaultDir content.
-    await page.locator('[data-testid="vb-scope-story"]').click();
-    await expect(page.locator('[data-testid="vb-scope-story"]')).toHaveAttribute('aria-pressed', 'true');
-
-    const storyPanel = page.locator('[data-testid="vb-story-vault"]');
-    await expect(storyPanel).toBeVisible({ timeout: 4_000 });
-
-    // Characters/alice is from notesVaultDir — must not appear in Story panel.
-    await expect(
-      storyPanel.locator('[data-testid^="vb-row-"]', { hasText: 'alice' }),
-    ).not.toBeVisible({ timeout: 4_000 });
-
-    // Restore scope.
-    await page.locator('[data-testid="vb-scope-both"]').click();
+    // SKY-9022/M6: the old "StoryVault panel in Story scope should not expose
+    // notesVaultDir content" half of this test drove the now-removed unlocked
+    // VaultBrowser (`vb-scope-story` / `vb-story-vault`). It doesn't have a
+    // meaningful equivalent to rewrite: StoryNavigator (the only Story-side
+    // tree left) is manifest-driven, not a raw filesystem scan, so it has no
+    // code path that could ever surface arbitrary notesVaultDir files like
+    // characters/alice.md in the first place — there's nothing left to
+    // regression-test on that side. The Notes-panel isolation assertions
+    // above remain the load-bearing coverage for this routing invariant.
   });
 
   // ─── TC-SKY84-04: Story write isolation ───────────────────────────────────
 
   test('TC-SKY84-04: creating a story+scene writes to storyVaultDir; notesVaultDir not touched', async () => {
-    await openVaultTab(page);
-
-    // Create story via Story Vault panel.
-    const storyPanel = page.locator('[data-testid="vb-story-vault"]');
-    await expect(storyPanel).toBeVisible({ timeout: 6_000 });
+    // SKY-9022/M6: the old unlocked VaultBrowser "vault" panel is gone —
+    // story/chapter/scene creation now happens via StoryNavigator, the
+    // sidebar of the Story Writer rail destination. The write-isolation
+    // assertions below (the load-bearing part of this test) are unaffected
+    // by which UI created the files, so only the creation flow changed.
+    // TC-SKY84-01 (above) leaves the app on the Notes Editor tab; navigate
+    // back to Story Writer so StoryNavigator (and `.nav-add-btn`) is visible.
+    await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
 
     // M3 instant-create: no prompt — story appears immediately as
     // "Untitled Story" (single story in this vault, so match positionally).
-    await storyPanel.locator('[aria-label="New Story"]').click();
+    await page.locator('.nav-add-btn').first().click();
 
-    await expect(
-      storyPanel.locator('.vb-name').first(),
-    ).toBeVisible({ timeout: 8_000 });
+    const storyRow = page.locator('.nav-story-row').first();
+    await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-    // Ensure the story is expanded and create a chapter. The Story Vault may
-    // auto-expand the first story, so do not blindly toggle it closed.
-    const storyToggle = storyPanel.locator('.vb-tree-toggle').first();
-    if ((await storyToggle.getAttribute('aria-expanded')) !== 'true') {
-      await storyToggle.click();
-    }
-    await storyPanel.locator('.vb-inline-add').first().click();
+    await storyRow.locator('.nav-inline-add').click();
     await fillPrompt(page, CHAPTER_TITLE);
 
-    await expect(
-      storyPanel.locator('.vb-name', { hasText: CHAPTER_TITLE }),
-    ).toBeVisible({ timeout: 6_000 });
+    const chapterRow = page.locator('.nav-chapter-row', { hasText: CHAPTER_TITLE });
+    await expect(chapterRow).toBeVisible({ timeout: 6_000 });
 
-    // Ensure the chapter is expanded and create a scene.
-    const chapterToggle = storyPanel.locator('.vb-tree-toggle', { hasText: CHAPTER_TITLE });
-    if ((await chapterToggle.getAttribute('aria-expanded')) !== 'true') {
-      await chapterToggle.click();
-    }
-    await storyPanel.locator(`[aria-label="New scene in ${CHAPTER_TITLE}"]`).click();
+    await chapterRow.locator('.nav-inline-add').click();
     await fillPrompt(page, SCENE_TITLE);
 
     await expect(
-      storyPanel.locator('.vb-scene-row .vb-name', { hasText: SCENE_TITLE }),
+      page.locator('.nav-scene-row', { hasText: SCENE_TITLE }),
     ).toBeVisible({ timeout: 6_000 });
 
     // Scene .md file must land under storyVaultDir/stories/.../scenes/.
@@ -366,11 +343,7 @@ test.describe('populated vaults: routing regression', () => {
   // ─── TC-SKY84-03: Note write isolation ────────────────────────────────────
 
   test('TC-SKY84-03: creating a note via NotesVault panel writes to notesVaultDir, not storyVaultDir', async () => {
-    await openVaultTab(page);
-
-    // Switch to Notes scope to use only the Notes panel.
-    await page.locator('[data-testid="vb-scope-notes"]').click();
-    await expect(page.locator('[data-testid="vb-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
+    await openNotesVaultTab(page);
 
     const notesPanel = page.locator('[data-testid="vb-notes-vault"]');
     await expect(notesPanel).toBeVisible({ timeout: 6_000 });

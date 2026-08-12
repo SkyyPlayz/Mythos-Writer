@@ -184,10 +184,9 @@ test.beforeAll(async () => {
   page.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  const vaultPanel = page.locator('[data-panel-id="vault"]');
-  const collapsed = await vaultPanel.evaluate((el) => el.classList.contains('lr-panel--collapsed'));
-  if (collapsed) await vaultPanel.locator('.lr-panel-collapse-btn').click();
-  await page.locator('[data-testid="vb-scope-notes"]').click();
+  // SKY-9022/M6: Vault Browser's function is the Notes workspace sidebar,
+  // its one home — navigate to the Notes Editor tab to reach it.
+  await page.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
   await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 6_000 });
   await expect(page.locator('[data-testid="vb-row-alpha.md"]')).toBeVisible({ timeout: 8_000 });
 });
