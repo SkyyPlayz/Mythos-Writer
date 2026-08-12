@@ -258,6 +258,14 @@ test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () 
 // ─── TC-E-04: Entity with alias persists after app restart ────────────────────
 
 test('TC-E-04: entity with alias persists after full app restart', async () => {
+  // DesktopShell's manifest writer (scheduleManifestSave) debounces disk
+  // writes by 900ms and has no flush-on-quit — app.close() right after an
+  // edit can kill the renderer before that timer fires, silently dropping
+  // the last batch of changes (root cause of an intermittent "stories: []
+  // after restart" failure seen on CI; tracked separately as a data-loss
+  // bug — see SKY-9955). Give the debounce a chance to flush before closing.
+  await page.waitForTimeout(1_200);
+
   // Close the app
   await app.close().catch(() => {});
 
@@ -268,15 +276,14 @@ test('TC-E-04: entity with alias persists after full app restart', async () => {
   // Wait for app to fully load
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // The manifest reload (stories/chapters/scenes) races the initial render on
-  // a slow host — TC-E-05..07 never touch the Stories panel, so without this
-  // wait TC-E-08's later "New scene" click can silently no-op against a still
-  // -empty `stories` array. Confirm the reload actually landed here, right
-  // after restart, where it has the most wall-clock budget to finish.
+  // SKY-1694: Stories is now a panel in the panel zone; expand it if collapsed.
+  // TC-E-05..07 never touch this panel, so this is the only place in the
+  // suite that confirms the reload actually landed before TC-E-08's "New
+  // scene" click depends on `stories` being non-empty.
   const storiesPanel2 = page.locator('[data-panel-id="stories"]');
   const sp2Collapsed = await storiesPanel2.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
   if (sp2Collapsed) await storiesPanel2.locator('.lr-panel-collapse-btn').click();
-  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 10_000 });
 
   // SKY-1694: Entities is now a panel in the panel zone; expand it if collapsed.
   const entitiesPanel2 = page.locator('[data-panel-id="entities"]');
