@@ -88,6 +88,7 @@
     "test:e2e:notes-tab": "playwright test e2e/notes-tab.spec.ts --reporter=list,html",
     "test:e2e:readme-screenshots": "playwright test e2e/readme-screenshots.spec.ts --reporter=list,html",
     "test:e2e:shell-relayout-regression": "playwright test e2e/shell-relayout-regression.spec.ts --reporter=list,html",
+    "test:e2e:sky-9022-m6-sidebars": "playwright test e2e/tests/sky-9022-m6-sidebars.spec.ts --reporter=list,html",
     "test:e2e:story-tab-subview": "playwright test e2e/story-tab-subview.spec.ts --reporter=list,html",
     "test:e2e:suggestions": "playwright test e2e/suggestions.spec.ts --reporter=list,html",
     "test:e2e:tab-shell": "playwright test e2e/tab-shell.spec.ts --reporter=list,html",

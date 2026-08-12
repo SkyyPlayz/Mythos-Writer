@@ -65,7 +65,7 @@ export default function GlobalRightSidebar({
 
   if (!visible) {
     return (
-      <div className="grs-edge" data-testid="grs-edge">
+      <div className="grs-collapsed-edge" data-testid="grs-edge">
         <button
           className="grs-show-btn"
           onClick={() => onVisibilityChange(true)}

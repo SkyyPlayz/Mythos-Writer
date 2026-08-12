@@ -6,6 +6,7 @@ import AgentHubPanel from './AgentHubPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { buildAnalysisCard, parseCoachRead } from './coach/sceneAnalysis';
 import { decodeCoachCard, encodeCoachCard } from './coach/coachMessages';
+import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import type { Scene } from './types';
 
 function makeSuggestion(overrides: Partial<Record<string, unknown>> = {}) {
@@ -141,6 +142,48 @@ describe('AgentHubPanel — Suggestions card', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ── R11/M11a/M11b: right-panel tabs under the master AI toggle ─────────────
+
+describe('AgentHubPanel — manual mode (R11/M11b surface contract)', () => {
+  beforeEach(() => {
+    __resetAgentSessionStores();
+    (window as any).api = {
+      suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
+    };
+  });
+  afterEach(() => {
+    __resetAiEnabledForTests();
+    delete (window as any).api;
+  });
+
+  it('AI on: Assistant tab is present and active by default', async () => {
+    render(<AgentHubPanel scene={null} />);
+    expect(await screen.findByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('AI off: Assistant tab is gone; Scenes/Notes/References remain and the panel opens on Scenes', async () => {
+    setAiEnabled(false);
+    render(<AgentHubPanel scene={null} />);
+
+    expect(screen.queryByRole('tab', { name: 'Assistant' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Scenes' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Notes' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'References' })).toBeInTheDocument();
+    // No dead band from the AGENTS/Suggestions/Scene Analysis/Continuity content.
+    expect(screen.queryByText(/AGENTS/i)).not.toBeInTheDocument();
+  });
+
+  it('turning AI off while Assistant is the active tab switches to Scenes with no dead band', async () => {
+    render(<AgentHubPanel scene={null} />);
+    expect(await screen.findByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
+
+    act(() => { setAiEnabled(false); });
+
+    expect(screen.queryByRole('tab', { name: 'Assistant' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Scenes' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 

@@ -5955,6 +5955,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       >
         <AgentHubPanel
           scene={activeSceneForSidebar}
+          story={selectedStory}
+          onOpenScenesFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+          onOpenSceneNote={handleOpenSceneByPath}
           enabled={appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true}
           scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
           waScanInterval={appSettings?.waScanInterval}

@@ -522,23 +522,18 @@ test('AC-SC-15: clicking a suggested card selects it instead of writing to the r
 // its pan/zoom behavior survive the real restart.
 
 /**
- * Add the "Scenes" right-sidebar (GlobalRightSidebar) panel if it isn't
- * already present — it persists across restarts once added. The left
- * sidebar has its own, differently-rendered "Add panel" control, so every
- * locator here is scoped to `[data-testid="global-right-sidebar"]" to avoid
- * matching that one instead.
+ * Switch the right sidebar (GlobalRightSidebar → AgentHubPanel) to its
+ * "Scenes" tab (M6: panel-add UI is gone — Scenes is one of the four fixed
+ * tabs). Every locator here is scoped to `[data-testid="global-right-sidebar"]`
+ * to avoid matching the left sidebar's unrelated controls.
  */
 async function openScenesPanel(pg: Page): Promise<void> {
-  const panel = pg.locator('[data-panel-id="scenes"]');
-  if ((await panel.count()) === 0) {
-    const showBtn = pg.getByRole('button', { name: 'Show right sidebar' });
-    if (await showBtn.isVisible().catch(() => false)) await showBtn.click();
-    const grs = pg.locator('[data-testid="global-right-sidebar"]');
-    await expect(grs).toBeVisible({ timeout: 8_000 });
-    await grs.getByRole('button', { name: 'Add panel' }).click();
-    await grs.getByRole('menuitem', { name: 'Scenes', exact: true }).click();
-  }
-  await expect(panel).toBeVisible({ timeout: 8_000 });
+  const showBtn = pg.getByRole('button', { name: 'Show right sidebar' });
+  if (await showBtn.isVisible().catch(() => false)) await showBtn.click();
+  const grs = pg.locator('[data-testid="global-right-sidebar"]');
+  await expect(grs).toBeVisible({ timeout: 8_000 });
+  await grs.getByRole('tab', { name: 'Scenes' }).click();
+  await expect(grs.locator('.scenes-panel-root')).toBeVisible({ timeout: 8_000 });
 }
 
 test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full app restart', async () => {
@@ -562,7 +557,7 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 8_000 });
 
   await openScenesPanel(page);
-  const scenesPanel = page.locator('[data-panel-id="scenes"]');
+  const scenesPanel = page.locator('[data-testid="global-right-sidebar"] .scenes-panel-root');
   const mini = scenesPanel.locator('[data-testid="scenes-panel-mini"]');
   await expect(mini).toBeVisible({ timeout: 8_000 });
   await expect(mini.getByText(/first pass/i)).toBeVisible();
@@ -606,7 +601,7 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   await page.locator('[data-testid="story-subview-editor"]').click();
 
   await openScenesPanel(page);
-  const miniAfter = page.locator('[data-panel-id="scenes"] [data-testid="scenes-panel-mini"]');
+  const miniAfter = page.locator('[data-testid="global-right-sidebar"] .scenes-panel-root [data-testid="scenes-panel-mini"]');
   await expect(miniAfter).toBeVisible({ timeout: 8_000 });
   await expect(miniAfter.getByText(/first pass/i)).toBeVisible();
 

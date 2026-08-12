@@ -5,10 +5,12 @@
 // open scene and `View Full Analysis` posts the full card into the Coach page.
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Scene } from './types';
+import type { Scene, Story } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import WritingAssistantPanel from './WritingAssistantPanel';
+import ScenesPanel from './ScenesPanel';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
@@ -87,6 +89,12 @@ const AGENT_DEFS: AgentDef[] = [
 
 interface Props {
   scene: Scene | null;
+  /** M9c/M6: drives the Scenes tab's canvas-board list. */
+  story?: Story | null;
+  /** M9c/M6: Scenes tab empty-state + "Open full" → Scene Crafter. */
+  onOpenScenesFull?: () => void;
+  /** M9c/M6: Scenes tab canvas board note links. */
+  onOpenSceneNote?: (notePath: string) => void;
   enabled?: boolean;
   scanIntervalSeconds?: number;
   waScanInterval?: number | 'on-save' | 'manual';
@@ -120,6 +128,9 @@ interface Props {
 
 export default function AgentHubPanel({
   scene,
+  story = null,
+  onOpenScenesFull,
+  onOpenSceneNote,
   enabled = true,
   scanIntervalSeconds = 60,
   waScanInterval,
@@ -145,7 +156,18 @@ export default function AgentHubPanel({
   continuityPanel,
   referencesPanel,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<HubTab>('assistant');
+  // R11/M11a/M11b: master AI toggle off removes the Assistant tab (AGENTS,
+  // Suggestions, Scene Analysis, Continuity, Getting Started all live inside
+  // it) — "right panel collapses cleanly, no dead bands." Scenes/Notes/
+  // References are utility tabs, not AI, and stay either way.
+  const aiEnabled = useAiEnabled();
+  const [activeTab, setActiveTabState] = useState<HubTab>('assistant');
+  const setActiveTab = useCallback((tab: HubTab) => {
+    setActiveTabState(tab === 'assistant' && !aiEnabled ? 'scenes' : tab);
+  }, [aiEnabled]);
+  useEffect(() => {
+    if (!aiEnabled) setActiveTabState((cur) => (cur === 'assistant' ? 'scenes' : cur));
+  }, [aiEnabled]);
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
 
   const coachSessionStore = useAgentSessions('coach');
@@ -173,8 +195,10 @@ export default function AgentHubPanel({
     }
   }, [activeAgent]);
 
+  // M11b surface contract: "Assistant" tab is AI-bearing chrome — gone when
+  // the master toggle is off. Scenes/Notes/References stay either way.
   const TABS: { id: HubTab; label: string }[] = [
-    { id: 'assistant', label: 'Assistant' },
+    ...(aiEnabled ? [{ id: 'assistant' as const, label: 'Assistant' }] : []),
     { id: 'scenes', label: 'Scenes' },
     { id: 'notes', label: 'Notes' },
     { id: 'references', label: 'References' },
@@ -198,7 +222,7 @@ export default function AgentHubPanel({
       </nav>
 
       <div className="ahp-body">
-        {activeTab === 'assistant' && (
+        {activeTab === 'assistant' && aiEnabled && (
           activeAgent
             ? <AgentChatView
                 agentId={activeAgent}
@@ -234,7 +258,9 @@ export default function AgentHubPanel({
                 continuityPanel={continuityPanel}
               />
         )}
-        {activeTab === 'scenes' && <ScenesTab scene={scene} />}
+        {activeTab === 'scenes' && (
+          <ScenesPanel story={story} onOpenFull={onOpenScenesFull ?? (() => {})} onOpenNote={onOpenSceneNote} />
+        )}
         {activeTab === 'notes' && (
           <SceneNotesPanel
             scene={scene}
@@ -683,16 +709,6 @@ function AgentChatView({
 }
 
 // ── Stub tabs ───────────────────────────────────────────────────────────────
-
-function ScenesTab({ scene }: { scene: Scene | null }) {
-  return (
-    <div className="ahp-stub-tab">
-      <p className="ahp-stub-label">
-        {scene ? `Open scene: ${scene.title}` : 'No scene open.'}
-      </p>
-    </div>
-  );
-}
 
 // M9a (SKY-9822): the real References tab content (ReferencesPanel — wiki-link
 // auto-collection, typed roles, unresolved state) is passed in from
