@@ -1,7 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 import { PanelDragProvider } from './PanelDragContext';
+import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 
 // SKY-1695: renderPanelContent is now supplied by DesktopShell. Stubs map panel
 // IDs to test-discoverable divs so we can assert panel body visibility.
@@ -197,6 +198,47 @@ describe('GlobalRightSidebar', () => {
         <GlobalRightSidebar {...defaultProps} panels={panelsWithContinuity} continuityIssueCount={0} />,
       );
       expect(screen.queryByLabelText(/0 issues/i)).toBeNull();
+    });
+  });
+
+  // M11b via SKY-9825: continuity flags are an AI surface — the whole section
+  // (header + badge, not just the body) collapses when the master toggle is off.
+  describe('AI master toggle gating (M11b, SKY-9825)', () => {
+    const panelsWithContinuity: PanelConfig[] = [
+      ...DEFAULT_PANELS,
+      { id: 'archive-continuity', collapsed: false },
+    ];
+
+    afterEach(() => {
+      __resetAiEnabledForTests();
+    });
+
+    it('hides the Continuity section and badge entirely when AI is off', () => {
+      setAiEnabled(false);
+      renderWithProvider(
+        <GlobalRightSidebar {...defaultProps} panels={panelsWithContinuity} continuityIssueCount={3} />,
+      );
+      expect(screen.queryByTestId('archive-panel')).toBeNull();
+      expect(screen.queryByRole('button', { name: /continuity panel/i })).toBeNull();
+      expect(screen.queryByLabelText(/3 issues/i)).toBeNull();
+      // Non-AI panels are untouched.
+      expect(screen.getByTestId('scene-notes-panel')).toBeInTheDocument();
+    });
+
+    it('omits Continuity from the add-panel picker when AI is off', () => {
+      setAiEnabled(false);
+      renderWithProvider(<GlobalRightSidebar {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /add panel/i }));
+      expect(screen.queryByRole('menuitem', { name: /^continuity$/i })).toBeNull();
+    });
+
+    it('restores the Continuity section when AI turns back on', () => {
+      setAiEnabled(true);
+      renderWithProvider(
+        <GlobalRightSidebar {...defaultProps} panels={panelsWithContinuity} continuityIssueCount={3} />,
+      );
+      expect(screen.getByTestId('archive-panel')).toBeInTheDocument();
+      expect(screen.getByLabelText(/3 issues/i)).toBeInTheDocument();
     });
   });
 
