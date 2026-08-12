@@ -4,19 +4,12 @@
  * Playwright E2E tests for the Outline planning surface (SKY-2980 spec).
  * Tests outline node CRUD, keyboard navigation, folding, scene linking, and persistence.
  *
- * SKY-9022/M6 NOTE — all AC-OPL-* cases below are currently `test.skip`'d.
- * M6 rewrote GlobalRightSidebar.tsx to a plain `children`-rendering shell
- * with no panel registry (the old collapsible right-sidebar panel stack was
- * removed alongside the left-side one). OutlinePlanningPanel
- * (frontend/src/OutlinePlanningPanel.tsx) has no other mount point anywhere
- * in DesktopShell.tsx — its `case 'scene-outline':` in the leftover
- * `renderSidebarPanel` dead-code map is unreachable from any real UI action.
- * This is a genuine M6 regression (Outline Planning lost its only home) that
- * is out of scope for a VaultBrowser/StoryNavigator test-fixup pass — it
- * needs a product decision (new mount point, e.g. an openable tab like the
- * Entity Browser's planned M5.5 treatment) before this suite can run again.
- * Skipped rather than deleted so the gap stays visible/traceable. Follow-up:
- * track "Outline Planning has no UI entry point post-M6" as its own issue.
+ * SKY-10019 (M6 follow-up): M6 removed OutlinePlanningPanel's only mount
+ * point (the collapsible right-sidebar panel stack). It now opens as a
+ * Story-strip workspace document tab via the + picker — the same "openable
+ * tab" pattern SKY-9920 gave Entity Browser (see handleOpenOutlineStory /
+ * upsertOutlineTab in DesktopShell.tsx / workspaceDocTabs.ts). All AC-OPL-*
+ * cases below are un-skipped and rewritten around that entry point.
  *
  * Acceptance criteria:
  *   AC-OPL-QA-01  Empty state         — "No outline yet" text visible
@@ -93,17 +86,6 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     },
     theme: 'dark',
     snapshots: { maxPerScene: 100, maxAgeDays: 30 },
-    // GRS only renders when rightSidebarVisible is explicitly true; scene-outline
-    // panel is in DEFAULT_PANELS (collapsed:true) and openOutlinePanel() expands it.
-    rightSidebarVisible: true,
-    // migrateV1Layout defaults rightSidebarPanels to [WA, Continuity, Scene Preview]
-    // when not seeded, replacing DEFAULT_PANELS (which has scene-outline). Seed the
-    // correct panels explicitly so scene-outline is present and openOutlinePanel works.
-    rightSidebarPanels: [
-      { id: 'scene-notes', collapsed: false },
-      { id: 'scene-properties', collapsed: false },
-      { id: 'scene-outline', collapsed: true },
-    ],
   };
 
   const vaultSettings = {
@@ -151,22 +133,18 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
-// SKY-9022/M6 removed the old panel-stack system (Story Navigator / Entity
-// Browser / Vault Browser as panels on the left, and the equivalent
-// collapsible-panel stack on GlobalRightSidebar). openOutlinePanel is no
-// longer reachable: GlobalRightSidebar.tsx was rewritten in M6 to a plain
-// `children`-rendering shell with no panel registry at all, and
-// OutlinePlanningPanel (frontend/src/OutlinePlanningPanel.tsx) has no other
-// mount point anywhere in DesktopShell.tsx — the 'scene-outline' case in the
-// leftover `renderSidebarPanel` dead-code map is unreachable. See the
-// test.skip block below for how this suite is handled.
+// SKY-10019: Outline Planning opens as a Story-strip workspace document tab
+// via the + picker (mirrors Entity Browser's SKY-9920 flow). Re-clicking
+// the + picker when the tab is already open just re-focuses it (upsert
+// semantics), so this is safe to call repeatedly across tests.
 async function openOutlinePanel(pg: Page): Promise<void> {
-  const panel = pg.locator('[data-panel-id="scene-outline"]');
-  const isCollapsed = await panel.evaluate((el) => el.classList.contains('grs-panel--collapsed')).catch(() => true);
-  if (isCollapsed) {
-    await panel.locator('.grs-panel-header').click();
-  }
-  await expect(pg.locator('[data-testid="outline-planning-panel"]')).toBeVisible({ timeout: 8_000 });
+  const outlinePanel = pg.locator('[data-testid="outline-planning-panel"]');
+  if (await outlinePanel.isVisible({ timeout: 500 }).catch(() => false)) return;
+  const newTabBtn = pg.locator('[data-testid="wtb-new-tab-btn"]');
+  await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
+  await newTabBtn.click();
+  await pg.locator('[data-testid="wtb-new-tab-menu-item-outline"]').click();
+  await expect(outlinePanel).toBeVisible({ timeout: 8_000 });
 }
 
 async function createStoryWithScenes(
@@ -241,12 +219,7 @@ function readOutlineFile(filePath: string): unknown {
   }
 }
 
-// SKY-9022/M6: the whole suite is wrapped in `test.describe.skip` (not just
-// individual `test.skip` calls) so `beforeAll` never runs either — it drives
-// the now-unreachable openOutlinePanel() and would simply fail/timeout. See
-// the file-header comment for why (GlobalRightSidebar lost its panel
-// registry in M6 and OutlinePlanningPanel has no other mount point).
-test.describe.skip('Outline Planning (SKY-9022/M6: no reachable UI entry point)', () => {
+test.describe('Outline Planning (SKY-10019: opens as a Story-strip workspace tab)', () => {
 
 // The beforeAll creates a full story+scenes fixture via real UI interactions.
 // With the always-mounted AppNavRail (SKY-3177) the cumulative worst-case is ~50s;
@@ -287,7 +260,7 @@ test.afterAll(async () => {
 
 // ─── AC-OPL-QA-01: Empty state ────────────────────────────────────────────────
 
-test.skip('AC-OPL-QA-01: Outline tab shows empty state when no outline yet', async () => {
+test('AC-OPL-QA-01: Outline tab shows empty state when no outline yet', async () => {
   await openOutlinePanel(page);
 
   // Check for empty state text or the panel itself
@@ -304,7 +277,7 @@ test.skip('AC-OPL-QA-01: Outline tab shows empty state when no outline yet', asy
 
 // ─── AC-OPL-QA-02: First node creation and persistence ──────────────────────
 
-test.skip('AC-OPL-QA-02: Create first outline node, navigate away and back, node persists', async () => {
+test('AC-OPL-QA-02: Create first outline node, navigate away and back, node persists', async () => {
   await openOutlinePanel(page);
 
   // Wait for outline panel
@@ -328,19 +301,19 @@ test.skip('AC-OPL-QA-02: Create first outline node, navigate away and back, node
 
   // Read the outline file to verify persistence
   const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
-  let savedData = readOutlineFile(outlineFilePath);
+  const savedData = readOutlineFile(outlineFilePath);
   expect(savedData).not.toBeNull();
   expect((savedData as any)?.nodes?.[0]?.title).toBe('First outline node');
 
-  // Navigate to another scene and back
-  const sceneList = page.locator('[data-testid="vb-scene-row"]');
-  const scenes = await sceneList.all();
-  if (scenes.length > 1) {
-    await scenes[1].click(); // Click second scene
-    await page.waitForTimeout(500);
-    await scenes[0].click(); // Click back to first scene
-    await page.waitForTimeout(500);
-  }
+  // Navigate away — selecting a scene switches the Story strip's active tab
+  // off Outline Planning onto that scene (SKY-10019: single active doc-tab
+  // pane, same as switching off any other tab) — then back via the + picker.
+  const sceneRows = page.locator('.nav-scene-row');
+  await expect(sceneRows.nth(1)).toBeVisible({ timeout: 6_000 });
+  await sceneRows.nth(1).click(); // Click second scene
+  await page.waitForTimeout(500);
+  await expect(outlinePanel).not.toBeVisible();
+  await openOutlinePanel(page);
 
   // Verify node still present
   const nodeInput = page.locator('.opl-title-input').first();
@@ -349,7 +322,7 @@ test.skip('AC-OPL-QA-02: Create first outline node, navigate away and back, node
 
 // ─── AC-OPL-QA-03: Add sibling with Enter ────────────────────────────────────
 
-test.skip('AC-OPL-QA-03: Press Enter to create sibling node below', async () => {
+test('AC-OPL-QA-03: Press Enter to create sibling node below', async () => {
   await openOutlinePanel(page);
 
   // Get first node input and press Enter
@@ -378,7 +351,7 @@ test.skip('AC-OPL-QA-03: Press Enter to create sibling node below', async () => 
 
 // ─── AC-OPL-QA-04: Indent with Tab ───────────────────────────────────────────
 
-test.skip('AC-OPL-QA-04: Press Tab to indent second node as child of first', async () => {
+test('AC-OPL-QA-04: Press Tab to indent second node as child of first', async () => {
   // Get second input and press Tab to indent
   const inputs = page.locator('.opl-title-input');
   const secondInput = inputs.nth(1);
@@ -403,7 +376,7 @@ test.skip('AC-OPL-QA-04: Press Tab to indent second node as child of first', asy
 
 // ─── AC-OPL-QA-05: Promote with Shift+Tab ────────────────────────────────────
 
-test.skip('AC-OPL-QA-05: Press Shift+Tab to promote child back to root level', async () => {
+test('AC-OPL-QA-05: Press Shift+Tab to promote child back to root level', async () => {
   // Get the indented node and promote it
   const inputs = page.locator('.opl-title-input');
   const secondInput = inputs.nth(1);
@@ -423,7 +396,7 @@ test.skip('AC-OPL-QA-05: Press Shift+Tab to promote child back to root level', a
 
 // ─── AC-OPL-QA-06: Fold toggle hides children ─────────────────────────────────
 
-test.skip('AC-OPL-QA-06: Click fold button to hide children and show count badge', async () => {
+test('AC-OPL-QA-06: Click fold button to hide children and show count badge', async () => {
   // Create a parent with children for this test
   // First, indent the second node back under first
   const inputs = page.locator('.opl-title-input');
@@ -455,7 +428,7 @@ test.skip('AC-OPL-QA-06: Click fold button to hide children and show count badge
 
 // ─── AC-OPL-QA-07: Unfold toggle shows children again ───────────────────────
 
-test.skip('AC-OPL-QA-07: Click fold button again to unfold and show children', async () => {
+test('AC-OPL-QA-07: Click fold button again to unfold and show children', async () => {
   // Click the fold button again to unfold
   const foldButtons = page.locator('.opl-fold-btn');
   const firstFoldBtn = foldButtons.first();
@@ -476,7 +449,7 @@ test.skip('AC-OPL-QA-07: Click fold button again to unfold and show children', a
 
 // ─── AC-OPL-QA-08: Scene linking ──────────────────────────────────────────────
 
-test.skip('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', async () => {
+test('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', async () => {
   // Click on first node's link button
   const linkButtons = page.locator('.opl-link-btn');
   const firstLinkBtn = linkButtons.first();
@@ -511,7 +484,7 @@ test.skip('AC-OPL-QA-08: Click link button, select scene from picker, chip appea
 
 // ─── AC-OPL-QA-09: Persistence after hard reload ────────────────────────────
 
-test.skip('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.json', async () => {
+test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.json', async () => {
   // Before reload, verify current state
   const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
   const beforeReload = readOutlineFile(outlineFilePath) as any;

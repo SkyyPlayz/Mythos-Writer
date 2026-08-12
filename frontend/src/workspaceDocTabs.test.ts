@@ -6,10 +6,12 @@ import {
   makeSceneTab,
   makeNoteTab,
   makeEntityBrowserTab,
+  makeOutlineTab,
   noteTitleFromPath,
   upsertSceneTab,
   upsertNoteTab,
   upsertEntityBrowserTab,
+  upsertOutlineTab,
   reconcileSceneTabs,
   workspaceStripModeFor,
   provisionalSceneIsAway,
@@ -164,6 +166,41 @@ describe('upsertEntityBrowserTab', () => {
     const sceneTab = makeSceneTab(makeScene('sc-a', 'Scene A'), () => 'tab-a');
     const result = upsertEntityBrowserTab([sceneTab], () => 'tab-eb');
     expect(result.tabs).toEqual([sceneTab, expect.objectContaining({ id: 'tab-eb', kind: 'entities' })]);
+  });
+});
+
+describe('makeOutlineTab', () => {
+  it('builds an outline-kind tab with no docId/docPath', () => {
+    const tab = makeOutlineTab(() => 'tab-opl');
+    expect(tab).toMatchObject({ id: 'tab-opl', kind: 'outline', title: 'Outline Planning' });
+    expect(tab.docId).toBeUndefined();
+    expect(tab.docPath).toBeUndefined();
+  });
+});
+
+describe('upsertOutlineTab', () => {
+  it('appends a tab for a new strip and focuses it', () => {
+    const result = upsertOutlineTab([], () => 'tab-opl');
+    expect(result.created).toBe(true);
+    expect(result.activeId).toBe('tab-opl');
+    expect(result.tabs).toHaveLength(1);
+    expect(result.tabs[0].kind).toBe('outline');
+  });
+
+  it('focuses the existing Outline Planning tab instead of duplicating (one per strip)', () => {
+    const first = upsertOutlineTab([], () => 'tab-opl');
+    const second = upsertOutlineTab(first.tabs, () => 'tab-dup');
+    expect(second.created).toBe(false);
+    expect(second.activeId).toBe('tab-opl');
+    expect(second.tabs).toBe(first.tabs); // unchanged reference — no state churn
+    expect(second.tabs).toHaveLength(1);
+  });
+
+  it('coexists alongside scene/entities tabs without disturbing them', () => {
+    const sceneTab = makeSceneTab(makeScene('sc-a', 'Scene A'), () => 'tab-a');
+    const entityTab = makeEntityBrowserTab(() => 'tab-eb');
+    const result = upsertOutlineTab([sceneTab, entityTab], () => 'tab-opl');
+    expect(result.tabs).toEqual([sceneTab, entityTab, expect.objectContaining({ id: 'tab-opl', kind: 'outline' })]);
   });
 });
 

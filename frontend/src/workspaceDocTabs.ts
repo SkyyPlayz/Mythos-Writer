@@ -59,6 +59,13 @@ export function makeEntityBrowserTab(makeId: () => string = defaultMakeId): Work
   return { id: makeId(), kind: 'entities', title: 'Entity Browser', icon: '🗂️' };
 }
 
+/** SKY-10019: Outline Planning as an openable Story-strip document tab —
+ * M6 removed its only mount point (the collapsible right-sidebar panel
+ * stack); this mirrors makeEntityBrowserTab's "one per strip" identity. */
+export function makeOutlineTab(makeId: () => string = defaultMakeId): WorkspaceTab {
+  return { id: makeId(), kind: 'outline', title: 'Outline Planning', icon: '🗒️' };
+}
+
 export interface UpsertDocTabResult {
   tabs: WorkspaceTab[];
   activeId: string;
@@ -113,6 +120,20 @@ export function upsertEntityBrowserTab(
   const existing = tabs.find((t) => t.kind === 'entities');
   if (existing) return { tabs, activeId: existing.id, created: false };
   const tab = makeEntityBrowserTab(makeId);
+  return { tabs: [...tabs, tab], activeId: tab.id, created: true };
+}
+
+/**
+ * Focus the existing Outline Planning tab in this strip, or append a new
+ * one — SKY-10019, same "one per strip" rule as upsertEntityBrowserTab.
+ */
+export function upsertOutlineTab(
+  tabs: WorkspaceTab[],
+  makeId: () => string = defaultMakeId,
+): UpsertDocTabResult {
+  const existing = tabs.find((t) => t.kind === 'outline');
+  if (existing) return { tabs, activeId: existing.id, created: false };
+  const tab = makeOutlineTab(makeId);
   return { tabs: [...tabs, tab], activeId: tab.id, created: true };
 }
 
