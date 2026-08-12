@@ -6,7 +6,7 @@
 // blocks so a [[link]] typed a moment ago shows up immediately.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Chapter, Scene, Story } from './types';
-import { basenameNoExt, normalize, wikiLinkTargetStem } from './crossTabLinkResolver';
+import { WIKI_LINK_RE, basenameNoExt, normalize, wikiLinkTargetStem } from './crossTabLinkResolver';
 import './Backlinks.css';
 
 export interface StoryBacklink {
@@ -15,8 +15,6 @@ export interface StoryBacklink {
   story: Story;
   snippet: string;
 }
-
-const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
 
 function snippetAround(text: string, index: number, matchLen: number, radius = 60): string {
   const start = Math.max(0, index - radius);

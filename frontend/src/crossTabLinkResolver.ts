@@ -33,7 +33,8 @@ export interface CrossTabLinkResolution {
   matches: CrossTabLinkMatch[];
 }
 
-const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+/** M9a (SKY-9822): exported so the References panel can type its rows. */
+export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   character: 'Character',
   location: 'Location',
   faction: 'Faction',
@@ -60,6 +61,14 @@ const ENTITY_TYPE_ALIASES: Record<string, EntityType> = {
   entities: 'other',
   other: 'other',
 };
+
+/**
+ * Match `[[wiki-link]]` targets in raw markdown/prose. Shared by the
+ * Backlinks card and the M9a References panel — global flag, so callers
+ * must reset `lastIndex` before an `exec` loop (or use `matchAll`, which
+ * clones the regex).
+ */
+export const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
 
 export function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/\.md$/i, '').replace(/\\/g, '/');
