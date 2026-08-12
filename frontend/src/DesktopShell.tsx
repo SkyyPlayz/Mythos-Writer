@@ -5975,7 +5975,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           voicePrefs={appSettings?.voice}
           agentNames={appSettings?.agentNames}
           onOpenSuggestionInbox={() => handleTabChange('story')}
-          onOpenCoachPage={() => handleTabChange('story')}
+          // M13 §5.4: "View Full Analysis" must land on the Coach page — the
+          // Story tab alone leaves the writer on whatever sub-view was open.
+          onOpenCoachPage={() => { handleTabChange('story'); handleOpenCoachPage(); }}
           gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
             <GettingStartedPanel
               progress={gettingStartedProgress!}
