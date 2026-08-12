@@ -357,8 +357,13 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
           ref={listRef}
           role="listbox"
           aria-label="Search results"
+          aria-busy={loading}
         >
-          {loading && (
+          {/* Keep-stale-while-revalidate: an in-flight refresh (scope switch,
+              retype) must not blank already-visible results — the momentary
+              empty list reads as a flash of "no results" (SKY-9742/TC-GS-04).
+              "Searching…" only fills the gap when there is nothing to show. */}
+          {loading && flatResults.length === 0 && (
             <div className="gsp-state-msg" aria-live="polite">Searching…</div>
           )}
           {!loading && query.trim() && flatResults.length === 0 && (
@@ -382,7 +387,7 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
             </>
           )}
 
-          {!loading && sceneResults.length > 0 && (
+          {sceneResults.length > 0 && (
             <>
               {(hasBoth || cmdHits.length > 0) && (
                 <div className="gsp-section-header" aria-hidden="true">Scenes</div>
@@ -391,7 +396,7 @@ export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTa
             </>
           )}
 
-          {!loading && entityResults.length > 0 && (
+          {entityResults.length > 0 && (
             <>
               {(hasBoth || cmdHits.length > 0) && (
                 <div className="gsp-section-header" aria-hidden="true">Entities</div>
