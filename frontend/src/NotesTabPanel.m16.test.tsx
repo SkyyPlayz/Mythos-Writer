@@ -1,7 +1,9 @@
 // M16 (Beta 3): NotesTabPanel — note splits + right-panel Agent/Properties tabs.
-import { render, screen, fireEvent, within } from '@testing-library/react';
+// M9e (SKY-9826): agent-panel chat input placeholder + R11 master-AI gating.
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import NotesTabPanel, { type NotesTabPanelProps } from './NotesTabPanel';
+import { __resetAiEnabledForTests, setAiEnabled } from './hooks/useAiEnabled';
 
 vi.mock('./components/VaultBrowser', () => ({
   // SKY-9710: record newNoteRequestId so tests can assert the editor
@@ -20,7 +22,11 @@ vi.mock('./EntityBrowser', () => ({
 // right panel's Curator greeting / CONTINUITY FLAGS wiring can be asserted.
 vi.mock('./BrainstormPage', () => ({
   default: (props: Record<string, unknown>) => (
-    <div data-testid="brainstorm-page-mock" data-curator-greeting={String(!!props.curatorGreeting)} />
+    <div
+      data-testid="brainstorm-page-mock"
+      data-curator-greeting={String(!!props.curatorGreeting)}
+      data-input-placeholder={String(props.inputPlaceholder ?? '')}
+    />
   ),
 }));
 vi.mock('./ContinuityPanel', () => ({
@@ -66,6 +72,7 @@ const BASE_PROPS: NotesTabPanelProps = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetAiEnabledForTests();
 });
 
 describe('NotesTabPanel — M16 note splits', () => {
@@ -216,5 +223,46 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     render(<NotesTabPanel {...BASE_PROPS} onBrainstormCollapsedChange={onBrainstormCollapsedChange} />);
     fireEvent.click(screen.getByTestId('notes-brainstorm-collapse'));
     expect(onBrainstormCollapsedChange).toHaveBeenCalledWith(true);
+  });
+});
+
+// M9e (SKY-9826): notes-side agent panel chat input — prototype placeholder
+// (line 3221) with AI on; with the master switch off the M11b contract says
+// the agent panel (flags + chat) is gone and Properties is all that remains.
+describe('NotesTabPanel — M9e agent chat input + R11 master-AI gating', () => {
+  it("passes the prototype curator placeholder to the agent chat input", () => {
+    render(<NotesTabPanel {...BASE_PROPS} />);
+    expect(screen.getByTestId('brainstorm-page-mock')).toHaveAttribute(
+      'data-input-placeholder',
+      "Tell me about your world — I'll file it…",
+    );
+  });
+
+  it('AI off: tab strip, chat, and flags are gone; Properties content renders directly', () => {
+    setAiEnabled(false);
+    render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
+    // Prototype manual mode drops the whole strip — no lone Properties tab.
+    expect(screen.queryByRole('tablist', { name: 'Notes side panel' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notes-right-tab-agent')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notes-right-tab-props')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-page-mock')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();
+    expect(screen.getByTestId('note-properties-mock')).toBeInTheDocument();
+    expect(screen.getByTestId('backlinks-mock')).toBeInTheDocument();
+  });
+
+  it('toggling AI off while the Agent tab is active falls back to Properties, and back on restores it', () => {
+    render(<NotesTabPanel {...BASE_PROPS} />);
+    expect(screen.getByTestId('notes-right-tab-agent')).toHaveAttribute('aria-selected', 'true');
+
+    act(() => setAiEnabled(false));
+    expect(screen.queryByRole('tablist', { name: 'Notes side panel' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('brainstorm-page-mock')).not.toBeInTheDocument();
+    expect(screen.getByTestId('note-properties-mock')).toBeInTheDocument();
+
+    // The user's tab choice survives the round-trip (M11b: hidden, not reset).
+    act(() => setAiEnabled(true));
+    expect(screen.getByTestId('notes-right-tab-agent')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
   });
 });

@@ -16,6 +16,7 @@ import { makeNoteTab, upsertNoteTab } from './workspaceDocTabs';
 import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
 import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import type { Story, Scene, Chapter, WritingMode } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
@@ -197,6 +198,11 @@ export default function NotesTabPanel({
   const [activeNoteSplitTabId, setActiveNoteSplitTabId] = useState<string | null>(null);
   const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
   const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
+  // R11 (SKY-9826/M9e): master AI switch — with AI off the M11b contract says
+  // the notes-side agent panel (flags + chat) is gone entirely, so the right
+  // sidebar falls back to Properties without losing the user's tab choice.
+  const aiEnabled = useAiEnabled();
+  const effectiveRightTab = aiEnabled ? rightTab : 'props';
   // SKY-9784: drag-in-flight between the two Notes panes' own strips (mirrors
   // the shell's tabDragPayload/tabDragSourcePane for the Story split editor).
   const [noteTabDragPayload, setNoteTabDragPayload] = useState<WorkspaceTab | null>(null);
@@ -692,28 +698,33 @@ export default function NotesTabPanel({
                 {/* M16: Agent (default, Brainstorm chat + continuity flags) /
                     Properties (frontmatter props + backlinks + tags) tabs —
                     prototype nrTabs. */}
-                <div className="notes-right-tabs" role="tablist" aria-label="Notes side panel">
-                  <button
-                    role="tab"
-                    aria-selected={rightTab === 'agent'}
-                    className={`notes-right-tab${rightTab === 'agent' ? ' notes-right-tab--active' : ''}`}
-                    data-testid="notes-right-tab-agent"
-                    onClick={() => setRightTab('agent')}
-                    type="button"
-                  >
-                    Agent
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={rightTab === 'props'}
-                    className={`notes-right-tab${rightTab === 'props' ? ' notes-right-tab--active' : ''}`}
-                    data-testid="notes-right-tab-props"
-                    onClick={() => setRightTab('props')}
-                    type="button"
-                  >
-                    Properties
-                  </button>
-                </div>
+                {/* R11: with AI off the prototype drops the whole tab strip —
+                    the panel is Properties-only, so even a lone tab would be
+                    dead chrome (M11b "collapses cleanly, no dead bands"). */}
+                {aiEnabled && (
+                  <div className="notes-right-tabs" role="tablist" aria-label="Notes side panel">
+                    <button
+                      role="tab"
+                      aria-selected={effectiveRightTab === 'agent'}
+                      className={`notes-right-tab${effectiveRightTab === 'agent' ? ' notes-right-tab--active' : ''}`}
+                      data-testid="notes-right-tab-agent"
+                      onClick={() => setRightTab('agent')}
+                      type="button"
+                    >
+                      Agent
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={effectiveRightTab === 'props'}
+                      className={`notes-right-tab${effectiveRightTab === 'props' ? ' notes-right-tab--active' : ''}`}
+                      data-testid="notes-right-tab-props"
+                      onClick={() => setRightTab('props')}
+                      type="button"
+                    >
+                      Properties
+                    </button>
+                  </div>
+                )}
                 <button
                   className="notes-sidebar-collapse-btn"
                   aria-label="Collapse Brainstorm panel"
@@ -724,7 +735,7 @@ export default function NotesTabPanel({
                 </button>
               </div>
               <div className="notes-right-sidebar-content">
-                {rightTab === 'agent' ? (
+                {effectiveRightTab === 'agent' ? (
                   <div className="notes-agent-col">
                     {/* M16: continuity flags (3 actions) above the chat —
                         prototype "CONTINUITY FLAGS" then "CHAT" (HTML 2400+).
@@ -750,6 +761,7 @@ export default function NotesTabPanel({
                         activeScene={activeScene}
                         compact
                         curatorGreeting
+                        inputPlaceholder="Tell me about your world — I'll file it…"
                       />
                     </div>
                   </div>
