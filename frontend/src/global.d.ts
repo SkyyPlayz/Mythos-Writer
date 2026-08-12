@@ -595,13 +595,6 @@ interface AppSettings {
      */
     openAtDepth?: 'book';
   };
-  /**
-   * M3 (SKY-9021) rollout flag, OFF by default: create story → instantly
-   * writable (one-transaction scaffold, Full Book depth, caret in the empty
-   * scene). Absent/false keeps the pre-M3 flows. Removing this flag (and the
-   * legacy paths it guards) is part of the milestone's done-criteria.
-   */
-  instantCreateStory?: boolean;
   /** SKY-192: automatic wikilink linker. Absent = suggest mode. */
   autoLinker?: {
     mode: 'off' | 'suggest' | 'auto';

@@ -161,18 +161,17 @@ async function createStoryWithScenes(
   sceneTitle2: string,
   vaultDir: string,
 ): Promise<string> {
-  // Create story via VaultBrowser
+  // Create story via VaultBrowser. M3 instant-create: no prompt — story
+  // appears immediately as "Untitled Story" (single story in this fixture
+  // vault, so match positionally rather than by a title no create flow sets).
   await openVaultTab(page);
   await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-  await fillPrompt(page, storyTitle);
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: storyTitle }),
+    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
   ).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter
-  await page.locator('[data-testid="vb-story-vault"]')
-    .locator(`[aria-label="New chapter in ${storyTitle}"]`)
-    .click();
+  // Create chapter via the story's inline-add button (only story in this vault).
+  await page.locator('[data-testid="vb-story-vault"] .vb-inline-add').first().click();
   await fillPrompt(page, chapterTitle);
   await expect(
     page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: chapterTitle }),
@@ -206,12 +205,13 @@ async function createStoryWithScenes(
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 10_000 });
 
   // Wait for the 900ms manifest-save debounce, then read the story's path from disk.
-  // story.path is set by DesktopShell createStory as "stories/{uuid}".
+  // story.path is set by DesktopShell createStory as "stories/{uuid}". Only
+  // one story exists in this fixture vault, so grab it positionally — M3
+  // instant-create leaves the story titled "Untitled Story", not storyTitle.
   await page.waitForTimeout(1_200);
   const manifestPath = path.join(vaultDir, 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  const storyObj = (manifest.stories as Array<{ title: string; path: string }>)
-    .find((s) => s.title === storyTitle);
+  const storyObj = (manifest.stories as Array<{ title: string; path: string }>)[0];
   return storyObj?.path ?? '';
 }
 
@@ -476,8 +476,11 @@ test('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', 
   const sceneChip = page.locator('.opl-scene-chip').first();
   await expect(sceneChip).toBeVisible({ timeout: 6_000 });
 
-  // Verify chip text contains scene name
-  await expect(sceneChip).toContainText(/Opening Scene|Second Scene/);
+  // Verify chip text contains a scene name. The picker lists every scene in
+  // the story, including the "Untitled Scene" M3 instant-create scaffolds
+  // into "Chapter 1" alongside the two manually created scenes below.
+  const chipText = (await sceneChip.textContent()) ?? '';
+  expect(/Opening Scene|Second Scene|Untitled Scene/.test(chipText)).toBe(true);
 
   // Wait for save
   await page.waitForTimeout(600);

@@ -27,7 +27,6 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Two-Vault Chronicle';
 const CHAPTER_TITLE = 'Opening Rift';
 const SCENE_TITLE = 'Split Horizon';
 const PROSE = 'The vault split in two: manuscript and memory, story and lore.';
@@ -220,13 +219,13 @@ test('TC-VB-03: switching to Notes scope hides Story Vault panel', async () => {
 test('TC-VB-04: create story via VaultBrowser Story Vault panel, story row appears', async () => {
   await openVaultTab(page);
 
-  // New Story button lives in the Story Vault section header
+  // New Story button lives in the Story Vault section header.
+  // M3 instant-create: no prompt — story appears immediately as "Untitled Story".
   await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-  await fillPrompt(page, STORY_TITLE);
 
-  // Story title appears in the Story Vault panel
+  // Any story row in the panel confirms the create succeeded.
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE }),
+    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
   ).toBeVisible({ timeout: 8_000 });
 });
 
@@ -238,14 +237,14 @@ test('TC-VB-05: chapter + scene created via VaultBrowser; scene file in Story Va
   // Capture baseline before story write operations (notesVaultDir may already hold the TC-VB-06 seed)
   const notesCountBefore = findMdFiles(notesVaultDir).length;
 
-  // Story from TC-VB-04 must be present (single story auto-expands)
-  const storyNameEl = page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE });
+  // Story from TC-VB-04 must be present (single story auto-expands).
+  // M3 instant-create leaves it named "Untitled Story" — match positionally
+  // rather than by a title no create flow ever sets.
+  const storyNameEl = page.locator('[data-testid="vb-story-vault"] .vb-name').first();
   await expect(storyNameEl).toBeVisible({ timeout: 6_000 });
 
-  // Create chapter via the story's inline-add button
-  await page.locator('[data-testid="vb-story-vault"]')
-    .locator(`[aria-label="New chapter in ${STORY_TITLE}"]`)
-    .click();
+  // Create chapter via the story's inline-add button (only story in this vault).
+  await page.locator('[data-testid="vb-story-vault"] .vb-inline-add').first().click();
   await fillPrompt(page, CHAPTER_TITLE);
 
   await expect(

@@ -140,27 +140,15 @@ test('TC-01: app boots past onboarding into DesktopShell', async () => {
 
 // ─── TC-02: Write a scene ─────────────────────────────────────────────────────
 //
-// Creates a story → chapter → scene via the StoryNavigator, opens it in the
-// BlockEditor, types a sentence, and asserts the text is in the editor.
+// Creates a story via the StoryNavigator, opens the auto-scaffolded scene in
+// the BlockEditor, types a sentence, and asserts the text is in the editor.
 //
-// Selector drift fixed in SKY-14:
-//   - Chapter and scene "+" buttons are `.nav-inline-add` (not `.nav-add-btn`,
-//     which is the navigator-header story-add button only).
-//   - Story / chapter / scene creation now opens a custom `.prompt-modal`
-//     (Electron has no window.prompt support); the test must fill it before
-//     a row appears in the tree.
+// M3 (SKY-9021/SKY-9896): create-story is instant — one transaction scaffolds
+// the story + "Chapter 1" + an "Untitled Scene" and opens the editor; there is
+// no prompt modal to fill and no separate chapter/scene creation step.
 
-const STORY_TITLE = 'Smoke Story';
-const CHAPTER_TITLE = 'Smoke Chapter';
-const SCENE_TITLE = 'Smoke Scene';
-
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
+const CHAPTER_TITLE = 'Chapter 1';
+const SCENE_TITLE = 'Untitled Scene';
 
 test('TC-02: create story → chapter → scene and type text', async () => {
   // Ensure left rail is showing the Stories tab
@@ -169,26 +157,18 @@ test('TC-02: create story → chapter → scene and type text', async () => {
 
   // Create a new story (header "+" button)
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
-  await expect(storyRow).toContainText(STORY_TITLE);
-
-  // Add a chapter via the inline "+" inside the story row
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
+  await expect(storyRow).toContainText('Untitled Story');
 
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
   await expect(chapterRow).toContainText(CHAPTER_TITLE);
 
-  // Add a scene via the inline "+" inside the chapter row
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
-
   const sceneItem = page.locator('.nav-scene-row').first();
   await expect(sceneItem).toBeVisible({ timeout: 6_000 });
+  await expect(sceneItem).toContainText(SCENE_TITLE);
 
   // Click the scene to open it in the editor
   await sceneItem.click();

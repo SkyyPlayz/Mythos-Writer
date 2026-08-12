@@ -33,7 +33,6 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Inline Rename Test';
 const CHAPTER_TITLE = 'Chapter One';
 const SCENE_TITLE = 'Original Scene Name';
 const SCENE_RENAMED = 'Renamed Scene Title';
@@ -192,17 +191,15 @@ test('Setup: Create story, chapter, and scene', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
   await openVaultTab(page);
 
-  // Create story
+  // Create story. M3 instant-create: no prompt — story appears immediately
+  // as "Untitled Story" (single story in this vault, so match positionally).
   await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-  await fillPrompt(page, STORY_TITLE);
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE }),
+    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
   ).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter
-  await page.locator('[data-testid="vb-story-vault"]')
-    .locator(`[aria-label="New chapter in ${STORY_TITLE}"]`)
-    .click();
+  // Create chapter via the story's inline-add button (only story in this vault).
+  await page.locator('[data-testid="vb-story-vault"] .vb-inline-add').first().click();
   await fillPrompt(page, CHAPTER_TITLE);
   await expect(
     page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: CHAPTER_TITLE }),

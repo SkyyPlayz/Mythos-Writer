@@ -57,9 +57,6 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     // 'skip' keeps post-onboarding surfaces (Getting Started panel, template
     // CTA) out of the shell — M3 asserts nothing interposes before the caret.
     onboardingStartMode: 'skip',
-    // M3 (SKY-9021) rollout flag — this suite exercises the flag-ON behavior;
-    // absent/false keeps the pre-M3 flows (flag removal is part of M3 done).
-    instantCreateStory: true,
     agents: {
       writingAssistant: {
         enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30,

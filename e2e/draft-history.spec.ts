@@ -35,9 +35,11 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const STORY_TITLE = 'History Test Story';
-const CHAPTER_TITLE = 'History Chapter';
-const SCENE_TITLE = 'History Scene';
+// M3 (SKY-9021): create-story is instant — one transaction scaffolds the
+// story + "Chapter 1" + an "Untitled Scene", so these are the scaffold's
+// own names rather than titles typed into a since-removed prompt.
+const CHAPTER_TITLE = 'Chapter 1';
+const SCENE_TITLE = 'Untitled Scene';
 const PROSE_V1 = 'The first draft of this scene was written at dawn.';
 const PROSE_V2 = 'The second draft changed everything under a noon sun.';
 
@@ -99,13 +101,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
 
 async function selectAllEditorContent(pg: Page): Promise<void> {
   await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
@@ -170,26 +165,23 @@ test.beforeAll(async () => {
     if (isCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
   }
 
-  // Create story
+  // Create story. M3 instant-create: no prompt — row appears immediately.
+  // The same transaction scaffolds "Chapter 1" and an "Untitled Scene".
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
+  await expect(chapterRow).toContainText(CHAPTER_TITLE);
 
-  // Create scene
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await expect(sceneRow).toContainText(SCENE_TITLE);
 
-  // Wait for editor to be ready
+  // Instant-create opens at Full Book depth; click into the scene to reach
+  // the Scene-depth editor (.ProseMirror only mounts there).
+  await sceneRow.click();
   await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
 });
 

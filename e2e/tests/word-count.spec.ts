@@ -21,7 +21,6 @@ import {
 } from '@playwright/test';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Word Count Chronicle';
 const CHAPTER_TITLE = 'Opening Act';
 const SCENE_TITLE = 'First Scene';
 // 10 words — easily counted and verified
@@ -100,9 +99,11 @@ test.beforeAll(async () => {
   // Wait for the app shell to be ready
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // Create story → chapter → scene via the StoryNavigator (Stories tab is default)
+  // Create story → chapter → scene via the StoryNavigator (Stories tab is default).
+  // M3 instant-create: no prompt for the story itself — it scaffolds "Chapter 1"
+  // and an "Untitled Scene" automatically; the chapter/scene below are additional,
+  // distinctly-named siblings created via the still-prompt-based chapter/scene flow.
   await page.locator('[aria-label="New story"]').click();
-  await fillPrompt(page, STORY_TITLE);
 
   await page.locator(`[aria-label="Add chapter"]`).first().click();
   await fillPrompt(page, CHAPTER_TITLE);

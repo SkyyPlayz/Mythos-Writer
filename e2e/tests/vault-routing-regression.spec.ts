@@ -44,8 +44,7 @@ const NOTES_SEED_DIR = 'characters';
 const NOTES_SEED_FILE = 'alice.md';           // seeded in notesVaultDir
 
 const NEW_NOTE_NAME = 'my-regression-note';  // TC-03
-const STORY_TITLE = 'SKY84 Chronicle';        // TC-04
-const CHAPTER_TITLE = 'Routing Chapter';
+const CHAPTER_TITLE = 'Routing Chapter';       // TC-04
 const SCENE_TITLE = 'Separation Scene';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -303,20 +302,21 @@ test.describe('populated vaults: routing regression', () => {
     const storyPanel = page.locator('[data-testid="vb-story-vault"]');
     await expect(storyPanel).toBeVisible({ timeout: 6_000 });
 
+    // M3 instant-create: no prompt — story appears immediately as
+    // "Untitled Story" (single story in this vault, so match positionally).
     await storyPanel.locator('[aria-label="New Story"]').click();
-    await fillPrompt(page, STORY_TITLE);
 
     await expect(
-      storyPanel.locator('.vb-name', { hasText: STORY_TITLE }),
+      storyPanel.locator('.vb-name').first(),
     ).toBeVisible({ timeout: 8_000 });
 
     // Ensure the story is expanded and create a chapter. The Story Vault may
     // auto-expand the first story, so do not blindly toggle it closed.
-    const storyToggle = storyPanel.locator('.vb-tree-toggle', { hasText: STORY_TITLE });
+    const storyToggle = storyPanel.locator('.vb-tree-toggle').first();
     if ((await storyToggle.getAttribute('aria-expanded')) !== 'true') {
       await storyToggle.click();
     }
-    await storyPanel.locator(`[aria-label="New chapter in ${STORY_TITLE}"]`).click();
+    await storyPanel.locator('.vb-inline-add').first().click();
     await fillPrompt(page, CHAPTER_TITLE);
 
     await expect(
