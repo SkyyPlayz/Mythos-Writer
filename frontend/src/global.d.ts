@@ -1585,10 +1585,11 @@ interface Window {
 
     // SKY-1684 / SKY-1685: Archive Agent v1 — continuity scan
     archiveScanContinuity: (sceneId: string, text: string, scope?: string) => Promise<void>;
-    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean }>;
+    archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' }>;
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;
+        scope: 'story_vault' | 'vault_internal' | 'timeline';
         category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
         severity: 'critical' | 'high' | 'medium' | 'low';
         manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
@@ -1606,6 +1607,7 @@ interface Window {
       sceneId: string;
       items: Array<{
         id: string;
+        scope: 'story_vault' | 'vault_internal' | 'timeline';
         category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
         severity: 'critical' | 'high' | 'medium' | 'low';
         manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };

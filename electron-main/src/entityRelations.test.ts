@@ -136,6 +136,7 @@ function makeIndex(entities: Array<{ id: string; name: string; type: string; ali
       name: e.name,
       type: e.type as 'character' | 'location' | 'item' | 'concept' | 'other',
       aliases: e.aliases ?? [],
+      path: 'entities/entity.md',
       properties: {},
       prose: '',
     })),

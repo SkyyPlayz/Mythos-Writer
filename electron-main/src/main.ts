@@ -481,6 +481,7 @@ import {
   shouldReSurface,
   dbRowToItem,
   itemToDbRow,
+  applyExcerptPatch,
   DEFAULT_SCAN_BUDGET_TOKENS,
 } from './archiveContinuityEngine.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
@@ -4266,11 +4267,11 @@ const handlers: IpcHandlers = {
     if (!suggestion) {
       const continuityRow = getContinuityIssue(payload.suggestionId);
       if (continuityRow) {
-        resolveContinuityItemById(
+        const outcome = resolveContinuityItemById(
           payload.suggestionId,
           confirmActionToResolution(payload.action),
         );
-        return { ok: true, auditId };
+        return { ok: outcome.ok, auditId };
       }
       throw new Error(`Suggestion not found: ${payload.suggestionId}`);
     }
@@ -9066,9 +9067,16 @@ async function runArchiveContScan(
   }
 
   const createdAt = new Date().toISOString();
-  // Use the vault root as a placeholder notePath; real line resolution is renderer-side.
-  const vaultNotePath = getVaultRoot();
-  const parsed = parseScanResponse(text, sceneId, vaultNotePath, createdAt);
+  // M9d: anchor each finding to its entity's real note path so "Edit notes to
+  // match" can patch the note. Unknown entity ids fall back to '' — the
+  // resolve handler reports note_not_found instead of guessing.
+  const entityPaths = new Map(getArchiveIndex()?.entities.map((e) => [e.id, e.path]) ?? []);
+  const parsed = parseScanResponse(
+    text,
+    sceneId,
+    (entityId) => entityPaths.get(entityId) ?? '',
+    createdAt,
+  );
 
   // Beta 3 M23: dedupe against existing open/ignored rows so re-scans of an
   // unchanged scene don't stack duplicate flags (and therefore duplicate
@@ -9261,12 +9269,67 @@ function resolveContinuityItemById(
   itemId: string,
   action: import('./ipc.js').ResolutionAction,
   note?: string,
-): void {
+): import('./ipc.js').ArchiveResolveContinuityResponse {
   const row = getContinuityIssue(itemId);
   if (!row) throw new Error(`Continuity issue not found: ${itemId}`);
 
   const now = new Date().toISOString();
   const newStatus = action === 'ignore' ? 'ignored' : 'resolved';
+  let changedFrom: string | null = null;
+  let changedTo: string | null = null;
+
+  // M9d (SKY-9825): the actions do what they say. Side effects run BEFORE the
+  // status flip so a failed edit leaves the flag open for the author to retry.
+  if (action === 'match_archive_to_story') {
+    // The flagged note lives in the Notes Vault (Continuity Peek entities) or
+    // the Story Vault (manifest entity notes, where scans index from) — try
+    // both roots, patching wherever the note actually is.
+    let root: string | null = null;
+    let content = '';
+    for (const candidateRoot of [getNotesVaultRoot(), getVaultRoot()]) {
+      try {
+        safeVaultIpcJoin(candidateRoot, row.vault_note_path, true);
+        content = readVaultFileWithRetry(candidateRoot, row.vault_note_path).content;
+        root = candidateRoot;
+        break;
+      } catch { /* not in this root — try the next */ }
+    }
+    if (root === null) return { ok: false, reason: 'note_not_found' };
+    const patched = applyExcerptPatch(content, row.vault_excerpt, row.proposed_match_archive);
+    if (patched === null) return { ok: false, reason: 'excerpt_not_found' };
+    writeVaultFileAtomic(root, row.vault_note_path, patched);
+    changedFrom = row.vault_excerpt;
+    changedTo = row.proposed_match_archive;
+  } else if (action === 'suggest_story_change') {
+    // Draft the story change as an archive suggestion — it lands in the
+    // unified suggestions inbox for the author to review. `note` carries the
+    // author's "edit before applying" text when they customized the draft.
+    const suggestedText = note?.trim() || row.proposed_suggest_story;
+    changedFrom = row.manuscript_excerpt;
+    changedTo = suggestedText;
+    upsertSuggestion({
+      id: crypto.randomUUID(),
+      source_agent: 'archive',
+      confidence: 1,
+      rationale: suggestedText,
+      target_kind: 'manuscript',
+      target_path: row.manuscript_scene_id,
+      target_anchor: row.manuscript_excerpt,
+      payload_json: JSON.stringify({
+        kind: 'continuity_story_change',
+        continuityItemId: itemId,
+        manuscriptExcerpt: row.manuscript_excerpt,
+        suggestedText,
+      }),
+      status: 'proposed',
+      created_at: now,
+      applied_at: null,
+      applied_run_id: null,
+      budget_exceeded: 0,
+      category: 'other',
+    });
+  }
+
   updateContinuityIssueStatus(itemId, newStatus, now, action);
 
   // Audit log entry.
@@ -9279,8 +9342,8 @@ function resolveContinuityItemById(
       target_path: action === 'match_archive_to_story' ? row.vault_note_path
         : action === 'suggest_story_change' ? row.manuscript_scene_id
         : null,
-      changed_from: null,
-      changed_to: null,
+      changed_from: changedFrom,
+      changed_to: changedTo,
       scene_id: row.manuscript_scene_id,
       reason: note ?? null,
       created_at: now,
@@ -9297,6 +9360,8 @@ function resolveContinuityItemById(
       } satisfies import('./ipc.js').ArchiveContItemResolvedEvent);
     }
   });
+
+  return { ok: true };
 }
 
 function registerArchiveContinuityHandlers(): void {
@@ -9322,12 +9387,10 @@ function registerArchiveContinuityHandlers(): void {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       const { itemId, action, note } = payload;
 
-      // For match_archive_to_story and suggest_story_change:
-      // Actual file patching is deferred to the renderer (diff preview + consent modal).
-      // This only updates the item status + writes the audit log (AC-CC-05/06 partial).
-      resolveContinuityItemById(itemId, action, note);
-
-      return { ok: true };
+      // M9d (SKY-9825): the actions do what they say — match patches the vault
+      // note, suggest drafts an archive suggestion, ignore hides the flag.
+      // The renderer's diff preview + consent modal run before this call.
+      return resolveContinuityItemById(itemId, action, note);
     }),
   );
 

@@ -789,6 +789,26 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 28');
   }
+
+  if (currentVersion < 29) {
+    // M9d (SKY-9825): continuity flag scope tag (story_vault / vault_internal /
+    // timeline). Column guard matches the v24 table guard — E2E fixtures seed
+    // continuity_issues at user_version 0, sometimes already with the column.
+    const hasContinuity29 = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='continuity_issues'"
+    ).get();
+    if (hasContinuity29) {
+      const hasScopeCol = db.prepare(
+        "SELECT 1 FROM pragma_table_info('continuity_issues') WHERE name='scope'"
+      ).get();
+      if (!hasScopeCol) {
+        db.exec(
+          "ALTER TABLE continuity_issues ADD COLUMN scope TEXT NOT NULL DEFAULT 'story_vault'"
+        );
+      }
+    }
+    db.exec('PRAGMA user_version = 29');
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -2065,9 +2085,14 @@ export type ContinuityCategory =
 
 export type ContinuitySeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ContinuityIssueStatus = 'open' | 'resolved' | 'ignored';
+/** M9d: card scope tag — which two sources the flag says disagree. */
+export type ContinuityIssueScope = 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface DbContinuityIssue {
   id: string;
+  /** Nullable in practice for rows written before v29 — dbRowToItem defaults
+   *  them to 'story_vault' (every pre-v29 flag is manuscript ↔ vault). */
+  scope?: ContinuityIssueScope | null;
   category: ContinuityCategory;
   severity: ContinuitySeverity;
   manuscript_scene_id: string;
@@ -2089,15 +2114,15 @@ export function insertContinuityIssue(issue: DbContinuityIssue): void {
   getDb()
     .prepare(
       `INSERT INTO continuity_issues
-         (id, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
+         (id, scope, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
           vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
           proposed_suggest_story, status, resolved_at, resolved_action, created_at)
        VALUES
-         (@id, @category, @severity, @manuscript_scene_id, @manuscript_offset, @manuscript_excerpt,
+         (@id, @scope, @category, @severity, @manuscript_scene_id, @manuscript_offset, @manuscript_excerpt,
           @vault_note_path, @vault_line, @vault_excerpt, @rationale, @proposed_match_archive,
           @proposed_suggest_story, @status, @resolved_at, @resolved_action, @created_at)`
     )
-    .run(issue as unknown as Record<string, SQLInputValue>);
+    .run({ ...issue, scope: issue.scope ?? 'story_vault' } as unknown as Record<string, SQLInputValue>);
 }
 
 export function listContinuityIssues(status?: ContinuityIssueStatus): DbContinuityIssue[] {

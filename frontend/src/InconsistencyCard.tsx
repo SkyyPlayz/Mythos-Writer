@@ -3,8 +3,12 @@ import './InconsistencyCard.css';
 
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
+/** M9d (SKY-9825): which two sources the flag says disagree. */
+export type ContinuityScope = 'story_vault' | 'vault_internal' | 'timeline';
+
 export interface InconsistencyItem {
   id: string;
+  scope: ContinuityScope;
   category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
   severity: 'critical' | 'high' | 'medium' | 'low';
   manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
@@ -37,6 +41,13 @@ const CATEGORY_LABEL: Record<InconsistencyItem['category'], string> = {
   factual_contradiction: 'Factual Contradiction',
 };
 
+/** M9d: scope tag copy — exact prototype labels (PLAN.md §M9 item 4). */
+const SCOPE_LABEL: Record<ContinuityScope, string> = {
+  story_vault: 'Story ↔ Vault',
+  vault_internal: 'Vault internal',
+  timeline: 'Timeline',
+};
+
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen - 1) + '…';
@@ -45,7 +56,9 @@ function truncate(text: string, maxLen: number): string {
 export interface InconsistencyCardProps {
   item: InconsistencyItem;
   archiveStoryEditConsentGiven: boolean;
-  onResolve: (id: string, action: ResolutionAction) => Promise<void>;
+  /** `note` carries the author's edited suggestion text (M9d) — the drafted
+   *  story change that lands in the suggestions inbox. */
+  onResolve: (id: string, action: ResolutionAction, note?: string) => Promise<void>;
   onConsentGranted: () => void;
 }
 
@@ -122,10 +135,15 @@ export function InconsistencyCard({
   }, [dontShowAgain, item.proposedResolution.suggestStoryChange, onConsentGranted]);
 
   const handleSuggestConfirm = useCallback(async () => {
-    setExpand((prev) => prev ? { ...prev, busy: true } : prev);
-    await onResolve(item.id, 'suggest_story_change');
+    if (!expand) return;
+    // The author's edited draft (or the untouched proposal) is the story
+    // change that gets suggested — pass it through so the drafted suggestion
+    // says what the author approved (M9d).
+    const noteText = expand.editMode ? expand.editValue : expand.suggestText;
+    setExpand({ ...expand, busy: true });
+    await onResolve(item.id, 'suggest_story_change', noteText);
     setExpand(null);
-  }, [item.id, onResolve]);
+  }, [expand, item.id, onResolve]);
 
   const handleCancelExpand = useCallback(() => {
     setExpand(null);
@@ -202,6 +220,9 @@ export function InconsistencyCard({
             {SEVERITY_LABEL[item.severity]}
           </span>
           <span className="ic-category">{CATEGORY_LABEL[item.category]}</span>
+          <span className="ic-scope-tag" data-testid="ic-scope-tag">
+            {SCOPE_LABEL[item.scope]}
+          </span>
           <button
             type="button"
             className="ic-dismiss-btn"

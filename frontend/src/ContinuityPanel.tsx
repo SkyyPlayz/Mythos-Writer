@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollText, CircleCheck } from 'lucide-react';
 import { useAgentActivity } from './agents/agentActivity';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import type { Scene } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
@@ -91,10 +92,16 @@ export default function ContinuityPanel({
 }: ContinuityPanelProps) {
   const [panelState, setPanelState] = useState<PanelState>('loading');
   const [items, setItems] = useState<InconsistencyItem[]>([]);
+  // M11a/M11b: continuity flags are an AI surface — the whole panel hides
+  // when the master AI toggle is off (nothing is deleted; flags return with
+  // the toggle).
+  const aiEnabled = useAiEnabled();
   // Beta 3 M22: archive scans light the workspace tab strip's agents chip.
   useAgentActivity(panelState === 'scanning');
   const [lastTokenUsed, setLastTokenUsed] = useState<number | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
+  // M9d: visible failure line when a flag action couldn't do what it says.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [footerExpanded, setFooterExpanded] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<GroupKey>>(new Set(['low', 'ignored']));
   const onCountChangeRef = useRef(onCountChange);
@@ -116,6 +123,7 @@ export default function ContinuityPanel({
 
     let cancelled = false;
     setPanelState('loading');
+    setActionError(null);
 
     (async () => {
       try {
@@ -182,9 +190,10 @@ export default function ContinuityPanel({
     };
   }, [enabled]);
 
-  const handleResolve = useCallback(async (id: string, action: ResolutionAction) => {
+  const handleResolve = useCallback(async (id: string, action: ResolutionAction, note?: string) => {
     let previousItem: InconsistencyItem | undefined;
     const resolvedAt = new Date().toISOString();
+    setActionError(null);
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
@@ -198,13 +207,27 @@ export default function ContinuityPanel({
       }),
     );
 
-    try {
-      await window.api.archiveResolveContinuity(id, action);
-    } catch {
+    const revert = () => {
       if (previousItem) {
         const restored = previousItem as InconsistencyItem;
         setItems((prev) => prev.map((item) => (item.id === id ? restored : item)));
       }
+    };
+
+    try {
+      const result = await window.api.archiveResolveContinuity(id, action, note);
+      if (result && result.ok === false) {
+        // M9d: the action couldn't do what it says (note gone / flagged text
+        // changed since the scan) — keep the flag open and say why.
+        revert();
+        const msg = result.reason === 'excerpt_not_found'
+          ? 'Couldn’t update the note — the flagged text has changed since the scan. Scan again to refresh this flag.'
+          : 'Couldn’t update the note — it no longer exists in your vault.';
+        setActionError(msg);
+        setStatusMsg(msg);
+      }
+    } catch {
+      revert();
     }
   }, []);
 
@@ -241,6 +264,10 @@ export default function ContinuityPanel({
       title="Continuity"
     />
   );
+
+  // M11b surface contract: master AI off → continuity flags are gone, not
+  // disabled-with-a-message. The stored flags stay intact for when it returns.
+  if (!aiEnabled) return null;
 
   if (!enabled) {
     return (
@@ -329,6 +356,12 @@ export default function ContinuityPanel({
       {panelState === 'error_vault' && (
         <div className="cp-banner cp-banner--error" role="alert">
           Could not read vault.
+        </div>
+      )}
+
+      {actionError !== null && (
+        <div className="cp-banner cp-banner--error" role="alert" data-testid="cp-action-error">
+          {actionError}
         </div>
       )}
 

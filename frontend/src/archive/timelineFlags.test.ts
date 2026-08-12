@@ -7,6 +7,7 @@ import { continuityItemsToTimelineFlags } from './timelineFlags';
 function mkItem(overrides: Partial<InconsistencyItem> = {}): InconsistencyItem {
   return {
     id: 'ic-1',
+    scope: 'story_vault',
     category: 'character_attribute_drift',
     severity: 'high',
     manuscriptAnchor: { sceneId: 'sc-1', offset: 42, excerpt: 'her blonde hair caught the light' },

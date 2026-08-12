@@ -669,7 +669,7 @@ describe('world DB migration — entity tables', () => {
   it('sets user_version to 27 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(28);
+    expect(row.user_version).toBe(29);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -716,7 +716,7 @@ describe('world DB migration — entity tables', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(28);
+    expect(row.user_version).toBe(29);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -751,7 +751,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(28);
+    expect(row.user_version).toBe(29);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -1023,7 +1023,7 @@ describe('scene_snapshots / SKY-1611', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(28);
+    expect(row.user_version).toBe(29);
   });
 });
 
@@ -1068,7 +1068,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(28);
+    expect(row.user_version).toBe(29);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
@@ -1084,6 +1084,45 @@ describe('continuity_issues table', () => {
     expect(fetched!.severity).toBe('high');
     expect(fetched!.manuscript_scene_id).toBe('scene-1');
     expect(fetched!.status).toBe('open');
+    // M9d: scope defaults to story_vault when the caller does not set it.
+    expect(fetched!.scope).toBe('story_vault');
+  });
+
+  it('scope (M9d): persists vault_internal and timeline scopes', () => {
+    for (const scope of ['vault_internal', 'timeline'] as const) {
+      const issue = makeIssue({ id: crypto.randomUUID(), scope });
+      insertContinuityIssue(issue);
+      expect(getContinuityIssue(issue.id)!.scope).toBe(scope);
+    }
+  });
+
+  it('scope (M9d): v29 migration backfills pre-existing rows to story_vault', () => {
+    // Simulate a pre-v29 DB: drop the column by recreating the table without it.
+    closeDb();
+    const raw = openDb(tmpDir);
+    raw.exec(`
+      DROP TABLE continuity_issues;
+      CREATE TABLE continuity_issues (
+        id TEXT PRIMARY KEY, category TEXT NOT NULL, severity TEXT NOT NULL,
+        manuscript_scene_id TEXT NOT NULL, manuscript_offset INTEGER NOT NULL,
+        manuscript_excerpt TEXT NOT NULL, vault_note_path TEXT NOT NULL,
+        vault_line INTEGER NOT NULL, vault_excerpt TEXT NOT NULL, rationale TEXT NOT NULL,
+        proposed_match_archive TEXT NOT NULL, proposed_suggest_story TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open', resolved_at TEXT, resolved_action TEXT,
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO continuity_issues
+        (id, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
+         vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
+         proposed_suggest_story, status, created_at)
+      VALUES
+        ('pre-v29', 'factual_contradiction', 'high', 'scene-1', 0, 'm', 'n.md', 1, 'v',
+         'r', 'p1', 'p2', 'open', '2026-01-01T00:00:00.000Z');
+      PRAGMA user_version = 28;
+    `);
+    closeDb();
+    openDb(tmpDir);
+    expect(getContinuityIssue('pre-v29')!.scope).toBe('story_vault');
   });
 
   it('list by status: returns only matching rows', () => {

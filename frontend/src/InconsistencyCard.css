@@ -84,6 +84,17 @@
   white-space: nowrap;
 }
 
+/* M9d: scope tag — the prototype's small pink source label (`Story ↔ Vault` /
+   `Vault internal` / `Timeline`), sharing the CONTINUITY FLAGS badge tokens. */
+.ic-scope-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--severity-critical-text, #ff9db4);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .ic-dismiss-btn {
   margin-left: auto;
   width: 20px;

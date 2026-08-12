@@ -28,9 +28,11 @@ interface ContinuitySeed {
   id: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   status?: 'open' | 'resolved' | 'ignored';
+  scope?: 'story_vault' | 'vault_internal' | 'timeline';
   manuscriptExcerpt?: string;
   vaultExcerpt?: string;
   rationale?: string;
+  proposedMatchArchive?: string;
 }
 
 interface Fixture {
@@ -148,7 +150,8 @@ function createContinuitySchema(db: DatabaseSync): void {
       status                   TEXT NOT NULL,
       resolved_at              TEXT,
       resolved_action          TEXT,
-      created_at               TEXT NOT NULL
+      created_at               TEXT NOT NULL,
+      scope                    TEXT NOT NULL DEFAULT 'story_vault'
     );
     CREATE TABLE IF NOT EXISTS archive_audit_log (
       id           TEXT PRIMARY KEY,
@@ -173,22 +176,24 @@ function seedContinuityIssues(vaultDir: string, issues: ContinuitySeed[]): void 
     createContinuitySchema(db);
     const insert = db.prepare(`
       INSERT INTO continuity_issues
-        (id, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
+        (id, scope, category, severity, manuscript_scene_id, manuscript_offset, manuscript_excerpt,
          vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
          proposed_suggest_story, status, resolved_at, resolved_action, created_at)
       VALUES
-        (?, 'character_attribute_drift', ?, ?, 12, ?, 'Universes/Aster/Characters/Mara.md',
-         8, ?, ?, 'Update Mara note to say the bridge appears at night.',
+        (?, ?, 'character_attribute_drift', ?, ?, 12, ?, 'Universes/Aster/Characters/Mara.md',
+         8, ?, ?, ?,
          'Change the manuscript to match the daylight-only bridge note.', ?, NULL, NULL, ?)
     `);
     for (const issue of issues) {
       insert.run(
         issue.id,
+        issue.scope ?? 'story_vault',
         issue.severity,
         SCENE_ID,
         issue.manuscriptExcerpt ?? 'Glass Bridge under twin moons',
         issue.vaultExcerpt ?? 'Glass Bridge only appears in daylight',
         issue.rationale ?? 'The manuscript places Mara on the Glass Bridge at night, but the vault says it only appears in daylight.',
+        issue.proposedMatchArchive ?? 'Update Mara note to say the bridge appears at night.',
         issue.status ?? 'open',
         NOW,
       );
@@ -196,6 +201,26 @@ function seedContinuityIssues(vaultDir: string, issues: ContinuitySeed[]): void 
   } finally {
     db.close();
   }
+}
+
+/** M9d (SKY-9825): the seeded conflict fixture's vault side — a real note in
+ *  the Notes Vault whose text contradicts the scene, at the exact path the
+ *  seeded flags anchor to. "Edit notes to match" patches this file. */
+const MARA_NOTE_REL = path.join('Universes', 'Aster', 'Characters', 'Mara.md');
+function seedNotesVault(notesVaultDir: string): void {
+  const notePath = path.join(notesVaultDir, MARA_NOTE_REL);
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  fs.writeFileSync(notePath, [
+    '---',
+    'name: Mara',
+    'type: character',
+    '---',
+    '',
+    '# Mara',
+    '',
+    'Mara keeps to the Upper Terraces after dusk.',
+    'The Glass Bridge only appears in daylight, so she crosses before the bells.',
+  ].join('\n'));
 }
 
 function readContinuityStatus(vaultDir: string, id: string): string | undefined {
@@ -214,6 +239,7 @@ function createFixture(issues: ContinuitySeed[] = []): Fixture {
   const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cont-panel-notes-'));
   seedUserData(userData, vaultDir, notesVaultDir);
   seedVault(vaultDir);
+  seedNotesVault(notesVaultDir);
   seedContinuityIssues(vaultDir, issues);
   return { userData, vaultDir, notesVaultDir };
 }
@@ -391,6 +417,132 @@ test('TC-CP-04: flag rationale renders with the dyslexia-conformance spacing bun
         wordSpacingRatio: round2((parseFloat(styles.wordSpacing) || 0) / fontSize),
       };
     })).toEqual({ lineHeightRatio: 1.6, letterSpacingRatio: 0.01, wordSpacingRatio: 0.08 });
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+// ─── M9d (SKY-9825): rich cards + three working actions against the seeded ───
+// ─── conflict fixture. DB assertions go through the app's own IPC          ───
+// ─── (page.evaluate) — no external SQLite reads, no WAL/SIGKILL races.     ───
+
+test('TC-CP-05: seeded flags render prototype scope tags (Story ↔ Vault / Vault internal / Timeline)', async () => {
+  const fixture = createFixture([
+    { id: 'inc-scope-sv', severity: 'high', scope: 'story_vault' },
+    { id: 'inc-scope-vi', severity: 'high', scope: 'vault_internal',
+      manuscriptExcerpt: 'Founded 312 AG', vaultExcerpt: 'founding: 298 AG',
+      rationale: 'Two vault notes disagree on the founding date.' },
+    { id: 'inc-scope-tl', severity: 'high', scope: 'timeline',
+      manuscriptExcerpt: 'three days later', vaultExcerpt: 'the night BEFORE the descent',
+      rationale: 'Chapter opening contradicts the timeline ordering.' },
+  ]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const sidebar = opened.page.getByTestId('global-right-sidebar');
+    const tags = sidebar.getByTestId('ic-scope-tag');
+    await expect(tags).toHaveCount(3, { timeout: 12_000 });
+    await expect(sidebar.getByText('Story ↔ Vault')).toBeVisible();
+    await expect(sidebar.getByText('Vault internal')).toBeVisible();
+    await expect(sidebar.getByText('Timeline', { exact: true })).toBeVisible();
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-CP-06: "Edit notes to match" patches the conflicting note on disk', async () => {
+  const fixture = createFixture([{
+    id: 'inc-edit-notes',
+    severity: 'high',
+    proposedMatchArchive: 'The Glass Bridge appears at night under the twin moons',
+  }]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+    const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
+    await expect(card).toBeVisible({ timeout: 12_000 });
+
+    await card.getByRole('button', { name: /match archive to story/i }).click();
+    await expect(sidebar.getByText('Proposed vault change')).toBeVisible();
+    await card.getByRole('button', { name: /apply vault change/i }).click();
+
+    // The action did what it says: the note file itself changed.
+    const notePath = path.join(fixture.notesVaultDir, MARA_NOTE_REL);
+    await expect.poll(() => fs.readFileSync(notePath, 'utf-8'), { timeout: 8_000 })
+      .toContain('The Glass Bridge appears at night under the twin moons');
+    expect(fs.readFileSync(notePath, 'utf-8')).not.toContain('Glass Bridge only appears in daylight');
+    // Frontmatter and unrelated lines survive the patch.
+    expect(fs.readFileSync(notePath, 'utf-8')).toContain('Mara keeps to the Upper Terraces after dusk.');
+
+    await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeHidden({ timeout: 8_000 });
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-CP-07: "Suggest story change" drafts an archive suggestion carrying the author-edited text', async () => {
+  const fixture = createFixture([{ id: 'inc-suggest', severity: 'high' }]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+    const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
+    await expect(card).toBeVisible({ timeout: 12_000 });
+
+    await card.getByRole('button', { name: /suggest story change/i }).click();
+    await expect(sidebar.getByText('Suggested manuscript change')).toBeVisible();
+    await card.getByRole('button', { name: /edit before applying/i }).click();
+    const edited = 'Mara waits for the dawn bells before she crosses the Glass Bridge.';
+    await card.getByRole('textbox', { name: /edit suggested manuscript change/i }).fill(edited);
+    await card.getByRole('button', { name: /apply suggested edit/i }).click();
+
+    // The drafted story change landed as a real archive suggestion (asked
+    // through the app's own IPC — the same store the suggestions inbox reads).
+    await expect.poll(async () => {
+      const res = await page.evaluate(() =>
+        (window as unknown as { api: { suggestionsList: (s?: string, a?: string) => Promise<{ suggestions: Array<{ source_agent: string; rationale: string }> }> } })
+          .api.suggestionsList('proposed', 'archive'),
+      );
+      return res.suggestions.map((sg) => sg.rationale);
+    }, { timeout: 8_000 }).toContain(edited);
+
+    await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeHidden({ timeout: 8_000 });
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-CP-08: "Ignore" hides the flag and persists ignored status', async () => {
+  const fixture = createFixture([{ id: 'inc-ignore', severity: 'high' }]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+    const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
+    await expect(card).toBeVisible({ timeout: 12_000 });
+
+    await card.getByRole('button', { name: /^Ignore —/ }).click();
+    await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeHidden({ timeout: 8_000 });
+
+    await expect.poll(async () => {
+      const res = await page.evaluate(() =>
+        (window as unknown as { api: { archiveListContinuity: (o?: { filter?: { status?: string } }) => Promise<{ items: Array<{ id: string; status: string }> }> } })
+          .api.archiveListContinuity({ filter: { status: 'ignored' } }),
+      );
+      return res.items.map((it) => it.id);
+    }, { timeout: 8_000 }).toContain('inc-ignore');
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

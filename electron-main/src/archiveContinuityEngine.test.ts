@@ -6,8 +6,12 @@ import {
   levenshteinDistance,
   shouldReSurface,
   estimateTokens,
+  applyExcerptPatch,
+  dbRowToItem,
+  itemToDbRow,
   DEFAULT_SCAN_BUDGET_TOKENS,
 } from './archiveContinuityEngine.js';
+import type { DbContinuityIssue } from './db.js';
 import type { ArchiveIndex } from './archiveAgent.js';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
@@ -22,6 +26,7 @@ function makeEntity(overrides: Partial<ArchiveIndex['entities'][0]> = {}): Archi
     name: 'Elara',
     type: 'character',
     aliases: [],
+    path: 'entities/ent-1.md',
     properties: { hair: 'blonde' },
     prose: 'Elara is a brave hero with blonde hair.',
     ...overrides,
@@ -232,6 +237,115 @@ describe('parseScanResponse', () => {
 });
 
 // ─── §4: Levenshtein distance ────────────────────────────────────────────────
+
+describe('applyExcerptPatch (M9d — "Edit notes to match" does what it says)', () => {
+  const NOTE = [
+    '---',
+    'name: The Sunken Gate',
+    '---',
+    '',
+    'The inner passage opens only at low tide.',
+    'Its keystone bears the mark of the Nine Bells.',
+  ].join('\n');
+
+  it('replaces an exact excerpt with the proposed text', () => {
+    const patched = applyExcerptPatch(
+      NOTE,
+      'opens only at low tide',
+      'opens at high tide',
+    );
+    expect(patched).toContain('The inner passage opens at high tide.');
+    expect(patched).not.toContain('low tide');
+  });
+
+  it('tolerates whitespace jitter between the excerpt and the note', () => {
+    const patched = applyExcerptPatch(
+      NOTE,
+      'opens  only\nat low tide',
+      'opens at high tide',
+    );
+    expect(patched).toContain('The inner passage opens at high tide.');
+  });
+
+  it('returns null when the excerpt is no longer in the note', () => {
+    expect(applyExcerptPatch(NOTE, 'opens only at midnight', 'x')).toBeNull();
+  });
+
+  it('returns null for an empty excerpt', () => {
+    expect(applyExcerptPatch(NOTE, '   ', 'x')).toBeNull();
+  });
+
+  it('replaces only the first occurrence', () => {
+    const content = 'tide rule. tide rule.';
+    expect(applyExcerptPatch(content, 'tide rule', 'TIDE LAW')).toBe(
+      'TIDE LAW. tide rule.',
+    );
+  });
+
+  it('treats regex metacharacters in the excerpt literally', () => {
+    const content = 'Founded in 312 AG (disputed).';
+    expect(applyExcerptPatch(content, '312 AG (disputed)', '298 AG')).toBe(
+      'Founded in 298 AG.',
+    );
+  });
+});
+
+describe('continuity scope (M9d)', () => {
+  const baseRow: DbContinuityIssue = {
+    id: 'row-1',
+    category: 'factual_contradiction',
+    severity: 'high',
+    manuscript_scene_id: 'scene-1',
+    manuscript_offset: 4,
+    manuscript_excerpt: 'high tide',
+    vault_note_path: 'Universes/Aster/The Sunken Gate.md',
+    vault_line: 5,
+    vault_excerpt: 'low tide',
+    rationale: 'Tide rule conflict.',
+    proposed_match_archive: 'opens at high tide',
+    proposed_suggest_story: 'enter at low tide',
+    status: 'open',
+    resolved_at: null,
+    resolved_action: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('dbRowToItem defaults pre-v29 rows (no scope column) to story_vault', () => {
+    expect(dbRowToItem(baseRow).scope).toBe('story_vault');
+    expect(dbRowToItem({ ...baseRow, scope: null }).scope).toBe('story_vault');
+  });
+
+  it('dbRowToItem and itemToDbRow round-trip every scope', () => {
+    for (const scope of ['story_vault', 'vault_internal', 'timeline'] as const) {
+      const item = dbRowToItem({ ...baseRow, scope });
+      expect(item.scope).toBe(scope);
+      expect(itemToDbRow(item).scope).toBe(scope);
+    }
+  });
+
+  it('parseScanResponse marks LLM scan findings story_vault and resolves per-entity note paths', () => {
+    const text = JSON.stringify({
+      entityId: 'e1',
+      entityName: 'Elara',
+      category: 'character_attribute_drift',
+      severity: 'high',
+      manuscriptExcerpt: 'dark hair',
+      manuscriptOffset: 0,
+      vaultExcerpt: 'hair: blonde',
+      rationale: 'drift',
+      matchArchiveToStory: 'x',
+      suggestStoryChange: 'y',
+    });
+    const items = parseScanResponse(
+      text,
+      'scene-1',
+      (entityId) => (entityId === 'e1' ? 'entities/elara.md' : ''),
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(items[0].scope).toBe('story_vault');
+    expect(items[0].vaultAnchor.notePath).toBe('entities/elara.md');
+  });
+});
 
 describe('levenshteinDistance', () => {
   it('returns 0 for identical strings', () => {

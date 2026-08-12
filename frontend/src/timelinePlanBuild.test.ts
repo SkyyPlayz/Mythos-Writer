@@ -242,6 +242,7 @@ describe('TimelineFlag emission (SKY-7379)', () => {
 
     const continuityItem: InconsistencyItem = {
       id: 'ic-1',
+      scope: 'story_vault',
       category: 'factual_contradiction',
       severity: 'medium',
       manuscriptAnchor: { sceneId: 'sc-1', offset: 10, excerpt: 'a contradiction excerpt' },
@@ -294,6 +295,7 @@ describe('TimelineFlag emission (SKY-7379)', () => {
   it('drops a resolved continuity flag and one anchored off this timeline', () => {
     const resolved: InconsistencyItem = {
       id: 'ic-resolved',
+      scope: 'story_vault',
       category: 'factual_contradiction',
       severity: 'low',
       manuscriptAnchor: { sceneId: 'sc-1', offset: 0, excerpt: 'x' },
