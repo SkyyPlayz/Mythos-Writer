@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import ContinuityPanel from './ContinuityPanel';
 import type { InconsistencyItem } from './InconsistencyCard';
+import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import type { Scene } from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -52,6 +53,7 @@ function setApi(overrides: Record<string, unknown> = {}) {
 function makeItem(overrides: Partial<InconsistencyItem> = {}): InconsistencyItem {
   return {
     id: 'inc-1',
+    scope: 'story_vault',
     category: 'character_attribute_drift',
     severity: 'high',
     manuscriptAnchor: { sceneId: 'sc-1', offset: 0, excerpt: 'Her eyes were green' },
@@ -81,6 +83,7 @@ const mockScene: Scene = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  __resetAiEnabledForTests();
   onStartCb = null;
   onResultCb = null;
   onErrorCb = null;
@@ -352,5 +355,62 @@ describe('ContinuityPanel — flagsHeader (Notes right panel)', () => {
     await renderContinuity(<ContinuityPanel scene={mockScene} enabled={false} flagsHeader />);
     expect(screen.getByText('CONTINUITY FLAGS')).toBeInTheDocument();
     expect(screen.getByText('ARCHIVE AGENT')).toBeInTheDocument();
+  });
+});
+
+describe('ContinuityPanel — M11 master AI gate (SKY-9825)', () => {
+  it('renders nothing at all when the master AI toggle is off', async () => {
+    mockSettingsGet.mockResolvedValue({ ai: { enabled: false } });
+    mockArchiveListContinuity.mockResolvedValue({ items: [makeItem()] });
+    setAiEnabled(false);
+    const { container } = await renderContinuity(
+      <ContinuityPanel scene={mockScene} flagsHeader />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('flags return when the master toggle comes back on', async () => {
+    mockSettingsGet.mockResolvedValue({ ai: { enabled: false } });
+    mockArchiveListContinuity.mockResolvedValue({ items: [makeItem()] });
+    setAiEnabled(false);
+    const { container } = await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    expect(container).toBeEmptyDOMElement();
+    act(() => setAiEnabled(true));
+    await flushAsyncEffects();
+    await waitFor(() =>
+      expect(screen.getByText(/Manuscript says green but vault says blue/i)).toBeInTheDocument(),
+    );
+  });
+});
+
+describe('ContinuityPanel — scope tags (M9d)', () => {
+  it('renders the prototype scope label for each flag scope', async () => {
+    mockArchiveListContinuity.mockResolvedValue({
+      items: [
+        makeItem({ id: 'f-1', scope: 'story_vault' }),
+        makeItem({ id: 'f-2', scope: 'vault_internal' }),
+        makeItem({ id: 'f-3', scope: 'timeline' }),
+      ],
+    });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => expect(screen.getAllByTestId('ic-scope-tag')).toHaveLength(3));
+    const labels = screen.getAllByTestId('ic-scope-tag').map((el) => el.textContent);
+    expect(labels).toEqual(['Story ↔ Vault', 'Vault internal', 'Timeline']);
+  });
+});
+
+describe('ContinuityPanel — failed action keeps the flag open (M9d)', () => {
+  it('reverts the optimistic resolve and shows why when the action could not run', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [makeItem()] });
+    mockArchiveResolveContinuity.mockResolvedValue({ ok: false, reason: 'excerpt_not_found' });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => screen.getByText(/Manuscript says green but vault says blue/i));
+
+    fireEvent.click(screen.getByRole('button', { name: /^Ignore —/ }));
+    await flushAsyncEffects();
+
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/flagged text has changed/i);
+    // The card is still there — the flag was not resolved.
+    expect(screen.getByText(/Manuscript says green but vault says blue/i)).toBeInTheDocument();
   });
 });

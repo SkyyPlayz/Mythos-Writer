@@ -44,6 +44,7 @@ function mkStory(): Story {
 function mkFlag(id: string, status: InconsistencyItem['status'] = 'open'): InconsistencyItem {
   return {
     id,
+    scope: 'story_vault',
     category: 'factual_contradiction',
     severity: 'critical',
     manuscriptAnchor: { sceneId: 'scene-a', offset: 0, excerpt: `excerpt for ${id}` },

@@ -17,6 +17,9 @@ export interface VaultEntityRecord {
   name: string;
   type: EntityEntry['type'];
   aliases: string[];
+  /** Vault-relative path of the entity's note — continuity flags anchor their
+   *  "Edit notes to match" patch here (M9d). */
+  path: string;
   /** Key/value properties extracted from frontmatter and structured prose lines. */
   properties: Record<string, string>;
   prose: string;
@@ -99,6 +102,7 @@ export function buildArchiveIndex(vaultRoot: string, manifest: Manifest): Archiv
       name: e.name,
       type: e.type,
       aliases: e.aliases ?? [],
+      path: e.path,
       properties,
       prose,
     });

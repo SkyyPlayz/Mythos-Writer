@@ -3793,8 +3793,13 @@ export interface ArchiveIgnoreListResponse {
 export type ArchiveScanScope = 'active_scene' | 'active_chapter' | 'full_manuscript';
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
+/** M9d (SKY-9825): which two sources a flag says disagree — rendered as the
+ *  card's scope tag (`Story ↔ Vault` / `Vault internal` / `Timeline`). */
+export type ContinuityScope = 'story_vault' | 'vault_internal' | 'timeline';
+
 export interface InconsistencyItem {
   id: string;
+  scope: ContinuityScope;
   category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
   severity: 'critical' | 'high' | 'medium' | 'low';
   manuscriptAnchor: {
@@ -3828,6 +3833,14 @@ export interface ArchiveResolveContinuityPayload {
   itemId: string;
   action: ResolutionAction;
   note?: string;
+}
+
+/** M9d (SKY-9825): resolve outcome. `ok: false` means the action could not do
+ *  what it says (e.g. the vault note or its excerpt is gone) — the flag stays
+ *  open and the renderer surfaces `reason`. */
+export interface ArchiveResolveContinuityResponse {
+  ok: boolean;
+  reason?: 'note_not_found' | 'excerpt_not_found';
 }
 
 export interface ArchiveListContinuityPayload {

@@ -236,6 +236,27 @@ function seedContinuityIssues(vaultDir: string, issues: IssueSeed[]): void {
   }
 }
 
+/** M9d (SKY-9825): the seeded conflict fixture's vault side — a real note in
+ *  the Notes Vault at the exact path the seeded flags anchor to. Since M9d,
+ *  "Apply vault change" patches this file for real (and refuses to resolve
+ *  the flag when the note or its excerpt is missing). */
+const MARA_NOTE_REL = path.join('Universes', 'Aster', 'Mara.md');
+function seedNotesVault(notesVaultDir: string): void {
+  const notePath = path.join(notesVaultDir, MARA_NOTE_REL);
+  fs.mkdirSync(path.dirname(notePath), { recursive: true });
+  fs.writeFileSync(notePath, [
+    '---',
+    'name: Mara',
+    'type: character',
+    '---',
+    '',
+    '# Mara',
+    '',
+    'Hair: blonde',
+    'Eyes: green',
+  ].join('\n'));
+}
+
 function readIssueStatus(vaultDir: string, id: string): string | undefined {
   const dbPath = path.join(vaultDir, '.mythos', 'state.db');
   if (!fs.existsSync(dbPath)) return undefined;
@@ -260,6 +281,7 @@ function createFixture(
   const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-aa-mvp-notes-'));
   seedUserData(userData, vaultDir, notesVaultDir, settingsOverrides);
   seedVault(vaultDir, sceneProseOverride);
+  seedNotesVault(notesVaultDir);
   if (issues.length > 0) seedContinuityIssues(vaultDir, issues);
   return { userData, vaultDir, notesVaultDir };
 }
@@ -526,6 +548,12 @@ test('TC-AA-06: Match Archive flow shows expand area and resolves issue on Apply
 
     // Card should resolve
     await expect.poll(() => readIssueStatus(fixture.vaultDir, 'inc-aa-06'), { timeout: 8_000 }).toBe('resolved');
+
+    // M9d: the action did what it says — the seeded note itself was patched.
+    const noteContent = fs.readFileSync(path.join(fixture.notesVaultDir, MARA_NOTE_REL), 'utf-8');
+    expect(noteContent).not.toContain('Hair: blonde');
+    expect(noteContent).toContain('Update the Mara note: change Hair to dark.');
+    expect(noteContent).toContain('Eyes: green');
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

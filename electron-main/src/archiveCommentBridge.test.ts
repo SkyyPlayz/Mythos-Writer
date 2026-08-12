@@ -18,6 +18,7 @@ import type { InconsistencyItem } from './ipc.js';
 
 function mkItem(overrides: Partial<InconsistencyItem> & { id: string }): InconsistencyItem {
   return {
+    scope: 'story_vault',
     category: 'character_attribute_drift',
     severity: 'high',
     manuscriptAnchor: { sceneId: 'scene-1', offset: 0, excerpt: 'her eyes were green' },

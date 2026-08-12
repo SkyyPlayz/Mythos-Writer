@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { usePanelDrag } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import './GlobalRightSidebar.css';
 import './PanelDragContext.css';
 
@@ -279,6 +280,10 @@ export default function GlobalRightSidebar({
   const [popoutPanels, setPopoutPanels] = useState<Set<PanelId>>(new Set());
   const [showAddPanel, setShowAddPanel] = useState(false);
   const addPanelRef = useRef<HTMLDivElement | null>(null);
+  // M11b (via SKY-9825): continuity flags are an AI surface — the whole
+  // section (header + badge included) collapses cleanly when the master AI
+  // toggle is off. Nothing is deleted; the panel returns with the toggle.
+  const aiEnabled = useAiEnabled();
 
   const {
     dragState,
@@ -464,7 +469,9 @@ export default function GlobalRightSidebar({
   const kbTargetHere = (index: number) =>
     kbDrag?.sidebar === 'right' && kbDrag.index === index;
 
-  const availableToAdd = RIGHT_PANEL_IDS.filter((id) => !panels.find((p) => p.id === id));
+  const availableToAdd = RIGHT_PANEL_IDS.filter(
+    (id) => !panels.find((p) => p.id === id) && (aiEnabled || id !== 'archive-continuity'),
+  );
 
   // ── Collapsed edge ───────────────────────────────────────────────────────────
 
@@ -550,6 +557,9 @@ export default function GlobalRightSidebar({
         />
 
         {panels.map((config, i) => {
+          // Indices stay aligned with the persisted panel order — the AI-off
+          // filter skips rendering without renumbering drag/drop targets.
+          if (config.id === 'archive-continuity' && !aiEnabled) return null;
           const isDraggingThis =
             dragState?.sourceSidebar === 'right' && dragState?.sourceIndex === i;
 

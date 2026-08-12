@@ -195,7 +195,9 @@ interface RawLlmItem {
 export function parseScanResponse(
   text: string,
   sceneId: string,
-  vaultNotePath: string,
+  /** Vault-relative note path per entity id (M9d — lets "Edit notes to match"
+   *  patch the real note), or a single fallback path for all items. */
+  vaultNotePath: string | ((entityId: string) => string),
   createdAt: string,
 ): InconsistencyItem[] {
   const items: InconsistencyItem[] = [];
@@ -222,6 +224,9 @@ export function parseScanResponse(
 
     items.push({
       id: crypto.randomUUID(),
+      // LLM scans compare the scene against vault entities, so every scan
+      // finding is manuscript ↔ vault by construction (M9d).
+      scope: 'story_vault',
       category: raw.category as InconsistencyItem['category'],
       severity: raw.severity as InconsistencyItem['severity'],
       manuscriptAnchor: {
@@ -230,7 +235,8 @@ export function parseScanResponse(
         excerpt: String(raw.manuscriptExcerpt ?? '').slice(0, 120),
       },
       vaultAnchor: {
-        notePath: vaultNotePath,
+        notePath:
+          typeof vaultNotePath === 'function' ? vaultNotePath(raw.entityId) : vaultNotePath,
         line: 0,
         excerpt: String(raw.vaultExcerpt ?? '').slice(0, 120),
       },
@@ -300,6 +306,41 @@ export function shouldReSurface(
   return levenshteinDistance(storedExcerpt, currentWindow) > threshold;
 }
 
+// ─── Excerpt patch (M9d — "Edit notes to match" does what it says) ──────────
+
+/**
+ * Replace the flag's stored vault excerpt inside the note content with the
+ * proposed resolution text. Returns the patched content, or null when the
+ * excerpt can no longer be found (the note changed since the scan) — callers
+ * must NOT mark the flag resolved in that case.
+ *
+ * Matching is exact-first, then whitespace-tolerant: LLM excerpts reproduce
+ * the note modulo whitespace jitter (same jitter normalizeExcerpt handles for
+ * dedupe), and notes reflow across line breaks. Only the first occurrence is
+ * replaced — the anchor identifies one contradiction site.
+ */
+export function applyExcerptPatch(
+  content: string,
+  excerpt: string,
+  replacement: string,
+): string | null {
+  const trimmed = excerpt.trim();
+  if (!trimmed) return null;
+
+  const exactIdx = content.indexOf(trimmed);
+  if (exactIdx !== -1) {
+    return content.slice(0, exactIdx) + replacement + content.slice(exactIdx + trimmed.length);
+  }
+
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const flexible = new RegExp(trimmed.split(/\s+/).map(escapeRe).join('\\s+'));
+  const match = flexible.exec(content);
+  if (!match) return null;
+  return (
+    content.slice(0, match.index) + replacement + content.slice(match.index + match[0].length)
+  );
+}
+
 // ─── db row → InconsistencyItem mapper ──────────────────────────────────────
 
 import type { DbContinuityIssue } from './db.js';
@@ -307,6 +348,7 @@ import type { DbContinuityIssue } from './db.js';
 export function dbRowToItem(row: DbContinuityIssue): InconsistencyItem {
   return {
     id: row.id,
+    scope: row.scope ?? 'story_vault',
     category: row.category,
     severity: row.severity,
     manuscriptAnchor: {
@@ -336,6 +378,7 @@ export function itemToDbRow(
 ): DbContinuityIssue {
   return {
     id: item.id,
+    scope: item.scope,
     category: item.category,
     severity: item.severity,
     manuscript_scene_id: item.manuscriptAnchor.sceneId,

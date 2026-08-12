@@ -56,6 +56,7 @@ function mkStory(): Story {
 
 function mkFlag(overrides: Partial<InconsistencyItem> & { id: string }): InconsistencyItem {
   return {
+    scope: 'story_vault',
     category: 'character_attribute_drift',
     severity: 'high',
     manuscriptAnchor: { sceneId: 'scene-a', offset: 12, excerpt: 'her eyes were green' },

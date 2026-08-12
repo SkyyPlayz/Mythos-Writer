@@ -23,6 +23,7 @@ function makeEntity(overrides: Partial<VaultEntityRecord> & { id: string; name: 
   return {
     type: 'character',
     aliases: [],
+    path: 'entities/entity.md',
     properties: {},
     prose: '',
     ...overrides,

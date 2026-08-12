@@ -6,6 +6,7 @@ import type { InconsistencyItem } from './InconsistencyCard';
 function makeItem(overrides: Partial<InconsistencyItem> = {}): InconsistencyItem {
   return {
     id: 'item-1',
+    scope: 'story_vault',
     category: 'character_attribute_drift',
     severity: 'high',
     manuscriptAnchor: { sceneId: 'scene-1', offset: 10, excerpt: 'His eyes were blue' },
@@ -199,8 +200,14 @@ describe('InconsistencyCard — Suggest Edit action', () => {
     fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
     // aria-label: "Apply suggested edit"
     fireEvent.click(screen.getByRole('button', { name: /apply suggested edit/i }));
+    // M9d: the drafted story-change text rides along so the suggestion
+    // actually says what the author approved.
     await waitFor(() =>
-      expect(onResolve).toHaveBeenCalledWith('item-1', 'suggest_story_change'),
+      expect(onResolve).toHaveBeenCalledWith(
+        'item-1',
+        'suggest_story_change',
+        'Change manuscript to say brown eyes.',
+      ),
     );
   });
 
@@ -217,6 +224,30 @@ describe('InconsistencyCard — Suggest Edit action', () => {
     // aria-label: "Edit before applying"
     fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
     expect(screen.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeInTheDocument();
+  });
+
+  it('passes the author-edited draft through onResolve (M9d)', async () => {
+    render(
+      <InconsistencyCard
+        item={makeItem()}
+        archiveStoryEditConsentGiven={true}
+        onResolve={onResolve}
+        onConsentGranted={onConsentGranted}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
+    fireEvent.change(screen.getByRole('textbox', { name: /edit suggested manuscript change/i }), {
+      target: { value: 'Her eyes caught the brown of river silt.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /apply suggested edit/i }));
+    await waitFor(() =>
+      expect(onResolve).toHaveBeenCalledWith(
+        'item-1',
+        'suggest_story_change',
+        'Her eyes caught the brown of river silt.',
+      ),
+    );
   });
 });
 
