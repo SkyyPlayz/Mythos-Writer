@@ -5979,6 +5979,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           // M13 §5.4: "View Full Analysis" must land on the Coach page — the
           // Story tab alone leaves the writer on whatever sub-view was open.
           onOpenCoachPage={() => { handleTabChange('story'); handleOpenCoachPage(); }}
+          // M9b (SKY-9823): without these the sidebar's Notes tab never sees
+          // the refresh bump after a drag-promote, so the promoted card stays
+          // pinned until a manual reload (SKY-10053).
+          sceneNotesRefresh={sceneNotesRefresh}
+          onPromoteSceneNote={handlePromoteSceneNote}
+          onSceneNotesChanged={handleSceneNotesChanged}
           gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
             <GettingStartedPanel
               progress={gettingStartedProgress!}
