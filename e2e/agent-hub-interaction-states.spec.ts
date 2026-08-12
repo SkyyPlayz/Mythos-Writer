@@ -158,10 +158,6 @@ async function openAgentsHub(page: Page): Promise<void> {
   if (await page.locator('.wa-overlay-backdrop').isVisible({ timeout: 1_000 }).catch(() => false)) {
     await page.keyboard.press('Escape');
   }
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
   const backBtn = page.locator('.ahp-back-btn');
   if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await backBtn.click();

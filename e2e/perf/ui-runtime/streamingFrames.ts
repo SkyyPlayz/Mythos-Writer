@@ -99,10 +99,6 @@ export async function installMockChatStream(
  * `openAssistantTab` in e2e/writing-assistant.spec.ts.
  */
 export async function openWritingCoachChat(page: Page): Promise<void> {
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
   const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');

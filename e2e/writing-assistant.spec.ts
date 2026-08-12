@@ -419,8 +419,6 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 
 /**
  * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
- * Collapses and re-expands the GRS panel to force a remount, clearing any
- * in-memory tip-suppression state from prior tests.
  */
 /**
  * SKY-6228: the right panel is now the agent hub — the Writing Assistant
@@ -439,26 +437,12 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
   await openScene(page, 'Lighthouse Scene');
-
-  // GRS uses role=button panel headers. Collapse then re-expand to force a remount
-  // (clears suppressed-tip state left over from prior tests).
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) === 'true') {
-    await waHeader.click(); // collapse → unmount content
-  }
-  await waHeader.click(); // expand → remount content
   await openWritingAssistantAgentRow(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
-
-  // GRS uses role=button panel headers, not tabs.
-  const waHeader = page.getByRole('button', { name: 'Writing Coach panel' });
-  if ((await waHeader.getAttribute('aria-expanded')) !== 'true') {
-    await waHeader.click();
-  }
   await openWritingAssistantAgentRow(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
@@ -805,6 +789,12 @@ test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', asyn
   await expect(page.locator('.wa-btn-retry')).toBeVisible();
   await expect(page.locator('.wa-btn-cancel')).toBeVisible();
 
+  // Reset the panel's loading state — the GRS panel no longer unmounts/remounts
+  // between tests (SKY-9022/M6 removed the collapsible header), so a hung
+  // request must be cancelled explicitly or it leaves the input disabled for
+  // every test that runs afterward.
+  await page.locator('.wa-btn-cancel').click();
+
   await page.evaluate(() => {
     delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
   });
@@ -1107,10 +1097,6 @@ test.describe('AC-WA-26: Writing Assistant disabled state', () => {
     const showSidebarBtn = disabledPage.getByRole('button', { name: 'Show right sidebar' });
     if (await showSidebarBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
       await showSidebarBtn.click();
-    }
-    const waHeader = disabledPage.getByRole('button', { name: 'Writing Coach panel' });
-    if ((await waHeader.getAttribute('aria-expanded').catch(() => 'true')) === 'false') {
-      await waHeader.click();
     }
     await openWritingAssistantAgentRow(disabledPage);
 
