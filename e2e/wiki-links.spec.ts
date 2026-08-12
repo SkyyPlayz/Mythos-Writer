@@ -170,8 +170,8 @@ async function openSceneLinksNote(page: Page): Promise<void> {
 }
 
 async function openGraph(page: Page): Promise<void> {
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-  await page.locator('[data-testid="notes-subview-graph"]').click();
+  // SKY-9019 M5: Vault Graph is a standalone rail destination now.
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
   await expect(page.locator('[data-testid="vault-graph-view"]')).toBeVisible({ timeout: 15_000 });
 }
 

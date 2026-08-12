@@ -70,9 +70,9 @@ export function serializeTabbedShellState(state: TabbedShellState): AppTabShellS
   };
 }
 
-const VALID_APP_TABS: AppTab[] = ['story', 'notes', 'brainstorm'];
+const VALID_APP_TABS: AppTab[] = ['story', 'notes', 'brainstorm', 'vault-graph'];
 const VALID_STORY_SUBVIEWS: StorySubView[] = ['editor', 'coach', 'kanban', 'structure', 'timeline', 'book'];
-const VALID_NOTES_SUBVIEWS: NotesSubView[] = ['editor', 'graph', 'entities'];
+const VALID_NOTES_SUBVIEWS: NotesSubView[] = ['editor'];
 
 /** Hydrate live state from persisted AppSettings, filling gaps with defaults. */
 export function deserializeTabbedShellState(

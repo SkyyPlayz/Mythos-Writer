@@ -92,11 +92,11 @@ describe('NotesTabPanel — SKY-3626 NFE writing mode controls', () => {
     expect(onSetWritingMode).toHaveBeenCalledWith('edit');
   });
 
-  it('does NOT render N/F/E buttons when sub-view is graph', () => {
+  it('does NOT render N/F/E buttons when activeTabIsEntityBrowser is true', () => {
     render(
       <NotesTabPanel
         {...BASE_PROPS}
-        notesSubView="graph"
+        activeTabIsEntityBrowser={true}
         writingMode="normal"
         onSetWritingMode={vi.fn()}
       />
@@ -104,11 +104,11 @@ describe('NotesTabPanel — SKY-3626 NFE writing mode controls', () => {
     expect(screen.queryByTestId('nfe-mode-group')).not.toBeInTheDocument();
   });
 
-  it('does NOT render N/F/E buttons when sub-view is entities', () => {
+  it('does NOT render N/F/E buttons when activeTabIsEntityBrowser is true (entities path)', () => {
     render(
       <NotesTabPanel
         {...BASE_PROPS}
-        notesSubView="entities"
+        activeTabIsEntityBrowser={true}
         writingMode="normal"
         onSetWritingMode={vi.fn()}
       />

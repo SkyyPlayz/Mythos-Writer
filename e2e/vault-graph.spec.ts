@@ -183,16 +183,14 @@ async function openGraphView(): Promise<void> {
     await expect(settingsOverlay).not.toBeVisible({ timeout: 4_000 });
   }
 
-  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
-  await expect(notesTab).toBeVisible({ timeout: 12_000 });
-  if ((await notesTab.getAttribute('aria-current')) !== 'page') {
-    await notesTab.click();
+  // SKY-9019 M5: Vault Graph is its own top-level nav-rail destination now,
+  // not a Notes sub-view — the old "notes-subview-graph" toggle is gone.
+  const graphRail = page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]');
+  await expect(graphRail).toBeVisible({ timeout: 12_000 });
+  if ((await graphRail.getAttribute('aria-current')) !== 'page') {
+    await graphRail.click();
   }
-  await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
-
-  const notesGraph = page.locator('[data-testid="notes-subview-graph"]');
-  await expect(notesGraph).toBeVisible({ timeout: 6_000 });
-  await notesGraph.click();
+  await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 8_000 });
 }
 
 // ─── TC-G-01: Graph view mounts ───────────────────────────────────────────────

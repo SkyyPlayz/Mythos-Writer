@@ -261,12 +261,12 @@ export const FOCUS_PREFS_DEFAULTS = {
 // pinned at the rail bottom and never part of this list.
 export const NAV_RAIL_DEFAULTS: NavRailConfig = {
   items: [
-    { id: 'story', enabled: true, label: 'Story Writer', icon: '✍', order: 0 },
-    { id: 'notes', enabled: true, label: 'Notes Editor', icon: '📝', order: 1 },
-    { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: '🗂️', order: 2 },
-    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 3 },
-    { id: 'timeline', enabled: true, label: 'Timeline', icon: '📅', order: 4 },
-    { id: 'graph', enabled: true, label: 'Vault Graph', icon: '🕸️', order: 5 },
+    { id: 'story', enabled: true, label: 'Story Writer', icon: 'story', order: 0 },
+    { id: 'notes', enabled: true, label: 'Notes Editor', icon: 'notes', order: 1 },
+    { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: 'crafter', order: 2 },
+    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: 'brainstorm', order: 3 },
+    { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 4 },
+    { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 5 },
   ],
   collapsedDefault: false,
   showLabels: true,

@@ -64,9 +64,9 @@ describe('tabbedShellReducer — sub-view independence', () => {
   it('SET_NOTES_SUBVIEW updates notes sub-view independently', () => {
     const next = tabbedShellReducer(DEFAULT_TABBED_SHELL_STATE, {
       type: 'SET_NOTES_SUBVIEW',
-      subView: 'graph',
+      subView: 'editor',
     });
-    expect(next.notesSubView).toBe('graph');
+    expect(next.notesSubView).toBe('editor');
     expect(next.storySubView).toBe('editor');
   });
 });
@@ -124,7 +124,7 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
     const original: TabbedShellState = {
       activeTab: 'notes',
       storySubView: 'timeline',
-      notesSubView: 'entities',
+      notesSubView: 'editor',
       storySidebarWidth: 300,
       notesSidebarWidth: 260,
       storySidebarCollapsed: true,
@@ -161,7 +161,7 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
   });
 
   it('SKY-2103: migrates legacy story-only sub-views to editor', () => {
-    (['brainstorm', 'graph', 'entries'] as const).forEach((sv) => {
+    (['brainstorm', 'entries'] as const).forEach((sv) => {
       const legacy = { activeTab: 'story', storySubView: sv } as unknown as AppTabShellState;
       const state = deserializeTabbedShellState(legacy);
       expect(state.storySubView).toBe('editor');
@@ -169,7 +169,7 @@ describe('serializeTabbedShellState / deserializeTabbedShellState', () => {
   });
 
   it('SKY-2096: preserves valid notes sub-view on round-trip', () => {
-    (['editor', 'graph', 'entities'] as NotesSubView[]).forEach((sv) => {
+    (['editor'] as NotesSubView[]).forEach((sv) => {
       const state = deserializeTabbedShellState({ notesSubView: sv } as AppTabShellState);
       expect(state.notesSubView).toBe(sv);
     });

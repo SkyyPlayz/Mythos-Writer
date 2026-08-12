@@ -415,7 +415,11 @@ test.describe('populated vaults: routing regression', () => {
       `storyVaultDir gained unexpected .md files during note creation (before: ${storyFilesBefore}, after: ${storyFilesAfter})`,
     ).toBe(storyFilesBefore);
 
-    // Restore scope.
-    await page.locator('[data-testid="vb-scope-both"]').click();
+    // SKY-9019 M5: opening the created note switches to the Notes Editor
+    // destination, unmounting the Story tab's vault panel — there is no scope
+    // bar left to restore (VaultBrowser scope resets on remount anyway).
+    await expect(
+      page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]'),
+    ).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
   });
 });

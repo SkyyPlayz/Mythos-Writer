@@ -461,14 +461,14 @@ test('TC-BST-07: agent-created note emits a grounded Relationships wikilink and 
       `dangling wikilink [[${target}]] — no such note in the vault`).toBe(true);
   }
 
-  // The Vault Graph draws a real edge between the agent note and the seeded note.
-  const notesTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]');
-  await expect(notesTab).toBeVisible({ timeout: 12_000 });
-  if ((await notesTab.getAttribute('aria-current')) !== 'page') {
-    await notesTab.click();
+  // The Vault Graph draws a real edge between the agent note and the seeded
+  // note. SKY-9019 M5: Vault Graph is a standalone rail destination now.
+  const graphTab = page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]');
+  await expect(graphTab).toBeVisible({ timeout: 12_000 });
+  if ((await graphTab.getAttribute('aria-current')) !== 'page') {
+    await graphTab.click();
   }
-  await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
-  await page.locator('[data-testid="notes-subview-graph"]').click();
+  await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 8_000 });
 
   const agentNodeId = agentNoteRelPath.split(path.sep).join('/');
   const seededNodeId = SEEDED_NOTE_REL_PATH.split(path.sep).join('/');

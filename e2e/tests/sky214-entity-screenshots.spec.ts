@@ -232,10 +232,11 @@ test.beforeAll(async () => {
   seedUserData(userData, vaultDir);
   app = await launchApp(userData);
   page = await firstWindow(app);
-  // Navigate to the entities tab (nav-rail rewrite, SKY-3098/3218): the
-  // Entities browser lives as an in-tab sub-view of the Notes Editor section.
-  await page.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
-  await page.locator('[data-testid="notes-subview-entities"]').click();
+  // SKY-9019 M5: Entities is no longer a Notes-tab sub-view — expand the
+  // "Entity Browser" left-rail panel on the (default, already-active) Story
+  // Writer section instead (LeftRail.tsx DEFAULT_LEFT_SIDEBAR_LAYOUT ships it
+  // pre-docked, collapsed).
+  await page.locator('button.lr-panel-collapse-btn[aria-label="Expand Entity Browser"]').click();
   // Wait for entities to load and all 7 type groups to render
   await page.waitForTimeout(1_200);
 });
@@ -292,6 +293,15 @@ test('SKY-214-04: WikiLink autocomplete in scene editor', async () => {
   const alreadyActive = await storyWriterTab.evaluate((el) => el.classList.contains('nav-rail__item--active'));
   if (!alreadyActive) await storyWriterTab.click();
   await page.waitForTimeout(800);
+
+  // Test 03 may have left the Stories popover open (re-clicking an
+  // already-active "Story Writer" item toggles it) — its backdrop intercepts
+  // pointer events over the rest of the shell, so dismiss it before proceeding.
+  const storiesBackdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
+  if (await storiesBackdrop.isVisible({ timeout: 500 }).catch(() => false)) {
+    await storiesBackdrop.click();
+    await expect(storiesBackdrop).not.toBeVisible({ timeout: 3_000 });
+  }
 
   // Click the story toggle button to expand (stories start pre-expanded but make sure)
   const storyToggle = page.locator('.nav-story-toggle').first();
