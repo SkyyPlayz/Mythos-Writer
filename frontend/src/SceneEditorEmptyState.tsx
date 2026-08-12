@@ -1,3 +1,4 @@
+import { EmptyState } from './components/ui/EmptyState';
 import './SceneEditorEmptyState.css';
 
 export type SceneEditorEmptyVariant = 'select-scene' | 'loading' | 'no-scenes-yet';
@@ -81,46 +82,49 @@ function PaneActionCard({ onCreateNew, onGoTo, onClosePane }: Omit<Props, 'varia
 }
 
 export function SceneEditorEmptyState({ variant, onCreateNew, onGoTo, onClosePane }: Props) {
+  const actionCard = (
+    <PaneActionCard onCreateNew={onCreateNew} onGoTo={onGoTo} onClosePane={onClosePane} />
+  );
+
   if (variant === 'loading') {
     return (
-      <div
+      <EmptyState
         className="se-empty-state se-empty-state--loading"
-        data-testid="scene-editor-empty"
-        data-variant="loading"
+        testId="scene-editor-empty"
+        dataVariant="loading"
         role="status"
-        aria-live="polite"
-      >
-        <LoadingSpinner />
-        <p className="se-empty-body">Loading your scene…</p>
-      </div>
+        ariaLive="polite"
+        glyph={<LoadingSpinner />}
+        hint={<p className="se-empty-body">Loading your scene…</p>}
+      />
     );
   }
 
   if (variant === 'no-scenes-yet') {
     return (
-      <div
+      <EmptyState
         className="se-empty-state se-empty-state--no-scenes"
-        data-testid="scene-editor-empty"
-        data-variant="no-scenes-yet"
-      >
-        <DocumentIcon />
-        <p className="se-empty-body">
-          Create your first scene to start writing. Use the&nbsp;+ button in your story outline.
-        </p>
-        <PaneActionCard onCreateNew={onCreateNew} onGoTo={onGoTo} onClosePane={onClosePane} />
-      </div>
+        testId="scene-editor-empty"
+        dataVariant="no-scenes-yet"
+        glyph={<DocumentIcon />}
+        hint={(
+          <p className="se-empty-body">
+            Create your first scene to start writing. Use the&nbsp;+ button in your story outline.
+          </p>
+        )}
+        actions={actionCard}
+      />
     );
   }
 
   return (
-    <div
+    <EmptyState
       className="se-empty-state se-empty-state--select"
-      data-testid="scene-editor-empty"
-      data-variant="select-scene"
-    >
-      <DocumentIcon />
-      <p className="se-empty-body">Select a scene from your story to start writing.</p>
-      <PaneActionCard onCreateNew={onCreateNew} onGoTo={onGoTo} onClosePane={onClosePane} />
-    </div>
+      testId="scene-editor-empty"
+      dataVariant="select-scene"
+      glyph={<DocumentIcon />}
+      hint={<p className="se-empty-body">Select a scene from your story to start writing.</p>}
+      actions={actionCard}
+    />
   );
 }

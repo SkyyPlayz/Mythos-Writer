@@ -47,17 +47,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
-}
-
-.ahp-body::-webkit-scrollbar { width: 8px; }
-.ahp-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 99px;
-}
-.ahp-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  /* GAP P2 #11: removed — falls through to global ::-webkit-scrollbar styling (index.css). */
 }
 
 /* ── Hub view ─────────────────────────────────────── */

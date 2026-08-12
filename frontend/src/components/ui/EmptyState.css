@@ -1,0 +1,6 @@
+/* SKY-9879 (M10-S4): EmptyState is a structural scaffold only — it has no
+   visual rules of its own. Each surface (SceneEditorEmptyState.css,
+   BrainstormEmptyState.css, ContinuityPanel.css) keeps its own class names
+   and styling, passed in via the `className` prop, so refactoring to the
+   shared component does not change any pixel output. This file exists as
+   the designated home for shared visual rules if a real one is ever needed. */

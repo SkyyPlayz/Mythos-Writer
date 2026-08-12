@@ -1,3 +1,5 @@
+import { EmptyState } from '../ui/EmptyState';
+
 interface Props {
   mode: 'idle' | 'no-match' | 'no-vault';
 }
@@ -23,10 +25,13 @@ const MESSAGES = {
 export default function ContinuityEmptyState({ mode }: Props) {
   const msg = MESSAGES[mode];
   return (
-    <div className="continuity-empty" role="status" aria-live="polite">
-      <span className="continuity-empty-icon" aria-hidden="true">{msg.icon}</span>
-      <span className="continuity-empty-title">{msg.title}</span>
-      <span className="continuity-empty-body">{msg.body}</span>
-    </div>
+    <EmptyState
+      className="continuity-empty"
+      role="status"
+      ariaLive="polite"
+      glyph={<span className="continuity-empty-icon" aria-hidden="true">{msg.icon}</span>}
+      title={<span className="continuity-empty-title">{msg.title}</span>}
+      hint={<span className="continuity-empty-body">{msg.body}</span>}
+    />
   );
 }

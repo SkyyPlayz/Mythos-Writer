@@ -1,3 +1,4 @@
+import { EmptyState } from '../ui/EmptyState';
 import './BrainstormEmptyState.css';
 
 interface Cta {
@@ -26,25 +27,35 @@ interface Props {
 
 export function BrainstormEmptyState({ onSeedPrompt }: Props) {
   return (
-    <div className="bs-empty-state" aria-label="Brainstorm empty state">
-      <h2 className="bs-empty-heading">No facts yet — mention character names or locations to build your vault.</h2>
-      <p className="bs-empty-sub">
-        Ideas you brainstorm here are saved to your <strong>Notes Vault</strong>, not your Story Vault.
-      </p>
-      <ul className="bs-empty-ctas" aria-label="Quick-start prompts">
-        {CTAS.map((cta) => (
-          <li key={cta.label}>
-            <button
-              className="bs-empty-cta-btn"
-              type="button"
-              aria-label={cta.label}
-              onClick={() => onSeedPrompt(cta.prompt)}
-            >
-              {cta.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <EmptyState
+      className="bs-empty-state"
+      ariaLabel="Brainstorm empty state"
+      title={(
+        <h2 className="bs-empty-heading">
+          No facts yet — mention character names or locations to build your vault.
+        </h2>
+      )}
+      hint={(
+        <p className="bs-empty-sub">
+          Ideas you brainstorm here are saved to your <strong>Notes Vault</strong>, not your Story Vault.
+        </p>
+      )}
+      actions={(
+        <ul className="bs-empty-ctas" aria-label="Quick-start prompts">
+          {CTAS.map((cta) => (
+            <li key={cta.label}>
+              <button
+                className="bs-empty-cta-btn"
+                type="button"
+                aria-label={cta.label}
+                onClick={() => onSeedPrompt(cta.prompt)}
+              >
+                {cta.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    />
   );
 }

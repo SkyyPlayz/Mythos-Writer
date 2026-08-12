@@ -71,17 +71,7 @@
 .asp-row-list {
   max-height: 208px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
-}
-
-.asp-row-list::-webkit-scrollbar {
-  width: 8px;
-}
-
-.asp-row-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 99px;
+  /* GAP P2 #11: removed — falls through to global ::-webkit-scrollbar styling (index.css). */
 }
 
 .asp-row {
