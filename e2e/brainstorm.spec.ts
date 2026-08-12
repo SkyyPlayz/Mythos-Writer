@@ -489,6 +489,41 @@ test('TC-BST-07: agent-created note emits a grounded Relationships wikilink and 
   await openBrainstormPanel();
 });
 
+// ─── TC-BST-08 (SKY-9876/SKY-7994): live rail update, no refresh ────────────
+//
+// M10-S1 acceptance: "A chat-captured fact is written to the Notes Vault and
+// appears in the corresponding rail collection without a manual refresh."
+// TC-BST-03 (above) proved the disk write; this test proves the OTHER half of
+// the cross-boundary round trip — the same real `facts` state (no window.api
+// seam stubbed beyond the LLM stream itself) also drives the left IDEA
+// COLLECTIONS rail's live counts and its "Characters" group contents, with no
+// page reload / re-navigation between the chat turn and this assertion.
+
+test('TC-BST-08: chat-captured fact appears live in the IDEA COLLECTIONS rail — no refresh', async () => {
+  await openBrainstormPanel();
+
+  const collections = page.locator('[data-testid="bs-collections"]');
+  await expect(collections).toBeVisible();
+
+  // All Ideas / Characters counts both include the Aria Voss fact from TC-BST-03 —
+  // read directly off the live DOM, not a re-fetch or reload.
+  const allCount = await page.locator('[data-testid="bs-coll-toggle-all"] .bs-coll-count').textContent();
+  expect(Number(allCount?.trim())).toBeGreaterThanOrEqual(1);
+  const relCount = await page.locator('[data-testid="bs-coll-toggle-rel"] .bs-coll-count').textContent();
+  expect(Number(relCount?.trim())).toBeGreaterThanOrEqual(1);
+
+  // Expand Characters and find the agent-filed row: real fact (no `Starter`
+  // chip), title + description matching what the mock stream emitted.
+  await page.locator('[data-testid="bs-coll-toggle-rel"]').click();
+  // TC-BST-05's refinement regenerated the same mock fact, so two identical
+  // (unplaced) rows can exist here — either is proof enough for this assertion.
+  const factRow = page.getByRole('button', { name: `Add ${MOCK_FACT_NAME} to the board`, exact: true }).first();
+  await expect(factRow).toBeVisible();
+  await expect(factRow.locator('.bs-coll-starter-chip')).toHaveCount(0);
+  await expect(factRow.locator('.bs-coll-idea-desc')).toContainText(MOCK_FACT_DESC);
+});
+
+
 // ─── TC-BST-06: Sort + filter controls (Wave 3.2) ────────────────────────────
 // (Renamed from a duplicate "TC-BST-04" title during the M20 rework.)
 //

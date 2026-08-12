@@ -8,6 +8,7 @@ import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { ProposalCard } from './components/BrainstormCard/ProposalCard';
 import type { NoteProposal, NoteProposalKind } from './components/BrainstormCard/ProposalCard';
 import { ScenePicker } from './components/BrainstormCard/ScenePicker';
+import { useAiEnabled } from './hooks/useAiEnabled';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useTtsPlayer, type TtsEngineSettings, type TtsVoicePrefs } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
@@ -428,6 +429,16 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [filterType, setFilterType] = useState<FilterType>('all');
   // M20: Brainstorm page — Agent Chat (default) or the ONE Board.
   const [mode, setMode] = useState<BrainstormMode>('chat');
+  // R11 / M11a: master AI toggle. Off beats the per-agent `enabled` prop —
+  // Board and Idea Collections stay fully manual, Agent Chat and every
+  // AI-only affordance (explore prompts, saved prompts, quick generate)
+  // disappear cleanly (PLAN.md §M11b surface contract).
+  const aiEnabled = useAiEnabled();
+  const visibleModes = useMemo(
+    () => (aiEnabled ? BRAINSTORM_MODES : BRAINSTORM_MODES.filter((m) => m !== 'chat')),
+    [aiEnabled],
+  );
+  const effectiveMode: BrainstormMode = aiEnabled ? mode : 'board';
   // M20: board search ("Search ideas…" in the Board-page header).
   const [ideaQuery, setIdeaQuery] = useState('');
   // M20 (B4-4): capture the legacy draft ONCE, synchronously, before any
@@ -805,7 +816,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // M20: vault-note titles on board cards underline → open the note. Load the
   // entity index lazily whenever a canvas is visible.
   useEffect(() => {
-    if (mode !== 'board' && !chatBoardOpen) return;
+    if (effectiveMode !== 'board' && !chatBoardOpen) return;
     if (typeof window.api?.entityList !== 'function') return;
     let cancelled = false;
     void (async () => {
@@ -818,7 +829,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       } catch { /* vault unavailable — titles just render un-linked */ }
     })();
     return () => { cancelled = true; };
-  }, [mode, chatBoardOpen]);
+  }, [effectiveMode, chatBoardOpen]);
 
   // M20 (SKY-6663): sync the chat feed with the shared agent-session store.
   // First adoption keeps a restored draft (and migrates it into the session so
@@ -2044,16 +2055,16 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           </button>
         }
         title={
-          mode === 'chat' && !compact ? (
+          effectiveMode === 'chat' && !compact ? (
             <span className="bs-title-row">
               Brainstorm Agent
               {/* M20 (§7.2 + §11): session dropdown pill on the shared store. */}
               <AgentSessionPicker store={sessionStore} className="bs-session-pill" />
             </span>
-          ) : mode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'
+          ) : effectiveMode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'
         }
         subtitle={
-          mode === 'chat'
+          effectiveMode === 'chat'
             ? (curatorGreeting
               ? 'Curator of this vault — tell it your world'
               : 'Talk through your story — facts auto-extract to your vault')
@@ -2063,10 +2074,11 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           <>
             {/* M20: page segment — Agent Chat (default) | Board (prototype
                 bsPages). Hidden in compact sidebar contexts where only the
-                chat fits. */}
-            {!compact && (
+                chat fits, and when AI is off there is only the one manual
+                Board page left to show (R11 — no dead single-option toggle). */}
+            {!compact && visibleModes.length > 1 && (
               <div className="bsc-seg" role="group" aria-label="Brainstorm page">
-                {BRAINSTORM_MODES.map((m) => (
+                {visibleModes.map((m) => (
                   <button
                     key={m}
                     type="button"
@@ -2082,7 +2094,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             )}
             {/* M20: chat-page Board toggle — stacks the canvas under the chat
                 with a drag-bar height (prototype bsBoardToggle). */}
-            {!compact && mode === 'chat' && (
+            {!compact && effectiveMode === 'chat' && (
               <div className="bs-board-toggle-wrap" title="Show the idea board below the chat">
                 <span>Board</span>
                 <button
@@ -2100,14 +2112,14 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             )}
             {/* M19: live extraction badge (prototype lines 1330–1335) — shown
                 while a reply is streaming and facts may be extracted. */}
-            {mode === 'chat' && loading && (
+            {effectiveMode === 'chat' && loading && (
               <div className="bs-extract-badge" data-testid="bs-extract-badge" role="status">
                 <span className="bs-extract-dot" aria-hidden="true" />
                 Extracting facts to vault
               </div>
             )}
             {/* M20: Board page adds `+ Idea` + `Search ideas…` (§7.2). */}
-            {!compact && mode === 'board' && (
+            {!compact && effectiveMode === 'board' && (
               <>
                 <button
                   type="button"
@@ -2135,14 +2147,18 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
                 </div>
               </>
             )}
-            <div className="brainstorm-header-preset">
-              <PresetSelector
-                activePresetId={presetId}
-                onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
-                onCustomize={() => setShowPresetEditor(true)}
-                compact
-              />
-            </div>
+            {/* R11: the preset only steers the agent's tone — nothing to
+                configure with the agent gone (no dead AI-only chrome). */}
+            {aiEnabled && (
+              <div className="brainstorm-header-preset">
+                <PresetSelector
+                  activePresetId={presetId}
+                  onSelect={(id) => { setPresetId(id); setPresetOverrides({}); saveSessionPreset(id, {}); }}
+                  onCustomize={() => setShowPresetEditor(true)}
+                  compact
+                />
+              </div>
+            )}
             <div className="brainstorm-header-actions">
               {/* AC-V-06: session mute toggle — same contract as the WA header */}
               <button
@@ -2195,7 +2211,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
       )}
 
-      {mode === 'chat' && (
+      {effectiveMode === 'chat' && (
       <div className={`brainstorm-layout${compact ? ' brainstorm-layout--compact' : ''}`}>
         {/* M20: left IDEA COLLECTIONS panel (§7.2) — starter library + the
             agent's captured ideas, placeable onto the board. */}
@@ -2990,7 +3006,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       )}
 
       {/* M20 (§7.2): the ONE Board page — collections, canvas, agent side panel. */}
-      {mode === 'board' && (
+      {effectiveMode === 'board' && (
       <div className="brainstorm-layout">
         {/* M20: left IDEA COLLECTIONS panel — shared with the chat page. */}
         {!compact && (
@@ -2999,6 +3015,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
             placedTitles={placedTitles}
             onPlace={placeIdeaOnBoard}
             showToast={showToast}
+            manualOnly={!aiEnabled}
           />
         )}
         <div className="bsc-body">
@@ -3019,8 +3036,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
         {/* M20 (§7.2): board-page right panel — explore buttons, saved
             prompts, quick-generate. Every action runs through the real chat
-            streaming path. */}
-        {!compact && (
+            streaming path, so the whole aside is AI-bearing chrome: R11
+            collapses it cleanly (no dead band) when the master toggle is off. */}
+        {!compact && aiEnabled && (
           <aside className="bs-board-side" data-testid="bs-board-side">
             <div className="bs-board-side-head">
               <span className="bs-activity-dot" aria-hidden="true" />
