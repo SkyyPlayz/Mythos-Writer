@@ -364,6 +364,15 @@ test('TC-E-07: re-opening from + focuses the existing tab — never a duplicate'
 });
 
 test('TC-E-08: clicking an already-open Entity Browser tab (not opening it fresh) surfaces it too', async () => {
+  // Guard against a slow-CI race: "New scene" silently no-ops (toast only) if
+  // the manifest reload from TC-E-04's app restart hasn't populated `stories`
+  // yet — none of TC-E-05..07 touch the Stories panel, so nothing else in this
+  // suite waits on it. Confirm a story row is actually rendered first.
+  const storiesPanel = page.locator('[data-panel-id="stories"]');
+  const spCollapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (spCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+
   // The + button's PRIMARY action ("New scene") still works unchanged now
   // that + is a picker — clicking it (not the "Entity Browser" item) opens a
   // scene tab, moving focus away from the existing Entity Browser tab.
