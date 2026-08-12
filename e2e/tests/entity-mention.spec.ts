@@ -26,9 +26,11 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Mention Chronicle';
-const CHAPTER_TITLE = 'Prologue';
-const SCENE_TITLE = 'The Meeting';
+// M3 (SKY-9021): create-story is instant — one transaction scaffolds the
+// story + "Chapter 1" + "Untitled Scene", so these are the scaffold's own
+// names rather than titles typed into a since-removed prompt.
+const CHAPTER_TITLE = 'Chapter 1';
+const SCENE_TITLE = 'Untitled Scene';
 const ENTITY_ID = 'ent_mention_e2e_001';
 const ENTITY_NAME = 'Lyra Ashveil';
 const ENTITY_TYPE = 'character';
@@ -121,14 +123,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
 function findMdFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const results: string[] = [];
@@ -186,19 +180,16 @@ test('EM-00: boot app and create a story, chapter, and scene', async () => {
   if (await storiesTab.isVisible()) await storiesTab.click();
 
   // Create story — M3 instant-create: no prompt, row appears immediately.
+  // The same transaction scaffolds "Chapter 1" and an "Untitled Scene", so
+  // there is no separate chapter/scene creation step to drive here.
   await page.locator('.nav-add-btn').first().click();
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
+  await expect(chapterRow).toContainText(CHAPTER_TITLE);
 
-  // Create scene
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await expect(sceneRow).toContainText(SCENE_TITLE);

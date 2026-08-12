@@ -271,6 +271,18 @@ test('TC-V-02: create story + chapter, both appear in Stories navigator', async 
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
   await expect(chapterRow).toContainText(CHAPTER_TITLE);
+
+  // The manifest write is debounced (~900ms); poll disk so later tests never
+  // race a manifest snapshot that predates the rename.
+  const manifestPath = path.join(vaultDir, 'manifest.json');
+  const renameFlushed = await waitUntil(() => {
+    try {
+      return fs.readFileSync(manifestPath, 'utf-8').includes(STORY_TITLE);
+    } catch {
+      return false;
+    }
+  }, 10_000);
+  expect(renameFlushed, `manifest.json on disk never picked up "${STORY_TITLE}"`).toBe(true);
 });
 
 // ─── TC-V-03: Scene scaffolded with the story → file appears on disk ──────────
@@ -289,7 +301,7 @@ test('TC-V-03: scaffolded scene .md file present in Story Vault on disk', async 
   await expect(sceneRow).toContainText(SCENE_TITLE);
 
   // SKY-316: the scene auto-opens the editor (no manual click needed).
-  await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('[data-testid^="msv-para-"]').first()).toBeVisible({ timeout: 6_000 });
 
   // The scene file is written with path: stories/<storyId>/chapters/<chapterId>/scenes/<sceneId>.md
   // Use findMdFiles across the entire vaultDir and look for any .md file under a
@@ -315,6 +327,10 @@ test('TC-V-03: scaffolded scene .md file present in Story Vault on disk', async 
 // block-editor change (debounced), so the file should update within ~2 s.
 
 test('TC-V-04: type prose in scene editor, file content updated in Story Vault', async () => {
+  // Selecting a scene row sets viewDepth to 'scene', which renders the
+  // single-scene BlockEditor (tiptap/.ProseMirror) rather than ManuscriptView's
+  // inline msv-para paragraphs (those only render at Full Book/Part/Chapter
+  // depth). This is unrelated to M3 — M3 only changed story creation.
   const sceneRow = page.locator('.nav-scene-row').first();
   await sceneRow.click();
 
@@ -376,7 +392,8 @@ test('TC-V-05: prose persists after full app restart (same userData)', async () 
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await sceneRow.click();
 
-  // Prose must still be in the editor
+  // Prose must still be in the editor (scene depth → BlockEditor/.ProseMirror,
+  // same as TC-V-04).
   const editor = page.locator('.ProseMirror');
   await expect(editor).toBeVisible({ timeout: 8_000 });
   await expect(editor).toContainText(PROSE, { timeout: 8_000 });

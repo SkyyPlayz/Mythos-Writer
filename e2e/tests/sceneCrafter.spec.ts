@@ -117,14 +117,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
 /**
  * Create a story via the StoryNavigator add button.
  * M3 (SKY-9021/9896): instant-create — no prompt, the story row appears

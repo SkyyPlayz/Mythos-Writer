@@ -28,9 +28,6 @@ import {
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const ENTITY_ID = 'e2e-auto-linker-entity-001';
 const ENTITY_NAME = 'Elara Voss';
-const STORY_TITLE = 'Linker Test Story';
-const CHAPTER_TITLE = 'Chapter One';
-const SCENE_TITLE = 'Opening Scene';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -136,14 +133,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
 // ─── Suite-level state ────────────────────────────────────────────────────────
 
 let userData: string;
@@ -178,21 +167,16 @@ test('AL-01–03: type entity name → hint appears → accept → becomes [[wik
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
 
-  // Create story
+  // Create story. M3 instant-create: no prompt — the same transaction
+  // scaffolds "Chapter 1" and an "Untitled Scene", so there is no separate
+  // chapter/scene creation step here.
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-  // Create chapter
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
 
-  // Create scene
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
 

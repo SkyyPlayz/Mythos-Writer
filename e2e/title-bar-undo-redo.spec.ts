@@ -40,15 +40,10 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
-async function fillPrompt(page: Page, response: string): Promise<void> {
-  const input = page.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await page.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
-/** Create story → chapter → scene through the navigator and open the scene editor. */
+/** Create story through the navigator and open its auto-scaffolded scene.
+ * M3 instant-create: one transaction scaffolds the story, "Chapter 1", and
+ * an "Untitled Scene" and opens the editor — no prompt, no separate
+ * chapter/scene creation step. */
 async function openScene(page: Page): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
   await clickStoryNav(page);
@@ -57,11 +52,6 @@ async function openScene(page: Page): Promise<void> {
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, 'Undo Redo Story');
-  await page.locator('.nav-story-row').first().locator('.nav-inline-add').click();
-  await fillPrompt(page, 'Chapter One');
-  await page.locator('.nav-chapter-row').first().locator('.nav-inline-add').click();
-  await fillPrompt(page, 'Scene One');
   await page.locator('.nav-scene-row').first().click();
 
   await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 10_000 });

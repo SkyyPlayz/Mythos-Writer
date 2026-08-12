@@ -26,9 +26,6 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Wiki Link Chronicle';
-const CHAPTER_TITLE = 'Prologue';
-const SCENE_TITLE = 'The Gate';
 const ENTITY_NAME = 'Corven Ashgate';
 const UNKNOWN_TARGET = 'Nobody Ever Wrote This';
 
@@ -96,15 +93,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
-
 // ─── Suite-level state ────────────────────────────────────────────────────────
 
 let userData: string;
@@ -158,18 +146,17 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   const spCollapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
   if (spCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
 
-  // M3 instant-create: click creates story immediately, no prompt.
+  // M3 instant-create: click creates story immediately, no prompt. The same
+  // transaction scaffolds "Chapter 1" and an "Untitled Scene" and opens the
+  // editor with the caret in that scene — no separate chapter/scene creation
+  // step is needed here.
   await page.locator('.nav-add-btn').first().click();
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
 
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
 

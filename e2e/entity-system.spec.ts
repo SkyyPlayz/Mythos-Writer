@@ -32,9 +32,6 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 // in the dialog. Kept short to avoid collisions with other test entities.
 const ENTITY_NAME = 'New Character';
 const ENTITY_ALIAS = 'The Silver Lady';
-const SCENE_TITLE = 'First Meeting';
-const STORY_TITLE = 'Test Story';
-const CHAPTER_TITLE = 'Test Chapter';
 const MENTION_PROSE = 'She walked into the hall.';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -97,14 +94,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   pg.on('pageerror', (e) => console.log('[renderer:pageerror]', e.message));
   await pg.waitForLoadState('domcontentloaded');
   return pg;
-}
-
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
 async function waitUntil(
@@ -214,21 +203,16 @@ test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () 
   const sp1Collapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
   if (sp1Collapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
 
-  // Create story
+  // Create story. M3 instant-create: no prompt — the same transaction
+  // scaffolds "Chapter 1" and an "Untitled Scene", so there is no separate
+  // chapter/scene creation step here.
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
 
-  // Create chapter
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 6_000 });
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
 
-  // Create scene
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
 
   // Open scene
   const sceneRow = page.locator('.nav-scene-row').first();

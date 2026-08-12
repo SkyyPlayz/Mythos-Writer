@@ -100,15 +100,6 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-/** Fill and confirm the in-app prompt modal (Electron has no window.prompt). */
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
-}
-
 /**
  * M3 (SKY-9021): wait for the caret to land in the just-created story's
  * paragraph contenteditable — the passive signal that the instant-create
@@ -273,21 +264,10 @@ test('TC-300-03: first-run CTA → instant scaffold auto-opens editor → typed 
   // M3 (SKY-9021): the CTA instantly scaffolds story + Chapter 1 + Untitled
   // Scene in one transaction and auto-opens the editor with the caret placed
   // — this is the SKY-316 "auto-open" fix, now exercised by every entry point.
+  // The "main writing section" must accept input with zero extra clicks, so
+  // type immediately while the caret from waitForWriterCaret is still live —
+  // same order create-story-instant.spec.ts (AC1) uses.
   await waitForWriterCaret(page);
-  await renameStoryTitle(page, 'GH300 Story');
-
-  const storyRow = page.locator('.nav-story-row').first();
-  await expect(storyRow).toBeVisible({ timeout: 8_000 });
-  await expect(storyRow).toContainText('GH300 Story');
-
-  const chapterRow = page.locator('.nav-chapter-row').first();
-  await expect(chapterRow).toBeVisible({ timeout: 6_000 });
-
-  const sceneRow = page.locator('.nav-scene-row').first();
-  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
-
-  // The "main writing section" must accept input with zero extra clicks — the
-  // caret placed by waitForWriterCaret above is still live.
   await page.keyboard.type(PROSE);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
@@ -300,6 +280,32 @@ test('TC-300-03: first-run CTA → instant scaffold auto-opens editor → typed 
   }, 12_000);
   expect(proseInFile, `Prose "${PROSE}" not found in any Story Vault .md file`).toBe(true);
 
+  // Rename after the prose commit lands (matches create-story-instant.spec.ts's
+  // Row-3 rename test, which also renames only after the scene write settles).
+  await renameStoryTitle(page, 'GH300 Story');
+
+  const storyRow = page.locator('.nav-story-row').first();
+  await expect(storyRow).toBeVisible({ timeout: 8_000 });
+  await expect(storyRow).toContainText('GH300 Story');
+
+  const chapterRow = page.locator('.nav-chapter-row').first();
+  await expect(chapterRow).toBeVisible({ timeout: 6_000 });
+
+  const sceneRow = page.locator('.nav-scene-row').first();
+  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
+
+  // The rename's own manifest write is debounced too; poll disk so the reload
+  // below never races a manifest snapshot that predates it.
+  const manifestPath = path.join(vaultDir, 'manifest.json');
+  const renameFlushed = await waitUntil(() => {
+    try {
+      return fs.readFileSync(manifestPath, 'utf-8').includes('GH300 Story');
+    } catch {
+      return false;
+    }
+  }, 10_000);
+  expect(renameFlushed, 'manifest.json on disk never picked up "GH300 Story"').toBe(true);
+
   // ── Second boot — same userData → prose persists ──────────────────────────
   await app.close().catch(() => {});
   app = await launchApp(userData);
@@ -307,11 +313,15 @@ test('TC-300-03: first-run CTA → instant scaffold auto-opens editor → typed 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
   await ensureStoriesTab(page);
 
-  // Reopen the scene from disk-backed manifest.
+  // Reopen the scene from disk-backed manifest. Selecting a scene row sets
+  // viewDepth to 'scene', which renders the single-scene BlockEditor
+  // (tiptap/.ProseMirror) rather than ManuscriptView's inline msv-para
+  // paragraphs (Full Book/Part/Chapter depth only) — unaffected by M3.
   const reloadedScene = page.locator('.nav-scene-row').first();
   await expect(reloadedScene).toBeVisible({ timeout: 8_000 });
   await reloadedScene.click();
 
-  const reloadedEditor = page.locator('[data-testid^="msv-para-"]', { hasText: PROSE });
+  const reloadedEditor = page.locator('.ProseMirror');
   await expect(reloadedEditor).toBeVisible({ timeout: 8_000 });
+  await expect(reloadedEditor).toContainText(PROSE, { timeout: 8_000 });
 });
