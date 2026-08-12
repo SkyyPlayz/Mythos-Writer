@@ -167,7 +167,20 @@ test('TC-A11Y-02: Tab past the toolbar reaches the notes search input', async ()
   await openVaultPanel(page);
 
   const newNoteBtn = page.locator('[data-testid="vb-btn-new-note"]');
-  await newNoteBtn.focus();
+
+  // Same anchor-then-settle as TC-A11Y-01: a late async re-focus (editor
+  // data finishing load) can steal focus right after we set it, so verify
+  // it survives a settle window before starting the Tab traversal.
+  await expect(async () => {
+    await newNoteBtn.focus();
+    await page.waitForTimeout(200);
+    const active = await page.evaluate(
+      () => (document.activeElement as HTMLElement | null)?.dataset?.testid
+        ?? document.activeElement?.tagName ?? 'none',
+    );
+    expect(active, `focus stolen by: ${active}`).toBe('vb-btn-new-note');
+  }).toPass({ timeout: 15_000 });
+
   await page.keyboard.press('Tab'); // → New folder btn
   await page.keyboard.press('Tab'); // → Sort btn
   await page.keyboard.press('Tab'); // → Auto-reveal btn

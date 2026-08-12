@@ -128,9 +128,12 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   // syncEntityToIndex() synchronously, so it's searchable immediately (no
   // watcher-debounce race, unlike scene prose which only reindexes on the
   // next file-watcher tick).
-  const entitiesPanel = page.locator('[data-panel-id="entities"]');
-  const epCollapsed = await entitiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-  if (epCollapsed) await entitiesPanel.locator('.lr-panel-collapse-btn').click();
+  // M6: Entities is no longer a sidebar panel — Entity Browser opens as a
+  // workspace tab via the + picker (SKY-9920).
+  const newTabBtn = page.locator('[data-testid="wtb-new-tab-btn"]');
+  await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
+  await newTabBtn.click();
+  await page.locator('[data-testid="wtb-new-tab-menu-item-entities"]').click();
   await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
 
   await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').click();
@@ -141,11 +144,8 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   await expect(dialog).not.toBeVisible({ timeout: 6_000 });
   await expect(page.locator('.entity-item-name', { hasText: ENTITY_NAME })).toBeVisible({ timeout: 8_000 });
 
-  // Create story / chapter / scene
-  const storiesPanel = page.locator('[data-panel-id="stories"]');
-  const spCollapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
-  if (spCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
-
+  // Create story / chapter / scene. M6: Stories render directly in the
+  // always-visible STORY NAVIGATOR tree (no panel toggle).
   // M3 instant-create: click creates story immediately, no prompt. The same
   // transaction scaffolds "Chapter 1" and an "Untitled Scene" and opens the
   // editor with the caret in that scene — no separate chapter/scene creation
