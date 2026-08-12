@@ -2770,11 +2770,6 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
     const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate, genre, themeKey } = payload ?? {};
 
-    // M3 (SKY-9021) rollout flag (off by default): instant-writable scaffold —
-    // Part tier + untitled scene with one empty paragraph + first open at Full
-    // Book depth. Off keeps the pre-M3 shape. Flag removal is part of M3 done.
-    const instantCreate = !!loadAppSettings().instantCreateStory;
-
     const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string, opts?: { openAtDepth?: 'book' }) => {
       const current = loadAppSettings();
       const patch: typeof current = { ...current, onboardingComplete: true };
@@ -2929,21 +2924,20 @@ const handlers: IpcHandlers = {
         const chapterDirPath = `Manuscript/${effectiveStoryTitle}/chapter-1`;
         const sceneRelPath = `Manuscript/${effectiveStoryTitle}/chapter-1/chapter-1-scene-1.md`;
 
-        const firstSceneTitle = instantCreate ? 'Untitled Scene' : 'Chapter 1, Scene 1';
+        const firstSceneTitle = 'Untitled Scene';
         writeSceneFile(svp, sceneRelPath, { id: sceneId, title: firstSceneTitle, chapterId, storyId, order: 0, prose: '' });
         const outlinePath = path.join(svp, storyDirPath, 'Outline.md');
         const synopsisPath = path.join(svp, storyDirPath, 'Synopsis.md');
         if (!fs.existsSync(outlinePath)) fs.writeFileSync(outlinePath, `# Outline\n\nStart with the big beats for ${effectiveStoryTitle}.\n`, 'utf-8');
         if (!fs.existsSync(synopsisPath)) fs.writeFileSync(synopsisPath, `# Synopsis\n\nA short pitch for ${effectiveStoryTitle}.\n`, 'utf-8');
 
-        // M3 (SKY-9021, flag-on): the create-story transaction is story +
-        // Part 1 (title: '', the v3 single-untitled-part shape) + Chapter 1 +
-        // one untitled scene holding a single empty paragraph — the caret
-        // target. Flag-off keeps the pre-M3 partless, block-less scaffold.
-        const scene = { id: sceneId, title: firstSceneTitle, path: sceneRelPath, order: 0, chapterId, storyId, blocks: instantCreate ? [{ id: crypto.randomUUID(), type: 'prose' as const, content: '', order: 0, updatedAt: nowStr }] : [], draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr };
+        // M3 (SKY-9021): the create-story transaction is story + Part 1
+        // (title: '', the v3 single-untitled-part shape) + Chapter 1 + one
+        // untitled scene holding a single empty paragraph — the caret target.
+        const scene = { id: sceneId, title: firstSceneTitle, path: sceneRelPath, order: 0, chapterId, storyId, blocks: [{ id: crypto.randomUUID(), type: 'prose' as const, content: '', order: 0, updatedAt: nowStr }], draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr };
         const chapter = { id: chapterId, title: 'Chapter 1', path: chapterDirPath, order: 0, scenes: [scene], createdAt: nowStr, updatedAt: nowStr };
         const part = { id: crypto.randomUUID(), title: '', order: 0, note: [], chapters: [chapter], createdAt: nowStr, updatedAt: nowStr };
-        const story = { id: storyId, title: effectiveStoryTitle, path: storyDirPath, ...(instantCreate ? { parts: [part] } : {}), chapters: [chapter], createdAt: nowStr, updatedAt: nowStr };
+        const story = { id: storyId, title: effectiveStoryTitle, path: storyDirPath, parts: [part], chapters: [chapter], createdAt: nowStr, updatedAt: nowStr };
         const manifest = readManifest(getManifestPath());
         manifest.stories.push(story);
         writeManifest(getManifestPath(), manifest);
@@ -2953,7 +2947,7 @@ const handlers: IpcHandlers = {
         await stopNotesVaultWatcher();
         await startNotesVaultWatcher(nvp, notifyNotesVaultChanged);
 
-        persistSettings(sceneId, sceneRelPath, resolvedCustomParent, instantCreate ? { openAtDepth: 'book' } : undefined);
+        persistSettings(sceneId, sceneRelPath, resolvedCustomParent, { openAtDepth: 'book' });
         return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
       } else {
         // customTemplate === 'blank'
@@ -3007,7 +3001,7 @@ const handlers: IpcHandlers = {
       const chapterDirPath = `Manuscript/${titleSlug}/chapter-1`;
       const sceneRelPath = `Manuscript/${titleSlug}/chapter-1/chapter-1-scene-1.md`;
 
-      const blankSceneTitle = instantCreate ? 'Untitled Scene' : 'Chapter 1, Scene 1';
+      const blankSceneTitle = 'Untitled Scene';
       writeSceneFile(storyVaultPath, sceneRelPath, {
         id: sceneId,
         title: blankSceneTitle,
@@ -3017,16 +3011,13 @@ const handlers: IpcHandlers = {
         prose: '',
       });
 
-      // M3 (SKY-9021, flag-on): same one-transaction scaffold as every
-      // create-story entry point — Part 1 (title: '') + Chapter 1 + one
-      // untitled scene holding a single empty paragraph (the caret target).
-      // Flag-off keeps the pre-M3 partless, block-less scaffold.
+      // M3 (SKY-9021): same one-transaction scaffold as every create-story
+      // entry point — Part 1 (title: '') + Chapter 1 + one untitled scene
+      // holding a single empty paragraph (the caret target).
       const scene = {
         id: sceneId, title: blankSceneTitle, path: sceneRelPath,
         order: 0, chapterId, storyId,
-        blocks: instantCreate
-          ? [{ id: crypto.randomUUID(), type: 'prose' as const, content: '', order: 0, updatedAt: nowStr }]
-          : [],
+        blocks: [{ id: crypto.randomUUID(), type: 'prose' as const, content: '', order: 0, updatedAt: nowStr }],
         draftState: 'in-progress' as const, createdAt: nowStr, updatedAt: nowStr,
       };
       const chapter = {
@@ -3039,7 +3030,7 @@ const handlers: IpcHandlers = {
       };
       const story = {
         id: storyId, title: blankStoryTitle, path: storyDirPath,
-        ...(instantCreate ? { parts: [part] } : {}),
+        parts: [part],
         chapters: [chapter], createdAt: nowStr, updatedAt: nowStr,
       };
 
@@ -3050,7 +3041,7 @@ const handlers: IpcHandlers = {
       await stopVaultWatcher();
       await startVaultWatcher(storyVaultPath, notifyVaultChanged);
 
-      persistSettings(sceneId, sceneRelPath, resolvedParent, instantCreate ? { openAtDepth: 'book' } : undefined);
+      persistSettings(sceneId, sceneRelPath, resolvedParent, { openAtDepth: 'book' });
       return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
 
     } else if (startMode === 'sample') {

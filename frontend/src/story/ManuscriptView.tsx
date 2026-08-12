@@ -154,9 +154,7 @@ export interface ManuscriptViewProps {
   onRenameStory?: (title: string) => void;
   /**
    * M3 (SKY-9021): enables row 3's inline title rename. Gated separately from
-   * onRenameScene/onRenameChapter (which the heading renames share, flag-off)
-   * so the scope title stays a plain heading while `instantCreateStory` is
-   * off — deleted with the flag.
+   * onRenameScene/onRenameChapter, which the heading renames share.
    */
   inlineTitleRename?: boolean;
   /**

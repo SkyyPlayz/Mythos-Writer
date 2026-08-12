@@ -18,7 +18,7 @@ const OUT = outDir('capture-m3-instant');
 fs.mkdirSync(OUT, { recursive: true });
 const VIEWPORT = { width: 1920, height: 1080 };
 
-// ── App: empty vault, M3 flag ON (the surface under review) ──────────────────
+// ── App: empty vault (the surface under review) ───────────────────────────────
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m3cap-'));
 const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-m3cap-'));
 const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-m3cap-'));
@@ -26,7 +26,6 @@ const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosNotesVault-m3
 const agentCfg = { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 1e5, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 5e5 };
 fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
   apiKey: '', onboardingComplete: true, onboardingStartMode: 'skip', notesTabUpgradeToastShown: true,
-  instantCreateStory: true,
   agents: { writingAssistant: { ...agentCfg, scanIntervalSeconds: 30 }, brainstorm: agentCfg, archive: { ...agentCfg, continuityCheckIntervalSeconds: 60 } },
   theme: 'dark', snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 }, null, 2));
