@@ -7,6 +7,7 @@ import {
   CRAFTER_TONES,
   addBeat,
   buildDraftPrompt,
+  cardSeedFromSuggested,
   castCardsFromSuggested,
   castFromSuggested,
   composeDraftBoard,
@@ -18,6 +19,7 @@ import {
   placesFromSuggested,
   planNotesFromVault,
   removeBeat,
+  slotForSuggestedGroup,
   suggestedFromVault,
   toggleTone,
   wordCount,
@@ -125,6 +127,30 @@ describe('suggested cards from the vault listing', () => {
     const cards = suggestedFromVault(items);
     expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'The Lamplighter']);
     expect(placesFromSuggested(cards).map((c) => c.t)).toEqual(['Ward Violet']);
+  });
+});
+
+describe('slotForSuggestedGroup / cardSeedFromSuggested (SKY-9878 — canvas spec §5)', () => {
+  it('maps the three suggested-card groups to their spec slot colors', () => {
+    expect(slotForSuggestedGroup('CHARACTERS')).toBe(0);
+    expect(slotForSuggestedGroup('LOCATIONS')).toBe(1);
+    expect(slotForSuggestedGroup('ITEMS & SYSTEMS')).toBe(3);
+  });
+
+  it('falls back to slot 4 (the onAddCard blank-card default) for any other vault folder', () => {
+    expect(slotForSuggestedGroup('NOTES')).toBe(4);
+    expect(slotForSuggestedGroup('WHATEVER')).toBe(4);
+  });
+
+  it('carries a suggested card\'s fields + slot straight into a canvas card seed', () => {
+    const [card] = suggestedFromVault([item('Locations/Ward Violet.md')]);
+    expect(cardSeedFromSuggested(card)).toEqual({
+      t: 'Ward Violet',
+      d: 'Locations',
+      av: card.av,
+      c: 1,
+      nid: 'Locations/Ward Violet',
+    });
   });
 });
 
