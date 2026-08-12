@@ -14,18 +14,67 @@ import { test, expect, _electron as electron, type ElectronApplication, type Pag
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
+const STORY_ID = 'm6-e2e-story-0001';
+const CHAPTER_ID = 'm6-e2e-chapter-0001';
+const SCENE_ID = 'm6-e2e-scene-0001';
+const STORY_TITLE = 'M6 Sidebar Story';
+
+/**
+ * Seeds a post-onboarding profile. rightSidebarVisible must be explicit:
+ * the GRS only auto-opens via the real onboarding flow (main.ts sets it for
+ * non-skip start modes), which these tests bypass with onboardingComplete.
+ * Agents are seeded disabled so no scan ever attempts a network call.
+ */
+function seedUserData(userData: string, vaultDir: string, notesVaultDir: string, opts?: { seedStory?: boolean }): void {
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(vaultDir, { recursive: true });
   fs.mkdirSync(notesVaultDir, { recursive: true });
+  const agentDefaults = { model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 };
   fs.writeFileSync(
     path.join(userData, 'app-settings.json'),
-    JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2),
+    JSON.stringify({
+      onboardingComplete: true,
+      theme: 'dark',
+      rightSidebarVisible: true,
+      notesTabUpgradeToastShown: true,
+      agents: {
+        writingAssistant: { enabled: false, scanIntervalSeconds: 30, ...agentDefaults },
+        brainstorm: { enabled: false, ...agentDefaults },
+        archive: { enabled: false, continuityCheckIntervalSeconds: 60, ...agentDefaults },
+      },
+    }, null, 2),
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
     JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesVaultDir }, null, 2),
   );
+  if (opts?.seedStory) {
+    const now = new Date().toISOString();
+    const sceneDir = path.join(vaultDir, 'stories', STORY_ID, 'chapters', CHAPTER_ID, 'scenes');
+    fs.mkdirSync(sceneDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sceneDir, `${SCENE_ID}.md`),
+      '---\ntitle: "The Gate"\n---\n\nShe crossed the threshold.\n',
+      'utf8',
+    );
+    const manifest = {
+      version: 1,
+      stories: [{
+        id: STORY_ID, title: STORY_TITLE, genre: 'Fantasy', path: `stories/${STORY_ID}`, order: 0,
+        createdAt: now, updatedAt: now,
+        chapters: [{
+          id: CHAPTER_ID, title: 'Chapter One', storyId: STORY_ID, order: 0,
+          createdAt: now, updatedAt: now,
+          scenes: [{
+            id: SCENE_ID, title: 'The Gate', path: `stories/${STORY_ID}/chapters/${CHAPTER_ID}/scenes/${SCENE_ID}.md`,
+            chapterId: CHAPTER_ID, storyId: STORY_ID, order: 0,
+            draftState: 'in-progress', createdAt: now, updatedAt: now, blocks: [],
+          }],
+        }],
+      }],
+    };
+    fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  }
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
@@ -50,10 +99,14 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
   test.beforeAll(async () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-left-'));
     const userData = path.join(tempRoot, 'userData');
-    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
+    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'), { seedStory: true });
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.locator('[data-testid="left-rail"]')).toBeVisible({ timeout: 15_000 });
+    // Zone 1 (story card) is per-story chrome — select the seeded story first,
+    // the same way a writer does from the navigator tree.
+    await page.locator('.nav-story-title', { hasText: STORY_TITLE }).click();
+    await expect(page.locator('[data-testid="lr-story-card"]')).toBeVisible({ timeout: 8_000 });
   });
 
   test.afterAll(async () => {
@@ -98,7 +151,7 @@ test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity heade
   test.beforeAll(async () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m6-right-'));
     const userData = path.join(tempRoot, 'userData');
-    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'));
+    seedUserData(userData, path.join(tempRoot, 'story-vault'), path.join(tempRoot, 'notes-vault'), { seedStory: true });
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 15_000 });
