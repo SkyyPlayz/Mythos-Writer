@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type React
 import { useAgentActivity } from './agents/agentActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
+import { EmptyState } from './components/EmptyState/EmptyState';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
 import { ProposalCard } from './components/BrainstormCard/ProposalCard';
@@ -2790,12 +2791,21 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
           ) : (
           <div className="brainstorm-facts-list">
             {facts.length === 0 ? (
-              <div className="brainstorm-facts-empty">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-                </svg>
-                <span>No facts yet — mention character names or locations to build your vault.</span>
-              </div>
+              <EmptyState
+                testId="brainstorm-facts-empty"
+                icon={(
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                )}
+                heading="No facts yet"
+                hint="Mention character names or locations to build your vault."
+                action={{
+                  label: 'Ask about your story',
+                  testId: 'brainstorm-facts-empty-cta',
+                  onClick: () => setMode('chat'),
+                }}
+              />
             ) : sortOrder === 'custom' ? (
               /* Custom order: flat list with drag handles */
               <div
