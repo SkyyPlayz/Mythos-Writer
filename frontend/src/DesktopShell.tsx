@@ -5314,6 +5314,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               !(gettingStartedProgress?.completedItems.includes('write-scene'))
             }
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onPromoteSceneNote={handlePromoteSceneNote}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
             reviewBadgeCount={proposedCount}

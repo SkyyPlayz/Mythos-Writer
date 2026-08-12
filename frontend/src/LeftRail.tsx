@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import StoryNavigator from './StoryNavigator';
+import type { SceneNoteDragPayload } from './sceneNotes';
 import { countWords } from './wordStats';
 import './LeftRail.css';
 
@@ -20,6 +21,7 @@ interface Props {
   onReorderScenes?: (storyId: string, chapterId: string, orderedSceneIds: string[]) => void;
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
+  onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
   reviewBadgeCount?: number;
@@ -43,6 +45,7 @@ export default function LeftRail({
   onReorderScenes,
   showTemplateCta,
   onTemplateCtaClick,
+  onPromoteSceneNote,
   sidebarCollapsed,
   onToggleCollapsed,
 }: Props) {
@@ -169,6 +172,7 @@ export default function LeftRail({
               onReorderScenes={onReorderScenes}
               showTemplateCta={showTemplateCta}
               onTemplateCtaClick={onTemplateCtaClick}
+              onPromoteSceneNote={onPromoteSceneNote}
             />
           </div>
         )}
