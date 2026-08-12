@@ -6,11 +6,12 @@
 // so switching modes never loses or duplicates events (M24 AC7).
 import { useMemo, useState, useCallback } from 'react';
 import type { TimelinesStore, TimelineEvent, TimelineRow } from './timelinesTypes';
-import { plotlineRows, plotlineCards, isMainSpan } from './timeline2/axis/storyLanes';
+import { plotlineRows, plotlineCards, isMainSpan, PLOTLINE_PALETTE } from './timeline2/axis/storyLanes';
 import { PLOT_GRID_CHAPTERS, plotCardWhen } from './timeline2/axis/chapters';
 import { deriveAxisDomain } from './timeline2/axis/domain';
 import { safeCalendar, roundWhen } from './timeline2/axis/calendarCodec';
 import { laneColor, hexA } from './timeline2/axis/palette';
+import { EmptyState } from './components/EmptyState/EmptyState';
 import './TimelinePlotlines.css';
 
 /** Mirrors AxisView's chapter-cell shape — only `isHere` is used here, to
@@ -125,15 +126,36 @@ export default function TimelinePlotlines({
     [dragCardId, store.events, cardWhen, persistEvent],
   );
 
+  const handleAddPlotline = useCallback(() => {
+    const api = window.api;
+    if (typeof api?.timelinesUpsertItem !== 'function') return;
+    const row: TimelineRow = {
+      id: newItemId('row'),
+      timelineId: activeId,
+      name: 'New Plotline',
+      kind: 'plotline',
+      color: PLOTLINE_PALETTE[plotlines.length % PLOTLINE_PALETTE.length],
+    };
+    api
+      .timelinesUpsertItem({ type: 'row', item: row })
+      .then((res) => { if (res.ok) onStoreChange(res.store); })
+      .catch(() => { /* keep the local copy — next load reconciles */ });
+  }, [activeId, plotlines.length, onStoreChange]);
+
   if (plotlines.length === 0) {
     return (
-      <div className="tlp-empty" data-testid="timeline-plotlines-empty">
-        <h2>No plotlines yet.</h2>
-        <p>
-          Add a plotline from the Progress/Structure toolbar, or lay a Templates ▾ structure onto
-          the timeline.
-        </p>
-      </div>
+      <EmptyState
+        className="tlp-empty"
+        testId="timeline-plotlines-empty"
+        icon={(
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 6h18M3 12h18M3 18h12" />
+          </svg>
+        )}
+        heading="No plotlines yet"
+        hint="Add a plotline, or lay a Templates ▾ structure onto the timeline."
+        action={{ label: '+ Plotline', testId: 'timeline-plotlines-empty-cta', onClick: handleAddPlotline }}
+      />
     );
   }
 

@@ -18,6 +18,7 @@ import {
   SUBWAY_VIEWBOX_WIDTH,
   SUBWAY_VIEWBOX_HEIGHT,
 } from './timelineAeon';
+import { EmptyState } from './components/EmptyState/EmptyState';
 import './TimelineSubway.css';
 
 export interface TimelineSubwayProps {
@@ -62,10 +63,20 @@ export default function TimelineSubway({ data, onOpenScene }: TimelineSubwayProp
 
   if (events.length === 0) {
     return (
-      <div className="tsw-empty" data-testid="timeline-subway-empty">
-        <h2>No timeline events yet.</h2>
-        <p>Create scenes in your story to see character lines here.</p>
-      </div>
+      <EmptyState
+        className="tsw-empty"
+        testId="timeline-subway-empty"
+        icon={(
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 17c4-8 12-8 16 0" />
+            <circle cx="4" cy="17" r="1.6" fill="currentColor" stroke="none" />
+            <circle cx="12" cy="9.5" r="1.6" fill="currentColor" stroke="none" />
+            <circle cx="20" cy="17" r="1.6" fill="currentColor" stroke="none" />
+          </svg>
+        )}
+        heading="No timeline events yet"
+        hint="Create scenes in your story to see character lines here."
+      />
     );
   }
 

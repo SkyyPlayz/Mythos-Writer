@@ -12,6 +12,7 @@ import {
   type AeonTimelineData,
 } from './timelineAeon';
 import TimelineCharacterPresenceTable from './TimelineCharacterPresenceTable';
+import { EmptyState } from './components/EmptyState/EmptyState';
 import './TimelineRelationships.css';
 
 export interface TimelineRelationshipsProps {
@@ -25,10 +26,19 @@ export default function TimelineRelationships({ data, onOpenScene }: TimelineRel
 
   if (events.length === 0) {
     return (
-      <div className="trl-empty" data-testid="timeline-relationships-empty">
-        <h2>No timeline events yet.</h2>
-        <p>Create scenes in your story to map who is present at each beat.</p>
-      </div>
+      <EmptyState
+        className="trl-empty"
+        testId="timeline-relationships-empty"
+        icon={(
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="3" />
+            <circle cx="16" cy="16" r="3" />
+            <path d="M10.5 9.5L13.5 14.5" />
+          </svg>
+        )}
+        heading="No timeline events yet"
+        hint="Create scenes in your story to map who is present at each beat."
+      />
     );
   }
 
