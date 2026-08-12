@@ -129,6 +129,7 @@ import ScenePreviewPanel from './ScenePreviewPanel';
 import SceneNotesPanel from './SceneNotesPanel';
 import ScenePropertiesPanel from './ScenePropertiesPanel';
 import ScenesPanel from './ScenesPanel';
+import ReferencesPanel from './ReferencesPanel';
 import OutlinePlanningPanel from './OutlinePlanningPanel';
 import StoryTimeline from './StoryTimeline';
 import WindowChrome from './components/ui/WindowChrome';
@@ -4067,6 +4068,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onOpenFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
           />
         );
+      case 'references':
+        return (
+          <ReferencesPanel
+            story={selectedStory}
+            activeScene={activeSceneForSidebar}
+            stories={stories}
+            entities={allEntities}
+            notePaths={allNotePaths}
+            onPickReference={handleNotesWikiLinkClick}
+          />
+        );
       case 'brainstorm':
         return (
           <BrainstormPage
@@ -4097,6 +4109,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
     handleOpenCoachPage,
     handleNavSectionChange, handleSetView,
+    allEntities, allNotePaths, handleNotesWikiLinkClick,
     sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
   ]);
 
