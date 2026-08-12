@@ -116,17 +116,25 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
     }
   });
 
-  test('tab-aware Notes shortcuts switch preview, graph, and Brainstorm only in Notes', async () => {
+  // SKY-9019 M5: Vault Graph is a standalone rail destination now, not a
+  // Notes sub-view — Ctrl+G from Notes intentionally navigates away to it
+  // (DesktopShell's Ctrl+G handler), while Ctrl+B (Brainstorm collapse)
+  // remains Notes-only and has no effect once the tab has changed.
+  test('tab-aware Notes shortcuts: Ctrl+B toggles Brainstorm in Notes, Ctrl+G navigates to Vault Graph', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
-      await page.keyboard.press('Control+G');
-      await expect(page.locator('[data-testid="notes-graph-view"]')).toBeVisible({ timeout: 5_000 });
+
+      await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).toBeVisible({ timeout: 5_000 });
       await page.keyboard.press('Control+B');
       await expect(page.locator('[data-testid="notes-brainstorm-panel"]')).not.toBeVisible({ timeout: 5_000 });
+
+      await page.keyboard.press('Control+G');
+      await expect(page.locator('#app-tabpanel-vault-graph')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('#app-tabpanel-notes')).toHaveCount(0);
     } finally {
       await app.close().catch(() => undefined);
     }

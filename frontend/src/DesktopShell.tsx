@@ -16,6 +16,14 @@ import {
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitcher';
 import { stripManifestContentForIpc } from './manifestIpc';
+import {
+  parseSceneNotes,
+  serializeSceneNotes,
+  promotedSceneNoteName,
+  buildPromotedSceneNoteContent,
+  type SceneNoteDragPayload,
+} from './sceneNotes';
+import { findAvailablePromotedNotePath } from './EntriesPanel';
 import BackgroundStack from './theme/BackgroundStack';
 import BorderOverlay from './theme/BorderOverlay';
 import { showLnToast } from './theme/lnToast';
@@ -2327,6 +2335,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return null;
   }, [stories]);
 
+  // M9b (SKY-9823): scene note dropped on the story navigator → real .md file
+  // in the notes vault, then unpin from the scene. Vault write comes FIRST so
+  // a failure can never lose the note (SKY-5154: artifact before index).
+  const [sceneNotesRefresh, setSceneNotesRefresh] = useState(0);
+  const handleSceneNotesChanged = useCallback(() => setSceneNotesRefresh((n) => n + 1), []);
+  const handlePromoteSceneNote = useCallback(async (payload: SceneNoteDragPayload) => {
+    let sceneTitle = '';
+    let storyTitle = '';
+    outer: for (const story of stories) {
+      const chapters = [...story.chapters, ...(story.parts ?? []).flatMap((p) => p.chapters)];
+      for (const chapter of chapters) {
+        const sc = chapter.scenes.find((candidate) => candidate.id === payload.sceneId);
+        if (sc) { sceneTitle = sc.title; storyTitle = story.title; break outer; }
+      }
+    }
+    try {
+      const name = promotedSceneNoteName(payload.text);
+      const notePath = await findAvailablePromotedNotePath(`${name}.md`, async (p) => {
+        const existing = await window.api.readNotesVault(p);
+        return !('error' in existing);
+      });
+      const written = await window.api.writeNotesVault(
+        notePath,
+        buildPromotedSceneNoteContent(payload.text, sceneTitle, storyTitle),
+      );
+      if ('error' in written) throw new Error(written.error);
+      const res = await window.api.notesGet?.(payload.sceneId);
+      if (res) {
+        const notes = parseSceneNotes(res.content);
+        const idx = notes[payload.index] === payload.text ? payload.index : notes.indexOf(payload.text);
+        if (idx !== -1) {
+          notes.splice(idx, 1);
+          await window.api.notesSet?.(payload.sceneId, serializeSceneNotes(notes));
+        }
+      }
+      setSceneNotesRefresh((n) => n + 1);
+      showLnToast(`Promoted to vault: ${notePath}`);
+    } catch {
+      showLnToast('Could not promote the note to the vault.');
+    }
+  }, [stories]);
+
   // SKY-8907: closing a pane's last tab collapses that pane (Obsidian
   // behaviour) — pane 1 closing promotes pane 2's tabs/scene to primary;
   // pane 2 closing just exits split (pane 1 already holds the primary state).
@@ -2351,6 +2401,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setPane2Tabs([]);
     setActivePane2TabId(null);
   }, [pane2Scene, pane2Chapter, pane2Story, pane2Tabs, activePane2TabId, persistDocTabs]);
+
+  // SKY-9019 M5: each rail item is a first-class destination; no aliases.
+  // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    switch (moduleId) {
+      case 'crafter':
+        handleNavSectionChange('story');
+        handleSetView('kanban');
+        break;
+      case 'timeline':
+        handleNavSectionChange('story');
+        handleSetView('timeline');
+        break;
+      case 'vault-graph':
+        handleTabChange('vault-graph');
+        break;
+      case 'story':
+        handleNavSectionChange('story');
+        // Scene Crafter and Timeline have their own rail items — Story Writer
+        // always lands on the editor sub-view.
+        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
+          handleSetView('editor');
+        }
+        break;
+      default:
+        handleNavSectionChange(moduleId);
+    }
+  }, [handleNavSectionChange, handleSetView, handleTabChange]);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -2434,7 +2512,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
         if (tabShellRef.current.activeTab === 'notes') {
           e.preventDefault();
-          handleNotesSubViewChange('graph');
+          handleNavModuleChange('vault-graph');
         }
         return;
       }
@@ -2547,7 +2625,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNotesSubViewChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
+  }, [setWritingMode, setShortcutsOpen, setSettingsOpen, handleManualSnapshot, persistLeftSidebarLayout, handleToggleSplitWindow, splitWindowEnabled, setLayoutPickerForceOpen, handleTabChange, handleNavModuleChange, layout, persistLayout, focusContinuitySearch, grsVisible, handleGrsVisibilityChange, toggleTopBar]);
 
   useEffect(() => {
     if (!continuityPeekOverlayOpen) return;
@@ -3264,8 +3342,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedStory(null);
     setSelectedEntity(null);
     setOpenedNotePath(scenePath);
+    // SKY-9019 M5: Vault Graph (and other non-Notes surfaces this handler is
+    // wired to, e.g. the Story tab's Vault Browser panel) are no longer
+    // nested under the Notes tab, so opening a note has to switch there
+    // itself instead of relying on already being on it.
+    handleTabChange('notes');
     checkGettingStartedItem('notes-vault');
-  }, [stories, handleSelectScene, checkGettingStartedItem]);
+  }, [stories, handleSelectScene, handleTabChange, checkGettingStartedItem]);
 
   // SKY-795 §4 — Enter key on the timeline jumps into the editor for the focused scene.
   const handleOpenSceneById = useCallback((sceneId: string) => {
@@ -3864,6 +3947,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onReorderScenes={handleReorderScenes}
             showTemplateCta={showTemplateCta}
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
+            onPromoteSceneNote={handlePromoteSceneNote}
           />
         );
       case 'entities':
@@ -3924,6 +4008,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             agentNames={appSettings?.agentNames}
             onOpenSuggestionInbox={handleOpenSuggestionInbox}
             onOpenCoachPage={handleOpenCoachPage}
+            sceneNotesRefresh={sceneNotesRefresh}
+            onPromoteSceneNote={handlePromoteSceneNote}
+            onSceneNotesChanged={handleSceneNotesChanged}
           />
         );
       case 'archive-continuity':
@@ -3946,7 +4033,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         );
       case 'scene-notes':
-        return <SceneNotesPanel scene={activeSceneForSidebar} />;
+        return (
+          <SceneNotesPanel
+            scene={activeSceneForSidebar}
+            refreshToken={sceneNotesRefresh}
+            onPromoteNote={handlePromoteSceneNote}
+            onNotesChanged={handleSceneNotesChanged}
+          />
+        );
       case 'scene-properties':
         return (
           <ScenePropertiesPanel
@@ -4016,6 +4110,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleOpenCoachPage,
     handleNavSectionChange, handleSetView,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
+    sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -4448,51 +4543,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange('story');
   }, [stories, handleNavSectionChange]);
 
-  // ── Beta 4 M3: six-module nav rail (FULL-SPEC §4; prototype navItems 5681) ──
-  // story/notes/brainstorm stay top-level tabs; crafter/timeline are Story
-  // sub-view surfaces and graph is the Notes graph surface. M4's document-tab
-  // model owns the strip (static pseudo-tab / hidden per view), so rail clicks
-  // switch section + sub-view directly instead of creating module tabs.
-  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
-    switch (moduleId) {
-      case 'crafter':
-        handleNavSectionChange('story');
-        handleSetView('kanban');
-        break;
-      case 'timeline':
-        handleNavSectionChange('story');
-        handleSetView('timeline');
-        break;
-      case 'graph':
-        handleNavSectionChange('notes');
-        handleNotesSubViewChange('graph');
-        break;
-      case 'story':
-        handleNavSectionChange('story');
-        // Scene Crafter and Timeline have their own rail items now, so a
-        // Story Writer click always lands on the editor sub-view (the other
-        // Story sub-tabs — structure/book — still restore normally).
-        if (tabShellRef.current.storySubView === 'kanban' || tabShellRef.current.storySubView === 'timeline') {
-          handleSetView('editor');
-        }
-        break;
-      case 'notes':
-        handleNavSectionChange('notes');
-        // Vault Graph is its own rail item — a Notes Editor click shows notes.
-        if (tabShellRef.current.notesSubView === 'graph') handleNotesSubViewChange('editor');
-        break;
-      default:
-        handleNavSectionChange(moduleId);
-    }
-  }, [handleNotesSubViewChange, handleNavSectionChange, handleSetView]);
-
   // Which rail module is lit: derived from the actual displayed surface so
   // the slot-glow pill follows crafter/timeline/graph sub-views too.
+  // SKY-9019 M5: vault-graph is its own AppTab; crafter/timeline derive from storySubView.
   const activeNavModule: NavRailModuleId = tabShell.activeTab === 'story'
     ? (view === 'kanban' ? 'crafter' : view === 'timeline' ? 'timeline' : 'story')
-    : tabShell.activeTab === 'notes'
-      ? (tabShell.notesSubView === 'graph' ? 'graph' : 'notes')
-      : 'brainstorm';
+    : tabShell.activeTab === 'vault-graph'
+      ? 'vault-graph'
+      : tabShell.activeTab === 'brainstorm'
+        ? 'brainstorm'
+        : 'notes';
 
   // Beta 4 M3: rail edit popover rows — the full merged module config
   // (hidden items included) in user order; SKY-5903 merge semantics apply.
@@ -5640,6 +5700,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
             seedPrompt={brainstormSeedPrompt ?? undefined}
           />
+        </div>
+      )}
+      {/* SKY-9019 M5: Vault Graph is a standalone top-level tab (no longer a Notes sub-view). */}
+      {tabShell.activeTab === 'vault-graph' && (
+        <div
+          id="app-tabpanel-vault-graph"
+          role="tabpanel"
+          aria-labelledby="app-tab-vault-graph"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+        >
+          <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
         </div>
       )}
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.

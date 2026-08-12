@@ -19,6 +19,7 @@ export default function TabBar({ activeTab, onTabChange }: TabBarProps) {
     story: null,
     notes: null,
     brainstorm: null,
+    'vault-graph': null,
   });
   const activeLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? 'Story';
 

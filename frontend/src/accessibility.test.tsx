@@ -456,15 +456,16 @@ describe('Accessibility — SceneNotesPanel (WCAG 4.1.2)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('with scene — textarea has accessible label', () => {
+  it('with scene — note list and add input have accessible labels', () => {
     const scene = {
       id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0,
       chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '',
     };
     const { container } = render(<SceneNotesPanel scene={scene as any} />);
-    const textarea = container.querySelector('textarea');
-    expect(textarea).not.toBeNull();
-    expect(textarea?.getAttribute('aria-label')).toBe('Scene notes');
+    const list = container.querySelector('ul.snp-list');
+    expect(list?.getAttribute('aria-label')).toBe('Scene notes');
+    const input = container.querySelector('input.snp-input');
+    expect(input?.getAttribute('aria-label')).toBe('New scene note');
   });
 
   it('with scene — no axe violations', async () => {

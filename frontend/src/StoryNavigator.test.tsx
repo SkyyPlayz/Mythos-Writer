@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { vi } from 'vitest';
 import StoryNavigator from './StoryNavigator';
+import { SCENE_NOTE_DRAG_MIME } from './sceneNotes';
 import type { Story, Chapter, Scene } from './types';
 
 const scene1: Scene = {
@@ -176,5 +177,56 @@ describe('StoryNavigator', () => {
     fireEvent.keyDown(sceneOneRow, { key: 'Enter' });
     expect(onSelectScene).toHaveBeenCalledWith(scene1, chapter1, story1);
     expect(onReorderScenes).not.toHaveBeenCalled();
+  });
+
+  // M9b (SKY-9823): scene-note drag-promote drop target
+  describe('scene-note drop (promote to vault)', () => {
+    const payload = { sceneId: 'sc1', index: 0, text: 'Check the tide tables.' };
+    const noteDataTransfer = () => ({
+      types: [SCENE_NOTE_DRAG_MIME],
+      getData: vi.fn().mockReturnValue(JSON.stringify(payload)),
+      dropEffect: '',
+    });
+
+    it('highlights on dragover and promotes the payload on drop', () => {
+      const onPromoteSceneNote = vi.fn();
+      const { container } = render(<StoryNavigator {...makeProps({ onPromoteSceneNote })} />);
+      const nav = container.querySelector('.story-navigator')!;
+      fireEvent.dragOver(nav, { dataTransfer: noteDataTransfer() });
+      expect(nav.className).toContain('story-navigator--note-drop');
+      fireEvent.drop(nav, { dataTransfer: noteDataTransfer() });
+      expect(onPromoteSceneNote).toHaveBeenCalledWith(payload);
+      expect(nav.className).not.toContain('story-navigator--note-drop');
+    });
+
+    it('a note dropped on a scene row still promotes and never reorders', () => {
+      const onPromoteSceneNote = vi.fn();
+      const onReorderScenes = vi.fn();
+      render(<StoryNavigator {...makeProps({ onPromoteSceneNote, onReorderScenes })} />);
+      const sceneOneRow = screen.getByText('Scene One').closest('.nav-scene-row')!;
+      fireEvent.drop(sceneOneRow, { dataTransfer: noteDataTransfer() });
+      expect(onPromoteSceneNote).toHaveBeenCalledWith(payload);
+      expect(onReorderScenes).not.toHaveBeenCalled();
+    });
+
+    it('ignores drags without the scene-note MIME', () => {
+      const onPromoteSceneNote = vi.fn();
+      const { container } = render(<StoryNavigator {...makeProps({ onPromoteSceneNote })} />);
+      const nav = container.querySelector('.story-navigator')!;
+      const dt = { types: ['text/plain'], getData: vi.fn(), dropEffect: '' };
+      fireEvent.dragOver(nav, { dataTransfer: dt });
+      expect(nav.className).not.toContain('story-navigator--note-drop');
+      fireEvent.drop(nav, { dataTransfer: dt });
+      expect(onPromoteSceneNote).not.toHaveBeenCalled();
+    });
+
+    it('ignores a malformed payload', () => {
+      const onPromoteSceneNote = vi.fn();
+      const { container } = render(<StoryNavigator {...makeProps({ onPromoteSceneNote })} />);
+      const nav = container.querySelector('.story-navigator')!;
+      const dt = { types: [SCENE_NOTE_DRAG_MIME], getData: vi.fn().mockReturnValue('not json'), dropEffect: '' };
+      fireEvent.drop(nav, { dataTransfer: dt });
+      expect(onPromoteSceneNote).not.toHaveBeenCalled();
+    });
   });
 });

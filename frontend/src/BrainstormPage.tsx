@@ -449,6 +449,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   const [boardSynced, setBoardSynced] = useState(true);
   const boardLoadedRef = useRef(false);
   const boardSaveTimerRef = useRef<number | null>(null);
+  // SKY-9781: root element, used by the ESC handler to tell whether focus
+  // lives inside this page — the compact notes-sidebar instance shares the
+  // document with other Escape-owning surfaces (vault tree inline rename).
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const lastPersistedBoardRef = useRef<string | null>(null);
   // M20: chat-page Board toggle — canvas stacked under the chat, drag-bar height.
   const [chatBoardOpen, setChatBoardOpen] = useState(false);
@@ -971,6 +975,10 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
       // Context menus: focus is inside a [role="menu"] element
       const focused = document.activeElement;
       if (focused && (focused as HTMLElement).closest('[role="menu"]')) return;
+      // SKY-9781: when another surface owns focus (vault tree inline rename,
+      // a dialog in a different panel), Escape belongs to it — only claim the
+      // key when focus is inside this page or nowhere in particular.
+      if (focused && focused !== document.body && rootRef.current && !rootRef.current.contains(focused)) return;
       e.stopPropagation();
       onClose();
     };
@@ -2003,7 +2011,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
 
   if (!enabled) {
     return (
-      <div className="brainstorm-page brainstorm-disabled">
+      <div className="brainstorm-page brainstorm-disabled" ref={rootRef}>
         <div className="brainstorm-disabled-inner">
           <p className="brainstorm-disabled-msg">Brainstorm Agent is disabled. Enable it in Settings.</p>
           <button className="brainstorm-back-btn" onClick={onClose}>Close</button>
@@ -2013,7 +2021,7 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   }
 
   return (
-    <div className="brainstorm-page">
+    <div className="brainstorm-page" ref={rootRef}>
       <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {liveText}
       </span>

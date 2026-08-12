@@ -17,6 +17,13 @@
   }
 }
 
+/* M9b (SKY-9823): scene-note drag hovering the navigator (drop = promote to vault). */
+.story-navigator--note-drop {
+  outline: 1px dashed var(--accent, #00f0ff);
+  outline-offset: -2px;
+  background: var(--bg-drag-over, var(--accent-soft, rgba(0, 240, 255, 0.06)));
+}
+
 .nav-header {
   display: flex;
   align-items: center;

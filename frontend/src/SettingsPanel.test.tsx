@@ -2245,7 +2245,7 @@ describe('SKY-3218 nav-bar configuration', () => {
     // Beta 4 M3: the six §4 modules in spec order.
     expect(saved.navConfig?.items).toHaveLength(6);
     expect(saved.navConfig?.items.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
     ]);
     expect(saved.navConfig?.showLabels).toBe(true);
     expect(saved.navConfig?.showIcons).toBe(true);

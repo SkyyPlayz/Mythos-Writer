@@ -36,6 +36,7 @@
     "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts --reporter=list",
     "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list",
     "test:e2e:notes-drag": "playwright test e2e/notes-tree-drag-sky8891.spec.ts --reporter=list",
+    "test:e2e:scene-notes-promote": "playwright test e2e/scene-notes-promote.spec.ts --reporter=list",
 
     "test:e2e:seed-once": "playwright test e2e/notes-seed-once-sky9028.spec.ts e2e/notes-seed-once-defaults-sky9028.spec.ts --reporter=list",
     "test:e2e:notes-unicode-names": "playwright test e2e/tests/notes-unicode-names.spec.ts --reporter=list",

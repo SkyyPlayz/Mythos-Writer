@@ -6,7 +6,6 @@
 // Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
-import VaultGraphView from './VaultGraphView';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
@@ -27,10 +26,9 @@ const MIN_SIDEBAR_W = 160;
 const MAX_SIDEBAR_W = 500;
 const RIGHT_SIDEBAR_W = 340;
 
+// SKY-9019 M5: Graph→vault-graph rail, Entities→tab. Notes only has Editor mode.
 const NOTES_SUBVIEWS: { id: NotesSubView; label: string }[] = [
   { id: 'editor', label: 'Editor' },
-  { id: 'graph', label: 'Graph' },
-  { id: 'entities', label: 'Entities' },
 ];
 
 export interface NotesTabPanelProps {
@@ -107,6 +105,9 @@ export interface NotesTabPanelProps {
   archiveContinuityEnabled?: boolean;
   /** SKY-2585: active scene forwarded to ContinuityPanel for scene-scoped listing. */
   activeScene?: Scene | null;
+  // SKY-9019 M5: Entity Browser is now a tab document; when the active notes
+  // tab is kind 'entities', the main area renders EntityBrowser instead of note editor.
+  activeTabIsEntityBrowser?: boolean;
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
@@ -155,7 +156,7 @@ export default function NotesTabPanel({
   onCreateChapter,
   onCreateScene,
   onOpenFile,
-  onOpenScene,
+  onOpenScene: _onOpenScene,
   onExport,
   journalModeEnabled,
   onOpenInNewTab,
@@ -171,6 +172,7 @@ export default function NotesTabPanel({
   activeStorySlug,
   archiveContinuityEnabled,
   activeScene,
+  activeTabIsEntityBrowser,
   onSelectEntity,
   selectedEntityId,
   writingMode,
@@ -388,8 +390,8 @@ export default function NotesTabPanel({
             </button>
           ))}
         </div>
-        {/* SKY-3626: N/F/E writing-mode controls — Notes editor only */}
-        {notesSubView === 'editor' && writingMode !== undefined && onSetWritingMode && (
+        {/* SKY-3626: N/F/E writing-mode controls — Notes editor only, not Entity Browser */}
+        {notesSubView === 'editor' && !activeTabIsEntityBrowser && writingMode !== undefined && onSetWritingMode && (
           <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
             <button
               className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
@@ -423,7 +425,7 @@ export default function NotesTabPanel({
           </div>
         )}
         {/* M16: note split toggle — prototype "Split notes" header button. */}
-        {notesSubView === 'editor' && activeNotePath && (
+        {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && (
           <button
             className={`notes-split-toggle-btn${noteSplitPath ? ' notes-split-toggle-btn--active' : ''}`}
             aria-label="Split notes"
@@ -528,7 +530,7 @@ export default function NotesTabPanel({
 
         {/* Center — sub-view body */}
         <div className="notes-tab-center" data-testid="notes-tab-center">
-          {notesSubView === 'editor' && activeNotePath && !noteSplitPath && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && !noteSplitPath && (
             <NoteViewer
               key={activeNotePath}
               path={activeNotePath}
@@ -549,7 +551,7 @@ export default function NotesTabPanel({
           )}
           {/* M16 / SKY-9784: note split — active note + a second note side by
               side, each pane owning an Obsidian-parity tab strip. */}
-          {notesSubView === 'editor' && activeNotePath && noteSplitPath && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && noteSplitPath && (
             <div className="notes-split-row" ref={splitRowRef} data-testid="notes-split-row">
               <div className="notes-split-main" style={{ flex: noteSplitRatio }}>
                 <NotesPaneTabStrip
@@ -614,7 +616,7 @@ export default function NotesTabPanel({
               />
             </div>
           )}
-          {notesSubView === 'editor' && !activeNotePath && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && !activeNotePath && (
             // SKY-9710: prototype empty-state pattern — glyph + one-line
             // hint + primary action. Same shape as the vault tree's own
             // empty state (VaultBrowser/index.tsx NotesVaultEmptyState),
@@ -658,12 +660,7 @@ export default function NotesTabPanel({
               </button>
             </div>
           )}
-          {notesSubView === 'graph' && (
-            <div className="notes-graph-view" data-testid="notes-graph-view">
-              <VaultGraphView onOpenNote={onOpenFile} onOpenScene={onOpenScene} />
-            </div>
-          )}
-          {notesSubView === 'entities' && (
+          {activeTabIsEntityBrowser && (
             <div className="notes-entities-view" data-testid="notes-entities-view">
               <EntityBrowser
                 onSelectEntity={onSelectEntity}

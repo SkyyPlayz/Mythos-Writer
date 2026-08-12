@@ -175,6 +175,52 @@ describe('GlobalSearchPanel', () => {
     expect(screen.queryAllByRole('option')).toHaveLength(0);
     expect(screen.getByText(/Type to search/)).toBeInTheDocument();
   });
+
+  // SKY-9742 / TC-GS-04: switching scope re-runs the search after a short
+  // debounce; the visible results must survive that in-flight window instead
+  // of blanking to a "Searching…" flash (keep-stale-while-revalidate).
+  it('keeps current results visible while a scope-switch refresh is in flight', async () => {
+    const sceneResult = {
+      resultType: 'scene' as const,
+      docId: 'scene-keep-1',
+      vault: 'story' as const,
+      kind: 'scene',
+      title: 'Dragon Scene',
+      snippet: '',
+      rank: -1,
+    };
+    const entityResult = {
+      resultType: 'entity' as const,
+      docId: 'ent-keep-1',
+      vault: 'notes' as const,
+      kind: 'character',
+      title: 'Dragon Oracle',
+      snippet: '',
+      rank: -1,
+    };
+    let resolveRefresh: (v: { results: (typeof entityResult)[] }) => void = () => {};
+    const refresh = new Promise<{ results: (typeof entityResult)[] }>((res) => { resolveRefresh = res; });
+    const searchVault = vi
+      .fn()
+      .mockResolvedValueOnce({ results: [sceneResult] })
+      .mockReturnValueOnce(refresh);
+    (window as unknown as { api: unknown }).api = { searchVault };
+
+    render(<GlobalSearchPanel open={true} onNavigate={() => {}} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dragon' } });
+    await waitFor(() => screen.getByText('Dragon Scene'), { timeout: 600 });
+
+    // Switch scope — the refresh search fires after a 50ms debounce and is
+    // held pending; the old result must remain rendered the whole time.
+    fireEvent.click(screen.getByText('Notes Vault'));
+    await waitFor(() => expect(searchVault).toHaveBeenCalledWith('dragon', 'notes', 20, undefined), { timeout: 600 });
+    expect(screen.getByText('Dragon Scene')).toBeInTheDocument();
+    expect(screen.queryByText('Searching…')).not.toBeInTheDocument();
+
+    resolveRefresh({ results: [entityResult] });
+    await waitFor(() => screen.getByText('Dragon Oracle'), { timeout: 600 });
+    expect(screen.queryByText('Dragon Scene')).not.toBeInTheDocument();
+  });
 });
 
 // Beta 4 M2 — the title-bar "Search vault…" field hands its draft query to
