@@ -220,13 +220,13 @@ test('TC-VB-03: switching to Notes scope hides Story Vault panel', async () => {
 test('TC-VB-04: create story via VaultBrowser Story Vault panel, story row appears', async () => {
   await openVaultTab(page);
 
-  // New Story button lives in the Story Vault section header
+  // New Story button lives in the Story Vault section header.
+  // M3 instant-create: no prompt — story appears immediately as "Untitled Story".
   await page.locator('[data-testid="vb-story-vault"] [aria-label="New Story"]').click();
-  await fillPrompt(page, STORY_TITLE);
 
-  // Story title appears in the Story Vault panel
+  // Any story row in the panel confirms the create succeeded.
   await expect(
-    page.locator('[data-testid="vb-story-vault"] .vb-name', { hasText: STORY_TITLE }),
+    page.locator('[data-testid="vb-story-vault"] .vb-name').first(),
   ).toBeVisible({ timeout: 8_000 });
 });
 

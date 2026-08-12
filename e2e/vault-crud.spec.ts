@@ -36,8 +36,11 @@ import {
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const PROSE = 'The vault held every secret the kingdom had ever kept.';
 const STORY_TITLE = 'Vault Chronicles';
-const CHAPTER_TITLE = 'The First Chamber';
-const SCENE_TITLE = 'Descent';
+// M3 (SKY-9021): create-story is instant — story + Chapter 1 + Untitled Scene
+// are scaffolded in one transaction, so the chapter/scene titles below are the
+// scaffold's own names rather than titles typed into a since-removed prompt.
+const CHAPTER_TITLE = 'Chapter 1';
+const SCENE_TITLE = 'Untitled Scene';
 // SKY-619 replaced TypePickerPopover with CreateDialog; TC-V-06 enters the
 // entity name explicitly in the dialog input.
 const ENTITY_NAME = 'New Character';
@@ -122,15 +125,26 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 /**
- * Fill and confirm the in-app text prompt modal (the app uses a custom modal
- * rather than window.prompt(), which Electron does not support).
+ * M3 (SKY-9021): wait for the caret to land in the just-created story's
+ * paragraph contenteditable — the passive signal that the instant-create
+ * transaction (story + Chapter 1 + Untitled Scene) has finished.
  */
-async function fillPrompt(pg: Page, response: string): Promise<void> {
-  const input = pg.locator('.prompt-modal-input');
-  await input.waitFor({ state: 'visible', timeout: 6_000 });
-  await input.fill(response);
-  await pg.locator('.prompt-modal-ok').click();
-  await input.waitFor({ state: 'detached', timeout: 6_000 });
+async function waitForWriterCaret(pg: Page): Promise<void> {
+  await pg.waitForFunction(
+    () => (document.activeElement?.getAttribute('data-testid') ?? '').startsWith('msv-para-'),
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
+/** Rename the just-created story in place via the Story Writer's scope title. */
+async function renameStoryTitle(pg: Page, newTitle: string): Promise<void> {
+  const scopeTitle = pg.locator('[data-testid="msv-scope-title"]');
+  await expect(scopeTitle).toBeVisible({ timeout: 10_000 });
+  await scopeTitle.click();
+  await pg.keyboard.press('ControlOrMeta+a');
+  await pg.keyboard.type(newTitle);
+  await pg.keyboard.press('Enter');
 }
 
 /** Recursively collect all *.md files under `dir`. */
@@ -230,9 +244,11 @@ test('TC-V-01: Story Vault manifest.json and Notes Vault directory both created 
 
 // ─── TC-V-02: Create chapter → chapter row appears in navigator ───────────────
 //
-// Create a story and a chapter through the UI. Verify both appear in the
-// StoryNavigator left rail. The chapter directory write happens at scene
-// creation time; here we only verify the UI reflects the new hierarchy.
+// M3 (SKY-9021/SKY-9896): create-story is instant — one transaction scaffolds
+// story + Chapter 1 + Untitled Scene and opens the editor with the caret in
+// the new scene's paragraph. There is no prompt to fill; this test triggers
+// that transaction and inline-renames the story, then verifies the
+// auto-scaffolded chapter row appears in the StoryNavigator left rail.
 
 test('TC-V-02: create story + chapter, both appear in Stories navigator', async () => {
   // SKY-1694: Story Navigator is in the panel zone; ensure it's expanded.
@@ -242,42 +258,37 @@ test('TC-V-02: create story + chapter, both appear in Stories navigator', async 
     if (isCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
   }
 
-  // ── Create story ──────────────────────────────────────────────────────────
+  // ── Create story (instant — no prompt) ────────────────────────────────────
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
+  await waitForWriterCaret(page);
+  await renameStoryTitle(page, STORY_TITLE);
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
   await expect(storyRow).toContainText(STORY_TITLE);
 
-  // ── Create chapter ────────────────────────────────────────────────────────
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, CHAPTER_TITLE);
-
+  // ── Chapter 1 is scaffolded automatically by the instant-create transaction ──
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
   await expect(chapterRow).toContainText(CHAPTER_TITLE);
 });
 
-// ─── TC-V-03: Create scene → file appears on disk under chapter path ──────────
+// ─── TC-V-03: Scene scaffolded with the story → file appears on disk ──────────
 //
-// Create a scene under the chapter from TC-V-02. The renderer calls vault:write
+// M3: the scene is scaffolded together with the story in TC-V-02 (no separate
+// create-scene action or prompt) — the renderer already called vault:write
 // with path `stories/<storyId>/chapters/<chapterId>/scenes/<sceneId>.md`.
-// Verify the file appears on disk inside the Story Vault directory tree.
+// Verify the file is on disk inside the Story Vault directory tree.
 
-test('TC-V-03: create scene, scene .md file written to Story Vault on disk', async () => {
+test('TC-V-03: scaffolded scene .md file present in Story Vault on disk', async () => {
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 4_000 });
-
-  // Create scene under the chapter
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, SCENE_TITLE);
 
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 6_000 });
   await expect(sceneRow).toContainText(SCENE_TITLE);
 
-  // SKY-316: creating a scene must auto-open the editor (no manual click needed).
+  // SKY-316: the scene auto-opens the editor (no manual click needed).
   await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 6_000 });
 
   // The scene file is written with path: stories/<storyId>/chapters/<chapterId>/scenes/<sceneId>.md

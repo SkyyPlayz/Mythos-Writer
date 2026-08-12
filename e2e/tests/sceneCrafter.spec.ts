@@ -52,8 +52,6 @@ import { clickStoryNav } from '../helpers/navGuard';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-const STORY_TITLE = 'Scene Crafter Chronicle';
-const STORY_TITLE_B = 'Second Chronicle';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -127,17 +125,22 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
-/** Create a story in the vault. Uses the StoryNavigator add button which is always visible. */
-async function createStory(pg: Page, title: string): Promise<void> {
+/**
+ * Create a story via the StoryNavigator add button.
+ * M3 (SKY-9021/9896): instant-create — no prompt, the story row appears
+ * immediately as "Untitled Story". Returns the index of the new row so
+ * callers can select it positionally.
+ */
+async function createStory(pg: Page): Promise<number> {
+  const before = await pg.locator('.nav-story-row').count();
   await pg.locator('.nav-add-btn').first().click();
-  await fillPrompt(pg, title);
-  await expect(pg.locator('.nav-story-row').filter({ hasText: title }))
-    .toBeVisible({ timeout: 8_000 });
+  await expect(pg.locator('.nav-story-row').nth(before)).toBeVisible({ timeout: 8_000 });
+  return before; // index of the newly created row
 }
 
-/** Select a story by clicking its title in the StoryNavigator sidebar. */
-async function selectStory(pg: Page, title: string): Promise<void> {
-  await pg.locator('.nav-story-title', { hasText: title }).click();
+/** Select a story by its positional index in the StoryNavigator sidebar. */
+async function selectStory(pg: Page, index: number): Promise<void> {
+  await pg.locator('.nav-story-title').nth(index).click();
 }
 
 /** Navigate to the Scene Crafter (Board) view via the nav rail.
@@ -206,8 +209,8 @@ test.beforeAll(async () => {
 
   // Create the primary story used across most tests.
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await createStory(page, STORY_TITLE);
-  await selectStory(page, STORY_TITLE);
+  const storyAIndex = await createStory(page);
+  await selectStory(page, storyAIndex);
 
   // Open the board to trigger board creation; wait for full load so the
   // scenes/<slug>/ directory exists on disk before tests read it.
@@ -445,9 +448,9 @@ test('AC-SC-14: each story has an independent board that does not share cards', 
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 6_000 });
 
   // Create the second story via the StoryNavigator add button (always visible).
-  await createStory(page, STORY_TITLE_B);
+  const storyBIndex = await createStory(page);
 
-  await selectStory(page, STORY_TITLE_B);
+  await selectStory(page, storyBIndex);
   await openBoardView(page);
 
   // Board for story B should have 5 empty lanes — none of story A's cards.
@@ -559,10 +562,10 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   fs.writeFileSync(path.join(boardsDir, 'Cold Open — board 1.canvas.json'), JSON.stringify(boardJson, null, 2));
 
   // AC-SC-14 (run immediately before this test) switches the active story to
-  // STORY_TITLE_B and leaves it selected — re-select story A, whose slug is
-  // the one this test just seeded a board under.
+  // story B and leaves it selected — re-select story A (always index 0, created
+  // first in beforeAll), whose slug this test just seeded a board under.
   await clickStoryNav(page);
-  await selectStory(page, STORY_TITLE);
+  await selectStory(page, 0);
   await page.locator('[data-testid="story-subview-editor"]').click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 8_000 });
 
@@ -602,9 +605,9 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   // The app restores the last-open tab on restart, which may already be a
   // subview of this story (e.g. Scene Crafter's own left-nav section) rather
   // than the Story Writer navigator — route through Story Writer first, then
-  // (re-)select the story only if the navigator's picker is what's showing.
+  // (re-)select story A (index 0, created in beforeAll) if the navigator shows.
   await clickStoryNav(page);
-  const navigatorEntry = page.locator('.nav-story-title', { hasText: STORY_TITLE });
+  const navigatorEntry = page.locator('.nav-story-title').first();
   if (await navigatorEntry.isVisible().catch(() => false)) {
     await navigatorEntry.click();
   }

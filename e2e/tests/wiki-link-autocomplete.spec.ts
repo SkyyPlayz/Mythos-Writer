@@ -158,8 +158,8 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   const spCollapsed = await storiesPanel.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
   if (spCollapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
 
+  // M3 instant-create: click creates story immediately, no prompt.
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 

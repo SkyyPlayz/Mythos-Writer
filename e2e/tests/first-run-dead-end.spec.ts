@@ -109,6 +109,31 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
   await input.waitFor({ state: 'detached', timeout: 6_000 });
 }
 
+/**
+ * M3 (SKY-9021): wait for the caret to land in the just-created story's
+ * paragraph contenteditable — the passive signal that the instant-create
+ * transaction (story + Chapter 1 + Untitled Scene) has finished. Story
+ * creation no longer opens a prompt modal; every entry point runs this
+ * transaction directly.
+ */
+async function waitForWriterCaret(pg: Page): Promise<void> {
+  await pg.waitForFunction(
+    () => (document.activeElement?.getAttribute('data-testid') ?? '').startsWith('msv-para-'),
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
+/** Rename the just-created story in place via the Story Writer's scope title. */
+async function renameStoryTitle(pg: Page, newTitle: string): Promise<void> {
+  const scopeTitle = pg.locator('[data-testid="msv-scope-title"]');
+  await expect(scopeTitle).toBeVisible({ timeout: 10_000 });
+  await scopeTitle.click();
+  await pg.keyboard.press('ControlOrMeta+a');
+  await pg.keyboard.type(newTitle);
+  await pg.keyboard.press('Enter');
+}
+
 /** Recursively collect all *.md files under `dir`. */
 function findMdFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
@@ -176,7 +201,7 @@ test.afterEach(async () => {
 
 // ─── TC-300-01: nav-empty-cta unblocks the empty StoryNavigator ──────────────
 
-test('TC-300-01: clicking nav-empty-cta in empty StoryNavigator opens the create-story prompt', async () => {
+test('TC-300-01: clicking nav-empty-cta in empty StoryNavigator creates a story instantly', async () => {
   app = await launchApp(userData);
   const page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
@@ -187,8 +212,11 @@ test('TC-300-01: clicking nav-empty-cta in empty StoryNavigator opens the create
   await expect(cta).toBeVisible({ timeout: 6_000 });
   await cta.click();
 
-  // SKY-317 acceptance: clicking the CTA opens the create-story prompt modal.
-  await fillPrompt(page, 'CTA First Story');
+  // M3 (SKY-9021): the CTA now runs the instant-create transaction directly —
+  // no prompt modal interposes. Wait for the caret, then inline-rename the
+  // auto-created story so the navigator assertion below has a known title.
+  await waitForWriterCaret(page);
+  await renameStoryTitle(page, 'CTA First Story');
 
   // Story row appears in the navigator → CTA is no longer a dead end.
   const storyRow = page.locator('.nav-story-row').first();
@@ -202,7 +230,7 @@ test('TC-300-01: clicking nav-empty-cta in empty StoryNavigator opens the create
 
 // ─── TC-300-02: shell-empty-new-story unblocks the welcome screen ────────────
 
-test('TC-300-02: clicking shell-empty-new-story in welcome screen opens the create-story prompt', async () => {
+test('TC-300-02: clicking shell-empty-new-story in welcome screen creates a story instantly', async () => {
   app = await launchApp(userData);
   const page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
@@ -215,7 +243,10 @@ test('TC-300-02: clicking shell-empty-new-story in welcome screen opens the crea
   await expect(welcomeCta).toBeVisible({ timeout: 6_000 });
   await welcomeCta.click();
 
-  await fillPrompt(page, 'Welcome CTA Story');
+  // M3 (SKY-9021): instant-create — no prompt modal. Wait for the caret, then
+  // inline-rename the auto-created story.
+  await waitForWriterCaret(page);
+  await renameStoryTitle(page, 'Welcome CTA Story');
 
   // Story appears in the navigator and the welcome empty state is replaced.
   const storyRow = page.locator('.nav-story-row').first();
@@ -225,10 +256,10 @@ test('TC-300-02: clicking shell-empty-new-story in welcome screen opens the crea
 
 // ─── TC-300-03: End-to-end first-run path is fully unblocked ─────────────────
 
-test('TC-300-03: first-run CTA → chapter → scene auto-opens editor → typed prose persists on reload', async () => {
+test('TC-300-03: first-run CTA → instant scaffold auto-opens editor → typed prose persists on reload', async () => {
   const PROSE = 'The dead end gave way; the page accepted ink at last.';
 
-  // ── First boot — empty vault → CTA → story → chapter → scene → type ───────
+  // ── First boot — empty vault → CTA → instant story+chapter+scene → type ──
   app = await launchApp(userData);
   let page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
@@ -238,32 +269,27 @@ test('TC-300-03: first-run CTA → chapter → scene auto-opens editor → typed
   // screen CTA is covered separately by TC-300-02; sharing all three controls
   // in a single chain would not add coverage beyond the standalone test.
   await page.locator('[data-testid="nav-empty-cta"]').click();
-  await fillPrompt(page, 'GH300 Story');
+
+  // M3 (SKY-9021): the CTA instantly scaffolds story + Chapter 1 + Untitled
+  // Scene in one transaction and auto-opens the editor with the caret placed
+  // — this is the SKY-316 "auto-open" fix, now exercised by every entry point.
+  await waitForWriterCaret(page);
+  await renameStoryTitle(page, 'GH300 Story');
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
   await expect(storyRow).toContainText('GH300 Story');
 
-  // Create a chapter under the new story via the inline + control.
-  await storyRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, 'GH300 Chapter');
-
   const chapterRow = page.locator('.nav-chapter-row').first();
   await expect(chapterRow).toBeVisible({ timeout: 6_000 });
-  await expect(chapterRow).toContainText('GH300 Chapter');
 
-  // Create a scene. SKY-316 must auto-open the editor — no manual select step.
-  await chapterRow.locator('.nav-inline-add').click();
-  await fillPrompt(page, 'GH300 Scene');
+  const sceneRow = page.locator('.nav-scene-row').first();
+  await expect(sceneRow).toBeVisible({ timeout: 6_000 });
 
-  const editor = page.locator('.ProseMirror');
-  await expect(editor).toBeVisible({ timeout: 8_000 });
-
-  // The "main writing section" must accept input. Click first so focus lands
-  // on the editor in case the auto-select did not also focus the contenteditable.
-  await editor.click();
-  await editor.type(PROSE);
-  await expect(editor).toContainText(PROSE);
+  // The "main writing section" must accept input with zero extra clicks — the
+  // caret placed by waitForWriterCaret above is still live.
+  await page.keyboard.type(PROSE);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
   // Vault write is debounced; confirm prose reaches disk.
   const proseInFile = await waitUntil(() => {
@@ -286,7 +312,6 @@ test('TC-300-03: first-run CTA → chapter → scene auto-opens editor → typed
   await expect(reloadedScene).toBeVisible({ timeout: 8_000 });
   await reloadedScene.click();
 
-  const reloadedEditor = page.locator('.ProseMirror');
+  const reloadedEditor = page.locator('[data-testid^="msv-para-"]', { hasText: PROSE });
   await expect(reloadedEditor).toBeVisible({ timeout: 8_000 });
-  await expect(reloadedEditor).toContainText(PROSE, { timeout: 8_000 });
 });

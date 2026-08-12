@@ -185,9 +185,8 @@ test('EM-00: boot app and create a story, chapter, and scene', async () => {
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
 
-  // Create story
+  // Create story — M3 instant-create: no prompt, row appears immediately.
   await page.locator('.nav-add-btn').first().click();
-  await fillPrompt(page, STORY_TITLE);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
