@@ -1,6 +1,8 @@
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneCrafterPage from './SceneCrafterPage';
+import { CANVAS_CARD_DRAG_MIME } from '../../canvas/canvasTypes';
+import { __resetAiEnabledForTests, setAiEnabled } from '../../hooks/useAiEnabled';
 
 const STORY = {
   id: 'story-1',
@@ -94,6 +96,7 @@ beforeEach(() => {
   tokenCb = null;
   endCb = null;
   errorCb = null;
+  __resetAiEnabledForTests();
 });
 
 async function renderPage() {
@@ -526,5 +529,143 @@ describe('SceneCrafterPage — M19 AI generate → draft card (§7.1, AC5-7)', (
     await screen.findByRole('alert');
     expect(screen.getByRole('alert')).toHaveTextContent('No API key configured.');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+});
+
+// ─── SKY-9878 (M10-S3): SUGGESTED CARDS rail → canvas + live restock + R11 ──
+
+/** Opens a pre-saved canvas board so the rail's canvas-view behavior is reachable directly. */
+async function renderWithOpenBoard(extraVaultItems: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> = []) {
+  const boardPath = 'Boards/Skyfall Chronicles/My Board.canvas.json';
+  const api = makeApi({
+    listNotesVault: vi.fn().mockResolvedValue({
+      items: [
+        { path: 'Boards', name: 'Boards', isDirectory: true, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        { path: 'Boards/Skyfall Chronicles', name: 'Skyfall Chronicles', isDirectory: true, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        { path: boardPath, name: 'My Board.canvas.json', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+        ...extraVaultItems,
+      ],
+    }),
+    readNotesVault: vi.fn().mockResolvedValue({ content: JSON.stringify({ nodes: [], edges: [] }), path: boardPath }),
+    writeNotesVault: vi.fn().mockResolvedValue({ path: boardPath }),
+  });
+  (window as unknown as { api: unknown }).api = api;
+  await renderPage();
+  fireEvent.click(within(screen.getByTestId('crafter-board-list')).getByText('My Board'));
+  await waitFor(() => expect(screen.getByTestId('canvas-board')).toBeInTheDocument());
+  return api;
+}
+
+describe('SceneCrafterPage — SKY-9878 SUGGESTED CARDS rail on the open canvas board', () => {
+  it('renders the rail beside the board, grouped by vault category', async () => {
+    await renderWithOpenBoard();
+    const suggested = screen.getByLabelText('Suggested cards');
+    expect(within(suggested).getByText('CHARACTERS')).toBeInTheDocument();
+    expect(within(suggested).getByText('Mira Veynn')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-board')).toBeInTheDocument();
+  });
+
+  it('clicking a suggested card adds it as a new card on the open board (canvas spec §2)', async () => {
+    await renderWithOpenBoard();
+    const suggested = screen.getByLabelText('Suggested cards');
+    const stage = screen.getByTestId('canvas-stage');
+    expect(within(stage).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
+    const card = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+    expect(card).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(card);
+
+    await waitFor(() => expect(within(stage).getByText('Mira Veynn')).toBeInTheDocument());
+  });
+
+  it('click-to-add and drag-to-add both append a card with the same content (AC2)', async () => {
+    await renderWithOpenBoard();
+    const suggested = screen.getByLabelText('Suggested cards');
+    const stage = screen.getByTestId('canvas-stage');
+    const card = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+    expect(card).toHaveAttribute('draggable', 'true');
+
+    fireEvent.click(card);
+    await waitFor(() => expect(within(stage).getAllByText('Mira Veynn')).toHaveLength(1));
+
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
+    fireEvent.dragStart(card, { dataTransfer });
+    expect(dataTransfer.setData).toHaveBeenCalledWith(CANVAS_CARD_DRAG_MIME, expect.stringContaining('Mira Veynn'));
+    const raw = (dataTransfer.setData as ReturnType<typeof vi.fn>).mock.calls[0][1] as string;
+
+    const dropEvent = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX: 600, clientY: 500 });
+    Object.assign(dropEvent, { dataTransfer: { types: [CANVAS_CARD_DRAG_MIME], getData: () => raw } });
+    fireEvent(screen.getByTestId('canvas-board'), dropEvent);
+
+    await waitFor(() => expect(within(stage).getAllByText('Mira Veynn')).toHaveLength(2));
+  });
+});
+
+describe('SceneCrafterPage — SKY-9878 live vault restock (AC3, no manual refresh)', () => {
+  it('a vault-change push event restocks the rail with no manual refresh', async () => {
+    let vaultChangedHandler: (() => void) | undefined;
+    const api = makeApi({
+      listNotesVault: vi.fn()
+        .mockResolvedValueOnce({
+          items: [{ path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' }],
+        })
+        .mockResolvedValueOnce({
+          items: [
+            { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+            { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+          ],
+        }),
+      onVaultNotesUpdated: vi.fn((cb: () => void) => { vaultChangedHandler = cb; return vi.fn(); }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    expect(within(suggested).queryByText('Ward Violet')).not.toBeInTheDocument();
+
+    await act(async () => { vaultChangedHandler?.(); });
+
+    await waitFor(() => expect(within(suggested).getByText('Ward Violet')).toBeInTheDocument());
+    expect(api.listNotesVault).toHaveBeenCalledTimes(2);
+  });
+
+  it('unsubscribes the vault-change listener on unmount', async () => {
+    const unsubscribe = vi.fn();
+    const api = makeApi({ onVaultNotesUpdated: vi.fn().mockReturnValue(unsubscribe) });
+    (window as unknown as { api: unknown }).api = api;
+    const { unmount } = await renderPage();
+    unmount();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SceneCrafterPage — SKY-9878 R11/M11c hint copy (rail is manual either way)', () => {
+  it('credits the Brainstorm Agent while AI is on (default)', async () => {
+    await renderPage();
+    expect(screen.getByText(/the Brainstorm Agent keeps this list stocked from your vault\./)).toBeInTheDocument();
+  });
+
+  it('switches to a Notes-Vault-only hint with AI off', async () => {
+    setAiEnabled(false);
+    await renderPage();
+    expect(screen.getByText(/this list is drawn straight from your Notes Vault\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Brainstorm Agent/)).not.toBeInTheDocument();
+  });
+
+  it('manual add path (M11c): a suggested card still selects as draft context with AI off — no AI call either way', async () => {
+    const api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [{ path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' }],
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    setAiEnabled(false);
+    await renderPage();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    const card = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+    fireEvent.click(card);
+    expect(card).toHaveAttribute('aria-pressed', 'true');
   });
 });

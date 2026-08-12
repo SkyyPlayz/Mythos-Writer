@@ -45,6 +45,7 @@ import {
   expect,
   _electron as electron,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
@@ -639,4 +640,99 @@ test('SKY-8435: GOAL/CONFLICT setup fields render with the dyslexia-conformance 
   // that — the spec's "container grows or scrolls, never clips" floor (§0).
   const boxHeight = await goal.evaluate((el) => el.getBoundingClientRect().height);
   expect(boxHeight).toBeGreaterThanOrEqual(70);
+});
+
+// ─── SKY-9878 (M10-S3): SUGGESTED CARDS rail on the open canvas board ────────
+//
+// Canvas spec §2 ("click OR drag onto the canvas both place it") + M10-S3
+// acceptance: the rail renders CHARACTERS/LOCATIONS/ITEMS & SYSTEMS against a
+// seeded vault fixture, click-to-add and drag-to-add both place a real card
+// on the open board, and a vault write restocks the rail with no reload.
+
+/**
+ * Drag a suggested-card rail entry onto a drop target using a real
+ * `DataTransfer` + `DragEvent` (a genuine Chromium renderer, unlike jsdom,
+ * implements both) — mirrors `notes-tree-drag-sky8891.spec.ts`'s pattern.
+ * The same DataTransfer instance is reused dragstart → dragover → drop, same
+ * as a real OS-level drag gesture.
+ */
+async function dragSuggestedCardOntoCanvas(view: Locator, cardTitle: string): Promise<void> {
+  const card = view.locator('.sc-suggest').getByRole('button', { name: new RegExp(cardTitle, 'i') });
+  const target = view.getByTestId('canvas-board');
+  const box = await target.boundingBox();
+  if (!box) throw new Error('canvas-board has no bounding box');
+  const clientX = box.x + box.width / 2;
+  const clientY = box.y + box.height / 2;
+
+  await card.evaluate((el) => {
+    const dt = new DataTransfer();
+    (window as unknown as { __sc9878DT: DataTransfer }).__sc9878DT = dt;
+    el.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  });
+  await target.evaluate((el, coords) => {
+    const dt = (window as unknown as { __sc9878DT: DataTransfer }).__sc9878DT;
+    el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, ...coords, dataTransfer: dt }));
+    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, ...coords, dataTransfer: dt }));
+  }, { clientX, clientY });
+}
+
+/**
+ * Opens the "Cold Open" board seeded by AC-SC-17 and returns locators scoped
+ * to the canvas-board *view* — the editor's Scenes-tab mini canvas also
+ * renders a `[data-testid="canvas-board"]` in read-only mode, so an unscoped
+ * page-wide lookup is a strict-mode double match whenever that panel is open.
+ */
+async function openColdOpenBoard(pg: Page): Promise<{ view: Locator; stage: Locator }> {
+  await pg.locator('.sc-board-row', { hasText: 'Cold Open' }).click();
+  const view = pg.locator('.sc-canvas-view');
+  await expect(view.getByTestId('canvas-board')).toBeVisible({ timeout: 8_000 });
+  return { view, stage: view.getByTestId('canvas-stage') };
+}
+
+test('SKY-9878: rail renders CHARACTERS/LOCATIONS/ITEMS & SYSTEMS, click-to-add and drag-to-add both place a card', async () => {
+  fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
+  fs.writeFileSync(path.join(notesVaultDir, 'Characters', 'Mira Veynn.md'), 'POV. Dread first, wonder second.');
+  fs.mkdirSync(path.join(notesVaultDir, 'Items & Systems'), { recursive: true });
+  fs.writeFileSync(path.join(notesVaultDir, 'Items & Systems', 'Brass Token.md'), 'The Broker’s marker.');
+
+  await reloadBoardView(page);
+  const { view, stage } = await openColdOpenBoard(page);
+
+  const suggested = view.locator('.sc-suggest');
+  // exact: true — a card's own description text (e.g. "Characters", the
+  // vault folder) is a lowercase substring of the group header otherwise.
+  await expect(suggested.getByText('CHARACTERS', { exact: true })).toBeVisible();
+  await expect(suggested.getByText('LOCATIONS', { exact: true })).toBeVisible();
+  await expect(suggested.getByText('ITEMS & SYSTEMS', { exact: true })).toBeVisible();
+
+  const beforeClick = await stage.locator('.cvb-card').count();
+  await suggested.getByRole('button', { name: /Mira Veynn/i }).click();
+  await expect(stage.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible({ timeout: 5_000 });
+  expect(await stage.locator('.cvb-card').count()).toBe(beforeClick + 1);
+
+  // Drag-to-add produces the same board state as click-to-add: one more
+  // real card, same title/body, now via native HTML5 drag/drop.
+  const beforeDrag = await stage.locator('.cvb-card').count();
+  await dragSuggestedCardOntoCanvas(view, 'Brass Token');
+  await expect(stage.locator('.cvb-card', { hasText: 'Brass Token' })).toBeVisible({ timeout: 5_000 });
+  expect(await stage.locator('.cvb-card').count()).toBe(beforeDrag + 1);
+
+  // Both cards persisted to the real .canvas.json on disk (survives a reload).
+  await reloadBoardView(page);
+  const { stage: stageAfterReload } = await openColdOpenBoard(page);
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Brass Token' })).toBeVisible();
+});
+
+test('SKY-9878: a vault write while the canvas rail is open restocks it with no manual refresh', async () => {
+  await reloadBoardView(page);
+  const { view } = await openColdOpenBoard(page);
+  const suggested = view.locator('.sc-suggest');
+  await expect(suggested.getByText('The Sunken Gate')).toHaveCount(0);
+
+  // Real cross-boundary write: chokidar picks it up, main pushes
+  // vault:notes-updated, the rail refetches — no reload/re-navigation here.
+  fs.writeFileSync(path.join(notesVaultDir, 'Locations', 'The Sunken Gate.md'), 'An ancient floodgate.');
+
+  await expect(suggested.getByText('The Sunken Gate')).toBeVisible({ timeout: 8_000 });
 });

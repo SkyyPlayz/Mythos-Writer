@@ -120,6 +120,25 @@ export function newCardPosition(view: ViewTransform): { x: number; y: number } {
   return { x: 240 - view.panX / view.zoom, y: 180 - view.panY / view.zoom };
 }
 
+/**
+ * Board position for a card dropped from an external drag (SKY-9878 —
+ * Suggested Cards → canvas): the default-sized card is centered under the
+ * cursor's client point, then clamped to the positive quadrant like every
+ * other card placement (`dragCardPosition`, `newCardPosition`).
+ */
+export function externalDropPosition(
+  view: ViewTransform,
+  containerLeft: number,
+  containerTop: number,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  return {
+    x: Math.max(0, (clientX - containerLeft - view.panX) / view.zoom - NEW_CARD_W / 2),
+    y: Math.max(0, (clientY - containerTop - view.panY) / view.zoom - NEW_CARD_H / 2),
+  };
+}
+
 // ─── Link beziers ────────────────────────────────────────────────────────────
 
 /**

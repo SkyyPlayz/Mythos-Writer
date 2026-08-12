@@ -887,9 +887,18 @@
 }
 
 .sc-canvas-body {
+  display: flex;
   flex: 1;
+  gap: 14px;
   min-height: 0;
   margin: 2px 14px 14px;
+}
+
+/* SKY-9878: canvas-board wrapper — `.cvb-root` fills it via height:100%. */
+.sc-canvas-stage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .sc-canvas-view {
