@@ -493,6 +493,16 @@
   overflow: hidden;
 }
 
+/* SKY-10019: Outline Planning opened as a Story-pane tab — same wrapper
+   treatment as .story-entities-view above (OutlinePlanningPanel is
+   height:100%/flex-column already, just needs the flex:1 to claim the column). */
+.story-outline-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Empty editor state */
 .shell-editor-empty {
   flex: 1;

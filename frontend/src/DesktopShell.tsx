@@ -45,6 +45,7 @@ import {
   upsertSceneTab,
   upsertNoteTab,
   upsertEntityBrowserTab,
+  upsertOutlineTab,
   reconcileSceneTabs,
   renameCommitsProvisional,
   workspaceStripModeFor,
@@ -1422,8 +1423,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (Array.isArray(s.activeLayout?.storyDocTabs)) {
           // SKY-9920: an Entity Browser tab (kind 'entities') survives
           // relaunch too — only provisional scenes are deliberately dropped.
+          // SKY-10019: Outline Planning (kind 'outline') is story-only, same
+          // singleton-per-strip treatment as Entity Browser.
           const restored = s.activeLayout.storyDocTabs.filter(
-            (t) => (t.kind === 'scene' && !t.provisional) || t.kind === 'entities',
+            (t) => (t.kind === 'scene' && !t.provisional) || t.kind === 'entities' || t.kind === 'outline',
           );
           setStoryDocTabs(restored);
           const act = s.activeLayout.activeStoryDocTabId ?? null;
@@ -3589,6 +3592,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, [handleTabChange, handleSetView, persistDocTabs]);
 
+  // ─── SKY-10019: Outline Planning as an openable Story-strip document tab ───
+  // M6 removed the collapsible right-sidebar panel stack, OutlinePlanningPanel's
+  // only mount point (case 'scene-outline' in renderSidebarPanel became dead
+  // code — nothing in the new fixed Assistant/Scenes/Notes/References right
+  // sidebar calls it). Story-scoped only (mirrors the outline tool's `story`
+  // prop) — no Notes-strip or split-pane variant, matching Entity Browser's
+  // current single-pane restriction. Same selectedScene-clearing / editor-view
+  // reasoning as handleOpenEntityBrowserStory above.
+  const handleOpenOutlineStory = useCallback(() => {
+    handleTabChange('story');
+    handleSetView('editor');
+    setSelectedScene(null);
+    setStoryDocTabs((prev) => {
+      const result = upsertOutlineTab(prev);
+      setActiveStoryDocTabId(result.activeId);
+      persistDocTabs({ story: { tabs: result.tabs, activeId: result.activeId } });
+      return result.tabs;
+    });
+  }, [handleTabChange, handleSetView, persistDocTabs]);
+
   // Story pane 2 (split-only, session-only like handlePane2NewScene — never
   // independently persisted; folds into storyDocTabs on split collapse).
   // Clears pane2Scene/Chapter/Story — mirrors handlePane2TabSelect/Close's
@@ -3641,14 +3664,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (storyTab) {
       setActiveStoryDocTabId(tabId);
       persistDocTabs({ story: { tabs: storyDocTabs, activeId: tabId } });
-      if (storyTab.kind === 'entities') {
-        // SKY-9920: clicking a tab already in the strip skips
-        // handleOpenEntityBrowserStory entirely, so its two fixes are
-        // repeated here — surface it regardless of the current Story
-        // subview (.shell-panels, which hosts this tab's content, only
-        // renders when view === 'editor'; Coach/Kanban/Timeline hide it),
-        // and clear selectedScene so the "opening a scene surfaces its
-        // tab" effect doesn't fight this selection back to the old scene.
+      if (storyTab.kind === 'entities' || storyTab.kind === 'outline') {
+        // SKY-9920 (+ SKY-10019 for 'outline'): clicking a tab already in
+        // the strip skips handleOpenEntityBrowserStory/handleOpenOutlineStory
+        // entirely, so their two fixes are repeated here — surface it
+        // regardless of the current Story subview (.shell-panels, which
+        // hosts this tab's content, only renders when view === 'editor';
+        // Coach/Kanban/Timeline hide it), and clear selectedScene so the
+        // "opening a scene surfaces its tab" effect doesn't fight this
+        // selection back to the old scene.
         handleTabChange('story');
         handleSetView('editor');
         setSelectedScene(null);
@@ -3705,7 +3729,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           // effect back onto the wrong tab on the very next render.
           const nextTab = next.find((t) => t.id === nextActive);
           if (nextTab?.kind === 'scene' && nextTab.docId) handleOpenSceneById(nextTab.docId);
-          else if (nextTab?.kind === 'entities') setSelectedScene(null);
+          else if (nextTab?.kind === 'entities' || nextTab?.kind === 'outline') setSelectedScene(null);
         }
       }
       setStoryDocTabs(next);
@@ -3826,11 +3850,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleTabOpenInSplit = useCallback((tabId: string) => {
     const storyTab = storyDocTabs.find((t) => t.id === tabId);
     if (storyTab) {
-      // SKY-9920: an entities tab has no docId — without this check it fell
-      // into the provisional-scene branch below and showed a misleading
-      // "type in the new scene first" toast.
+      // SKY-9920 (+ SKY-10019 for 'outline'): an entities/outline tab has no
+      // docId — without this check it fell into the provisional-scene branch
+      // below and showed a misleading "type in the new scene first" toast.
       if (storyTab.kind === 'entities') {
         showLnToast('Entity Browser doesn’t open in a split pane yet — use its + picker in the other pane instead');
+        return;
+      }
+      if (storyTab.kind === 'outline') {
+        showLnToast('Outline Planning doesn’t open in a split pane yet — use its + picker in the other pane instead');
         return;
       }
       if (storyTab.provisional || !storyTab.docId) {
@@ -4121,6 +4149,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const activeStoryTabIsEntityBrowser = storyDocTabs.find((t) => t.id === activeStoryDocTabId)?.kind === 'entities';
   const activePane2TabIsEntityBrowser = pane2Tabs.find((t) => t.id === activePane2TabId)?.kind === 'entities';
   const activeNotesTabIsEntityBrowser = notesDocTabs.find((t) => t.id === activeNotesDocTabId)?.kind === 'entities';
+  // SKY-10019: story-strip only — no pane2/notes variant (single-pane restriction
+  // mirrors Entity Browser's current one, see handleTabOpenInSplit above).
+  const activeStoryTabIsOutline = storyDocTabs.find((t) => t.id === activeStoryDocTabId)?.kind === 'outline';
 
   // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
   // panels render correctly regardless of which sidebar they live in.
@@ -4863,6 +4894,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (tabShell.activeTab === 'notes') handleOpenEntityBrowserNotes();
         else handleOpenEntityBrowserStory();
       } },
+      // SKY-10019: story-scoped only, no Notes fallback (mirrors the
+      // newTabPickerItems restriction above).
+      { label: 'Outline Planning', run: handleOpenOutlineStory },
     ] },
     { label: 'Tools', items: [
       { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
@@ -4891,7 +4925,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       } },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, tabShell.activeTab, handleOpenEntityBrowserStory, handleOpenEntityBrowserNotes]);
+  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, tabShell.activeTab, handleOpenEntityBrowserStory, handleOpenEntityBrowserNotes, handleOpenOutlineStory]);
 
   const navItems = useMemo<NavRailItem[]>(
     () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
@@ -5093,6 +5127,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }
             newTabPickerItems={workspaceStripMode.kind === 'docs' ? [
               { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
+              // SKY-10019: story-scoped only (mirrors OutlinePlanningPanel's
+              // `story` prop) — no Notes-strip entry, unlike Entity Browser.
+              ...(workspaceStripMode.strip === 'story'
+                ? [{ key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory }]
+                : []),
             ] : undefined}
           />
         )}
@@ -5538,6 +5577,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 <EntityBrowser
                   onSelectEntity={handleSelectEntityInTab}
                   selectedEntityId={selectedEntity?.id ?? null}
+                />
+              </div>
+            ) : activeStoryTabIsOutline ? (
+              // SKY-10019: Outline Planning opened as a Story-pane tab —
+              // mirrors the Entity Browser doc-tab branch above. Selecting a
+              // scene from the outline hands off to handleSelectScene, whose
+              // existing "opening a scene surfaces its tab" effect switches
+              // the strip to that scene's tab.
+              <div className="story-outline-view" data-testid="story-outline-view">
+                <OutlinePlanningPanel
+                  story={selectedStory}
+                  onSelectScene={(sc, ch) => {
+                    if (selectedStory) { handleSelectScene(sc, ch, selectedStory); setViewDepth('scene'); }
+                  }}
                 />
               </div>
             ) : !vaultBinding.storyValid ? (

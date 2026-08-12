@@ -755,7 +755,7 @@ interface DockedTab {
  * Beta 4 M4 (§4): tabs are documents — 'scene' and 'note' are the document
  * kinds shown in the strip; the module kinds remain only for the legacy
  * right-hand WorkspaceSplitPane restore path and old persisted layouts. */
-type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm' | 'scene' | 'note';
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm' | 'scene' | 'note' | 'outline';
 
 /** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
 interface WorkspaceTab {
