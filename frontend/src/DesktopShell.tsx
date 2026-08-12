@@ -1748,19 +1748,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Suppress unused-locals warning: retained for restore paths, not wired to UI post-M6.
   void handleGrsPanelsChange;
 
-  // SKY-6321: "See All Suggestions" (Agent Hub) opens/expands the Suggestion
-  // Review panel in the same (right) sidebar instead of navigating away.
-  const handleOpenSuggestionInbox = useCallback(() => {
-    setGrsPanels((prev) => {
-      const exists = prev.some((p) => p.id === 'review');
-      const next = exists
-        ? prev.map((p) => (p.id === 'review' ? { ...p, collapsed: false } : p))
-        : [...prev, { id: 'review' as SidebarPanelId, collapsed: false }];
-      persistGrsSettings({ panels: next });
-      return next;
-    });
-  }, [persistGrsSettings]);
-
   // SKY-1695: Unified drop handler for panel drag-and-drop across both sidebars.
   const handlePanelDrop = useCallback((
     panelId: SidebarPanelId,
@@ -4201,7 +4188,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             voiceEnabled={appSettings?.voice?.enabled ?? false}
             voicePrefs={appSettings?.voice}
             agentNames={appSettings?.agentNames}
-            onOpenSuggestionInbox={handleOpenSuggestionInbox}
+            onOpenVaultPath={handleOpenSceneByPath}
             onOpenCoachPage={handleOpenCoachPage}
             sceneNotesRefresh={sceneNotesRefresh}
             onPromoteSceneNote={handlePromoteSceneNote}
@@ -4301,7 +4288,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
-    betaReadNote, continuityCheckNote, handleOpenSuggestionInbox,
+    betaReadNote, continuityCheckNote,
     handleOpenCoachPage,
     handleNavSectionChange, handleSetView,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
@@ -5975,7 +5962,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           voiceEnabled={appSettings?.voice?.enabled ?? false}
           voicePrefs={appSettings?.voice}
           agentNames={appSettings?.agentNames}
-          onOpenSuggestionInbox={() => handleTabChange('story')}
+          onOpenVaultPath={handleOpenSceneByPath}
           // M13 §5.4: "View Full Analysis" must land on the Coach page — the
           // Story tab alone leaves the writer on whatever sub-view was open.
           onOpenCoachPage={() => { handleTabChange('story'); handleOpenCoachPage(); }}

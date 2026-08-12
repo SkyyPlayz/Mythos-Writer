@@ -30,6 +30,7 @@ import {
 import { showLnToast } from './theme/lnToast';
 import SceneNotesPanel from './SceneNotesPanel';
 import type { SceneNoteDragPayload } from './sceneNotes';
+import SuggestionReview from './SuggestionReview';
 import './AgentHubPanel.css';
 
 const SUGGESTION_POLL_MS = 30_000;
@@ -111,7 +112,12 @@ interface Props {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  /** SKY-10057: notified when the Review Inbox drill-down opens (side-effect hook — the
+   *  drill-down itself is rendered internally, this is not the render target). */
   onOpenSuggestionInbox?: () => void;
+  /** SKY-10057: opens a suggestion's target file — passed through to the
+   *  in-panel Review Inbox drill-down (SuggestionReview). */
+  onOpenVaultPath?: (path: string) => void;
   /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
   onOpenCoachPage?: () => void;
   /** M9b (SKY-9823): pass-throughs for the Notes tab's SceneNotesPanel. */
@@ -148,6 +154,7 @@ export default function AgentHubPanel({
   onAutoApplyCategoriesChange,
   agentNames,
   onOpenSuggestionInbox,
+  onOpenVaultPath,
   onOpenCoachPage,
   sceneNotesRefresh,
   onPromoteSceneNote,
@@ -169,6 +176,17 @@ export default function AgentHubPanel({
     if (!aiEnabled) setActiveTabState((cur) => (cur === 'assistant' ? 'scenes' : cur));
   }, [aiEnabled]);
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
+
+  // SKY-10057: "See All Suggestions" drills into a self-contained Review
+  // Inbox in place — mirrors the AgentHubView <-> AgentChatView swap above.
+  // The panel-stack home this used to expand (SKY-6321's setGrsPanels) was
+  // removed by M6 with no replacement, leaving the button a same-tab no-op.
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const handleOpenInbox = useCallback(() => {
+    setInboxOpen(true);
+    onOpenSuggestionInbox?.();
+  }, [onOpenSuggestionInbox]);
+  const handleInboxBack = useCallback(() => setInboxOpen(false), []);
 
   const coachSessionStore = useAgentSessions('coach');
 
@@ -212,7 +230,7 @@ export default function AgentHubPanel({
             key={t.id}
             type="button"
             className={`ahp-tab${activeTab === t.id ? ' ahp-tab--active' : ''}`}
-            onClick={() => { setActiveTab(t.id); setActiveAgent(null); }}
+            onClick={() => { setActiveTab(t.id); setActiveAgent(null); setInboxOpen(false); }}
             aria-selected={activeTab === t.id}
             role="tab"
           >
@@ -223,7 +241,9 @@ export default function AgentHubPanel({
 
       <div className="ahp-body">
         {activeTab === 'assistant' && aiEnabled && (
-          activeAgent
+          inboxOpen
+            ? <ReviewInboxView onBack={handleInboxBack} onOpenVaultPath={onOpenVaultPath} />
+          : activeAgent
             ? <AgentChatView
                 agentId={activeAgent}
                 agentDef={AGENT_DEFS.find((a) => a.id === activeAgent)!}
@@ -252,7 +272,7 @@ export default function AgentHubPanel({
                 agentNames={agentNames}
                 onAgentClick={handleAgentClick}
                 scene={scene}
-                onOpenSuggestionInbox={onOpenSuggestionInbox}
+                onOpenSuggestionInbox={handleOpenInbox}
                 onOpenCoachPage={onOpenCoachPage}
                 gettingStartedCard={gettingStartedCard}
                 continuityPanel={continuityPanel}
@@ -704,6 +724,38 @@ function AgentChatView({
           <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Review Inbox drill-down (SKY-10057) ─────────────────────────────────────
+//
+// "See All Suggestions" used to expand a panel-stack entry that M6 removed
+// from rendering; this renders the same SuggestionReview inbox (filters,
+// accept/reject/ignore, audit trail) in place, mirroring the AgentChatView
+// back-navigation pattern above.
+
+function ReviewInboxView({
+  onBack,
+  onOpenVaultPath,
+}: {
+  onBack: () => void;
+  onOpenVaultPath?: (path: string) => void;
+}) {
+  return (
+    <div className="ahp-chat-view">
+      <div className="ahp-chat-header">
+        <button
+          type="button"
+          className="ahp-back-btn"
+          onClick={onBack}
+          aria-label="Back to agents"
+        >
+          ‹ Back
+        </button>
+        <span className="ahp-chat-agent-name">Review Inbox</span>
+      </div>
+      <SuggestionReview onOpenVaultPath={onOpenVaultPath} />
     </div>
   );
 }

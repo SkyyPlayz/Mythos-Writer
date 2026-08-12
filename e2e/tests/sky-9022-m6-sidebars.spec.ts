@@ -200,6 +200,26 @@ test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity heade
     const headers = grs.locator('.pc-header-title', { hasText: 'Continuity' });
     await expect(headers).toHaveCount(1);
   });
+
+  // SKY-10057: "See All Suggestions" used to expand a panel-stack entry that
+  // M6's removal of the panel system left with no rendered home — the button
+  // was a same-tab no-op. It now drills into a self-contained Review Inbox
+  // in place, mirroring the AGENTS row → agent chat swap.
+  test('"See All Suggestions" opens the Review Inbox in place and Back returns to the hub', async () => {
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await expect(hub.locator('section[aria-label="Suggestions"]')).toBeVisible({ timeout: 8_000 });
+
+    await hub.getByRole('button', { name: 'See All Suggestions' }).click();
+
+    await expect(hub.locator('.ahp-chat-agent-name', { hasText: 'Review Inbox' })).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('.suggestion-review')).toBeVisible();
+    await expect(hub.locator('section[aria-label="Suggestions"]')).toHaveCount(0);
+
+    await hub.getByRole('button', { name: 'Back to agents' }).click();
+
+    await expect(hub.locator('section[aria-label="Suggestions"]')).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('.suggestion-review')).toHaveCount(0);
+  });
 });
 
 test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card', () => {
