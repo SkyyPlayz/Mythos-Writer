@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PLOT_GRID_CHAPTERS,
+  bookChapterRanges,
   chapterPositions,
   chapterSlotIndex,
   chapterWhen,
@@ -85,6 +86,36 @@ describe('chapterSlotIndex — prototype 12/23/34-of-45 color split', () => {
   it('defaults safely on bad input', () => {
     expect(chapterSlotIndex(0, 0)).toBe(1);
     expect(chapterSlotIndex(NaN, 45)).toBe(1);
+  });
+});
+
+describe('bookChapterRanges — TIMELINE NAVIGATOR sub-label (prototype tlBooks0)', () => {
+  const BOOKS = [
+    { startWhen: 0, endWhen: 300 },
+    { startWhen: 300, endWhen: 600 },
+    { startWhen: 600, endWhen: 900 },
+  ];
+
+  it('splits 45 chapters over 3 books into Ch. 1–15 / 16–30 / 31–45', () => {
+    expect(bookChapterRanges(45, BOOKS)).toEqual([
+      { firstChapter: 1, lastChapter: 15 },
+      { firstChapter: 16, lastChapter: 30 },
+      { firstChapter: 31, lastChapter: 45 },
+    ]);
+  });
+
+  it('sorts books by start before assigning ranges', () => {
+    const reversed = [BOOKS[2], BOOKS[0], BOOKS[1]];
+    expect(bookChapterRanges(45, reversed)).toEqual([
+      { firstChapter: 1, lastChapter: 15 },
+      { firstChapter: 16, lastChapter: 30 },
+      { firstChapter: 31, lastChapter: 45 },
+    ]);
+  });
+
+  it('returns null entries when there are no chapters or no books', () => {
+    expect(bookChapterRanges(0, BOOKS)).toEqual([null, null, null]);
+    expect(bookChapterRanges(45, [])).toEqual([]);
   });
 });
 

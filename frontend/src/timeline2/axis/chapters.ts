@@ -97,6 +97,38 @@ export function chapterSlotIndex(index: number, total: number): number {
   return 2; // c3 magenta
 }
 
+/** One book's 1-based chapter range on the CHAPTERS row (prototype
+ *  `tlBooks0` sub-labels, "Ch. 1–15"). */
+export interface BookChapterRange {
+  /** 1-based first chapter number in this book. */
+  firstChapter: number;
+  /** 1-based last chapter number in this book (inclusive). */
+  lastChapter: number;
+}
+
+/**
+ * TIMELINE NAVIGATOR book-card chapter ranges (prototype `tlBooks0` sub,
+ * "Ch. 1–15 · Est. 12 days"): the CHAPTERS row distributes `chapterCount`
+ * chapters evenly across `books` (§`chapterWhen` above) — this mirrors that
+ * same bucketing (`floor(index / perBook)`) to report each book's 1-based
+ * chapter span. Returns one entry per sorted book, `null` when there are no
+ * chapters to distribute.
+ */
+export function bookChapterRanges(
+  chapterCount: number,
+  books: readonly BookRange[],
+): (BookChapterRange | null)[] {
+  const sorted = sortedBooks(books);
+  const n = Math.max(0, finite(chapterCount, 0));
+  if (n === 0 || sorted.length === 0) return sorted.map(() => null);
+  const perBook = n / sorted.length;
+  return sorted.map((_, b) => {
+    const first = Math.ceil(b * perBook);
+    const last = Math.max(first, Math.ceil((b + 1) * perBook) - 1);
+    return { firstChapter: first + 1, lastChapter: Math.min(last, n - 1) + 1 };
+  });
+}
+
 /**
  * `when` of a plotline card addressed at grid chapter `ch` (1-based on the
  * 12-column Plottr grid). Prototype 6682:

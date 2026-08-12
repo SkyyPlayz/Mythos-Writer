@@ -10,6 +10,7 @@ import {
   safeEncodeWhen,
   formatWhen,
   calendarNote,
+  whenSpanToDays,
   DEFAULT_CALENDAR,
 } from './calendarCodec';
 
@@ -131,5 +132,23 @@ describe('formatting', () => {
   it('calendarNote matches the prototype tlCalNote shape', () => {
     expect(calendarNote(STANDARD)).toBe('12 months × 30 days × 24h days');
     expect(calendarNote(AEON13)).toBe('13 months × 28 days × 18h days');
+  });
+});
+
+describe('whenSpanToDays — TIMELINE NAVIGATOR "Est. N days" (prototype tlBooks0)', () => {
+  it('converts a when-span to whole calendar days', () => {
+    // 28.8 when = 288 hours = 12 days at 24h/day, matching the prototype's
+    // "Book One … Est. 12 days" seed.
+    expect(whenSpanToDays(28.8, STANDARD)).toBe(12);
+  });
+
+  it('respects a non-24h calendar', () => {
+    expect(whenSpanToDays(28.8, AEON13)).toBe(16); // 288h / 18h-days = 16
+  });
+
+  it('is NaN/negative-guarded (§8.2)', () => {
+    expect(whenSpanToDays(NaN, STANDARD)).toBe(0);
+    expect(whenSpanToDays(-5, STANDARD)).toBe(0);
+    expect(whenSpanToDays(0, STANDARD)).toBe(0);
   });
 });
