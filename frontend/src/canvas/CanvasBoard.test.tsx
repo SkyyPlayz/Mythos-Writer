@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import CanvasBoard from './CanvasBoard';
-import type { CanvasBoardData } from './canvasTypes';
+import type { CanvasBoardData, CanvasCardSeed } from './canvasTypes';
+import { CANVAS_CARD_DRAG_MIME } from './canvasTypes';
 
 function makeBoard(): CanvasBoardData {
   return {
@@ -24,10 +25,12 @@ interface HarnessProps {
   onChange?: (board: CanvasBoardData) => void;
   onOpenNote?: (nid: string) => void;
   readOnly?: boolean;
+  pendingExternalCard?: CanvasCardSeed | null;
+  onExternalCardAdded?: () => void;
 }
 
 /** Controlled wrapper standing in for the persisting caller (M18/M19). */
-function Harness({ initial, onChange, onOpenNote, readOnly }: HarnessProps) {
+function Harness({ initial, onChange, onOpenNote, readOnly, pendingExternalCard, onExternalCardAdded }: HarnessProps) {
   const [board, setBoard] = useState(initial);
   return (
     <CanvasBoard
@@ -38,8 +41,34 @@ function Harness({ initial, onChange, onOpenNote, readOnly }: HarnessProps) {
       }}
       onOpenNote={onOpenNote}
       readOnly={readOnly}
+      pendingExternalCard={pendingExternalCard}
+      onExternalCardAdded={onExternalCardAdded}
     />
   );
+}
+
+/** Build a native-DnD-shaped DataTransfer stub carrying a card seed. */
+function seedDataTransfer(seed: CanvasCardSeed) {
+  const raw = JSON.stringify(seed);
+  return {
+    types: [CANVAS_CARD_DRAG_MIME],
+    dropEffect: 'none',
+    getData: (type: string) => (type === CANVAS_CARD_DRAG_MIME ? raw : ''),
+  };
+}
+
+/**
+ * jsdom has no `DragEvent` (github.com/jsdom/jsdom/issues/2913), so
+ * `fireEvent.drop(el, { clientX, clientY })` silently drops those fields —
+ * `createEvent` falls back to the base `Event` constructor, which ignores
+ * unrecognized init members. A real `MouseEvent` carries clientX/clientY
+ * faithfully; `dataTransfer` is just an extra own property React reads by
+ * name, so this is a faithful enough stand-in for a real browser drop.
+ */
+function dispatchDrop(el: HTMLElement, dataTransfer: unknown, clientX: number, clientY: number) {
+  const event = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX, clientY });
+  Object.assign(event, { dataTransfer });
+  fireEvent(el, event);
 }
 
 function lastBoard(onChange: ReturnType<typeof vi.fn>): CanvasBoardData {
@@ -95,6 +124,85 @@ describe('add card', () => {
     fireEvent.click(screen.getByTitle('Add card'));
     const board = lastBoard(onChange);
     expect(new Set(board.cards.map((c) => c.id)).size).toBe(4);
+  });
+});
+
+describe('external card seed — click-to-add (SKY-9878)', () => {
+  it('adds a card at the default spawn point and clears the pending seed via onExternalCardAdded', () => {
+    const onChange = vi.fn();
+    const onExternalCardAdded = vi.fn();
+    const seed: CanvasCardSeed = { t: 'Ward Violet', d: 'A quiet ward', av: 'WV', c: 1, nid: 'Locations/Ward Violet' };
+    const { rerender } = render(
+      <Harness initial={makeBoard()} onChange={onChange} pendingExternalCard={null} onExternalCardAdded={onExternalCardAdded} />,
+    );
+    rerender(
+      <Harness initial={makeBoard()} onChange={onChange} pendingExternalCard={seed} onExternalCardAdded={onExternalCardAdded} />,
+    );
+    const board = lastBoard(onChange);
+    expect(board.cards).toHaveLength(3);
+    expect(board.cards[2]).toMatchObject({
+      t: 'Ward Violet', d: 'A quiet ward', av: 'WV', c: 1, x: 240, y: 180, w: 190, h: 80, nid: 'Locations/Ward Violet',
+    });
+    expect(onExternalCardAdded).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing in read-only mode', () => {
+    const onChange = vi.fn();
+    const onExternalCardAdded = vi.fn();
+    const seed: CanvasCardSeed = { t: 'Ward Violet', d: '', av: 'WV', c: 1, nid: null };
+    const { rerender } = render(
+      <Harness initial={makeBoard()} onChange={onChange} readOnly pendingExternalCard={null} onExternalCardAdded={onExternalCardAdded} />,
+    );
+    rerender(
+      <Harness initial={makeBoard()} onChange={onChange} readOnly pendingExternalCard={seed} onExternalCardAdded={onExternalCardAdded} />,
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onExternalCardAdded).not.toHaveBeenCalled();
+  });
+});
+
+describe('external card drop — drag-to-add (SKY-9878)', () => {
+  it('adds a card at the computed drop position via dragover + drop', () => {
+    const onChange = vi.fn();
+    const seed: CanvasCardSeed = { t: 'Brass Token', d: 'The Broker’s marker', av: 'BT', c: 3, nid: 'Items/Brass Token' };
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    const root = screen.getByTestId('canvas-board');
+    const dataTransfer = seedDataTransfer(seed);
+    fireEvent.dragOver(root, { dataTransfer });
+    dispatchDrop(root, dataTransfer, 500, 400);
+
+    const board = lastBoard(onChange);
+    expect(board.cards).toHaveLength(3);
+    const added = board.cards[2];
+    expect(added).toMatchObject({
+      t: 'Brass Token', d: 'The Broker’s marker', av: 'BT', c: 3, nid: 'Items/Brass Token', w: 190, h: 80,
+    });
+    // jsdom's getBoundingClientRect() is all-zero, so board pos = client point centered.
+    expect(added.x).toBeCloseTo(500 - 190 / 2, 10);
+    expect(added.y).toBeCloseTo(400 - 80 / 2, 10);
+  });
+
+  it('ignores a drop with no matching drag payload (e.g. a stray OS file drop)', () => {
+    const onChange = vi.fn();
+    render(<Harness initial={makeBoard()} onChange={onChange} />);
+    fireEvent.drop(screen.getByTestId('canvas-board'), {
+      dataTransfer: { types: [], getData: () => '' },
+      clientX: 100,
+      clientY: 100,
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not add a card when read-only', () => {
+    const onChange = vi.fn();
+    const seed: CanvasCardSeed = { t: 'Brass Token', d: '', av: 'BT', c: 3, nid: null };
+    render(<Harness initial={makeBoard()} onChange={onChange} readOnly />);
+    fireEvent.drop(screen.getByTestId('canvas-board'), {
+      dataTransfer: seedDataTransfer(seed),
+      clientX: 500,
+      clientY: 400,
+    });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 

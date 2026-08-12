@@ -10,13 +10,14 @@
 // no IPC in here. Pan/zoom are view-only state and stay internal.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasBoardData, CanvasCard } from './canvasTypes';
-import { CANVAS_COLOR_SLOTS } from './canvasTypes';
+import type { CanvasBoardData, CanvasCard, CanvasCardSeed } from './canvasTypes';
+import { CANVAS_CARD_DRAG_MIME, CANVAS_COLOR_SLOTS } from './canvasTypes';
 import {
   NEW_CARD_H,
   NEW_CARD_W,
   clampCardSize,
   dragCardPosition,
+  externalDropPosition,
   fitToContent,
   linkPath,
   newCardPosition,
@@ -66,6 +67,15 @@ export interface CanvasBoardProps {
    * isn't a board mutation.
    */
   readOnly?: boolean;
+  /**
+   * SKY-9878 — a card queued by an external rail (Scene Crafter's SUGGESTED
+   * CARDS panel) via click rather than drag. Added at the same default spawn
+   * point as the dock "Add card" button, then `onExternalCardAdded` fires so
+   * the caller can clear it. Dragging from the same rail is handled directly
+   * by this component's native HTML5 drop target instead — see `onDrop`.
+   */
+  pendingExternalCard?: CanvasCardSeed | null;
+  onExternalCardAdded?: () => void;
 }
 
 let cardSeq = 0;
@@ -82,7 +92,14 @@ function cardAriaLabel(card: CanvasCard): string {
   return card.d ? `${card.t} — ${card.d}` : card.t;
 }
 
-export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = false }: CanvasBoardProps) {
+export default function CanvasBoard({
+  board,
+  onChange,
+  onOpenNote,
+  readOnly = false,
+  pendingExternalCard = null,
+  onExternalCardAdded,
+}: CanvasBoardProps) {
   const [view, setView] = useState<ViewTransform>({ zoom: 1, panX: 0, panY: 0 });
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -297,23 +314,73 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
     if (card.nid && onOpenNote) onOpenNote(card.nid);
   };
 
-  // Add card — prototype `cvAddCard` (line 4781): spawns at viewport (240, 180).
-  const onAddCard = () => {
+  // Shared card-creation path: the dock "Add card" button, a suggested-card
+  // click (`pendingExternalCard`), and a suggested-card drop all append one
+  // new card at a caller-supplied board position (SKY-9878).
+  const addCard = (seed: CanvasCardSeed, x: number, y: number): CanvasCard => {
     const b = boardRef.current;
-    const pos = newCardPosition(view);
     const card: CanvasCard = {
       id: `c${Date.now().toString(36)}-${cardSeq++}`,
-      t: 'New card',
-      d: '',
-      av: '+',
-      c: 4,
-      x: pos.x,
-      y: pos.y,
+      t: seed.t,
+      d: seed.d,
+      av: seed.av,
+      c: seed.c,
+      x,
+      y,
       w: NEW_CARD_W,
       h: NEW_CARD_H,
-      nid: null,
+      nid: seed.nid,
     };
     onChange({ ...b, cards: [...b.cards, card] });
+    return card;
+  };
+
+  // Add card — prototype `cvAddCard` (line 4781): spawns at viewport (240, 180).
+  const onAddCard = () => {
+    const pos = newCardPosition(view);
+    addCard({ t: 'New card', d: '', av: '+', c: 4, nid: null }, pos.x, pos.y);
+  };
+
+  // SKY-9878: a suggested card clicked (not dragged) in an external rail —
+  // lands at the same default spawn point as the dock's "Add card" button.
+  useEffect(() => {
+    if (!pendingExternalCard || readOnly) return;
+    const pos = newCardPosition(view);
+    const card = addCard(pendingExternalCard, pos.x, pos.y);
+    showToast(`“${card.t}” added to the board`);
+    onExternalCardAdded?.();
+    // Only the seed identity should re-trigger this — `view` is read at fire
+    // time (current pan/zoom), and addCard/showToast/onExternalCardAdded are
+    // stable enough within a single click-to-add cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExternalCard]);
+
+  // SKY-9878: native HTML5 drop target for a suggested card dragged from an
+  // external rail. `dragover` only exposes `dataTransfer.types` (browsers
+  // withhold `getData` until `drop`), so gate on the MIME type there and read
+  // the actual payload on drop.
+  const onStageDragOver = (e: React.DragEvent) => {
+    if (readOnly || !e.dataTransfer.types.includes(CANVAS_CARD_DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onStageDrop = (e: React.DragEvent) => {
+    if (readOnly) return;
+    const raw = e.dataTransfer.getData(CANVAS_CARD_DRAG_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    let seed: CanvasCardSeed;
+    try {
+      seed = JSON.parse(raw) as CanvasCardSeed;
+    } catch {
+      return;
+    }
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const pos = externalDropPosition(view, rect.left, rect.top, e.clientX, e.clientY);
+    const card = addCard(seed, pos.x, pos.y);
+    showToast(`“${card.t}” added to the board`);
   };
 
   const onFit = () => {
@@ -337,6 +404,8 @@ export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = fa
       data-testid="canvas-board"
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={onRootKeyDown}
+      onDragOver={onStageDragOver}
+      onDrop={onStageDrop}
     >
       <div
         ref={panLayerRef}

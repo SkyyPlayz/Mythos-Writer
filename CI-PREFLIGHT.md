@@ -69,7 +69,7 @@ The `ci` job in `.github/workflows/ci.yml` aggregates these required jobs:
 | `e2e-shard-1` | crud · draft-history · brainstorm · export · visual-capture · writing-modes · depth-slider · a11y · settings-background |
 | `e2e-shard-2` | writing-assistant-tips · two-vault · versioned-drafts · entity |
 | `e2e-shard-3` | visual-regression · entity-creation · vault-graph · vault-graph-v0 |
-| `e2e-shard-4` | entity-mention · timeline · entries · post-onboarding · continuity-panel · scene-crafter · onboarding-v2 · writing-assistant |
+| `e2e-shard-4` | entity-mention · timeline · entries · post-onboarding · continuity-panel · scene-crafter · scene-crafter-ai-off · onboarding-v2 · writing-assistant |
 
 `build-macos` is on-demand only (not a PR check). `build-linux` and `build-windows` fast-exit as no-ops on PRs.
 

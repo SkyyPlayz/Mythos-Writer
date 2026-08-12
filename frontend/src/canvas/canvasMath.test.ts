@@ -18,6 +18,7 @@ import {
   clampZoom,
   contentBounds,
   dragCardPosition,
+  externalDropPosition,
   fitToContent,
   linkPath,
   newCardPosition,
@@ -121,6 +122,33 @@ describe('newCardPosition', () => {
   it('pins the prototype default card size', () => {
     expect(NEW_CARD_W).toBe(190);
     expect(NEW_CARD_H).toBe(80);
+  });
+});
+
+describe('externalDropPosition (SKY-9878 — suggested card dropped onto the canvas)', () => {
+  const identity = { zoom: 1, panX: 0, panY: 0 };
+
+  it('centers the default-sized card under the cursor at zoom 1, no pan', () => {
+    // Client point (500, 400) inside a container at (0, 0): the card's
+    // top-left lands NEW_CARD_W/H/2 up-and-left of the cursor.
+    expect(externalDropPosition(identity, 0, 0, 500, 400)).toEqual({
+      x: 500 - NEW_CARD_W / 2,
+      y: 400 - NEW_CARD_H / 2,
+    });
+  });
+
+  it('accounts for the container offset and current pan/zoom', () => {
+    const view = { zoom: 2, panX: 40, panY: -20 };
+    // board = (client - containerOffset - pan) / zoom, then centered.
+    const pos = externalDropPosition(view, 100, 50, 500, 400);
+    expect(pos.x).toBeCloseTo((500 - 100 - 40) / 2 - NEW_CARD_W / 2, 10);
+    expect(pos.y).toBeCloseTo((400 - 50 - -20) / 2 - NEW_CARD_H / 2, 10);
+  });
+
+  it('clamps to the positive quadrant, same as card drag', () => {
+    // A drop right at the container's top-left corner would otherwise go
+    // negative once centered.
+    expect(externalDropPosition(identity, 0, 0, 0, 0)).toEqual({ x: 0, y: 0 });
   });
 });
 

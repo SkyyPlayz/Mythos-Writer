@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Story } from '../../types';
 import CanvasBoard from '../../canvas/CanvasBoard';
-import type { CanvasBoardData } from '../../canvas/canvasTypes';
+import type { CanvasBoardData, CanvasCardSeed } from '../../canvas/canvasTypes';
+import { CANVAS_CARD_DRAG_MIME } from '../../canvas/canvasTypes';
 import {
   CRAFTER_COACH_SYSTEM_PROMPT,
   CRAFTER_GENERATE_COPY,
@@ -9,6 +10,7 @@ import {
   CRAFTER_TONES,
   addBeat,
   buildDraftPrompt,
+  cardSeedFromSuggested,
   castCardsFromSuggested,
   castFromSuggested,
   composeDraftBoard,
@@ -26,11 +28,84 @@ import {
   type ChosenCard,
   type CrafterSetup,
   type SuggestedCard,
+  type SuggestedGroup,
   type VaultListItem,
 } from './crafterState';
 import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
 import { useIpcStream } from '../../hooks/useIpcStream';
+import { useAiEnabled } from '../../hooks/useAiEnabled';
 import './SceneCrafterPage.css';
+
+// ── Suggested cards rail (prototype `isCrafter` left panel, lines 336–352) ──
+// Shared by the Scene Setup (closed) view and the Canvas Board (open) view
+// (SKY-9878) so both stay wired to the same live vault listing. The two
+// views give the same click gesture different, deliberately distinct
+// meanings — see each call site — so the activation handler and drag wiring
+// are supplied by the caller rather than hardcoded here.
+interface SuggestedCardsRailProps {
+  groups: SuggestedGroup[];
+  query: string;
+  onQueryChange: (value: string) => void;
+  hint: string;
+  onCardActivate: (card: SuggestedCard) => void;
+  /** Closed view only: persistent selection state (SKY-7601 draft context). */
+  isSelected?: (card: SuggestedCard) => boolean;
+  /** Canvas view only: enables click-or-drag onto the board (canvas spec §2). */
+  onCardDragStart?: (card: SuggestedCard, event: React.DragEvent<HTMLButtonElement>) => void;
+}
+
+function SuggestedCardsRail({
+  groups,
+  query,
+  onQueryChange,
+  hint,
+  onCardActivate,
+  isSelected,
+  onCardDragStart,
+}: SuggestedCardsRailProps) {
+  const draggable = !!onCardDragStart;
+  return (
+    <aside className="sc-suggest" aria-label="Suggested cards">
+      <div className="sc-suggest-title">SUGGESTED CARDS</div>
+      <div className="sc-suggest-search">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M20.5 20.5L16 16" />
+        </svg>
+        <input
+          placeholder="Search your vault…"
+          aria-label="Search your vault"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+      </div>
+      {groups.map((group) => (
+        <Fragment key={group.title}>
+          <div className="sc-suggest-group">{group.title}</div>
+          {group.cards.map((card) => (
+            <button
+              type="button"
+              key={card.nid}
+              className={`sc-sugg-card${isSelected?.(card) ? ' sc-sugg-card--on' : ''}`}
+              aria-pressed={isSelected ? isSelected(card) : undefined}
+              title={draggable ? 'Click or drag onto the board' : 'Click to use as context for your draft'}
+              draggable={draggable}
+              onDragStart={draggable ? (event) => onCardDragStart?.(card, event) : undefined}
+              onClick={() => onCardActivate(card)}
+            >
+              <span className="sc-sugg-av">{card.av}</span>
+              <span className="sc-sugg-text">
+                <span className="sc-sugg-t">{card.t}</span>
+                <span className="sc-sugg-d">{card.d}</span>
+              </span>
+            </button>
+          ))}
+        </Fragment>
+      ))}
+      <div className="sc-suggest-hint">{hint}</div>
+    </aside>
+  );
+}
 
 export interface SceneCrafterCard {
   wikilink: string;
@@ -130,6 +205,15 @@ export default function SceneCrafterPage({
   const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
   const [draftStartError, setDraftStartError] = useState<string | null>(null);
   const draftStream = useIpcStream(draftStreamId);
+  // R11 / M11a: master AI toggle. The suggested-cards rail and its
+  // click-or-drag-onto-the-board path are already 100% manual (pure vault
+  // reads, no agent/LLM call) — this only swaps the "who stocks this list"
+  // hint copy so it stops crediting the Brainstorm Agent while AI is off
+  // (SKY-9878, M11c).
+  const aiEnabled = useAiEnabled();
+  // SKY-9878: a suggested card clicked (not dragged) while a canvas board is
+  // open — handed to CanvasBoard, which places it and clears this back to null.
+  const [pendingExternalCard, setPendingExternalCard] = useState<CanvasCardSeed | null>(null);
 
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -137,21 +221,23 @@ export default function SceneCrafterPage({
   const draftStreamIdRef = useRef<string | null>(null);
   draftStreamIdRef.current = draftStreamId;
 
+  // Best-effort: a notes-vault hiccup must not block the kanban board. Shared
+  // by the initial load and the live-restock subscription below (SKY-9878).
+  const fetchVaultItems = useCallback(async (): Promise<VaultListItem[]> => {
+    try {
+      const listing = await window.api.listNotesVault();
+      return 'error' in listing ? [] : listing.items;
+    } catch {
+      return [];
+    }
+  }, []);
+
   const loadBoard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       // Suggested cards + saved canvas boards ride the same load gate so the
-      // page is fully hydrated when the loading state clears. Both are
-      // best-effort: a notes-vault hiccup must not block the kanban board.
-      const fetchVaultItems = async (): Promise<VaultListItem[]> => {
-        try {
-          const listing = await window.api.listNotesVault();
-          return 'error' in listing ? [] : listing.items;
-        } catch {
-          return [];
-        }
-      };
+      // page is fully hydrated when the loading state clears.
       const [existing, items] = await Promise.all([
         window.api.sceneCrafterGetBoard(story.id, storySlug),
         fetchVaultItems(),
@@ -166,11 +252,22 @@ export default function SceneCrafterPage({
     } finally {
       setLoading(false);
     }
-  }, [story.id, storySlug]);
+  }, [story.id, storySlug, fetchVaultItems]);
 
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+
+  // SKY-9878 (M10-S3, AC3): a vault change (a new entity filed by the
+  // Brainstorm Agent, a manual note add, an external edit) restocks the
+  // SUGGESTED CARDS rail with no manual refresh — same push channel
+  // BrainstormPage subscribes to for its live IDEA COLLECTIONS rail.
+  useEffect(() => {
+    const unsubscribe = window.api.onVaultNotesUpdated?.(() => {
+      void fetchVaultItems().then(setVaultItems);
+    });
+    return () => unsubscribe?.();
+  }, [fetchVaultItems]);
 
   useEffect(() => {
     const unsubscribe = window.api.onSceneCrafterExternalEdit?.((changedSlug) => {
@@ -238,6 +335,15 @@ export default function SceneCrafterPage({
   const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
   const planNotes = planNotesFromVault(vaultItems);
   const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
+  // R11/M11c copy (SKY-9878): the rail itself never calls AI either way —
+  // only who's credited with keeping it stocked changes.
+  const vaultStockedCopy = aiEnabled
+    ? 'the Brainstorm Agent keeps this list stocked from your vault.'
+    : 'this list is drawn straight from your Notes Vault.';
+  function onSuggestedCardDragStart(card: SuggestedCard, event: React.DragEvent<HTMLButtonElement>) {
+    event.dataTransfer.setData(CANVAS_CARD_DRAG_MIME, JSON.stringify(cardSeedFromSuggested(card)));
+    event.dataTransfer.effectAllowed = 'copy';
+  }
   // ── M19: POV select sourced from the vault's Characters group (§7.1, AC1) ──
   const cast = castFromSuggested(allSuggested);
   const povIsCustom = povCustomMode || (setup.pov.trim() !== '' && !cast.includes(setup.pov));
@@ -394,7 +500,24 @@ export default function SceneCrafterPage({
           <span className="sc-canvas-hint">Drag cards · corner to resize · ⚯ to connect · drag space to pan · scroll to zoom</span>
         </header>
         <div className="sc-canvas-body">
-          <CanvasBoard board={openBoard} onChange={handleCanvasChange} onOpenNote={onOpenNote} />
+          {/* SKY-9878: same rail, wired to add straight onto this open board. */}
+          <SuggestedCardsRail
+            groups={suggestedGroups}
+            query={sugQ}
+            onQueryChange={setSugQ}
+            hint={`Click or drag a card onto the board — ${vaultStockedCopy}`}
+            onCardActivate={(card) => setPendingExternalCard(cardSeedFromSuggested(card))}
+            onCardDragStart={onSuggestedCardDragStart}
+          />
+          <div className="sc-canvas-stage">
+            <CanvasBoard
+              board={openBoard}
+              onChange={handleCanvasChange}
+              onOpenNote={onOpenNote}
+              pendingExternalCard={pendingExternalCard}
+              onExternalCardAdded={() => setPendingExternalCard(null)}
+            />
+          </div>
         </div>
       </section>
     );
@@ -452,45 +575,14 @@ export default function SceneCrafterPage({
 
       <div className="scene-crafter-body">
         {/* ── Suggested cards panel (prototype lines 355–371) ── */}
-        <aside className="sc-suggest" aria-label="Suggested cards">
-          <div className="sc-suggest-title">SUGGESTED CARDS</div>
-          <div className="sc-suggest-search">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <circle cx="11" cy="11" r="6.5" />
-              <path d="M20.5 20.5L16 16" />
-            </svg>
-            <input
-              placeholder="Search your vault…"
-              aria-label="Search your vault"
-              value={sugQ}
-              onChange={(event) => setSugQ(event.target.value)}
-            />
-          </div>
-          {suggestedGroups.map((group) => (
-            <Fragment key={group.title}>
-              <div className="sc-suggest-group">{group.title}</div>
-              {group.cards.map((card) => (
-                <button
-                  type="button"
-                  key={card.nid}
-                  className={`sc-sugg-card${planSel[card.nid] ? ' sc-sugg-card--on' : ''}`}
-                  aria-pressed={!!planSel[card.nid]}
-                  title="Click to use as context for your draft"
-                  onClick={() => addSuggestedCard(card)}
-                >
-                  <span className="sc-sugg-av">{card.av}</span>
-                  <span className="sc-sugg-text">
-                    <span className="sc-sugg-t">{card.t}</span>
-                    <span className="sc-sugg-d">{card.d}</span>
-                  </span>
-                </button>
-              ))}
-            </Fragment>
-          ))}
-          <div className="sc-suggest-hint">
-            Click a card to use it as context for your draft — the Brainstorm Agent keeps this list stocked from your vault.
-          </div>
-        </aside>
+        <SuggestedCardsRail
+          groups={suggestedGroups}
+          query={sugQ}
+          onQueryChange={setSugQ}
+          hint={`Click a card to use it as context for your draft — ${vaultStockedCopy}`}
+          onCardActivate={addSuggestedCard}
+          isSelected={(card) => !!planSel[card.nid]}
+        />
 
         <div className="sc-columns">
           {/* ── Scene Setup column (prototype lines 1059–1094 + 487–520) ── */}

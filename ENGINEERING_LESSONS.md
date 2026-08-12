@@ -1,5 +1,17 @@
 # Engineering Lessons
 
+## jsdom has no `DragEvent` — `fireEvent.drop(el, {clientX, clientY})` silently drops them (SKY-9878)
+
+**2026-08-12** — `@testing-library/dom`'s `createEvent` resolves `drop`/`dragover`/`dragstart` to `window.DragEvent`; when that's `undefined` (jsdom, all versions as of this repo's toolchain — confirmed via a throwaway probe test), it silently falls back to the base `Event` constructor, which ignores unrecognized init members. `dataTransfer` still works (testing-library special-cases and copies it on afterward), but `clientX`/`clientY` end up `undefined` → `NaN` math downstream, with no error or warning.
+
+**Fix:** for a drop handler whose logic reads `event.clientX`/`clientY`, build a real `new MouseEvent('drop', {clientX, clientY, bubbles, cancelable})` (jsdom fully supports `MouseEvent`), attach `dataTransfer` as a plain extra property, and dispatch with the base `fireEvent(el, event)` — not `fireEvent.drop(el, {...})`. Real Chromium (Playwright e2e) has no such gap; only the vitest/jsdom unit-test path needs this workaround.
+
+## Pre-seeding a story into `manifest.json` isn't reliably "selected" post-SKY-9019/M5 (SKY-9878)
+
+**2026-08-12** — A fidelity-capture/e2e script that writes a story straight into `vaultDir/manifest.json` before boot and then clicks `.nav-story-title` to select it can land on `selectedStory === null` (Scene Crafter's "No Story Selected" state) even though the title visually highlights as selected. Root cause not fully isolated, but creating the story through the real UI flow (`.nav-add-btn` → fill-prompt modal → `.nav-story-title` click), exactly as `e2e/tests/sceneCrafter.spec.ts`'s `createStory`/`selectStory` helpers already do, works reliably every time.
+
+**Fix:** for any new Scene-Crafter-touching (or likely any story-scoped) e2e/capture script, create the story via the UI instead of pre-seeding the manifest — don't re-debug this from scratch.
+
 ## E2E Test Hardening: Defensive Waits Over Speculative Assertions (SKY-766)
 
 **Pattern:** When hardening E2E tests, add defensive visibility waits that can't break the test. Avoid speculative assertions about app behavior you're uncertain about.
