@@ -482,6 +482,17 @@
   outline-offset: 0;
 }
 
+/* SKY-9920 (M5 item 5): Entity Browser opened as a Story-pane tab — fills the
+   column like every other single-pane branch here (ManuscriptView/EntityDetail/
+   NoteViewer all self-size; EntityBrowser doesn't take a className, so its
+   wrapper carries the flex instead — mirrors .notes-entities-view). */
+.story-entities-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Empty editor state */
 .shell-editor-empty {
   flex: 1;

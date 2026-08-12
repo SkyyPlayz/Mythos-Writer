@@ -44,6 +44,7 @@ import {
   makeSceneTab,
   upsertSceneTab,
   upsertNoteTab,
+  upsertEntityBrowserTab,
   reconcileSceneTabs,
   renameCommitsProvisional,
   workspaceStripModeFor,
@@ -1419,19 +1420,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         // (activeLayout.workspaceTabs) are deliberately ignored — tabs are
         // documents now; provisional tabs never persist (§1.5).
         if (Array.isArray(s.activeLayout?.storyDocTabs)) {
-          const restored = s.activeLayout.storyDocTabs.filter((t) => t.kind === 'scene' && !t.provisional);
+          // SKY-9920: an Entity Browser tab (kind 'entities') survives
+          // relaunch too — only provisional scenes are deliberately dropped.
+          const restored = s.activeLayout.storyDocTabs.filter(
+            (t) => (t.kind === 'scene' && !t.provisional) || t.kind === 'entities',
+          );
           setStoryDocTabs(restored);
           const act = s.activeLayout.activeStoryDocTabId ?? null;
           setActiveStoryDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
         }
         if (Array.isArray(s.activeLayout?.notesDocTabs)) {
-          const restored = s.activeLayout.notesDocTabs.filter((t) => t.kind === 'note');
+          const restored = s.activeLayout.notesDocTabs.filter((t) => t.kind === 'note' || t.kind === 'entities');
           setNotesDocTabs(restored);
           const act = s.activeLayout.activeNotesDocTabId ?? null;
           setActiveNotesDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
         }
-        // GH #643: restore the right-hand workspace split pane.
-        if (s.activeLayout?.workspaceSplitPane?.kind) {
+        // GH #643: restore the right-hand workspace split pane. SKY-9920:
+        // 'entities' is excluded — Entity Browser's home is the document-tab
+        // system now, not this legacy split pane (dead path: nothing has
+        // set workspaceSplitKind to 'entities' since M5).
+        if (s.activeLayout?.workspaceSplitPane?.kind && s.activeLayout.workspaceSplitPane.kind !== 'entities') {
           setWorkspaceSplitKind(s.activeLayout.workspaceSplitPane.kind);
         }
         // SKY-1699: restore split window ratio from persisted AppSettings.
@@ -3553,13 +3561,93 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNewProvisionalScene();
   }, [workspaceStripMode, handleNewProvisionalScene]);
 
+  // ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
+  // Opens/focuses the Entity Browser tab in the Story pane's primary strip.
+  // Clears selectedScene first: the "opening a scene surfaces its tab" effect
+  // (below) re-derives activeStoryDocTabId from selectedScene on every
+  // storyDocTabs/activeStoryDocTabId change, and would otherwise immediately
+  // snap focus back to the scene tab the instant this sets the entities tab active.
+  // handleSetView('editor') matters too: the tab strip + content ternary
+  // (.shell-panels) only renders when view === 'editor' — Coach/Kanban/
+  // Timeline hide it, and the strip's + / Insert menu stay reachable from
+  // Coach (workspaceStripModeFor keeps its doc strip) — without this, picking
+  // Entity Browser there would update the tabs with no visible effect.
+  const handleOpenEntityBrowserStory = useCallback(() => {
+    handleTabChange('story');
+    handleSetView('editor');
+    setSelectedScene(null);
+    setStoryDocTabs((prev) => {
+      const result = upsertEntityBrowserTab(prev);
+      setActiveStoryDocTabId(result.activeId);
+      persistDocTabs({ story: { tabs: result.tabs, activeId: result.activeId } });
+      return result.tabs;
+    });
+  }, [handleTabChange, handleSetView, persistDocTabs]);
+
+  // Story pane 2 (split-only, session-only like handlePane2NewScene — never
+  // independently persisted; folds into storyDocTabs on split collapse).
+  // Clears pane2Scene/Chapter/Story — mirrors handlePane2TabSelect/Close's
+  // existing docId-based clearing for non-scene tabs, so the right sidebar's
+  // pane-2 context (activeSceneForSidebar) doesn't keep showing a scene that
+  // is no longer visible in this pane. handleSetView('editor') for the same
+  // reason as handleOpenEntityBrowserStory above.
+  const handleOpenEntityBrowserStoryPane2 = useCallback(() => {
+    handleSetView('editor');
+    setPane2Scene(null);
+    setPane2Chapter(null);
+    setPane2Story(null);
+    setPane2Tabs((prev) => {
+      const result = upsertEntityBrowserTab(prev);
+      setActivePane2TabId(result.activeId);
+      return result.tabs;
+    });
+    setFocusedPane(2);
+  }, [handleSetView]);
+
+  // Notes pane 1 (primary, lifted notesDocTabs). Clears openedNotePath first
+  // for the same reason handleOpenEntityBrowserStory clears selectedScene —
+  // the "opening a note surfaces its tab" effect (below) would otherwise
+  // snap focus back to the note tab on the very next render.
+  const handleOpenEntityBrowserNotes = useCallback(() => {
+    handleTabChange('notes');
+    handleNotesSubViewChange('editor');
+    setOpenedNotePath(null);
+    setNotesDocTabs((prev) => {
+      const result = upsertEntityBrowserTab(prev);
+      setActiveNotesDocTabId(result.activeId);
+      persistDocTabs({ notes: { tabs: result.tabs, activeId: result.activeId } });
+      return result.tabs;
+    });
+  }, [handleTabChange, handleNotesSubViewChange, persistDocTabs]);
+
+  // Global bar dispatcher — routes to whichever strip is currently showing
+  // (mirrors handleNewWorkspaceTab's own story/notes branch).
+  const handleOpenEntityBrowserForActiveStrip = useCallback(() => {
+    if (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') {
+      handleOpenEntityBrowserNotes();
+    } else {
+      handleOpenEntityBrowserStory();
+    }
+  }, [workspaceStripMode, handleOpenEntityBrowserNotes, handleOpenEntityBrowserStory]);
+
   // Selecting a tab opens its document.
   const handleWorkspaceTabSelect = useCallback((tabId: string) => {
     const storyTab = storyDocTabs.find((t) => t.id === tabId);
     if (storyTab) {
       setActiveStoryDocTabId(tabId);
       persistDocTabs({ story: { tabs: storyDocTabs, activeId: tabId } });
-      if (!storyTab.provisional && storyTab.docId) {
+      if (storyTab.kind === 'entities') {
+        // SKY-9920: clicking a tab already in the strip skips
+        // handleOpenEntityBrowserStory entirely, so its two fixes are
+        // repeated here — surface it regardless of the current Story
+        // subview (.shell-panels, which hosts this tab's content, only
+        // renders when view === 'editor'; Coach/Kanban/Timeline hide it),
+        // and clear selectedScene so the "opening a scene surfaces its
+        // tab" effect doesn't fight this selection back to the old scene.
+        handleTabChange('story');
+        handleSetView('editor');
+        setSelectedScene(null);
+      } else if (!storyTab.provisional && storyTab.docId) {
         handleTabChange('story');
         setViewDepth('scene');
         handleOpenSceneById(storyTab.docId);
@@ -3567,14 +3655,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return;
     }
     const noteTab = notesDocTabs.find((t) => t.id === tabId);
-    if (noteTab?.docPath) {
+    if (noteTab) {
       setActiveNotesDocTabId(tabId);
       persistDocTabs({ notes: { tabs: notesDocTabs, activeId: tabId } });
       handleTabChange('notes');
       handleNotesSubViewChange('editor');
-      setOpenedNotePath(noteTab.docPath);
+      if (noteTab.kind === 'note' && noteTab.docPath) {
+        setOpenedNotePath(noteTab.docPath);
+      } else if (noteTab.kind === 'entities') {
+        // SKY-9920: same reasoning as the story branch above — clear
+        // openedNotePath so the "opening a note surfaces its tab" effect
+        // doesn't fight this selection back to the old note.
+        setOpenedNotePath(null);
+      }
     }
-  }, [storyDocTabs, notesDocTabs, persistDocTabs, handleTabChange, handleOpenSceneById, handleNotesSubViewChange, setViewDepth]);
+  }, [storyDocTabs, notesDocTabs, persistDocTabs, handleTabChange, handleOpenSceneById, handleNotesSubViewChange, setViewDepth, handleSetView]);
 
   const handleWorkspaceTabClose = useCallback((tabId: string) => {
     // Closing the provisional tab = discarding the untouched scene (§1.5).
@@ -3596,7 +3691,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (activeStoryDocTabId === tabId) {
         const idx = storyDocTabs.findIndex((t) => t.id === tabId);
         nextActive = next.length > 0 ? (idx > 0 ? storyDocTabs[idx - 1].id : storyDocTabs[1].id) : null;
-        if (next.length === 0) setSelectedScene(null);
+        if (next.length === 0) {
+          setSelectedScene(null);
+        } else {
+          // SKY-9920: re-sync selectedScene to whichever tab becomes active —
+          // opening/closing an Entity Browser tab can leave it stale, and a
+          // stale selectedScene fights the "opening a scene surfaces its tab"
+          // effect back onto the wrong tab on the very next render.
+          const nextTab = next.find((t) => t.id === nextActive);
+          if (nextTab?.kind === 'scene' && nextTab.docId) handleOpenSceneById(nextTab.docId);
+          else if (nextTab?.kind === 'entities') setSelectedScene(null);
+        }
       }
       setStoryDocTabs(next);
       setActiveStoryDocTabId(nextActive);
@@ -3609,13 +3714,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (activeNotesDocTabId === tabId) {
         const idx = notesDocTabs.findIndex((t) => t.id === tabId);
         nextActive = next.length > 0 ? (idx > 0 ? notesDocTabs[idx - 1].id : notesDocTabs[1].id) : null;
-        if (next.length === 0) setOpenedNotePath(null);
+        if (next.length === 0) {
+          setOpenedNotePath(null);
+        } else {
+          // SKY-9920: same re-sync as the story branch above, for openedNotePath.
+          const nextTab = next.find((t) => t.id === nextActive);
+          if (nextTab?.kind === 'note' && nextTab.docPath) setOpenedNotePath(nextTab.docPath);
+          else if (nextTab?.kind === 'entities') setOpenedNotePath(null);
+        }
       }
       setNotesDocTabs(next);
       setActiveNotesDocTabId(nextActive);
       persistDocTabs({ notes: { tabs: next, activeId: nextActive } });
     }
-  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane]);
+  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane, handleOpenSceneById]);
 
   const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
     if (workspaceStripMode.kind !== 'docs') return;
@@ -3709,6 +3821,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleTabOpenInSplit = useCallback((tabId: string) => {
     const storyTab = storyDocTabs.find((t) => t.id === tabId);
     if (storyTab) {
+      // SKY-9920: an entities tab has no docId — without this check it fell
+      // into the provisional-scene branch below and showed a misleading
+      // "type in the new scene first" toast.
+      if (storyTab.kind === 'entities') {
+        showLnToast('Entity Browser doesn’t open in a split pane yet — use its + picker in the other pane instead');
+        return;
+      }
       if (storyTab.provisional || !storyTab.docId) {
         showLnToast('Type in the new scene first — an empty provisional scene has nothing to split');
         return;
@@ -3717,6 +3836,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return;
     }
     const noteTab = notesDocTabs.find((t) => t.id === tabId);
+    if (noteTab?.kind === 'entities') {
+      showLnToast('Entity Browser doesn’t open in a split pane yet — use its + picker in the other pane instead');
+      return;
+    }
     if (noteTab?.docPath) openNoteInSplitPane(noteTab.docPath, noteTab.title, 'right');
   }, [storyDocTabs, notesDocTabs, openSceneInSplitPane, openNoteInSplitPane]);
 
@@ -3797,6 +3920,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
+    if (entity.type === 'character') checkGettingStartedItem('add-character');
+  }, [checkGettingStartedItem]);
+
+  // SKY-9920 (M5 item 5): Entity Browser hosted INSIDE a document tab (Story
+  // or Notes pane) shares its pane with the tab strip, not with a standalone
+  // EntityDetail surface — clearing story/scene/chapter selection here (as
+  // the sidebar-panel handler above does, to hand off to EntityDetail) would
+  // silently drop the user's story context while they're still looking at
+  // the same tab. Selecting an entity in a tab-hosted browser only updates
+  // the highlight (EntityBrowser's own selectedEntityId prop).
+  const handleSelectEntityInTab = useCallback((entity: EntityEntry) => {
+    setSelectedEntity(entity);
     if (entity.type === 'character') checkGettingStartedItem('add-character');
   }, [checkGettingStartedItem]);
 
@@ -3975,6 +4110,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // should respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
   const usePane2SidebarContext = splitWindowEnabled && focusedPane === 2;
   const activeSceneForSidebar = usePane2SidebarContext ? pane2Scene : selectedScene;
+
+  // SKY-9920 (M5 item 5): is the active tab in each doc-tab strip the Entity
+  // Browser? Drives which pane renders EntityBrowser instead of its usual content.
+  const activeStoryTabIsEntityBrowser = storyDocTabs.find((t) => t.id === activeStoryDocTabId)?.kind === 'entities';
+  const activePane2TabIsEntityBrowser = pane2Tabs.find((t) => t.id === activePane2TabId)?.kind === 'entities';
+  const activeNotesTabIsEntityBrowser = notesDocTabs.find((t) => t.id === activeNotesDocTabId)?.kind === 'entities';
 
   // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
   // panels render correctly regardless of which sidebar they live in.
@@ -4711,6 +4852,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       { label: 'Beat (Scene Crafter)', run: () => { handleTabChange('story'); handleSetView('kanban'); } },
       { label: 'Comment', run: () => showLnToast('Select text in the manuscript, then hit Comment') },
       { label: 'Wiki link [[…]]', run: () => showLnToast('Type [[ in any note to link — Obsidian style') },
+      // SKY-9920 (M5 item 5): opens in whichever pane is current — Notes if
+      // already there, Story otherwise (mirrors "Beat" defaulting to Story).
+      { label: 'Entity Browser', run: () => {
+        if (tabShell.activeTab === 'notes') handleOpenEntityBrowserNotes();
+        else handleOpenEntityBrowserStory();
+      } },
     ] },
     { label: 'Tools', items: [
       { label: 'Run continuity scan', run: () => { handleGrsVisibilityChange(true); showLnToast('Archive Agent scanning — check the Continuity panel'); } },
@@ -4739,7 +4886,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       } },
     ] },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView]);
+  ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, tabShell.activeTab, handleOpenEntityBrowserStory, handleOpenEntityBrowserNotes]);
 
   const navItems = useMemo<NavRailItem[]>(
     () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
@@ -4936,6 +5083,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 ? 'New note — via the notes explorer'
                 : 'New blank scene — it only saves once you type'
             }
+            newTabPrimaryLabel={
+              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes' ? 'New note' : 'New scene'
+            }
+            newTabPickerItems={workspaceStripMode.kind === 'docs' ? [
+              { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
+            ] : undefined}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -5309,6 +5462,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCreateNewDoc={handleNewProvisionalScene}
                   onCloseEmptyPane={() => collapseSplitPane(1)}
                   onClosePane={() => collapseSplitPane(1)}
+                  activeTabIsEntityBrowser={activeStoryTabIsEntityBrowser}
+                  onSelectEntity={handleSelectEntityInTab}
+                  selectedEntityId={selectedEntity?.id ?? null}
+                  onOpenEntityBrowser={handleOpenEntityBrowserStory}
                 />
                 <div
                   className="split-window-divider"
@@ -5350,12 +5507,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCreateNewDoc={handlePane2NewScene}
                   onCloseEmptyPane={() => collapseSplitPane(2)}
                   onClosePane={() => collapseSplitPane(2)}
+                  activeTabIsEntityBrowser={activePane2TabIsEntityBrowser}
+                  onSelectEntity={handleSelectEntityInTab}
+                  selectedEntityId={selectedEntity?.id ?? null}
+                  onOpenEntityBrowser={handleOpenEntityBrowserStoryPane2}
                 />
               </div>
             </>
           ) : (
             /* Single-pane view (existing behavior) */
-            !vaultBinding.storyValid ? (
+            activeStoryTabIsEntityBrowser ? (
+              // SKY-9920 (M5 item 5): Entity Browser opened as a Story-pane tab.
+              <div className="story-entities-view" data-testid="story-entities-view">
+                <EntityBrowser
+                  onSelectEntity={handleSelectEntityInTab}
+                  selectedEntityId={selectedEntity?.id ?? null}
+                />
+              </div>
+            ) : !vaultBinding.storyValid ? (
               <div className="shell-editor-empty shell-editor-empty--vault-missing">
                 <div className="shell-editor-empty-icon">✍️</div>
                 <h2>No Story vault</h2>
@@ -5633,6 +5802,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onPane1TabClose={handleWorkspaceTabClose}
           onPane1TabReorder={handleWorkspaceTabReorder}
           onPane1NewTab={handleNewWorkspaceTab}
+          onOpenEntityBrowser={handleOpenEntityBrowserNotes}
+          activeTabIsEntityBrowser={activeNotesTabIsEntityBrowser}
           onNoteSplitActiveChange={setNotesSplitActive}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
@@ -5682,7 +5853,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }
             return false;
           }}
-          onSelectEntity={handleSelectEntity}
+          onSelectEntity={handleSelectEntityInTab}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
           writingMode={writingMode}
@@ -5917,11 +6088,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
             ) : workspaceSplitKind === 'vault-graph' ? (
               <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
-            ) : workspaceSplitKind === 'entities' ? (
-              <EntityBrowser
-                onSelectEntity={handleSelectEntity}
-                selectedEntityId={selectedEntity?.id ?? null}
-              />
             ) : workspaceSplitKind === 'brainstorm' ? (
               <BrainstormPage
                 onClose={closeSplitPane}

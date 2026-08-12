@@ -5,9 +5,11 @@ import {
   sceneStatusFromDraftState,
   makeSceneTab,
   makeNoteTab,
+  makeEntityBrowserTab,
   noteTitleFromPath,
   upsertSceneTab,
   upsertNoteTab,
+  upsertEntityBrowserTab,
   reconcileSceneTabs,
   workspaceStripModeFor,
   provisionalSceneIsAway,
@@ -126,6 +128,42 @@ describe('upsertNoteTab', () => {
     expect(second.created).toBe(false);
     expect(second.activeId).toBe('tab-m');
     expect(second.tabs).toBe(first.tabs);
+  });
+});
+
+// ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
+
+describe('makeEntityBrowserTab', () => {
+  it('builds an entities-kind tab with no docId/docPath', () => {
+    const tab = makeEntityBrowserTab(() => 'tab-eb');
+    expect(tab).toMatchObject({ id: 'tab-eb', kind: 'entities', title: 'Entity Browser' });
+    expect(tab.docId).toBeUndefined();
+    expect(tab.docPath).toBeUndefined();
+  });
+});
+
+describe('upsertEntityBrowserTab', () => {
+  it('appends a tab for a new strip and focuses it', () => {
+    const result = upsertEntityBrowserTab([], () => 'tab-eb');
+    expect(result.created).toBe(true);
+    expect(result.activeId).toBe('tab-eb');
+    expect(result.tabs).toHaveLength(1);
+    expect(result.tabs[0].kind).toBe('entities');
+  });
+
+  it('focuses the existing Entity Browser tab instead of duplicating (one per strip)', () => {
+    const first = upsertEntityBrowserTab([], () => 'tab-eb');
+    const second = upsertEntityBrowserTab(first.tabs, () => 'tab-dup');
+    expect(second.created).toBe(false);
+    expect(second.activeId).toBe('tab-eb');
+    expect(second.tabs).toBe(first.tabs); // unchanged reference — no state churn
+    expect(second.tabs).toHaveLength(1);
+  });
+
+  it('coexists alongside scene/note tabs without disturbing them', () => {
+    const sceneTab = makeSceneTab(makeScene('sc-a', 'Scene A'), () => 'tab-a');
+    const result = upsertEntityBrowserTab([sceneTab], () => 'tab-eb');
+    expect(result.tabs).toEqual([sceneTab, expect.objectContaining({ id: 'tab-eb', kind: 'entities' })]);
   });
 });
 

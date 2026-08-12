@@ -45,6 +45,13 @@ export interface WorkspaceTabBarProps {
   allowCloseLastTab?: boolean;
   /** SKY-9342: hide the agents status chip (per-pane strips don't carry it). */
   hideAgentsChip?: boolean;
+  /** SKY-9920 (M5 item 5): extra document kinds openable from the + picker
+   * (e.g. Entity Browser), alongside the primary onNewTab action. Omitted or
+   * empty keeps the + button a single-click action (back-compat). */
+  newTabPickerItems?: { key: string; label: string; onSelect: () => void }[];
+  /** SKY-9920: short label for the primary onNewTab action inside the +
+   * picker (only shown once newTabPickerItems is non-empty). */
+  newTabPrimaryLabel?: string;
 }
 
 /** Drag payload MIME so the shell's split-pane drop zone can recognize tab drags. */
@@ -65,6 +72,8 @@ export default function WorkspaceTabBar({
   newTabTitle = 'New blank scene — it only saves once you type',
   allowCloseLastTab = false,
   hideAgentsChip = false,
+  newTabPickerItems = [],
+  newTabPrimaryLabel = 'New tab',
 }: WorkspaceTabBarProps) {
   // ── Drag-to-reorder state ─────────────────────────────────────────────────
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -129,6 +138,26 @@ export default function WorkspaceTabBar({
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
   }, [overflowOpen]);
+
+  // ── SKY-9920: + picker — offers the primary new-tab action plus extra
+  // document kinds (e.g. Entity Browser). Same dismiss-on-outside idiom as
+  // the overflow ▾ dropdown above. ────────────────────────────────────────
+  const [newTabMenuOpen, setNewTabMenuOpen] = useState(false);
+  const newTabBtnRef = useRef<HTMLButtonElement>(null);
+  const newTabMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!newTabMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (
+        newTabBtnRef.current?.contains(e.target as Node) ||
+        newTabMenuRef.current?.contains(e.target as Node)
+      ) return;
+      setNewTabMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [newTabMenuOpen]);
 
   // ── Roving-tabIndex refs for arrow-key focus management ───────────────────
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -243,6 +272,10 @@ export default function WorkspaceTabBar({
       if (e.key === 'Escape') {
         // Beta3 M6: Escape dismisses the tab context menu (prototype 3918).
         setCtxMenu(null);
+        // SKY-9920: return focus to the trigger — otherwise a keyboard user
+        // loses their place in the tab order once the picker closes.
+        if (newTabMenuOpen) newTabBtnRef.current?.focus();
+        setNewTabMenuOpen(false);
         return;
       }
       if (!e.ctrlKey) return;
@@ -267,7 +300,7 @@ export default function WorkspaceTabBar({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [activeTabId, tabs, handleClose, onTabSelect]);
+  }, [activeTabId, tabs, handleClose, onTabSelect, newTabMenuOpen]);
 
   // ── Drag handlers ─────────────────────────────────────────────────────────
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
@@ -350,7 +383,7 @@ export default function WorkspaceTabBar({
         className={['wtb-tabs-scroll', tabs.length === 0 && !staticTabLabel ? 'wtb-tabs-scroll--empty' : '']
           .filter(Boolean)
           .join(' ')}
-        onScroll={() => { setCtxMenu(null); setOverflowOpen(false); }}
+        onScroll={() => { setCtxMenu(null); setOverflowOpen(false); setNewTabMenuOpen(false); }}
       >
         {/* Beta 4 M4: non-document views show the view name as a single static
             pseudo-tab (prototype tabList fallback, ~5713). */}
@@ -454,26 +487,70 @@ export default function WorkspaceTabBar({
         })}
       </div>
 
-      <button
-        className="wtb-new-tab-btn"
-        aria-label="Open new tab"
-        title={newTabTitle}
-        onClick={onNewTab}
-        data-testid="wtb-new-tab-btn"
-      >
-        {/* Prototype 158: 13px plus */}
-        <svg
-          width="13"
-          height="13"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          aria-hidden="true"
+      <div className="wtb-new-tab-wrap">
+        <button
+          ref={newTabBtnRef}
+          className="wtb-new-tab-btn"
+          aria-label="Open new tab"
+          title={newTabTitle}
+          aria-haspopup={newTabPickerItems.length > 0 ? 'listbox' : undefined}
+          aria-expanded={newTabPickerItems.length > 0 ? newTabMenuOpen : undefined}
+          onClick={() => {
+            if (newTabPickerItems.length > 0) setNewTabMenuOpen((o) => !o);
+            else onNewTab();
+          }}
+          data-testid="wtb-new-tab-btn"
         >
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
+          {/* Prototype 158: 13px plus */}
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+
+        {/* SKY-9920 (M5 item 5): + picker — new document kind alongside the
+            primary action (e.g. "New scene" + "Entity Browser"). */}
+        {newTabMenuOpen && newTabPickerItems.length > 0 && (
+          <div
+            ref={newTabMenuRef}
+            className="wtb-new-tab-menu"
+            role="listbox"
+            aria-label="Open new document"
+            data-testid="wtb-new-tab-menu"
+          >
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="wtb-new-tab-menu-item"
+              onClick={() => { setNewTabMenuOpen(false); onNewTab(); }}
+              data-testid="wtb-new-tab-menu-primary"
+            >
+              {newTabPrimaryLabel}
+            </button>
+            {newTabPickerItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="wtb-new-tab-menu-item"
+                onClick={() => { setNewTabMenuOpen(false); item.onSelect(); }}
+                data-testid={`wtb-new-tab-menu-item-${item.key}`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* SKY-9342: overflow ▾ — appears when any tabs are clipped by the scroll strip. */}
       {hiddenTabIds.size > 0 && !staticTabLabel && (

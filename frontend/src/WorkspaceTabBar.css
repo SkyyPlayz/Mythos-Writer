@@ -225,6 +225,59 @@
   outline-offset: 2px;
 }
 
+/* SKY-9920: + picker — same popover surface as the overflow ▾ dropdown
+   (.wtb-overflow-menu/.wtb-overflow-item), anchored under the + button. */
+.wtb-new-tab-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex: none;
+}
+
+.wtb-new-tab-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  min-width: 180px;
+  max-width: 260px;
+  z-index: 60;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(15, 19, 33, .97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 12px 36px rgba(3, 5, 12, .6);
+  animation: lnFadeUp .12s ease;
+}
+
+.wtb-new-tab-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  font-size: 11.5px;
+  color: rgb(205, 216, 234);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wtb-new-tab-menu-item:hover {
+  background: rgba(255, 255, 255, .07);
+  color: rgb(255, 255, 255);
+}
+
+.wtb-new-tab-menu-item:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: -2px;
+}
+
 /* Prototype 160: spacer pushes the agents chip to the strip's right end.
    (The old --empty grow rule is gone — per prototype the + button sits right
    after the tabs even when none are open.) */

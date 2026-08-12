@@ -53,6 +53,12 @@ export function makeNoteTab(notePath: string, makeId: () => string = defaultMake
   return { id: makeId(), kind: 'note', title: noteTitleFromPath(notePath), icon: '📝', docPath: notePath };
 }
 
+/** SKY-9920 (M5 item 5): Entity Browser as an openable document tab — no
+ * docId/docPath, so identity is the tab kind itself (one per strip). */
+export function makeEntityBrowserTab(makeId: () => string = defaultMakeId): WorkspaceTab {
+  return { id: makeId(), kind: 'entities', title: 'Entity Browser', icon: '🗂️' };
+}
+
 export interface UpsertDocTabResult {
   tabs: WorkspaceTab[];
   activeId: string;
@@ -93,6 +99,20 @@ export function upsertNoteTab(
   const existing = tabs.find((t) => t.kind === 'note' && t.docPath === notePath);
   if (existing) return { tabs, activeId: existing.id, created: false };
   const tab = makeNoteTab(notePath, makeId);
+  return { tabs: [...tabs, tab], activeId: tab.id, created: true };
+}
+
+/**
+ * Focus the existing Entity Browser tab in this strip, or append a new one —
+ * §M5 item 5: opening it never duplicates the tab (only one per strip).
+ */
+export function upsertEntityBrowserTab(
+  tabs: WorkspaceTab[],
+  makeId: () => string = defaultMakeId,
+): UpsertDocTabResult {
+  const existing = tabs.find((t) => t.kind === 'entities');
+  if (existing) return { tabs, activeId: existing.id, created: false };
+  const tab = makeEntityBrowserTab(makeId);
   return { tabs: [...tabs, tab], activeId: tab.id, created: true };
 }
 

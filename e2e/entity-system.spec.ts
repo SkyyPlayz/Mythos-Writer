@@ -8,6 +8,11 @@
  *   TC-E-02  Add alias via detail     — alias field updated and saved in entity detail
  *   TC-E-03  Reference in prose       — entity can be referenced via [[name]] in prose editor
  *   TC-E-04  Persistence              — entity + alias survives app restart
+ *   TC-E-05  Tab (+) picker           — Entity Browser opens as a doc tab from the Notes pane's
+ *                                       + picker; create-entity works there (SKY-9920, M5 item 5)
+ *   TC-E-06  Tab in Story pane        — same tab type opens via the Insert menu in the Story pane,
+ *                                       sharing the vault's entity list across panes (SKY-9920)
+ *   TC-E-07  No duplicate tabs        — re-opening from + focuses the existing tab, never a dupe
  *
  * Run (after `npm run build:electron`):
  *   npx playwright install chromium   # first time only
@@ -33,6 +38,9 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const ENTITY_NAME = 'New Character';
 const ENTITY_ALIAS = 'The Silver Lady';
 const MENTION_PROSE = 'She walked into the hall.';
+// SKY-9920: entity created via the tab-based Entity Browser (TC-E-05+) — kept
+// distinct from ENTITY_NAME so both surfaces' entities are unambiguous in list assertions.
+const TAB_ENTITY_NAME = 'Tab Character';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -234,6 +242,14 @@ test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () 
 // ─── TC-E-04: Entity with alias persists after app restart ────────────────────
 
 test('TC-E-04: entity with alias persists after full app restart', async () => {
+  // DesktopShell's manifest writer (scheduleManifestSave) debounces disk
+  // writes by 900ms and has no flush-on-quit — app.close() right after an
+  // edit can kill the renderer before that timer fires, silently dropping
+  // the last batch of changes (root cause of an intermittent "stories: []
+  // after restart" failure seen on CI; tracked separately as a data-loss
+  // bug — see SKY-9955). Give the debounce a chance to flush before closing.
+  await page.waitForTimeout(1_200);
+
   // Close the app
   await app.close().catch(() => {});
 
@@ -243,6 +259,15 @@ test('TC-E-04: entity with alias persists after full app restart', async () => {
 
   // Wait for app to fully load
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // SKY-1694: Stories is now a panel in the panel zone; expand it if collapsed.
+  // TC-E-05..07 never touch this panel, so this is the only place in the
+  // suite that confirms the reload actually landed before TC-E-08's "New
+  // scene" click depends on `stories` being non-empty.
+  const storiesPanel2 = page.locator('[data-panel-id="stories"]');
+  const sp2Collapsed = await storiesPanel2.evaluate(el => el.classList.contains('lr-panel--collapsed')).catch(() => false);
+  if (sp2Collapsed) await storiesPanel2.locator('.lr-panel-collapse-btn').click();
+  await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 10_000 });
 
   // SKY-1694: Entities is now a panel in the panel zone; expand it if collapsed.
   const entitiesPanel2 = page.locator('[data-panel-id="entities"]');
@@ -265,4 +290,94 @@ test('TC-E-04: entity with alias persists after full app restart', async () => {
 
   const aliasInput = inputs.nth(1);
   await expect(aliasInput).toHaveValue(ENTITY_ALIAS, { timeout: 4_000 });
+});
+
+// ─── SKY-9920 (M5 item 5): Entity Browser opens as a document tab ─────────────
+// PLAN.md M5 spec item 5 + AC: "Entity Browser opens as a tab from +; all its
+// existing functions work there (K6)." Real UI → IPC → disk path — creating an
+// entity from the tab-hosted browser must land on disk exactly like TC-E-01.
+
+test('TC-E-05: Entity Browser opens as a document tab from the Notes pane + picker', async () => {
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // M5 rail inventory (Story Writer/Notes Editor/Scene Crafter/Brainstorm/
+  // Timeline/Vault Graph) deliberately excludes Entities — binding "no surface
+  // in two navigation systems" rule.
+  await expect(
+    page.locator('nav[aria-label="Main navigation"] button[aria-label="Entity Browser"]'),
+  ).toHaveCount(0);
+
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+
+  const newTabBtn = page.locator('[data-testid="wtb-new-tab-btn"]');
+  await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
+  await newTabBtn.click();
+  await expect(page.locator('[data-testid="wtb-new-tab-menu"]')).toBeVisible({ timeout: 4_000 });
+  await page.locator('[data-testid="wtb-new-tab-menu-item-entities"]').click();
+
+  // A real tab opened, focused, titled "Entity Browser" — same component K6
+  // used to live in the sidebar, now hosted as this tab's document content.
+  const tab = page.getByRole('tab', { name: 'Entity Browser' });
+  await expect(tab).toBeVisible({ timeout: 6_000 });
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.entity-browser')).toBeVisible({ timeout: 6_000 });
+
+  // Create an entity from inside the tab — exercises the real IPC path, not a mock.
+  await page.locator('.entity-btn.entity-btn-primary.entity-btn-sm').first().click();
+  const dialog = page.locator('[role="dialog"]');
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  await dialog.locator('.entity-dialog-input').first().fill(TAB_ENTITY_NAME);
+  await dialog.locator('.entity-btn.entity-btn-primary').click();
+  await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('.entity-item-name', { hasText: TAB_ENTITY_NAME })).toBeVisible({ timeout: 8_000 });
+});
+
+test('TC-E-06: the Insert menu opens the same tab type in the Story pane', async () => {
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
+
+  // Fresh strip (no scenes created in this flow) — Insert menu creates the
+  // entities tab from scratch here, proving it shares handleOpenEntityBrowserStory
+  // rather than being a materially separate surface.
+  await expect(page.getByRole('tab', { name: 'Entity Browser' })).toHaveCount(0);
+  await page.locator('[data-testid="wc-menu-insert"]').click();
+  const insertItem = page.getByRole('menuitem', { name: 'Entity Browser' });
+  await expect(insertItem).toBeVisible({ timeout: 4_000 });
+  await insertItem.click();
+
+  const tab = page.getByRole('tab', { name: 'Entity Browser' });
+  await expect(tab).toBeVisible({ timeout: 6_000 });
+  // Scoped to the Story-pane tab content, not `.entity-browser` bare — the
+  // legacy left-rail "Entities" sidebar panel (still live pre-M6) is ALSO
+  // visible in the Story tab context, so an unscoped locator is ambiguous.
+  const storyTabBrowser = page.locator('[data-testid="story-entities-view"] .entity-browser');
+  await expect(storyTabBrowser).toBeVisible({ timeout: 6_000 });
+  // Same vault, same entity list — the entity created via the Notes-pane tab
+  // (TC-E-05) is visible here too; only the tab's home pane differs.
+  await expect(storyTabBrowser.locator('.entity-item-name', { hasText: TAB_ENTITY_NAME })).toBeVisible({ timeout: 8_000 });
+});
+
+test('TC-E-07: re-opening from + focuses the existing tab — never a duplicate', async () => {
+  // The Story pane already has its Entity Browser tab open from TC-E-06.
+  await expect(page.getByRole('tab', { name: 'Entity Browser' })).toHaveCount(1);
+  await page.locator('[data-testid="wtb-new-tab-btn"]').click();
+  await page.locator('[data-testid="wtb-new-tab-menu-item-entities"]').click();
+  await expect(page.getByRole('tab', { name: 'Entity Browser' })).toHaveCount(1);
+});
+
+test('TC-E-08: clicking an already-open Entity Browser tab (not opening it fresh) surfaces it too', async () => {
+  // The + button's PRIMARY action ("New scene") still works unchanged now
+  // that + is a picker — clicking it (not the "Entity Browser" item) opens a
+  // scene tab, moving focus away from the existing Entity Browser tab.
+  const newTabBtn = page.locator('[data-testid="wtb-new-tab-btn"]');
+  await newTabBtn.click();
+  await page.locator('[data-testid="wtb-new-tab-menu-primary"]').click();
+  await expect(page.locator('[data-testid="story-entities-view"]')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
+
+  // Clicking BACK on the Entity Browser tab already in the strip (the
+  // "select an existing tab" path — distinct from opening it via +/Insert)
+  // must surface it just as reliably.
+  await page.getByRole('tab', { name: 'Entity Browser' }).click();
+  await expect(page.locator('[data-testid="story-entities-view"] .entity-browser')).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('.ProseMirror')).toHaveCount(0);
 });

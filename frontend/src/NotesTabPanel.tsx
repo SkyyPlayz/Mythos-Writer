@@ -12,7 +12,7 @@ import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
 import type { FormatToolbarActions } from './FormatToolbar';
 import NoteSplitPane, { NotesPaneTabStrip } from './NoteSplitPane';
-import { makeNoteTab, upsertNoteTab } from './workspaceDocTabs';
+import { makeNoteTab, upsertNoteTab, upsertEntityBrowserTab } from './workspaceDocTabs';
 import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
 import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
@@ -69,6 +69,10 @@ export interface NotesTabPanelProps {
   onPane1TabClose?: (tabId: string) => void;
   onPane1TabReorder?: (fromIndex: number, toIndex: number) => void;
   onPane1NewTab?: () => void;
+  /** SKY-9920: + picker — opens/focuses the Entity Browser tab in pane 1
+   * (the shell's lifted notesDocTabs). Omitted → pane 1's + stays a
+   * single-click "new note" action. */
+  onOpenEntityBrowser?: () => void;
   /** Notifies the shell whether the Notes split is active, so it can hide
    * the global tab strip while each pane owns its own (mirrors the Story
    * split editor hiding the global strip for storyDocTabs). */
@@ -147,6 +151,7 @@ export default function NotesTabPanel({
   onPane1TabClose = () => {},
   onPane1TabReorder = () => {},
   onPane1NewTab = () => {},
+  onOpenEntityBrowser,
   onNoteSplitActiveChange,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
@@ -208,7 +213,12 @@ export default function NotesTabPanel({
   const [noteTabDragPayload, setNoteTabDragPayload] = useState<WorkspaceTab | null>(null);
   const [noteTabDragSourcePane, setNoteTabDragSourcePane] = useState<1 | 2 | null>(null);
 
-  const noteSplitPath = noteSplitTabs.find((t) => t.id === activeNoteSplitTabId)?.docPath ?? null;
+  const activeNoteSplitTab = noteSplitTabs.find((t) => t.id === activeNoteSplitTabId) ?? null;
+  const noteSplitPath = activeNoteSplitTab?.docPath ?? null;
+  // SKY-9920: split is "active" once pane 2 has a tab at all — not just when
+  // that tab has a note path (an Entity Browser tab has none).
+  const noteSplitActive = noteSplitTabs.length > 0;
+  const noteSplitIsEntityBrowser = activeNoteSplitTab?.kind === 'entities';
 
   const mdNotePaths = useMemo(
     () => (notePaths ?? []).filter((p) => p.toLowerCase().endsWith('.md')),
@@ -232,6 +242,17 @@ export default function NotesTabPanel({
     setNoteSplitTabs([tab]);
     setActiveNoteSplitTabId(tab.id);
   }, [noteSplitTabs, mdNotePaths, activeNotePath]);
+
+  // SKY-9920 (M5 item 5): pane 2's + picker "Entity Browser" option — pane 2
+  // is session-only local state (unlike pane 1's lifted notesDocTabs), so it
+  // upserts directly rather than routing through the shell.
+  const handleOpenEntityBrowserInSplit = useCallback(() => {
+    setNoteSplitTabs((prev) => {
+      const result = upsertEntityBrowserTab(prev);
+      setActiveNoteSplitTabId(result.activeId);
+      return result.tabs;
+    });
+  }, []);
 
   // Beta 4 M4: apply a shell-driven split request (note tab dragged onto a
   // split drop zone / context-menu "Open to the side").
@@ -430,12 +451,18 @@ export default function NotesTabPanel({
             >E</button>
           </div>
         )}
-        {/* M16: note split toggle — prototype "Split notes" header button. */}
-        {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && (
+        {/* M16: note split toggle — prototype "Split notes" header button.
+            SKY-9920: while pane 1 shows Entity Browser, starting a NEW split
+            still doesn't apply (no note to pair it with) — but the button
+            must stay reachable to COLLAPSE a split that was already active,
+            or opening Entity Browser mid-split would strand pane 2 with no
+            way back (activeNotePath is null in this state, so the plain
+            `activeNotePath` check below is skipped in favor of noteSplitActive). */}
+        {notesSubView === 'editor' && (activeTabIsEntityBrowser ? noteSplitActive : activeNotePath) && (
           <button
-            className={`notes-split-toggle-btn${noteSplitPath ? ' notes-split-toggle-btn--active' : ''}`}
+            className={`notes-split-toggle-btn${noteSplitActive ? ' notes-split-toggle-btn--active' : ''}`}
             aria-label="Split notes"
-            aria-pressed={!!noteSplitPath}
+            aria-pressed={noteSplitActive}
             title="Split notes"
             data-testid="notes-split-toggle"
             onClick={handleToggleNoteSplit}
@@ -536,7 +563,7 @@ export default function NotesTabPanel({
 
         {/* Center — sub-view body */}
         <div className="notes-tab-center" data-testid="notes-tab-center">
-          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && !noteSplitPath && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && !noteSplitActive && (
             <NoteViewer
               key={activeNotePath}
               path={activeNotePath}
@@ -556,8 +583,15 @@ export default function NotesTabPanel({
             />
           )}
           {/* M16 / SKY-9784: note split — active note + a second note side by
-              side, each pane owning an Obsidian-parity tab strip. */}
-          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && noteSplitPath && (
+              side, each pane owning an Obsidian-parity tab strip.
+              SKY-9920: the row itself must NOT depend on !activeTabIsEntityBrowser
+              — pane 1 can show Entity Browser while split is active, same as
+              pane 2 already can (noteSplitIsEntityBrowser below). Gating the
+              whole row on it (as opposed to just pane 1's own content) hid
+              pane 2 AND both panes' tab strips the moment pane 1 opened
+              Entity Browser mid-split — with the global strip also hidden
+              (notesSplitActive stays true), that left no tab strip at all. */}
+          {notesSubView === 'editor' && (activeTabIsEntityBrowser || activeNotePath) && noteSplitActive && (
             <div className="notes-split-row" ref={splitRowRef} data-testid="notes-split-row">
               <div className="notes-split-main" style={{ flex: noteSplitRatio }}>
                 <NotesPaneTabStrip
@@ -572,25 +606,33 @@ export default function NotesTabPanel({
                   acceptsTabDrop={noteTabDragSourcePane === 2}
                   onTabStripDrop={handlePane1StripDrop}
                   onClosePane={handleToggleNoteSplit}
+                  onOpenEntityBrowser={onOpenEntityBrowser}
                 />
-                <NoteViewer
-                  key={activeNotePath}
-                  path={activeNotePath}
-                  previewMode={activeNotePreview}
-                  onPreviewModeChange={onActiveNotePreviewChange}
-                  onWordCountChange={onActiveNoteWordCountChange}
-                  onWikiLinkClick={onWikiLinkClick}
-                  resolvedWikiLinkTitles={resolvedWikiLinkTitles}
-                  sceneWikiLinkTitles={sceneWikiLinkTitles}
-                  wikiLinkCandidates={wikiLinkCandidates}
-                  onClose={onCloseActiveNote}
-                  // M17: backlinks footer follows the primary pane only —
-                  // the split pane stays compact (prototype split excerpt).
-                  stories={stories}
-                  onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
-                  onOpenBacklinkScene={onSelectScene}
-                  toolbarActions={noteToolbarActions}
-                />
+                {activeTabIsEntityBrowser ? (
+                  <EntityBrowser
+                    onSelectEntity={onSelectEntity}
+                    selectedEntityId={selectedEntityId}
+                  />
+                ) : activeNotePath && (
+                  <NoteViewer
+                    key={activeNotePath}
+                    path={activeNotePath}
+                    previewMode={activeNotePreview}
+                    onPreviewModeChange={onActiveNotePreviewChange}
+                    onWordCountChange={onActiveNoteWordCountChange}
+                    onWikiLinkClick={onWikiLinkClick}
+                    resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+                    sceneWikiLinkTitles={sceneWikiLinkTitles}
+                    wikiLinkCandidates={wikiLinkCandidates}
+                    onClose={onCloseActiveNote}
+                    // M17: backlinks footer follows the primary pane only —
+                    // the split pane stays compact (prototype split excerpt).
+                    stories={stories}
+                    onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+                    onOpenBacklinkScene={onSelectScene}
+                    toolbarActions={noteToolbarActions}
+                  />
+                )}
               </div>
               <div
                 className="notes-split-divider"
@@ -613,12 +655,16 @@ export default function NotesTabPanel({
                 onTabDragStart={(tab) => { setNoteTabDragPayload(tab); setNoteTabDragSourcePane(2); }}
                 acceptsTabDrop={noteTabDragSourcePane === 1}
                 onTabStripDrop={handleSplitStripDrop}
-                path={noteSplitPath}
+                path={noteSplitPath ?? ''}
                 onClose={handleToggleNoteSplit}
                 onWikiLinkClick={onWikiLinkClick}
                 resolvedWikiLinkTitles={resolvedWikiLinkTitles}
                 sceneWikiLinkTitles={sceneWikiLinkTitles}
                 wikiLinkCandidates={wikiLinkCandidates}
+                activeTabIsEntityBrowser={noteSplitIsEntityBrowser}
+                onSelectEntity={onSelectEntity}
+                selectedEntityId={selectedEntityId}
+                onOpenEntityBrowser={handleOpenEntityBrowserInSplit}
               />
             </div>
           )}
@@ -666,7 +712,10 @@ export default function NotesTabPanel({
               </button>
             </div>
           )}
-          {activeTabIsEntityBrowser && (
+          {/* SKY-9920: !noteSplitActive — while split, pane 1's own
+              EntityBrowser render lives inside the notes-split-row block
+              above instead, so pane 2 and both tab strips stay visible. */}
+          {activeTabIsEntityBrowser && !noteSplitActive && (
             <div className="notes-entities-view" data-testid="notes-entities-view">
               <EntityBrowser
                 onSelectEntity={onSelectEntity}
