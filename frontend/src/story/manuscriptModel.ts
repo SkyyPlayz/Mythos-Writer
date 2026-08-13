@@ -678,6 +678,24 @@ export function cursorScene(story: Story, cursor: ManuscriptCursor): Scene | nul
 }
 
 /**
+ * M6 (SKY-9022): the scene the editor actually shows for a bare story
+ * selection — the manuscript cursor clamps a null selection to chapter 0 /
+ * scene 0, so this resolves the order-sorted first chapter's order-sorted
+ * first scene (parts enumerated the same way buildBlocks does). Null when
+ * the story has no chapters or its first chapter has no scenes, so empty
+ * stories keep their empty states.
+ */
+export function cursorDefaultScene(story: Story): { chapter: Chapter; scene: Scene } | null {
+  const chapters = isSimpleSinglePart(story)
+    ? orderedChapters(story)
+    : orderedParts(story).flatMap((p) => [...p.chapters].sort((a, b) => a.order - b.order));
+  const chapter = chapters[0];
+  if (!chapter) return null;
+  const scene = orderedScenes(chapter)[0];
+  return scene ? { chapter, scene } : null;
+}
+
+/**
  * Row-3 depth chip (prototype sceneChip 5948): book → none, part → "PART ONE",
  * chapter → "CHAPTER N", scene → "SCENE N".
  */
