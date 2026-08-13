@@ -50,8 +50,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
   paths-filter:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -138,8 +137,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Lint (frontend)
         run: npm run lint -w frontend
 
@@ -174,8 +172,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Type-check (frontend)
         run: npm run typecheck -w frontend
 
@@ -213,8 +210,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Resolve coverage flag
         id: coverage-flag
         run: |
@@ -299,8 +295,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Build (electron-vite)
         # SKY-4207: clean out/ before building — it is gitignored and persists across
         # runs on self-hosted runners; stale hashed renderer chunks accumulate and
@@ -383,8 +378,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -552,8 +546,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -709,8 +702,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -881,8 +873,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -1100,9 +1091,38 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      # SKY-10092: build-linux previously ran `npm ci` fresh every push with no
+      # node_modules/electron-binary cache, so every run re-downloaded the Electron
+      # zip from the network — a single "socket hang up" failed the whole job. This
+      # reuses the same cache key as the ubuntu-latest lint/typecheck/unit jobs, so
+      # a same-run cache warmed earlier in the workflow is picked up here too.
+      - name: Cache node_modules
         if: github.event_name != 'pull_request'
-        run: npm ci
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+            ~/.cache/electron
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: github.event_name != 'pull_request' && steps.nm-cache.outputs.cache-hit != 'true'
+        run: source scripts/ci-retry.sh && retry npm ci
+
+      # SKY-10092: electron-builder downloads its own packaging toolchain
+      # (AppImage/7zip helpers) separately from the Electron app binary above —
+      # this is the other download surface behind the "socket hang up" failures.
+      # Cached independently since it's untouched by the node_modules cache key.
+      - name: Cache electron-builder toolchain
+        if: github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron-builder
+          key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Guard — PERSIST_PROMPTS must not be set for release builds
         if: github.event_name != 'pull_request'
@@ -1140,7 +1160,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ""
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run build:electron && npx electron-builder --linux AppImage deb --publish never
+        run: npm run build:electron && source scripts/ci-retry.sh && retry npx electron-builder --linux AppImage deb --publish never
 
       - name: Verify .deb artifact
         # dpkg-deb also loads liblzma, so clear LD_LIBRARY_PATH here too.
@@ -1240,10 +1260,33 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      # SKY-10092: same rationale as build-linux — cache the Electron app binary
+      # and electron-builder's own toolchain download so a network blip doesn't
+      # redownload ~150MB+ per push. Windows default cache locations per
+      # env-paths/electron-builder's getCacheDirectory() are under %LOCALAPPDATA%.
+      - name: Cache node_modules
         if: github.event_name != 'pull_request'
-        run: npm ci
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+            ~/AppData/Local/electron/Cache
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
 
+      - name: Cache electron-builder toolchain
+        if: github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/electron-builder/Cache
+          key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: github.event_name != 'pull_request' && steps.nm-cache.outputs.cache-hit != 'true'
+        run: source scripts/ci-retry.sh && retry npm ci
       # SKY-3191: whisper.cpp/Piper spawn (voice.ts) and the MYT-788 trusted-set
       # gate (voiceGate.ts) have no platform-conditional branches — they rely
       # entirely on Node's cross-platform child_process.spawn/fs.realpathSync —
@@ -1290,7 +1333,7 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npx electron-builder --win nsis zip --publish never
+        run: source scripts/ci-retry.sh && retry npx electron-builder --win nsis zip --publish never
 
       - name: Upload Windows packages
         if: github.event_name != 'pull_request'
@@ -1333,8 +1376,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
-
+        run: source scripts/ci-retry.sh && retry npm ci
       # Unicode-preserving sanitizer + slug/collision helpers — pure logic,
       # but Windows-reserved-device-name and trailing-dot/space rules are
       # exactly the platform-specific part worth re-checking natively.
