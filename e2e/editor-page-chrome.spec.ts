@@ -58,7 +58,7 @@ async function openScene(page: Page): Promise<void> {
   if (await storiesTab.isVisible()) await storiesTab.click();
   // M3 instant-create: no prompt — one transaction scaffolds the story,
   // "Chapter 1", and an "Untitled Scene", and opens the scene automatically.
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   await page.locator('.nav-scene-row').first().click();
 
   await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 10_000 });

@@ -124,13 +124,36 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
     await expect(rail.locator('.lr-story-title')).toBeVisible();
     await expect(rail.locator('.lr-story-meta')).toContainText(/·.*words/);
     await expect(rail.locator('.lr-progress-bar')).toBeVisible();
-    // Navigator: STORY NAVIGATOR label + add + collapse.
+    // Navigator: STORY NAVIGATOR label + add + collapse — and ONLY that
+    // header (GAP-3: StoryNavigator's internal "Stories" header is gone).
     await expect(rail.locator('.lr-nav-label')).toHaveText('STORY NAVIGATOR');
     await expect(rail.locator('.lr-nav-add')).toBeVisible();
     await expect(rail.locator('.lr-nav-collapse-btn')).toBeVisible();
-    // Project footer: Words / Scenes / On Track% trio.
+    await expect(rail.locator('.nav-header')).toHaveCount(0);
+    // Scene rows: prototype anatomy (GAP-4) — `Scene N · Title` label,
+    // word count, status dot; the old text draft badge is gone.
+    const sceneRow = rail.locator('.nav-scene-row').first();
+    await expect(sceneRow.locator('.nav-scene-title')).toHaveText('Scene 1 · The Gate');
+    await expect(sceneRow.locator('.nav-status-dot')).toBeVisible();
+    await expect(rail.locator('.nav-draft-badge')).toHaveCount(0);
+    // Project footer: PROJECT label + Words / Scenes / On Track% trio.
+    await expect(rail.locator('.lr-footer-label')).toHaveText('PROJECT');
     const stats = rail.locator('.lr-stat-key');
     await expect(stats).toHaveText(['Words', 'Scenes', 'On Track']);
+  });
+
+  // GAP-2 regression guard: the beforeAll story-title click was the exact
+  // repro — the editor opened scene 1 while selectedScene stayed null, so
+  // Scene Analysis sat on its empty state with a scene demonstrably open.
+  test('story-title click opens the first scene — Scene Analysis populates', async () => {
+    const rail = page.locator('[data-testid="left-rail"]');
+    // The resolved scene is selected in the tree (GAP-4 selection chip)…
+    await expect(rail.locator('.nav-scene-row.active .nav-scene-title')).toHaveText('Scene 1 · The Gate');
+    // …and the right sidebar reads the same open scene.
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await expect(hub.locator('[data-testid="scene-analysis-rows"]')).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('.ahp-analysis-row-k', { hasText: 'Word Count' })).toBeVisible();
+    await expect(hub.getByText('Open a scene to see analysis.')).toHaveCount(0);
   });
 
   test('no panel-system controls exist anywhere in the DOM', async () => {

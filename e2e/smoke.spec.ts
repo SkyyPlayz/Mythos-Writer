@@ -156,7 +156,7 @@ test('TC-02: create story → chapter → scene and type text', async () => {
   if (await storiesTab.isVisible()) await storiesTab.click();
 
   // Create a new story (header "+" button)
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });

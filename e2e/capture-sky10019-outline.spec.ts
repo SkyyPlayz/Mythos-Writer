@@ -45,7 +45,7 @@ test('capture outline planning tab screenshot', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Create a story + chapter + scene so the outline tab has a story to attach to.
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
   await storyRow.locator('.nav-inline-add').click();

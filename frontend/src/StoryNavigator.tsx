@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Story, Chapter, Scene, Part } from './types';
 import { countWords } from './wordStats';
+import { draftStateLabel, isSimpleSinglePart, sceneStatus } from './story/manuscriptModel';
 import { SCENE_NOTE_DRAG_MIME, type SceneNoteDragPayload } from './sceneNotes';
 import './StoryNavigator.css';
 
@@ -18,10 +19,17 @@ interface Props {
   onCreatePart?: () => void;
   /** M9b (SKY-9823): a scene note dropped anywhere on the navigator promotes it to the vault. */
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
-}
-
-function isSimpleSinglePart(story: Story): boolean {
-  return !story.parts || story.parts.length === 0 || (story.parts.length === 1 && story.parts[0].title === '');
+  /**
+   * M6 (SKY-9022): a scene row's status dot cycles that scene's draftState —
+   * same chain the editor's status chip uses. Without it the dot is a
+   * read-only indicator.
+   */
+  onCycleSceneStatus?: (sceneId: string) => void;
+  /**
+   * M6 (SKY-9022): suppress the internal "Stories" header when an outer
+   * wrapper (LeftRail's STORY NAVIGATOR zone) already provides one.
+   */
+  hideHeader?: boolean;
 }
 
 export default function StoryNavigator({
@@ -37,6 +45,8 @@ export default function StoryNavigator({
   onTemplateCtaClick,
   onCreatePart: _onCreatePart,
   onPromoteSceneNote,
+  onCycleSceneStatus,
+  hideHeader = false,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -148,6 +158,41 @@ export default function StoryNavigator({
     }
   }, [stories]);
 
+  // M6 (SKY-9022): reveal the active scene — scenes opened elsewhere (graph,
+  // timeline, palette, doc tabs…) expand their story/part/chapter so the
+  // `.active` row is visible. Additive and ref-guarded per selection change,
+  // so the user can still deliberately collapse the active scene's chapter.
+  const lastRevealedSceneIdRef = useRef<string | null>(null);
+  const activeSceneRowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selectedSceneId || lastRevealedSceneIdRef.current === selectedSceneId) return;
+    for (const story of stories) {
+      const chapterSlots: Array<{ chapter: Chapter; partId?: string }> = isSimpleSinglePart(story)
+        ? story.chapters.map((chapter) => ({ chapter }))
+        : (story.parts ?? []).flatMap((part) => part.chapters.map((chapter) => ({ chapter, partId: part.id })));
+      for (const { chapter, partId } of chapterSlots) {
+        if (!chapter.scenes.some((sc) => sc.id === selectedSceneId)) continue;
+        lastRevealedSceneIdRef.current = selectedSceneId;
+        setExpandedStories((prev) => (prev.has(story.id) ? prev : new Set(prev).add(story.id)));
+        setExpandedChapters((prev) => (prev.has(chapter.id) ? prev : new Set(prev).add(chapter.id)));
+        if (partId) setExpandedParts((prev) => (prev.has(partId) ? prev : new Set(prev).add(partId)));
+        return;
+      }
+    }
+  }, [selectedSceneId, stories]);
+
+  // Scroll the revealed row into view once it exists in the DOM (the reveal
+  // above may only expand it on this same commit). No smooth behavior —
+  // 'auto' is instant, so prefers-reduced-motion is respected by default.
+  const lastScrolledSceneIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedSceneId || lastScrolledSceneIdRef.current === selectedSceneId) return;
+    const row = activeSceneRowRef.current;
+    if (!row) return;
+    lastScrolledSceneIdRef.current = selectedSceneId;
+    row.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedSceneId, stories, expandedStories, expandedChapters, expandedParts]);
+
   const toggleStory = (id: string) =>
     setExpandedStories((prev) => {
       const next = new Set(prev);
@@ -197,6 +242,32 @@ export default function StoryNavigator({
     }
   };
 
+  // M6 (SKY-9022): status dot per prototype row anatomy (proto 5895) — a real
+  // button when cycling is wired, a read-only indicator otherwise. Status
+  // vocabulary maps through sceneStatus (todo/draft/done).
+  const renderStatusDot = (scene: Scene) => {
+    const status = sceneStatus(scene);
+    if (!onCycleSceneStatus) {
+      return (
+        <span
+          className={`nav-status-dot nav-status-dot--${status}`}
+          role="img"
+          aria-label={`Scene status: ${draftStateLabel(scene.draftState)}`}
+        />
+      );
+    }
+    return (
+      <button
+        type="button"
+        className={`nav-status-dot nav-status-dot--${status}`}
+        title="Click to cycle status"
+        aria-label={`Scene status: ${draftStateLabel(scene.draftState)} — click to cycle`}
+        onClick={(e) => { e.stopPropagation(); onCycleSceneStatus(scene.id); }}
+        onKeyDown={(e) => e.stopPropagation()}
+      />
+    );
+  };
+
   return (
     <nav
       className={`story-navigator${noteDropActive ? ' story-navigator--note-drop' : ''}`}
@@ -204,10 +275,12 @@ export default function StoryNavigator({
       onDragLeave={handleNoteDragLeave}
       onDrop={handleNoteDrop}
     >
-      <div className="nav-header">
-        <span className="nav-title">Stories</span>
-        <button className="nav-add-btn" onClick={onCreateStory} aria-label="New story" title="New story">+</button>
-      </div>
+      {!hideHeader && (
+        <div className="nav-header">
+          <span className="nav-title">Stories</span>
+          <button className="nav-add-btn" onClick={onCreateStory} aria-label="New story" title="New story">+</button>
+        </div>
+      )}
 
       <div className="nav-tree">
         {stories.length === 0 && (
@@ -292,11 +365,12 @@ export default function StoryNavigator({
 
                   {expandedChapters.has(chapter.id) && (() => {
                     const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
-                    return sortedScenes.map((scene) => {
+                    return sortedScenes.map((scene, sceneIdx) => {
                       const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
                       return (
                       <div
                         key={scene.id}
+                        ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
                         className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
                         role="button"
                         tabIndex={0}
@@ -324,17 +398,13 @@ export default function StoryNavigator({
                         onClick={() => onSelectScene(scene, chapter, story)}
                       >
                         <span className="nav-scene-icon">◆</span>
-                        <span className="nav-scene-title">{scene.title}</span>
-                        {scene.draftState && scene.draftState !== 'in-progress' && (
-                          <span className={`nav-draft-badge draft-${scene.draftState}`}>
-                            {scene.draftState}
-                          </span>
-                        )}
+                        <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
                         {sceneWC > 0 && (
                           <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
                             {sceneWC.toLocaleString()}
                           </span>
                         )}
+                        {renderStatusDot(scene)}
                       </div>
                     )});
                   })()}
@@ -387,11 +457,12 @@ export default function StoryNavigator({
                           </div>
                           {expandedChapters.has(chapter.id) && (() => {
                             const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
-                            return sortedScenes.map((scene) => {
+                            return sortedScenes.map((scene, sceneIdx) => {
                               const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
                               return (
                                 <div
                                   key={scene.id}
+                                  ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
                                   className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
                                   role="button"
                                   tabIndex={0}
@@ -418,17 +489,13 @@ export default function StoryNavigator({
                                   onClick={() => onSelectScene(scene, chapter, story)}
                                 >
                                   <span className="nav-scene-icon">◆</span>
-                                  <span className="nav-scene-title">{scene.title}</span>
-                                  {scene.draftState && scene.draftState !== 'in-progress' && (
-                                    <span className={`nav-draft-badge draft-${scene.draftState}`}>
-                                      {scene.draftState}
-                                    </span>
-                                  )}
+                                  <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
                                   {sceneWC > 0 && (
                                     <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
                                       {sceneWC.toLocaleString()}
                                     </span>
                                   )}
+                                  {renderStatusDot(scene)}
                                 </div>
                               );
                             });

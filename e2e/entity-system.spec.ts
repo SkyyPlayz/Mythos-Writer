@@ -190,7 +190,7 @@ test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () 
   // directly in the always-visible STORY NAVIGATOR tree (no panel toggle).
   // M3 instant-create: no prompt — the same transaction scaffolds "Chapter 1"
   // and an "Untitled Scene", so there is no separate chapter/scene step.
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 6_000 });

@@ -119,14 +119,18 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 }
 
 /**
- * Create a story via the StoryNavigator add button.
+ * Create a story via the title bar's File → New story item — selection-state
+ * independent. (M6/SKY-9022 removed the navigator's internal header "+"; the
+ * rail's `.lr-nav-add` is contextual — it appends a chapter once a story is
+ * selected, so it can't create the second story this suite needs.)
  * M3 (SKY-9021/9896): instant-create — no prompt, the story row appears
  * immediately as "Untitled Story". Returns the index of the new row so
  * callers can select it positionally.
  */
 async function createStory(pg: Page): Promise<number> {
   const before = await pg.locator('.nav-story-row').count();
-  await pg.locator('.nav-add-btn').first().click();
+  await pg.locator('.wc-menu', { hasText: 'File' }).click();
+  await pg.locator('.wc-menu-item', { hasText: 'New story' }).click();
   await expect(pg.locator('.nav-story-row').nth(before)).toBeVisible({ timeout: 8_000 });
   return before; // index of the newly created row
 }
@@ -435,7 +439,7 @@ test('AC-SC-12: writing board.md from outside the app surfaces the conflict aler
 // ─── AC-SC-14: Per-story isolation ───────────────────────────────────────────
 
 test('AC-SC-14: each story has an independent board that does not share cards', async () => {
-  // Navigate to Editor first so the sidebar nav-add-btn is accessible.
+  // Navigate to Editor first so the title-bar File menu is accessible.
   await clickStoryNav(page);
   await page.locator('[data-testid="story-subview-editor"]').click();
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 6_000 });

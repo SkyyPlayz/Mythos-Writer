@@ -30,7 +30,7 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cursorChapter, cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -3170,6 +3170,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, []);
 
+  // M6 (SKY-9022, GAP-2): selecting a story from the navigator fully opens
+  // its cursor-default scene — the same chapter-0/scene-0 clamp the
+  // manuscriptCursor memo applies to a null selection — so selectedScene
+  // (what the right sidebar reads) matches what the editor demonstrably
+  // shows. Stories with no resolvable scene keep the bare selection so the
+  // empty states still render. User-initiated, so handleSelectScene's
+  // session save is correct here (never fires during SKY-130 restore).
+  const handleSelectStoryFromNavigator = useCallback((story: Story) => {
+    const target = cursorDefaultScene(story);
+    if (target) handleSelectScene(target.scene, target.chapter, story);
+    else setSelectedStory(story);
+  }, [handleSelectScene]);
+
   // Beta 4 M27 (SKY-6982): resolves a Beta Reader reaction's sceneId/chapterId
   // back to real objects (reactions only ever cite scenes in the story the
   // Beta Reader view was opened against) and jumps the manuscript there.
@@ -3707,7 +3720,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         const idx = storyDocTabs.findIndex((t) => t.id === tabId);
         nextActive = next.length > 0 ? (idx > 0 ? storyDocTabs[idx - 1].id : storyDocTabs[1].id) : null;
         if (next.length === 0) {
-          setSelectedScene(null);
+          // M6 (SKY-9022, GAP-2): with no doc tabs left the editor falls back
+          // to the story's cursor-default scene (manuscriptCursor clamps a
+          // null selection to chapter 0 / scene 0) — keep selectedScene in
+          // step with it instead of leaving the right sidebar on its empty
+          // state; the surfacing effect re-opens that scene's tab to match.
+          const fallback = selectedStory ? cursorDefaultScene(selectedStory) : null;
+          if (fallback && selectedStory) handleSelectScene(fallback.scene, fallback.chapter, selectedStory);
+          else setSelectedScene(null);
         } else {
           // SKY-9920: re-sync selectedScene to whichever tab becomes active —
           // opening/closing an Entity Browser tab can leave it stale, and a
@@ -3742,7 +3762,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setActiveNotesDocTabId(nextActive);
       persistDocTabs({ notes: { tabs: next, activeId: nextActive } });
     }
-  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane, handleOpenSceneById]);
+  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane, handleOpenSceneById, selectedStory, handleSelectScene]);
 
   const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
     if (workspaceStripMode.kind !== 'docs') return;
@@ -4464,17 +4484,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api.snapshotSave?.(sceneId, blocks.map((b) => b.content).join('\n\n')).catch(() => {});
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, persistSceneMarkdown]);
 
+  // THE status-cycle implementation (§2 unify): serves the manuscript's
+  // heading dots AND the navigator's scene-row dots (M6/SKY-9022, GAP-4).
+  // The navigator lists every story, so the owner is resolved across
+  // `stories`, not just selectedStory.
   const handleManuscriptCycleStatus = useCallback((sceneId: string) => {
-    if (!selectedStory) return;
-    const owner = selectedStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const ownerStory = stories.find((st) => st.chapters.some((ch) => ch.scenes.some((sc) => sc.id === sceneId)));
+    const owner = ownerStory?.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
     const scene = owner?.scenes.find((sc) => sc.id === sceneId);
-    if (!owner || !scene) return;
+    if (!ownerStory || !owner || !scene) return;
     // M1 (SKY-9013): cycle the STORED draftState vocabulary — the old
     // todo/draft/done round-trip silently collapsed 'review' into 'in-progress'.
     const draftState = cycleDraftState(scene.draftState);
     const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
     const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
+      story.id !== ownerStory.id ? story : {
         ...story,
         chapters: story.chapters.map((ch) =>
           ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
@@ -4484,8 +4508,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(updatedStories);
     // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
     // dot actually recolors (updateManifest alone leaves it stale).
-    const cycledStory = updatedStories.find((st) => st.id === selectedStory.id);
-    if (cycledStory) refreshManuscriptSelection(cycledStory);
+    const cycledStory = updatedStories.find((st) => st.id === ownerStory.id);
+    if (cycledStory && selectedStory?.id === ownerStory.id) refreshManuscriptSelection(cycledStory);
     // Beta 4 M8 (§1.6): every dot click confirms — prototype cycleStatus toast.
     showLnToast(`“${scene.title}” → ${draftStateLabel(draftState)}`);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
@@ -5332,7 +5356,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             selectedScene={selectedScene}
             selectedSceneId={selectedScene?.id ?? null}
             onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
-            onSelectStory={(st) => setSelectedStory(st)}
+            onSelectStory={handleSelectStoryFromNavigator}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
             onCreateScene={createScene}
@@ -5343,6 +5367,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onPromoteSceneNote={handlePromoteSceneNote}
+            onCycleSceneStatus={handleManuscriptCycleStatus}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
           />

@@ -103,9 +103,9 @@ test.beforeAll(async () => {
   // M3 instant-create: no prompt for the story itself — it scaffolds "Chapter 1"
   // and an "Untitled Scene" automatically; the chapter/scene below are additional,
   // distinctly-named siblings created via the still-prompt-based chapter/scene flow.
-  // M6: LeftRail also shows aria-label="New story" when no story is selected,
-  // so scope to the StoryNavigator to avoid strict-mode violation.
-  await page.locator('.story-navigator [aria-label="New story"]').click();
+  // M6/GAP-3: StoryNavigator's own header is hidden (hideHeader) — LeftRail's
+  // .lr-nav-add is now the only "New story" entry point.
+  await page.locator('.lr-nav-add').click();
 
   await page.locator(`[aria-label="Add chapter"]`).first().click();
   await fillPrompt(page, CHAPTER_TITLE);
