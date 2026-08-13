@@ -255,10 +255,19 @@ export default function WritingAssistantPanel({
   const storeTurns = sessionStore?.activeSession?.turns;
   const storeMessages = useMemo<Message[]>(() => {
     if (!storeTurns) return [];
-    return decodeCoachTurns(storeTurns).map((m): Message => {
+    return decodeCoachTurns(storeTurns).map((m, idx): Message => {
       if (m.kind === 'user') return { role: 'user', text: m.text, turnAt: m.at };
       if (m.kind === 'coach') {
-        return { role: 'assistant', text: m.text, turnAt: m.at, suggestion: turnSuggestions[m.at] };
+        // SKY-10092: turn 0 is always the session's auto-greeting when one
+        // exists — a coach turn can never legitimately open a session, since
+        // the user always speaks first for any real exchange. The greeting's
+        // `at` is stamped independently (electron-main's session-create
+        // handler), so at millisecond resolution it can coincidentally equal
+        // a real suggestion's timestamp and wrongly decorate the greeting
+        // bubble with that suggestion's card/Hear button. Never look one up
+        // for turn 0.
+        const suggestion = idx === 0 ? undefined : turnSuggestions[m.at];
+        return { role: 'assistant', text: m.text, turnAt: m.at, suggestion };
       }
       const text = m.kind === 'lesson' ? m.text : m.takeaway;
       return {
@@ -270,7 +279,17 @@ export default function WritingAssistantPanel({
     });
   }, [storeTurns, turnSuggestions]);
 
-  const renderedMessages = sessionStore ? [...storeMessages, ...messages] : messages;
+  // SKY-10092: the local buffer is cleared only after `sessionStore.appendTurns`
+  // resolves (see handleSubmit), and that's an awaited async call — so there's a
+  // render window where `storeTurns` has already picked up an exchange but the
+  // local copy hasn't been cleared yet. Both share the same turnAt once stamped
+  // (see handleSubmit), so drop any local message already represented in the
+  // store to avoid rendering — and double-counting cards for — the same turn.
+  const storeTurnAts = new Set(storeMessages.map((m) => m.turnAt).filter(Boolean));
+  const localOnlyMessages = sessionStore
+    ? messages.filter((m) => !m.turnAt || !storeTurnAts.has(m.turnAt))
+    : messages;
+  const renderedMessages = sessionStore ? [...storeMessages, ...localOnlyMessages] : messages;
 
   // SKY-7076: the local buffer only ever holds THIS session's in-flight
   // exchange. Without this, a failed/still-generating exchange's bubbles
@@ -511,7 +530,13 @@ export default function WritingAssistantPanel({
     if (!overridePrompt) setPrompt('');
     announce('Generating response…');
 
-    const userMsg: Message = { role: 'user', text: trimmed };
+    // SKY-10092: stamp the eventual turn timestamp on the local bubble now
+    // (not just once the store flush resolves) so renderedMessages can dedupe
+    // local vs. store-derived copies of the same exchange by turnAt below —
+    // otherwise the async gap between appending the suggestion locally and
+    // `sessionStore.appendTurns` resolving lets both render at once, e.g.
+    // producing a phantom extra .wa-hear-btn (TC-WA-24).
+    const userMsg: Message = { role: 'user', text: trimmed, turnAt: userAt };
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
 
     setMessages((prev) => {
@@ -561,7 +586,9 @@ export default function WritingAssistantPanel({
         const updated = [...prev];
         const last = updated[updated.length - 1];
         if (last?.role === 'assistant') {
-          updated[updated.length - 1] = { ...last, text: response.text, streaming: false, suggestion };
+          updated[updated.length - 1] = {
+            ...last, text: response.text, streaming: false, suggestion, turnAt: suggestion.timestamp,
+          };
         }
         return updated;
       });
