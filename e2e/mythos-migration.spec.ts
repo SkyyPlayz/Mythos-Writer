@@ -235,7 +235,7 @@ test.describe.serial('MythosVault migration wizard (M5)', () => {
     await expect(chapterRow).toBeVisible({ timeout: 10_000 });
     // Boot-time reindex re-renders the navigator and can collapse a freshly
     // expanded chapter — retry the expand until the scene row stays visible.
-    const sceneRow = page.getByText('The Gate', { exact: true }).first();
+    const sceneRow = page.getByRole('button', { name: /The Gate/ }).first();
     for (let attempt = 0; attempt < 4; attempt++) {
       await chapterRow.click();
       try {
