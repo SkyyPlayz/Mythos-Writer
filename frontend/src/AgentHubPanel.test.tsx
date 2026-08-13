@@ -1,8 +1,10 @@
 // SKY-6321: Agent hub — Suggestions card live preview + "See All Suggestions" wiring.
 // Beta 4 M13: Scene Analysis card — computed local values + View Full Analysis.
+// SKY-9022/M6: AGENTS rich cards — live statuses, enablement, chevron (GAP-1/GAP-6).
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { vi, afterEach, beforeEach, describe, it, expect } from 'vitest';
 import AgentHubPanel from './AgentHubPanel';
+import ContinuityPanel from './ContinuityPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { buildAnalysisCard, parseCoachRead } from './coach/sceneAnalysis';
 import { decodeCoachCard, encodeCoachCard } from './coach/coachMessages';
@@ -147,6 +149,171 @@ describe('AgentHubPanel — Suggestions card', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ── SKY-9022/M6 GAP-1: AGENTS rich cards — live statuses ────────────────────
+
+describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () => {
+  beforeEach(() => {
+    __resetAgentSessionStores();
+    (window as any).api = {
+      suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
+    };
+  });
+  afterEach(() => {
+    delete (window as any).api;
+  });
+
+  it('renders all four agents as two-line cards with a status line and a trailing chevron', async () => {
+    render(<AgentHubPanel scene={null} />);
+    await screen.findByText(/No suggestions right now/i);
+
+    for (const id of ['writing-assistant', 'brainstorm', 'archive', 'beta-reader']) {
+      const row = screen.getByTestId(`ahp-agent-row-${id}`);
+      expect(row.querySelector('.ahp-agent-name')?.textContent).toBeTruthy();
+      expect(row.querySelector('.ahp-status-dot')).not.toBeNull();
+      expect(row.querySelector('.ahp-status-text')?.textContent).toBeTruthy();
+      expect(row.querySelector('svg.ahp-agent-chevron')).not.toBeNull();
+    }
+  });
+
+  it('defaults everything enabled when mounted without agentEnablement (fresh profile / standalone mounts)', async () => {
+    render(<AgentHubPanel scene={null} />);
+    await screen.findByText(/No suggestions right now/i);
+
+    expect(within(screen.getByTestId('ahp-agent-row-writing-assistant')).getByText('Ready')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Watching session')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ahp-agent-row-archive')).getByText('Ready')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ahp-agent-row-beta-reader')).getByText('Ready')).toBeInTheDocument();
+  });
+
+  it("brainstorm's watching dot pulses only while the agent is enabled", async () => {
+    const { rerender } = render(<AgentHubPanel scene={null} />);
+    await screen.findByText(/No suggestions right now/i);
+
+    const dot = () => screen.getByTestId('ahp-agent-row-brainstorm').querySelector('.ahp-status-dot');
+    expect(dot()?.className).toContain('ahp-status-dot--pulse');
+
+    rerender(<AgentHubPanel scene={null} agentEnablement={{ brainstorm: false }} />);
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Disabled')).toBeInTheDocument();
+    expect(dot()?.className).not.toContain('ahp-status-dot--pulse');
+  });
+
+  it("archive: '{n} flags open' when continuity flags are open (singular at 1), 'Ready' at 0", async () => {
+    const { rerender } = render(<AgentHubPanel scene={null} continuityCount={2} />);
+    await screen.findByText(/No suggestions right now/i);
+    const archiveRow = () => screen.getByTestId('ahp-agent-row-archive');
+    expect(within(archiveRow()).getByText('2 flags open')).toBeInTheDocument();
+
+    rerender(<AgentHubPanel scene={null} continuityCount={1} />);
+    expect(within(archiveRow()).getByText('1 flag open')).toBeInTheDocument();
+
+    rerender(<AgentHubPanel scene={null} continuityCount={0} />);
+    expect(within(archiveRow()).getByText('Ready')).toBeInTheDocument();
+  });
+
+  it("archive: 'Disabled' beats open flags AND the '{n} new' override; click-through to chat stays live", async () => {
+    (window as any).api = {
+      suggestionsUnifiedList: vi.fn().mockResolvedValue({
+        totalCount: 2,
+        items: [
+          makeSuggestion({ id: 's1', sourceAgent: 'archive' }),
+          makeSuggestion({ id: 's2', sourceAgent: 'archive' }),
+        ],
+      }),
+    };
+    render(<AgentHubPanel scene={null} agentEnablement={{ archive: false }} continuityCount={3} />);
+    await screen.findAllByText(/Tighten this paragraph/);
+
+    const archiveRow = screen.getByTestId('ahp-agent-row-archive');
+    expect(within(archiveRow).getByText('Disabled')).toBeInTheDocument();
+    expect(within(archiveRow).queryByText('2 new')).not.toBeInTheDocument();
+    expect(within(archiveRow).queryByText(/flags? open/)).not.toBeInTheDocument();
+    // No settings-routing special case — the chat view surfaces its own
+    // disabled state, so the row still opens it.
+    fireEvent.click(archiveRow);
+    expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
+  });
+
+  it('SKY-3941: the accessible name carries agent + status', async () => {
+    render(<AgentHubPanel scene={null} agentEnablement={{ 'beta-reader': false }} />);
+    await screen.findByText(/No suggestions right now/i);
+
+    expect(screen.getByTestId('ahp-agent-row-writing-assistant'))
+      .toHaveAccessibleName('Open Writing Coach chat — Ready');
+    expect(screen.getByTestId('ahp-agent-row-beta-reader'))
+      .toHaveAccessibleName('Open Beta Reader chat — Disabled');
+  });
+});
+
+// ── SKY-9022/M6 GAP-6: AGENTS card ↔ Continuity section agreement ───────────
+//
+// The two surfaces stack in the same Assistant column and must never
+// contradict each other in any combination of the Archive Agent toggle and
+// the "Enable continuity checking" feature toggle. `enabled`/`disabledReason`
+// are derived here exactly as DesktopShell derives them at both call sites.
+
+describe('AgentHubPanel × ContinuityPanel — archive enablement matrix (SKY-9022/M6 GAP-6)', () => {
+  beforeEach(() => {
+    __resetAgentSessionStores();
+  });
+  afterEach(() => {
+    delete (window as any).api;
+  });
+
+  function renderMatrix(agentEnabled: boolean, featureEnabled: boolean) {
+    (window as any).api = {
+      suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
+      archiveListContinuity: vi.fn().mockResolvedValue({ items: [] }),
+      onArchiveContScanStart: vi.fn(() => vi.fn()),
+      onArchiveContScanResult: vi.fn(() => vi.fn()),
+      onArchiveContScanError: vi.fn(() => vi.fn()),
+    };
+    return render(
+      <AgentHubPanel
+        scene={null}
+        agentEnablement={{ archive: agentEnabled }}
+        continuityPanel={
+          <ContinuityPanel
+            scene={null}
+            enabled={agentEnabled && featureEnabled}
+            disabledReason={agentEnabled ? 'feature' : 'agent'}
+          />
+        }
+      />,
+    );
+  }
+
+  const archiveStatus = () =>
+    screen.getByTestId('ahp-agent-row-archive').querySelector('.ahp-status-text')?.textContent;
+
+  it('agent on + feature on: card is live and no disabled message renders', async () => {
+    renderMatrix(true, true);
+    // Continuity settles into its real not_scanned state — panel is active.
+    await screen.findByText(/Save your scene to check for continuity issues/i);
+    expect(archiveStatus()).toBe('Ready');
+    expect(screen.queryByText(/is disabled|turned off/i)).not.toBeInTheDocument();
+  });
+
+  it('agent off + feature on: card says Disabled and Continuity names the agent', async () => {
+    renderMatrix(false, true);
+    await screen.findByText(/Archive Agent is disabled\. Enable it in Settings\./);
+    expect(archiveStatus()).toBe('Disabled');
+  });
+
+  it('agent on + feature off: card stays live and Continuity names the feature — not the agent', async () => {
+    renderMatrix(true, false);
+    await screen.findByText(/Continuity checking is turned off\. Enable it in Settings\./);
+    expect(archiveStatus()).toBe('Ready');
+    expect(screen.queryByText(/Archive Agent is disabled/)).not.toBeInTheDocument();
+  });
+
+  it('agent off + feature off: agent-disabled wins on both surfaces', async () => {
+    renderMatrix(false, false);
+    await screen.findByText(/Archive Agent is disabled\. Enable it in Settings\./);
+    expect(archiveStatus()).toBe('Disabled');
+    expect(screen.queryByText(/Continuity checking is turned off/)).not.toBeInTheDocument();
   });
 });
 
