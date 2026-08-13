@@ -796,7 +796,7 @@ interface WorkspaceLayout {
 }
 
 /** SKY-1695 (Wave 2b): Panel IDs for the right sidebar panel zone. */
-type RightPanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview' | 'scene-notes' | 'scene-properties' | 'scene-outline' | 'scenes' | 'references' | 'brainstorm';
+type RightPanelId = 'writing-assistant' | 'archive-continuity' | 'scene-preview' | 'scene-notes' | 'scene-properties' | 'scenes' | 'references' | 'brainstorm';
 
 interface RightSidebarPanel {
   id: SidebarPanelId;
