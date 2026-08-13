@@ -24,7 +24,6 @@ interface Props {
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
-  reviewBadgeCount?: number;
 }
 
 /** Kept for DesktopShell import backward-compat; only sidebarCollapsed is used. */
