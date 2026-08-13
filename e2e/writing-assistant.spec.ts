@@ -470,7 +470,19 @@ async function fillAssistantPrompt(page: Page, text: string) {
 async function submitAssistantPrompt(page: Page, text: string) {
   const input = await fillAssistantPrompt(page, text);
   await input.press('Enter');
-  await expect(page.locator('.wa-user-bubble', { hasText: text }).last()).toBeVisible({ timeout: 3_000 });
+  // Same race as fillAssistantPrompt, one step later: a stray re-render from a
+  // prior test's streaming/TTS cleanup can swallow the Enter keypress before
+  // the submit handler consumes it. If the input still holds the text the
+  // submit never happened — press Enter again; if it was consumed, just keep
+  // waiting for the bubble (re-pressing on an empty input is a no-op, so this
+  // never double-submits). SKY-10152.
+  const userBubble = page.locator('.wa-user-bubble', { hasText: text }).last();
+  await expect(async () => {
+    if (!(await userBubble.isVisible()) && (await input.inputValue()) === text) {
+      await input.press('Enter');
+    }
+    await expect(userBubble).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
 }
 
 // ─── Module-level state ───────────────────────────────────────────────────────
