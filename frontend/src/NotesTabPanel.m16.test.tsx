@@ -159,6 +159,33 @@ describe('NotesTabPanel — M16 note splits', () => {
     // The toggle stays reachable so the user can still collapse the split.
     expect(screen.getByTestId('notes-split-toggle')).toBeInTheDocument();
   });
+
+  // SKY-10081: closing pane 1's LAST note tab while a split is active (and
+  // pane 1 isn't Entity Browser) must NOT collapse the split either — same
+  // failure mode as SKY-9920 above, but reached via activeNotePath going
+  // null on its own instead of via activeTabIsEntityBrowser.
+  it('SKY-10081: pane 1 losing its last note tab mid-split keeps pane 2 and both strips visible', () => {
+    const { rerender } = render(<NotesTabPanel {...BASE_PROPS} />);
+    fireEvent.click(screen.getByTestId('notes-split-toggle'));
+    expect(screen.getByTestId('notes-split-row')).toBeInTheDocument();
+
+    // Mirrors what the shell does when pane 1's sole note tab is closed:
+    // openedNotePath (activeNotePath) clears, activeTabIsEntityBrowser stays false.
+    rerender(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
+
+    expect(screen.getByTestId('notes-split-row')).toBeInTheDocument();
+    expect(screen.getByTestId('note-split-pane')).toBeInTheDocument();
+    expect(screen.getByTestId('notes-split-pane-1-tab-strip')).toBeInTheDocument();
+    expect(screen.getByTestId('notes-split-pane-2-tab-strip')).toBeInTheDocument();
+    // Pane 2's own note survives untouched — only pane 1 lost its content.
+    const viewers = screen.getAllByTestId('note-viewer-mock');
+    expect(viewers).toHaveLength(1);
+    expect(viewers[0]).toHaveAttribute('data-path', 'Characters/Mira.md');
+    // The toggle stays reachable so the user can still collapse the split.
+    expect(screen.getByTestId('notes-split-toggle')).toBeInTheDocument();
+    // The dead-end empty-state placeholder must NOT also render underneath.
+    expect(screen.queryByTestId('notes-editor-placeholder')).not.toBeInTheDocument();
+  });
 });
 
 // SKY-9710 (M8f): the editor pane's empty state — prototype pattern
