@@ -182,7 +182,7 @@ test('EM-00: boot app and create a story, chapter, and scene', async () => {
   // Create story — M3 instant-create: no prompt, row appears immediately.
   // The same transaction scaffolds "Chapter 1" and an "Untitled Scene", so
   // there is no separate chapter/scene creation step to drive here.
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
