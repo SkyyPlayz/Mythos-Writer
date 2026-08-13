@@ -59,12 +59,30 @@ describe('LeftRail M6 — three-zone layout', () => {
     expect(screen.getByTestId('lr-nav-zone')).toBeInTheDocument();
   });
 
-  it('renders the project footer zone', () => {
+  // M6 (SKY-9022): LeftRail's zone-2 header is the ONLY navigator header —
+  // StoryNavigator's internal "Stories" header is suppressed via hideHeader.
+  it('renders no duplicate StoryNavigator header inside the rail', () => {
+    const { container } = render(<LeftRail {...baseProps} />);
+    expect(container.querySelector('.nav-header')).toBeNull();
+    expect(screen.queryByText('Stories')).not.toBeInTheDocument();
+  });
+
+  it('renders the project footer zone with the PROJECT label', () => {
     render(<LeftRail {...baseProps} />);
     expect(screen.getByTestId('lr-project-footer')).toBeInTheDocument();
+    expect(screen.getByText('PROJECT')).toBeInTheDocument();
     expect(screen.getByText('Words')).toBeInTheDocument();
     expect(screen.getByText('Scenes')).toBeInTheDocument();
     expect(screen.getByText('On Track')).toBeInTheDocument();
+  });
+
+  // M6 (SKY-9022): status-dot pass-through — the rail threads
+  // onCycleSceneStatus down to StoryNavigator's scene rows.
+  it('passes onCycleSceneStatus through to the scene status dots', () => {
+    const onCycleSceneStatus = vi.fn();
+    render(<LeftRail {...baseProps} onCycleSceneStatus={onCycleSceneStatus} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Scene status: Drafting — click to cycle' }));
+    expect(onCycleSceneStatus).toHaveBeenCalledWith('sc1');
   });
 
   it('shows expand button and hides content when sidebarCollapsed', () => {

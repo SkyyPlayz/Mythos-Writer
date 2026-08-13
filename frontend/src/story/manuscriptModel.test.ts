@@ -8,6 +8,7 @@ import {
   breadcrumbs,
   buildBlocks,
   chapterStatus,
+  cursorDefaultScene,
   cycleStatus,
   flatUnits,
   mergeParagraphText,
@@ -219,6 +220,45 @@ describe('chapterStatus', () => {
     expect(
       chapterStatus(mkChapter('chy', 'Planned', 0, [mkScene('sx', 'Later', 0, undefined, [])]))
     ).toBe('todo');
+  });
+});
+
+// ─── cursorDefaultScene (M6 SKY-9022, GAP-2) ─────────────────────────────────
+
+describe('cursorDefaultScene', () => {
+  it('resolves the order-sorted first chapter’s order-sorted first scene', () => {
+    const target = cursorDefaultScene(mkStory());
+    expect(target?.chapter.id).toBe('ch1');
+    expect(target?.scene.id).toBe('s1');
+  });
+
+  it('sorts by order fields, never array position', () => {
+    const target = cursorDefaultScene(mkShuffledStory());
+    expect(target?.chapter.id).toBe('ch1');
+    expect(target?.scene.id).toBe('s1');
+  });
+
+  it('enumerates real parts the way buildBlocks does', () => {
+    const story = mkStory();
+    const [ch1, ch2, ch3] = story.chapters;
+    story.parts = [
+      { id: 'p2', title: 'Part Two', order: 1, note: [], chapters: [ch1], createdAt: NOW, updatedAt: NOW },
+      { id: 'p1', title: 'Part One', order: 0, note: [], chapters: [ch3, ch2], createdAt: NOW, updatedAt: NOW },
+    ];
+    const target = cursorDefaultScene(story);
+    // Part One is first by order; its order-sorted first chapter is ch2.
+    expect(target?.chapter.id).toBe('ch2');
+    expect(target?.scene.id).toBe('s3');
+  });
+
+  it('returns null for a story with no chapters', () => {
+    expect(cursorDefaultScene({ ...mkStory(), chapters: [] })).toBeNull();
+  });
+
+  it('returns null when the first chapter has no scenes (cursor clamp semantics)', () => {
+    const story = mkStory();
+    story.chapters[0] = mkChapter('ch0', 'Empty Opening', -1, []);
+    expect(cursorDefaultScene(story)).toBeNull();
   });
 });
 
