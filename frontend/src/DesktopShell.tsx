@@ -5343,7 +5343,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onPromoteSceneNote={handlePromoteSceneNote}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
-            reviewBadgeCount={proposedCount}
           />
         </div>
       )}
