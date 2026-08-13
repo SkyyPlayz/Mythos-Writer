@@ -40,6 +40,10 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
+    // GlobalRightSidebar only mounts once rightSidebarVisible is an explicit
+    // boolean (undefined = not rendered at all, see DesktopShell SKY-1686).
+    // TC-A11Y-03 asserts on its landmark, so it must be seeded true.
+    rightSidebarVisible: true,
     agents: {
       writingAssistant: {
         enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30,
@@ -207,6 +211,12 @@ test('TC-A11Y-02: Tab past the toolbar reaches the notes search input', async ()
 
 test('TC-A11Y-03: right sidebar exposes a complementary landmark, expanded and collapsed', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  // TC-A11Y-01/02 leave activeTab on Notes (via openVaultPanel). GlobalRightSidebar
+  // is force-hidden while the Notes tab's brainstorm rail is expanded (DesktopShell:
+  // `!(activeTab === 'notes' && !notesBrainstormCollapsed)`), so switch back to the
+  // Story Writer tab first — otherwise the sidebar never mounts.
+  await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
 
   const sidebar = page.locator('[data-testid="global-right-sidebar"]');
   await expect(sidebar).toBeVisible({ timeout: 8_000 });
