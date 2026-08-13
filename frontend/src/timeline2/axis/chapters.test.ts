@@ -117,6 +117,21 @@ describe('bookChapterRanges — TIMELINE NAVIGATOR sub-label (prototype tlBooks0
     expect(bookChapterRanges(0, BOOKS)).toEqual([null, null, null]);
     expect(bookChapterRanges(45, [])).toEqual([]);
   });
+
+  it('never inverts a range when there are fewer chapters than books (SKY-10082)', () => {
+    // perBook = 2/3 < 1: the third book's unclamped bucket starts past the
+    // last real chapter — firstChapter must not exceed lastChapter.
+    const ranges = bookChapterRanges(2, BOOKS);
+    expect(ranges).toEqual([
+      { firstChapter: 1, lastChapter: 1 },
+      { firstChapter: 2, lastChapter: 2 },
+      { firstChapter: 2, lastChapter: 2 },
+    ]);
+    for (const range of ranges) {
+      expect(range).not.toBeNull();
+      expect(range!.firstChapter).toBeLessThanOrEqual(range!.lastChapter);
+    }
+  });
 });
 
 describe('plotCardWhen — grid chapter → date (prototype 6682)', () => {

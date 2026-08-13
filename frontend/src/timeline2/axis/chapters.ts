@@ -123,9 +123,9 @@ export function bookChapterRanges(
   if (n === 0 || sorted.length === 0) return sorted.map(() => null);
   const perBook = n / sorted.length;
   return sorted.map((_, b) => {
-    const first = Math.ceil(b * perBook);
-    const last = Math.max(first, Math.ceil((b + 1) * perBook) - 1);
-    return { firstChapter: first + 1, lastChapter: Math.min(last, n - 1) + 1 };
+    const first = Math.min(n - 1, Math.ceil(b * perBook));
+    const last = Math.min(n - 1, Math.max(first, Math.ceil((b + 1) * perBook) - 1));
+    return { firstChapter: first + 1, lastChapter: last + 1 };
   });
 }
 
