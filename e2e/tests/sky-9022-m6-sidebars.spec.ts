@@ -195,6 +195,20 @@ test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity heade
     expect(order).toEqual(['AGENTS', 'Suggestions', 'SceneAnalysis', 'Continuity', 'ResearchQuickLinks']);
   });
 
+  // SKY-9022/M6 GAP-1: AGENTS rows are prototype rich cards — a two-line
+  // button (name over dot + status) with a trailing right-chevron.
+  test('AGENTS: four rich cards each render name, status line, and chevron', async () => {
+    const agents = page.locator('[data-testid="agent-hub-panel"] section[aria-label="Agents"]');
+    await expect(agents.locator('.ahp-agent-row')).toHaveCount(4);
+    for (const id of ['writing-assistant', 'brainstorm', 'archive', 'beta-reader']) {
+      const row = agents.locator(`[data-testid="ahp-agent-row-${id}"]`);
+      await expect(row.locator('.ahp-agent-name')).not.toBeEmpty();
+      await expect(row.locator('.ahp-status-dot')).toBeVisible();
+      await expect(row.locator('.ahp-status-text')).not.toBeEmpty();
+      await expect(row.locator('.ahp-agent-chevron')).toBeVisible();
+    }
+  });
+
   test('exactly one Continuity header in the DOM', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     const headers = grs.locator('.pc-header-title', { hasText: 'Continuity' });

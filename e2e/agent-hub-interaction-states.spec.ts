@@ -187,7 +187,7 @@ async function settleIntoView(page: Page, target: ReturnType<Page['locator']>): 
 }
 
 async function openWritingCoachChat(page: Page): Promise<void> {
-  await page.locator('[aria-label="Open Writing Coach chat"]').click();
+  await page.locator('[aria-label^="Open Writing Coach chat"]').click();
   await settleIntoView(page, page.locator('[aria-label="Writing coach prompt"]'));
 }
 
