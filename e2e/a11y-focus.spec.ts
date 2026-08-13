@@ -1,7 +1,8 @@
 /**
- * a11y-focus.spec.ts — SKY-143, updated for SKY-9022/M6
+ * a11y-focus.spec.ts — SKY-143, updated for SKY-9022/M6, SKY-10084
  *
- * Regression tests verifying keyboard tab-focus navigation through VaultBrowser.
+ * Regression tests verifying keyboard tab-focus navigation through VaultBrowser
+ * and landmark accessibility of the global right sidebar.
  *
  * SKY-9022/M6 removed the old panel-stack system; Vault Browser's function is
  * now the Notes workspace sidebar (its one home), reached via the Notes
@@ -14,6 +15,9 @@
  *
  *   TC-A11Y-01  Notes toolbar tab order — Tab cycles through the 5-button toolbar in DOM order
  *   TC-A11Y-02  Tree reachable by Tab   — Tab past the toolbar reaches the notes tree content
+ *   TC-A11Y-03  Right sidebar landmark  — expanded/collapsed right sidebar exposes a
+ *               discoverable landmark name+role (SKY-10084: PR #1201's M6 sidebar
+ *               rewrite dropped these, regressing landmark navigation for screen readers)
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/a11y-focus.spec.ts --reporter=list
@@ -189,4 +193,35 @@ test('TC-A11Y-02: Tab past the toolbar reaches the notes search input', async ()
   await page.keyboard.press('Tab'); // → search input
 
   await expect(page.locator('[data-testid="vb-search-input"]')).toBeFocused();
+});
+
+// ─── TC-A11Y-03: Right sidebar landmark name/role ─────────────────────────────
+//
+// SKY-10084: PR #1201's M6 sidebar rewrite dropped the landmark attributes
+// from GlobalRightSidebar (`aria-label`/`role="complementary"`), so
+// screen-reader users navigating by landmark lost the ability to identify or
+// jump to this region — especially while collapsed, where only the "Show
+// right sidebar" button remained discoverable, and only via linear tab
+// order. Verifies both the expanded and collapsed states expose a named
+// complementary landmark.
+
+test('TC-A11Y-03: right sidebar exposes a complementary landmark, expanded and collapsed', async () => {
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+
+  const sidebar = page.locator('[data-testid="global-right-sidebar"]');
+  await expect(sidebar).toBeVisible({ timeout: 8_000 });
+  await expect(sidebar).toHaveAttribute('aria-label', 'Right sidebar');
+  await expect(page.getByRole('complementary', { name: 'Right sidebar' })).toBeVisible();
+
+  await page.locator('[data-testid="global-right-sidebar"] .grs-hide-btn').click();
+
+  const edge = page.locator('[data-testid="grs-edge"]');
+  await expect(edge).toBeVisible({ timeout: 8_000 });
+  await expect(edge).toHaveAttribute('role', 'complementary');
+  await expect(edge).toHaveAttribute('aria-label', 'Right sidebar (hidden)');
+  await expect(page.getByRole('complementary', { name: 'Right sidebar (hidden)' })).toBeVisible();
+
+  // Restore visibility for any subsequent tests in this file.
+  await edge.locator('.grs-show-btn').click();
+  await expect(sidebar).toBeVisible({ timeout: 8_000 });
 });

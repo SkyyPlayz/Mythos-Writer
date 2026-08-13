@@ -17,11 +17,28 @@ describe('GlobalRightSidebar M6 — thin wrapper', () => {
     expect(screen.getByTestId('global-right-sidebar')).toBeInTheDocument();
   });
 
+  // SKY-10084: PR #1201's M6 rewrite dropped the landmark name/role, leaving
+  // screen-reader users with no way to find this region via landmark
+  // navigation (only the linear-tab-order show/hide buttons remained).
+  it('exposes a complementary landmark with an accessible name when visible=true', () => {
+    render(<GlobalRightSidebar {...defaultProps} />);
+    expect(screen.getByRole('complementary', { name: 'Right sidebar' })).toBe(
+      screen.getByTestId('global-right-sidebar'),
+    );
+  });
+
   it('renders collapsed edge with show button when visible=false', () => {
     render(<GlobalRightSidebar {...defaultProps} visible={false} />);
     expect(screen.queryByTestId('global-right-sidebar')).toBeNull();
     expect(screen.getByTestId('grs-edge')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /show right sidebar/i })).toBeInTheDocument();
+  });
+
+  it('exposes a complementary landmark with an accessible name when collapsed', () => {
+    render(<GlobalRightSidebar {...defaultProps} visible={false} />);
+    expect(screen.getByRole('complementary', { name: 'Right sidebar (hidden)' })).toBe(
+      screen.getByTestId('grs-edge'),
+    );
   });
 
   it('calls onVisibilityChange(false) when hide button is clicked', () => {
