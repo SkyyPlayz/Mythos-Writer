@@ -125,7 +125,9 @@
   flex: 1;
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--accent-violet);
+  /* M6 (SKY-9022): neutral story root — accent is reserved for genuinely
+     active elements (the selected scene chip), per prototype tree rows. */
+  color: var(--text-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,19 +187,27 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.28rem 0.75rem 0.28rem 2.25rem;
+  /* M6 (SKY-9022): inset rounded chip per prototype rowBase (radius 8px) —
+     the margin keeps selection/hover fills off the rail edge and clear of
+     the chevron/indent gutter while the label column stays at 2.25rem. */
+  margin: 1px 8px 1px 1.75rem;
+  padding: 0.28rem 0.5rem;
   cursor: pointer;
   user-select: none;
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
 }
 
 .nav-scene-row:hover {
   background: var(--bg-hover);
 }
 
+/* M6 (SKY-9022): selection chip — prototype active row (accent-soft fill,
+   1px accent border, soft glow) instead of the old full-bleed square band. */
 .nav-scene-row.active {
   background: var(--accent-soft);
-  border-right: 2px solid var(--accent-violet);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 12px -4px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
 .nav-scene-icon {
@@ -207,7 +217,7 @@
 }
 
 .nav-scene-row.active .nav-scene-icon {
-  color: var(--accent-violet);
+  color: var(--text-header);
   opacity: 1;
 }
 
@@ -221,7 +231,7 @@
 }
 
 .nav-scene-row.active .nav-scene-title {
-  color: var(--accent-violet);
+  color: var(--text-header);
 }
 
 .nav-wordcount {
@@ -233,22 +243,31 @@
   padding: 0 0.15rem;
 }
 
-.nav-draft-badge {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
+/* M6 (SKY-9022): scene status dot — prototype 5895 (8px circle, 1.6px border,
+   filled only when done); mirrors the msv-status-chip--* token usage. */
+.nav-status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.6px solid var(--border-strong);
 }
 
-.nav-draft-badge.draft-review {
-  background: var(--color-warning-bg);
-  color: var(--color-warning-text);
+button.nav-status-dot {
+  cursor: pointer;
 }
 
-.nav-draft-badge.draft-final {
-  background: var(--color-success-bg);
-  color: var(--color-success);
+.nav-status-dot--draft {
+  border-color: var(--b1, rgba(0, 240, 255, 0.4));
+  box-shadow: 0 0 7px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.nav-status-dot--done {
+  border-color: var(--state-success);
+  background: var(--state-success);
+  box-shadow: 0 0 7px rgba(74, 222, 128, 0.5);
 }
 
 /* Focus rings — all interactive tree items */
@@ -267,6 +286,11 @@
 .nav-scene-row:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
+}
+
+.nav-status-dot:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .vs-template-cta {

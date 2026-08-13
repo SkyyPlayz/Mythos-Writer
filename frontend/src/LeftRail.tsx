@@ -22,6 +22,8 @@ interface Props {
   showTemplateCta?: boolean;
   onTemplateCtaClick?: () => void;
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
+  /** M6 (SKY-9022): scene status dot click — cycles the scene's draftState. */
+  onCycleSceneStatus?: (sceneId: string) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -45,6 +47,7 @@ export default function LeftRail({
   showTemplateCta,
   onTemplateCtaClick,
   onPromoteSceneNote,
+  onCycleSceneStatus,
   sidebarCollapsed,
   onToggleCollapsed,
 }: Props) {
@@ -172,6 +175,8 @@ export default function LeftRail({
               showTemplateCta={showTemplateCta}
               onTemplateCtaClick={onTemplateCtaClick}
               onPromoteSceneNote={onPromoteSceneNote}
+              onCycleSceneStatus={onCycleSceneStatus}
+              hideHeader
             />
           </div>
         )}
@@ -179,6 +184,7 @@ export default function LeftRail({
 
       {/* Zone 3 — Project Footer */}
       <div className="lr-project-footer" data-testid="lr-project-footer">
+        <div className="lr-footer-label">PROJECT</div>
         <div className="lr-footer-stats">
           <div className="lr-stat">
             <span className="lr-stat-val">{totalWords.toLocaleString()}</span>
@@ -189,7 +195,7 @@ export default function LeftRail({
             <span className="lr-stat-key">Scenes</span>
           </div>
           <div className="lr-stat">
-            <span className="lr-stat-val">{onTrackPct}%</span>
+            <span className="lr-stat-val lr-stat-val--accent">{onTrackPct}%</span>
             <span className="lr-stat-key">On Track</span>
           </div>
         </div>

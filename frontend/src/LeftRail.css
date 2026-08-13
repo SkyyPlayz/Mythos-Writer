@@ -513,24 +513,43 @@
 .lr-project-footer {
   flex-shrink: 0;
   border-top: 1px solid var(--glass-border);
-  padding: 8px 12px;
+  padding: 12px 14px; /* prototype footer padding (proto 248) */
+}
+
+/* Eyebrow matching .lr-nav-label (same size/tracking/weight pattern). */
+.lr-footer-label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 8px;
 }
 
 .lr-footer-stats {
-  display: flex;
-  gap: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
 }
 
+/* Boxed stat chips per prototype (proto 248): subtle surface + glass border. */
 .lr-stat {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  background: var(--glass-highlight);
+  border: 1px solid var(--glass-border);
+  text-align: center;
 }
 
-.lr-stat + .lr-stat {
-  border-left: 1px solid var(--glass-border);
+/* K8: mirror the sibling chip-surface high-contrast pattern
+   (SettingsPanel .settings-vault-card — solid fill, strong border, no glow). */
+[data-contrast="high"] .lr-stat {
+  background: var(--bg-canvas);
+  border-color: var(--border-strong);
 }
 
 .lr-stat-val {
@@ -538,6 +557,18 @@
   font-weight: 600;
   color: var(--text-body);
   line-height: 1.2;
+}
+
+/* On Track value glows accent — prototype 248 (same pattern as the hot
+   Scene Analysis value, AgentHubPanel.css). */
+.lr-stat-val--accent {
+  color: var(--n1, #00f0ff);
+  text-shadow: 0 0 10px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+[data-contrast="high"] .lr-stat-val--accent {
+  color: var(--accent);
+  text-shadow: none;
 }
 
 .lr-stat-key {
