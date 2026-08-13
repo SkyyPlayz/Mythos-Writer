@@ -379,6 +379,15 @@ jobs:
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: source scripts/ci-retry.sh && retry npm ci
+
+      - name: Verify Electron binary (self-heal cache restore)
+        # SKY-10092: a cache-hit can restore node_modules/electron without a
+        # valid dist binary if the runner's network drops mid-extraction.
+        # electron's own require() then lazily retries the download once with
+        # no backoff and crashes the whole shard on a single blip. install.js
+        # exits immediately if already installed, so this is a cheap no-op on
+        # the common path and only pays the retry cost when repair is needed.
+        run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -547,6 +556,15 @@ jobs:
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: source scripts/ci-retry.sh && retry npm ci
+
+      - name: Verify Electron binary (self-heal cache restore)
+        # SKY-10092: a cache-hit can restore node_modules/electron without a
+        # valid dist binary if the runner's network drops mid-extraction.
+        # electron's own require() then lazily retries the download once with
+        # no backoff and crashes the whole shard on a single blip. install.js
+        # exits immediately if already installed, so this is a cheap no-op on
+        # the common path and only pays the retry cost when repair is needed.
+        run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -703,6 +721,15 @@ jobs:
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: source scripts/ci-retry.sh && retry npm ci
+
+      - name: Verify Electron binary (self-heal cache restore)
+        # SKY-10092: a cache-hit can restore node_modules/electron without a
+        # valid dist binary if the runner's network drops mid-extraction.
+        # electron's own require() then lazily retries the download once with
+        # no backoff and crashes the whole shard on a single blip. install.js
+        # exits immediately if already installed, so this is a cheap no-op on
+        # the common path and only pays the retry cost when repair is needed.
+        run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
@@ -874,6 +901,15 @@ jobs:
       - name: Install dependencies
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: source scripts/ci-retry.sh && retry npm ci
+
+      - name: Verify Electron binary (self-heal cache restore)
+        # SKY-10092: a cache-hit can restore node_modules/electron without a
+        # valid dist binary if the runner's network drops mid-extraction.
+        # electron's own require() then lazily retries the download once with
+        # no backoff and crashes the whole shard on a single blip. install.js
+        # exits immediately if already installed, so this is a cheap no-op on
+        # the common path and only pays the retry cost when repair is needed.
+        run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
         uses: actions/cache/restore@v4
