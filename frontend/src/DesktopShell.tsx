@@ -3581,9 +3581,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // ─── SKY-10019: Outline Planning as an openable Story-strip document tab ───
   // M6 removed the collapsible right-sidebar panel stack, OutlinePlanningPanel's
-  // only mount point (case 'scene-outline' in renderSidebarPanel became dead
-  // code — nothing in the new fixed Assistant/Scenes/Notes/References right
-  // sidebar calls it). Story-scoped only (mirrors the outline tool's `story`
+  // former mount point (case 'scene-outline' in renderSidebarPanel, removed in
+  // SKY-10078). Story-scoped only (mirrors the outline tool's `story`
   // prop) — no Notes-strip or split-pane variant, matching Entity Browser's
   // current single-pane restriction. Same selectedScene-clearing / editor-view
   // reasoning as handleOpenEntityBrowserStory above.
@@ -4262,15 +4261,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             story={usePane2SidebarContext ? pane2Story : selectedStory}
             currentContent={activeSceneForSidebar?.blocks.map(b => b.content).join('\n\n') ?? ''}
             onDraftRestore={handleSceneRestore}
-          />
-        );
-      case 'scene-outline':
-        return (
-          <OutlinePlanningPanel
-            story={selectedStory}
-            onSelectScene={(sc, ch) => {
-              if (selectedStory) { handleSelectScene(sc, ch, selectedStory); setViewDepth('scene'); }
-            }}
           />
         );
       case 'scenes':
