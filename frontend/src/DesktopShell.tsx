@@ -4223,6 +4223,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             sceneNotesRefresh={sceneNotesRefresh}
             onPromoteSceneNote={handlePromoteSceneNote}
             onSceneNotesChanged={handleSceneNotesChanged}
+            // SKY-9022/M6 GAP-1/GAP-6: live AGENTS-card statuses — per-agent
+            // Settings enablement + the open continuity-flag count.
+            agentEnablement={{
+              'writing-assistant': appSettings?.agents?.writingAssistant?.enabled ?? true,
+              brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
+              archive: appSettings?.agents?.archive?.enabled ?? true,
+              'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
+            }}
+            continuityCount={continuityCount}
           />
         );
       case 'archive-continuity':
@@ -4230,6 +4239,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <ContinuityPanel
             scene={activeSceneForSidebar}
             enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+            // GAP-6: name the flag that's actually off — agent-disabled wins
+            // (it's the state the AGENTS card's 'Disabled' status matches).
+            disabledReason={(appSettings?.agents?.archive?.enabled ?? true) ? 'feature' : 'agent'}
             archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
             onCountChange={setContinuityCount}
@@ -4306,7 +4318,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
     view, handleJumpToText,
-    setContinuityCount, setSettingsOpen,
+    continuityCount, setContinuityCount, setSettingsOpen,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
     betaReadNote, continuityCheckNote,
@@ -6014,6 +6026,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           sceneNotesRefresh={sceneNotesRefresh}
           onPromoteSceneNote={handlePromoteSceneNote}
           onSceneNotesChanged={handleSceneNotesChanged}
+          // SKY-9022/M6 GAP-1/GAP-6: live AGENTS-card statuses — per-agent
+          // Settings enablement + the open continuity-flag count.
+          agentEnablement={{
+            'writing-assistant': appSettings?.agents?.writingAssistant?.enabled ?? true,
+            brainstorm: appSettings?.agents?.brainstorm?.enabled ?? true,
+            archive: appSettings?.agents?.archive?.enabled ?? true,
+            'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
+          }}
+          continuityCount={continuityCount}
           gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
             <GettingStartedPanel
               progress={gettingStartedProgress!}
@@ -6026,6 +6047,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <ContinuityPanel
               scene={activeSceneForSidebar}
               enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+              // GAP-6: name the flag that's actually off — agent-disabled wins
+              // (it's the state the AGENTS card's 'Disabled' status matches).
+              disabledReason={(appSettings?.agents?.archive?.enabled ?? true) ? 'feature' : 'agent'}
               archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
               archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
               onCountChange={setContinuityCount}
