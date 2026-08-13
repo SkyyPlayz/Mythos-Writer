@@ -14,6 +14,8 @@ export const TAB_KIND_META: Record<WorkspaceTabKind, { title: string; icon: stri
   // Beta 4 M4: document tab kinds (per-document titles are set on the tab itself).
   scene: { title: 'Scene', icon: '📄' },
   note: { title: 'Note', icon: '📝' },
+  // SKY-10019: singleton doc-tab kind, same shape as 'entities' above.
+  outline: { title: 'Outline Planning', icon: '🗒️' },
 };
 
 /** ≤Beta 3: every module kind the old new-tab picker offered, in display
