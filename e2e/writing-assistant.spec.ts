@@ -455,8 +455,15 @@ async function fillAssistantPrompt(page: Page, text: string) {
   const input = assistantPrompt(page);
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(input).toBeEnabled({ timeout: 5_000 });
-  await input.fill(text);
-  await expect(input).toHaveValue(text);
+  // The panel is never unmounted between tests (SKY-9022/M6), so a prior
+  // test's in-flight streaming/TTS cleanup can still land a render right as
+  // this fill lands, clobbering the value once. Re-running fill+assert as a
+  // unit (instead of a single-shot fill -> toHaveValue) self-heals from that
+  // one-off clobber instead of racing it. SKY-10069.
+  await expect(async () => {
+    await input.fill(text);
+    await expect(input).toHaveValue(text, { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
   return input;
 }
 
