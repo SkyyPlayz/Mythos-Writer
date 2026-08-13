@@ -196,7 +196,7 @@ async function openManuscript(pg: Page): Promise<void> {
   // Boot-time reindex re-renders the navigator and can collapse a freshly
   // expanded chapter — retry the expand until the scene row stays visible
   // (same pattern as mythos-migration.spec.ts TC-MV-02).
-  const sceneRow = pg.getByText('The Gate', { exact: true }).first();
+  const sceneRow = pg.getByRole('button', { name: /The Gate/ }).first();
   for (let attempt = 0; attempt < 4; attempt += 1) {
     await chapterRow.click();
     try {
