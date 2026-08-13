@@ -101,7 +101,7 @@ export async function installMockChatStream(
 export async function openWritingCoachChat(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
-  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
+  const agentRow = page.locator('[aria-label^="Open Writing Coach chat"]');
   if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await agentRow.click();
   }

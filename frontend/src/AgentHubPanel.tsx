@@ -37,15 +37,15 @@ const SUGGESTION_POLL_MS = 30_000;
 const SUGGESTION_PREVIEW_LIMIT = 3;
 
 type HubTab = 'assistant' | 'scenes' | 'notes' | 'references';
-type ActiveAgent = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader' | null;
+/** SKY-9022/M6: the four AGENTS-card rows (kebab ids match suggestion sourceAgent). */
+export type AgentId = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader';
+type ActiveAgent = AgentId | null;
 
 interface AgentDef {
-  id: ActiveAgent;
+  id: AgentId;
   agentKey: NamedAgentId;
   label: string;
   description: string;
-  statusText: string;
-  statusColor: 'idle' | 'active' | 'busy';
   color: string;
 }
 
@@ -55,8 +55,6 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'writingAssistant',
     label: 'Writing Coach',
     description: 'Teaches you to write better using your own pages — never ghost-writes.',
-    statusText: 'Ready',
-    statusColor: 'idle',
     color: '#00f0ff',
   },
   {
@@ -64,8 +62,6 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'brainstorm',
     label: 'Brainstorm Agent',
     description: 'Curates your vault, extracts facts, and develops ideas with you.',
-    statusText: 'Ready',
-    statusColor: 'idle',
     color: '#9b5fff',
   },
   {
@@ -73,8 +69,6 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'archive',
     label: 'Archive Agent',
     description: 'Continuity guardian — catches inconsistencies and builds your timeline.',
-    statusText: 'Ready',
-    statusColor: 'idle',
     color: '#ffd319',
   },
   {
@@ -82,11 +76,48 @@ const AGENT_DEFS: AgentDef[] = [
     agentKey: 'betaReader',
     label: 'Beta Reader',
     description: 'Reads your pages like a first-time reader and leaves honest reactions.',
-    statusText: 'Ready',
-    statusColor: 'idle',
     color: '#8ad9ff',
   },
 ];
+
+// ── Live AGENTS-card statuses (SKY-9022/M6 GAP-1) ───────────────────────────
+//
+// Honest wiring only — every status is a state this surface can actually
+// observe (no fake demo data). Precedence: Disabled > '{n} new' > live status.
+
+type AgentStatusDot = 'idle' | 'watching' | 'attention' | 'disabled';
+
+interface AgentStatus {
+  text: string;
+  dot: AgentStatusDot;
+  /** Brainstorm's watching dot pulses (prototype 6398) — only while enabled. */
+  pulse: boolean;
+}
+
+function resolveAgentStatus(
+  agentId: AgentId,
+  { enabled, pendingCount, continuityCount }: { enabled: boolean; pendingCount: number; continuityCount: number },
+): AgentStatus {
+  // GAP-6: a disabled agent says so — and suppresses the '{n} new' override
+  // (its chat view surfaces the same disabled state on click-through).
+  if (!enabled) return { text: 'Disabled', dot: 'disabled', pulse: false };
+  // §9 attention override: pending suggestions from this agent are waiting.
+  if (pendingCount > 0) return { text: `${pendingCount} new`, dot: 'attention', pulse: false };
+  switch (agentId) {
+    case 'brainstorm':
+      // Enabled Brainstorm literally watches the writing session.
+      return { text: 'Watching session', dot: 'watching', pulse: true };
+    case 'archive':
+      // Live open-flag count fed from ContinuityPanel via DesktopShell.
+      return continuityCount > 0
+        ? { text: `${continuityCount} flag${continuityCount === 1 ? '' : 's'} open`, dot: 'attention', pulse: false }
+        : { text: 'Ready', dot: 'idle', pulse: false };
+    default:
+      // Writing Coach with nothing pending; Beta Reader has no live
+      // reactions feed in the app yet — Ready/Disabled only.
+      return { text: 'Ready', dot: 'idle', pulse: false };
+  }
+}
 
 interface Props {
   scene: Scene | null;
@@ -124,6 +155,15 @@ interface Props {
   sceneNotesRefresh?: number;
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   onSceneNotesChanged?: () => void;
+  /** SKY-9022/M6 (GAP-6): per-agent enablement from Settings
+   *  (`agents.<key>.enabled ?? true`). Distinct from `enabled`, which means
+   *  "Writing Assistant scanning enabled" and feeds WritingAssistantPanel.
+   *  Absent key or absent prop = enabled (fresh-profile default). */
+  agentEnablement?: Partial<Record<AgentId, boolean>>;
+  /** SKY-9022/M6 (GAP-1): live open continuity-flag count — drives the
+   *  Archive row's '{n} flags open' status. Fed by ContinuityPanel's
+   *  onCountChange via DesktopShell. */
+  continuityCount?: number;
   /** M6: Rendered at top of the Assistant tab hub view — Getting Started card. */
   gettingStartedCard?: import('react').ReactNode;
   /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
@@ -159,6 +199,8 @@ export default function AgentHubPanel({
   sceneNotesRefresh,
   onPromoteSceneNote,
   onSceneNotesChanged,
+  agentEnablement,
+  continuityCount = 0,
   gettingStartedCard,
   continuityPanel,
   referencesPanel,
@@ -270,6 +312,8 @@ export default function AgentHubPanel({
             : <AgentHubView
                 agentDefs={AGENT_DEFS}
                 agentNames={agentNames}
+                agentEnablement={agentEnablement}
+                continuityCount={continuityCount}
                 onAgentClick={handleAgentClick}
                 scene={scene}
                 onOpenSuggestionInbox={handleOpenInbox}
@@ -324,6 +368,8 @@ function ResearchQuickLinksCard() {
 interface AgentHubViewProps {
   agentDefs: AgentDef[];
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  agentEnablement?: Partial<Record<AgentId, boolean>>;
+  continuityCount: number;
   onAgentClick: (id: ActiveAgent) => void;
   scene: Scene | null;
   onOpenSuggestionInbox?: () => void;
@@ -332,7 +378,7 @@ interface AgentHubViewProps {
   continuityPanel?: import('react').ReactNode;
 }
 
-function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
+function AgentHubView({ agentDefs, agentNames, agentEnablement, continuityCount, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
   // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
   // AGENTS card can derive each row's "needs attention" count from the same
   // poll instead of a second one.
@@ -358,7 +404,9 @@ function AgentHubView({ agentDefs, agentNames, onAgentClick, scene, onOpenSugges
               def={def}
               displayName={resolveAgentDisplayName(def.agentKey, agentNames)}
               onClick={() => onAgentClick(def.id)}
-              pendingCount={def.id ? pendingByAgent[def.id] ?? 0 : 0}
+              pendingCount={pendingByAgent[def.id] ?? 0}
+              enabled={agentEnablement?.[def.id] ?? true}
+              continuityCount={continuityCount}
             />
           ))}
         </div>
@@ -388,11 +436,19 @@ interface AgentRowProps {
    *  status (Beta 4 ships text chat only, not background autonomy, so idle
    *  vs. needs-attention is the state this surface can actually observe). */
   pendingCount?: number;
+  /** GAP-6: this agent's Settings enablement (`agents.<key>.enabled ?? true`). */
+  enabled?: boolean;
+  /** GAP-1: live open continuity-flag count (Archive row only). */
+  continuityCount?: number;
 }
 
-function AgentRow({ def, displayName, onClick, pendingCount = 0 }: AgentRowProps) {
-  const statusColor = pendingCount > 0 ? 'attention' : def.statusColor;
-  const statusText = pendingCount > 0 ? `${pendingCount} new` : def.statusText;
+function AgentRow({ def, displayName, onClick, pendingCount = 0, enabled = true, continuityCount = 0 }: AgentRowProps) {
+  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount });
+  // SKY-3941: the row is a button — its accessible name carries name + status
+  // so a status change is announced with the agent it belongs to.
+  const ariaStatus = status.dot === 'attention' && pendingCount > 0
+    ? `${pendingCount} new suggestion${pendingCount === 1 ? '' : 's'}`
+    : status.text;
 
   return (
     <button
@@ -400,25 +456,39 @@ function AgentRow({ def, displayName, onClick, pendingCount = 0 }: AgentRowProps
       className="ahp-agent-row"
       data-testid={`ahp-agent-row-${def.id}`}
       onClick={onClick}
-      aria-label={`Open ${displayName} chat${pendingCount > 0 ? ` — ${pendingCount} new suggestion${pendingCount === 1 ? '' : 's'}` : ''}`}
+      aria-label={`Open ${displayName} chat — ${ariaStatus}`}
       title={def.description}
       role="listitem"
+      style={{ '--agent-color': def.color } as React.CSSProperties}
     >
-      <span
-        className="ahp-agent-tile"
-        style={{ '--agent-color': def.color } as React.CSSProperties}
-        aria-hidden="true"
-      >
+      <span className="ahp-agent-tile" aria-hidden="true">
         <AgentIcon agentId={def.id} />
       </span>
-      <span className="ahp-agent-name">{displayName}</span>
-      <span className="ahp-agent-status">
-        <span
-          className={`ahp-status-dot ahp-status-dot--${statusColor}`}
-          aria-hidden="true"
-        />
-        <span className="ahp-status-text">{statusText}</span>
+      <span className="ahp-agent-text">
+        <span className="ahp-agent-name">{displayName}</span>
+        <span className="ahp-agent-status">
+          <span
+            className={`ahp-status-dot ahp-status-dot--${status.dot}${status.pulse ? ' ahp-status-dot--pulse' : ''}`}
+            aria-hidden="true"
+          />
+          <span className="ahp-status-text">{status.text}</span>
+        </span>
       </span>
+      {/* Prototype 3030: trailing right-chevron. */}
+      <svg
+        className="ahp-agent-chevron"
+        width="11"
+        height="11"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M9 6l6 6-6 6" />
+      </svg>
     </button>
   );
 }
@@ -482,12 +552,13 @@ function SuggestionPreviewCard({ items, totalCount, loading, onOpenSuggestionInb
       <header className="ahp-card-header">
         <span className="ahp-card-eyebrow">
           SUGGESTIONS
+          {/* Prototype 3040–3043 order: source badge, then count chip. */}
+          <span className="ahp-badge ahp-badge--coach">WRITING COACH</span>
           {totalCount > 0 && (
             <span className="ahp-badge ahp-badge--count" aria-label={`${totalCount} pending`}>
               {totalCount}
             </span>
           )}
-          <span className="ahp-badge ahp-badge--coach">WRITING COACH</span>
         </span>
       </header>
       {loading ? (

@@ -65,6 +65,14 @@ function classifyError(errorMsg: string): PanelState {
 export interface ContinuityPanelProps {
   scene: Scene | null;
   enabled?: boolean;
+  /**
+   * SKY-9022/M6 (GAP-6): WHICH flag turned continuity off — `enabled` is a
+   * conjunction of the Archive Agent toggle and the "Enable continuity
+   * checking" feature toggle, and the disabled message must name the right
+   * one. 'agent' (default) = Archive Agent is off; 'feature' = the agent is
+   * on but continuity checking is off.
+   */
+  disabledReason?: 'agent' | 'feature';
   archiveStoryEditConsentGiven?: boolean;
   archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
   onConsentGranted?: () => void;
@@ -83,6 +91,7 @@ export interface ContinuityPanelProps {
 export default function ContinuityPanel({
   scene,
   enabled = true,
+  disabledReason = 'agent',
   archiveStoryEditConsentGiven = false,
   archiveScanScope = 'active_scene',
   onConsentGranted,
@@ -273,7 +282,12 @@ export default function ContinuityPanel({
     return (
       <div className="cp-panel">
         {header}
-        <p role="status" className="cp-status-msg" aria-live="polite">Archive Agent is disabled. Enable it in Settings.</p>
+        <p role="status" className="cp-status-msg" aria-live="polite">
+          {disabledReason === 'feature'
+            // Settings label: "Enable continuity checking" (ArchiveAgentSection).
+            ? 'Continuity checking is turned off. Enable it in Settings.'
+            : 'Archive Agent is disabled. Enable it in Settings.'}
+        </p>
       </div>
     );
   }

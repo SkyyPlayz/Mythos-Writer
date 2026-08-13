@@ -102,6 +102,24 @@ describe('ContinuityPanel — disabled state', () => {
       expect(screen.getByRole('status')).toHaveTextContent(/archive agent is disabled/i),
     );
   });
+
+  // SKY-9022/M6 (GAP-6): `enabled` is a conjunction of the Archive Agent
+  // toggle and the "Enable continuity checking" feature toggle — the message
+  // must name whichever flag is actually off.
+  it('names the agent when disabledReason="agent"', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} enabled={false} disabledReason="agent" />);
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Archive Agent is disabled. Enable it in Settings.'),
+    );
+  });
+
+  it('names the feature when disabledReason="feature" (agent on, continuity checking off)', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} enabled={false} disabledReason="feature" />);
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Continuity checking is turned off. Enable it in Settings.'),
+    );
+    expect(screen.queryByText(/archive agent is disabled/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('ContinuityPanel — loading state', () => {

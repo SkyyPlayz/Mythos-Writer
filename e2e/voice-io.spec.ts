@@ -282,7 +282,7 @@ async function openAssistantPanel(page: Page): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
-  const agentRow = page.locator('[aria-label="Open Writing Coach chat"]');
+  const agentRow = page.locator('[aria-label^="Open Writing Coach chat"]');
   if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await agentRow.click();
   }
