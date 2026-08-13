@@ -259,7 +259,7 @@ test('TC-V-02: create story + chapter, both appear in Stories navigator', async 
   }
 
   // ── Create story (instant — no prompt) ────────────────────────────────────
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   await waitForWriterCaret(page);
   await renameStoryTitle(page, STORY_TITLE);
 

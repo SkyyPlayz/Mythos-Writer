@@ -86,7 +86,7 @@ async function run(aiEnabled, shotPrefix) {
   };
 
   // Create + select the story via the real UI flow (mirrors sceneCrafter.spec.ts).
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   await fillPrompt(page, STORY_TITLE);
   await page.locator('.nav-story-row', { hasText: STORY_TITLE }).waitFor({ state: 'visible', timeout: 8000 });
   await page.locator('.nav-story-title', { hasText: STORY_TITLE }).click();

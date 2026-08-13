@@ -289,12 +289,12 @@ test.describe('populated vaults: routing regression', () => {
     // assertions below (the load-bearing part of this test) are unaffected
     // by which UI created the files, so only the creation flow changed.
     // TC-SKY84-01 (above) leaves the app on the Notes Editor tab; navigate
-    // back to Story Writer so StoryNavigator (and `.nav-add-btn`) is visible.
+    // back to Story Writer so the left rail (and `.lr-nav-add`) is visible.
     await page.locator('button.nav-rail__item[aria-label="Story Writer"]').click();
 
     // M3 instant-create: no prompt — story appears immediately as
     // "Untitled Story" (single story in this vault, so match positionally).
-    await page.locator('.nav-add-btn').first().click();
+    await page.locator('.lr-nav-add').first().click();
 
     const storyRow = page.locator('.nav-story-row').first();
     await expect(storyRow).toBeVisible({ timeout: 8_000 });

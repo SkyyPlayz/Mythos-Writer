@@ -150,7 +150,7 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   // transaction scaffolds "Chapter 1" and an "Untitled Scene" and opens the
   // editor with the caret in that scene — no separate chapter/scene creation
   // step is needed here.
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 

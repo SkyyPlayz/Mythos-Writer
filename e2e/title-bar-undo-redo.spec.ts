@@ -51,7 +51,7 @@ async function openScene(page: Page): Promise<void> {
 
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
   await page.locator('.nav-scene-row').first().click();
 
   await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 10_000 });

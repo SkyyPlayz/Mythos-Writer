@@ -207,7 +207,7 @@ test('TC-VB-04: create story via StoryNavigator, story row appears', async () =>
   // M3 instant-create: no prompt — story appears immediately as "Untitled
   // Story" (single story in this fixture vault, so match positionally
   // rather than by a title no create flow ever sets).
-  await page.locator('.nav-add-btn').first().click();
+  await page.locator('.lr-nav-add').first().click();
 
   await expect(
     page.locator('.nav-story-row').first(),
