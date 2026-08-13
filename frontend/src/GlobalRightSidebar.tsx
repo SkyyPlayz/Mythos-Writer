@@ -65,7 +65,12 @@ export default function GlobalRightSidebar({
 
   if (!visible) {
     return (
-      <div className="grs-collapsed-edge" data-testid="grs-edge">
+      <div
+        className="grs-collapsed-edge"
+        data-testid="grs-edge"
+        role="complementary"
+        aria-label="Right sidebar (hidden)"
+      >
         <button
           className="grs-show-btn"
           onClick={() => onVisibilityChange(true)}
@@ -82,6 +87,7 @@ export default function GlobalRightSidebar({
     <aside
       className="grs-sidebar"
       data-testid="global-right-sidebar"
+      aria-label="Right sidebar"
       style={{ width }}
     >
       {neonOverlay}
