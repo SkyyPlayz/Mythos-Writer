@@ -452,13 +452,13 @@ export default function NotesTabPanel({
           </div>
         )}
         {/* M16: note split toggle — prototype "Split notes" header button.
-            SKY-9920: while pane 1 shows Entity Browser, starting a NEW split
-            still doesn't apply (no note to pair it with) — but the button
-            must stay reachable to COLLAPSE a split that was already active,
-            or opening Entity Browser mid-split would strand pane 2 with no
-            way back (activeNotePath is null in this state, so the plain
-            `activeNotePath` check below is skipped in favor of noteSplitActive). */}
-        {notesSubView === 'editor' && (activeTabIsEntityBrowser ? noteSplitActive : activeNotePath) && (
+            SKY-9920/SKY-10081: while pane 1 shows Entity Browser, or has no
+            active note at all (e.g. its last tab was just closed), starting
+            a NEW split still doesn't apply (no note to pair it with) — but
+            the button must stay reachable to COLLAPSE a split that was
+            already active, or pane 1 losing its content mid-split would
+            strand pane 2 with no way back. */}
+        {notesSubView === 'editor' && (noteSplitActive || (!activeTabIsEntityBrowser && activeNotePath)) && (
           <button
             className={`notes-split-toggle-btn${noteSplitActive ? ' notes-split-toggle-btn--active' : ''}`}
             aria-label="Split notes"
@@ -584,14 +584,15 @@ export default function NotesTabPanel({
           )}
           {/* M16 / SKY-9784: note split — active note + a second note side by
               side, each pane owning an Obsidian-parity tab strip.
-              SKY-9920: the row itself must NOT depend on !activeTabIsEntityBrowser
-              — pane 1 can show Entity Browser while split is active, same as
-              pane 2 already can (noteSplitIsEntityBrowser below). Gating the
-              whole row on it (as opposed to just pane 1's own content) hid
-              pane 2 AND both panes' tab strips the moment pane 1 opened
-              Entity Browser mid-split — with the global strip also hidden
-              (notesSplitActive stays true), that left no tab strip at all. */}
-          {notesSubView === 'editor' && (activeTabIsEntityBrowser || activeNotePath) && noteSplitActive && (
+              SKY-9920/SKY-10081: the row itself must NOT depend on pane 1
+              having active content (Entity Browser or a note) — pane 1 can
+              show Entity Browser, or have no active tab at all (its last
+              note tab just closed), while split is active. Gating the whole
+              row on pane 1's content hid pane 2 AND both panes' tab strips
+              the moment pane 1 went content-less mid-split — with the
+              global strip also hidden (notesSplitActive stays true), that
+              left no tab strip at all and orphaned pane 2's note. */}
+          {notesSubView === 'editor' && noteSplitActive && (
             <div className="notes-split-row" ref={splitRowRef} data-testid="notes-split-row">
               <div className="notes-split-main" style={{ flex: noteSplitRatio }}>
                 <NotesPaneTabStrip
@@ -668,11 +669,14 @@ export default function NotesTabPanel({
               />
             </div>
           )}
-          {notesSubView === 'editor' && !activeTabIsEntityBrowser && !activeNotePath && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && !activeNotePath && !noteSplitActive && (
             // SKY-9710: prototype empty-state pattern — glyph + one-line
             // hint + primary action. Same shape as the vault tree's own
             // empty state (VaultBrowser/index.tsx NotesVaultEmptyState),
             // shown here so an empty editor pane isn't a dead end.
+            // SKY-10081: gated on !noteSplitActive too — while split, pane 1
+            // having no active note is handled inside the split row above
+            // (empty pane 1 slot + its tab strip), not this full-view swap.
             <div
               className="notes-editor-placeholder"
               data-testid="notes-editor-placeholder"
