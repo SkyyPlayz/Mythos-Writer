@@ -98,6 +98,7 @@ export interface NotesTabPanelProps {
   onContinuityCheck?: (path: string) => void;
   // BrainstormPage passthrough
   brainstormEnabled?: boolean;
+  onOpenSettings?: () => void;
   voiceEnabled?: boolean;
   ttsSettings?: import('./hooks/useTtsPlayer').TtsEngineSettings;
   voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
@@ -169,6 +170,7 @@ export default function NotesTabPanel({
   onBetaRead,
   onContinuityCheck,
   brainstormEnabled,
+  onOpenSettings,
   voiceEnabled = false,
   ttsSettings,
   voicePrefs,
@@ -803,6 +805,7 @@ export default function NotesTabPanel({
                       <BrainstormPage
                         onClose={() => onBrainstormCollapsedChange(true)}
                         enabled={brainstormEnabled ?? true}
+                        onOpenSettings={onOpenSettings}
                         voiceEnabled={voiceEnabled}
                         ttsSettings={ttsSettings}
                         voicePrefs={voicePrefs}

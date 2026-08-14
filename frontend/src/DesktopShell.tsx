@@ -4319,6 +4319,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <BrainstormPage
             onClose={() => {}}
             enabled={appSettings?.agents?.brainstorm?.enabled ?? true}
+            onOpenSettings={() => setSettingsOpen(true)}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
             activeScene={activeSceneForSidebar}
@@ -5907,6 +5908,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onExport={(scope: ExportScope) => setExportScope(scope)}
           journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
           brainstormEnabled={agentFlags.brainstorm}
+          onOpenSettings={() => setSettingsOpen(true)}
           voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
           ttsSettings={appSettings?.tts}
           voicePrefs={appSettings?.voice}
@@ -5960,6 +5962,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             key={brainstormSeedPrompt ?? 'brainstorm'}
             onClose={() => handleTabChange('story')}
             enabled={agentFlags.brainstorm}
+            onOpenSettings={() => setSettingsOpen(true)}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
             ttsSettings={appSettings?.tts}
@@ -6232,6 +6235,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               <BrainstormPage
                 onClose={closeSplitPane}
                 enabled={agentFlags.brainstorm}
+                onOpenSettings={() => setSettingsOpen(true)}
                 voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
                 archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
                 activeScene={selectedScene}
