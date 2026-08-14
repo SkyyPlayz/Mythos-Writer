@@ -15,6 +15,7 @@ import {
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitcher';
+import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
 import {
   parseSceneNotes,
@@ -1669,6 +1670,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // SKY-130: allow restore to fire again for the new project
       sceneRestoreAttemptedRef.current = false;
       loadVault();
+      notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
     });
     return () => unsub?.();
   }, [loadVault]);
@@ -1683,6 +1685,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // SKY-130: allow restore to fire again for the new project
     sceneRestoreAttemptedRef.current = false;
     loadVault();
+    notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
   }, [loadVault]);
 
   const persistManifest = useCallback(async (m: Manifest) => {

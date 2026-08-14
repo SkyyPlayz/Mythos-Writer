@@ -19,10 +19,22 @@ export function openMythosMigrationWizard(): void {
   window.dispatchEvent(new CustomEvent(OPEN_MYTHOS_MIGRATION_EVENT));
 }
 
+// SKY-8882: the migration status used to be probed once at mount and never
+// again, so switching or creating a vault mid-session left this card (and
+// the Settings → Vaults section) describing whatever vault was active on
+// boot. Anything that repoints the active vault must dispatch this so both
+// re-probe against the vault that's actually open now.
+export const ACTIVE_VAULT_CHANGED_EVENT = 'mythos:active-vault-changed';
+
+export function notifyMythosActiveVaultChanged(): void {
+  window.dispatchEvent(new CustomEvent(ACTIVE_VAULT_CHANGED_EVENT));
+}
+
 export default function MythosMigrationCenter() {
   const [status, setStatus] = useState<MythosMigrationStatus | null>(null);
   const [promptVisible, setPromptVisible] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +53,12 @@ export default function MythosMigrationCenter() {
     return () => {
       cancelled = true;
     };
+  }, [refreshToken]);
+
+  useEffect(() => {
+    const refresh = () => setRefreshToken((t) => t + 1);
+    window.addEventListener(ACTIVE_VAULT_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(ACTIVE_VAULT_CHANGED_EVENT, refresh);
   }, []);
 
   useEffect(() => {

@@ -321,6 +321,22 @@ describe('run: copy-based migration', () => {
     expect(treeHashes(notesVault)).toEqual(notesHashesBefore);
   });
 
+  it('SKY-8882: classifies the migrated vault as mythos-v2 immediately, by the parsed marker', () => {
+    _clearDetectionCache();
+    expect(detectVaultFormat(path.join(target, 'Story Vault'))).toBe('mythos-v2');
+  });
+
+  it('SKY-8882: a present-but-unparseable mythos.json is not treated as v2 (authoritative on the parsed marker, not existsSync)', () => {
+    const bogusTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-migrate-bogus-'));
+    const bundle = path.join(bogusTmp, 'Bogus Vault');
+    const bogusStoryVault = path.join(bundle, 'Story Vault');
+    fs.mkdirSync(bogusStoryVault, { recursive: true });
+    fs.writeFileSync(path.join(bundle, 'mythos.json'), 'not valid json{{{');
+    _clearDetectionCache();
+    expect(detectVaultFormat(bogusStoryVault)).toBe('empty');
+    fs.rmSync(bogusTmp, { recursive: true, force: true });
+  });
+
   it('maps the old manifest → mythos.json + frontmatter', () => {
     _clearDetectionCache();
     const mythos = readMythosFile(target);
