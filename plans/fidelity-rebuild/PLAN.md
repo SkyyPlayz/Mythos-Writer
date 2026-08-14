@@ -358,6 +358,242 @@ Each ships with the standard fidelity gate. Decomposition into issues is the CEO
 
 ---
 
+# §4b Agent architecture block (M12–M14) — owner direction 2026-08-13
+
+**Origin.** Skyy used Copilot-in-Word on his own manuscript and found it badly lacking. He
+worked this architecture out with Ivy on 2026-08-13; §4b is that conversation turned into
+buildable scope. Full reasoning trail: `PaperclipWork/memory/ai-agent-architecture-design-note.md`.
+
+**Which beta (Ivy's delegated call — override welcome).** Sequenced **after M11c**, not
+interleaved with M1–M11. Two reasons. (a) M1–M11 is a *fidelity* rebuild — every milestone
+has a prototype to match; §4b is net-new capability with no prototype of record, so it
+cannot use the same fidelity gate and would dilute one that is working. (b) Four design
+questions below are still open, and building an unsettled architecture is the exact churn
+this plan exists to prevent. The M11 counter-argument (*"waiting means touching every AI
+surface twice"*) is much weaker here: §4b is mostly engine work plus **new** surfaces, not
+retrofits of surfaces M1–M11 are currently writing.
+
+**P1 — design gate (blocks M12 start).** These are unsettled and must be ruled on before a
+builder opens a branch. Ivy brings a recommendation; the owner rules:
+1. **Retrieval relevance.** Given a question, which scenes actually get read? The running log
+   (M12.3) solves *coverage*, not *relevance*. A bad picker yields a confident, well-written,
+   WRONG answer whose source never reached the assistant — a worse failure than Copilot's
+   visible floundering, because it is unfalsifiable. Our vault (wiki-links, entities,
+   timeline, scene structure) is the asset that beats Word here; the picking strategy is
+   what is undecided.
+2. **Citations.** Ivy's position: subagents return scene/note + line references, never bare
+   claims, so the assistant quotes rather than paraphrases and the user can click through.
+   Treat as binding unless overruled — most of §4b's trustworthiness rests on it.
+3. **Lossy summaries.** Whole-story questions that depend on prose *texture* (voice drift,
+   which paragraph is overloaded) degrade when the orchestrator reasons over summaries.
+   Partly mitigated by M12.2; not solved.
+4. **Latency/cost** of fan-out, and what the user sees while it runs.
+
+**Cross-cutting rules for this block**
+- **Seam rule (owner thesis, 2026-08-13).** The product's value is the *joins*, not any single
+  capability — Skyy could rebuild ~90% of the features with Notion + Claude + Word. So:
+  anything that makes the user maintain the same fact in two places, re-import, copy-paste
+  between sides, or configure the same thing twice is an **existential defect, not a
+  papercut**. Design test for every call in this block: *does this remove a seam or add one?*
+- **No-tutorial rule (owner, standing).** Every setting §4b adds must be findable, changeable,
+  and labelled for someone with no computer experience. *"People shouldn't need a YouTube
+  tutorial to do anything in our app."* Where a label alone won't carry it, **show the effect,
+  don't describe it** (live preview beside the control).
+- **Never silently rewrite the user's files.** Applies to notes, dictionary entries, and vault
+  content alike. Propose-and-approve, or a deliberate user-run action with a preview. Any
+  automatic non-user-confirmed vault mutation is a carve-out → stop, go to Ivy (SKY-6626).
+- Manual mode (M11a `ai.enabled`) governs this block like every other AI surface; master off
+  stops orchestration, subagents, and network entirely.
+- Keep-list K1–K8 still law. §2 standing rule (no duplicate/divergent components) still law.
+
+---
+
+### M12 — Agent orchestration core  · fixes owner-observed Copilot failures 1, 3, 4, 5
+
+**The four failures this milestone answers** (Skyy, verbatim-derived — these are QA's named
+test cases, not vibes): **(1)** context ceiling, cannot review the whole story at once ·
+**(3)** after a planning conversation it could not go back to plain reviewing, kept
+extrapolating the earlier ideas into the review, took 3 re-prompts to stop · **(4)** asked to
+review and summarize, it invented instead · **(5)** *"the manuscript is bigger than my context
+window"* — forcing the user to break the work up by hand.
+
+**M12.1 — Orchestrator + subagents.** The writing assistant and brainstorm agents are the
+*interface between the user and their story*. They do **not** read the whole manuscript. For
+large work they dispatch subagents that read and report back.
+- The orchestrator never holds raw manuscript text → its context stays clean across a long
+  session (fixes 1).
+- A subagent has one job and a narrow output contract → it *cannot* drift into planning
+  (fixes 4 structurally, not by prompting).
+- A subagent has **never heard** the earlier planning conversation → fixes 3. Note this is
+  why a permissions/mode boundary is the wrong fix: Skyy's failure 3 was *conversational
+  contamination*, not the AI editing something it shouldn't.
+- **Archive agent is out of this loop** — it owns continuity + timeline and writes structured
+  data (timeline entries, continuity flags), not prose notes.
+
+**M12.2 — Fan-out is a decision, not a rule** (owner call). The agent chooses to delegate or
+read directly, based on task size and detail required. Small/detail-critical → read the prose
+itself. Large survey → fan out. Conditions that make the routing trustworthy:
+- **Measure, don't ask.** Route on countable facts (word count of the candidate set, scenes in
+  scope, whether the question names a specific scene). The model may override; it does not decide.
+- **Escalate, never commit.** Start direct; fan out if the material blows past threshold
+  mid-task. Failing upward is safe. Fanning out when it should have read loses detail
+  *silently* — the failure you cannot see is the one to design against.
+- **"Read it properly" override** available to the user on any answer.
+
+**M12.3 — The running log.** A real file in the vault the user can open. Three jobs: **audit**
+(what was actually pulled), **resume state** (where a long sweep left off), **handoff medium**
+between agents (M13). **Log what it READ, not what it CONCLUDED** — a manifest, not a digest;
+the moment it logs findings instead of sources it is another lossy summary and re-reads get
+wrongly skipped.
+
+**M12.4 — Auto-decomposition** (fixes 5). The agent breaks large tasks up itself; the user is
+**never** told to do it manually. **Chunk by structure, not token count** — we have
+parts/chapters/scenes where Word has an undifferentiated blob, and cutting where the story
+already cuts avoids confused-at-the-seams output. Seam references (a scene pointing back three
+chapters) are covered by the vault index + the log.
+
+**M12.5 — Path visibility, always on** (owner call). Not a fan-out-only affordance: the user
+can see what the agent read and did **at all times**, with live progress (*reading ch. 4…*),
+never an opaque spinner. Word ships a black box; this is a deliberate differentiator.
+
+**Acceptance criteria:**
+- [ ] A whole-manuscript review runs to completion on a manuscript larger than the model's
+      context window, with no user-performed splitting and no "too big" refusal
+- [ ] Reproduction of failure 3: hold a planning conversation, then request a plain review of
+      the next part — the review contains no extrapolation from the planning discussion, with
+      **zero** corrective re-prompts
+- [ ] A review/summarize task produces no invented material (failure 4), asserted against a
+      fixture manuscript with known content
+- [ ] Routing decision is computed from countable facts and recorded in the log; mid-task
+      escalation demonstrated
+- [ ] "Read it properly" override re-runs the task in direct-read mode
+- [ ] Running log is a user-openable vault file listing sources read (not conclusions),
+      survives restart, and a resumed sweep starts where it left off
+- [ ] Path/progress visible for every agent action; no unexplained spinner state
+
+**Tests:** oversized-manuscript E2E (no refusal, no manual split) · contamination regression
+(plan-then-review, assert clean) · fabrication assert vs fixture · log-manifest round-trip and
+resume · routing-threshold unit tests · `ai.enabled` off ⇒ no orchestration, no subagents, no
+network.
+
+---
+
+### M13 — Shared context, agent handoff, and note authorship
+
+**M13.1 — Share the record, not the room.** Shared **memory** (facts, conclusions, decisions —
+the vault): yes, freely. Shared **raw transcript as ambient context**: no — that is precisely
+what caused failure 3. An agent picking up a task receives a short brief (what the user was
+doing, what was decided, which scenes are in play) and may **query** the log for specifics.
+The log is *a place it can look, not air it breathes* — pull, not push. Reading on demand does
+not drag content into every later inference; loading it into context does.
+
+**M13.2 — Seamless agent swap** (owner requirement). Swapping between the writing assistant and
+brainstorm agents mid-task must need **no re-briefing and no backstory**. UI: **one conversation
+thread with the agent labelled per message**, not separate chat windows the user must mentally
+re-enter. They are separate agents with very different jobs; they should feel like one continuous
+conversation.
+
+**M13.3 — Note authorship.** **The agent that reached the conclusion writes the note.** No handing
+conclusions to another agent to write up: that packaging step is a lossy summary of the one
+artifact that must be faithful, produced by an agent that was not in the conversation. Rule of
+thumb — **hand off for different knowledge or access; never for different formatting.** Only two
+agents author prose notes (writing assistant, brainstorm) plus the user.
+
+**M13.4 — Shared vault write layer.** Formatting consistency lives in one tool every agent calls
+(placement, frontmatter, linking, metadata), not in any agent's head.
+
+**M13.5 — Example-note format file** (owner idea). Settings → Agents: the user may write, import,
+or **select existing notes** as style examples; agents copy that format and voice so notes come
+out looking like the user wrote them.
+- Support **several** examples — a character note and a scene note want different shapes; one
+  example forces everything into one mould.
+- **Re-show the example at write time**, not learned once at startup: models drift from an
+  example over a long session, which the user experiences as *"it was good at first."*
+- **Example teaches style; the tool handles plumbing.**
+- Include a **naming-scheme index**.
+- **Format changes never silently rewrite existing notes.** Ship a deliberate, user-run
+  *"restyle these notes"* action with a preview of what it will do (owner-agreed).
+- Per the no-tutorial rule: *"point at a note you like"* **is** the customization UI — it beats a
+  panel of formatting toggles for approachability, and is the reason this is achievable without
+  a tutorial.
+
+**Acceptance criteria:**
+- [ ] Agent swap mid-task requires no re-briefing; the incoming agent answers correctly about
+      what was decided **without** the prior transcript being in its context (assert both halves)
+- [ ] Contamination regression from M12 still passes after shared memory lands
+- [ ] One labelled thread in the UI; no separate per-agent chat windows
+- [ ] Notes are authored by the concluding agent; no cross-agent write-up relay exists
+- [ ] Two different agents writing the same note kind produce structurally identical files
+- [ ] Example-note selection changes agent output style; style holds at the end of a long
+      session as well as the start (drift assert)
+- [ ] Existing notes are untouched by a format change; "restyle these notes" is user-run and
+      previews before writing
+
+**Tests:** swap-mid-task E2E · transcript-isolation assert (brief present, transcript absent) ·
+cross-agent note-format equivalence · long-session style-drift assert · restyle preview/apply
+round-trip with a no-op path.
+
+---
+
+### M14 — The author's dictionary  · owner idea, app-wide
+
+Author-invented words, stored **once, app-wide** — one dictionary shared by the notes/vault side
+and the story writer. Two dictionaries would be two sources of truth and the user paying the tax
+twice: the seam rule forbids it.
+
+**Why this is larger than spellcheck:** agents stop mangling or "correcting" invented words · it
+feeds **continuity** (spelled one way in ch. 3, another in ch. 9 → archive agent) · it feeds
+**retrieval**, because invented words are unique high-signal search terms (a real contribution to
+the P1 relevance question) · and the brainstorm agent's standing questions can ask for definitions
+of words the user has used but never defined, turning a utility into a worldbuilding prompt
+(*"you've used sunder-glass 11 times — what is it?"*).
+
+**M14.1 — Entry model.** Each entry has **two** fields, deliberately separate because they have
+different consumers and lifespans:
+- **Definition** — short, stable, factual; what spellcheck and the agents read constantly.
+- **Description** — the rich body, free to grow; the brainstorm agent can fill it from an entire
+  conversation about that word, not just a one-liner.
+
+**M14.2 — Management page.** Settings: view every word in the dictionary, add, edit definitions and
+descriptions, delete. This is where the dictionary is *managed*.
+
+**M14.3 — Capture at point of use.** Right-click a word → **Add to dictionary**, the familiar Word
+gesture (zero learning curve), plus **Add with definition…** for going deeper without being made
+to. Works **identically in the manuscript and in notes** — one dictionary means one behaviour
+everywhere. The app may also offer inline capture for a repeatedly-used unknown word. Settings is
+for managing the dictionary, **not** for building it: a dictionary the user must go and fill in by
+hand stays empty, and an empty dictionary delivers none of the four wins above.
+
+**M14.4 — Agent proposes, user approves.** When the brainstorm agent fills a description from a
+conversation, it suggests and waits. Never a silent write into the user's dictionary.
+
+**M14.5 — One home per word.** A dictionary entry and a character/lore note for the same term must
+link or unify. Otherwise the user maintains the same word in two places — the seam rule violation
+this milestone exists to prevent, recreated one layer down.
+
+**M14.6 — Variants and awkward characters.** Inflections must not trip spellcheck
+(*sunder-glass / sunder-glasses / sundered*), and apostrophised names (*Vash'tar*) break naive
+word-splitting — handled deliberately, not incidentally. This is the edge that decides whether the
+feature reads as finished or as annoying enough to switch off.
+
+**Acceptance criteria:**
+- [ ] A word added on the story side is immediately known on the notes side, and vice versa —
+      added once, never twice
+- [ ] Right-click add works identically in manuscript and notes; `Add with definition…` present
+- [ ] Definition and description are separate fields and persist independently
+- [ ] Agents read the dictionary: no "correction" of dictionary words, no repeat questions about
+      their meaning
+- [ ] Inflected forms and apostrophised names are not flagged
+- [ ] A dictionary word that is also an entity/note resolves to one linked home, not two records
+- [ ] No dictionary write happens without user approval
+- [ ] Continuity: a term spelled inconsistently across chapters is surfaced by the archive agent
+
+**Tests:** cross-side propagation E2E · right-click capture in both surfaces · inflection/apostrophe
+spellcheck matrix · entity-link dedupe · propose-and-approve assert (no silent writes) ·
+inconsistent-spelling continuity detection.
+
+---
+
 ## §5 Sequencing
 
 ```
@@ -367,7 +603,21 @@ Lane B (shell):          M11a → M4 → M5 → M6
 Lane C (notes):          M8 → M9
 Lane D (rest):           M10 (after M5, else sub-tab churn)
 Close-out:               M11c completeness audit (after M10)
+
+── beta cut ──────────────────────────────  (M1–M11c ship; owner gets a testable build)
+
+§4b design gate P1 ─────────────────────── (4 open questions ruled on BEFORE any M12 branch)
+Agent block:             M12 → M13 → M14
 ```
+
+- **§4b sits after the beta cut** (Ivy's delegated call, §4b intro — override welcome). M1–M11c
+  is a fidelity rebuild with a prototype to match; §4b is net-new capability with no prototype of
+  record, and four of its design questions are still open.
+- **M12 before M13.** M13's shared-context work is only safe once M12's subagent isolation exists —
+  otherwise "share the record" has no clean context to protect.
+- **M14 may run parallel to M13** (different surfaces), but its retrieval contribution only pays off
+  once M12's dispatch exists.
+- **P1 blocks M12.** No §4b branch opens before the four design questions are ruled on.
 
 - **M11a lands first in Lane B** so every subsequent milestone can read the master setting while building its surface (cross-cutting rule, §4 intro).
 
@@ -396,6 +646,12 @@ Close-out:               M11c completeness audit (after M10)
 | 11 | E2E selector anchors were deleted with the legacy code and CI collapsed | M1 explicitly keeps compat anchor classnames on the unified wrapper |
 | 12 | Manual mode shipped half-tested — some surface still leaked AI chrome, or a flow was impossible by hand | Cross-cutting both-state rule per milestone + M11c completeness audit + network-silence assert |
 | 13 | "AI off" hid the chrome but agents kept running and calling providers | M11a spec #3: master off stops scans, schedules, and network — asserted in E2E, not assumed |
+| 14 | §4b got folded into the beta, M11c never closed, and the owner still has no build to test | §4b sits after the beta cut (§5); the cut is not gated on agent work |
+| 15 | M12 shipped and the answers are confidently wrong — the picker fetched the wrong scenes and nobody could tell | P1 design gate rules on retrieval relevance BEFORE M12 opens; citations (P1.2) make every claim clickable back to source |
+| 16 | The orchestrator summarised away the prose and voice-level questions got worse, not better | M12.2 fan-out is a *decision* — small/detail-critical work is read directly; "read it properly" override always available |
+| 17 | Subagent isolation was quietly dropped to make agent-swap feel seamless, and contamination came back | M13 acceptance re-runs M12's contamination regression; brief-present/transcript-absent asserted as two separate checks |
+| 18 | The dictionary shipped and stayed empty | M14.3: capture at point of use (right-click), Settings is for managing not building |
+| 19 | An agent silently rewrote the user's notes or dictionary during a format change | §4b cross-cutting: never silently rewrite user files; restyle is user-run with preview; auto vault mutation = carve-out to Ivy (SKY-6626) |
 
 ---
 
