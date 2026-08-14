@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
+import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -534,27 +535,51 @@ describe('BrainstormPage', () => {
   });
 });
 
-describe('BrainstormPage disabled state', () => {
-  it('shows disabled banner when enabled=false', () => {
+describe('BrainstormPage disabled state (SKY-10359)', () => {
+  it('keeps IdeaCollectionsPanel (rail) when enabled=false', () => {
     render(<BrainstormPage onClose={() => {}} enabled={false} />);
-    expect(screen.getByText(/brainstorm agent is disabled/i)).toBeInTheDocument();
+    // Rail is always rendered — data-testid set by IdeaCollectionsPanel
+    expect(document.querySelector('[data-testid="bs-collections"]')).not.toBeNull();
   });
 
-  it('hides the prompt textarea when disabled', () => {
+  it('shows Board view (not blank page) when enabled=false', () => {
     render(<BrainstormPage onClose={() => {}} enabled={false} />);
+    // Board mode: chat textarea absent, brainstorm page root present
     expect(screen.queryByLabelText(/brainstorm prompt/i)).not.toBeInTheDocument();
+    expect(document.querySelector('.brainstorm-page')).not.toBeNull();
   });
 
-  it('does not call streamStart when disabled', async () => {
+  it('does not call streamStart when enabled=false', () => {
     render(<BrainstormPage onClose={() => {}} enabled={false} />);
     expect(mockStreamStart).not.toHaveBeenCalled();
   });
 
-  it('shows a Close button on the disabled view that calls onClose', () => {
-    const onClose = vi.fn();
-    render(<BrainstormPage onClose={onClose} enabled={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /close/i }));
-    expect(onClose).toHaveBeenCalled();
+  it('shows board-side EmptyState with Open Settings when enabled=false and onOpenSettings provided', () => {
+    const onOpenSettings = vi.fn();
+    render(<BrainstormPage onClose={() => {}} enabled={false} onOpenSettings={onOpenSettings} />);
+    const btn = screen.getByTestId('bs-board-side-open-settings');
+    expect(btn).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(onOpenSettings).toHaveBeenCalled();
+  });
+
+  it('omits Open Settings action when onOpenSettings not provided', () => {
+    render(<BrainstormPage onClose={() => {}} enabled={false} />);
+    expect(screen.queryByTestId('bs-board-side-open-settings')).not.toBeInTheDocument();
+  });
+
+  it('renders identically (Board-only) when enabled=false vs master aiEnabled=false', () => {
+    // enabled=false case
+    const { unmount, container: c1 } = render(<BrainstormPage onClose={() => {}} enabled={false} />);
+    const hasBoardDisabled = !!c1.querySelector('[data-testid="bs-board-side-ai-off"]');
+    unmount();
+    // master AI off case: setAiEnabled(false) then enabled=true
+    setAiEnabled(false);
+    const { container: c2 } = render(<BrainstormPage onClose={() => {}} enabled={true} />);
+    const hasBoardMasterOff = !!c2.querySelector('[data-testid="bs-board-side-ai-off"]');
+    __resetAiEnabledForTests();
+    expect(hasBoardDisabled).toBe(true);
+    expect(hasBoardMasterOff).toBe(true);
   });
 });
 

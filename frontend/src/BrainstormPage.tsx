@@ -336,6 +336,7 @@ const FACT_TYPE_ORDER: DetectedFact['type'][] = ['character', 'location', 'item'
 interface Props {
   onClose: () => void;
   enabled?: boolean;
+  onOpenSettings?: () => void;
   onFirstSubmit?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   onNavigateToScene?: (sceneId: string) => Promise<boolean>;
@@ -382,7 +383,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…' }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…' }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -433,7 +434,9 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
   // Board and Idea Collections stay fully manual, Agent Chat and every
   // AI-only affordance (explore prompts, saved prompts, quick generate)
   // disappear cleanly (PLAN.md §M11b surface contract).
-  const aiEnabled = useAiEnabled();
+  // SKY-10359: unify per-agent `enabled` with master toggle so both produce
+  // the same Board-only surface instead of `enabled=false` nuking the whole page.
+  const aiEnabled = useAiEnabled() && enabled;
   const visibleModes = useMemo(
     () => (aiEnabled ? BRAINSTORM_MODES : BRAINSTORM_MODES.filter((m) => m !== 'chat')),
     [aiEnabled],
@@ -2025,17 +2028,6 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
     setTimeout(() => el?.focus(), 0);
   }, [announce]);
 
-  if (!enabled) {
-    return (
-      <div className="brainstorm-page brainstorm-disabled" ref={rootRef}>
-        <div className="brainstorm-disabled-inner">
-          <p className="brainstorm-disabled-msg">Brainstorm Agent is disabled. Enable it in Settings.</p>
-          <button className="brainstorm-back-btn" onClick={onClose}>Close</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="brainstorm-page" ref={rootRef}>
       <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
@@ -3036,8 +3028,25 @@ export default function BrainstormPage({ onClose, enabled = true, onFirstSubmit,
         </div>
         {/* M20 (§7.2): board-page right panel — explore buttons, saved
             prompts, quick-generate. Every action runs through the real chat
-            streaming path, so the whole aside is AI-bearing chrome: R11
-            collapses it cleanly (no dead band) when the master toggle is off. */}
+            streaming path, so the whole aside is AI-bearing chrome: R11/SKY-10359
+            shows an EmptyState with an Open Settings CTA when AI is off. */}
+        {!compact && !aiEnabled && (
+          <aside className="bs-board-side bs-board-side--ai-off" data-testid="bs-board-side">
+            <EmptyState
+              icon={
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 4l1.5 4L17.5 9.5l-4 1.5L12 15l-1.5-4-4-1.5 4-1.5z" />
+                  <circle cx="18.5" cy="18.5" r="3.5" />
+                  <path d="M18.5 17v1.5l1 1" />
+                </svg>
+              }
+              heading="Agent Chat is off"
+              hint="Enable Brainstorm Agent in Settings to get explore prompts, saved prompts, and quick generate."
+              action={onOpenSettings ? { label: 'Open Settings', onClick: onOpenSettings, testId: 'bs-board-side-open-settings' } : undefined}
+              testId="bs-board-side-ai-off"
+            />
+          </aside>
+        )}
         {!compact && aiEnabled && (
           <aside className="bs-board-side" data-testid="bs-board-side">
             <div className="bs-board-side-head">
