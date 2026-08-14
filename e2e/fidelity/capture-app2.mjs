@@ -186,11 +186,12 @@ async function run(aiEnabled, prefix) {
   await clearBlockers();
 
   const texts = {};
-  const shot = async (name) => {
+  const shot = async (name, noPrefix = false) => {
     await page.waitForTimeout(800);
-    await page.screenshot({ path: `${OUT}/${prefix}${name}.png` });
+    const fileName = noPrefix ? name : `${prefix}${name}`;
+    await page.screenshot({ path: `${OUT}/${fileName}.png` });
     texts[name] = await page.evaluate(() => document.body.innerText);
-    console.log(`  shot ${prefix}${name}`);
+    console.log(`  shot ${fileName}`);
   };
   await shot('00-boot');
 
@@ -241,8 +242,13 @@ async function run(aiEnabled, prefix) {
 
   for (const r of ['Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Story Writer']) {
     if (await goRail(r)) {
-      const name = 'rail-' + r.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      await shot(name);
+      const railName = 'rail-' + r.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      // SKY-10382: rail-brainstorm is the one surface whose on-screen content
+      // actually differs by AI state (chat vs manual board), so name both
+      // captures explicitly instead of relying on the ai-on- prefix — other
+      // rails keep the plain/`ai-on-` scheme since they don't change.
+      const name = r === 'Brainstorm' ? `rail-brainstorm-${aiEnabled ? 'ai-on' : 'ai-off'}` : railName;
+      await shot(name, r === 'Brainstorm');
       // Non-timing verification (harness rule #3): confirm the story
       // selection actually landed on the two surfaces that go blank without
       // it, instead of assuming the earlier click "probably worked".
