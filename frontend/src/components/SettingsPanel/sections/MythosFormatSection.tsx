@@ -5,10 +5,14 @@
 // opens). Renders nothing while the status probe is in flight so the Vaults
 // tab is unchanged for v2 vaults' existing assertions.
 import { useEffect, useState } from 'react';
-import { openMythosMigrationWizard } from '../../../migration/MythosMigrationCenter';
+import {
+  ACTIVE_VAULT_CHANGED_EVENT,
+  openMythosMigrationWizard,
+} from '../../../migration/MythosMigrationCenter';
 
 export default function MythosFormatSection() {
   const [status, setStatus] = useState<MythosMigrationStatus | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +27,14 @@ export default function MythosFormatSection() {
     return () => {
       cancelled = true;
     };
+  }, [refreshToken]);
+
+  useEffect(() => {
+    // SKY-8882: re-probe when the active vault changes mid-session (switch
+    // or in-app create) instead of only once at mount.
+    const refresh = () => setRefreshToken((t) => t + 1);
+    window.addEventListener(ACTIVE_VAULT_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(ACTIVE_VAULT_CHANGED_EVENT, refresh);
   }, []);
 
   if (!status) return null;

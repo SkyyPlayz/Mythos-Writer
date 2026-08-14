@@ -44,7 +44,7 @@ import {
   MYTHOS_MACHINE_DIRNAME,
   createMythosFile,
   manifestCachePathFor,
-  mythosJsonPath,
+  mythosRootForStoryVault,
   notesVaultRootFor,
   storyVaultRootFor,
   writeMythosFile,
@@ -76,11 +76,10 @@ export type VaultFormatKind = 'mythos-v2' | 'v0.4-twin-root' | 'empty';
 
 /** Classify the configured story vault root. */
 export function detectVaultFormat(storyVaultRoot: string): VaultFormatKind {
-  const parent = path.dirname(storyVaultRoot);
-  if (
-    path.basename(storyVaultRoot) === 'Story Vault' &&
-    fs.existsSync(mythosJsonPath(parent))
-  ) {
+  // SKY-8882: authoritative on the mythos.json marker (parsed, not just
+  // present-on-disk) via the same helper the manifest-path version gate
+  // uses, instead of a hand-rolled existsSync duplicate.
+  if (mythosRootForStoryVault(storyVaultRoot) !== null) {
     return 'mythos-v2';
   }
   if (fs.existsSync(path.join(storyVaultRoot, 'manifest.json'))) return 'v0.4-twin-root';

@@ -1,7 +1,10 @@
 // Beta 4 M5 — migration prompt + wizard flow tests (IPC mocked).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import MythosMigrationCenter, { openMythosMigrationWizard } from './MythosMigrationCenter';
+import MythosMigrationCenter, {
+  notifyMythosActiveVaultChanged,
+  openMythosMigrationWizard,
+} from './MythosMigrationCenter';
 
 const v04Status: MythosMigrationStatus = {
   format: 'v0.4-twin-root',
@@ -153,5 +156,35 @@ describe('MythosMigrationCenter', () => {
       openMythosMigrationWizard();
     });
     await screen.findByTestId('mythos-migration-wizard');
+  });
+
+  // SKY-8882 defect #2: a fresh vault created/switched-to in-session must not
+  // keep showing the prompt from whatever vault was active at mount.
+  it('re-probes and clears the prompt when the active vault changes in-session', async () => {
+    render(<MythosMigrationCenter />);
+    await screen.findByTestId('mythos-migration-prompt');
+    expect(mockStatus).toHaveBeenCalledTimes(1);
+
+    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2', shouldPrompt: false });
+    act(() => {
+      notifyMythosActiveVaultChanged();
+    });
+
+    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull());
+  });
+
+  it('re-probes and shows the prompt when switching from a v2 vault into a v0.4 one', async () => {
+    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2', shouldPrompt: false });
+    render(<MythosMigrationCenter />);
+    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
+
+    mockStatus.mockResolvedValue(v04Status);
+    act(() => {
+      notifyMythosActiveVaultChanged();
+    });
+
+    await screen.findByTestId('mythos-migration-prompt');
   });
 });
