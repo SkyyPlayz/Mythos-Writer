@@ -16,6 +16,7 @@ import {
 import { LIQUID_NEON_PRESETS, LIQUID_NEON_SLOT_ROLES, type LiquidNeonPresetKey } from './theme/presets';
 import { showLnToast } from './theme/lnToast';
 import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
+import VaultDestinationPicker from './components/SettingsPanel/sections/VaultDestinationPicker';
 import {
   PROVIDER_OPTIONS,
   type ProviderKind,
@@ -3440,25 +3441,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 vault here — prefilled with the default location, editable. */}
             <div className="import-slot">
               <span className="import-slot__label">New vault location</span>
-              <div className="import-field-row">
-                <input
-                  type="text"
-                  className="import-field-row__input"
-                  placeholder="Where to create the new Mythos vault…"
-                  value={importObsDestPath}
-                  onChange={(e) => setImportObsDestPath(e.target.value)}
-                  aria-label="New Mythos vault location"
-                  data-testid="import-obs-dest-path"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary import-field-row__browse"
-                  onClick={() => { void handleImportObsDestBrowse(); }}
-                  data-testid="import-obs-dest-browse"
-                >
-                  Browse…
-                </button>
-              </div>
+              <VaultDestinationPicker
+                variant="onboarding"
+                path={importObsDestPath}
+                placeholder="Where to create the new Mythos vault…"
+                onChange={setImportObsDestPath}
+                onBrowse={handleImportObsDestBrowse}
+                ariaLabel="New Mythos vault location"
+                testIdPrefix="import-obs-dest"
+              />
             </div>
             {/* SKY-2993: inline, retryable dry-run error — the submit button stays enabled */}
             {obsError && (
