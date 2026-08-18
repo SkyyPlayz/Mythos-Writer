@@ -1,13 +1,17 @@
 // SKY-2993: Obsidian vault import — pure helpers (no Electron imports).
 // Implements importObsidianVault and dryRunObsidianImport for the onboarding IPC layer.
 //
-// Design: reuses collectMarkdownFiles-style traversal from vault.ts but adds:
-//   - attachment file collection (.png, .jpg, etc.)
-//   - wikilink resolution [[name]] → [[relative/path/to/name]] (best-effort)
+// Design: reuses collectMarkdownFiles-style traversal from vault.ts but adds
+// attachment file collection (.png, .jpg, etc.).
+//
+// SKY-10383 (owner ruling): every file — markdown included — is copied
+// byte-for-byte. Mythos resolves bare-stem [[wikilinks]] natively at read
+// time (noteBacklinks.ts), readers generate missing frontmatter ids on the
+// fly (vault.ts readSceneFile/readEntityFile), and readEntityFile consumes
+// `aliases`, so any import-time rewrite is both unnecessary and lossy.
 
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 
 import type { ObsidianImportPreview } from './ipc.js';
 
@@ -71,85 +75,6 @@ export function collectObsidianFiles(srcPath: string, base = ''): ObsidianFileLi
   return { markdownFiles, attachmentFiles };
 }
 
-// ─── Wikilink resolution ──────────────────────────────────────────────────────
-
-/**
- * Build a name→relative-path index from a list of relative .md paths.
- * Key: lowercased filename stem. Value: first matching relative path.
- * When multiple files share the same stem, the first wins (Obsidian behaviour).
- */
-export function buildWikilinkIndex(markdownFiles: string[]): Map<string, string> {
-  const index = new Map<string, string>();
-  for (const rel of markdownFiles) {
-    const stem = path.basename(rel, '.md').toLowerCase();
-    if (!index.has(stem)) index.set(stem, rel);
-  }
-  return index;
-}
-
-const WIKI_LINK_RE = /\[\[([^\]|#\n]+?)(?:[|#][^\]]*)?\]\]/g;
-
-/**
- * Expand short Obsidian wikilinks `[[name]]` to `[[relative/path/to/name]]`
- * when the name is unambiguous (exists in the index).
- * Links that already contain a `/` are left as-is (already qualified).
- * Links not found in the index are left as-is.
- */
-export function resolveWikilinks(content: string, index: Map<string, string>): string {
-  return content.replace(WIKI_LINK_RE, (match, target: string) => {
-    const trimmed = target.trim();
-    if (trimmed.includes('/')) return match; // already a path — don't touch
-    const resolved = index.get(trimmed.toLowerCase());
-    if (!resolved) return match;
-    // Strip the .md extension from the resolved path (wikilink convention)
-    const withoutExt = resolved.endsWith('.md') ? resolved.slice(0, -3) : resolved;
-    // Preserve alias/anchor from original if present
-    const extras = match.slice(2 + trimmed.length, -2); // e.g. "|Alias" or "#Heading"
-    return `[[${withoutExt}${extras}]]`;
-  });
-}
-
-// ─── Strip Obsidian-specific metadata ────────────────────────────────────────
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-
-/**
- * Remove Obsidian-only frontmatter keys that don't make sense in Mythos.
- * Keys removed: `tags` is preserved (Mythos uses it); `cssclass`, `aliases`,
- * `publish`, `uid` are stripped. `id` is preserved or generated if absent.
- */
-export function processObsidianFrontmatter(
-  content: string,
-  fallbackTitle: string,
-): string {
-  const OBSIDIAN_ONLY_KEYS = new Set(['cssclass', 'aliases', 'publish', 'uid']);
-
-  const match = FRONTMATTER_RE.exec(content);
-  if (!match) {
-    // No frontmatter — inject minimal one with a fresh id
-    const id = crypto.randomUUID();
-    return `---\nid: ${id}\ntitle: ${JSON.stringify(fallbackTitle)}\n---\n${content}`;
-  }
-
-  const fmBlock = match[1];
-  const prose = content.slice(match[0].length);
-
-  const filteredLines = fmBlock
-    .split('\n')
-    .filter((line) => {
-      const key = line.split(':')[0]?.trim();
-      return !OBSIDIAN_ONLY_KEYS.has(key ?? '');
-    });
-
-  // Ensure `id` is present
-  const hasId = filteredLines.some((l) => l.startsWith('id:'));
-  if (!hasId) {
-    filteredLines.unshift(`id: ${crypto.randomUUID()}`);
-  }
-
-  return `---\n${filteredLines.join('\n')}\n---\n${prose}`;
-}
-
 // ─── Import ───────────────────────────────────────────────────────────────────
 
 export interface ObsidianImportResult {
@@ -166,7 +91,11 @@ export interface ObsidianImportResult {
 
 /**
  * Copy all .md and attachment files from srcPath into vaultRoot,
- * preserving directory structure. Resolves wikilinks in .md files.
+ * preserving directory structure. Every file is copied byte-for-byte —
+ * wikilinks and frontmatter are never rewritten (SKY-10383: "notes, folders
+ * and [[links]] come across as-is"). Bare-stem `[[name]]` links resolve at
+ * read time via noteBacklinks.ts; ambiguous or unresolvable links stay
+ * verbatim in the note, exactly as Obsidian left them.
  * Returns stats; does NOT update the manifest (caller's responsibility).
  */
 export function importObsidianToVaultDir(
@@ -190,13 +119,8 @@ export function importObsidianToVaultDir(
 
   const { markdownFiles, attachmentFiles } = collectObsidianFiles(realSrc);
   const sourceCount = markdownFiles.length + attachmentFiles.length;
-  const wikilinkIndex = buildWikilinkIndex(markdownFiles);
-  const allFiles: Array<{ rel: string; isMarkdown: boolean }> = [
-    ...markdownFiles.map((rel) => ({ rel, isMarkdown: true })),
-    ...attachmentFiles.map((rel) => ({ rel, isMarkdown: false })),
-  ];
 
-  for (const { rel, isMarkdown } of allFiles) {
+  for (const rel of [...markdownFiles, ...attachmentFiles]) {
     try {
       const srcFull = path.join(realSrc, rel);
       const dstFull = path.join(vaultRoot, rel);
@@ -213,19 +137,7 @@ export function importObsidianToVaultDir(
       }
 
       fs.mkdirSync(path.dirname(dstFull), { recursive: true });
-
-      if (isMarkdown) {
-        const raw = fs.readFileSync(srcFull, 'utf-8');
-        const fallbackTitle = path.basename(rel, '.md');
-        const processed = processObsidianFrontmatter(
-          resolveWikilinks(raw, wikilinkIndex),
-          fallbackTitle,
-        );
-        fs.writeFileSync(dstFull, processed, 'utf-8');
-      } else {
-        fs.copyFileSync(srcFull, dstFull);
-      }
-
+      fs.copyFileSync(srcFull, dstFull);
       imported++;
     } catch (err) {
       errors.push(`${rel}: ${(err as Error).message}`);

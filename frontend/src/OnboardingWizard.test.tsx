@@ -93,7 +93,7 @@ function makeApi(overrides: Partial<{
     templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
     templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
-    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn(() => resolvedInEffect({ homeDir: '/home/user', pathSeparator: '/' })),
+    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn(() => resolvedInEffect({ homeDir: '/home/user', pathSeparator: '/', defaultVaultsParentPath: '/home/user/MythosVaults' })),
     vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn(() => resolvedInEffect({
       homeDir: '/home/user',
       documentsDir: '/home/user/Documents',
@@ -105,7 +105,7 @@ function makeApi(overrides: Partial<{
     importDocxToStoryVault: overrides.importDocxToStoryVault ?? vi.fn().mockResolvedValue({ ok: true, importedStories: [], errors: [] }),
     // SKY-2993: Obsidian vault importer (onboarding Path 3)
     dryRunObsidianImport: overrides.dryRunObsidianImport ?? vi.fn().mockResolvedValue({ preview: OBS_PREVIEW }),
-    importObsidianVault: overrides.importObsidianVault ?? vi.fn().mockResolvedValue({ ok: true, targetPath: '/home/user/Vault' }),
+    importObsidianVault: overrides.importObsidianVault ?? vi.fn().mockResolvedValue({ ok: true, mythosVaultRoot: '/home/user/MythosVaults/notes' }),
     onObsidianImportProgress: overrides.onObsidianImportProgress ?? vi.fn().mockReturnValue(() => {}),
   };
 }
@@ -1692,7 +1692,13 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     );
     await openObsReport('/obs/notes');
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes'));
+    // SKY-10388: one call, one NEW vault — destination prefilled from
+    // vaultGetPaths, vault named after the source folder.
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith({
+      targets: [{ kind: 'notes', srcPath: '/obs/notes' }],
+      destParentPath: '/home/user/MythosVaults',
+      destVaultName: 'notes',
+    }));
     await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
   });
@@ -1708,10 +1714,18 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     expect(screen.getByTestId('obs-report-notes')).toBeInTheDocument();
     expect(screen.getByTestId('obs-report-story')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/notes', 'notes'));
+    // SKY-10388: both sides land in the SAME new vault via a single call.
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith({
+      targets: [
+        { kind: 'notes', srcPath: '/obs/notes' },
+        { kind: 'story', srcPath: '/obs/story' },
+      ],
+      destParentPath: '/home/user/MythosVaults',
+      destVaultName: 'notes',
+    }));
     await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-    expect(mockApi.importObsidianVault).toHaveBeenCalledWith('/obs/story', 'story');
+    expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1);
   });
 
   it('AC-E-02d: report Back returns to the form without importing', async () => {
@@ -1814,6 +1828,84 @@ describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
     expect(screen.queryByTestId('obs-import-error')).not.toBeInTheDocument();
     await finishImportTail();
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
+  });
+
+  // ─── SKY-10388: new-vault destination + multi-section submit block ────────
+
+  it('SKY-10388: destination is prefilled with the default vaults parent and browsable', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    await waitFor(() => expect(screen.getByTestId('import-obs-dest-path')).toHaveValue('/home/user/MythosVaults'));
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/Elsewhere', cancelled: false });
+    fireEvent.click(screen.getByTestId('import-obs-dest-browse'));
+    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Choose where to create the new vault', '/home/user/MythosVaults'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-dest-path')).toHaveValue('/home/user/Elsewhere'));
+    await act(async () => {});
+  });
+
+  it('SKY-10388: an edited destination is sent as destParentPath on confirm', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-obs-dest-path'), { target: { value: '/home/user/Custom' } });
+    await openObsReport('/obs/notes');
+    fireEvent.click(screen.getByTestId('obs-report-confirm'));
+    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith(
+      expect.objectContaining({ destParentPath: '/home/user/Custom' }),
+    ));
+    await finishImportTail();
+  });
+
+  it('SKY-10388: filling more than one section blocks submit and names the winning section', async () => {
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/obs/notes', cancelled: false });
+    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    expect(screen.queryByTestId('import-multi-section-msg')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
+    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
+    expect(screen.getByTestId('import-multi-section-msg')).toHaveTextContent('Open Mythos Writer vault');
+    // Clearing the extra section unblocks submit again.
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '' } });
+    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
+    expect(screen.queryByTestId('import-multi-section-msg')).not.toBeInTheDocument();
+    await act(async () => {});
+  });
+
+  it('SKY-10388: MW validator rejects a writable folder without Story Vault/manifest.json', async () => {
+    mockApi.validatePath = vi.fn((path: string) => Promise.resolve(
+      path.endsWith('/Story Vault/manifest.json')
+        ? { exists: false, isEmpty: true, writable: false }
+        : { exists: true, isEmpty: false, writable: true },
+    ));
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/ObsFolder' } });
+    // 400ms debounce → validation resolves → invalid message (never "Folder looks good.")
+    await waitFor(
+      () => expect(screen.getByTestId('import-mw-msg')).toHaveTextContent("This doesn't look like a Mythos Writer vault"),
+      { timeout: 3000 },
+    );
+    await act(async () => {});
+  });
+
+  it('SKY-10388: MW validator accepts a folder with Story Vault/manifest.json', async () => {
+    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
+    await renderWizard(
+      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+    );
+    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/RealVault' } });
+    await waitFor(
+      () => expect(screen.getByTestId('import-mw-msg')).toHaveTextContent('Folder looks good.'),
+      { timeout: 3000 },
+    );
+    expect(mockApi.validatePath).toHaveBeenCalledWith('/home/user/RealVault/Story Vault/manifest.json');
+    await act(async () => {});
   });
 
   it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {

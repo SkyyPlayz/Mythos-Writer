@@ -6,14 +6,12 @@ import os from 'os';
 
 import {
   collectObsidianFiles,
-  buildWikilinkIndex,
-  resolveWikilinks,
-  processObsidianFrontmatter,
   importObsidianToVaultDir,
   dryRunObsidianImport,
   OBSIDIAN_ATTACHMENT_EXTS,
   MAX_IMPORT_FILE_BYTES,
 } from './obsidianImporter.js';
+import { getNoteBacklinks } from './noteBacklinks.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -87,90 +85,6 @@ describe('collectObsidianFiles', () => {
   });
 });
 
-// ─── buildWikilinkIndex ───────────────────────────────────────────────────────
-
-describe('buildWikilinkIndex', () => {
-  it('maps stem → path', () => {
-    const index = buildWikilinkIndex(['Notes/My Note.md', 'Archive/Old.md']);
-    expect(index.get('my note')).toBe('Notes/My Note.md');
-    expect(index.get('old')).toBe('Archive/Old.md');
-  });
-
-  it('first file wins on stem collision', () => {
-    const index = buildWikilinkIndex(['A/Note.md', 'B/Note.md']);
-    expect(index.get('note')).toBe('A/Note.md');
-  });
-
-  it('lookup is case-insensitive', () => {
-    const index = buildWikilinkIndex(['Folder/Title.md']);
-    expect(index.get('title')).toBe('Folder/Title.md');
-  });
-});
-
-// ─── resolveWikilinks ────────────────────────────────────────────────────────
-
-describe('resolveWikilinks', () => {
-  const index = buildWikilinkIndex(['Lore/Dragons.md', 'Characters/Elara.md']);
-
-  it('expands unqualified link to path without .md', () => {
-    const out = resolveWikilinks('See [[Dragons]] for details.', index);
-    expect(out).toBe('See [[Lore/Dragons]] for details.');
-  });
-
-  it('leaves already-qualified links alone', () => {
-    const out = resolveWikilinks('[[Lore/Dragons]]', index);
-    expect(out).toBe('[[Lore/Dragons]]');
-  });
-
-  it('leaves unresolved links unchanged', () => {
-    const out = resolveWikilinks('[[UnknownThing]]', index);
-    expect(out).toBe('[[UnknownThing]]');
-  });
-
-  it('resolves multiple links in one pass', () => {
-    const out = resolveWikilinks('[[Dragons]] and [[Elara]].', index);
-    expect(out).toBe('[[Lore/Dragons]] and [[Characters/Elara]].');
-  });
-
-  it('preserves alias suffix', () => {
-    const out = resolveWikilinks('[[Dragons|the dragon lore]]', index);
-    expect(out).toContain('[[Lore/Dragons|the dragon lore]]');
-  });
-});
-
-// ─── processObsidianFrontmatter ───────────────────────────────────────────────
-
-describe('processObsidianFrontmatter', () => {
-  it('injects id + title when no frontmatter present', () => {
-    const out = processObsidianFrontmatter('Just prose.', 'My Note');
-    expect(out).toMatch(/^---\n/);
-    expect(out).toMatch(/id: [0-9a-f-]{36}/);
-    expect(out).toMatch(/title: "My Note"/);
-    expect(out).toContain('Just prose.');
-  });
-
-  it('preserves existing id', () => {
-    const content = '---\nid: existing-id\ntitle: foo\n---\nProse.';
-    const out = processObsidianFrontmatter(content, 'fallback');
-    expect(out).toContain('id: existing-id');
-    expect(out).not.toMatch(/id: [0-9a-f-]{36}/); // no extra id injected
-  });
-
-  it('strips cssclass but preserves tags', () => {
-    const content = '---\ntags: [writing]\ncssclass: wide\n---\nProse.';
-    const out = processObsidianFrontmatter(content, 'n');
-    expect(out).toContain('tags: [writing]');
-    expect(out).not.toContain('cssclass');
-  });
-
-  it('strips aliases and publish', () => {
-    const content = '---\naliases: [foo]\npublish: true\n---\nProse.';
-    const out = processObsidianFrontmatter(content, 'n');
-    expect(out).not.toContain('aliases');
-    expect(out).not.toContain('publish');
-  });
-});
-
 // ─── importObsidianToVaultDir ─────────────────────────────────────────────────
 
 describe('importObsidianToVaultDir', () => {
@@ -185,14 +99,13 @@ describe('importObsidianToVaultDir', () => {
     fs.rmSync(dst, { recursive: true, force: true });
   });
 
-  it('copies markdown files and processes frontmatter', () => {
+  it('copies markdown files byte-for-byte (no frontmatter injection)', () => {
     writeFile(src, 'Note.md', '# Hello');
     const result = importObsidianToVaultDir(src, dst);
     expect(result.imported).toBe(1);
     expect(result.skipped).toBe(0);
-    expect(fs.existsSync(path.join(dst, 'Note.md'))).toBe(true);
     const content = fs.readFileSync(path.join(dst, 'Note.md'), 'utf-8');
-    expect(content).toMatch(/id:/); // frontmatter injected
+    expect(content).toBe('# Hello');
   });
 
   it('copies attachments as binary', () => {
@@ -218,12 +131,52 @@ describe('importObsidianToVaultDir', () => {
     expect(fs.existsSync(path.join(dst, 'A/B/deep.md'))).toBe(true);
   });
 
-  it('resolves wikilinks during copy', () => {
-    writeFile(src, 'Lore.md', '# Lore');
-    writeFile(src, 'Story.md', '[[Lore]] is referenced here.');
+  it('SKY-10383: leaves wikilinks unrewritten, even across folders', () => {
+    writeFile(src, 'Lore/Dragons.md', '# Dragons');
+    writeFile(src, 'Story.md', '[[Dragons]] is referenced here.');
     importObsidianToVaultDir(src, dst);
     const story = fs.readFileSync(path.join(dst, 'Story.md'), 'utf-8');
-    expect(story).toContain('[[Lore]]'); // file is in root — already resolved (same path)
+    // Bare-stem link is copied as-is — Mythos resolves it natively on read
+    // (noteBacklinks.ts), so rewriting it here would only mutate the user's prose.
+    expect(story).toContain('[[Dragons]]');
+    expect(story).not.toContain('[[Lore/Dragons]]');
+  });
+
+  // SKY-10383 pinned regression (CEO scope pin): imported .md bytes are
+  // identical to the Obsidian source, AND bare [[stem]] links still resolve
+  // through the native backlink resolver. Both assertions required.
+  it('SKY-10383: fixture vault imports byte-identical and backlinks resolve', () => {
+    const fixtures: Record<string, string> = {
+      // Frontmatter with keys the old importer used to strip — must survive.
+      'Characters/Elara.md':
+        '---\naliases: [The Wanderer]\ncssclass: wide\npublish: false\n---\n# Elara\n\nShe studies [[Dragons]].\n',
+      // No frontmatter, no trailing newline — the old importer injected an id here.
+      'Lore/Dragons.md': '# Dragons\n\nSee [[Elara|the wanderer]] and [[Lore/Ancient Fire]].',
+      'Lore/Ancient Fire.md': '# Ancient Fire\n\nUnresolvable link stays put: [[No Such Note]].\n',
+      // CRLF line endings — byte-identity must preserve them.
+      'Notes/Windows Note.md': '# CRLF\r\n\r\nLinks to [[Dragons]].\r\n',
+    };
+    for (const [rel, content] of Object.entries(fixtures)) writeFile(src, rel, content);
+
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.ok).toBe(true);
+    expect(result.imported).toBe(Object.keys(fixtures).length);
+
+    for (const rel of Object.keys(fixtures)) {
+      const srcBytes = fs.readFileSync(path.join(src, rel));
+      const dstBytes = fs.readFileSync(path.join(dst, rel));
+      expect(dstBytes.equals(srcBytes), `${rel} must be byte-identical`).toBe(true);
+    }
+
+    // Bare [[Dragons]] links in two different folders resolve to Lore/Dragons.md.
+    const { backlinks } = getNoteBacklinks(dst, 'Lore/Dragons.md');
+    const linkingPaths = backlinks.map((b) => b.path);
+    expect(linkingPaths).toContain('Characters/Elara.md');
+    expect(linkingPaths).toContain('Notes/Windows Note.md');
+
+    // Aliased bare link [[Elara|the wanderer]] resolves too.
+    const elara = getNoteBacklinks(dst, 'Characters/Elara.md');
+    expect(elara.backlinks.map((b) => b.path)).toContain('Lore/Dragons.md');
   });
 
   it('returns ok:false + error for non-existent source', () => {

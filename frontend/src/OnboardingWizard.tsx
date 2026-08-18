@@ -168,7 +168,7 @@ type Api = {
   templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
   templateDelete: (id: string) => Promise<{ ok: true } | { error: string }>;
   templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
-  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\' }>;
+  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
   /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
   vaultGetSystemPaths?: () => Promise<SystemPaths>;
   settingsSet?: (settings: AppSettings) => Promise<{ saved: boolean; error?: string }>;
@@ -179,7 +179,8 @@ type Api = {
   }>;
   /** SKY-2993: Obsidian vault importer — dry-run scan + commit (onboarding Path 3) */
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
-  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string; dropWarning?: string }>;
+  /** SKY-10388: all selected sources go into ONE new Mythos vault at destParentPath. */
+  importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string }) => Promise<{ ok: boolean; mythosVaultRoot?: string; error?: string; dropWarning?: string }>;
   onObsidianImportProgress?: (cb: (data: ObsidianImportProgress) => void) => () => void;
 };
 
@@ -807,7 +808,27 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [importMwMsg, setImportMwMsg] = useState('');
   const [importObsNotesPath, setImportObsNotesPath] = useState('');
   const [importObsStoryPath, setImportObsStoryPath] = useState('');
+  // SKY-10388: where the NEW Mythos vault is created (owner ruling R2/R3).
+  const [importObsDestPath, setImportObsDestPath] = useState('');
+
+  // SKY-10388 (owner ruling R3): prefill the destination with the default
+  // vaults parent; the user can still edit/browse it before importing.
+  useEffect(() => {
+    api().vaultGetPaths?.().then((paths) => {
+      if (paths.defaultVaultsParentPath) {
+        setImportObsDestPath((prev) => prev || paths.defaultVaultsParentPath!);
+      }
+    }).catch(() => { /* non-fatal */ });
+  }, []);
   const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
+  // SKY-10388: the three sections are separate, mutually exclusive imports.
+  // More than one filled blocks submit (with an inline explanation) instead of
+  // the old priority chain silently dropping everything but section 1.
+  const filledImportSections = [
+    importMwPath.trim() ? 'Open Mythos Writer vault' : null,
+    (importObsNotesPath || importObsStoryPath) ? 'Import from Obsidian' : null,
+    importDocxFiles.length > 0 ? 'Import Word documents' : null,
+  ].filter((s): s is string => s !== null);
   const [importRunning, setImportRunning] = useState(false);
   const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
   const docxFileInputRef = useRef<HTMLInputElement>(null);
@@ -1328,15 +1349,31 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
   }
 
+  // SKY-10388: mirrors validateCustomPathNow's manifest check — a folder that
+  // merely exists+is writable is not a Mythos vault; "Folder looks good."
+  // must never be shown for a folder that would then fail to open.
   async function validateImportMwPath(raw: string) {
+    const opts = pathOptionsRef.current;
+    const expanded = raw.startsWith('~/')
+      ? (opts.homeDir ?? '') + raw.slice(1)
+      : raw.startsWith('~\\')
+      ? (opts.homeDir ?? '') + raw.slice(1)
+      : raw;
     try {
-      const result = await api().validatePath(raw);
-      if (!result.exists) {
+      const sep = opts.sep ?? '/';
+      const [base, mythosCheck] = await Promise.all([
+        api().validatePath(expanded),
+        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
+      ]);
+      if (!base.exists) {
         setImportMwValidation('invalid');
         setImportMwMsg('Folder not found.');
-      } else if (!result.writable) {
+      } else if (!base.writable) {
         setImportMwValidation('invalid');
         setImportMwMsg('Folder is not accessible.');
+      } else if (!mythosCheck.exists) {
+        setImportMwValidation('invalid');
+        setImportMwMsg("This doesn't look like a Mythos Writer vault (no Story Vault/manifest.json found).");
       } else {
         setImportMwValidation('valid');
         setImportMwMsg('Folder looks good.');
@@ -1375,6 +1412,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     else setImportObsStoryPath(picked.path);
   }
 
+  // SKY-10388: pick the parent folder the new Mythos vault is created in.
+  async function handleImportObsDestBrowse() {
+    const picked = await api().chooseVaultFolder('Choose where to create the new vault', importObsDestPath || undefined);
+    if (picked.cancelled || !picked.path) return;
+    setImportObsDestPath(picked.path);
+  }
+
   function handleDocxFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
@@ -1390,6 +1434,9 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   async function handleImportOrOpen() {
+    // SKY-10388: the sections are mutually exclusive imports — never let one
+    // silently win over another (the button is disabled too; this is a guard).
+    if (filledImportSections.length > 1) return;
     setImportRunning(true);
     try {
       if (importMwPath.trim()) {
@@ -1491,27 +1538,38 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     }
   }
 
-  // Commit the import for every scanned target, streaming progress events into
-  // the report view. Errors stay inline in the report so Confirm can be retried.
+  // SKY-10388: name the new vault after the first selected source folder —
+  // falls back to the creator's default when the basename is unusable.
+  function obsidianDestVaultName(): string | undefined {
+    const first = obsDryRun?.[0]?.path ?? '';
+    const trimmed = first.replace(/[\\/]+$/, '');
+    const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+    const base = idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+    return base && base !== '.' && base !== '..' ? base : undefined;
+  }
+
+  // Commit the import: ONE new Mythos vault at the chosen destination, every
+  // scanned target copied into its side of it (SKY-10388, owner ruling R2).
+  // Errors stay inline in the report so Confirm can be retried.
   async function handleObsidianConfirm() {
     if (!obsDryRun || obsImporting) return;
     setObsError('');
     setObsImporting(true);
     setObsProgress(null);
     const unsubscribe = api().onObsidianImportProgress?.((data) => setObsProgress(data));
-    const dropWarnings: string[] = [];
     try {
-      for (const target of obsDryRun) {
-        const res = await api().importObsidianVault(target.path, target.kind);
-        if (!res.ok || res.error) {
-          setObsError(res.error ?? 'Import failed. Check the folder and try again.');
-          return;
-        }
-        if (res.dropWarning) dropWarnings.push(res.dropWarning);
+      const res = await api().importObsidianVault({
+        targets: obsDryRun.map((target) => ({ kind: target.kind, srcPath: target.path })),
+        destParentPath: importObsDestPath.trim() || undefined,
+        destVaultName: obsidianDestVaultName(),
+      });
+      if (!res.ok || res.error) {
+        setObsError(res.error ?? 'Import failed. Check the folder and try again.');
+        return;
       }
       // Drop warnings are non-fatal (import still succeeded) — surface them
       // as a toast alongside the success path instead of blocking the finish.
-      if (dropWarnings.length > 0) showLnToast(dropWarnings.join(' '));
+      if (res.dropWarning) showLnToast(res.dropWarning);
       finishImportViaTail({ ...initialSettings, onboardingComplete: true });
     } catch (e) {
       setObsError(e instanceof Error ? e.message : 'Import failed. Check the folder and try again.');
@@ -3296,7 +3354,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           ) : (
             <>
           <h2 className="gs-modal__title">Import / Open</h2>
-          <p className="gs-modal__subtitle">Fill in at least one section, then click Import / Open.</p>
+          <p className="gs-modal__subtitle">Fill in exactly one section, then click Import / Open.</p>
 
           {/* Section 1: Open MW vault */}
           <section className="import-section" aria-label="Open Mythos Writer vault" data-testid="import-section-mw">
@@ -3378,6 +3436,30 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 </button>
               </div>
             </div>
+            {/* SKY-10388 (owner rulings R2/R3): the import creates a NEW Mythos
+                vault here — prefilled with the default location, editable. */}
+            <div className="import-slot">
+              <span className="import-slot__label">New vault location</span>
+              <div className="import-field-row">
+                <input
+                  type="text"
+                  className="import-field-row__input"
+                  placeholder="Where to create the new Mythos vault…"
+                  value={importObsDestPath}
+                  onChange={(e) => setImportObsDestPath(e.target.value)}
+                  aria-label="New Mythos vault location"
+                  data-testid="import-obs-dest-path"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary import-field-row__browse"
+                  onClick={() => { void handleImportObsDestBrowse(); }}
+                  data-testid="import-obs-dest-browse"
+                >
+                  Browse…
+                </button>
+              </div>
+            </div>
             {/* SKY-2993: inline, retryable dry-run error — the submit button stays enabled */}
             {obsError && (
               <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-dryrun-error">
@@ -3428,13 +3510,20 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
           </section>
 
           <p className="import-tip" data-testid="import-tip">
-            Tip: fill in one section above, then click Import / Open.
+            Tip: fill in exactly one section above, then click Import / Open.
           </p>
+          {/* SKY-10388: block submit instead of silently importing only the
+              highest-priority section — say which one would win and why. */}
+          {filledImportSections.length > 1 && (
+            <p className="import-validation import-validation--invalid" role="alert" data-testid="import-multi-section-msg">
+              {`More than one section is filled — only "${filledImportSections[0]}" would be imported and the rest ignored. Clear the other section${filledImportSections.length > 2 ? 's' : ''} to continue.`}
+            </p>
+          )}
           <div className="import-actions">
             <button
               type="button"
               className="btn-primary import-actions__submit"
-              disabled={!importHasInput || importRunning}
+              disabled={!importHasInput || importRunning || filledImportSections.length > 1}
               onClick={() => { void handleImportOrOpen(); }}
               data-testid="import-action-btn"
             >

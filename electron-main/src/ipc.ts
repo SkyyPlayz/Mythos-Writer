@@ -2472,16 +2472,32 @@ export interface OnboardingImportDocxResponse {
 /** SKY-2993: Obsidian vault importer IPC types. */
 export type ObsidianTargetVaultKind = 'notes' | 'story';
 
-export interface OnboardingImportObsidianPayload {
+/** SKY-10388: one selected Obsidian source folder + which side of the new
+ *  vault it lands in. */
+export interface ObsidianImportTargetSpec {
+  kind: ObsidianTargetVaultKind;
   srcPath: string;
-  targetVaultKind: ObsidianTargetVaultKind;
+}
+
+/** SKY-10388 (owner ruling R2): the import scaffolds a NEW Mythos vault and
+ *  copies every selected source into it — it never writes into the currently
+ *  open vault, and never modifies the source folders. */
+export interface OnboardingImportObsidianPayload {
+  /** All selected sources (notes and/or story), imported into ONE new vault. */
+  targets: ObsidianImportTargetSpec[];
+  /** Parent directory for the new vault. Tilde-expanded server-side; falls
+   *  back to the default Mythos vaults parent when absent (owner ruling R3). */
+  destParentPath?: string;
+  /** Optional vault name; uniquified against destParentPath when taken. */
+  destVaultName?: string;
 }
 
 export interface OnboardingImportObsidianResponse {
   ok: boolean;
-  targetPath?: string;
+  /** Root folder of the freshly created Mythos vault. */
+  mythosVaultRoot?: string;
   error?: string;
-  /** Total files found in the source vault. */
+  /** Total files found across all source folders. */
   sourceCount?: number;
   /** Files successfully copied. */
   imported?: number;
@@ -3999,6 +4015,9 @@ export interface VaultGetPathsResponse {
   notesVaultPath: string;
   homeDir: string;
   pathSeparator: '/' | '\\';
+  /** SKY-10388: default parent for new Mythos vaults — lets the renderer
+   *  prefill destination pickers without hardcoding a path. */
+  defaultVaultsParentPath: string;
 }
 
 export interface VaultGetSystemPathsResponse {

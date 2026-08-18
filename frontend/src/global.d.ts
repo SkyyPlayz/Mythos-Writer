@@ -1307,7 +1307,7 @@ interface Window {
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
-    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\' }>;
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
     vaultGetSystemPaths: () => Promise<{
       homeDir: string;
       documentsDir: string;
@@ -1359,8 +1359,9 @@ interface Window {
     onboardingReplay: () => Promise<{ ok: boolean }>;
     // SKY-2971: Word (.docx) → Story Vault importer
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
-    // SKY-2993: Obsidian vault importer
-    importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ ok: boolean; targetPath?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
+    // SKY-2993 / SKY-10388: Obsidian vault importer — every selected source is
+    // copied into ONE new Mythos vault created under destParentPath.
+    importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string }) => Promise<{ ok: boolean; mythosVaultRoot?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
     dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
     onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
     // Beta 3 M24: Settings → Vault & Files import flows
