@@ -36,6 +36,18 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 // ─── Fixture: a small but representative Obsidian vault ────────────────────
 
+const MARCUS_MD = [
+  '---',
+  'tags: [protagonist]',
+  'aliases: [Marc]',
+  'cssclass: obsidian-only-should-be-stripped',
+  '---',
+  '',
+  'Marcus first appears in [[Prologue]] and carries the [[Obsidian Gate]] shard.',
+  '',
+  '![[Marcus.png]]',
+].join('\n');
+
 function buildFixtureVault(root: string): void {
   fs.mkdirSync(path.join(root, '.obsidian'), { recursive: true });
   fs.writeFileSync(path.join(root, '.obsidian', 'app.json'), '{}');
@@ -45,22 +57,10 @@ function buildFixtureVault(root: string): void {
   fs.mkdirSync(path.join(root, 'Lore'), { recursive: true });
 
   // Note with frontmatter + wikilinks to notes in other folders (one at
-  // root, one nested one level deeper) so resolution actually rewrites at
-  // least one link rather than passing it through unchanged.
-  fs.writeFileSync(
-    path.join(root, 'Characters', 'Marcus.md'),
-    [
-      '---',
-      'tags: [protagonist]',
-      'aliases: [Marc]',
-      'cssclass: obsidian-only-should-be-stripped',
-      '---',
-      '',
-      'Marcus first appears in [[Prologue]] and carries the [[Obsidian Gate]] shard.',
-      '',
-      '![[Marcus.png]]',
-    ].join('\n'),
-  );
+  // root, one nested one level deeper). Since SKY-10383 the importer copies
+  // markdown byte-for-byte — no frontmatter stripping, no link rewriting —
+  // so the test asserts this exact content survives the import untouched.
+  fs.writeFileSync(path.join(root, 'Characters', 'Marcus.md'), MARCUS_MD);
 
   // Attachment co-located with the note that embeds it (Obsidian convention)
   fs.writeFileSync(path.join(root, 'Characters', 'Marcus.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
@@ -163,17 +163,18 @@ test('SKY-8005: Obsidian vault imported via Settings -> Import another vault mat
     expect(fs.existsSync(importedAttachment)).toBe(true);
     expect(fs.readFileSync(importedAttachment).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(true);
 
-    // Frontmatter fidelity: Obsidian-only key stripped, app-meaningful key kept
+    // Markdown fidelity (SKY-10383): the importer copies notes byte-for-byte.
+    // Frontmatter — including Obsidian-only keys — and wikilinks pass through
+    // untouched; the nested-target link stays bare, never path-qualified.
     const marcusOut = fs.readFileSync(marcusPath, 'utf-8');
     expect(marcusOut).toContain('tags: [protagonist]');
-    expect(marcusOut).not.toContain('cssclass:');
-    expect(marcusOut).not.toContain('aliases:');
-
-    // Wikilinks resolved: root-level target keeps its short form, but the
-    // nested target is rewritten to a path-qualified link — proving the
-    // real resolver ran rather than passing content through untouched.
+    expect(marcusOut).toContain('cssclass: obsidian-only-should-be-stripped');
+    expect(marcusOut).toContain('aliases: [Marc]');
     expect(marcusOut).toContain('[[Prologue]]');
-    expect(marcusOut).toContain('[[Lore/Obsidian Gate]]');
+    expect(marcusOut).toContain('[[Obsidian Gate]]');
+    expect(marcusOut).not.toContain('[[Lore/Obsidian Gate]]');
+    // The full contract in one assertion: output is the fixture, exactly.
+    expect(marcusOut).toBe(MARCUS_MD);
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
