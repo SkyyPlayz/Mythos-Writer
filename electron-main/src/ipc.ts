@@ -2644,6 +2644,14 @@ export interface CreateDefaultMythosVaultPayload {
   vaultName?: string;
   /** Default 'default' (full scaffold); 'blank' suppresses seed content. */
   seedMode?: 'default' | 'blank';
+  /**
+   * Default true: persist the new vault as active and re-point the watchers
+   * (the SKY-320 switcher flow, where the renderer reloads immediately).
+   * SKY-10401: false creates + registers the vault in recents WITHOUT
+   * activating it, so Settings can offer a switch and follow up with
+   * `project:switch` only if the user accepts.
+   */
+  activate?: boolean;
 }
 
 export interface CreateDefaultMythosVaultResponse {

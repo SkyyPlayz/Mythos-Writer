@@ -5471,6 +5471,20 @@ const handlers: IpcHandlers = {
         error: `Could not create vault bundle: ${createdVault.error}`,
       };
     }
+    // SKY-10401: Settings' "New vault" flow creates without activating — it
+    // registers the pair in recents (so a later project:switch passes the
+    // allowlist gate) but leaves the active vault, watchers and DB untouched
+    // until the user accepts the offered switch.
+    if (payload?.activate === false) {
+      addToRecentProjects(storyVaultPath, notesVaultPath);
+      return {
+        mythosVaultRoot,
+        vaultRoot: storyVaultPath,
+        notesVaultRoot: notesVaultPath,
+        name: finalName,
+        created,
+      };
+    }
     // Persist settings + add to recents BEFORE the scaffold so the new pair
     // is in the allowlist if the renderer follows up with a project:switch.
     saveVaultSettings({

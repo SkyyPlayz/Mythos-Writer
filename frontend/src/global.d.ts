@@ -1281,6 +1281,8 @@ interface Window {
       parentPath?: string;
       vaultName?: string;
       seedMode?: 'default' | 'blank';
+      /** SKY-10401: false = create + register in recents without activating. */
+      activate?: boolean;
     }) => Promise<{
       mythosVaultRoot: string;
       vaultRoot: string;

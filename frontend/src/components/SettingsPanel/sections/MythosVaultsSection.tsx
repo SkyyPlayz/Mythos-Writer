@@ -4,7 +4,10 @@
 // dropdown on each vault card; switching vaults applies its theme + toast").
 // Clicking a card switches vaults; DesktopShell applies the stored theme on
 // the switch push. M28 later grows these cards (stats, import, danger zone).
-import { useCallback, useEffect, useState } from 'react';
+// SKY-10401: "New vault" button + inline create-empty-vault flow — reuses the
+// SKY-320 vaultCreateDefaultMythos backend with activate:false, then offers a
+// normal project:switch to the new vault.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
@@ -14,11 +17,19 @@ import {
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/presets';
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
+import VaultDestinationPicker from './VaultDestinationPicker';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
   vaultRoot: string;
   notesVaultRoot?: string;
+  name: string;
+}
+
+interface CreatedVault {
+  mythosVaultRoot: string;
+  vaultRoot: string;
+  notesVaultRoot: string;
   name: string;
 }
 
@@ -38,15 +49,36 @@ const cardSt = (current: boolean): CSSProperties => ({
 export default function MythosVaultsSection({ settings, setSettings, setSavedOk }: Props) {
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createDest, setCreateDest] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdVault, setCreatedVault] = useState<CreatedVault | null>(null);
+  const createNameRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
+  const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
       .then((res) => { if (res?.projects) setVaults(res.projects); })
       .catch(() => { /* non-fatal — section renders empty */ });
+  }, []);
+
+  useEffect(() => {
+    refreshVaults();
     window.api?.getVaultRoot?.()
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
-  }, []);
+  }, [refreshVaults]);
+
+  useEffect(() => {
+    if (createOpen) createNameRef.current?.focus();
+  }, [createOpen]);
+
+  // If the user switches to the just-created vault via its card instead of
+  // the offer button, the offer is answered — drop it.
+  useEffect(() => {
+    if (createdVault && activeRoot === createdVault.vaultRoot) setCreatedVault(null);
+  }, [activeRoot, createdVault]);
 
   /** Prototype themeChange (7112–7120): store the vault's default; when it is
    *  the CURRENT vault, also apply it live. Persisted immediately so a vault
@@ -99,13 +131,191 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     } catch { /* switch failed — card stays as-is */ }
   }, [activeRoot, settings.vaultThemes, setSettings]);
 
+  /** SKY-10385: open the create form, prefilled with the default vaults
+   *  parent (same rule Skyy set for import destinations in SKY-10370 R3). */
+  const onOpenCreate = useCallback(async () => {
+    setCreateOpen(true);
+    setCreateError(null);
+    setCreatedVault(null);
+    if (!createDest) {
+      try {
+        const paths = await window.api?.vaultGetPaths?.();
+        if (paths?.defaultVaultsParentPath) setCreateDest(paths.defaultVaultsParentPath);
+      } catch { /* prefill unavailable — Browse still works */ }
+    }
+  }, [createDest]);
+
+  const onCancelCreate = useCallback(() => {
+    setCreateOpen(false);
+    setCreateError(null);
+  }, []);
+
+  const onBrowseDest = useCallback(async () => {
+    try {
+      const res = await window.api?.chooseVaultFolder?.('Choose where to create the new vault', createDest || undefined);
+      if (res && !res.cancelled && res.path) setCreateDest(res.path);
+    } catch { /* picker unavailable */ }
+  }, [createDest]);
+
+  /** Create the vault WITHOUT activating it (activate:false) — main scaffolds
+   *  Story Vault + Notes Vault with the standard seeded layout and registers
+   *  the pair in recents; the user is then offered a normal switch. */
+  const onCreateVault = useCallback(async () => {
+    if (createBusy) return;
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const res = await window.api?.vaultCreateDefaultMythos?.({
+        parentPath: createDest || undefined,
+        vaultName: createName.trim() || undefined,
+        seedMode: 'default',
+        activate: false,
+      });
+      if (!res || res.error) {
+        setCreateError(res?.error ?? 'Could not create the vault. Check the destination and try again.');
+      } else {
+        setCreatedVault({
+          mythosVaultRoot: res.mythosVaultRoot,
+          vaultRoot: res.vaultRoot,
+          notesVaultRoot: res.notesVaultRoot,
+          name: res.name,
+        });
+        setCreateOpen(false);
+        setCreateName('');
+        showLnToast(`Vault "${res.name}" created`);
+        refreshVaults();
+      }
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not create the vault.');
+    } finally {
+      setCreateBusy(false);
+    }
+  }, [createBusy, createDest, createName, refreshVaults]);
+
+  const onSwitchToCreated = useCallback(async () => {
+    if (!createdVault || createBusy) return;
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const res = await window.api?.projectSwitch?.(createdVault.vaultRoot, createdVault.notesVaultRoot);
+      if (res?.switched) {
+        setActiveRoot(createdVault.vaultRoot);
+        setCreatedVault(null);
+      } else {
+        setCreateError('Could not switch to the new vault — it is still available in the vault list below.');
+      }
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not switch to the new vault.');
+    } finally {
+      setCreateBusy(false);
+    }
+  }, [createdVault, createBusy]);
+
+  const onDismissCreated = useCallback(() => {
+    setCreatedVault(null);
+    setCreateError(null);
+  }, []);
+
   return (
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
-      <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
+      <div className="settings-section-header-row" style={{ justifyContent: 'space-between' }}>
+        <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
+        <button
+          type="button"
+          className="m24-btn m24-btn--primary"
+          data-testid="mvs-new-vault"
+          onClick={() => { void onOpenCreate(); }}
+          disabled={createBusy}
+        >
+          New vault…
+        </button>
+      </div>
       <p className="settings-hint">
         Each Mythos vault is a folder holding its own Story Vault + Notes Vault. Give each vault its
         own theme so you always know where you are — switching vaults applies its theme.
       </p>
+
+      {createOpen && !createdVault && (
+        <div
+          data-testid="mvs-create-form"
+          style={{ padding: 12, borderRadius: 12, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          <label className="settings-label" htmlFor="mvs-create-name">Vault name</label>
+          <input
+            id="mvs-create-name"
+            data-testid="mvs-create-name"
+            ref={createNameRef}
+            className="settings-input"
+            value={createName}
+            maxLength={120}
+            placeholder="My First Vault"
+            disabled={createBusy}
+            onChange={(e) => setCreateName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void onCreateVault(); }}
+          />
+          <div className="settings-label" style={{ marginTop: 4 }}>Destination</div>
+          <VaultDestinationPicker
+            variant="m24"
+            path={createDest}
+            placeholder="Choose where to create the new vault"
+            onBrowse={onBrowseDest}
+            disabled={createBusy}
+            testIdPrefix="mvs-create-dest"
+          />
+          <p className="settings-hint">
+            A new folder named after the vault is created inside this destination.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <button
+              type="button"
+              className="m24-btn m24-btn--primary"
+              data-testid="mvs-create-confirm"
+              onClick={() => { void onCreateVault(); }}
+              disabled={createBusy}
+            >
+              {createBusy ? 'Creating…' : 'Create vault'}
+            </button>
+            <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {createdVault && (
+        <div
+          data-testid="mvs-create-done"
+          role="status"
+          aria-live="polite"
+          style={{ padding: 12, borderRadius: 12, background: 'var(--gs1,rgba(0,240,255,.06))', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))', display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          <div style={{ fontSize: 11.5, color: '#dbe4f5' }}>
+            Vault <span style={{ fontWeight: 600 }}>{createdVault.name}</span> created — switch to it now?
+          </div>
+          <div style={{ fontSize: 10.5, color: '#8e9db8', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {createdVault.mythosVaultRoot}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="m24-btn m24-btn--primary"
+              data-testid="mvs-create-switch"
+              onClick={() => { void onSwitchToCreated(); }}
+              disabled={createBusy}
+            >
+              Switch to it now
+            </button>
+            <button type="button" className="m24-btn" data-testid="mvs-create-stay" onClick={onDismissCreated} disabled={createBusy}>
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {createError && (
+        <p className="settings-error-msg" role="alert" data-testid="mvs-create-error">{createError}</p>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {vaults.map((v) => {
           const current = v.vaultRoot === activeRoot;
@@ -164,7 +374,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         })}
         {vaults.length === 0 && (
           <p className="settings-hint" data-testid="mvs-empty">
-            No other Mythos vaults yet — create one from the title-bar vault menu.
+            No Mythos vaults known yet — use the New vault… button above to create one.
           </p>
         )}
       </div>

@@ -622,8 +622,9 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // One-click Mythos Vault create (SKY-320). The default flow passes no
-  // parentPath — main creates the bundle under ~/Mythos/Vaults/.
-  vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank' }) =>
+  // parentPath — main creates the bundle under ~/Mythos/Vaults/. SKY-10401:
+  // activate:false creates + registers in recents without switching to it.
+  vaultCreateDefaultMythos: (opts?: { parentPath?: string; vaultName?: string; seedMode?: 'default' | 'blank'; activate?: boolean }) =>
     ipcRenderer.invoke('vault:createDefaultMythos', opts ?? {}),
 
   // Archive confirmation dialog (MYT-376)
