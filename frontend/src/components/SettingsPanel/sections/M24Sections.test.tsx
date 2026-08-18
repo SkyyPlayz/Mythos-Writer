@@ -23,6 +23,7 @@ const baseSettings: AppSettings = {
 };
 
 const mockGetAppInfo = vi.fn();
+const mockVaultGetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
 const mockVaultImportScan = vi.fn();
 const mockVaultImportRun = vi.fn();
@@ -43,6 +44,7 @@ async function flush() {
 beforeEach(() => {
   vi.resetAllMocks();
   mockGetAppInfo.mockResolvedValue({ platform: 'linux', electronVersion: '42.0.0', appVersion: '0.3.0-beta.2' });
+  mockVaultGetPaths.mockResolvedValue({ storyVaultPath: '/story', notesVaultPath: '/notes', defaultVaultsParentPath: '/home/skyy/MythosVaults' });
   mockChooseVaultFolder.mockResolvedValue({ path: '/tmp/source-vault', cancelled: false });
   mockVaultImportScan.mockResolvedValue({ ok: true, noteCount: 87, attachmentCount: 3, totalFiles: 90, sampleFiles: ['World/The Gate.md'], warnings: [] });
   mockVaultImportRun.mockResolvedValue({ ok: true, targetPath: '/notes/Imported/source-vault', imported: 90, skipped: 0, errors: [] });
@@ -54,6 +56,7 @@ beforeEach(() => {
   mockOnboardingReplay.mockResolvedValue({ ok: true });
   (window as unknown as { api: unknown }).api = {
     getAppInfo: mockGetAppInfo,
+    vaultGetPaths: mockVaultGetPaths,
     chooseVaultFolder: mockChooseVaultFolder,
     vaultImportScan: mockVaultImportScan,
     vaultImportRun: mockVaultImportRun,
@@ -147,6 +150,32 @@ describe('ImportVaultSection', () => {
     await flush();
     fireEvent.click(screen.getByTestId('import-vault-into-new'));
     expect((screen.getByTestId('import-vault-dry-run') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('opens the new-vault browse dialog at the default vaults parent without committing it (SKY-10433)', async () => {
+    render(<ImportVaultSection notesVaultPath="/notes" />);
+    fireEvent.click(screen.getByTestId('import-vault-into-new'));
+    mockChooseVaultFolder.mockResolvedValueOnce({ path: null, cancelled: true });
+    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
+    await flush();
+    expect(mockChooseVaultFolder).toHaveBeenCalledWith('Pick a folder for the new vault', '/home/skyy/MythosVaults');
+    // The parent is only the dialog's starting point — a cancelled browse must
+    // leave the destination empty (an import into the parent itself would dump
+    // the source's notes next to the existing vaults).
+    expect(screen.getByTestId('import-vault-new-path').textContent).toBe('Pick a destination folder for the new vault');
+    expect((screen.getByTestId('import-vault-dry-run') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('reopens the browse dialog at the already-picked destination, not the default parent', async () => {
+    render(<ImportVaultSection notesVaultPath="/notes" />);
+    fireEvent.click(screen.getByTestId('import-vault-into-new'));
+    mockChooseVaultFolder.mockResolvedValueOnce({ path: '/home/skyy/MythosVaults/Imported Vault', cancelled: false });
+    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
+    await flush();
+    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
+    await flush();
+    expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
+    expect(mockChooseVaultFolder).toHaveBeenLastCalledWith('Pick a folder for the new vault', '/home/skyy/MythosVaults/Imported Vault');
   });
 
   it('surfaces a silent-drop warning from vaultImportRun even on a successful import (SKY-8151/SKY-8157)', async () => {

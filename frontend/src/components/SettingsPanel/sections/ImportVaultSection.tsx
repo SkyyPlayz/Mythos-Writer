@@ -72,7 +72,20 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
 
   const pickNewTarget = async () => {
     try {
-      const res = await window.api.chooseVaultFolder('Pick a folder for the new vault', newTargetPath || undefined);
+      // SKY-10433: open the dialog at the default Mythos vaults parent, like
+      // the onboarding destination prefill. Deliberately NOT committed to
+      // newTargetPath — vaultImportRun imports into targetPath itself (no
+      // subfolder), so committing the shared parent would let a no-browse
+      // import dump the source's notes next to the existing vaults.
+      let startAt = newTargetPath;
+      if (!startAt) {
+        try {
+          startAt = (await window.api.vaultGetPaths()).defaultVaultsParentPath ?? '';
+        } catch {
+          /* non-fatal — dialog falls back to the OS default */
+        }
+      }
+      const res = await window.api.chooseVaultFolder('Pick a folder for the new vault', startAt || undefined);
       if (!res.cancelled && res.path) setNewTargetPath(res.path);
     } catch {
       /* picker unavailable */
