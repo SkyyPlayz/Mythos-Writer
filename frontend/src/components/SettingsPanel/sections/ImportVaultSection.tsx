@@ -5,6 +5,7 @@
 // vault folder inside the current Notes Vault (default) or its own new folder.
 import { useState } from 'react';
 import { M24Card, M24Seg } from './M24Controls';
+import VaultDestinationPicker from './VaultDestinationPicker';
 import './M24Sections.css';
 
 interface Props {
@@ -175,14 +176,14 @@ export default function ImportVaultSection({ notesVaultPath }: Props) {
             {notesVaultPath ? ` (${notesVaultPath})` : ''} — it shows up in the notes tree next to your own folders.
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span className="m24-path" data-testid="import-vault-new-target" title={newTargetPath || undefined}>
-              {newTargetPath || 'Pick a destination folder for the new vault'}
-            </span>
-            <button type="button" className="m24-btn" onClick={() => { void pickNewTarget(); }} disabled={busy} data-testid="import-vault-new-browse">
-              Browse…
-            </button>
-          </div>
+          <VaultDestinationPicker
+            variant="m24"
+            path={newTargetPath}
+            placeholder="Pick a destination folder for the new vault"
+            onBrowse={pickNewTarget}
+            disabled={busy}
+            testIdPrefix="import-vault-new"
+          />
         )}
 
         {!scan && (
