@@ -186,11 +186,12 @@ async function run(aiEnabled, prefix) {
   await clearBlockers();
 
   const texts = {};
-  const shot = async (name) => {
+  const shot = async (name, noPrefix = false) => {
     await page.waitForTimeout(800);
-    await page.screenshot({ path: `${OUT}/${prefix}${name}.png` });
+    const fileName = noPrefix ? name : `${prefix}${name}`;
+    await page.screenshot({ path: `${OUT}/${fileName}.png` });
     texts[name] = await page.evaluate(() => document.body.innerText);
-    console.log(`  shot ${prefix}${name}`);
+    console.log(`  shot ${fileName}`);
   };
   await shot('00-boot');
 
@@ -216,39 +217,68 @@ async function run(aiEnabled, prefix) {
 
   // SKY-10353: a pre-seeded manifest story is never auto-selected — Scene
   // Crafter shows "No Story Selected" and Timeline shows its no-story state
-  // until a story title is actually clicked (the real user flow). Do this
-  // once, up front, so every later rail in the loop below sees the same
-  // selected-story app state.
+  // until a story is actually clicked (the real user flow). Do this once, up
+  // front, so every later rail in the loop below sees the same selected-story
+  // app state.
+  //
+  // SKY-10382: select through the Stories *popover row* (AppNavRail
+  // `nav-rail-story-<id>` → handleRailStorySelect → setSelectedStory), via a
+  // DOM click like goRail's. The previous approach — dismiss the popover's
+  // backdrop, then Playwright-click the sidebar `.nav-story-title` under it —
+  // failed silently: Playwright's actionability check refuses a click on an
+  // element covered by the popover backdrop, the `.catch(() => {})` swallowed
+  // the timeout, and the log reported visibility as if it were a click. That
+  // is exactly why rail-scene-crafter kept capturing "No Story Selected"
+  // while every goRail (DOM click, immune to overlays) still "worked".
   await goRail('Story Writer');
   await clearBlockers();
-  // Story Writer may already be the boot-default active section, in which
-  // case clicking its rail item toggles the "Stories" popover open instead
-  // of navigating (prototype `pick()` behavior — see navGuard.ts's
-  // clickStoryNav). Its fixed, full-viewport backdrop then intercepts every
-  // pointer event, including clicks meant for the sidebar below it.
-  const storiesBackdrop = page.locator('[data-testid="nav-rail-stories-backdrop"]');
-  if (await storiesBackdrop.count()) {
-    await storiesBackdrop.click({ position: { x: 5, y: 5 }, force: true }).catch(() => {});
-    await page.waitForTimeout(300);
+  // Story Writer is the boot-default active section, so goRail's click just
+  // toggled the Stories popover open (prototype `pick()` behavior). If a
+  // blocker dialog ate that toggle, click the rail item once more.
+  const popoverOpen = () => page.evaluate(() => !!document.querySelector('[data-testid="nav-rail-stories"]'));
+  if (!(await popoverOpen())) {
+    await goRail('Story Writer');
   }
-  const navTitle = page.locator('.nav-story-title', { hasText: STORY_TITLE }).first();
-  const storySelected = await navTitle.isVisible({ timeout: 4000 }).catch(() => false);
-  if (storySelected) {
-    await navTitle.click({ timeout: 5000 }).catch(() => {});
-    await page.waitForTimeout(600);
+  let storySelected = false;
+  if (await popoverOpen()) {
+    storySelected = await page.evaluate((sid) => {
+      const row = document.querySelector(`[data-testid="nav-rail-story-${sid}"]`);
+      if (row) { row.click(); return true; }
+      return false;
+    }, storyId);
   }
+  if (!storySelected) {
+    // Fallback: sidebar StoryNavigator title, still as a DOM click so no
+    // stray overlay can intercept it.
+    storySelected = await page.evaluate((title) => {
+      const el = [...document.querySelectorAll('.nav-story-title')].find((t) => (t.textContent || '').trim() === title);
+      if (el) { el.click(); return true; }
+      return false;
+    }, STORY_TITLE);
+  }
+  await page.waitForTimeout(1000);
   console.log(`  selectStory clicked=${storySelected}`);
 
   for (const r of ['Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Story Writer']) {
     if (await goRail(r)) {
-      const name = 'rail-' + r.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      await shot(name);
+      const railName = 'rail-' + r.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      // SKY-10382: rail-brainstorm is the one surface whose on-screen content
+      // actually differs by AI state (chat vs manual board), so name both
+      // captures explicitly instead of relying on the ai-on- prefix — other
+      // rails keep the plain/`ai-on-` scheme since they don't change.
+      const name = r === 'Brainstorm' ? `rail-brainstorm-${aiEnabled ? 'ai-on' : 'ai-off'}` : railName;
+      await shot(name, r === 'Brainstorm');
       // Non-timing verification (harness rule #3): confirm the story
       // selection actually landed on the two surfaces that go blank without
       // it, instead of assuming the earlier click "probably worked".
       if (r === 'Scene Crafter' || r === 'Timeline') {
         const emptyState = texts[name].includes('No Story Selected') || texts[name].includes('Select a story to view its timeline');
         console.log(`  storySelected(${r})=${!emptyState}`);
+      }
+      // M10-S3: the SUGGESTED CARDS rail is what SKY-10353 was filed to
+      // capture — assert it by rendered text, not by assuming selection held.
+      if (r === 'Scene Crafter') {
+        console.log(`  sceneCrafterSuggestedCards=${texts[name].includes('SUGGESTED CARDS')}`);
       }
     }
   }
