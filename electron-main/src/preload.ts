@@ -99,13 +99,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
   vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
     ipcRenderer.invoke('vault:guidedFolderMove', payload),
+  vaultLocalFolderMove: (payload: { targetPath: string; registrationToken: string }) =>
+    ipcRenderer.invoke('vault:localFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
   // Obsidian-import token flow). Returns { path, cancelled }.
   chooseVaultFolder: (title?: string, defaultPath?: string) =>
     ipcRenderer.invoke('vault:chooseFolder', { title, defaultPath }),
   importVault: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:import', { sourcePath, registrationToken }),
   reindexVault: () => ipcRenderer.invoke('vault:reindex', undefined),
-  pickFolder: () => ipcRenderer.invoke('vault:pick-folder', undefined),
+  pickFolder: (payload?: { title?: string; defaultPath?: string }) =>
+    ipcRenderer.invoke('vault:pick-folder', payload),
   obsidianDryRun: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-dry-run', { sourcePath, registrationToken }),
   obsidianRegister: (sourcePath: string, registrationToken: string) => ipcRenderer.invoke('vault:obsidian-register', { sourcePath, registrationToken }),
   // SKY-2638: Path 3 import vault channels (no registration token — onboarding context)

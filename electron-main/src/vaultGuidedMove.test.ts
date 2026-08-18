@@ -6,7 +6,7 @@
 // Move tests (§2): real tmpdir FS — covers validateMoveTarget + moveVaultAtomic
 // happy path and each error/rollback branch.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -369,6 +369,52 @@ describe('moveVaultAtomic', () => {
       fs.readFileSync(path.join(dst, 'Manuscript', 'ch1', 'scene.md'), 'utf-8'),
     ).toBe('# Scene One');
     expect(r.verification.ok).toBe(true);
+  });
+
+  it('SKY-10367: records vault:localFolderMove in the audit log for a local destination', async () => {
+    const src = path.join(tmpDir, 'StoryVault');
+    fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
+
+    const dst = path.join(tmpDir, 'ExternalDriveVault');
+
+    const moveResult = await moveVaultAtomic(src, dst, {
+      syncProvider: 'local',
+      updateSettings: () => {},
+    });
+
+    expect(moveResult.verification.ok).toBe(true);
+    expect(fs.existsSync(src)).toBe(false);
+    const auditLog = path.join(dst, '.mythos', 'settings_audit.log');
+    const entry = JSON.parse(fs.readFileSync(auditLog, 'utf-8').trim());
+    expect(entry.action).toBe('vault:localFolderMove');
+    expect(entry.syncProvider).toBe('local');
+  });
+
+  it('SKY-10367: falls back to copy+delete when rename fails with EXDEV (cross-device move)', async () => {
+    const src = path.join(tmpDir, 'StoryVault');
+    fs.mkdirSync(path.join(src, 'Manuscript'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'Manuscript', 'scene.md'), '# Scene One');
+
+    const dst = path.join(tmpDir, 'OtherDriveVault');
+
+    const renameSpy = vi.spyOn(fs.promises, 'rename').mockImplementationOnce(() => {
+      const err = new Error('EXDEV: cross-device link not permitted') as NodeJS.ErrnoException;
+      err.code = 'EXDEV';
+      return Promise.reject(err);
+    });
+
+    const r = await moveVaultAtomic(src, dst, {
+      syncProvider: 'local',
+      updateSettings: () => {},
+    });
+
+    expect(r.verification.ok).toBe(true);
+    // Source must be gone (copy+delete fallback completed the move).
+    expect(fs.existsSync(src)).toBe(false);
+    expect(fs.readFileSync(path.join(dst, 'Manuscript', 'scene.md'), 'utf-8')).toBe('# Scene One');
+
+    renameSpy.mockRestore();
   });
 
   it('appends to an existing audit log rather than overwriting it', async () => {

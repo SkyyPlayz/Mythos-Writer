@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { CloudSyncProvider } from './ipc.js';
+import type { VaultMoveDestination } from './ipc.js';
 import { snapshotDirectory, verifyPostMove } from './migrationVerify.js';
 import type { PostMoveVerification } from './migrationVerify.js';
 
@@ -111,10 +111,10 @@ export function validateMoveTarget(
 
 export interface AuditEntry {
   timestamp: string;
-  action: 'vault:guidedFolderMove';
+  action: 'vault:guidedFolderMove' | 'vault:localFolderMove';
   fromPath: string;
   toPath: string;
-  syncProvider: CloudSyncProvider;
+  syncProvider: VaultMoveDestination;
 }
 
 /**
@@ -134,8 +134,8 @@ export function appendAuditEntry(vaultPath: string, entry: AuditEntry): void {
 export interface GuidedMoveOptions {
   /** Called after the rename succeeds to persist the new vaultRoot. */
   updateSettings: (newVaultPath: string) => void;
-  /** Sync provider, recorded in the audit log. */
-  syncProvider: CloudSyncProvider;
+  /** Move destination, recorded in the audit log. */
+  syncProvider: VaultMoveDestination;
 }
 
 export interface GuidedMoveResult {
@@ -144,16 +144,41 @@ export interface GuidedMoveResult {
 }
 
 /**
- * Atomically moves `srcVaultRoot` to `targetPath` via `fs.promises.rename`.
+ * Renames `src` to `dest`, falling back to a recursive copy + source removal
+ * when the OS refuses a plain rename across filesystems (EXDEV — e.g. moving
+ * a local vault to a different drive, common on Windows). The copy fallback
+ * is not atomic, but a failure partway through leaves the untouched source
+ * intact (dest is removed and the error re-thrown) so callers never observe
+ * a state where both copies are incomplete.
+ */
+async function renameOrCopy(src: string, dest: string): Promise<void> {
+  try {
+    await fs.promises.rename(src, dest);
+    return;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+  }
+  try {
+    await fs.promises.cp(src, dest, { recursive: true });
+  } catch (copyErr) {
+    await fs.promises.rm(dest, { recursive: true, force: true });
+    throw copyErr;
+  }
+  await fs.promises.rm(src, { recursive: true, force: true });
+}
+
+/**
+ * Atomically moves `srcVaultRoot` to `targetPath` via `fs.promises.rename`
+ * (falling back to copy+delete across filesystem boundaries — see `renameOrCopy`).
  *
  * Sequence:
- *   1. `fs.promises.rename(src, dest)` — OS-level rename (atomic on same FS).
+ *   1. `renameOrCopy(src, dest)` — OS-level rename, atomic on the same FS.
  *   2. `updateSettings(targetPath)` — persist new vaultRoot; on failure, roll
- *      back by renaming the directory back to its original location.
+ *      back by moving the directory back to its original location.
  *   3. `appendAuditEntry` — non-fatal; logged to `.mythos/settings_audit.log`.
  *
  * Throws when:
- *   - rename fails (e.g., EXDEV — cross-device move, ENOTEMPTY — non-empty target).
+ *   - the move fails (e.g., ENOTEMPTY — non-empty target, disk full).
  *   - settings update fails AND rollback also fails (double-fault).
  */
 export async function moveVaultAtomic(
@@ -164,14 +189,14 @@ export async function moveVaultAtomic(
   // Snapshot source before rename for post-move verification.
   const srcSnapshot = snapshotDirectory(srcVaultRoot);
 
-  await fs.promises.rename(srcVaultRoot, targetPath);
+  await renameOrCopy(srcVaultRoot, targetPath);
 
   try {
     opts.updateSettings(targetPath);
   } catch (settingsErr) {
     // Rollback: move the vault back to its original location.
     try {
-      await fs.promises.rename(targetPath, srcVaultRoot);
+      await renameOrCopy(targetPath, srcVaultRoot);
     } catch (rollbackErr) {
       // Double-fault: vault is at the new path but settings still point to old.
       // Surface both errors so the operator can manually reconcile.
@@ -189,7 +214,7 @@ export async function moveVaultAtomic(
   try {
     appendAuditEntry(targetPath, {
       timestamp: new Date().toISOString(),
-      action: 'vault:guidedFolderMove',
+      action: opts.syncProvider === 'local' ? 'vault:localFolderMove' : 'vault:guidedFolderMove',
       fromPath: srcVaultRoot,
       toPath: targetPath,
       syncProvider: opts.syncProvider,

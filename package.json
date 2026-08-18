@@ -57,6 +57,7 @@
     "test:e2e:onboarding-v2": "playwright test e2e/onboarding-v2.spec.ts --reporter=list,html",
     "test:e2e:onboarding-four-paths": "playwright test e2e/onboarding-four-paths.spec.ts --reporter=list,html",
     "test:e2e:cloud-sync": "playwright test e2e/cloud-sync.spec.ts --reporter=list,html",
+    "test:e2e:move-vault": "playwright test e2e/move-vault-real.spec.ts e2e/move-vault-local-real.spec.ts --reporter=list,html",
     "test:e2e:export": "playwright test e2e/export.spec.ts e2e/export-formats.spec.ts --reporter=list,html",
     "test:e2e:versioned-drafts": "playwright test e2e/tests/sky-10-rollback.spec.ts --reporter=list,html",
     "test:e2e:visual-regression": "playwright test e2e/tests/visual-regression.spec.ts --reporter=list,html",
