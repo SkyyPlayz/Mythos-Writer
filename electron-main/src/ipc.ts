@@ -1695,6 +1695,11 @@ export interface MythosMigrationStatusResponse {
   vaultName: string;
   /** Main-computed sibling folder the migration would build. */
   suggestedTarget: string;
+  /**
+   * SKY-10405: set when the boot-time silent migration attempt failed — the
+   * ORIGINAL vault stayed active and the renderer must surface this error.
+   */
+  bootMigrationError?: string;
 }
 
 export interface MythosMigrationPlanResponse {

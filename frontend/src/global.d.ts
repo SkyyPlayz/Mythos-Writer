@@ -123,6 +123,8 @@ interface MythosMigrationStatus {
   notesVaultRoot: string;
   vaultName: string;
   suggestedTarget: string;
+  /** SKY-10405: set when the boot-time silent migration attempt failed. */
+  bootMigrationError?: string;
 }
 
 interface MythosMigrationPlanResult {

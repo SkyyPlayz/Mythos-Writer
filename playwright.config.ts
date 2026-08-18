@@ -1,5 +1,13 @@
 import { defineConfig } from '@playwright/test';
 
+// SKY-10405: the e2e corpus seeds v0.4 twin-root fixture vaults and asserts
+// against their on-disk paths. The boot-time silent MythosVault migration
+// would repoint every one of them at launch, so it is disabled suite-wide
+// here (electron.launch inherits the worker's env). The boot-migration specs
+// in e2e/mythos-migration.spec.ts override this per launch to exercise the
+// real path. Never set in production.
+process.env.MYTHOS_DISABLE_BOOT_MIGRATION = '1';
+
 export default defineConfig({
   testDir: 'e2e',
   timeout: 60_000,

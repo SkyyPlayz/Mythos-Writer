@@ -13,6 +13,12 @@
  *   TC-MV-03  A fresh (seed-only) v0.4 vault shows NO prompt — fresh-vault
  *             fixtures render unchanged (visual-regression safety).
  *
+ * SKY-10405 adds the boot-time SILENT migration cases (TC-BM-01/02) at the
+ * bottom of this file. The wizard cases above still run because the suite
+ * disables the silent path (playwright.config.ts sets
+ * MYTHOS_DISABLE_BOOT_MIGRATION=1); they go away with the wizard UI when the
+ * sibling prompt-removal ticket lands.
+ *
  * Runs in CI e2e-shard-2 (`npm run test:e2e:mythos-migration` — the M5
  * Wave-2 wiring follow-up). Run locally with:
  *   npx playwright test e2e/mythos-migration.spec.ts --reporter=list
@@ -109,12 +115,23 @@ function seedV04Content(vaultDir: string, notesVaultDir: string): void {
   fs.writeFileSync(path.join(notesVaultDir, 'Mira.md'), '---\ntype: character\n---\nShe counts bells.');
 }
 
-async function launchApp(userData: string): Promise<ElectronApplication> {
+async function launchApp(
+  userData: string,
+  envOverrides?: Record<string, string>,
+): Promise<ElectronApplication> {
   const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
     ? ['--headless']
     : [];
+  // Suite default (playwright.config.ts): MYTHOS_DISABLE_BOOT_MIGRATION=1 so
+  // v0.4 fixtures stay put. The SKY-10405 specs override it back off.
+  const env = Object.fromEntries(
+    Object.entries({ ...process.env, ...envOverrides }).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    env,
     timeout: 60_000,
   });
   const proc = app.process();
@@ -399,6 +416,130 @@ test('TC-MV-03: a fresh seed-only v0.4 vault shows no prompt', async () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1_500);
     await expect(page.locator('[data-testid="mythos-migration-prompt"]')).toHaveCount(0);
+  } finally {
+    const proc = app.process();
+    await Promise.race([
+      app.close().catch(() => undefined),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try { if (!proc.killed) proc.kill('SIGKILL'); } catch { /* exited */ }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ─── SKY-10405: boot-time silent migration (owner ruling SKY-10390) ──────────
+//
+//   TC-BM-01  Booting on a v0.4 vault silently migrates it: zero prompts,
+//             settings repointed at "<name> (MythosVault)", content survives
+//             byte-for-byte, original vault untouched, no in-flight marker
+//             left behind.
+//   TC-BM-02  A migration failure (unreadable comments sidecar) leaves the
+//             ORIGINAL vault active and opening normally, with a visible
+//             error notice — never a blank/missing vault, never silence.
+//
+// These launches re-enable the real boot path by overriding the suite-wide
+// MYTHOS_DISABLE_BOOT_MIGRATION=1 from playwright.config.ts.
+
+test('TC-BM-01: v0.4 vault silently migrates at boot — no prompt, content survives', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bm-silent-'));
+  const userData = path.join(tmp, 'user-data');
+  const bundle = path.join(tmp, 'My Vault');
+  const vaultDir = path.join(bundle, 'Story Vault');
+  const notesVaultDir = path.join(bundle, 'Notes Vault');
+  seedUserData(userData, vaultDir, notesVaultDir);
+  seedV04Content(vaultDir, notesVaultDir);
+  // Snapshot BEFORE launch — the silent path must never open the source vault
+  // for writing (boot migrates before ensureVaultDir touches anything).
+  const storyBefore = treeSnapshot(vaultDir);
+  const notesBefore = treeSnapshot(notesVaultDir);
+  const app = await launchApp(userData, { MYTHOS_DISABLE_BOOT_MIGRATION: '0' });
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Settings repointed at the migrated bundle — the ONLY app-state mutation.
+    const target = path.join(tmp, 'My Vault (MythosVault)');
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
+    ) as { vaultRoot: string; notesVaultRoot?: string };
+    expect(settings.vaultRoot).toBe(path.join(target, 'Story Vault'));
+    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes Vault'));
+
+    // The build completed and the in-flight marker is gone.
+    expect(fs.existsSync(path.join(target, 'mythos.json'))).toBe(true);
+    expect(fs.existsSync(path.join(target, '.mythos-migration-incomplete'))).toBe(false);
+
+    // Content survives byte-for-byte in the new layout.
+    const newScene = path.join(
+      target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
+    expect(fs.readFileSync(newScene, 'utf-8')).toContain(PROSE);
+    expect(
+      fs.readFileSync(path.join(target, 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
+    ).toContain('Expand the recognition beat.');
+    expect(
+      fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8'),
+    ).toContain('She counts bells.');
+
+    // The original vault is byte-for-byte untouched…
+    expect(treeSnapshot(vaultDir)).toEqual(storyBefore);
+    expect(treeSnapshot(notesVaultDir)).toEqual(notesBefore);
+
+    // …and the app opened the MIGRATED vault with zero prompts or errors.
+    await page.waitForTimeout(1_500);
+    await expect(page.locator('[data-testid="mythos-migration-prompt"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="mythos-boot-migration-error"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /The Deep/ }).first()).toBeVisible({
+      timeout: 20_000,
+    });
+  } finally {
+    const proc = app.process();
+    await Promise.race([
+      app.close().catch(() => undefined),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try { if (!proc.killed) proc.kill('SIGKILL'); } catch { /* exited */ }
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('TC-BM-02: failed boot migration keeps the original vault open with a visible error', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-bm-fail-'));
+  const userData = path.join(tmp, 'user-data');
+  const bundle = path.join(tmp, 'My Vault');
+  const vaultDir = path.join(bundle, 'Story Vault');
+  const notesVaultDir = path.join(bundle, 'Notes Vault');
+  seedUserData(userData, vaultDir, notesVaultDir);
+  seedV04Content(vaultDir, notesVaultDir);
+  // Force a hard failure: a comments sidecar that EXISTS but is a directory
+  // (EISDIR on read) — the migrator refuses to silently drop comments.
+  fs.rmSync(path.join(vaultDir, 'Manuscript', 'the-deep', 'comments.json'));
+  fs.mkdirSync(path.join(vaultDir, 'Manuscript', 'the-deep', 'comments.json'));
+  const app = await launchApp(userData, { MYTHOS_DISABLE_BOOT_MIGRATION: '0' });
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Settings still point at the ORIGINAL vault…
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
+    ) as { vaultRoot: string; notesVaultRoot?: string };
+    expect(settings.vaultRoot).toBe(vaultDir);
+    expect(settings.notesVaultRoot).toBe(notesVaultDir);
+
+    // …which opens and renders its content — not a blank/missing vault…
+    await expect(page.getByRole('button', { name: /The Deep/ }).first()).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // …with a visible, actionable error — not silence.
+    const notice = page.locator('[data-testid="mythos-boot-migration-error"]');
+    await expect(notice).toBeVisible({ timeout: 15_000 });
+    await expect(notice).toContainText('original vault unchanged');
+
+    // The partial build stays flagged for reclaim on the next attempt.
+    expect(
+      fs.existsSync(path.join(tmp, 'My Vault (MythosVault)', '.mythos-migration-incomplete')),
+    ).toBe(true);
   } finally {
     const proc = app.process();
     await Promise.race([

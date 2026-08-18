@@ -420,11 +420,14 @@ import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/crea
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
 import {
+  clearIncompleteMigrationMarker,
   detectVaultFormat,
   planMythosVaultMigration,
   runMythosVaultMigration,
   suggestMigrationTarget,
 } from './migration/mythosVaultMigrator.js';
+// SKY-10405 — boot-time silent v0.4 → MythosVault migration (owner ruling SKY-10390).
+import { runBootMythosMigration } from './migration/bootMigration.js';
 import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
 import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
@@ -794,6 +797,91 @@ let pendingMythosMigration: {
   notesVaultPath: string;
   targetRoot: string;
 } | null = null;
+
+// SKY-10405: error from the boot-time silent migration attempt, surfaced to
+// the renderer via mythosMigration:status. Silent means "no decision asked",
+// never "failure hidden" — the original vault stays active when this is set.
+let bootMythosMigrationError: string | null = null;
+
+/**
+ * THE repoint: the only step anywhere that changes which vault the app opens.
+ * Mirror project:switch — stop watchers/scheduler, close the DB, repoint
+ * settings, re-open. The ORIGINAL vault is left exactly as it was. Shared by
+ * the mythosMigration:confirm IPC handler and the SKY-10405 boot-time silent
+ * migration (which passes `restartServices: false` because it runs before the
+ * startup sequence has created the window or started watchers/scheduler —
+ * normal boot then initializes everything against the repointed root).
+ */
+async function repointToMigratedVault(
+  target: { storyVaultPath: string; notesVaultPath: string; targetRoot: string },
+  opts: { restartServices: boolean },
+): Promise<void> {
+  stopWritingScanScheduler();
+  await stopBoardWatcher();
+  await stopVaultWatcher();
+  await stopNotesVaultWatcher();
+  closeDb();
+  saveVaultSettings({
+    vaultRoot: target.storyVaultPath,
+    notesVaultRoot: target.notesVaultPath,
+  });
+  addToRecentProjects(target.storyVaultPath, target.notesVaultPath);
+  // Settings now point at the finished vault — the build is confirmed, so the
+  // in-flight marker (retry-reclaim flag) must not outlive this moment.
+  clearIncompleteMigrationMarker(target.targetRoot);
+  ensureVaultDir();
+  ensureNotesVaultDir();
+  try {
+    const manifest = readManifest(getManifestPath());
+    const { manifest: synced } = reindexVault(target.storyVaultPath, manifest);
+    writeManifest(getManifestPath(), synced);
+    try { buildFullIndex(getDb(), target.storyVaultPath, synced); } catch { /* non-fatal */ }
+  } catch { /* non-fatal */ }
+  if (opts.restartServices) {
+    await startVaultWatcher(target.storyVaultPath, notifyVaultChanged);
+    await startNotesVaultWatcher(target.notesVaultPath, notifyNotesVaultChanged);
+    startWritingScanScheduler();
+    if (mainWindow) {
+      mainWindow.webContents.send('project:switched', {
+        vaultRoot: target.storyVaultPath,
+        notesVaultRoot: target.notesVaultPath,
+      });
+    }
+  }
+}
+
+/**
+ * SKY-10405: silently upgrade a v0.4 twin-root vault before anything opens
+ * it. Copy → verify → repoint; the source vault is never modified, and on any
+ * failure the app boots the original vault and surfaces the error through
+ * mythosMigration:status. Never throws — boot must proceed either way.
+ */
+async function maybeRunBootMythosMigration(): Promise<void> {
+  // Test-suite escape hatch: the e2e corpus seeds v0.4 fixture vaults whose
+  // on-disk paths the specs assert against. playwright.config.ts sets this
+  // suite-wide; the boot-migration spec re-enables the real path per launch.
+  // Never set in production.
+  if (process.env.MYTHOS_DISABLE_BOOT_MIGRATION === '1') return;
+  try {
+    const outcome = await runBootMythosMigration({
+      storyVaultRoot: getVaultRoot(),
+      notesVaultRoot: getNotesVaultRoot(),
+      layoutMode: getLayoutMode(),
+      applyRepoint: (target) => repointToMigratedVault(target, { restartServices: false }),
+    });
+    if (outcome.action === 'migrated') {
+      console.log(`[mythos-migration] boot: v0.4 vault silently upgraded → ${outcome.targetRoot}`);
+    } else if (outcome.action === 'failed') {
+      bootMythosMigrationError = outcome.error;
+      console.error(
+        `[mythos-migration] boot upgrade failed — original vault stays active: ${outcome.error}`,
+      );
+    }
+  } catch (e) {
+    bootMythosMigrationError = (e as Error).message;
+    console.error('[mythos-migration] boot upgrade crashed — original vault stays active:', e);
+  }
+}
 
 /**
  * SKY-10: locate a scene's chapter directory (relative path inside the vault)
@@ -2288,6 +2376,8 @@ const handlers: IpcHandlers = {
       notesVaultRoot,
       vaultName: deriveProjectName(storyVaultRoot, notesVaultRoot),
       suggestedTarget: suggestMigrationTarget(storyVaultRoot, notesVaultRoot),
+      // SKY-10405: a failed boot-time silent migration must be visible.
+      ...(bootMythosMigrationError ? { bootMigrationError: bootMythosMigrationError } : {}),
     };
   },
   [IPC_CHANNELS.MYTHOS_MIGRATION_PLAN]: (): import('./ipc.js').MythosMigrationPlanResponse => {
@@ -2369,35 +2459,7 @@ const handlers: IpcHandlers = {
       return { switched: false, error: 'The migrated vault folder is missing.' };
     }
     pendingMythosMigration = null;
-    // Mirror project:switch — stop watchers/scheduler, close the DB, repoint
-    // settings, re-open. The ORIGINAL vault is left exactly as it was.
-    stopWritingScanScheduler();
-    await stopBoardWatcher();
-    await stopVaultWatcher();
-    await stopNotesVaultWatcher();
-    closeDb();
-    saveVaultSettings({
-      vaultRoot: pending.storyVaultPath,
-      notesVaultRoot: pending.notesVaultPath,
-    });
-    addToRecentProjects(pending.storyVaultPath, pending.notesVaultPath);
-    ensureVaultDir();
-    ensureNotesVaultDir();
-    try {
-      const manifest = readManifest(getManifestPath());
-      const { manifest: synced } = reindexVault(pending.storyVaultPath, manifest);
-      writeManifest(getManifestPath(), synced);
-      try { buildFullIndex(getDb(), pending.storyVaultPath, synced); } catch { /* non-fatal */ }
-    } catch { /* non-fatal */ }
-    await startVaultWatcher(pending.storyVaultPath, notifyVaultChanged);
-    await startNotesVaultWatcher(pending.notesVaultPath, notifyNotesVaultChanged);
-    startWritingScanScheduler();
-    if (mainWindow) {
-      mainWindow.webContents.send('project:switched', {
-        vaultRoot: pending.storyVaultPath,
-        notesVaultRoot: pending.notesVaultPath,
-      });
-    }
+    await repointToMigratedVault(pending, { restartServices: true });
     return {
       switched: true,
       vaultRoot: pending.storyVaultPath,
@@ -9501,6 +9563,11 @@ app.whenReady().then(async () => {
 
   const initializeVaults = shouldInitializeVaultsOnStartup();
   if (initializeVaults) {
+    // SKY-10405 (owner ruling SKY-10390): silently upgrade a v0.4 twin-root
+    // vault BEFORE anything opens it, so the DB, watchers, and indexes only
+    // ever initialize against the vault that will stay active. On failure the
+    // original vault is untouched and boots normally with a visible error.
+    await maybeRunBootMythosMigration();
     ensureVaultDir();
     ensureNotesVaultDir();
     // Track current vault in recent projects list on every launch.
