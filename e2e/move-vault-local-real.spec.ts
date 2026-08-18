@@ -1,23 +1,23 @@
 /**
- * move-vault-real.spec.ts — SKY-8006
+ * move-vault-local-real.spec.ts — SKY-10367
  *
- * Real E2E for the Move Vault wizard: launches the actual Electron app,
- * drives Settings → Sync & Backup → Move vault… through every wizard step,
- * and lets the genuine `vault:guidedFolderMove` IPC handler perform a real
- * `fs.rename` on disk. Nothing on the guided-move seam is stubbed.
+ * Real E2E for the default local-folder path through the Move Vault wizard:
+ * launches the actual Electron app, drives Settings → Sync & Backup → Move
+ * vault… straight through the local folder step (no provider selection, no
+ * sync-client confirmation checkbox), and lets the genuine
+ * `vault:localFolderMove` IPC handler perform a real `fs.rename` on disk.
+ * Nothing on the local-move seam is stubbed.
  *
- * The only mock in this spec is `dialog.showOpenDialog` at the Electron
- * `dialog` module — Playwright cannot drive the native OS folder picker, so
- * we fake *that* single native call to return a real, pre-existing empty
- * directory. Everything downstream of it (`vault:pick-folder`'s real
- * registration-token issuance, `vault:validate-path`, `vault:guidedFolderMove`'s
- * gate + `fs.rename`) runs unmodified. Contrast with e2e/cloud-sync.spec.ts,
- * which stubs `vault:pick-folder` and `vault:guidedFolderMove` themselves via
- * `ipcMain.handle` overrides and is skipped (SKY-6933) — that spec never
- * exercises a real move.
+ * The only mock is `dialog.showOpenDialog` — Playwright cannot drive the
+ * native OS folder picker, so we fake that single native call to return a
+ * real, pre-existing empty directory. The chosen target deliberately sits
+ * OUTSIDE the user's home directory (unlike move-vault-real.spec.ts's cloud
+ * target) to prove the local-move gate (checkSinglePathGate) authorises any
+ * user-picked path, not just locations under $HOME the way the cloud-sync
+ * gate does.
  *
  * Run (after `npm run build:electron`):
- *   npx playwright test e2e/move-vault-real.spec.ts --reporter=list
+ *   npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
  */
 
 import path from 'path';
@@ -35,6 +35,7 @@ const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 interface Dirs {
   homeRoot: string;
+  outsideRoot: string;
   userData: string;
   storyVault: string;
   notesVault: string;
@@ -42,17 +43,16 @@ interface Dirs {
 }
 
 function makeDirs(): Dirs {
-  // vault:guidedFolderMove requires targetPath to be a strict child of
-  // app.getPath('home') (vaultGate.ts checkGuidedMoveGate). We control that by
-  // overriding HOME to a temp root and keeping every path under it.
-  const homeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-move-vault-home-'));
+  const homeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-move-vault-local-home-'));
+  // Deliberately outside homeRoot — the local-move gate must accept this.
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-move-vault-local-external-'));
   const userData = path.join(homeRoot, 'user-data');
   const storyVault = path.join(homeRoot, 'Story Vault');
   const notesVault = path.join(homeRoot, 'Notes Vault');
-  const targetVault = path.join(homeRoot, 'Dropbox', 'Mythos Story Vault');
+  const targetVault = path.join(outsideRoot, 'MythosVault');
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(notesVault, { recursive: true });
-  fs.mkdirSync(targetVault, { recursive: true }); // pre-existing empty synced folder
+  fs.mkdirSync(targetVault, { recursive: true }); // pre-existing empty destination folder
   fs.mkdirSync(path.join(storyVault, 'stories', 'story-1', 'chapters', 'chapter-1', 'scenes'), { recursive: true });
 
   fs.writeFileSync(
@@ -98,11 +98,12 @@ function makeDirs(): Dirs {
     JSON.stringify({ vaultRoot: storyVault, notesVaultRoot: notesVault }, null, 2),
   );
 
-  return { homeRoot, userData, storyVault, notesVault, targetVault };
+  return { homeRoot, outsideRoot, userData, storyVault, notesVault, targetVault };
 }
 
 function cleanup(dirs: Dirs): void {
   fs.rmSync(dirs.homeRoot, { recursive: true, force: true });
+  fs.rmSync(dirs.outsideRoot, { recursive: true, force: true });
 }
 
 /** Recursively collect all file paths under `dir`, relative to `dir`. */
@@ -115,16 +116,6 @@ function listFilesRecursive(dir: string): string[] {
     else out.push(entry.name);
   }
   return out;
-}
-
-/** Poll predicate until it returns true or timeoutMs elapses. */
-async function waitUntil(predicate: () => boolean, timeoutMs = 10_000, intervalMs = 150): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return true;
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
-  return false;
 }
 
 async function launchApp(dirs: Dirs): Promise<ElectronApplication> {
@@ -140,7 +131,7 @@ async function launchApp(dirs: Dirs): Promise<ElectronApplication> {
 
   // The ONLY fake in this spec: the native OS folder-picker dialog. Everything
   // downstream (vault:pick-folder's real token issuance, vault:validate-path,
-  // vault:guidedFolderMove's gate + fs.rename) is untouched.
+  // vault:localFolderMove's gate + fs.rename) is untouched.
   await app.evaluate(({ dialog }, targetVault: string) => {
     dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [targetVault] })) as typeof dialog.showOpenDialog;
   }, dirs.targetVault);
@@ -162,7 +153,7 @@ async function openSettingsOnSyncTab(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'Sync & Backup' }).click();
 }
 
-test('Move Vault wizard performs a real fs move with no stubbed IPC handler', async () => {
+test('Move Vault wizard defaults to a local folder move with no stubbed IPC handler', async () => {
   const dirs = makeDirs();
   const app = await launchApp(dirs);
   try {
@@ -173,35 +164,31 @@ test('Move Vault wizard performs a real fs move with no stubbed IPC handler', as
     await expect(page.locator('[data-testid="sync-vault-path"]')).toHaveText(dirs.storyVault);
 
     await page.locator('[data-testid="sync-move-vault"]').click();
-    // SKY-10367: the wizard now defaults to a local folder picker — cloud
-    // sync is an explicit secondary choice reached via this link.
+
+    // Step 0 — local folder is the default entry point; no provider list,
+    // no "cloud sync" title.
     await expect(page.getByRole('dialog', { name: /move vault to a different folder/i })).toBeVisible();
-    await page.locator('[data-testid="mv-switch-to-cloud"]').click();
-    await expect(page.getByRole('dialog', { name: /move vault to cloud sync/i })).toBeVisible();
+    await expect(page.locator('[data-testid="provider-option-dropbox"]')).toHaveCount(0);
 
-    // Step 0 — provider
-    await page.locator('[data-testid="provider-option-dropbox"]').click();
-    await page.locator('[data-testid="mv-next-provider"]').click();
-
-    // Step 1 — folder. Browse triggers the real vault:pick-folder handler,
-    // which calls dialog.showOpenDialog (mocked above) and mints a real
-    // one-shot registration token bound to the returned path.
+    // Browse triggers the real vault:pick-folder handler, which calls
+    // dialog.showOpenDialog (mocked above) and mints a real one-shot
+    // registration token bound to the returned path.
     await page.locator('[data-testid="mv-browse"]').click();
     await expect(page.locator('[data-testid="mv-folder-display"]')).toHaveValue(dirs.targetVault);
     await page.locator('[data-testid="mv-next-folder"]').click();
 
-    // Step 2 — confirm
+    // Step 1 — confirm. No sync-client checkbox gate for a local move.
     await expect(page.locator('[data-testid="mv-from-path"]')).toContainText(dirs.storyVault);
     await expect(page.locator('[data-testid="mv-to-path"]')).toContainText(dirs.targetVault);
-    await page.locator('[data-testid="mv-confirm-checkbox"]').check();
+    await expect(page.locator('[data-testid="mv-confirm-checkbox"]')).toHaveCount(0);
     await page.locator('[data-testid="mv-proceed-confirm"]').click();
 
-    // Step 3 — real vault:validate-path write-access check, then real
-    // vault:guidedFolderMove (gate validation + fs.promises.rename).
+    // Step 2 — real vault:validate-path write-access check, then real
+    // vault:localFolderMove (checkSinglePathGate + fs.promises.rename).
     await expect(page.locator('[data-testid="mv-test-ok"]')).toBeVisible({ timeout: 10_000 });
     await page.locator('[data-testid="mv-migrate"]').click();
 
-    // Step 4 — result
+    // Step 3 — result
     await expect(page.locator('[data-testid="mv-success-message"]')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-testid="mv-new-path"]')).toContainText(dirs.targetVault);
     await page.locator('[data-testid="mv-done"]').click();
@@ -211,73 +198,23 @@ test('Move Vault wizard performs a real fs move with no stubbed IPC handler', as
     // Old location no longer holds vault files (fs.rename removed the source dir).
     expect(fs.existsSync(dirs.storyVault), `stale source vault still on disk at ${dirs.storyVault}`).toBe(false);
 
-    // New location has the full file set: manifest, scene prose, and the
-    // guided-move audit log.
     const movedFiles = listFilesRecursive(dirs.targetVault);
     expect(movedFiles).toContain('manifest.json');
     expect(movedFiles).toContain(path.join('stories', 'story-1', 'chapters', 'chapter-1', 'scenes', 'Opening.md'));
     expect(movedFiles).toContain(path.join('.mythos', 'settings_audit.log'));
-    expect(
-      fs.readFileSync(path.join(dirs.targetVault, 'stories', 'story-1', 'chapters', 'chapter-1', 'scenes', 'Opening.md'), 'utf-8'),
-    ).toContain('The vault held every secret the kingdom had ever kept.');
 
-    // guidedFolderMove only relocates the Story Vault; the separate Notes
-    // Vault is untouched by design (getVaultRoot() vs getNotesVaultRoot()).
+    const auditLog = JSON.parse(
+      fs.readFileSync(path.join(dirs.targetVault, '.mythos', 'settings_audit.log'), 'utf-8').trim().split('\n').pop()!,
+    );
+    expect(auditLog.action).toBe('vault:localFolderMove');
+    expect(auditLog.syncProvider).toBe('local');
+
+    // guidedFolderMove/localFolderMove only relocates the Story Vault; the
+    // separate Notes Vault is untouched by design.
     expect(fs.existsSync(dirs.notesVault)).toBe(true);
 
-    // vault-settings.json (config) was updated in place to point at the new location.
     const vaultSettings = JSON.parse(fs.readFileSync(path.join(dirs.userData, 'vault-settings.json'), 'utf-8'));
     expect(vaultSettings.vaultRoot).toBe(dirs.targetVault);
-
-    await app.close().catch(() => undefined);
-
-    // ── Restart: app must re-point at the new location and read/write there ──
-    const app2 = await launchApp(dirs);
-    try {
-      const page2 = await firstWindow(app2);
-      await expect(page2.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-      // No "vault not found" recovery screen — app booted straight into the moved vault.
-      await expect(page2.locator('.vault-not-found, [data-testid="vault-not-found"]')).toHaveCount(0);
-
-      await openSettingsOnSyncTab(page2);
-      await expect(page2.locator('[data-testid="sync-vault-path"]')).toHaveText(dirs.targetVault);
-      await page2.locator('[role="dialog"][aria-label="Settings"] .settings-close').click();
-
-      // Write proof: open the migrated scene, type new prose, and confirm the
-      // write lands in the .md file at the NEW location (read via editor +
-      // write via vault:write both round-trip against the moved vault).
-      const storiesPanel = page2.locator('[data-panel-id="stories"]');
-      if (await storiesPanel.isVisible().catch(() => false)) {
-        const collapsed = await storiesPanel
-          .evaluate((el) => el.classList.contains('lr-panel--collapsed'))
-          .catch(() => false);
-        if (collapsed) await storiesPanel.locator('.lr-panel-collapse-btn').click();
-      }
-      const sceneRow = page2.locator('.nav-scene-row', { hasText: 'Opening' }).first();
-      await expect(sceneRow).toBeVisible({ timeout: 8_000 });
-      await sceneRow.click();
-
-      const editor = page2.locator('.ProseMirror');
-      await expect(editor).toBeVisible({ timeout: 8_000 });
-      // Read proof: the moved file's prose loaded into the editor.
-      await expect(editor).toContainText('The vault held every secret the kingdom had ever kept.');
-
-      await page2.waitForFunction(() => document.activeElement?.classList.contains('ProseMirror'));
-      await page2.keyboard.press('End');
-      const APPENDED_PROSE = ' Post-move addendum: sync restored.';
-      await page2.keyboard.type(APPENDED_PROSE);
-      await expect(editor).toContainText(APPENDED_PROSE);
-
-      const scenePath = path.join(dirs.targetVault, 'stories', 'story-1', 'chapters', 'chapter-1', 'scenes', 'Opening.md');
-      const writeFlushed = await waitUntil(
-        () => fs.existsSync(scenePath) && fs.readFileSync(scenePath, 'utf-8').includes(APPENDED_PROSE),
-        12_000,
-      );
-      expect(writeFlushed, `Post-restart edit not flushed to ${scenePath}`).toBe(true);
-      expect(fs.existsSync(dirs.storyVault), 'old vault location resurrected after restart').toBe(false);
-    } finally {
-      await app2.close().catch(() => undefined);
-    }
   } finally {
     await app.close().catch(() => undefined);
     cleanup(dirs);

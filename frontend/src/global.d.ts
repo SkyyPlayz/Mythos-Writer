@@ -972,7 +972,7 @@ interface Window {
     revealVaultFolder: () => Promise<{ opened: boolean }>;
     importVault: (sourcePath: string, registrationToken: string) => Promise<{ imported: number; skipped: number; errors: string[] }>;
     reindexVault: () => Promise<{ scanned: number; updated: number }>;
-    pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }>;
+    pickFolder: (payload?: { title?: string; defaultPath?: string }) => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null }>;
     obsidianDryRun: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     obsidianRegister: (sourcePath: string, registrationToken: string) => Promise<unknown>;
     loadSampleProject: () => Promise<unknown>;
@@ -1559,7 +1559,14 @@ interface Window {
       targetPath: string;
       syncProvider: 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
       sessionToken: string;
-    }) => Promise<{ moved: boolean; newVaultPath: string } | { error: string }>;
+    }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
+
+    // SKY-10367: Move vault root to a plain local folder (default entry
+    // point for "Move to a different folder"; no cloud provider required).
+    vaultLocalFolderMove: (payload: {
+      targetPath: string;
+      registrationToken: string;
+    }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
 
     // SKY-863: Conflict detection + lockfile.
     checkVaultConflicts: () => Promise<{

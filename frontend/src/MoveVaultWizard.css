@@ -241,6 +241,30 @@
   min-width: 0;
 }
 
+/* ─── Secondary action (destination switch link) ─────────────────────────── */
+
+.mv-secondary-action {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--accent-color, #00f0ff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mv-secondary-action:hover {
+  opacity: 0.85;
+}
+
+.mv-secondary-action:focus-visible {
+  outline: 2px solid var(--accent-color, #00f0ff);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* ─── Path definition list ───────────────────────────────────────────────── */
 
 .mv-path-dl {

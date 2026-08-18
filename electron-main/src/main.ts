@@ -117,6 +117,8 @@ import {
   type VaultValidatePathResponse,
   type VaultPickFolderByPathPayload,
   type VaultGuidedMovePayload,
+  type VaultLocalMovePayload,
+  type VaultPickFolderPayload,
   type ProjectEntry,
   type ProjectSwitchPayload,
   type CreateDefaultMythosVaultPayload,
@@ -4635,12 +4637,15 @@ const handlers: IpcHandlers = {
     return { path: result.filePath, cancelled: false, bytes: txtBuffer.length, missingSceneIds: txtMissing };
   },
 
-  // ─── Obsidian vault import wizard (MYT-244) ───
-  [IPC_CHANNELS.VAULT_PICK_FOLDER]: async () => {
+  // ─── Obsidian vault import wizard (MYT-244); also reused by MoveVaultWizard
+  // (SKY-10367) with a caller-supplied title/defaultPath so the dialog
+  // matches whichever flow opened it. ───
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: async (payload?: VaultPickFolderPayload) => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
-      title: 'Select Obsidian Vault Folder',
+      title: payload?.title ?? 'Select Obsidian Vault Folder',
       buttonLabel: 'Select Folder',
+      defaultPath: payload?.defaultPath,
     });
     if (result.canceled || result.filePaths.length === 0) {
       return { vaultRoot: null, cancelled: true, registrationToken: null };
@@ -5605,6 +5610,42 @@ const handlers: IpcHandlers = {
 
     const moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
       syncProvider: gate.syncProvider,
+      updateSettings: (newPath) => {
+        saveVaultSettings({ vaultRoot: newPath });
+        addToRecentProjects(newPath);
+      },
+    });
+
+    const verificationWarning = !moveResult.verification.ok
+      ? moveResult.verification.message
+      : undefined;
+    return { moved: true, newVaultPath: gate.targetPath, verificationWarning };
+  },
+
+  // SKY-10367: relocate the entire story vault to a plain local folder — the
+  // default entry point for "Move to a different folder". Shares the same
+  // atomic move + post-move verification as VAULT_GUIDED_FOLDER_MOVE, but the
+  // target isn't restricted to the home directory: checkSinglePathGate (the
+  // same SEC-11 pattern used by VAULT_CREATE_BLANK) authorises any path the
+  // user picked via a real vault:pick-folder dialog, or one already in the
+  // recent-projects allowlist.
+  [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: async (
+    payload: VaultLocalMovePayload,
+  ) => {
+    const gate = checkSinglePathGate(
+      { targetPath: payload?.targetPath, registrationToken: payload?.registrationToken },
+      getRecentProjects().map((p) => p.vaultRoot),
+    );
+    if (!gate.ok) return { error: gate.error };
+
+    const srcVaultRoot = getVaultRoot();
+
+    // Runtime FS checks: src exists, target not occupied, target writable.
+    const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
+    if (!targetCheck.ok) return { error: targetCheck.error };
+
+    const moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+      syncProvider: 'local',
       updateSettings: (newPath) => {
         saveVaultSettings({ vaultRoot: newPath });
         addToRecentProjects(newPath);

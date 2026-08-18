@@ -343,6 +343,12 @@ export const IPC_CHANNELS = {
   // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
   // directory itself and updates persisted settings.
   VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
+  // SKY-10367: relocate the entire story vault to a plain local folder — the
+  // default path through "Move to a different folder". Shares the atomic
+  // move + verification logic with VAULT_GUIDED_FOLDER_MOVE but authorises
+  // the target via checkSinglePathGate (any user-picked path, not just a
+  // cloud-provider folder within the home directory).
+  VAULT_LOCAL_FOLDER_MOVE: 'vault:localFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
   // and from BG_PICK (image picker). Returns the chosen absolute path with
@@ -818,7 +824,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_IMPORT_RUN]: (payload: VaultImportRunPayload) => Promise<VaultImportRunResponse>;
   [IPC_CHANNELS.STORY_IMPORT_PICK]: (payload: StoryImportPickPayload) => Promise<StoryImportPickResponse>;
   [IPC_CHANNELS.STORY_IMPORT_RUN]: (payload: StoryImportRunPayload) => Promise<StoryImportRunResponse>;
-  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: never) => Promise<VaultPickFolderResponse>;
+  [IPC_CHANNELS.VAULT_PICK_FOLDER]: (payload: VaultPickFolderPayload | undefined) => Promise<VaultPickFolderResponse>;
   [IPC_CHANNELS.VOICE_PICK_BINARY]: (payload: VoicePickBinaryPayload) => Promise<VoicePickBinaryResponse>;
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE]: (payload: VaultLoadSamplePayload) => Promise<VaultLoadSampleResponse | RegistrationTokenError>;
   [IPC_CHANNELS.VAULT_CREATE_BLANK]: (payload: VaultCreateBlankPayload) => Promise<VaultCreateBlankResponse | RegistrationTokenError>;
@@ -855,6 +861,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_SET_ICON]: (payload: VaultSetIconPayload) => VaultSetIconResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
+  [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
   [IPC_CHANNELS.WRITING_MODE_GET]: (payload: never) => WritingModeState;
@@ -1161,6 +1168,9 @@ export interface VaultMkdirResponse {
 /** Big-4 cloud-sync providers supported in Wave 2.B. */
 export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
 
+/** Destination kind recorded on a guided vault move — a cloud provider or a plain local folder. */
+export type VaultMoveDestination = CloudSyncProvider | 'local';
+
 /**
  * Payload for VAULT_GUIDED_FOLDER_MOVE.
  * `sessionToken` must be a registration token issued by a main-process
@@ -1173,6 +1183,24 @@ export interface VaultGuidedMovePayload {
 }
 
 export interface VaultGuidedMoveResponse {
+  moved: boolean;
+  newVaultPath: string;
+  /** Non-empty when post-move verification detected dropped files or stubs. */
+  verificationWarning?: string;
+}
+
+/**
+ * Payload for VAULT_LOCAL_FOLDER_MOVE (SKY-10367).
+ * `registrationToken` must be a token issued by a main-process
+ * vault:pick-folder dialog and bound to exactly `targetPath` — the same
+ * SEC-11 proof-of-user-gesture pattern as VAULT_CREATE_BLANK.
+ */
+export interface VaultLocalMovePayload {
+  targetPath: string;
+  registrationToken: string;
+}
+
+export interface VaultLocalMoveResponse {
   moved: boolean;
   newVaultPath: string;
   /** Non-empty when post-move verification detected dropped files or stubs. */
@@ -1440,6 +1468,17 @@ export interface SystemInfo {
 export interface VaultOpenFolderResponse {
   vaultRoot: string | null;
   cancelled: boolean;
+}
+
+/**
+ * Optional payload for VAULT_PICK_FOLDER (SKY-10367). Lets callers other than
+ * the Obsidian-import wizard customise the native dialog's title/starting
+ * directory while still getting a bound registration token back. Absent
+ * fields fall back to the original Obsidian-import defaults.
+ */
+export interface VaultPickFolderPayload {
+  title?: string;
+  defaultPath?: string;
 }
 
 /**
