@@ -10,10 +10,15 @@ import { resetLiquidNeonV2Tokens } from '../../../theme/liquidNeonEngine';
 const VAULT_A = '/vaults/Alpha/Story Vault';
 const VAULT_B = '/vaults/Beta/Story Vault';
 
+const NEW_ROOT = '/vaults/Second Vault';
+
 const mockProjectList = vi.fn();
 const mockGetVaultRoot = vi.fn();
 const mockProjectSwitch = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockVaultGetPaths = vi.fn();
+const mockChooseVaultFolder = vi.fn();
+const mockVaultCreateDefaultMythos = vi.fn();
 
 const baseSettings = { apiKey: '', agents: {}, theme: 'dark' } as unknown as AppSettings;
 
@@ -28,12 +33,28 @@ beforeEach(() => {
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
   mockProjectSwitch.mockResolvedValue({ switched: true });
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockVaultGetPaths.mockResolvedValue({
+    storyVaultPath: VAULT_A,
+    notesVaultPath: '/vaults/Alpha/Notes Vault',
+    defaultVaultsParentPath: '/vaults',
+  });
+  mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockVaultCreateDefaultMythos.mockResolvedValue({
+    mythosVaultRoot: NEW_ROOT,
+    vaultRoot: `${NEW_ROOT}/Story Vault`,
+    notesVaultRoot: `${NEW_ROOT}/Notes Vault`,
+    name: 'Second Vault',
+    created: true,
+  });
   Object.defineProperty(window, 'api', {
     value: {
       projectList: mockProjectList,
       getVaultRoot: mockGetVaultRoot,
       projectSwitch: mockProjectSwitch,
       settingsSet: mockSettingsSet,
+      vaultGetPaths: mockVaultGetPaths,
+      chooseVaultFolder: mockChooseVaultFolder,
+      vaultCreateDefaultMythos: mockVaultCreateDefaultMythos,
     },
     writable: true,
     configurable: true,
@@ -116,5 +137,116 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
       render(<MythosVaultsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
     });
     await waitFor(() => expect(screen.getByTestId('mvs-empty')).toBeInTheDocument());
+  });
+});
+
+describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
+  async function openCreateForm() {
+    const result = await setup();
+    fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
+    return result;
+  }
+
+  it('New vault… opens the form with the destination prefilled from defaultVaultsParentPath', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
+    // Name input is focused for immediate typing.
+    expect(screen.getByTestId('mvs-create-name')).toHaveFocus();
+  });
+
+  it('Browse… replaces the destination with the picked folder', async () => {
+    mockChooseVaultFolder.mockResolvedValue({ path: '/elsewhere/Vaults', cancelled: false });
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-dest-browse'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/elsewhere/Vaults'));
+    expect(mockChooseVaultFolder).toHaveBeenCalledWith('Choose where to create the new vault', '/vaults');
+  });
+
+  it('a cancelled Browse leaves the destination untouched', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    fireEvent.click(screen.getByTestId('mvs-create-dest-browse'));
+    await waitFor(() => expect(mockChooseVaultFolder).toHaveBeenCalled());
+    expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults');
+  });
+
+  it('Create vault calls the SKY-320 backend with activate:false and offers a switch', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    fireEvent.change(screen.getByTestId('mvs-create-name'), { target: { value: '  Second Vault  ' } });
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
+    expect(mockVaultCreateDefaultMythos).toHaveBeenCalledWith({
+      parentPath: '/vaults',
+      vaultName: 'Second Vault',
+      seedMode: 'default',
+      activate: false,
+    });
+    // Form closed, offer visible, vault list refreshed to include the new card.
+    expect(screen.queryByTestId('mvs-create-form')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mvs-create-done').textContent).toContain('Second Vault');
+    expect(mockProjectList).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('ln-toast').textContent).toContain('Vault "Second Vault" created');
+  });
+
+  it('an empty name is allowed — main falls back to its default vault name', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(mockVaultCreateDefaultMythos).toHaveBeenCalledWith({
+      parentPath: '/vaults',
+      vaultName: undefined,
+      seedMode: 'default',
+      activate: false,
+    }));
+  });
+
+  it('Switch to it now runs a normal project:switch and marks the new vault current', async () => {
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mvs-create-switch'));
+    await waitFor(() => expect(mockProjectSwitch).toHaveBeenCalledWith(`${NEW_ROOT}/Story Vault`, `${NEW_ROOT}/Notes Vault`));
+    await waitFor(() => expect(screen.queryByTestId('mvs-create-done')).not.toBeInTheDocument());
+  });
+
+  it('Not now dismisses the offer without switching; the vault stays in the list', async () => {
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mvs-create-stay'));
+    expect(screen.queryByTestId('mvs-create-done')).not.toBeInTheDocument();
+    expect(mockProjectSwitch).not.toHaveBeenCalled();
+  });
+
+  it('a backend error keeps the form open and announces the failure', async () => {
+    mockVaultCreateDefaultMythos.mockResolvedValue({
+      mythosVaultRoot: '', vaultRoot: '', notesVaultRoot: '', name: '', created: false,
+      error: 'Mythos Vault folder is not empty',
+    });
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-error')).toHaveTextContent('Mythos Vault folder is not empty'));
+    expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument();
+    expect(screen.queryByTestId('mvs-create-done')).not.toBeInTheDocument();
+  });
+
+  it('a failed switch keeps the offer and shows the error', async () => {
+    mockProjectSwitch.mockResolvedValue({ switched: false });
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mvs-create-switch'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-error')).toBeInTheDocument());
+    expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument();
+  });
+
+  it('Cancel closes the form without creating anything', async () => {
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-cancel'));
+    expect(screen.queryByTestId('mvs-create-form')).not.toBeInTheDocument();
+    expect(mockVaultCreateDefaultMythos).not.toHaveBeenCalled();
   });
 });
