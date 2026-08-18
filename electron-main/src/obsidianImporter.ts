@@ -190,7 +190,6 @@ export function importObsidianToVaultDir(
 
   const { markdownFiles, attachmentFiles } = collectObsidianFiles(realSrc);
   const sourceCount = markdownFiles.length + attachmentFiles.length;
-  const wikilinkIndex = buildWikilinkIndex(markdownFiles);
   const allFiles: Array<{ rel: string; isMarkdown: boolean }> = [
     ...markdownFiles.map((rel) => ({ rel, isMarkdown: true })),
     ...attachmentFiles.map((rel) => ({ rel, isMarkdown: false })),
@@ -217,10 +216,11 @@ export function importObsidianToVaultDir(
       if (isMarkdown) {
         const raw = fs.readFileSync(srcFull, 'utf-8');
         const fallbackTitle = path.basename(rel, '.md');
-        const processed = processObsidianFrontmatter(
-          resolveWikilinks(raw, wikilinkIndex),
-          fallbackTitle,
-        );
+        // SKY-10383: wikilinks are left as-is — Mythos already resolves
+        // bare-stem `[[name]]` links natively (see noteBacklinks.ts), and
+        // rewriting them here mutated the user's prose and contradicted the
+        // "notes, folders and [[links]] come across as-is" import promise.
+        const processed = processObsidianFrontmatter(raw, fallbackTitle);
         fs.writeFileSync(dstFull, processed, 'utf-8');
       } else {
         fs.copyFileSync(srcFull, dstFull);

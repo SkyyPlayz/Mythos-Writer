@@ -1328,15 +1328,31 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
   }
 
+  // SKY-10388: mirrors validateCustomPathNow's manifest check — a folder that
+  // merely exists+is writable is not a Mythos vault; "Folder looks good."
+  // must never be shown for a folder that would then fail to open.
   async function validateImportMwPath(raw: string) {
+    const opts = pathOptionsRef.current;
+    const expanded = raw.startsWith('~/')
+      ? (opts.homeDir ?? '') + raw.slice(1)
+      : raw.startsWith('~\\')
+      ? (opts.homeDir ?? '') + raw.slice(1)
+      : raw;
     try {
-      const result = await api().validatePath(raw);
-      if (!result.exists) {
+      const sep = opts.sep ?? '/';
+      const [base, mythosCheck] = await Promise.all([
+        api().validatePath(expanded),
+        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
+      ]);
+      if (!base.exists) {
         setImportMwValidation('invalid');
         setImportMwMsg('Folder not found.');
-      } else if (!result.writable) {
+      } else if (!base.writable) {
         setImportMwValidation('invalid');
         setImportMwMsg('Folder is not accessible.');
+      } else if (!mythosCheck.exists) {
+        setImportMwValidation('invalid');
+        setImportMwMsg("This doesn't look like a Mythos Writer vault (no Story Vault/manifest.json found).");
       } else {
         setImportMwValidation('valid');
         setImportMwMsg('Folder looks good.');

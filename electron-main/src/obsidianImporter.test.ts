@@ -218,12 +218,15 @@ describe('importObsidianToVaultDir', () => {
     expect(fs.existsSync(path.join(dst, 'A/B/deep.md'))).toBe(true);
   });
 
-  it('resolves wikilinks during copy', () => {
-    writeFile(src, 'Lore.md', '# Lore');
-    writeFile(src, 'Story.md', '[[Lore]] is referenced here.');
+  it('SKY-10383: leaves wikilinks unrewritten, even across folders', () => {
+    writeFile(src, 'Lore/Dragons.md', '# Dragons');
+    writeFile(src, 'Story.md', '[[Dragons]] is referenced here.');
     importObsidianToVaultDir(src, dst);
     const story = fs.readFileSync(path.join(dst, 'Story.md'), 'utf-8');
-    expect(story).toContain('[[Lore]]'); // file is in root — already resolved (same path)
+    // Bare-stem link is copied as-is — Mythos resolves it natively on read
+    // (noteBacklinks.ts), so rewriting it here would only mutate the user's prose.
+    expect(story).toContain('[[Dragons]]');
+    expect(story).not.toContain('[[Lore/Dragons]]');
   });
 
   it('returns ok:false + error for non-existent source', () => {
