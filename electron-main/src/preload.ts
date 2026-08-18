@@ -53,9 +53,14 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-2971: Word (.docx) → Story Vault importer.
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
-  // SKY-2993: Obsidian vault importer.
-  importObsidianVault: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
-    ipcRenderer.invoke('onboarding:importObsidianVault', { srcPath, targetVaultKind }),
+  // SKY-2993 / SKY-10388: Obsidian vault importer — all selected sources go
+  // into ONE new Mythos vault created under destParentPath.
+  importObsidianVault: (payload: {
+    targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>;
+    destParentPath?: string;
+    destVaultName?: string;
+  }) =>
+    ipcRenderer.invoke('onboarding:importObsidianVault', payload),
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') =>
     ipcRenderer.invoke('onboarding:dryRunObsidianImport', { srcPath, targetVaultKind }),
   // Beta 3 M24: Settings → Vault & Files import flows.

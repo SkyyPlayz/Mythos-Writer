@@ -670,24 +670,37 @@ test.describe('AC-OB-12: Obsidian import — successful commit reaches app shell
     fs.rmSync(userData, { recursive: true, force: true });
   });
 
-  test('AC-OB-12: confirming the dry-run report imports successfully and dismisses the wizard', async () => {
+  // SKY-10388: REAL Notes-only import to disk (repo E2E standard: real UI,
+  // real IPC, real filesystem). Only the native folder-picker dialog is
+  // stubbed — dry-run scan, vault creation, and file copy all run for real.
+  test('AC-OB-12: confirming the dry-run report imports into a NEW Mythos vault on disk', async () => {
     const obsidianDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-obsidian-12-'));
     fs.mkdirSync(path.join(obsidianDir, '.obsidian'));
+    fs.mkdirSync(path.join(obsidianDir, 'Ideas'));
+    // The importer copies notes byte-for-byte — the bare-stem [[wikilink]]
+    // and everything else stays exactly as Obsidian wrote it (SKY-10383).
+    fs.writeFileSync(path.join(obsidianDir, 'note1.md'), '# Note One\n\nLinks to [[Note Two]].\n');
+    fs.writeFileSync(path.join(obsidianDir, 'Ideas', 'Note Two.md'), '# Note Two\n\nBody.\n');
+    const sourceSnapshot = () => JSON.stringify({
+      note1: fs.readFileSync(path.join(obsidianDir, 'note1.md'), 'utf8'),
+      note2: fs.readFileSync(path.join(obsidianDir, 'Ideas', 'Note Two.md'), 'utf8'),
+      entries: fs.readdirSync(obsidianDir).sort(),
+    });
+    const before = sourceSnapshot();
 
+    // Only the OS folder dialog is stubbed — it cannot run headless.
     await app.evaluate(({ ipcMain }, dir) => {
       ipcMain.removeHandler('vault:chooseFolder');
       ipcMain.handle('vault:chooseFolder', () => ({ path: dir, cancelled: false }));
-      ipcMain.removeHandler('onboarding:dryRunObsidianImport');
-      ipcMain.handle('onboarding:dryRunObsidianImport', () => ({
-        preview: { markdownCount: 3, attachmentCount: 0, totalFiles: 3, topLevelFolders: [], sampleFiles: ['a.md', 'b.md', 'c.md'] },
-      }));
-      ipcMain.removeHandler('onboarding:importObsidianVault');
-      ipcMain.handle('onboarding:importObsidianVault', () => ({ ok: true, targetPath: dir }));
     }, obsidianDir);
 
     await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 15_000 });
     await page.locator(SELECTOR.cardImportObsidian).click();
     await expect(page.locator(SELECTOR.screenStepImport)).toBeVisible({ timeout: 8_000 });
+
+    // Destination is prefilled with the default vaults parent (ruling R3).
+    const defaultParent = path.join(userData, 'vaults');
+    await expect(page.locator('[data-testid="import-obs-dest-path"]')).toHaveValue(defaultParent, { timeout: 8_000 });
 
     await page.locator('[data-testid="import-obs-notes-browse"]').click();
     await page.locator('[data-testid="import-action-btn"]').click();
@@ -702,6 +715,21 @@ test.describe('AC-OB-12: Obsidian import — successful commit reaches app shell
     // Wizard is fully dismissed — no leftover import UI.
     await expect(page.locator(SELECTOR.screenStepImport)).toHaveCount(0);
     await expect(page.locator('[data-testid="import-error-modal"]')).toHaveCount(0);
+
+    // A NEW Mythos vault named after the source folder exists on disk (R2),
+    // with the notes copied into its Notes Vault side — content untouched,
+    // wikilink NOT rewritten (SKY-10383).
+    const vaultRoot = path.join(defaultParent, path.basename(obsidianDir));
+    expect(fs.existsSync(path.join(vaultRoot, 'mythos.json'))).toBe(true);
+    expect(fs.existsSync(path.join(vaultRoot, 'Story Vault'))).toBe(true);
+    const importedNote1 = fs.readFileSync(path.join(vaultRoot, 'Notes Vault', 'note1.md'), 'utf8');
+    // Byte-identical to the source — wikilink NOT rewritten, no frontmatter
+    // injected (SKY-10383 pinned AC).
+    expect(importedNote1).toBe('# Note One\n\nLinks to [[Note Two]].\n');
+    expect(fs.existsSync(path.join(vaultRoot, 'Notes Vault', 'Ideas', 'Note Two.md'))).toBe(true);
+
+    // The source Obsidian folder is untouched (R2).
+    expect(sourceSnapshot()).toBe(before);
 
     fs.rmSync(obsidianDir, { recursive: true, force: true });
   });

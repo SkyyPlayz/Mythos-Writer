@@ -3253,24 +3253,97 @@ const handlers: IpcHandlers = {
 
   // SKY-2993: Obsidian vault importer — importObsidianVault + dryRunObsidianImport
 
+  // SKY-10388 (owner rulings R1-R3): scaffold a NEW MythosVault v2 via the
+  // same createMythosVault primitive quick-start/start-fresh use, then copy
+  // each selected Obsidian source into its side of it. Never writes into the
+  // currently open vault; importObsidianToVaultDir is read-only on the source.
   [IPC_CHANNELS.ONBOARDING_IMPORT_OBSIDIAN]: async (payload: OnboardingImportObsidianPayload): Promise<OnboardingImportObsidianResponse> => {
-    const { srcPath, targetVaultKind } = payload ?? {};
-    if (typeof srcPath !== 'string' || !srcPath.trim()) {
-      return { ok: false, error: 'srcPath must be a non-empty string' };
+    const targets = Array.isArray(payload?.targets) ? payload.targets : [];
+    if (targets.length === 0) {
+      return { ok: false, error: 'targets must be a non-empty array' };
     }
-    if (targetVaultKind !== 'notes' && targetVaultKind !== 'story') {
-      return { ok: false, error: 'targetVaultKind must be "notes" or "story"' };
+    const seenKinds = new Set<string>();
+    for (const target of targets) {
+      if (typeof target?.srcPath !== 'string' || !target.srcPath.trim()) {
+        return { ok: false, error: 'each target needs a non-empty srcPath' };
+      }
+      if (target.kind !== 'notes' && target.kind !== 'story') {
+        return { ok: false, error: 'each target kind must be "notes" or "story"' };
+      }
+      if (seenKinds.has(target.kind)) {
+        return { ok: false, error: `duplicate target kind: ${target.kind}` };
+      }
+      seenKinds.add(target.kind);
     }
-    const targetRoot = targetVaultKind === 'notes' ? getNotesVaultRoot() : getVaultRoot();
-    const result = importObsidianToVaultDir(srcPath, targetRoot);
+    const destParent = (typeof payload.destParentPath === 'string' && payload.destParentPath.trim())
+      ? payload.destParentPath.trim().replace(/^~/, app.getPath('home'))
+      : defaultMythosVaultsParent();
+    if (!path.isAbsolute(destParent)) {
+      return { ok: false, error: 'destParentPath: must be an absolute path' };
+    }
+    const rawName = (typeof payload.destVaultName === 'string') ? payload.destVaultName.trim() : '';
+    // SECURITY: same gate as VAULT_CREATE_DEFAULT_MYTHOS — no separators or
+    // parent references in the vault name, so the renderer stays inside destParent.
+    if (rawName && !isSafeVaultName(rawName)) {
+      return { ok: false, error: 'destVaultName: must not contain path separators or parent references' };
+    }
+    // One vault regardless of how many sides are filled — an empty Story Vault
+    // or Notes Vault side is exactly how every blank vault looks (ruling R1).
+    const created = createMythosVault(destParent, {
+      ...(rawName ? { name: rawName } : {}),
+      seedDemo: false,
+    });
+    if (!created.ok) return { ok: false, error: created.error };
+
+    let imported = 0;
+    let skipped = 0;
+    let sourceCount = 0;
+    const errors: string[] = [];
+    const dropWarnings: string[] = [];
+    for (const target of targets) {
+      const result = importObsidianToVaultDir(
+        target.srcPath,
+        target.kind === 'notes' ? created.notesVaultPath : created.storyVaultPath,
+      );
+      imported += result.imported;
+      skipped += result.skipped;
+      sourceCount += result.sourceCount;
+      if (!result.ok) errors.push(...result.errors);
+      if (result.dropWarning) dropWarnings.push(result.dropWarning);
+    }
+    if (errors.length > 0) {
+      // Vault scaffold stays on disk (partial copies may exist) but is not
+      // adopted — settings/watchers still point at whatever was open before.
+      return { ok: false, mythosVaultRoot: created.mythosRoot, imported, skipped, sourceCount, error: errors.join('; ') };
+    }
+
+    // Post-scaffold bookkeeping — mirrors completeWithMythosV2 (ONBOARDING_COMPLETE).
+    saveVaultSettings({
+      vaultRoot: created.storyVaultPath,
+      notesVaultRoot: created.notesVaultPath,
+      layoutMode: 'blank',
+    });
+    addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
+    // Open the new roots (v2 path: manifest cache + DB) AFTER the copy so the
+    // manifest is built from the imported files.
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    await stopVaultWatcher();
+    await startVaultWatcher(created.storyVaultPath, notifyVaultChanged);
+    await stopNotesVaultWatcher();
+    await startNotesVaultWatcher(created.notesVaultPath, notifyNotesVaultChanged);
+    const current = loadAppSettings();
+    const recentVaultParentPaths = updateRecentVaultParentPaths(current.recentVaultParentPaths, destParent);
+    if (recentVaultParentPaths) {
+      saveAppSettings({ ...current, recentVaultParentPaths });
+    }
     return {
-      ok: result.ok,
-      targetPath: result.targetPath,
-      imported: result.imported,
-      skipped: result.skipped,
-      sourceCount: result.sourceCount,
-      error: result.errors.length > 0 ? result.errors.join('; ') : undefined,
-      dropWarning: result.dropWarning || undefined,
+      ok: true,
+      mythosVaultRoot: created.mythosRoot,
+      imported,
+      skipped,
+      sourceCount,
+      dropWarning: dropWarnings.length > 0 ? dropWarnings.join(' ') : undefined,
     };
   },
 
@@ -5429,6 +5502,7 @@ const handlers: IpcHandlers = {
       notesVaultPath: getNotesVaultRoot(),
       homeDir: app.getPath('home'),
       pathSeparator: path.sep as '/' | '\\',
+      defaultVaultsParentPath: defaultMythosVaultsParent(),
     };
   },
 
