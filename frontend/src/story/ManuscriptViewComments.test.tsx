@@ -10,6 +10,7 @@ import type { Block, Chapter, DraftState, Scene, Story } from '../types';
 import ManuscriptView from './ManuscriptView';
 import { commentsStore } from '../comments';
 import type { ManuscriptCursor } from './manuscriptModel';
+import { setAiEnabled, __resetAiEnabledForTests } from '../hooks/useAiEnabled';
 
 const NOW = '2026-07-07T00:00:00.000Z';
 
@@ -92,6 +93,7 @@ afterEach(() => {
   // would otherwise update the still-mounted view outside act().
   cleanup();
   commentsStore.reset();
+  __resetAiEnabledForTests();
   delete (window as { api?: unknown }).api;
   document.querySelectorAll('[data-testid="ln-toast"]').forEach((el) => el.remove());
   vi.restoreAllMocks();
@@ -420,5 +422,56 @@ describe('comments chip + focus mode', () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'true');
     expect(commentsStore.uiState().commentsInFocus).toBe(true);
+  });
+});
+
+describe('SKY-10573: agent comments hidden while AI master is off', () => {
+  it('hides writing/archive/beta comments but keeps user comments, and restores them when AI comes back on', () => {
+    renderView();
+    const userComment = addComment('another story', 'strong closer');
+    act(() => {
+      commentsStore.create({
+        storyId: 'story-1',
+        sceneId: 's1',
+        anchor: 'lantern cast a trembling circle of light',
+        text: 'Continuity: oil-lit in Ch. 1 but crystal-lit later.',
+        kind: 'archive',
+        suggestionId: 'sug-1',
+      });
+    });
+    const agentId = commentsStore.list('story-1').find((c) => c.kind === 'archive')!.id;
+    expect(screen.getByTestId(`msv-cmt-${userComment!.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`msv-cmt-${agentId}`)).toBeInTheDocument();
+
+    act(() => setAiEnabled(false));
+    expect(screen.getByTestId(`msv-cmt-${userComment!.id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`msv-cmt-${agentId}`)).toBeNull();
+    // storage untouched — hidden, not deleted.
+    expect(commentsStore.list('story-1')).toHaveLength(2);
+    expect(screen.getByTestId('msv-comments-chip')).toHaveTextContent('1');
+
+    act(() => setAiEnabled(true));
+    expect(screen.getByTestId(`msv-cmt-${userComment!.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`msv-cmt-${agentId}`)).toBeInTheDocument();
+    expect(screen.getByTestId('msv-comments-chip')).toHaveTextContent('2');
+  });
+
+  it('closes an open agent comment card when AI is turned off', () => {
+    renderView();
+    let id = '';
+    act(() => {
+      id = commentsStore.create({
+        storyId: 'story-1',
+        sceneId: 's1',
+        anchor: 'trembling circle',
+        text: 'Continuity flag',
+        kind: 'archive',
+        suggestionId: 'sug-9',
+      }).id;
+    });
+    fireEvent.click(screen.getByTestId(`msv-anchor-${id}`));
+    expect(screen.getByTestId('msv-copen')).toBeInTheDocument();
+    act(() => setAiEnabled(false));
+    expect(screen.queryByTestId('msv-copen')).toBeNull();
   });
 });
