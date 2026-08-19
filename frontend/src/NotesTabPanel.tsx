@@ -1,7 +1,6 @@
 // SKY-2096 (Phase 2 #3): Notes tab layout — vault tree + editor + Brainstorm sidebar + sub-view toggles.
 // Spec: vault tree (left) + markdown editor (center) + Brainstorm chat (right), with Graph and Entities
 // as in-tab sub-view toggles.
-// SKY-3626: N/F/E writing mode controls added to editor sub-view toolbar.
 // M16 (Beta 3): note splits, [[wiki link]] hover previews, and the right-panel
 // Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +16,7 @@ import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
 import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
 import { useAiEnabled } from './hooks/useAiEnabled';
-import type { Story, Scene, Chapter, WritingMode } from './types';
+import type { Story, Scene, Chapter } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
@@ -117,10 +116,6 @@ export interface NotesTabPanelProps {
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
-  // SKY-3626: N/F/E writing mode controls for Notes editor
-  writingMode?: WritingMode;
-  onSetWritingMode?: (mode: WritingMode) => void;
-  onOpenFocusPrefs?: () => void;
   /** SKY-3201: open the standalone Brainstorm tab seeded with the given text. */
   onOpenBrainstorm?: (seedText: string) => void;
   /** M8d: note-editor Read/Dictate toolbar buttons — reuses the app's TTS/voice pipeline. */
@@ -183,9 +178,6 @@ export default function NotesTabPanel({
   activeTabIsEntityBrowser,
   onSelectEntity,
   selectedEntityId,
-  writingMode,
-  onSetWritingMode,
-  onOpenFocusPrefs,
   onOpenBrainstorm,
   noteToolbarActions,
 }: NotesTabPanelProps) {
@@ -419,40 +411,6 @@ export default function NotesTabPanel({
             </button>
           ))}
         </div>
-        {/* SKY-3626: N/F/E writing-mode controls — Notes editor only, not Entity Browser */}
-        {notesSubView === 'editor' && !activeTabIsEntityBrowser && writingMode !== undefined && onSetWritingMode && (
-          <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
-            <button
-              className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-              onClick={() => onSetWritingMode('normal')}
-              aria-pressed={writingMode === 'normal'}
-              title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-              data-testid="writing-mode-normal"
-            >N</button>
-            <button
-              className={`nfe-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-              onClick={() => onSetWritingMode('focus')}
-              aria-pressed={writingMode === 'focus'}
-              title="Focus mode — distraction-free"
-              data-testid="writing-mode-focus"
-            >F</button>
-            {writingMode === 'focus' && onOpenFocusPrefs && (
-              <button
-                className="nfe-mode-prefs"
-                onClick={onOpenFocusPrefs}
-                title="Configure Focus mode panels"
-                aria-label="Focus mode preferences"
-              >⚙</button>
-            )}
-            <button
-              className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-              onClick={() => onSetWritingMode('edit')}
-              aria-pressed={writingMode === 'edit'}
-              title="Edit mode — review with Writing Coach + comments (Ctrl+Shift+E)"
-              data-testid="writing-mode-edit"
-            >E</button>
-          </div>
-        )}
         {/* M16: note split toggle — prototype "Split notes" header button.
             SKY-9920/SKY-10081: while pane 1 shows Entity Browser, or has no
             active note at all (e.g. its last tab was just closed), starting
