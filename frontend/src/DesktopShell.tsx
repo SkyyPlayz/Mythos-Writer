@@ -5456,7 +5456,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               >E</button>
             </div>
             {/* SKY-3201: Story Assist — open Brainstorm tab seeded with active scene context */}
-            {selectedScene && agentFlags.brainstorm && (
+            {selectedScene && agentFlags.brainstorm && aiEnabled && (
               <button
                 className="story-assist-btn"
                 type="button"

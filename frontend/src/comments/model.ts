@@ -102,3 +102,16 @@ export function orderCommentsByDocument(
 export function clipAnchor(anchor: string, max: number): string {
   return anchor.length > max ? `${anchor.slice(0, max)}…` : anchor;
 }
+
+/**
+ * M11c (SKY-10604): with the master AI switch off, only the writer's own
+ * comments render — agent-authored kinds (archive / writing / beta) hide
+ * everywhere (gutter, underlines, count chip). The sidecar is untouched, so
+ * flipping the switch back on restores them intact.
+ */
+export function visibleComments(
+  comments: readonly StoryComment[],
+  aiEnabled: boolean
+): readonly StoryComment[] {
+  return aiEnabled ? comments : comments.filter((c) => c.kind === 'user');
+}
