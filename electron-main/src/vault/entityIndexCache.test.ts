@@ -100,6 +100,40 @@ describe('loadEntityIndex (persistent cache)', () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].name).toBe('Lyra');
   });
+
+  // SKY-10769 AC1: the index persists across app restarts — a cold open of a
+  // 1k-note vault is served from the on-disk cache (no full re-parse) within
+  // the 200ms budget. Restart = closeDb + openDb on the same vault root,
+  // which reopens the same .mythos/state.db.
+  it('cold open after restart serves a 1k-note vault from cache in <200ms', () => {
+    const charsDir = path.join(vaultRoot, 'Universes', 'Characters');
+    for (let i = 0; i < 1000; i++) {
+      fs.writeFileSync(
+        path.join(charsDir, `Entity${i}.md`),
+        `---\naliases: [Alias ${i}A, Alias ${i}B]\ntype: Character\n---\nNote body ${i}.`,
+      );
+    }
+    loadEntityIndex(vaultRoot); // warm the cache (1000 + Lyra)
+
+    closeDb();
+    openDb(vaultRoot); // app restart
+
+    const rows = getVaultIndexCacheRows();
+    expect(rows).toHaveLength(1001); // cache survived the restart
+    // Sentinel: if the cold open re-parsed Lyra.md the real frontmatter would
+    // overwrite this — cache-served entries carry it through.
+    getDb()
+      .prepare('UPDATE vault_index_cache SET name = ? WHERE file_path = ?')
+      .run('SENTINEL', lyraPath);
+
+    const start = performance.now();
+    const loaded = loadEntityIndex(vaultRoot);
+    const elapsedMs = performance.now() - start;
+
+    expect(loaded).toHaveLength(1001);
+    expect(loaded.find((e) => e.path === lyraPath)?.name).toBe('SENTINEL');
+    expect(elapsedMs).toBeLessThan(200);
+  });
 });
 
 describe('resolveEntityKeyForFact', () => {

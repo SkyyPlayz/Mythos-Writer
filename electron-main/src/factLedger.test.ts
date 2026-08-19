@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
+import { DatabaseSync } from 'node:sqlite';
 import {
   openDb,
   closeDb,
@@ -185,6 +187,107 @@ describe('fact ledger', () => {
       // Post-rebuild re-extraction sees the fact again yet stays suppressed.
       const reextracted = upsertFact(makeFact());
       expect(isFactSuppressed(reextracted.fingerprint)).toBe(true);
+    });
+  });
+
+  // SKY-10769 AC2: ledger records are rebuildable — delete every ledger row,
+  // restart the app, and the same extraction pass over the unchanged source
+  // text reconstructs the identical fact set. The extractor here is a
+  // deterministic stand-in (the real one lands in M12.4); what this proves is
+  // the schema property: facts are a pure function of source text, so the
+  // store is disposable.
+  describe('ledger rebuild from source text (SKY-10769 AC2)', () => {
+    const SOURCE_PATH = 'Stories/Novel/ch01.md';
+    const SOURCE_TEXT = 'Lyra’s eyes were green. Kael carried a silverblade.';
+
+    function extractionPass(sourcePath: string, sourceText: string) {
+      const sourceHash = createHash('sha256').update(sourceText, 'utf-8').digest('hex');
+      const extracted: { entity_key: string; fact_key: string; fact_value: string }[] = [];
+      for (const m of sourceText.matchAll(/(\w+)['’]s eyes were (\w+)/g)) {
+        extracted.push({ entity_key: `Universes/Characters/${m[1]}.md`, fact_key: 'eye_color', fact_value: m[2] });
+      }
+      for (const m of sourceText.matchAll(/(\w+) carried a (\w+)/g)) {
+        extracted.push({ entity_key: `Universes/Characters/${m[1]}.md`, fact_key: 'carries', fact_value: m[2] });
+      }
+      return extracted.map((f) =>
+        upsertFact({ ...f, source_path: sourcePath, source_hash: sourceHash, extracted_at: NOW }),
+      );
+    }
+
+    it('delete all ledger rows → restart → identical extraction reconstructs identical facts', () => {
+      extractionPass(SOURCE_PATH, SOURCE_TEXT);
+      const before = listFacts()
+        .map((f) => f.fingerprint)
+        .sort();
+      expect(before).toHaveLength(2);
+
+      rebuildDerivedFactStores(); // "delete all ledger rows"
+      closeDb();
+      openDb(tmpDir); // "restart app"
+      expect(listFacts()).toHaveLength(0); // the wipe persisted
+
+      extractionPass(SOURCE_PATH, SOURCE_TEXT); // next scan over unchanged source
+      const after = listFacts()
+        .map((f) => f.fingerprint)
+        .sort();
+      expect(after).toEqual(before);
+    });
+  });
+
+  // SKY-10769 AC4/AC5: vault and fact ledger are separate stores — no schema
+  // entanglement. The checker flags any foreign key that crosses the
+  // vault/ledger boundary. Negative control first: a deliberately merged
+  // schema (ledger row keyed by FK into a vault table) must be caught,
+  // proving the checker can fail — then the real schema must pass it.
+  describe('vault/ledger store separation (SKY-10769 AC5)', () => {
+    const LEDGER_TABLES = ['fact_ledger', 'fact_provenance', 'vault_index_cache', 'fact_decisions'];
+
+    function findStoreEntanglements(db: DatabaseSync): string[] {
+      const tables = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        .all()
+        .map((r) => (r as { name: string }).name);
+      const violations: string[] = [];
+      for (const table of tables) {
+        const fromLedger = LEDGER_TABLES.includes(table);
+        const fks = db.prepare(`PRAGMA foreign_key_list("${table}")`).all() as { table: string }[];
+        for (const fk of fks) {
+          if (fromLedger !== LEDGER_TABLES.includes(fk.table)) {
+            violations.push(`${table} → ${fk.table}`);
+          }
+        }
+      }
+      return violations;
+    }
+
+    it('negative control: a merged schema (ledger FK into a vault table) is detected', () => {
+      const merged = new DatabaseSync(':memory:');
+      merged.exec(`
+        CREATE TABLE entity_index (id TEXT PRIMARY KEY, name TEXT);
+        CREATE TABLE fact_ledger (
+          id         TEXT PRIMARY KEY,
+          entity_id  TEXT NOT NULL REFERENCES entity_index(id),
+          fact_key   TEXT NOT NULL,
+          fact_value TEXT NOT NULL
+        );
+      `);
+      expect(findStoreEntanglements(merged)).toEqual(['fact_ledger → entity_index']);
+      merged.close();
+    });
+
+    it('real schema: no foreign key crosses the vault/ledger boundary', () => {
+      expect(findStoreEntanglements(getDb())).toEqual([]);
+    });
+
+    it('ledger entity keys are wikilink target paths, not vault row references', () => {
+      const fact = upsertFact(makeFact());
+      // The canonical entity key is the vault note path (the wikilink target)
+      // — resolvable against the vault but never a DB-level reference into it.
+      expect(fact.entity_key).toBe('Universes/Characters/Lyra.md');
+      const cols = getDb()
+        .prepare("PRAGMA table_info('fact_ledger')")
+        .all() as { name: string; type: string }[];
+      expect(cols.find((c) => c.name === 'entity_key')?.type).toBe('TEXT');
     });
   });
 });
