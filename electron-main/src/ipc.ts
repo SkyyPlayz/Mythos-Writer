@@ -637,6 +637,14 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
   AGENT_SESSION_DELETE: 'agentSession:delete',
   AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
+
+  // SKY-10730 M12.1: background job queue (worker-thread scan/extraction passes)
+  JOBS_ENQUEUE: 'jobs:enqueue',
+  JOBS_LIST: 'jobs:list',
+  JOBS_PROGRESS: 'jobs:progress',
+  JOBS_CANCEL: 'jobs:cancel',
+  /** Push channel (main → renderer): JobEvent progress/terminal updates. */
+  JOBS_EVENT: 'jobs:event',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───

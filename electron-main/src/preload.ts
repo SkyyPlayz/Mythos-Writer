@@ -1067,6 +1067,21 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('agentSession:appendTurns', { sessionId, turns }),
   },
 
+  // SKY-10730 M12.1: background job queue — whole-vault scan passes run on a
+  // worker thread; the UI queries progress/ETA and subscribes to push events.
+  jobs: {
+    enqueue: (type: string) => ipcRenderer.invoke('jobs:enqueue', { type }),
+    list: (opts?: { status?: string; type?: string; limit?: number }) =>
+      ipcRenderer.invoke('jobs:list', opts ?? {}),
+    progress: (jobId: string) => ipcRenderer.invoke('jobs:progress', { jobId }),
+    cancel: (jobId: string) => ipcRenderer.invoke('jobs:cancel', { jobId }),
+    onEvent: (callback: (evt: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, evt: unknown) => callback(evt);
+      ipcRenderer.on('jobs:event', handler);
+      return () => ipcRenderer.removeListener('jobs:event', handler);
+    },
+  },
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',

@@ -809,6 +809,55 @@ function runMigrations(db: DatabaseSync): void {
     }
     db.exec('PRAGMA user_version = 29');
   }
+
+  // v30 is reserved by M12.2 (SKY-10731, fact-ledger schema) — in flight on a
+  // sibling branch when this was written. Whichever lands second renumbers if
+  // needed; skipping a version number is harmless (`currentVersion < 31` still
+  // runs on a v29 DB).
+  if (currentVersion < 31) {
+    // M12.1 (SKY-10730): background job/queue substrate.
+    //
+    // background_jobs — one row per queued/running/finished job. checkpoint_json
+    // is the resume point: the queue persists it as workers report progress, so
+    // a job killed mid-run (crash or app quit) resumes from its last checkpoint
+    // on next launch (rows stuck at status='running' are requeued at boot).
+    //
+    // scan_coverage — durable coverage manifest: which content unit (scope kind
+    // + vault-relative path) was last scanned by which job type at which
+    // content hash. Re-runs skip units whose hash is unchanged. DERIVED data:
+    // wiping it only forces a full re-scan, never loses author decisions.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS background_jobs (
+        id              TEXT PRIMARY KEY,
+        type            TEXT NOT NULL,
+        payload_json    TEXT,
+        status          TEXT NOT NULL DEFAULT 'queued',
+        checkpoint_json TEXT,
+        total_units     INTEGER,
+        completed_units INTEGER NOT NULL DEFAULT 0,
+        skipped_units   INTEGER NOT NULL DEFAULT 0,
+        error           TEXT,
+        created_at      TEXT NOT NULL,
+        started_at      TEXT,
+        updated_at      TEXT NOT NULL,
+        finished_at     TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_background_jobs_status
+        ON background_jobs (status, created_at);
+
+      CREATE TABLE IF NOT EXISTS scan_coverage (
+        id           TEXT PRIMARY KEY,
+        job_type     TEXT NOT NULL,
+        scope_kind   TEXT NOT NULL,
+        scope_path   TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        job_id       TEXT,
+        scanned_at   TEXT NOT NULL,
+        UNIQUE (job_type, scope_kind, scope_path)
+      );
+    `);
+    db.exec('PRAGMA user_version = 31');
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───

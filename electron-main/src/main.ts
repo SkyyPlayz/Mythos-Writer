@@ -274,6 +274,12 @@ import {
 } from './agentPersona.js';
 import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
 import { registerPresetHandlers } from './presetIpc.js';
+// SKY-10730 M12.1: background job queue — the worker entry is bundled as a
+// separate chunk by electron-vite's ?nodeWorker suffix and spawned as a
+// node:worker_threads Worker so scan passes never run on the main thread.
+import createJobWorker from './jobs/jobWorker?nodeWorker';
+import { initJobService, shutdownJobService } from './jobs/jobService.js';
+import { registerJobsIpc } from './jobs/jobsIpc.js';
 import {
   buildVaultSummary,
   truncateContext,
@@ -825,6 +831,7 @@ async function repointToMigratedVault(
   await stopBoardWatcher();
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
+  await shutdownJobService();
   closeDb();
   saveVaultSettings({
     vaultRoot: target.storyVaultPath,
@@ -934,6 +941,21 @@ function shouldInitializeVaultsOnStartup(): boolean {
 // call silently resurrects a seeded vault before the user restarts the app.
 let appDataCleared = false;
 
+// SKY-10730: bring the background job queue up for a vault right after its DB
+// opens. Idempotent per root (like openDb); requeues + resumes jobs that were
+// interrupted by a crash or quit.
+function initJobServiceForVault(vaultRoot: string): void {
+  initJobService(
+    vaultRoot,
+    (input) => createJobWorker({ workerData: input }),
+    (evt) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
+      }
+    },
+  );
+}
+
 function ensureVaultDir() {
   if (appDataCleared) {
     throw new Error('App data was cleared — restart Mythos Writer to continue.');
@@ -947,6 +969,7 @@ function ensureVaultDir() {
     // Demo seeding never runs on open (W0.1 rule).
     ensureMythosV2SeedMarker(mythosRoot);
     openDb(vaultRoot);
+    initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
     if (!fs.existsSync(cachePath)) {
       // Fresh machine / deleted .mythos: rebuild the regenerable manifest
@@ -978,6 +1001,7 @@ function ensureVaultDir() {
   });
   // Open DB before manifest migration so the audit callback can log immediately.
   openDb(vaultRoot);
+  initJobServiceForVault(vaultRoot);
   const manifestPath = getManifestPath();
   if (!fs.existsSync(manifestPath)) {
     writeManifest(manifestPath, defaultManifest(vaultRoot));
@@ -5443,6 +5467,7 @@ const handlers: IpcHandlers = {
     await stopBoardWatcher();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
+    await shutdownJobService();
     closeDb();
     // Switch vault — persist BOTH halves atomically so a crash between
     // saves cannot leave a stale Notes Vault paired with a fresh Story Vault.
@@ -6072,6 +6097,7 @@ const handlers: IpcHandlers = {
       filters: [{ name: 'Mythos Backup', extensions: ['mwbackup'] }],
     });
     if (res.canceled || !res.filePath) return { path: null, bytes: 0, cancelled: true };
+    await shutdownJobService();
     closeDb();
     try {
       const manifest = fs.existsSync(getManifestPath()) ? readManifest(getManifestPath()) : null;
@@ -6097,6 +6123,7 @@ const handlers: IpcHandlers = {
     });
     if (res.canceled || !res.filePaths[0]) return { restored: false, cancelled: true, details: [] };
     const archivePath = res.filePaths[0];
+    await shutdownJobService();
     closeDb();
     try {
       const result = await restoreAppData({
@@ -6139,6 +6166,7 @@ const handlers: IpcHandlers = {
     await stopBoardWatcher();
     await stopVaultWatcher();
     await stopNotesVaultWatcher();
+    await shutdownJobService();
     closeDb();
     const result = cleanUninstall({
       storyVaultRoot: getVaultRoot(),
@@ -9807,6 +9835,7 @@ app.whenReady().then(async () => {
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
+  registerJobsIpc(getVaultRoot);
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
   registerNavigatorSyncHandlers();
@@ -9861,6 +9890,9 @@ app.on('window-all-closed', async () => {
   await stopBoardWatcher();
   await stopVaultWatcher();
   await stopNotesVaultWatcher();
+  // SKY-10730: stop any running background job worker before the DB closes.
+  // Checkpoints are persisted continuously, so the job resumes next launch.
+  await shutdownJobService();
   closeDb();
   // SKY-863: release the vault lockfile so the next session doesn't see a stale lock.
   try { releaseLockfile(getVaultRoot()); } catch { /* non-fatal */ }
