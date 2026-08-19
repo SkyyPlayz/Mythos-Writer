@@ -11,6 +11,8 @@ import {
   writeFileAtomic,
   listVaultFiles,
   deleteVaultFile,
+  excerptFromMarkdown,
+  readNoteExcerpt,
   parseFrontmatter,
   serializeFrontmatter,
   writeSceneFile,
@@ -555,6 +557,79 @@ describe('YAML frontmatter', () => {
     expect(frontmatter.id).toBe('z9');
     expect(frontmatter.title).toBe('Divider Test');
     expect(reparsedProse).toBe(prose);
+  });
+});
+
+describe('Note excerpt — hook line for Scene Crafter suggested cards (SKY-10511)', () => {
+  it('returns the first body line after frontmatter and the H1', () => {
+    const raw = "---\ntitle: Ward Violet\n---\n# Ward Violet\n\nThe district that doesn't exist.\n\nMore detail below.";
+    expect(excerptFromMarkdown(raw)).toBe("The district that doesn't exist.");
+  });
+
+  it('strips a leading heading without frontmatter (Brainstorm Agent note shape)', () => {
+    expect(excerptFromMarkdown('# Liora Ashen\n\nA lamplighter who remembers every flame.')).toBe(
+      'A lamplighter who remembers every flame.',
+    );
+  });
+
+  it('uses the first line directly when the note has no heading', () => {
+    expect(excerptFromMarkdown("A quiet ward at the city's edge.\nSecond line.")).toBe("A quiet ward at the city's edge.");
+  });
+
+  it('only skips a heading in first position — a later heading line is the excerpt', () => {
+    expect(excerptFromMarkdown('# Title\n\n## Overview\n\nText.')).toBe('## Overview');
+  });
+
+  it('returns "" for empty, whitespace-only, and heading-only notes', () => {
+    expect(excerptFromMarkdown('')).toBe('');
+    expect(excerptFromMarkdown('  \n\n\t\n')).toBe('');
+    expect(excerptFromMarkdown('# Just A Title\n\n')).toBe('');
+    expect(excerptFromMarkdown('---\ntitle: Meta Only\n---\n')).toBe('');
+  });
+
+  it('returns "" rather than leaking YAML when the frontmatter fence is unclosed (bounded-read truncation)', () => {
+    expect(excerptFromMarkdown('---\ntitle: Truncated\ntags: [a, b]\nnotes: the read cut off before the closing fence')).toBe('');
+  });
+
+  it('caps long lines at 140 chars with a trailing ellipsis', () => {
+    const line = 'x'.repeat(200);
+    const excerpt = excerptFromMarkdown(`# T\n\n${line}`);
+    expect(excerpt).toHaveLength(140);
+    expect(excerpt.endsWith('…')).toBe(true);
+    expect(excerpt.startsWith('x'.repeat(139))).toBe(true);
+  });
+
+  it('short lines pass through untouched at exactly the cap', () => {
+    const line = 'y'.repeat(140);
+    expect(excerptFromMarkdown(line)).toBe(line);
+  });
+
+  describe('readNoteExcerpt — bounded file read', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-excerpt-'));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('reads the hook line from a real note file', () => {
+      const p = path.join(tmpDir, 'Ward Violet.md');
+      fs.writeFileSync(p, "# Ward Violet\n\nThe district that doesn't exist.\n");
+      expect(readNoteExcerpt(p)).toBe("The district that doesn't exist.");
+    });
+
+    it('only reads the head of a large note — hook still found, tail ignored', () => {
+      const p = path.join(tmpDir, 'big.md');
+      fs.writeFileSync(p, `# Big\n\nHook line first.\n${'lorem ipsum '.repeat(10_000)}`);
+      expect(readNoteExcerpt(p)).toBe('Hook line first.');
+    });
+
+    it('returns "" for a missing file instead of throwing', () => {
+      expect(readNoteExcerpt(path.join(tmpDir, 'nope.md'))).toBe('');
+    });
   });
 });
 

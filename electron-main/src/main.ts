@@ -383,6 +383,7 @@ import {
   scaffoldNotesVault,
   isEmptyOrMissing,
   parseFrontmatter,
+  readNoteExcerpt,
   serializeFrontmatter,
   safePath,
   safeVaultIpcJoin,
@@ -5593,8 +5594,17 @@ const handlers: IpcHandlers = {
     // even when the configured roots overlap.
     const { items } = listVaultFiles(root, payload.root);
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
+    const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
+    // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
+    // Compute it here — one bounded read per note during the listing, after
+    // filtering so story internals are never opened — instead of per-card IPC
+    // round-trips from the renderer (an N+1 over the vault).
     return {
-      items: filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())),
+      items: filtered.map((item) =>
+        !item.isDirectory && /\.md$/i.test(item.path)
+          ? { ...item, excerpt: readNoteExcerpt(path.join(listedRoot, item.path)) }
+          : item,
+      ),
     };
   },
   // SKY-7995: delete/move accept directories, so they route through

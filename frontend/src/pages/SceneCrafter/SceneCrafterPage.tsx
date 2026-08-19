@@ -50,7 +50,11 @@ interface SuggestedCardsRailProps {
   onCardActivate: (card: SuggestedCard) => void;
   /** Closed view only: persistent selection state (SKY-7601 draft context). */
   isSelected?: (card: SuggestedCard) => boolean;
-  /** Canvas view only: enables click-or-drag onto the board (canvas spec §2). */
+  /**
+   * Enables drag (canvas spec §2 / M10 item 3 "click-or-drag onto the board").
+   * Canvas view: drop places the card on the open board. Setup view: there is
+   * no drop target, so dragstart itself is the activation gesture (SKY-10511).
+   */
   onCardDragStart?: (card: SuggestedCard, event: React.DragEvent<HTMLButtonElement>) => void;
 }
 
@@ -579,9 +583,17 @@ export default function SceneCrafterPage({
           groups={suggestedGroups}
           query={sugQ}
           onQueryChange={setSugQ}
-          hint={`Click a card to use it as context for your draft — ${vaultStockedCopy}`}
+          hint={`Click or drag a card onto the board — ${vaultStockedCopy}`}
           onCardActivate={addSuggestedCard}
           isSelected={(card) => !!planSel[card.nid]}
+          onCardDragStart={(card, event) => {
+            // SKY-10511: no drop target in the Setup view — dragging IS the
+            // activation gesture, toggling the same selection click uses.
+            // Setting the canvas payload keeps the browser's copy cursor
+            // instead of a drag-reject one; with no drop target it is inert.
+            onSuggestedCardDragStart(card, event);
+            addSuggestedCard(card);
+          }}
         />
 
         <div className="sc-columns">
