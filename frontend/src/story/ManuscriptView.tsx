@@ -76,6 +76,7 @@ import {
   isValidAnchor,
   runAgentAction,
   useStoryComments,
+  visibleComments,
   type AgentAction,
   type StoryComment,
 } from '../comments';
@@ -512,11 +513,10 @@ export default function ManuscriptView({
   // SKY-10573: agent comments (writing/archive/beta) hidden while the AI
   // master toggle is off — storage is untouched, they reappear when AI is
   // turned back on (PLAN.md M11b: human comments only when AI off).
+  // SKY-10604 extracts the filter to comments/visibleComments so BookPreview
+  // applies the identical rule.
   const aiEnabled = useAiEnabled();
-  const comments = useMemo(
-    () => (aiEnabled ? allComments : allComments.filter((c) => c.kind === 'user')),
-    [allComments, aiEnabled]
-  );
+  const comments = useMemo(() => visibleComments(allComments, aiEnabled), [allComments, aiEnabled]);
   /** Pending selection anchor (prototype cSel) — non-null shows the bar. */
   const [selAnchor, setSelAnchor] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');

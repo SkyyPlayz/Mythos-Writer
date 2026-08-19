@@ -38,7 +38,7 @@ export type { CommentKind, CreateCommentInput, StoryComment } from './types';
 export { commentsStore, createComment } from './store';
 export type { CommentsUiState } from './store';
 
-export { segmentsFor, findAnchorSceneId, orderCommentsByDocument, clipAnchor } from './model';
+export { segmentsFor, findAnchorSceneId, orderCommentsByDocument, clipAnchor, visibleComments } from './model';
 export type { AnchorSegment } from './model';
 
 export {
