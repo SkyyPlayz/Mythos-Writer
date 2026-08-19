@@ -669,3 +669,30 @@ describe('SceneCrafterPage — SKY-9878 R11/M11c hint copy (rail is manual eithe
     expect(card).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+describe('SceneCrafterPage — SKY-10576 Generate button gated on the master AI toggle', () => {
+  it('Generate ✦ renders while AI is on (default)', async () => {
+    await renderPage();
+    expect(screen.getByRole('button', { name: 'Generate ✦' })).toBeInTheDocument();
+  });
+
+  it('Generate ✦ does not render with AI off', async () => {
+    setAiEnabled(false);
+    await renderPage();
+    expect(screen.queryByRole('button', { name: 'Generate ✦' })).not.toBeInTheDocument();
+  });
+
+  it('a pre-existing draftStartError\'s "Try again" retry also stays hidden with AI off', async () => {
+    const api = streamingApi({
+      streamStart: vi.fn().mockRejectedValue(new Error('AI unavailable — check your API key in settings.')),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    await renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Generate ✦' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+
+    act(() => setAiEnabled(false));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument());
+  });
+});

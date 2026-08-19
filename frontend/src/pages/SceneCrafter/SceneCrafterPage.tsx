@@ -836,7 +836,7 @@ export default function SceneCrafterPage({
                 ))}
               </div>
               <p className="sc-generate-copy">{CRAFTER_GENERATE_COPY}</p>
-              {!draftStreamId && (
+              {!draftStreamId && aiEnabled && (
                 <button type="button" className="sc-draft-btn" onClick={generateDraft}>
                   Generate ✦
                 </button>
@@ -844,7 +844,7 @@ export default function SceneCrafterPage({
               {draftStartError && (
                 <div className="sc-draft-error" role="alert">
                   {draftStartError}
-                  <button type="button" onClick={generateDraft}>Try again</button>
+                  {aiEnabled && <button type="button" onClick={generateDraft}>Try again</button>}
                 </div>
               )}
               <div className="sc-help">

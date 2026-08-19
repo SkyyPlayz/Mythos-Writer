@@ -8,6 +8,7 @@ const DEFAULT_PROPS = {
   activeSubView: 'editor',
   onSubViewChange: vi.fn(),
   vaultName: 'My Story',
+  aiEnabled: true,
 };
 
 describe('StorySubViewBar', () => {
@@ -43,6 +44,19 @@ describe('StorySubViewBar', () => {
     render(<StorySubViewBar {...DEFAULT_PROPS} onSubViewChange={onSubViewChange} />);
     fireEvent.click(screen.getByRole('tab', { name: /^book$/i }));
     expect(onSubViewChange).toHaveBeenCalledWith('book');
+  });
+
+  // SKY-10618 (M11b table, row "Editor sub-tabs"): Coach is AI-bearing chrome —
+  // it must drop entirely when the master AI toggle is off, like every other
+  // AI-bearing sub-surface.
+  it('drops the Coach tab when AI is off', () => {
+    render(<StorySubViewBar {...DEFAULT_PROPS} aiEnabled={false} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    expect(screen.queryByRole('tab', { name: /^coach$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /editor/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /structure/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^book$/i })).toBeInTheDocument();
   });
 
   // SKY-3626: NFE (N/F/E) writing mode buttons must not appear in StorySubViewBar —

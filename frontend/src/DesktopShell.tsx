@@ -123,6 +123,7 @@ import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
 import AgentHubPanel from './AgentHubPanel';
 import CoachPage from './coach/CoachPage';
+import { EmptyState } from './components/EmptyState/EmptyState';
 import ContinuityPanel from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
@@ -5241,6 +5242,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         activeSubView={view}
         onSubViewChange={handleSetView}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
+        aiEnabled={aiEnabled}
       />}
       {showSampleProjectBanner && (
         <div
@@ -5296,7 +5298,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           )}
         </div>
       )}
-      {activeDockedTabId === null && view === 'coach' && (
+      {activeDockedTabId === null && view === 'coach' && aiEnabled && (
         /* Beta 4 M12 (§5.2): the Writing Coach's page — shares the `coach`
            session store with the right-panel Coach chat. */
         <div className="shell-coach">
@@ -5305,6 +5307,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             story={selectedStory}
             currentChapterId={selectedChapter?.id ?? null}
             agentNames={appSettings?.agentNames}
+          />
+        </div>
+      )}
+      {activeDockedTabId === null && view === 'coach' && !aiEnabled && (
+        /* SKY-10618: the sub-tab bar drops Coach when AI is off, but `view`
+           can still be 'coach' from before the toggle flipped or from the
+           Scene Analysis "View Full Analysis" entry point — show the same
+           honest EmptyState pattern as Brainstorm/Scene Crafter instead of a
+           blank pane or the fully-interactive chat. */
+        <div className="shell-coach">
+          <EmptyState
+            icon={
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M22 10L12 5 2 10l10 5z" />
+                <path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" />
+                <path d="M22 10v6" />
+              </svg>
+            }
+            heading="Writing Coach is off"
+            hint="Enable Agent Chat in Settings to get lessons, drills, and Coach's Read on your scenes."
+            action={{ label: 'Open Settings', onClick: () => setSettingsOpen(true), testId: 'shell-coach-off-open-settings' }}
+            testId="shell-coach-ai-off"
           />
         </div>
       )}
