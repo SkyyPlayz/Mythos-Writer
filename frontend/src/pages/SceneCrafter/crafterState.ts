@@ -90,12 +90,14 @@ export interface VaultListItem {
   name: string;
   isDirectory: boolean;
   modifiedAt: string;
+  /** SKY-10511: the note's hook line, computed main-side during the listing. */
+  excerpt?: string;
 }
 
 export interface SuggestedCard {
   /** Card title — note basename with dashes/underscores as spaces. */
   t: string;
-  /** One-line description — the vault folder the note lives in. */
+  /** One-line description — the note's hook line, or its vault folder when the note has no body yet. */
   d: string;
   /** Avatar initials shown in the leading chip. */
   av: string;
@@ -148,7 +150,9 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
     const title = titleCaseWords(base.replace(/[-_]+/g, ' '));
     cards.push({
       t: title,
-      d: segments.slice(0, -1).join(' / ') || 'Vault root',
+      // SKY-10511: the hook line is the card body; folder path only for notes
+      // with no usable body yet (empty note) — preserves the old look there.
+      d: item.excerpt || (segments.slice(0, -1).join(' / ') || 'Vault root'),
       av: avatarForTitle(title),
       group: top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES',
       nid: path.replace(/\.md$/i, ''),

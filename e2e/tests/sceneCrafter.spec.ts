@@ -511,6 +511,46 @@ test('AC-SC-15: clicking a suggested card selects it instead of writing to the r
   await expect(firstCard).toHaveAttribute('aria-pressed', 'false');
 });
 
+// ─── SKY-10511: hook-line excerpt + drag-to-select in the closed Setup rail ──
+
+test('SKY-10511: Setup-rail card shows the note hook line, and dragging toggles selection like click', async () => {
+  fs.mkdirSync(path.join(notesVaultDir, 'Locations'), { recursive: true });
+  fs.writeFileSync(
+    path.join(notesVaultDir, 'Locations', 'Ward Violet.md'),
+    "# Ward Violet\n\nThe district that doesn't exist.\n",
+  );
+
+  await reloadBoardView(page);
+
+  const suggested = page.locator('.sc-suggest');
+  const card = suggested.getByRole('button', { name: /Ward Violet/i });
+  await card.waitFor({ state: 'visible', timeout: 8_000 });
+
+  // Defect 1 — the card body is the note's hook line (first body line after
+  // the H1), not the vault folder breadcrumb. Crosses the full boundary:
+  // fs write → main-process excerpt during NOTES_VAULT_LIST → rail render.
+  await expect(card.locator('.sc-sugg-d')).toHaveText("The district that doesn't exist.");
+
+  // The Setup-view hint advertises drag, matching the canvas rail verbatim.
+  await expect(page.locator('.sc-suggest-hint')).toContainText('Click or drag a card onto the board');
+
+  // Defect 2 — in the Setup view dragstart IS the activation gesture: it
+  // toggles the card into planSel exactly like click (there is no drop
+  // target; the drag itself selects). Same real-DragEvent pattern as
+  // dragSuggestedCardOntoCanvas below.
+  await expect(card).toHaveAttribute('aria-pressed', 'false');
+  await card.evaluate((el) => {
+    el.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() }));
+  });
+  await expect(card).toHaveAttribute('aria-pressed', 'true');
+
+  // Dragging again deselects — identical toggle semantics to click.
+  await card.evaluate((el) => {
+    el.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() }));
+  });
+  await expect(card).toHaveAttribute('aria-pressed', 'false');
+});
+
 // ─── AC-SC-17: Scenes-tab mini canvas pan/zoom + survives a real app restart ─
 //
 // SKY-8265 AC2 ("Add to scene board places the draft card on the board and it

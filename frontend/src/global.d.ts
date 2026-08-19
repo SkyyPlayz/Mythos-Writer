@@ -1377,7 +1377,7 @@ interface Window {
     // root via safeVaultIpcJoin on the main side.
     readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
     writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
-    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string }> } | { error: string }>;
+    listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;

@@ -518,6 +518,67 @@ export function parseFrontmatter(raw: string): { frontmatter: Frontmatter; prose
   return { frontmatter: fm, prose: match[2] };
 }
 
+// ─── Note excerpt (SKY-10511) ───
+//
+// Scene Crafter's suggested cards show each note's one-line hook. Brainstorm
+// Agent notes put it on the first body line after the H1 (renderBrainstormNote
+// in main.ts writes `# <Name>\n\n<description>`), and hand-written notes
+// follow the same `# Title` + body shape — so "first non-blank body line after
+// frontmatter and a leading heading" is the hook for both.
+
+/** How much of a note to read for its excerpt — the hook line lives at the top. */
+const EXCERPT_READ_BYTES = 2048;
+const EXCERPT_MAX_CHARS = 140;
+
+/**
+ * First non-blank prose line of a markdown note: frontmatter stripped, a
+ * single leading ATX heading skipped, capped at ~140 chars. Returns '' when
+ * there is no usable body line (empty note, heading-only note, or frontmatter
+ * left unclosed by the bounded read — leaking YAML keys would be worse than
+ * no excerpt).
+ */
+export function excerptFromMarkdown(raw: string): string {
+  const { prose } = parseFrontmatter(raw);
+  // An unclosed opening fence survives parseFrontmatter untouched (the raw
+  // was truncated mid-frontmatter by the bounded read, or the note is
+  // malformed) — the lines after it are YAML, not prose.
+  if (/^---[ \t]*\r?\n/.test(prose)) return '';
+  let seenFirstLine = false;
+  for (const line of prose.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (!seenFirstLine) {
+      seenFirstLine = true;
+      if (/^#{1,6}\s/.test(trimmed)) continue; // the note's title heading
+    }
+    if (trimmed.length <= EXCERPT_MAX_CHARS) return trimmed;
+    // Code-point-safe cut so the ellipsis never lands mid-surrogate-pair.
+    return [...trimmed].slice(0, EXCERPT_MAX_CHARS - 1).join('').trimEnd() + '…';
+  }
+  return '';
+}
+
+/**
+ * Bounded excerpt read for a listing entry — first EXCERPT_READ_BYTES only,
+ * never the whole file. Any read failure yields '' so one bad file cannot
+ * break the vault listing.
+ */
+export function readNoteExcerpt(absPath: string): string {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(absPath, 'r');
+    const buf = Buffer.alloc(EXCERPT_READ_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, EXCERPT_READ_BYTES, 0);
+    return excerptFromMarkdown(buf.toString('utf-8', 0, bytesRead));
+  } catch {
+    return '';
+  } finally {
+    if (fd !== null) {
+      try { fs.closeSync(fd); } catch { /* ignore close errors */ }
+    }
+  }
+}
+
 export function serializeFrontmatter(fm: Frontmatter, prose: string): string {
   const lines: string[] = ['---'];
   for (const [key, val] of Object.entries(fm)) {

@@ -27,8 +27,8 @@ import {
   type VaultListItem,
 } from './crafterState';
 
-function item(path: string, isDirectory = false): VaultListItem {
-  return { path, name: path.split('/').pop() ?? path, isDirectory, modifiedAt: '2026-06-30T12:00:00.000Z' };
+function item(path: string, isDirectory = false, excerpt?: string): VaultListItem {
+  return { path, name: path.split('/').pop() ?? path, isDirectory, modifiedAt: '2026-06-30T12:00:00.000Z', excerpt };
 }
 
 describe('crafter setup state', () => {
@@ -97,6 +97,24 @@ describe('suggested cards from the vault listing', () => {
     expect(cards[0].av).toBe('LA');
     expect(cards[0].group).toBe('CHARACTERS');
     expect(cards[3].group).toBe('NOTES');
+  });
+
+  // SKY-10511: the card body is the note's hook line (main-side excerpt),
+  // with the folder path kept only as the empty-note fallback.
+  it('uses the listing excerpt as the card description when present', () => {
+    const cards = suggestedFromVault([
+      item('Locations/Ward Violet.md', false, "The district that doesn't exist"),
+    ]);
+    expect(cards[0].d).toBe("The district that doesn't exist");
+  });
+
+  it('falls back to the folder path (or "Vault root") when the excerpt is empty or absent', () => {
+    const cards = suggestedFromVault([
+      item('Locations/Empty Note.md', false, ''),
+      item('Characters/No Excerpt Field.md'),
+      item('Rootling.md', false, ''),
+    ]);
+    expect(cards.map((c) => c.d)).toEqual(['Locations', 'Characters', 'Vault root']);
   });
 
   it('filters with the prototype "title + description" substring rule (line 4527)', () => {

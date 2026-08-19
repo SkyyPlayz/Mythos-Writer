@@ -1104,6 +1104,13 @@ export interface VaultListItem {
   name: string;
   isDirectory: boolean;
   modifiedAt: string;
+  /**
+   * SKY-10511: the note's hook line — first non-blank body line after
+   * frontmatter/leading heading, ≤140 chars. Set by NOTES_VAULT_LIST for
+   * `.md` files ('' when the note has no usable body); absent on directory
+   * rows and on the story-vault VAULT_LIST, which has no use for it.
+   */
+  excerpt?: string;
 }
 
 export interface VaultListResponse {
