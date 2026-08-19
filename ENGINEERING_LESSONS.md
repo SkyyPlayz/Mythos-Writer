@@ -1,5 +1,11 @@
 # Engineering Lessons
 
+## Carve-out diff-check must run at PR-open/merge-request time, not just at the CEO gate stage (SKY-10702)
+
+**2026-08-19** — PR #1265 (SKY-10575) bundled a `.github/workflows/ci.yml` change (+6/-0, two additive e2e steps) into a feature PR instead of a carved-out CI-only PR. The content was safe (additive only, no permissions/secrets/deploy changes), but it bypassed the standing `.github/**` → `ESCALATE-IVY` carve-out policy. Root cause: the implementer's own merge-request `request_confirmation` never flagged the workflow-file change, so the categorical carve-out rule never got a chance to fire — the gap was at merge-request time, before any CEO gate ticket existed, not at the CEO's screening step.
+
+**Fix:** when a feature PR needs a companion CI-wiring change (new `npm run test:e2e:*` step, matrix entry, etc.), split it into its own small PR so the carve-out gate actually sees it. The implementer runs the `.github/**` diff-check before requesting merge — don't rely on a downstream approver to catch it.
+
 ## jsdom has no `DragEvent` — `fireEvent.drop(el, {clientX, clientY})` silently drops them (SKY-9878)
 
 **2026-08-12** — `@testing-library/dom`'s `createEvent` resolves `drop`/`dragover`/`dragstart` to `window.DragEvent`; when that's `undefined` (jsdom, all versions as of this repo's toolchain — confirmed via a throwaway probe test), it silently falls back to the base `Event` constructor, which ignores unrecognized init members. `dataTransfer` still works (testing-library special-cases and copies it on afterward), but `clientX`/`clientY` end up `undefined` → `NaN` math downstream, with no error or warning.
