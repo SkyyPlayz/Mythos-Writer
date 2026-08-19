@@ -174,6 +174,8 @@ async function openSettings(page: Page): Promise<void> {
   // SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({ timeout: 10_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
   await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
 }
 

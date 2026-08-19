@@ -146,6 +146,9 @@ test('TC-SKY-3219-01: Save preserves background image path in stored settings', 
   // Open Settings. SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance (no Save footer) — the
+  // explicit-save flow under test lives on the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   // Click Save without changing anything.
   await page.getByRole('button', { name: 'Save settings' }).click();
@@ -178,6 +181,9 @@ test('TC-SKY-3219-02: Save does not reset --bg-app-image CSS variable to default
   // Open Settings and Save. SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance (no Save footer) — the
+  // explicit-save flow under test lives on the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
 

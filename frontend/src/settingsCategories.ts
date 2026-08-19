@@ -8,11 +8,13 @@
  * imports SETTINGS_CATEGORIES to drive its category nav instead of maintaining
  * a second, hand-written list (SKY-5694).
  *
- * Beta 4 M28 (§13; GAP #8): the settings workspace left rail follows the
- * prototype `settingsMeta` (HTML 6458) order and labels:
- * Account & profile · Appearance · AI Agents · Editor · Vault & Files ·
- * Sync & Backup · Shortcuts · About. Each category carries the prototype's
- * one-line description, shown in the page header.
+ * SKY-10668 (owner request, supersedes the M28 §13/GAP #8 order): the rail
+ * follows the prototype rail order top-to-bottom:
+ * Appearance · AI Agents · Editor · Vault & Files · Sync & Backup ·
+ * Shortcuts · About. `Account & profile` has no prototype counterpart and is
+ * parked last pending Skyy's remove-vs-keep decision (SKY-10668 change 3).
+ * Each category carries the prototype's one-line description, shown in the
+ * page header.
  */
 
 export type SettingsCategoryId =
@@ -35,12 +37,6 @@ export interface SettingsCategory {
 }
 
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
-  {
-    id: 'account',
-    label: 'Account & profile',
-    description: 'You, your plan, and your devices.',
-    sectionIds: ['section-account-profile'],
-  },
   {
     id: 'appearance',
     label: 'Appearance',
@@ -114,6 +110,14 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     label: 'About',
     description: 'Version, updates and credits.',
     sectionIds: ['section-about'],
+  },
+  {
+    // Not in the prototype rail; parked after About until Skyy decides
+    // remove-vs-keep (SKY-10668 change 3 — do not reorder or delete here).
+    id: 'account',
+    label: 'Account & profile',
+    description: 'You, your plan, and your devices.',
+    sectionIds: ['section-account-profile'],
   },
 ] as const;
 
