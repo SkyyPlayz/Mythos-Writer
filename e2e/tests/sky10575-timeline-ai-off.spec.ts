@@ -171,7 +171,8 @@ async function openTimeline(page: Page): Promise<void> {
     await expect(backdrop).toHaveCount(0);
   }
 
-  const timelineBtn = page.locator('[data-testid="story-subview-timeline"]');
+  // Timeline is a standalone rail destination (SKY-9019/M5), not a story sub-view.
+  const timelineBtn = nav.getByRole('button', { name: 'Timeline', exact: true });
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();
 
