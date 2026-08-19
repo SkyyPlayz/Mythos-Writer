@@ -1,4 +1,4 @@
-# Background job queue (M12.1, SKY-10730)
+# Background job queue (M12.1, SKY-10730 / SKY-10768)
 
 Execution substrate for whole-corpus scan/extraction passes over
 multi-million-word vaults. Consumed by the fact ledger (M12.2, SKY-10731) and
@@ -53,6 +53,12 @@ Rules the split encodes:
 - **Security.** Renderer-enqueueable types are allowlisted
   (`RENDERER_ENQUEUEABLE_JOB_TYPES`); vault-scan is pinned to the open vault
   root — renderer payloads are dropped.
+- **Dedup.** `JobQueue.enqueue()` collapses a duplicate submission for the
+  same type + payload ("scope") into whichever job for that scope is already
+  `queued` or `running`, returning its id instead of creating a second row
+  (`jobsDb.findActiveJobByScope`). A scope with no active job — including one
+  whose prior job already finished — always starts fresh. See
+  `jobQueue.test.ts`'s "duplicate-scope collapsing" suite.
 
 ## Adding a job type
 

@@ -79,8 +79,10 @@ describe('JobQueue lifecycle', () => {
 
   it('runs jobs one at a time, FIFO', () => {
     const queue = new JobQueue({ spawnWorker: spawnFake });
-    const first = queue.enqueue('vault-scan', null);
-    const second = queue.enqueue('vault-scan', null);
+    // Distinct payloads (distinct scopes) — same-scope enqueues collapse
+    // instead of queuing (see the dedup describe block below).
+    const first = queue.enqueue('vault-scan', { vaultRoot: '/a' });
+    const second = queue.enqueue('vault-scan', { vaultRoot: '/b' });
     expect(spawned).toHaveLength(1);
     expect(getBackgroundJob(second)!.status).toBe('queued');
 
@@ -130,8 +132,8 @@ describe('JobQueue lifecycle', () => {
 
   it('cancels a queued job directly', () => {
     const queue = new JobQueue({ spawnWorker: spawnFake });
-    const running = queue.enqueue('vault-scan', null);
-    const waiting = queue.enqueue('vault-scan', null);
+    const running = queue.enqueue('vault-scan', { vaultRoot: '/a' });
+    const waiting = queue.enqueue('vault-scan', { vaultRoot: '/b' });
     expect(queue.cancel(waiting)).toBe(true);
     expect(getBackgroundJob(waiting)!.status).toBe('cancelled');
     expect(queue.cancel('nonexistent')).toBe(false);
@@ -218,5 +220,53 @@ describe('progress + ETA (AC #3)', () => {
     expect(p.skippedUnits).toBe(2);
     expect(p.etaMs).toBeNull();
     expect(queue.list({ status: 'completed' }).map((j) => j.jobId)).toEqual([id]);
+  });
+});
+
+describe('duplicate-scope collapsing (SKY-10768 AC3)', () => {
+  it('NEGATIVE CONTROL: two different scopes do NOT collapse — proves collapsing is scope-aware, not a no-op', () => {
+    const queue = new JobQueue({ spawnWorker: spawnFake });
+    const a = queue.enqueue('vault-scan', { vaultRoot: '/a' });
+    const b = queue.enqueue('vault-scan', { vaultRoot: '/b' });
+    expect(a).not.toBe(b);
+    expect(queue.list({}).map((j) => j.jobId).sort()).toEqual([a, b].sort());
+  });
+
+  it('a second submission for the same scope while one is queued returns the existing job id', () => {
+    const queue = new JobQueue({ spawnWorker: spawnFake });
+    const first = queue.enqueue('vault-scan', { vaultRoot: '/v' });
+    const second = queue.enqueue('vault-scan', { vaultRoot: '/v' }); // still queued/running — same scope
+    expect(second).toBe(first);
+    // No second row was created, and no second worker was spawned.
+    expect(queue.list({}).map((j) => j.jobId)).toEqual([first]);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('a second submission for the same scope while the job is running also collapses', () => {
+    const queue = new JobQueue({ spawnWorker: spawnFake });
+    const first = queue.enqueue('vault-scan', { vaultRoot: '/v' });
+    expect(getBackgroundJob(first)!.status).toBe('running');
+    const second = queue.enqueue('vault-scan', { vaultRoot: '/v' });
+    expect(second).toBe(first);
+    expect(spawned).toHaveLength(1);
+  });
+
+  it('a submission for a scope that already finished starts a fresh job (no collapse against terminal state)', () => {
+    const queue = new JobQueue({ spawnWorker: spawnFake });
+    const first = queue.enqueue('vault-scan', { vaultRoot: '/v' });
+    spawned[0].emitEvent('message', { kind: 'done', completedUnits: 1, skippedUnits: 0, coverage: [] });
+    expect(getBackgroundJob(first)!.status).toBe('completed');
+
+    const second = queue.enqueue('vault-scan', { vaultRoot: '/v' });
+    expect(second).not.toBe(first);
+    expect(spawned).toHaveLength(2);
+  });
+
+  it('null-payload submissions for the same job type also collapse to one job', () => {
+    const queue = new JobQueue({ spawnWorker: spawnFake });
+    const first = queue.enqueue('vault-scan', null);
+    const second = queue.enqueue('vault-scan', null);
+    expect(second).toBe(first);
+    expect(spawned).toHaveLength(1);
   });
 });
