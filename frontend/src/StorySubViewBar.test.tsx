@@ -1,8 +1,9 @@
 // SKY-3626: Writing mode (N/F/E) must NOT appear in StorySubViewBar.
 // SKY-9019/M5: Scene Crafter and Timeline are rail-only destinations — exactly four tabs remain.
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import StorySubViewBar from './StorySubViewBar';
+import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 
 const DEFAULT_PROPS = {
   activeSubView: 'editor',
@@ -13,6 +14,7 @@ const DEFAULT_PROPS = {
 describe('StorySubViewBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetAiEnabledForTests();
   });
 
   it('renders exactly four sub-view tabs', () => {
@@ -43,6 +45,29 @@ describe('StorySubViewBar', () => {
     render(<StorySubViewBar {...DEFAULT_PROPS} onSubViewChange={onSubViewChange} />);
     fireEvent.click(screen.getByRole('tab', { name: /^book$/i }));
     expect(onSubViewChange).toHaveBeenCalledWith('book');
+  });
+
+  // SKY-10607 / M11b surface contract: with the master AI toggle off the
+  // Coach tab is gone — sub-tabs reduce to Editor · Structure · Book.
+  it('hides the Coach tab when the master AI toggle is off', () => {
+    setAiEnabled(false);
+    render(<StorySubViewBar {...DEFAULT_PROPS} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    expect(screen.queryByRole('tab', { name: /^coach$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('story-subview-coach')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /editor/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /structure/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^book$/i })).toBeInTheDocument();
+  });
+
+  it('restores the Coach tab when the master AI toggle turns back on', () => {
+    setAiEnabled(false);
+    render(<StorySubViewBar {...DEFAULT_PROPS} />);
+    expect(screen.queryByTestId('story-subview-coach')).not.toBeInTheDocument();
+    act(() => { setAiEnabled(true); });
+    expect(screen.getByTestId('story-subview-coach')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
   });
 
   // SKY-3626: NFE (N/F/E) writing mode buttons must not appear in StorySubViewBar —

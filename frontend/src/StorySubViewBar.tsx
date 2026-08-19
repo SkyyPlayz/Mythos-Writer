@@ -1,6 +1,7 @@
 // SKY-2095 (Phase 2 #2): Story-tab top bar — sub-view toggles + vault badge.
 // SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
 import './StorySubViewBar.css';
+import { useAiEnabled } from './hooks/useAiEnabled';
 
 // SKY-9019/M5: Scene Crafter and Timeline are standalone rail destinations; they
 // no longer appear as sub-tabs (spec item 3, acceptance criterion #3).
@@ -25,6 +26,11 @@ export default function StorySubViewBar({
   onSubViewChange,
   vaultName,
 }: StorySubViewBarProps) {
+  // SKY-10607 / M11b surface contract: Coach is an AI surface — with the
+  // master AI toggle off the sub-tabs reduce to Editor · Structure · Book
+  // (same gate as AgentHubPanel's Assistant tab and the toolbar Assist button).
+  const aiEnabled = useAiEnabled();
+  const subViews = aiEnabled ? SUB_VIEWS : SUB_VIEWS.filter((sv) => sv.id !== 'coach');
   return (
     <div className="story-subview-bar" data-testid="story-subview-bar">
       {/* Left: Vault badge */}
@@ -45,7 +51,7 @@ export default function StorySubViewBar({
         aria-label="Story view"
         className="story-subview-bar__tabs"
       >
-        {SUB_VIEWS.map((sv) => (
+        {subViews.map((sv) => (
           <button
             key={sv.id}
             role="tab"

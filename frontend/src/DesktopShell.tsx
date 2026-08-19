@@ -4730,6 +4730,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
   // when the master AI toggle is off (undefined handler = no mount).
   const aiEnabled = useAiEnabled();
+
+  // SKY-10607 / M11b: the Coach sub-view is an AI surface — if it's active
+  // when the master toggle turns off (live flip, or a persisted 'coach'
+  // sub-view restored on boot), fall back to the editor. Same fallback
+  // AgentHubPanel uses for its Assistant tab.
+  useEffect(() => {
+    if (!aiEnabled && view === 'coach') handleSetView('editor');
+  }, [aiEnabled, view, handleSetView]);
+
   const manuscriptToolbarActions = useMemo(() => ({
     onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
@@ -5296,9 +5305,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           )}
         </div>
       )}
-      {activeDockedTabId === null && view === 'coach' && (
+      {activeDockedTabId === null && view === 'coach' && aiEnabled && (
         /* Beta 4 M12 (§5.2): the Writing Coach's page — shares the `coach`
-           session store with the right-panel Coach chat. */
+           session store with the right-panel Coach chat. SKY-10607: never
+           mounts with the master AI toggle off (the effect above falls the
+           sub-view back to 'editor'; this guard covers the flip frame). */
         <div className="shell-coach">
           <CoachPage
             scene={selectedScene}
