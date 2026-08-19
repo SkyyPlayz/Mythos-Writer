@@ -1784,6 +1784,11 @@ interface Window {
     autoLinkerFormatVaultNow: () => Promise<{ processed: number; linked: number; skipped: number }>;
     autoLinkerRebuildIndex: () => Promise<{ count: number }>;
 
+    // SKY-9973: flush-before-quit handshake — main asks the renderer to
+    // flush a pending debounced manifest save before the window closes.
+    onFlushBeforeQuit?: (cb: () => void) => () => void;
+    notifyFlushBeforeQuitDone?: () => void;
+
   };
 
   // Non-standard browser speech recognition (Chromium only)

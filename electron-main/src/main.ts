@@ -628,6 +628,37 @@ process.env.MYTHOS_IS_PACKAGED = app.isPackaged ? '1' : '0';
 // ─── State ───
 let mainWindow: BrowserWindow | null = null;
 
+// SKY-9973: tracks whether the pending-manifest-save flush has already run
+// for the in-flight window-close, so the second (post-flush) `close()` call
+// falls through to the real close instead of re-triggering the handshake.
+let quitFlushHandled = false;
+
+// SKY-9973: before the window actually closes, ask the renderer to flush any
+// pending debounced manifest save (scheduleManifestSave's 900ms timer) and
+// await its ack — otherwise an edit made just before quit is silently lost.
+// Bounded by a timeout so a wedged/unresponsive renderer never hangs quit.
+function flushRendererManifestSave(win: BrowserWindow): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId: NodeJS.Timeout;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      ipcMain.removeListener(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT_DONE, onDone);
+      resolve();
+    };
+    const onDone = () => finish();
+    ipcMain.once(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT_DONE, onDone);
+    timeoutId = setTimeout(finish, 1500);
+    try {
+      win.webContents.send(IPC_CHANNELS.APP_FLUSH_BEFORE_QUIT);
+    } catch {
+      finish();
+    }
+  });
+}
+
 // Maps requestId → AbortController for in-flight streaming agent calls.
 // Populated on invoke, cleaned up in finally block or on cancel.
 const agentControllers = new Map<string, AbortController>();
@@ -7425,6 +7456,9 @@ function registerNavigatorSyncHandlers(): void {
 
 // ─── Create BrowserWindow ───
 function createWindow() {
+  // SKY-9973: a fresh window gets a fresh flush handshake.
+  quitFlushHandled = false;
+
   // electron-vite emits the preload to out/preload/preload.js, while this
   // file runs from out/main/. (The packaged app preserves the same layout.)
   const preloadPath = path.join(__dirname, '../preload/preload.js');
@@ -7535,20 +7569,33 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  mainWindow.on('close', () => {
-    if (mainWindow) {
-      const isMaximized = mainWindow.isMaximized();
-      // getNormalBounds returns the restored (non-maximized) size so we preserve
-      // a sensible window size even when the user closes while maximized.
-      const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
-      saveWindowState(app.getPath('userData'), {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        isMaximized,
+  mainWindow.on('close', (event) => {
+    if (!mainWindow) return;
+
+    const isMaximized = mainWindow.isMaximized();
+    // getNormalBounds returns the restored (non-maximized) size so we preserve
+    // a sensible window size even when the user closes while maximized.
+    const bounds = isMaximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
+    saveWindowState(app.getPath('userData'), {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      isMaximized,
+    });
+
+    // SKY-9973: flush-before-quit. First close attempt is intercepted so the
+    // renderer can flush a pending debounced manifest save; once that
+    // handshake has run (or timed out), let the real close proceed.
+    if (quitFlushHandled) return;
+    event.preventDefault();
+    const win = mainWindow;
+    flushRendererManifestSave(win)
+      .catch(() => { /* best-effort — timeout/error still allows quit to proceed */ })
+      .finally(() => {
+        quitFlushHandled = true;
+        if (!win.isDestroyed()) win.close();
       });
-    }
   });
 
   mainWindow.on('closed', () => {

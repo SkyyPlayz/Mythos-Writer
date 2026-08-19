@@ -93,6 +93,10 @@ export const IPC_CHANNELS = {
   APP_QUIT: 'app:quit',
   // SKY-2969: uninstaller vault-cleanup choice
   APP_CLEAN_UNINSTALL: 'app:cleanUninstall',
+  // SKY-9973: before-quit flush handshake — main asks the renderer to flush
+  // any pending debounced manifest save, renderer acks when done (or on error).
+  APP_FLUSH_BEFORE_QUIT: 'app:flushBeforeQuit',
+  APP_FLUSH_BEFORE_QUIT_DONE: 'app:flushBeforeQuitDone',
 
   // AI agents
   AI_BRAINSTORMER: 'ai:brainstormer',

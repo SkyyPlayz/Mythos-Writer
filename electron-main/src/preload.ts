@@ -1086,6 +1086,16 @@ contextBridge.exposeInMainWorld('api', {
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',
 
+  // SKY-9973: flush-before-quit handshake. Main sends the request when the
+  // window is about to close; renderer flushes any pending debounced
+  // manifest save and acks so quit can proceed without losing the edit.
+  onFlushBeforeQuit: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('app:flushBeforeQuit', handler);
+    return () => ipcRenderer.removeListener('app:flushBeforeQuit', handler);
+  },
+  notifyFlushBeforeQuitDone: () => ipcRenderer.send('app:flushBeforeQuitDone'),
+
 });
 
 // Backward-compat alias — kept for legacy code that still references window.mythosIPC

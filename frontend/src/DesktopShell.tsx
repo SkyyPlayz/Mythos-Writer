@@ -899,6 +899,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const saveIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // SKY-9973: the manifest that scheduleManifestSave has queued but not yet
+  // written — read by the before-quit flush handshake below.
+  const pendingManifestRef = useRef<Manifest | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
   // SKY-192: entity registry for the auto-linker
@@ -1705,7 +1708,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const scheduleManifestSave = useCallback((m: Manifest) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistManifest(m), 900);
+    pendingManifestRef.current = m;
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      pendingManifestRef.current = null;
+      persistManifest(m);
+    }, 900);
+  }, [persistManifest]);
+
+  // SKY-9973: flush-before-quit — the main process asks the renderer to
+  // flush any pending debounced manifest save before the window closes, so
+  // an edit made within the 900ms debounce window isn't lost on quit.
+  useEffect(() => {
+    if (!window.api?.onFlushBeforeQuit) return;
+    const unsub = window.api.onFlushBeforeQuit(() => {
+      (async () => {
+        if (saveTimer.current) {
+          clearTimeout(saveTimer.current);
+          saveTimer.current = null;
+        }
+        const pending = pendingManifestRef.current;
+        pendingManifestRef.current = null;
+        if (pending) {
+          await persistManifest(pending);
+        }
+        window.api.notifyFlushBeforeQuitDone?.();
+      })();
+    });
+    return () => unsub?.();
   }, [persistManifest]);
 
   const updateManifest = useCallback((updatedStories: Story[], updatedLayout?: LayoutPrefs) => {

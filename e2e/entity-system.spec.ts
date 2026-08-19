@@ -220,15 +220,11 @@ test('TC-E-03: reference entity in prose editor via wiki-link syntax', async () 
 // there is no UI path to set an alias to verify here until M5.5 lands.)
 
 test('TC-E-04: entity persists after full app restart', async () => {
-  // DesktopShell's manifest writer (scheduleManifestSave) debounces disk
-  // writes by 900ms and has no flush-on-quit — app.close() right after an
-  // edit can kill the renderer before that timer fires, silently dropping
-  // the last batch of changes (root cause of an intermittent "stories: []
-  // after restart" failure seen on CI; tracked separately as a data-loss
-  // bug — see SKY-9955). Give the debounce a chance to flush before closing.
-  await page.waitForTimeout(1_200);
-
-  // Close the app
+  // SKY-9973: close immediately (no debounce wait) — the flush-before-quit
+  // handshake (main asks the renderer to flush scheduleManifestSave's
+  // pending 900ms-debounced write before the window closes) must make this
+  // survive even when the edit landed just before quit. Regression test for
+  // the "stories: [] after restart" data-loss bug (SKY-9955/SKY-9973).
   await app.close().catch(() => {});
 
   // Relaunch with same userData (vault-settings.json points at same vaults)
