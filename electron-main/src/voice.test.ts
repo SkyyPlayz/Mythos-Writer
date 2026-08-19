@@ -35,6 +35,7 @@ import {
 } from './voice.js';
 import type { VoiceTranscriptEvent, VoiceErrorEvent, VoiceErrorCategory } from './voice.js';
 import type { AppSettings, SttSettings, TtsSettings } from './ipc.js';
+import { setAiMasterGate, AI_DISABLED_MESSAGE } from './provider.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -205,6 +206,21 @@ describe('voice:stop handler', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
+
+  // SKY-10621: cloudFallback + an API key alone must not be enough to reach
+  // api.openai.com when the master AI toggle is off.
+  it('does not attempt cloud transcription when ai.enabled is off', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    setAiMasterGate(() => false);
+    const reg = new VoiceRegistry();
+    registerVoiceHandlers(() => null, () => makeSettings({ cloudFallback: true, openaiApiKey: 'k' }), reg);
+    const { sessionId } = (await invokeHandle('voice:start', {})) as { sessionId: string };
+    reg.addChunk(sessionId, Buffer.from('audio'));
+    await invokeHandle('voice:stop', { sessionId });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    setAiMasterGate(() => true);
+    fetchSpy.mockRestore();
+  });
 });
 
 describe('voice:local-transcript handler', () => {
@@ -364,6 +380,32 @@ describe('transcribeAudio adapter selection', () => {
   it('throws when provider=local and binary path does not exist', async () => {
     const settings: SttSettings = { enabled: true, provider: 'local', localBinaryPath: '/no/such/binary' };
     await expect(transcribeAudio(Buffer.from('x'), 'audio/wav', settings)).rejects.toThrow(/not found/i);
+  });
+
+  // ─── SKY-10621: master AI toggle gates cloud STT ─────────────────────────
+
+  it('throws AI_DISABLED_MESSAGE when ai.enabled is off and provider=cloud (no fetch)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    setAiMasterGate(() => false);
+    const settings: SttSettings = {
+      enabled: true,
+      provider: 'cloud',
+      cloudEndpoint: 'http://localhost/stt',
+      cloudApiKey: 'key-123',
+    };
+    await expect(transcribeAudio(Buffer.from('audio'), 'audio/wav', settings)).rejects.toThrow(AI_DISABLED_MESSAGE);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    setAiMasterGate(() => true);
+    fetchSpy.mockRestore();
+  });
+
+  it('local STT is unaffected by the master AI toggle', async () => {
+    setAiMasterGate(() => false);
+    const settings: SttSettings = { enabled: true, provider: 'local', localBinaryPath: '/no/such/binary' };
+    // Still throws — binary not found — not the AI-disabled error, proving the
+    // gate is scoped to the cloud path only.
+    await expect(transcribeAudio(Buffer.from('x'), 'audio/wav', settings)).rejects.toThrow(/not found/i);
+    setAiMasterGate(() => true);
   });
 
   it('throws when provider=auto and no cloud config and no env key', async () => {
@@ -643,6 +685,35 @@ describe('voice:speak handler', () => {
     const a = (await invokeHandle('voice:speak', { text: 'a' })) as { speakId: string };
     const b = (await invokeHandle('voice:speak', { text: 'b' })) as { speakId: string };
     expect(a.speakId).not.toBe(b.speakId);
+    fetchSpy.mockRestore();
+  });
+
+  // ─── SKY-10621: master AI toggle gates cloud TTS ─────────────────────────
+
+  it('does not call cloud TTS endpoint when ai.enabled is off', async () => {
+    const errors: Array<{ speakId: string; category: VoiceErrorCategory; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; category: VoiceErrorCategory; error: string });
+      },
+      isDestroyed: () => false,
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    setAiMasterGate(() => false);
+
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(undefined, undefined, { enabled: true, provider: 'cloud', cloudEndpoint: 'http://tts.local', cloudApiKey: 'k' }),
+    );
+    const { speakId } = (await invokeHandle('voice:speak', { text: 'hello' })) as { speakId: string };
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].speakId).toBe(speakId);
+    expect(errors[0].category).toBe(VOICE_ERROR_CATEGORIES.INVALID_INPUT);
+
+    setAiMasterGate(() => true);
     fetchSpy.mockRestore();
   });
 

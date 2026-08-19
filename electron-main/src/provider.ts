@@ -534,6 +534,15 @@ export function setAiMasterGate(gate: () => boolean): void {
   aiMasterGate = gate;
 }
 
+/**
+ * Read the master `ai.enabled` check without throwing. Lets non-LLM call
+ * sites (e.g. voice.ts cloud STT/TTS) share the same gate as streamFromProvider
+ * so "Nothing is sent anywhere" holds for every network path, not just LLM calls.
+ */
+export function isAiMasterOn(): boolean {
+  return aiMasterGate();
+}
+
 /** Allowlist of valid model IDs for the Anthropic provider. */
 export const ANTHROPIC_MODEL_ALLOWLIST = new Set([
   'claude-haiku-4-5-20251001',
