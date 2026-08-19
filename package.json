@@ -35,6 +35,7 @@
     "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/settings-new-vault.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts e2e/story-import-epub.spec.ts --reporter=list,html",
     "test:e2e:archive-quickadd": "playwright test e2e/timeline-archive-quickadd.spec.ts --reporter=list,html",
     "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts --reporter=list,html",
+    "test:e2e:jobs-responsiveness": "playwright test e2e/tests/m12-scale-architecture-acceptance.spec.ts -g \"starting a large vault scan\" --reporter=list,html",
     "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list,html",
     "test:e2e:notes-drag": "playwright test e2e/notes-tree-drag-sky8891.spec.ts --reporter=list,html",
     "test:e2e:scene-notes-promote": "playwright test e2e/scene-notes-promote.spec.ts --reporter=list,html",

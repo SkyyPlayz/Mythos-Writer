@@ -11,6 +11,10 @@
 // scratch. Non-blocking budget: no queue callback does more than a batched
 // SQLite write (~25-unit batches), so the main-process event loop stays free
 // while workers burn CPU. Budget + measurement: docs/jobs-background-queue.md.
+//
+// Dedup (M12.1 re-issue, SKY-10768 AC3): enqueue() collapses a duplicate
+// submission for the same type+payload ("scope") into the job already queued
+// or running for it, rather than creating a second row.
 
 import type {
   BackgroundJobStatus,
@@ -22,6 +26,7 @@ import type {
   WorkerOutMessage,
 } from './types.js';
 import {
+  findActiveJobByScope,
   getBackgroundJob,
   insertBackgroundJob,
   listBackgroundJobs,
@@ -97,11 +102,14 @@ export class JobQueue {
     return requeued;
   }
 
+  /** Queues a job, or — if a queued/running job with the same type + payload
+   *  ("scope") already exists — returns that job's id unchanged (SKY-10768
+   *  AC3: duplicate submissions for the same scope collapse to one job). */
   enqueue(type: JobType, payload: unknown): string {
-    const job = insertBackgroundJob({
-      type,
-      payloadJson: payload == null ? null : JSON.stringify(payload),
-    });
+    const payloadJson = payload == null ? null : JSON.stringify(payload);
+    const existing = findActiveJobByScope(type, payloadJson);
+    if (existing) return existing.id;
+    const job = insertBackgroundJob({ type, payloadJson });
     this.pump();
     return job.id;
   }

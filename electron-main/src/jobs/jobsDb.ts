@@ -102,6 +102,21 @@ export function nextQueuedJob(): DbBackgroundJob | null {
   return row ?? null;
 }
 
+/** Oldest still-active (queued or running) job with the same type + payload
+ *  ("scope") — lets enqueue() collapse duplicate submissions into the job
+ *  already in flight instead of piling up redundant rows (SKY-10768 AC3).
+ *  `IS ?` (not `=`) so two null payloads count as the same scope. */
+export function findActiveJobByScope(type: JobType, payloadJson: string | null): DbBackgroundJob | null {
+  const row = getDb()
+    .prepare(
+      `SELECT * FROM background_jobs
+       WHERE type = ? AND payload_json IS ? AND status IN ('queued', 'running')
+       ORDER BY created_at ASC, rowid ASC LIMIT 1`
+    )
+    .get(type, payloadJson) as DbBackgroundJob | undefined;
+  return row ?? null;
+}
+
 export function markJobStatus(
   id: string,
   status: BackgroundJobStatus,

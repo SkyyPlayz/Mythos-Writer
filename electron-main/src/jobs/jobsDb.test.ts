@@ -6,6 +6,7 @@ import path from 'path';
 import { openDb, closeDb } from '../db.js';
 import {
   countScanCoverage,
+  findActiveJobByScope,
   getBackgroundJob,
   getScanCoverageMap,
   insertBackgroundJob,
@@ -93,6 +94,45 @@ describe('background_jobs CRUD', () => {
     expect(listBackgroundJobs({ status: 'completed' }).map((j) => j.id)).toEqual([a.id]);
     expect(listBackgroundJobs({ type: 'synthetic-load' })).toHaveLength(1);
     expect(listBackgroundJobs()).toHaveLength(2);
+  });
+});
+
+describe('findActiveJobByScope (SKY-10768 AC3)', () => {
+  it('NEGATIVE CONTROL: finds nothing when no job exists for that scope', () => {
+    expect(findActiveJobByScope('vault-scan', '{"vaultRoot":"/v"}')).toBeNull();
+  });
+
+  it('finds a queued job with the same type + payload', () => {
+    const job = insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/v"}' });
+    const found = findActiveJobByScope('vault-scan', '{"vaultRoot":"/v"}');
+    expect(found?.id).toBe(job.id);
+  });
+
+  it('finds a running job with the same type + payload', () => {
+    const job = insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/v"}' });
+    markJobStatus(job.id, 'running', { startedAt: new Date().toISOString() });
+    expect(findActiveJobByScope('vault-scan', '{"vaultRoot":"/v"}')?.id).toBe(job.id);
+  });
+
+  it('ignores a different payload (different scope)', () => {
+    insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/a"}' });
+    expect(findActiveJobByScope('vault-scan', '{"vaultRoot":"/b"}')).toBeNull();
+  });
+
+  it('ignores a different job type with the same payload', () => {
+    insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/v"}' });
+    expect(findActiveJobByScope('synthetic-load', '{"vaultRoot":"/v"}')).toBeNull();
+  });
+
+  it('ignores terminal jobs (completed/failed/cancelled) for the same scope', () => {
+    const job = insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/v"}' });
+    markJobStatus(job.id, 'completed', { finishedAt: new Date().toISOString() });
+    expect(findActiveJobByScope('vault-scan', '{"vaultRoot":"/v"}')).toBeNull();
+  });
+
+  it('treats null payloads as matching each other', () => {
+    const job = insertBackgroundJob({ type: 'vault-scan', payloadJson: null });
+    expect(findActiveJobByScope('vault-scan', null)?.id).toBe(job.id);
   });
 });
 
