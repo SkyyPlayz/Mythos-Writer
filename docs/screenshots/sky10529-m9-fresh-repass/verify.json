@@ -1,0 +1,202 @@
+[
+  {
+    "name": "proto: rail Story Writer",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "proto: References tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "proto: Notes tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "proto: Scenes tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "proto: rail Notes Editor",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "proto: CONTINUITY FLAGS visible",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: scene open",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "fresh: tab strip mounted with NO rightSidebar force",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "fresh: no full-height Getting Started aside (.gs-aside gone)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: References tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Location · pinned (The Sunken Gate)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Character · POV (Mira Veynn)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: unresolved link (Tide Mechanics)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Location · hub (The Last City of Veynn)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: New Thing unresolved with Create",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Notes tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: scene-notes copy",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Scenes tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: canvas boards copy",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: Assistant tab",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: 3 flag cards",
+    "ok": true,
+    "detail": "scopes=[Story ↔ Vault, Vault internal, Timeline]"
+  },
+  {
+    "name": "app: scope Story ↔ Vault",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: scope Vault internal",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: scope Timeline",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: three actions on cards",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "action: Edit notes to match patched the note",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "action: all three flags resolved/ignored",
+    "ok": true,
+    "detail": "remaining=0"
+  },
+  {
+    "name": "app: References tab (again)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "action: + Create wrote New Thing.md to the Notes Vault",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "app: scene reopened after create",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "action: New Thing resolved live (Note · pinned, Create gone)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "action: Suggest story change landed a proposed archive suggestion",
+    "ok": true,
+    "detail": "[{\"source_agent\":\"archive\",\"status\":\"proposed\",\"rationale\":\"Keep 298 AG and reword the scene’s Drowning date.\"}]"
+  },
+  {
+    "name": "db: story_vault flag resolved via match",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "db: vault_internal flag resolved via suggest",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "db: timeline flag ignored",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "captures: 4 app tab shots are pairwise distinct",
+    "ok": true,
+    "detail": "app-references=e9cfc373 app-notes=3ab3c843 app-scenes=c7ee43fa app-continuity=96373dba"
+  },
+  {
+    "name": "sxs: references",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sxs: notes",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sxs: scenes",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sxs: continuity",
+    "ok": true,
+    "detail": ""
+  }
+]
