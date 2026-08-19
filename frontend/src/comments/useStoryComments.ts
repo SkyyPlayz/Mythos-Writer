@@ -7,13 +7,19 @@
 // './store' directly — see the M23 hook doc there.
 
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
+import { useAiEnabled } from '../hooks/useAiEnabled';
 import type { Story } from '../types';
 import { orderCommentsByDocument } from './model';
 import { commentsStore } from './store';
 import type { CreateCommentInput, StoryComment } from './types';
 
 export interface StoryCommentsApi {
-  /** Raw comments, insertion order (stable snapshot reference). */
+  /**
+   * Raw comments, insertion order (stable snapshot reference). With the
+   * master AI toggle off (M11c surface contract), agent-authored comments
+   * are filtered out here — hidden from every consuming surface, never
+   * deleted from the store or `comments.json`.
+   */
   comments: readonly StoryComment[];
   /** Comments sorted by where their anchors appear in the manuscript. */
   ordered: readonly StoryComment[];
@@ -37,10 +43,17 @@ export function useStoryComments(story: Story | null | undefined): StoryComments
     if (storyId && storyPath) void commentsStore.open(storyId, storyPath);
   }, [storyId, storyPath]);
 
-  const comments = useSyncExternalStore(commentsStore.subscribe, () =>
-    commentsStore.list(storyId)
-  );
+  const all = useSyncExternalStore(commentsStore.subscribe, () => commentsStore.list(storyId));
   const ui = useSyncExternalStore(commentsStore.subscribe, commentsStore.uiState);
+  const aiEnabled = useAiEnabled();
+
+  // M11c (SKY-10608): AI off → human comments only. Render-time filter, so
+  // agent cards reappear when the toggle returns; same-reference passthrough
+  // when enabled keeps ParagraphRow's memo gate quiet.
+  const comments = useMemo(
+    () => (aiEnabled ? all : all.filter((c) => c.kind === 'user')),
+    [aiEnabled, all]
+  );
 
   const ordered = useMemo(
     () => (story ? orderCommentsByDocument(story, comments) : comments),
