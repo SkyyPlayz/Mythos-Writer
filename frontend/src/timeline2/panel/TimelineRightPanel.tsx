@@ -3,7 +3,8 @@
 // (§14.5) — TimelineRoot owns the selection and forces this tab open on
 // select. This panel hosts the exact-time picker and calendar editor modals
 // for the Inspector's editors (absorbing AxisView's M22 mini inspector).
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAiEnabled } from '../../hooks/useAiEnabled';
 import type {
   TimelineDefinition,
   TimelineEra,
@@ -27,10 +28,10 @@ export type TimelineRightTab = 'inspector' | 'brainstorm' | 'archive';
 
 type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
 
-const TABS: { value: TimelineRightTab; label: string }[] = [
+const ALL_TABS: { value: TimelineRightTab; label: string; requiresAi?: true }[] = [
   { value: 'inspector', label: 'Inspector' },
-  { value: 'brainstorm', label: 'Brainstorm' },
-  { value: 'archive', label: 'Archive' },
+  { value: 'brainstorm', label: 'Brainstorm', requiresAi: true },
+  { value: 'archive', label: 'Archive', requiresAi: true },
 ];
 
 export interface TimelineRightPanelProps {
@@ -77,6 +78,16 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
     onCalendarChange,
   } = props;
 
+  const aiEnabled = useAiEnabled();
+  const visibleTabs = ALL_TABS.filter((t) => !t.requiresAi || aiEnabled);
+
+  // Redirect to Inspector if the active tab becomes unavailable when AI is toggled off.
+  useEffect(() => {
+    if (!aiEnabled && (tab === 'brainstorm' || tab === 'archive')) {
+      onTabChange('inspector');
+    }
+  }, [aiEnabled, tab, onTabChange]);
+
   const [exactTimeOpen, setExactTimeOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -115,7 +126,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
       data-testid="timeline-right-panel"
     >
       <div className="trp-tabs" role="tablist" aria-label="Timeline panel tabs">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.value}
             type="button"
