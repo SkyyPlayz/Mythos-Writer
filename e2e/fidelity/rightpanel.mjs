@@ -102,11 +102,15 @@ for (const tab of ['Assistant', 'Scenes', 'Notes', 'References']) {
   // just the right-hand column's text
   texts[tab] = await page.evaluate((origin) => {
     const out = [];
+    // SKY-10591: don't skip elements with children — an element with mixed
+    // (text + inline element) content is a container too, and skipping it
+    // drops its own text nodes entirely. Emit each element's OWN text nodes
+    // only; nested elements contribute their own words on their own pass.
     document.querySelectorAll('body *').forEach(el => {
       const r = el.getBoundingClientRect();
       if (r.left < origin || r.width < 4) return;
-      if (el.children.length) return;
-      const t = (el.innerText || '').trim();
+      const t = [...el.childNodes].filter(n => n.nodeType === 3)
+        .map(n => n.textContent.trim()).filter(Boolean).join(' ');
       if (t) out.push(t);
     });
     return [...new Set(out)].join('\n');
