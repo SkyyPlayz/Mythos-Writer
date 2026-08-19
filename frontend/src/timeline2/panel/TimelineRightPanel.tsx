@@ -3,7 +3,7 @@
 // (§14.5) — TimelineRoot owns the selection and forces this tab open on
 // select. This panel hosts the exact-time picker and calendar editor modals
 // for the Inspector's editors (absorbing AxisView's M22 mini inspector).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   TimelineDefinition,
   TimelineEra,
@@ -12,6 +12,7 @@ import type {
   TimelinesStore,
 } from '../../timelinesTypes';
 import type { TimelineFlag } from '../../archive/timelineFlags';
+import { useAiEnabled } from '../../hooks/useAiEnabled';
 import { resolveInspectorTarget, type TimelineSelection, type TimelineSelectableType } from './selection';
 import { roundWhen, safeCalendar } from '../axis/calendarCodec';
 import { deriveAxisDomain } from '../axis/domain';
@@ -80,6 +81,16 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
   const [exactTimeOpen, setExactTimeOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  // SKY-10575: Brainstorm (live agent chat) and Archive (continuity-flag
+  // review/auto-add) are AI surfaces — hide them under the master toggle,
+  // mirroring AgentHubPanel's Assistant-tab gating. Inspector is manual
+  // editing and stays either way.
+  const aiEnabled = useAiEnabled();
+  const visibleTabs = aiEnabled ? TABS : TABS.filter((t) => t.value === 'inspector');
+  useEffect(() => {
+    if (!aiEnabled && tab !== 'inspector') onTabChange('inspector');
+  }, [aiEnabled, tab, onTabChange]);
+
   const calendar = safeCalendar(activeTimeline.calendar);
   const target = resolveInspectorTarget(store, selection);
   const [t0] = deriveAxisDomain(store, activeTimeline.id, calendar);
@@ -115,7 +126,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
       data-testid="timeline-right-panel"
     >
       <div className="trp-tabs" role="tablist" aria-label="Timeline panel tabs">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.value}
             type="button"
@@ -148,10 +159,10 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
             onClose={() => onSelectionChange(null)}
           />
         )}
-        {tab === 'brainstorm' && (
+        {tab === 'brainstorm' && aiEnabled && (
           <BrainstormTab store={store} activeTimelineId={activeTimeline.id} onJumpTo={props.onJumpTo} showToast={props.showToast} />
         )}
-        {tab === 'archive' && (
+        {tab === 'archive' && aiEnabled && (
           <ArchiveTab
             flags={props.flags}
             recentAutoAdds={props.recentAutoAdds}

@@ -3,10 +3,11 @@
 // pin the tab strip, the three Inspector editors, and the exact-time →
 // calendar-editor modal chain (AC2).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import type { TimelinesStore } from '../../timelinesTypes';
 import { ARC_LANE, CHARACTER_LANE, WORLD_LANE } from '../axis/storyLanes';
+import { setAiEnabled, __resetAiEnabledForTests } from '../../hooks/useAiEnabled';
 import TimelineRightPanel, { type TimelineRightPanelProps } from './TimelineRightPanel';
 
 vi.mock('../../components/AgentSessionPicker', () => ({
@@ -81,6 +82,46 @@ describe('tab strip (§8.6)', () => {
   it('Inspector with nothing selected explains itself', () => {
     render(<TimelineRightPanel {...makeProps()} />);
     expect(screen.getByTestId('trp-inspector-empty')).toHaveTextContent('Nothing selected');
+  });
+});
+
+// ── SKY-10575: Brainstorm/Archive gated by the master AI toggle (M11c) ─────
+
+describe('tab strip — manual mode (M11c surface contract)', () => {
+  afterEach(() => __resetAiEnabledForTests());
+
+  it('AI off: only Inspector renders; Brainstorm and Archive tabs are gone', () => {
+    setAiEnabled(false);
+    render(<TimelineRightPanel {...makeProps()} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
+    expect(screen.queryByTestId('trp-tab-brainstorm')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trp-tab-archive')).not.toBeInTheDocument();
+  });
+
+  it('AI off with Brainstorm already active: redirects to Inspector and does not render Brainstorm content', () => {
+    setAiEnabled(false);
+    const props = makeProps({ tab: 'brainstorm' });
+    render(<TimelineRightPanel {...props} />);
+    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
+    expect(screen.queryByTestId('trp-tab-brainstorm')).not.toBeInTheDocument();
+  });
+
+  it('turning AI off mid-session while Archive is active redirects to Inspector', () => {
+    const props = makeProps({ tab: 'archive' });
+    render(<TimelineRightPanel {...props} />);
+    expect(screen.getByTestId('trp-tab-archive')).toHaveAttribute('aria-selected', 'true');
+
+    act(() => { setAiEnabled(false); });
+
+    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
+    expect(screen.queryByTestId('trp-tab-archive')).not.toBeInTheDocument();
+  });
+
+  it('AI on: all three tabs render (baseline)', () => {
+    render(<TimelineRightPanel {...makeProps()} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-brainstorm')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-archive')).toBeInTheDocument();
   });
 });
 
