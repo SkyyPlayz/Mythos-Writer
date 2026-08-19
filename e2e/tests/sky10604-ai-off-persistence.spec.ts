@@ -15,6 +15,17 @@
  *             stays. The sidecar file on disk is byte-identical throughout,
  *             and toggling back ON restores every agent comment intact.
  *
+ *   TC-RT-02  BRAINSTORM-SESSION HIDE/RESTORE ROUND-TRIP (ported from
+ *             SKY-10605's suite when the two AI-gate suites were
+ *             consolidated — SKY-10650): boot AI-off with a pre-seeded
+ *             Brainstorm session transcript (Sessions/*.md in the Notes
+ *             Vault), confirm chat mode is gone, flip the REAL Settings
+ *             switch ON and assert chat returns WITH the prior transcript
+ *             hydrated — distinctive marker turns render in the bubbles and
+ *             the file on disk stays byte-identical. Same display-only-gate
+ *             contract as TC-RT-01, on the OTHER persisted agent-content
+ *             surface (session transcripts, not the comments sidecar).
+ *
  * Run: npx playwright test e2e/tests/sky10604-ai-off-persistence.spec.ts --reporter=list
  */
 
@@ -29,6 +40,7 @@ import {
   launchSuiteApp,
   firstSuiteWindow,
   goStoryWriter,
+  goBrainstorm,
   openSettingsDialog,
   closeSettingsDialog,
   flipMasterToggle,
@@ -247,5 +259,96 @@ test('TC-RT-01: toggle OFF hides agent comments/flags, ON restores them intact; 
   } finally {
     await closeElectronApp(app);
     removeTempDirs(tmpRoot);
+  }
+});
+
+// ─── TC-RT-02 fixture: a parseable Sessions/*.md brainstorm transcript ───────
+// (mythosFormat/agentSessions.ts shape). The marker turns are distinctive: no
+// LLM runs in these tests, so if they render in chat they can only have come
+// from this pre-seeded file — proving hydration, not regeneration.
+
+const BS_USER_MARKER = 'marker-SKY10650-user: what if the keeper is the ghost?';
+const BS_AGENT_MARKER = 'marker-SKY10650-agent: she drowned decades before the light failed.';
+const BS_SESSION_FILE = '2026-08-01 brainstorm sky10650rt2.md';
+
+function brainstormSessionContent(): string {
+  return [
+    '---',
+    'mythosSession: 1',
+    'id: sky10650-brainstorm-session',
+    'agent: brainstorm',
+    'title: Lighthouse twist',
+    'startedAt: 2026-08-01T10:00:00.000Z',
+    'updatedAt: 2026-08-01T10:05:00.000Z',
+    'turns: 2',
+    '---',
+    '',
+    '# Lighthouse twist',
+    '',
+    '<!-- mythos:turn user 2026-08-01T10:00:00.000Z -->',
+    '**You:**',
+    '',
+    BS_USER_MARKER,
+    '<!-- /mythos:turn -->',
+    '',
+    '<!-- mythos:turn agent 2026-08-01T10:05:00.000Z -->',
+    '**Agent:**',
+    '',
+    BS_AGENT_MARKER,
+    '<!-- /mythos:turn -->',
+    '',
+  ].join('\n');
+}
+
+test('TC-RT-02: toggle OFF hides Brainstorm chat, ON hydrates the prior session transcript intact; file never changes', async () => {
+  const fixture = createSuiteFixture(false); // master OFF, every per-agent ON
+  const sessionsDir = path.join(fixture.notesVaultDir, 'Sessions');
+  const sessionPath = path.join(sessionsDir, BS_SESSION_FILE);
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  fs.writeFileSync(sessionPath, brainstormSessionContent(), 'utf8');
+  const seededContent = fs.readFileSync(sessionPath, 'utf8');
+
+  let app: ElectronApplication | undefined;
+  try {
+    app = await launchSuiteApp(fixture.userData);
+    const page = await firstSuiteWindow(app);
+
+    // AI-off surface contract: Assistant tab absent, manual tabs present…
+    await goStoryWriter(page);
+    const grs = page.locator('[data-testid="global-right-sidebar"]');
+    await expect(grs.getByRole('tab', { name: 'Scenes' })).toBeVisible({ timeout: 10_000 });
+    await expect(grs.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+
+    // …and Brainstorm is board-only: no chat mode, no chat input.
+    await goBrainstorm(page);
+    await expect(page.locator('[data-testid="bsc-mode-chat"]')).toHaveCount(0);
+    await expect(page.locator('.brainstorm-input')).toHaveCount(0);
+
+    // Flip ON through the real Settings UI — not by rewriting the fixture.
+    await openSettingsDialog(page);
+    await flipMasterToggle(page, true);
+    await closeSettingsDialog(page);
+
+    // Chat mode is back — reactively, same process — and it hydrates the
+    // PRE-EXISTING session transcript, proving the off state displayed
+    // nothing but deleted nothing.
+    const chatModeBtn = page.locator('[data-testid="bsc-mode-chat"]');
+    await expect(chatModeBtn).toBeVisible({ timeout: 10_000 });
+    await chatModeBtn.click();
+    await expect(
+      page.locator('.bs-user-bubble', { hasText: BS_USER_MARKER }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.bs-assistant-bubble', { hasText: BS_AGENT_MARKER })).toBeVisible();
+
+    // Assistant tab reappears on the story surface.
+    await goStoryWriter(page);
+    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible({ timeout: 10_000 });
+
+    // Display-only gate, on disk too: the transcript file is byte-identical —
+    // nothing was regenerated, migrated, or lost across the round trip.
+    expect(fs.readFileSync(sessionPath, 'utf8')).toBe(seededContent);
+  } finally {
+    await closeElectronApp(app);
+    cleanupSuiteFixture(fixture);
   }
 });
