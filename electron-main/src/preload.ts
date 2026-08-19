@@ -92,6 +92,19 @@ contextBridge.exposeInMainWorld('api', {
   deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
   moveNotesVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('notesVault:move', { fromPath, toPath }),
+  // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
+  undoRenameCascade: () => ipcRenderer.invoke('notesVault:renameCascade:undo', undefined),
+  // SKY-10712: progress while a large cascade rewrites files ({ current, total, lastAction }).
+  onRenameCascadeProgress: (
+    callback: (p: { current: number; total: number; lastAction: string }) => void,
+  ) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      p: { current: number; total: number; lastAction: string },
+    ) => callback(p);
+    ipcRenderer.on('notesVault:renameCascade:progress', handler);
+    return () => ipcRenderer.removeListener('notesVault:renameCascade:progress', handler);
+  },
   // SKY-95: creates a directory without a .gitkeep placeholder, bypassing
   // the dotfile guard that blocked handleNewFolder from working.
   mkdirNotesVault: (dirPath: string) => ipcRenderer.invoke('notesVault:mkdir', { path: dirPath }),
