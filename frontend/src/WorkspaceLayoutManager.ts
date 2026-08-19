@@ -146,10 +146,13 @@ export function snapshotCurrentLayout(params: {
  */
 export function migrateV1Layout(settings: AppSettings): Partial<AppSettings> {
   const rightSidebar = {
-    // Default false when v1 never set rightSidebarVisible: the legacy RightSidebar is still rendered,
-    // so auto-enabling the global one would duplicate Writing Assistant / Archive panels.
-    // Users opt into the v2 global sidebar via a built-in layout switch.
-    visible: settings.rightSidebarVisible ?? false,
+    // SKY-10499: default true when v1 never set rightSidebarVisible. The legacy
+    // RightSidebar this comment used to warn about was deleted in SKY-3178 (#683);
+    // GlobalRightSidebar is the only right-panel implementation left, so there is
+    // no duplication risk. Defaulting to false instead left every fresh profile
+    // (and every pre-v2 user who never touched the field) with no way to reach the
+    // Assistant/Scenes/Notes/References tab strip at all.
+    visible: settings.rightSidebarVisible ?? true,
     width: settings.rightSidebarWidth ?? 300,
     panels: settings.rightSidebarPanels ?? [
       { id: 'writing-assistant' as SidebarPanelId, collapsed: false },

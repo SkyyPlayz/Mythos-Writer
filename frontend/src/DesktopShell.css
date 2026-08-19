@@ -314,15 +314,6 @@
   padding: 0 10px 4px;
 }
 
-/* GettingStartedPanel standalone aside — shown when GlobalRightSidebar is not rendered */
-.gs-aside {
-  flex-shrink: 0;
-  width: 280px;
-  overflow-y: auto;
-  border-left: 1px solid var(--color-border, #333);
-  background: var(--color-surface, #1e1e1e);
-}
-
 .shell-kanban {
   flex: 1;
   overflow: hidden;

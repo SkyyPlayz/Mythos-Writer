@@ -5944,9 +5944,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onSelectEntity={handleSelectEntityInTab}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
-          writingMode={writingMode}
-          onSetWritingMode={setWritingMode}
-          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenBrainstorm={(seedText) => {
             setBrainstormSeedPrompt(seedText);
             handleTabChange('brainstorm');
@@ -6132,22 +6129,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
 
-      {/* Restore GettingStartedPanel when GlobalRightSidebar is not visible.
-           migrateV1Layout seeds activeLayout.rightSidebar.visible=false for fresh installs/E2E seeds
-           without layoutMigrationDone, so grsVisible becomes false (not undefined) after settings load.
-           Condition: show whenever GRS is not open (grsVisible !== true).
-           SKY-5592: also suppressed while NotesTabPanel's own embedded Brainstorm sidebar is expanded —
-           otherwise this fallback stacks as a second full right-hand panel next to it in Notes mode. */}
-      {grsVisible !== true && !(tabShell.activeTab === 'notes' && !notesBrainstormCollapsed) && isGettingStartedVisible(gettingStartedProgress) && gettingStartedProgress && (
-        <aside className="gs-aside">
-          <GettingStartedPanel
-            progress={gettingStartedProgress}
-            onAction={handleGettingStartedAction}
-            onDismiss={handleDismissGettingStarted}
-            onToggleCollapse={handleToggleGsCollapsed}
-          />
-        </aside>
-      )}
+      {/* SKY-10499: Getting Started only ever renders as the gettingStartedCard
+           inside AgentHubPanel's Assistant tab (see the GlobalRightSidebar render
+           above). It must never stand alone as a full-height aside in place of the
+           tab strip — migrateV1Layout now defaults rightSidebarVisible to true, so
+           GRS (and with it the tab strip) is present on every fresh profile. */}
       </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">

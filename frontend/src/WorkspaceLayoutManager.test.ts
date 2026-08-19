@@ -78,9 +78,17 @@ describe('migrateV1Layout', () => {
     expect(migrated.activeLayout?.rightSidebar?.width).toBe(320);
   });
 
-  it('migrates undefined rightSidebarVisible to visible=false (safe default)', () => {
+  it('migrates undefined rightSidebarVisible to visible=true (SKY-10499: fresh profile must see the tab strip)', () => {
     const migrated = migrateV1Layout(settingsFixture({
       rightSidebarVisible: undefined,
+    }));
+
+    expect(migrated.activeLayout?.rightSidebar?.visible).toBe(true);
+  });
+
+  it('preserves an explicit rightSidebarVisible=false (user opted out)', () => {
+    const migrated = migrateV1Layout(settingsFixture({
+      rightSidebarVisible: false,
     }));
 
     expect(migrated.activeLayout?.rightSidebar?.visible).toBe(false);
