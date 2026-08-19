@@ -1469,6 +1469,143 @@ describe('NotesVault rename uses moveNotesVault', () => {
   });
 });
 
+// ─── SKY-10712: rename → cascade-update inbound links ────────────────────────
+
+describe('NotesVault rename cascade (SKY-10712)', () => {
+  const linkUpdate = {
+    linksUpdated: 3,
+    filesChanged: 2,
+    notesFilesChanged: 1,
+    storyFilesChanged: 1,
+    changedNotesPaths: ['Allies.md'],
+    changedStoryPaths: ['Manuscript/01/scene-1.md'],
+    oldStem: 'note',
+    newStem: 'renamed',
+    undoAvailable: true,
+  };
+
+  async function renameNoteTo(newName: string) {
+    render(<VaultBrowser {...baseProps} lockScope initialScope="notes" />);
+    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
+    fireEvent.doubleClick(screen.getByTestId('vb-row-note.md'));
+    const input = await screen.findByLabelText('Rename');
+    fireEvent.change(input, { target: { value: newName } });
+    // Async act: the commit handler's IPC promise resolves into setState.
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
+    });
+  }
+
+  beforeEach(() => {
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' }],
+    });
+  });
+
+  it('shows a summary toast with Undo and broadcasts the rewrite to open editors', async () => {
+    const mockMoveNotesVault = vi.fn().mockResolvedValue({
+      fromPath: 'note.md',
+      toPath: 'renamed.md',
+      moved: true,
+      linkUpdate,
+    });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      moveNotesVault: mockMoveNotesVault,
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+    const rewritten = vi.fn();
+    const renamed = vi.fn();
+    window.addEventListener('mythos:vault-links-rewritten', rewritten);
+    window.addEventListener('mythos:note-renamed', renamed);
+    try {
+      await renameNoteTo('renamed');
+
+      const toast = await screen.findByText('Updated 3 links in 2 files');
+      expect(toast).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+      expect(renamed).toHaveBeenCalledTimes(1);
+      expect((renamed.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        fromPath: 'note.md',
+        toPath: 'renamed.md',
+      });
+      expect(rewritten).toHaveBeenCalledTimes(1);
+      expect((rewritten.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        changedNotesPaths: ['Allies.md'],
+        changedStoryPaths: ['Manuscript/01/scene-1.md'],
+        fromStem: 'note',
+        toStem: 'renamed',
+        mode: 'preserve-display',
+      });
+    } finally {
+      window.removeEventListener('mythos:vault-links-rewritten', rewritten);
+      window.removeEventListener('mythos:note-renamed', renamed);
+    }
+  });
+
+  it('Undo restores everything in one step and broadcasts the reverse rewrite', async () => {
+    const mockUndo = vi.fn().mockResolvedValue({
+      undone: true,
+      filesRestored: 2,
+      filesSkipped: 0,
+      fromPath: 'note.md',
+      toPath: 'renamed.md',
+      oldStem: 'note',
+      newStem: 'renamed',
+      restoredNotesPaths: ['Allies.md'],
+      restoredStoryPaths: ['Manuscript/01/scene-1.md'],
+    });
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      moveNotesVault: vi.fn().mockResolvedValue({
+        fromPath: 'note.md',
+        toPath: 'renamed.md',
+        moved: true,
+        linkUpdate,
+      }),
+      undoRenameCascade: mockUndo,
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+    const rewritten = vi.fn();
+    window.addEventListener('mythos:vault-links-rewritten', rewritten);
+    try {
+      await renameNoteTo('renamed');
+      const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+      await act(async () => {
+        fireEvent.click(undoBtn);
+      });
+
+      await waitFor(() => expect(mockUndo).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText('Rename undone')).toBeInTheDocument();
+      // Second event is the reverse patch (stems swapped, Obsidian mode).
+      await waitFor(() => expect(rewritten).toHaveBeenCalledTimes(2));
+      expect((rewritten.mock.calls[1][0] as CustomEvent).detail).toEqual({
+        changedNotesPaths: ['Allies.md'],
+        changedStoryPaths: ['Manuscript/01/scene-1.md'],
+        fromStem: 'renamed',
+        toStem: 'note',
+        mode: 'update-display',
+      });
+    } finally {
+      window.removeEventListener('mythos:vault-links-rewritten', rewritten);
+    }
+  });
+
+  it('surfaces a server-side collision refusal as the inline edit error', async () => {
+    (window as unknown as { api: unknown }).api = {
+      ...((window as unknown as { api: Record<string, unknown> }).api),
+      moveNotesVault: vi.fn().mockResolvedValue({ error: '"renamed.md" already exists there.' }),
+      noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    };
+    await renameNoteTo('renamed');
+
+    expect(await screen.findByText('"renamed.md" already exists there.')).toBeInTheDocument();
+    // The rename input stays open for a corrected name.
+    expect(screen.getByLabelText('Rename')).toBeInTheDocument();
+  });
+});
+
 // ─── M16: Explorer toolbar + tree parity ─────────────────────────────────────
 
 // Helper: render the notes vault with one or more notes and wait for the tree to appear.

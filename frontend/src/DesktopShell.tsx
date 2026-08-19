@@ -45,6 +45,7 @@ import {
   makeSceneTab,
   upsertSceneTab,
   upsertNoteTab,
+  noteTitleFromPath,
   upsertEntityBrowserTab,
   upsertOutlineTab,
   reconcileSceneTabs,
@@ -55,6 +56,9 @@ import {
   PROVISIONAL_DISCARDED_TOAST,
 } from './workspaceDocTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
+// SKY-10712: same pure transform the main process applies to scene files on
+// disk during a rename cascade — used to converge in-memory manuscript state.
+import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-writer/shared/wikiLinkRename';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
@@ -3481,6 +3485,70 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       persistDocTabs({ notes: { tabs: result.tabs, activeId: result.activeId } });
     }
   }, [openedNotePath, notesDocTabs, activeNotesDocTabId, persistDocTabs]);
+
+  // SKY-10712: a note rename (or its undo) moved the file on disk — retarget
+  // the open note and its tab so the editor doesn't keep pointing at (and,
+  // via its unmount autosave flush, resurrecting) the old path.
+  useEffect(() => {
+    const onNoteRenamed = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { fromPath?: string; toPath?: string } | undefined;
+      if (!detail?.fromPath || !detail?.toPath) return;
+      const { fromPath, toPath } = detail;
+      setOpenedNotePath((prev) => (prev === fromPath ? toPath : prev));
+      setNotesDocTabs((prev) => {
+        if (!prev.some((t) => t.kind === 'note' && t.docPath === fromPath)) return prev;
+        return prev.map((t) =>
+          t.kind === 'note' && t.docPath === fromPath
+            ? { ...t, docPath: toPath, title: noteTitleFromPath(toPath) }
+            : t,
+        );
+      });
+    };
+    window.addEventListener('mythos:note-renamed', onNoteRenamed);
+    return () => window.removeEventListener('mythos:note-renamed', onNoteRenamed);
+  }, []);
+
+  // SKY-10712: a rename cascade rewrote [[links]] inside scene files on disk.
+  // The manuscript renders from React state, so apply the SAME pure transform
+  // to the affected scenes' blocks — otherwise the next edit of an open scene
+  // would persist stale prose and clobber the on-disk rewrite. (Notes-side
+  // files re-read from disk in NoteViewer; scenes converge via this patch.)
+  useEffect(() => {
+    const onLinksRewritten = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        changedStoryPaths?: string[];
+        fromStem?: string;
+        toStem?: string;
+        mode?: WikiLinkRewriteMode;
+      } | undefined;
+      if (!detail?.changedStoryPaths?.length || !detail.fromStem || !detail.toStem) return;
+      const changed = new Set(detail.changedStoryPaths);
+      const { fromStem, toStem, mode = 'preserve-display' } = detail;
+      const patchScene = (scene: Scene): Scene => {
+        if (!changed.has(scene.path)) return scene;
+        let touched = false;
+        const blocks = scene.blocks.map((b) => {
+          const r = rewriteWikiLinksForRename(b.content, fromStem, toStem, mode);
+          if (r.count === 0) return b;
+          touched = true;
+          return { ...b, content: r.content };
+        });
+        return touched ? { ...scene, blocks } : scene;
+      };
+      const patchStory = (story: Story): Story => ({
+        ...story,
+        chapters: story.chapters.map((ch) => ({ ...ch, scenes: ch.scenes.map(patchScene) })),
+      });
+      // Disk is already rewritten by the main process — this is state-only
+      // convergence, so no updateManifest/persist here.
+      setStories((prev) => prev.map(patchStory));
+      setSelectedStory((prev) => (prev ? patchStory(prev) : prev));
+      setSelectedScene((prev) => (prev ? patchScene(prev) : prev));
+      setPane2Scene((prev) => (prev ? patchScene(prev) : prev));
+    };
+    window.addEventListener('mythos:vault-links-rewritten', onLinksRewritten);
+    return () => window.removeEventListener('mythos:vault-links-rewritten', onLinksRewritten);
+  }, []);
 
   // Keep scene tabs honest against the manifest: refresh titles/status dots,
   // drop tabs whose scene was deleted (restored layouts included).

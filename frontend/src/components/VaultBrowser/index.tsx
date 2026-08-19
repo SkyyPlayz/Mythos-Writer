@@ -708,6 +708,58 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
 
   const { toast, showToast } = useToast();
 
+  // ─── SKY-10712: rename → inbound-link cascade feedback ───
+  // Its own toast instance: a longer window so the Undo affordance is usable,
+  // and stacking so it never fights the error toast for the same slot.
+  const { toast: cascadeToast, showToast: showCascadeToast, clearToast: clearCascadeToast } = useToast(10000);
+  const [cascadeUndoReady, setCascadeUndoReady] = useState(false);
+
+  useEffect(() => {
+    // Large cascades stream {current,total} while files are written; small
+    // ones finish inside one frame and skip straight to the summary toast.
+    return window.api.onRenameCascadeProgress?.((p) => {
+      if (p.total >= 20) showCascadeToast(`Updating links… ${p.current}/${p.total}`);
+    });
+  }, [showCascadeToast]);
+
+  const handleUndoRename = useCallback(async () => {
+    setCascadeUndoReady(false);
+    try {
+      const res = await window.api.undoRenameCascade();
+      if (res && 'error' in res) throw new Error(res.error);
+      if (!res.undone) {
+        showCascadeToast(res.reason || 'Nothing to undo', 'warn');
+        return;
+      }
+      if (res.fromPath && res.toPath) {
+        window.dispatchEvent(new CustomEvent('mythos:note-renamed', {
+          detail: { fromPath: res.toPath, toPath: res.fromPath },
+        }));
+      }
+      if (res.oldStem && res.newStem) {
+        // Reverse transform for in-memory manuscript state — see DesktopShell.
+        window.dispatchEvent(new CustomEvent('mythos:vault-links-rewritten', {
+          detail: {
+            changedNotesPaths: res.restoredNotesPaths,
+            changedStoryPaths: res.restoredStoryPaths,
+            fromStem: res.newStem,
+            toStem: res.oldStem,
+            mode: 'update-display',
+          },
+        }));
+      }
+      onReload();
+      if (res.fromPath) select(res.fromPath);
+      showCascadeToast(
+        res.filesSkipped > 0
+          ? `Rename undone — ${res.filesSkipped} file${res.filesSkipped === 1 ? '' : 's'} edited since ${res.filesSkipped === 1 ? 'was' : 'were'} left as-is`
+          : 'Rename undone',
+      );
+    } catch (e) {
+      showCascadeToast((e as Error).message || 'Undo failed', 'error');
+    }
+  }, [onReload, select, showCascadeToast]);
+
   // ─── SKY-9310 (M8 spec item 6): icon picker state ───
   const [iconPickerRow, setIconPickerRow] = useState<FlatRow | null>(null);
 
@@ -841,16 +893,45 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
     const pathExists = notesItems.some((item) => item.path === newPath);
     if (pathExists) { setEditError('An item with that name already exists'); return; }
     try {
-      await window.api.moveNotesVault(editingPath, newPath);
+      const res = await window.api.moveNotesVault(editingPath, newPath);
+      // SKY-10712: server-side refusals (collision, failed-cascade rollback)
+      // come back as an { error } envelope, not a rejection.
+      if (res && 'error' in res) {
+        setEditError(res.error);
+        return;
+      }
       setEditingPath(null);
       setEditError(null);
       setPendingNewFolderPath(null);
       onReload();
       select(newPath);
+      // Retarget any open editor tab still pointed at the old path.
+      window.dispatchEvent(new CustomEvent('mythos:note-renamed', {
+        detail: { fromPath: editingPath, toPath: newPath },
+      }));
+      // SKY-10712: a stem-changing rename cascade-updated inbound links —
+      // let open editors converge on the rewritten disk content, then offer
+      // a one-shot Undo for the whole operation.
+      if (res && res.moved && res.linkUpdate && res.linkUpdate.filesChanged > 0) {
+        const lu = res.linkUpdate;
+        window.dispatchEvent(new CustomEvent('mythos:vault-links-rewritten', {
+          detail: {
+            changedNotesPaths: lu.changedNotesPaths,
+            changedStoryPaths: lu.changedStoryPaths,
+            fromStem: lu.oldStem,
+            toStem: lu.newStem,
+            mode: 'preserve-display',
+          },
+        }));
+        setCascadeUndoReady(true);
+        showCascadeToast(
+          `Updated ${lu.linksUpdated} link${lu.linksUpdated === 1 ? '' : 's'} in ${lu.filesChanged} file${lu.filesChanged === 1 ? '' : 's'}`,
+        );
+      }
     } catch (e) {
       setEditError((e as Error).message || 'Rename failed');
     }
-  }, [editingPath, editValue, notesItems, onReload, select]);
+  }, [editingPath, editValue, notesItems, onReload, select, showCascadeToast]);
 
   // SKY-8892: Esc on a freshly-created (still-placeholder-named) folder
   // removes it, matching the prototype's "type a name or it goes away" flow.
@@ -1293,6 +1374,14 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
       )}
       <Toast message={toast?.message ?? null} level={toast?.level} />
+      {/* SKY-10712: rename-cascade summary with one-shot Undo */}
+      <Toast
+        message={cascadeToast?.message ?? null}
+        level={cascadeToast?.level}
+        action={cascadeUndoReady ? { label: 'Undo', onClick: handleUndoRename } : undefined}
+        onDismiss={clearCascadeToast}
+        className={toast ? 'app-toast--stacked' : undefined}
+      />
     </div>
   );
 }
@@ -1451,8 +1540,14 @@ export default function VaultBrowser({
   const moveNotesItem = useCallback(async (fromPath: string, toPath: string) => {
     if (toPath === fromPath) return;
     try {
-      await window.api.moveNotesVault(fromPath, toPath);
+      const res = await window.api.moveNotesVault(fromPath, toPath);
+      // SKY-10712: moving onto an existing entry is now refused server-side
+      // (it used to silently overwrite) — surface the refusal.
+      if (res && 'error' in res) throw new Error(res.error);
       notesReload();
+      window.dispatchEvent(new CustomEvent('mythos:note-renamed', {
+        detail: { fromPath, toPath },
+      }));
     } catch (e) {
       showNotesToast((e as Error).message || 'Move failed', 'error');
     }
