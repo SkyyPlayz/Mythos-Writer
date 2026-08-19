@@ -175,8 +175,11 @@ async function setAiToggle(pg: Page, next: boolean): Promise<void> {
   await settingsBtn.click();
   const dialog = pg.locator('[role="dialog"][aria-label="Settings"]');
   await expect(dialog).toBeVisible({ timeout: 5_000 });
-  const agentsTab = dialog.getByTestId('settings-cat-agents');
-  if (await agentsTab.count()) await agentsTab.click();
+  // The dialog first mounts a "Loading settings…" state with no category rail,
+  // so a non-waiting count() check here can race and skip the click. Settings
+  // now opens on Appearance (SKY-10668), so reaching the AI toggle requires
+  // this navigation — let click() auto-wait for the tab to mount.
+  await dialog.getByTestId('settings-cat-agents').click();
   const toggle = dialog.locator('input[aria-label="AI features"]');
   await expect(toggle).toBeAttached({ timeout: 5_000 });
   if ((await toggle.isChecked()) !== next) {
