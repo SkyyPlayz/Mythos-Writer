@@ -541,6 +541,11 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
 
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page,
+  // which hosts the Voice section.
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
   // Wait for the Voice section
   await expect(page.locator('#section-voice, [id="section-voice"]')).toBeAttached({
     timeout: 6_000,
@@ -580,6 +585,10 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page,
+  // which hosts the Brainstorm voice toggle.
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  await page.locator('[data-testid="settings-cat-agents"]').click();
   const brainstormVoiceToggle = page.locator('#brainstorm-voice-enabled');
   await expect(brainstormVoiceToggle).toBeChecked({ timeout: 6_000 });
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
@@ -594,6 +603,9 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
+  // SKY-10668: reopened Settings lands on Appearance again — back to AI Agents.
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  await page.locator('[data-testid="settings-cat-agents"]').click();
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(brainstormVoiceToggle).toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
