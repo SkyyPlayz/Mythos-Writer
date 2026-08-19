@@ -1,11 +1,14 @@
 // Final sweep: app's right-panel tabs (Assistant/Scenes/Notes/References) + Settings.
 // Harness rules: see lib.mjs header (no Close-clicks, dismiss `Not now` first,
 // verify nav via --active, never pipe the runner through `head`).
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
 import { mainJs as MAIN_JS, outDir, requireBuild } from './lib.mjs';
+
+const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
 
 requireBuild();
 const OUT = outDir('rightpanel');
@@ -17,6 +20,9 @@ const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'MythosVault-rp-'));
 const ac = { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: .85, maxTokensPerHour: 1e5, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 5e5 };
 fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({
   apiKey: '', onboardingComplete: true, notesTabUpgradeToastShown: true,
+  // SKY-10504: seed explicitly rather than relying on the undefined-until-vault-load
+  // default — the panel this harness exists to capture must exist deterministically.
+  rightSidebarVisible: true,
   agents: { writingAssistant: { ...ac, scanIntervalSeconds: 30 }, brainstorm: ac, archive: { ...ac, continuityCheckIntervalSeconds: 60 } },
   theme: 'dark', snapshots: { maxPerScene: 100, maxAgeDays: 30 },
 }, null, 2));
@@ -57,35 +63,72 @@ const rows = page.locator('.nav-scene-row');
 if (await rows.count().catch(() => 0) > 0) { await rows.nth(0).click({ force: true, timeout: 6000 }).catch(() => {}); await page.waitForTimeout(2200); }
 console.log('scene open = ' + !/Select a scene|Welcome to Mythos/.test(await page.evaluate(() => document.body.innerText)));
 
-// Right panel tabs live on the right third of the window.
+// Right panel tabs live inside the AgentHubPanel tab strip (`.ahp-tabs`).
+// SKY-10504: the old code hardcoded `left < 1500` to mean "right panel only",
+// which silently excluded the entire UI whenever the window wasn't exactly
+// that wide. Measure the tab strip's real bounding box instead.
+const sidebarBox = await page.evaluate(() => {
+  const el = document.querySelector('.ahp-tabs');
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { left: r.left, width: r.width };
+});
+if (!sidebarBox || sidebarBox.width < 8) {
+  console.error(`FAIL: right-panel tab strip (.ahp-tabs) not found — cannot capture. sidebarBox=${JSON.stringify(sidebarBox)}`);
+  await app.close().catch(() => {});
+  fs.rmSync(userData, { recursive: true, force: true });
+  fs.rmSync(vaultDir, { recursive: true, force: true });
+  process.exit(1);
+}
+const ORIGIN = sidebarBox.left - 2; // small margin for sub-pixel rects
+
 const texts = {};
+let anyClickFailed = false;
 for (const tab of ['Assistant', 'Scenes', 'Notes', 'References']) {
-  const ok = await page.evaluate((label) => {
+  const ok = await page.evaluate(({ label, origin }) => {
     const els = [...document.querySelectorAll('button,[role="tab"],div,span')];
     for (const el of els) {
       if ((el.innerText || '').trim() !== label) continue;
       const r = el.getBoundingClientRect();
-      if (r.left < 1500 || r.width < 8 || r.height < 8) continue;  // right panel only
+      if (r.left < origin || r.width < 8 || r.height < 8) continue;  // right panel only
       el.click();
       return true;
     }
     return false;
-  }, tab);
+  }, { label: tab, origin: ORIGIN });
+  if (!ok) anyClickFailed = true;
   await page.waitForTimeout(1700);
   await page.screenshot({ path: `${OUT}/rp-${tab.toLowerCase()}.png` });
   // just the right-hand column's text
-  texts[tab] = await page.evaluate(() => {
+  texts[tab] = await page.evaluate((origin) => {
     const out = [];
     document.querySelectorAll('body *').forEach(el => {
       const r = el.getBoundingClientRect();
-      if (r.left < 1500 || r.width < 4) return;
+      if (r.left < origin || r.width < 4) return;
       if (el.children.length) return;
       const t = (el.innerText || '').trim();
       if (t) out.push(t);
     });
     return [...new Set(out)].join('\n');
-  });
+  }, ORIGIN);
   console.log(`  ${tab}: clicked=${ok} len=${texts[tab].length}`);
+}
+
+// SKY-10504: a capture harness that cannot capture must not exit 0 — fail
+// loudly instead of letting a gate reviewer mistake four identical/empty
+// captures for four plausible right panels.
+const tabNames = Object.keys(texts);
+const textHashes = tabNames.map((t) => md5(texts[t]));
+const dupTextPairs = tabNames.filter((t, i) => textHashes.indexOf(textHashes[i]) !== i);
+const pngHashes = tabNames.map((t) => md5(fs.readFileSync(`${OUT}/rp-${t.toLowerCase()}.png`)));
+const dupPngPairs = tabNames.filter((t, i) => pngHashes.indexOf(pngHashes[i]) !== i);
+if (anyClickFailed || dupTextPairs.length || dupPngPairs.length) {
+  console.error(`FAIL: anyClickFailed=${anyClickFailed} dupText=${JSON.stringify(dupTextPairs)} dupPng=${JSON.stringify(dupPngPairs)}`);
+  fs.writeFileSync(`${OUT}/rp-text.json`, JSON.stringify(texts, null, 1));
+  await app.close().catch(() => {});
+  fs.rmSync(userData, { recursive: true, force: true });
+  fs.rmSync(vaultDir, { recursive: true, force: true });
+  process.exit(1);
 }
 
 // Settings — is it a modal or a full workspace view?
