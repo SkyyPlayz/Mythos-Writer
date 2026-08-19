@@ -509,7 +509,7 @@ export default function ManuscriptView({
     create: createStoryComment,
     resolve: resolveStoryComment,
   } = useStoryComments(story);
-  // SKY-10574: agent comments (writing/archive/beta) hidden while the AI
+  // SKY-10573: agent comments (writing/archive/beta) hidden while the AI
   // master toggle is off — storage is untouched, they reappear when AI is
   // turned back on (PLAN.md M11b: human comments only when AI off).
   const aiEnabled = useAiEnabled();

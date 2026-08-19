@@ -425,7 +425,7 @@ describe('comments chip + focus mode', () => {
   });
 });
 
-describe('SKY-10574: agent comments hidden while AI master is off', () => {
+describe('SKY-10573: agent comments hidden while AI master is off', () => {
   it('hides writing/archive/beta comments but keeps user comments, and restores them when AI comes back on', () => {
     renderView();
     const userComment = addComment('another story', 'strong closer');

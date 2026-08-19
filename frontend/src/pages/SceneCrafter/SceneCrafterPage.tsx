@@ -836,7 +836,7 @@ export default function SceneCrafterPage({
                 ))}
               </div>
               <p className="sc-generate-copy">{CRAFTER_GENERATE_COPY}</p>
-              {!draftStreamId && (
+              {aiEnabled && !draftStreamId && (
                 <button type="button" className="sc-draft-btn" onClick={generateDraft}>
                   Generate ✦
                 </button>
