@@ -178,9 +178,11 @@ async function setAiToggle(pg: Page, next: boolean): Promise<void> {
   const agentsTab = dialog.getByTestId('settings-cat-agents');
   if (await agentsTab.count()) await agentsTab.click();
   const toggle = dialog.locator('input[aria-label="AI features"]');
-  await expect(toggle).toBeVisible({ timeout: 5_000 });
+  await expect(toggle).toBeAttached({ timeout: 5_000 });
   if ((await toggle.isChecked()) !== next) {
-    await toggle.click();
+    // The input itself is visually hidden behind the styled track (native
+    // <label> wraps both) — click the visible track to trigger it.
+    await dialog.locator('.ai-master-card .settings-toggle-track').click();
   }
   await pg.getByLabel('Close settings').click();
   await expect(dialog).not.toBeVisible();

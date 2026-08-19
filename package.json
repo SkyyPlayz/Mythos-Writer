@@ -77,6 +77,7 @@
     "test:e2e:scene-crafter": "playwright test e2e/tests/sceneCrafter.spec.ts --reporter=list,html",
     "test:e2e:scene-crafter-ai-off": "playwright test e2e/tests/sky9878-scene-crafter-ai-off.spec.ts --reporter=list,html",
     "test:e2e:ai-precedence": "playwright test e2e/tests/sky10507-ai-precedence.spec.ts --reporter=list,html",
+    "test:e2e:comments-ai-off": "playwright test e2e/tests/sky10574-comments-gutter-ai-off.spec.ts --reporter=list,html",
     "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list,html",
     "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list,html",
     "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list,html",
