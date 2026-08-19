@@ -15,6 +15,8 @@ import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/pr
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
+import { VaultDestinationPicker } from './VaultDestinationPicker';
+import './M24Sections.css';
 
 interface VaultEntry {
   vaultRoot: string;
@@ -39,7 +41,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
 
-  useEffect(() => {
+  const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
       .then((res) => { if (res?.projects) setVaults(res.projects); })
       .catch(() => { /* non-fatal — section renders empty */ });
@@ -47,6 +49,65 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
   }, []);
+
+  useEffect(() => { refreshVaults(); }, [refreshVaults]);
+
+  // SKY-10385: "New vault" — there was previously no way to create a new
+  // Mythos vault outside first-run onboarding (a genuine dead end once
+  // onboarding is complete). Reuses the same createMythosVault-backed
+  // `vaultCreateDefaultMythos` IPC the onboarding "Start fresh" path calls,
+  // then switches to it via the existing `projectSwitch` path (same one the
+  // vault cards below use) so DesktopShell reloads exactly like a card click.
+  const [creatingVault, setCreatingVault] = useState(false);
+  const [newVaultName, setNewVaultName] = useState('');
+  const [newVaultParent, setNewVaultParent] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const pickNewVaultParent = useCallback(async () => {
+    try {
+      const res = await window.api?.chooseVaultFolder?.('Pick a location for the new vault', newVaultParent || undefined);
+      if (res && !res.cancelled && res.path) setNewVaultParent(res.path);
+    } catch { /* picker unavailable */ }
+  }, [newVaultParent]);
+
+  const cancelCreateVault = useCallback(() => {
+    setCreatingVault(false);
+    setNewVaultName('');
+    setNewVaultParent('');
+    setCreateError(null);
+  }, []);
+
+  const createNewVault = useCallback(async () => {
+    if (createBusy) return;
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const res = await window.api?.vaultCreateDefaultMythos?.({
+        ...(newVaultParent.trim() ? { parentPath: newVaultParent.trim() } : {}),
+        ...(newVaultName.trim() ? { vaultName: newVaultName.trim() } : {}),
+      });
+      if (!res || res.error) {
+        setCreateError(res?.error ?? 'Could not create the new vault.');
+        return;
+      }
+      // vaultCreateDefaultMythos already re-points settings + watchers at the
+      // new vault; projectSwitch is the same allowlisted path the cards below
+      // use, so it also pushes the project:switched event DesktopShell needs
+      // to actually reload into it (not just flip settings under it).
+      const switched = await window.api?.projectSwitch?.(res.vaultRoot, res.notesVaultRoot);
+      if (switched?.switched) setActiveRoot(res.vaultRoot);
+      refreshVaults();
+      showLnToast(`New vault created — ${res.name}`);
+      setCreatingVault(false);
+      setNewVaultName('');
+      setNewVaultParent('');
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not create the new vault.');
+    } finally {
+      setCreateBusy(false);
+    }
+  }, [createBusy, newVaultName, newVaultParent, refreshVaults]);
 
   /** Prototype themeChange (7112–7120): store the vault's default; when it is
    *  the CURRENT vault, also apply it live. Persisted immediately so a vault
@@ -101,11 +162,64 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
   return (
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
-      <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
+        {!creatingVault && (
+          <button
+            type="button"
+            className="m24-btn m24-btn--primary"
+            onClick={() => setCreatingVault(true)}
+            data-testid="mvs-new-vault-open"
+          >
+            + New vault
+          </button>
+        )}
+      </div>
       <p className="settings-hint">
         Each Mythos vault is a folder holding its own Story Vault + Notes Vault. Give each vault its
         own theme so you always know where you are — switching vaults applies its theme.
       </p>
+      {creatingVault && (
+        <div className="m24-card" style={{ marginBottom: 10 }} data-testid="mvs-new-vault-form">
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eef2fb', marginBottom: 10 }}>New Mythos vault</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input
+              type="text"
+              placeholder="Vault name (optional)"
+              value={newVaultName}
+              onChange={(e) => setNewVaultName(e.target.value)}
+              disabled={createBusy}
+              data-testid="mvs-new-vault-name"
+              aria-label="New vault name"
+              style={{ height: 29, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 9, color: '#dbe4f5', fontSize: 11.5, padding: '0 11px' }}
+            />
+            <VaultDestinationPicker
+              path={newVaultParent}
+              placeholder="Default vault location — click Browse… to choose one"
+              onBrowse={() => { void pickNewVaultParent(); }}
+              disabled={createBusy}
+              testIdPrefix="mvs-new-vault-location"
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className="m24-btn m24-btn--primary"
+                onClick={() => { void createNewVault(); }}
+                disabled={createBusy}
+                data-testid="mvs-new-vault-create"
+              >
+                {createBusy ? 'Creating…' : 'Create vault'}
+              </button>
+              <button type="button" className="m24-btn" onClick={cancelCreateVault} disabled={createBusy} data-testid="mvs-new-vault-cancel">
+                Cancel
+              </button>
+            </div>
+            {createError && (
+              <p className="settings-error-msg" role="alert" data-testid="mvs-new-vault-error">{createError}</p>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {vaults.map((v) => {
           const current = v.vaultRoot === activeRoot;
@@ -164,7 +278,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         })}
         {vaults.length === 0 && (
           <p className="settings-hint" data-testid="mvs-empty">
-            No other Mythos vaults yet — create one from the title-bar vault menu.
+            No other Mythos vaults yet — use "+ New vault" above to create one.
           </p>
         )}
       </div>
