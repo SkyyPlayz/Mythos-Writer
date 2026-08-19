@@ -197,6 +197,12 @@
   border-color: var(--b1, rgba(0, 240, 255, 0.6));
 }
 
+/* SKY-10510: Group By only regroups the Spreadsheet — dimmed elsewhere. */
+.tlr-filter-select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Templates ▾ + `+ Plotline` (prototype 1918–1937) */
 .tlr-tool-btn {
   display: flex;
