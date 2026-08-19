@@ -377,24 +377,13 @@
   flex-direction: column;
 }
 
-/* ── SKY-3626: NFE writing-mode toggle in notes-tab-toolbar ── */
-
-.notes-tab-toolbar .nfe-mode-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  padding-left: 8px;
-  -webkit-app-region: no-drag;
-}
-
 /* ── M16 (Beta 3): note split toggle + right-panel tabs + properties ── */
 
 .notes-split-toggle-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 8px;
+  margin-left: auto;
   height: 24px;
   padding: 0 9px;
   border-radius: 8px;
@@ -405,6 +394,17 @@
   font-weight: 600;
   cursor: pointer;
   -webkit-app-region: no-drag;
+}
+
+/* SKY-10505: with the N/F/E writing-mode group removed, whichever trailing
+   toolbar button renders first takes over its margin-left: auto right-anchor;
+   when both render, the second reverts to a fixed gap instead of a double push. */
+.notes-open-brainstorm-btn {
+  margin-left: auto;
+}
+
+.notes-split-toggle-btn + .notes-open-brainstorm-btn {
+  margin-left: 8px;
 }
 
 .notes-split-toggle-btn:hover {

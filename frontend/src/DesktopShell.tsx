@@ -5944,9 +5944,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onSelectEntity={handleSelectEntityInTab}
           selectedEntityId={selectedEntity?.id ?? null}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
-          writingMode={writingMode}
-          onSetWritingMode={setWritingMode}
-          onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
           onOpenBrainstorm={(seedText) => {
             setBrainstormSeedPrompt(seedText);
             handleTabChange('brainstorm');
