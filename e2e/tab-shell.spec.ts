@@ -68,9 +68,20 @@ test.describe('TabBar — tab switching and persistence', () => {
       const storyNav = mainNav.getByRole('button', { name: 'Story' });
       const notesNav = mainNav.getByRole('button', { name: 'Notes' });
       const workspaceTabs = page.getByRole('tablist', { name: 'Workspace tabs' });
+      // No scene tab is open on a fresh profile, so the Workspace tabs tablist
+      // (scene tabs) is empty; the tab actually under test here is the Story
+      // sub-view bar's "Editor" tab.
+      const storySubViewTabs = page.getByRole('tablist', { name: 'Story view' });
 
       await expect(mainNav).toBeVisible({ timeout: 12_000 });
       await expect(workspaceTabs).toBeVisible({ timeout: 12_000 });
+      await expect(storySubViewTabs).toBeVisible({ timeout: 12_000 });
+      // Scoped to the Story view tablist: since SKY-10499, GlobalRightSidebar's
+      // AgentHubPanel tab strip also renders a `[role="tab"][aria-selected="true"]`
+      // by default, so an unscoped locator would count both and defeat this
+      // assertion (it silently passed count===1 pre-SKY-10499 only because GRS
+      // wasn't mounted for a fresh profile).
+      await expect(storySubViewTabs.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
 
       await expect(storyNav).toHaveAttribute('aria-current', 'page');
       await expect(notesNav).not.toHaveAttribute('aria-current', 'page');
