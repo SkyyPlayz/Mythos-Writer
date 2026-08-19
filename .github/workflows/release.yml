@@ -40,10 +40,33 @@ jobs:
           fi
           echo "version=$TAG" >> $GITHUB_OUTPUT
 
+  # Guard: the release tag must match the version already committed to
+  # package.json. This workflow never pushes a version bump itself (SKY-10762 —
+  # branch protection rejects workflow-token pushes to main with GH006); the
+  # bump lands first via a normal reviewed PR, then this workflow is dispatched
+  # with the matching tag (or the tag is pushed). A mismatch here means the
+  # bump PR hasn't merged yet — fail fast before creating the tag or release,
+  # otherwise the installer ships with the wrong embedded version and the
+  # updater feed breaks.
+  validate-version:
+    needs: determine-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${{ needs.determine-release.outputs.version }}"
+          PKG_VERSION=$(jq -r '.version' package.json)
+          if [ "v$PKG_VERSION" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match package.json version v$PKG_VERSION on the checked-out commit. Merge a version-bump PR to main first (see docs/releases/RELEASING.md), then re-run."
+            exit 1
+          fi
+          echo "package.json version v$PKG_VERSION matches $TAG"
+
   # Create the draft release so build jobs can upload directly to it.
   # Uses softprops/action-gh-release which handles create-or-update idempotently.
   create-release:
-    needs: determine-release
+    needs: [determine-release, validate-version]
     runs-on: ubuntu-latest
     permissions:
       contents: write
