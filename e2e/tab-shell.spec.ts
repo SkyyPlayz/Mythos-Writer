@@ -71,7 +71,7 @@ test.describe('TabBar — tab switching and persistence', () => {
 
       await expect(mainNav).toBeVisible({ timeout: 12_000 });
       await expect(workspaceTabs).toBeVisible({ timeout: 12_000 });
-      await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
+      await expect(workspaceTabs.locator('[aria-selected="true"]')).toHaveCount(1);
 
       await expect(storyNav).toHaveAttribute('aria-current', 'page');
       await expect(notesNav).not.toHaveAttribute('aria-current', 'page');
