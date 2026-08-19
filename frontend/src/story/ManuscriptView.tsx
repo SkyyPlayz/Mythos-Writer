@@ -76,14 +76,12 @@ import {
   isValidAnchor,
   runAgentAction,
   useStoryComments,
-  visibleComments,
   type AgentAction,
   type StoryComment,
 } from '../comments';
 import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
 import CommentOpenCard from './CommentOpenCard';
-import { useAiEnabled } from '../hooks/useAiEnabled';
 import ParagraphRow from './ParagraphRow';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
@@ -501,8 +499,10 @@ export default function ManuscriptView({
   }, []);
 
   // ── M11 comments (store binding + selection/open UI state) ──
+  // SKY-10608: AI-off agent-comment filtering happens inside useStoryComments
+  // itself, so every consumer gets it for free — do not re-filter here.
   const {
-    ordered: allComments,
+    ordered: comments,
     showComments,
     commentsInFocus,
     setShowComments,
@@ -510,13 +510,6 @@ export default function ManuscriptView({
     create: createStoryComment,
     resolve: resolveStoryComment,
   } = useStoryComments(story);
-  // SKY-10573: agent comments (writing/archive/beta) hidden while the AI
-  // master toggle is off — storage is untouched, they reappear when AI is
-  // turned back on (PLAN.md M11b: human comments only when AI off).
-  // SKY-10604 extracts the filter to comments/visibleComments so BookPreview
-  // applies the identical rule.
-  const aiEnabled = useAiEnabled();
-  const comments = useMemo(() => visibleComments(allComments, aiEnabled), [allComments, aiEnabled]);
   /** Pending selection anchor (prototype cSel) — non-null shows the bar. */
   const [selAnchor, setSelAnchor] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');

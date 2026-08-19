@@ -19,9 +19,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Story, Chapter } from '../types';
-import { segmentsFor, useStoryComments, visibleComments, type StoryComment } from '../comments';
+import { segmentsFor, useStoryComments, type StoryComment } from '../comments';
 import { countWords } from '../wordStats';
-import { useAiEnabled } from '../hooks/useAiEnabled';
 import ReaderBar from './ReaderBar';
 import { useManuscriptReader } from './useManuscriptReader';
 import { clearReadingSentenceHighlight, setReadingSentenceHighlight } from './readerHighlight';
@@ -131,11 +130,9 @@ export default function BookPreview({
   const headerRef = useRef<HTMLHeadingElement | null>(null);
   const [card, setCard] = useState<CommentCardState | null>(null);
 
-  const { comments: allComments } = useStoryComments(story);
-  const aiEnabled = useAiEnabled();
-  // M11c (SKY-10604): same rule as ManuscriptView — master AI off hides
-  // agent-authored comments; the writer's own stay; the sidecar is untouched.
-  const comments = useMemo(() => visibleComments(allComments, aiEnabled), [aiEnabled, allComments]);
+  // SKY-10608: AI-off agent-comment filtering happens inside useStoryComments
+  // itself, so every consumer (including ManuscriptView) gets it for free.
+  const { comments } = useStoryComments(story);
 
   useEffect(() => {
     headerRef.current?.focus({ preventScroll: true });
