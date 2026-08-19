@@ -3,9 +3,11 @@ import {
   ARC_LANE,
   CHARACTER_LANE,
   PLOT_TEMPLATES,
+  POV_LANE,
   THEME_LANE,
   WORLD_LANE,
   arcSpans,
+  buildPovTrack,
   buildTemplateApplication,
   characterSpans,
   eventVisible,
@@ -47,6 +49,7 @@ describe('story-lane partition', () => {
     event('ev-theme', 0, { rowId: THEME_LANE }),
     event('card-1', 40, { rowId: 'pl-1', chapter: 3 }),
     event('ev-other-tl', 50),
+    event('ev-pov', 60, { rowId: POV_LANE }),
   ];
   events[5] = { ...events[5], timelineId: 'tl-other' };
   const store = { spans, rows, events };
@@ -64,7 +67,48 @@ describe('story-lane partition', () => {
   });
 
   it('KEY EVENTS keeps plain + custom-row events and excludes the story lanes', () => {
+    // SKY-10542: the POV_LANE sentinel is excluded like the other story lanes.
     expect(keyEvents(store, TL).map((e) => e.id)).toEqual(['ev-plain', 'ev-crow']);
+  });
+});
+
+describe('buildPovTrack — SKY-10542 POV track', () => {
+  const sc = (id: string, pov: string, chapterIndex: number) => ({
+    id, title: `Scene ${id}`, pov, chapterIndex,
+  });
+
+  it('one lane per distinct POV name, in first-appearance order', () => {
+    const track = buildPovTrack([sc('a', 'Mira', 0), sc('b', 'Kael', 1), sc('c', 'Mira', 2)]);
+    expect(track.lanes).toEqual(['Mira', 'Kael']);
+    expect(track.chips.map((c) => [c.sceneId, c.lane])).toEqual([['a', 0], ['b', 1], ['c', 0]]);
+  });
+
+  it('unset / whitespace POV renders no chip (M2 unset → no chip convention)', () => {
+    const track = buildPovTrack([sc('a', 'Mira', 0), sc('b', '', 0), sc('c', '   ', 1)]);
+    expect(track.chips.map((c) => c.sceneId)).toEqual(['a']);
+    expect(track.lanes).toEqual(['Mira']);
+  });
+
+  it('drops unplaced scenes (chapterIndex -1 / NaN) and trims POV names', () => {
+    const track = buildPovTrack([sc('a', ' Mira ', 0), sc('b', 'Kael', -1), sc('c', 'Kael', NaN)]);
+    expect(track.chips.map((c) => c.sceneId)).toEqual(['a']);
+    expect(track.chips[0].pov).toBe('Mira');
+  });
+
+  it('scenes sharing a chapter split it into slots in narrative order', () => {
+    const track = buildPovTrack([sc('a', 'Mira', 3), sc('b', 'Kael', 3), sc('c', 'Mira', 3)]);
+    expect(track.chips.map((c) => [c.slot, c.slotCount])).toEqual([[0, 3], [1, 3], [2, 3]]);
+  });
+
+  it('chips sort by chapter while keeping in-chapter input order', () => {
+    const track = buildPovTrack([sc('late', 'Mira', 5), sc('a', 'Kael', 1), sc('b', 'Mira', 1)]);
+    expect(track.chips.map((c) => c.sceneId)).toEqual(['a', 'b', 'late']);
+    // first NARRATIVE appearance owns lane 0, not first input entry
+    expect(track.lanes).toEqual(['Kael', 'Mira']);
+  });
+
+  it('is empty-safe', () => {
+    expect(buildPovTrack([])).toEqual({ lanes: [], chips: [] });
   });
 });
 

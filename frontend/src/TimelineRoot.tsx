@@ -88,6 +88,7 @@ import {
   isMainSpan,
   plotlineRows,
   type PlotTemplate,
+  type PovSceneInput,
   type TimelineShowFilter,
 } from './timeline2/axis/storyLanes';
 import { useToast } from './hooks/useToast';
@@ -300,6 +301,8 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [plannedBuild, setPlannedBuild] = useState<PlannedBuild | null>(null);
+  // SKY-10542: POV track input — per-scene POV attribution for the lanes view.
+  const [povScenes, setPovScenes] = useState<PovSceneInput[]>([]);
   const lastAutoBuildSig = useRef<string | null>(null);
   // Empty-state dismissal: "Start empty" reveals the bare axis for hand-adds.
   const [emptyDismissed, setEmptyDismissed] = useState<ReadonlySet<string>>(new Set());
@@ -391,6 +394,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
       setAeonError(null);
       setFlags([]);
       setPlannedBuild(null);
+      setPovScenes([]);
       return;
     }
     let cancelled = false;
@@ -433,12 +437,20 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
         // timelines.json write-through below.
         const merged = mergePlannedIntoTimeline(realScenes, realChapters, planUnits, continuityItems);
         setFlags(merged.flags);
+        const chapterIndexById = new Map(merged.chapters.map((ch, i) => [ch.id, i]));
         setPlannedBuild({
           scenes: merged.scenes
             .filter((s) => s.id.startsWith('plan:'))
             .map((s) => ({ id: s.id, title: s.title, chapterId: s.chapterId })),
-          chapterIndexById: new Map(merged.chapters.map((ch, i) => [ch.id, i])),
+          chapterIndexById,
         });
+        // SKY-10542: POV track — unset POV / unplaced scenes drop in buildPovTrack.
+        setPovScenes(merged.scenes.map((s) => ({
+          id: s.id,
+          title: s.title,
+          pov: s.pov,
+          chapterIndex: chapterIndexById.get(s.chapterId) ?? -1,
+        })));
         setAeonData(deriveAeonTimeline({
           storyTitle: story.title,
           scenes: merged.scenes,
@@ -1260,6 +1272,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
                 onStoreChange={setTimelinesStore}
                 mode={viewMode as 'progress' | 'structure'}
                 chapters={axisChapters}
+                povScenes={povScenes}
                 hiddenPlotlines={hiddenPlotlines}
                 bookFocus={bookFocus}
                 showFilter={showFilter}

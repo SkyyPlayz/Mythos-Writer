@@ -196,7 +196,9 @@ function seedVault(
       `chronologicalConfidence: 1`,
       `chronologicalSource: explicit_marker`,
       `entityArcs: [${scene.arcs.join(', ')}]`,
-      `metaPov: ${scene.pov}`,
+      // SKY-10542: an empty pov means "unset" — omit the key entirely so the
+      // fixture mirrors a scene whose POV was never filled in.
+      ...(scene.pov ? [`metaPov: ${scene.pov}`] : []),
       `metaMood: ${scene.mood}`,
       `updatedAt: ${now}`,
       '---',
@@ -696,6 +698,8 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
 
   const B1 = { id: 'sc-m23-1', title: 'Boarding',  date: '2340-01-01', arcs: [] as string[], pov: 'Eira', mood: 'tense' };
   const B2 = { id: 'sc-m23-2', title: 'Terminus',  date: '2340-08-20', arcs: [] as string[], pov: 'Kael', mood: 'hopeful' };
+  // SKY-10542: no POV set → the POV track must render no chip for this scene.
+  const B3 = { id: 'sc-m23-3', title: 'Interlude', date: '2340-04-10', arcs: [] as string[], pov: '', mood: 'quiet' };
 
   /** Explicit timelines.json fixture: one story timeline with books, an arc,
    *  a character lifespan, world/theme chips and a flashback event pair. */
@@ -747,7 +751,7 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
       m23VaultDir,
       M23_STORY_ID, M23_STORY_TITLE,
       M23_CHAPTER_ID, M23_CHAPTER_TITLE,
-      [B1, B2],
+      [B1, B2, B3],
       [],
     );
     seedTimelinesStore(m23VaultDir);
@@ -932,6 +936,28 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     // Restore Progress for the tests that follow.
     await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
     await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
+  });
+
+  // SKY-10542 (Ivy fidelity gate M10, Finding 1): the POV track. One chip per
+  // scene that carries timelineMetadata.pov, one lane per POV name; a scene
+  // with no POV set renders nothing (the M2 unset → no chip convention).
+  // Live DOM assertions against the seeded vault scenes — not a screenshot.
+  test('TC-TL-M23-09: the POV track plots one chip per POV-carrying scene', async () => {
+    const row = m23Page.locator('[data-testid="ax-pov-row"]');
+    await expect(row).toBeVisible({ timeout: 6_000 });
+
+    // B1 (Eira) and B2 (Kael) chip onto their own lanes, in narrative order.
+    const eira = m23Page.locator('[data-testid="ax-pov-chip-sc-m23-1"]');
+    const kael = m23Page.locator('[data-testid="ax-pov-chip-sc-m23-2"]');
+    await expect(eira).toHaveAttribute('data-pov', 'Eira');
+    await expect(eira).toHaveAttribute('data-lane', '0');
+    await expect(eira).toHaveText('Eira');
+    await expect(kael).toHaveAttribute('data-pov', 'Kael');
+    await expect(kael).toHaveAttribute('data-lane', '1');
+    await expect(row).toHaveAttribute('data-lane-count', '2');
+
+    // B3 has no POV in its frontmatter → no chip for it.
+    await expect(m23Page.locator('[data-testid="ax-pov-chip-sc-m23-3"]')).toHaveCount(0);
   });
 
   // SKY-8435: M25 dyslexia-conformance floor on the Inspector's static-view

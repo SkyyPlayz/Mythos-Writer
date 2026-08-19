@@ -61,6 +61,7 @@ import {
   THEME_LANE,
   WORLD_LANE,
   arcSpans,
+  buildPovTrack,
   characterSpans,
   eventVisible,
   isEventWritten,
@@ -71,6 +72,7 @@ import {
   plotlineRows,
   themeEvents,
   worldEvents,
+  type PovSceneInput,
   type TimelineShowFilter,
 } from './axis/storyLanes';
 import { useToast } from '../hooks/useToast';
@@ -100,6 +102,9 @@ export interface AxisViewProps {
   mode?: AxisViewMode;
   /** Ordered story chapters for the CHAPTERS row (date-positioned minis). */
   chapters?: readonly AxisChapterCell[];
+  /** SKY-10542: manuscript scenes for the POV track — chips derive from each
+   *  scene's `timelineMetadata.pov`; unset POV renders nothing. */
+  povScenes?: readonly PovSceneInput[];
   /** Plotline ids toggled off in the left panel. */
   hiddenPlotlines?: ReadonlySet<string>;
   /** Focused book span id (left-panel book cards); null = Overview. */
@@ -129,6 +134,7 @@ function newItemId(prefix: string): string {
 }
 
 const EMPTY_CHAPTERS: readonly AxisChapterCell[] = [];
+const EMPTY_POV_SCENES: readonly PovSceneInput[] = [];
 const EMPTY_HIDDEN: ReadonlySet<string> = new Set();
 
 export default function AxisView({
@@ -136,6 +142,7 @@ export default function AxisView({
   onStoreChange,
   mode = 'structure',
   chapters = EMPTY_CHAPTERS,
+  povScenes = EMPTY_POV_SCENES,
   hiddenPlotlines = EMPTY_HIDDEN,
   bookFocus = null,
   showFilter = 'All Events',
@@ -331,6 +338,7 @@ export default function AxisView({
   const arcs = useMemo(() => arcSpans(localStore, activeId), [localStore, activeId]);
   const characters = useMemo(() => characterSpans(localStore, activeId), [localStore, activeId]);
   const characterLanes = useMemo(() => characterLanePolicy(characters), [characters]);
+  const povTrack = useMemo(() => buildPovTrack(povScenes), [povScenes]);
   const themes = useMemo(() => themeEvents(localStore, activeId), [localStore, activeId]);
   const plotlines = useMemo(
     () => plotlineRows(localStore, activeId).filter((r) => !hiddenPlotlines.has(r.id)),
@@ -1205,6 +1213,61 @@ export default function AxisView({
                           onMouseDown={(e) => beginSpanLikeDrag(e, 'resize-right', 'span', journey, 'chars')}
                           data-testid={`ax-rz-r-${journey.id}`}
                         />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── SKY-10542: POV track (PLAN.md M10) — per-scene POV
+                attribution from timelineMetadata.pov; one lane per POV name,
+                chips split each chapter cell in narrative scene order. ── */}
+            {isStoryTimeline && (
+              <div className="ax-row">
+                <div className="ax-row-label">
+                  POV
+                  <div className="ax-row-sublabel">WHO TELLS EACH SCENE</div>
+                </div>
+                <div
+                  className="ax-row-content ax-povs"
+                  style={{ height: `${Math.max(1, povTrack.lanes.length) * 20 + 2}px` }}
+                  data-testid="ax-pov-row"
+                  data-lane-count={povTrack.lanes.length}
+                >
+                  {gridlines}
+                  {povTrack.chips.length === 0 && (
+                    <span className="ax-row-hint">
+                      Scenes plot here once they carry a POV — set one on the scene’s metadata.
+                    </span>
+                  )}
+                  {povTrack.chips.map((chip) => {
+                    const pos = chapterMinis[chip.chapterIndex];
+                    if (!pos) return null;
+                    const ch = chapters[chip.chapterIndex];
+                    const col = laneColor(chip.lane);
+                    const l = axisPctL(pos.startWhen, t0, t1);
+                    const r = axisPctL(pos.nextWhen, t0, t1);
+                    const sliceW = (r - l) / chip.slotCount;
+                    return (
+                      <div
+                        key={chip.sceneId}
+                        className="ax-pov-chip"
+                        style={{
+                          left: `${l + chip.slot * sliceW}%`,
+                          width: `${Math.max(1.2, sliceW * 0.85)}%`,
+                          top: `${chip.lane * 20}px`,
+                          color: col,
+                          background: hexA(col, 0.12),
+                          border: `1px solid ${hexA(col, 0.45)}`,
+                          ...greyStyle(!ch?.written, inFocusedBook(pos.startWhen, pos.nextWhen)),
+                        }}
+                        title={`POV ${chip.pov} — ${chip.sceneTitle}${ch ? ` · ${ch.label}` : ''}`}
+                        data-testid={`ax-pov-chip-${chip.sceneId}`}
+                        data-pov={chip.pov}
+                        data-lane={chip.lane}
+                      >
+                        {chip.pov}
                       </div>
                     );
                   })}

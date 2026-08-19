@@ -486,6 +486,63 @@ describe('AxisView — M23 story rows render from timelines.json', () => {
   });
 });
 
+// ═══ SKY-10542 — POV track (PLAN.md M10: per-scene POV attribution) ═══
+
+describe('AxisView — SKY-10542 POV track', () => {
+  const POV_SCENES = [
+    { id: 'sc-1', title: 'Boarding', pov: 'Mira', chapterIndex: 0 },
+    { id: 'sc-2', title: 'Crossing', pov: 'Kael', chapterIndex: 1 },
+    { id: 'sc-3', title: 'Interlude', pov: '', chapterIndex: 1 },
+    { id: 'sc-4', title: 'Return', pov: 'Mira', chapterIndex: 2 },
+  ];
+
+  let store: TimelinesStore;
+  beforeEach(() => {
+    store = makeStoryLanesStore();
+    setupApi(store);
+  });
+
+  it('renders one chip per POV-carrying scene; unset POV renders nothing', () => {
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} povScenes={POV_SCENES} />,
+    );
+    expect(screen.getByText('POV')).toBeInTheDocument();
+    expect(screen.getByText('WHO TELLS EACH SCENE')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-pov-chip-sc-1')).toHaveTextContent('Mira');
+    expect(screen.getByTestId('ax-pov-chip-sc-2')).toHaveTextContent('Kael');
+    expect(screen.getByTestId('ax-pov-chip-sc-4')).toHaveTextContent('Mira');
+    // sc-3 has no POV set → no chip (the M2 unset → no chip convention)
+    expect(screen.queryByTestId('ax-pov-chip-sc-3')).toBeNull();
+  });
+
+  it('gives each POV name its own lane (CHARACTER-lane one-lane-each convention)', () => {
+    render(
+      <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} povScenes={POV_SCENES} />,
+    );
+    const row = screen.getByTestId('ax-pov-row');
+    expect(row.getAttribute('data-lane-count')).toBe('2');
+    expect(screen.getByTestId('ax-pov-chip-sc-1').getAttribute('data-lane')).toBe('0');
+    expect(screen.getByTestId('ax-pov-chip-sc-2').getAttribute('data-lane')).toBe('1');
+    expect(screen.getByTestId('ax-pov-chip-sc-4').getAttribute('data-lane')).toBe('0');
+    expect(screen.getByTestId('ax-pov-chip-sc-1').getAttribute('data-pov')).toBe('Mira');
+  });
+
+  it('explains itself when no scene carries a POV yet', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />);
+    const row = screen.getByTestId('ax-pov-row');
+    expect(row.textContent).toContain('Scenes plot here once they carry a POV');
+  });
+
+  it('stays off world / universe timelines (prototype tlIsStoryTl gate)', () => {
+    const worldStore = { ...store, activeTimelineId: 'tl-world' };
+    setupApi(worldStore);
+    render(
+      <AxisView store={worldStore} onStoreChange={() => {}} chapters={CHAPTERS} povScenes={POV_SCENES} />,
+    );
+    expect(screen.queryByTestId('ax-pov-row')).toBeNull();
+  });
+});
+
 describe('AxisView — M23 Show filter + book focus (filters regroup live)', () => {
   let store: TimelinesStore;
   beforeEach(() => {
