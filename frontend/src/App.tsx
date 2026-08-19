@@ -4,6 +4,7 @@ import OnboardingWizard from './OnboardingWizard';
 import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
 import MythosMigrationCenter from './migration/MythosMigrationCenter';
+import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
 import './App.css';
 
 type AppRoute =
@@ -122,6 +123,9 @@ function App() {
       {/* Beta 4 M5: v0.4 → MythosVault upgrade prompt + wizard. Renders
           nothing unless main detected a v0.4 twin-root vault on boot. */}
       <MythosMigrationCenter />
+      {/* SKY-10405: failed boot-time silent migration — visible error,
+          original vault stays open. Renders nothing on a clean boot. */}
+      <MythosBootMigrationNotice />
     </div>
   );
 }

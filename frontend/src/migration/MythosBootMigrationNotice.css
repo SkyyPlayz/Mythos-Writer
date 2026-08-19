@@ -1,0 +1,62 @@
+/* SKY-10405 — boot-time silent migration failure notice (Liquid Neon glass,
+   danger accent). Same corner + footprint as the old upgrade prompt card:
+   above the status bar, clear of the nav rail, never over an editor. */
+
+.mythos-boot-migration-error {
+  position: fixed;
+  left: 88px; /* clear of the nav rail */
+  bottom: 44px; /* above the status bar */
+  width: 340px;
+  z-index: 1200;
+  padding: 14px 16px;
+  border-radius: 13px;
+  background: rgba(28, 13, 16, 0.94);
+  border: 1px solid rgba(255, 92, 122, 0.55);
+  box-shadow: 0 0 26px -7px rgba(255, 92, 122, 0.55);
+  color: #e7c8cf;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.mythos-boot-migration-error-title {
+  color: #fcf0f2;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.mythos-boot-migration-error-detail {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f4dade;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  word-break: break-word;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.mythos-boot-migration-error-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.mythos-boot-migration-error-btn {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 92, 122, 0.45);
+  background: transparent;
+  color: #e7c8cf;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mythos-boot-migration-error-btn:hover,
+.mythos-boot-migration-error-btn:focus-visible {
+  border-color: rgba(255, 92, 122, 0.85);
+  color: #fcf0f2;
+}

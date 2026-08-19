@@ -93,17 +93,67 @@ export function detectVaultFormat(storyVaultRoot: string): VaultFormatKind {
   return 'empty';
 }
 
-/** Default migration target: a sibling folder named after the vault. */
-export function suggestMigrationTarget(storyVaultRoot: string, notesVaultRoot: string): string {
+/** Anchor directory + base folder name every migration-target candidate derives from. */
+export function migrationTargetBase(
+  storyVaultRoot: string,
+  notesVaultRoot: string,
+): { anchor: string; base: string } {
   const name = deriveProjectName(storyVaultRoot, notesVaultRoot);
   const bundled = path.dirname(storyVaultRoot) === path.dirname(notesVaultRoot);
   const anchor = bundled ? path.dirname(path.dirname(storyVaultRoot)) : path.dirname(storyVaultRoot);
-  const base = `${name} (MythosVault)`;
+  return { anchor, base: `${name} (MythosVault)` };
+}
+
+/** Default migration target: a sibling folder named after the vault. */
+export function suggestMigrationTarget(storyVaultRoot: string, notesVaultRoot: string): string {
+  const { anchor, base } = migrationTargetBase(storyVaultRoot, notesVaultRoot);
   let candidate = path.join(anchor, base);
   for (let i = 2; fs.existsSync(candidate) && i < 1000; i++) {
     candidate = path.join(anchor, `${base} ${i}`);
   }
   return candidate;
+}
+
+// ─── In-flight build marker (SKY-10405) ──────────────────────────────────────
+//
+// `runMythosVaultMigration` drops this file at the target root as its very
+// first write, and it survives until AFTER the app has repointed its settings
+// at the finished vault. A target folder that still carries the marker is
+// therefore a partial or never-confirmed build — not a vault anyone works in
+// — so a retry may safely wipe and rebuild it instead of erroring out or
+// minting a new "Name (MythosVault) 2, 3, …" sibling per interrupted attempt.
+
+export const MIGRATION_INCOMPLETE_MARKER = '.mythos-migration-incomplete';
+
+export function writeIncompleteMigrationMarker(targetRoot: string, sourceStoryVault: string): void {
+  writeFileAtomic(
+    path.join(targetRoot, MIGRATION_INCOMPLETE_MARKER),
+    `${JSON.stringify(
+      { sourceStoryVault, startedAt: new Date().toISOString(), migratorVersion: MIGRATOR_VERSION },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/** The marker's recorded source vault, or null when absent/unreadable. */
+export function readIncompleteMigrationMarker(
+  targetRoot: string,
+): { sourceStoryVault: string } | null {
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(targetRoot, MIGRATION_INCOMPLETE_MARKER), 'utf-8'),
+    ) as { sourceStoryVault?: unknown };
+    return typeof raw.sourceStoryVault === 'string'
+      ? { sourceStoryVault: raw.sourceStoryVault }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearIncompleteMigrationMarker(targetRoot: string): void {
+  fs.rmSync(path.join(targetRoot, MIGRATION_INCOMPLETE_MARKER), { force: true });
 }
 
 // ─── Plan (read-only inventory) ──────────────────────────────────────────────
@@ -554,6 +604,9 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
     fs.mkdirSync(storyVaultPath, { recursive: true });
     fs.mkdirSync(notesVaultPath, { recursive: true });
     fs.mkdirSync(path.join(storyVaultPath, MYTHOS_MACHINE_DIRNAME), { recursive: true });
+    // First write: flag the build as in-flight. Cleared only after the app
+    // repoints its settings at the finished vault (see marker docs above).
+    writeIncompleteMigrationMarker(opts.targetRoot, opts.sourceStoryVault);
 
     const dbRows = readDbRowsFromCopy(opts.sourceStoryVault);
     const stories = manifest.stories ?? [];
