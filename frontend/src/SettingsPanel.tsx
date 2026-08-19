@@ -214,8 +214,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [lg, setLg] = useState<LiquidNeonPrefs>({ ...LG_DEFAULTS });
   const [lgAdvancedOpen, setLgAdvancedOpen] = useState(false);
 
-  // SKY-2973: Settings category navigation
-  const [settingsCategory, setSettingsCategory] = useState<SettingsCat>('agents');
+  // SKY-2973: Settings category navigation. Opens on Appearance per the
+  // prototype (SKY-10668 owner request) — safe with the live-persist debounce
+  // because appearanceLiveReady consumes the load commit (see below).
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCat>('appearance');
   const settingsCatNavRef = useRef<HTMLElement>(null);
 
   // SKY-3218: Nav-bar configuration
@@ -769,9 +771,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
 
-  // Seeded inside the settings-load effect's commit: the ref is true before
-  // any post-load run of the debounce effect, and the initial category is
-  // never 'appearance', so the load itself can't trigger a write.
+  // Write-guard for the live-persist debounce. The load hydration commits in
+  // one batch with setLoading(false), so the first post-load run of the effect
+  // below seeds this ref and returns without scheduling — merely opening the
+  // panel never writes, even though it now opens on 'appearance' (SKY-10668).
+  // Only a later dep change (a real appearance edit) can schedule a persist.
   const appearanceLiveReady = useRef(false);
   useEffect(() => {
     if (loading) return;

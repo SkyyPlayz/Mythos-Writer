@@ -304,11 +304,13 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
           >
             Paste
           </div>
-          <label
+          {/* div, not label: axe aria-allowed-role forbids role="button" on label */}
+          <div
             role="button"
             tabIndex={0}
             data-testid="lnas-import"
             title="Import a shared theme preset (.json)"
+            onClick={() => importFileRef.current?.click()}
             onKeyDown={onActivateKey(() => importFileRef.current?.click())}
             className="lnas-hdr-btn"
             style={hdrBtnSt('--b2')}
@@ -320,9 +322,10 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
               accept=".json,application/json"
               data-testid="lnas-import-file"
               onChange={onImportFile}
+              onClick={(e) => e.stopPropagation()}
               style={{ display: 'none' }}
             />
-          </label>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>{presetCards}</div>
       </Card>
@@ -344,14 +347,14 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
               <div style={{ fontSize: 11.5, color: '#aebad0' }}>Breathing panel borders</div>
               <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Idle glow animation on panel borders — off keeps them static, laptop-friendly</div>
             </div>
-            <NeonToggle on={S.animGlow !== false} onClick={() => patch({ animGlow: S.animGlow === false })} testId="lnas-animglow" />
+            <NeonToggle on={S.animGlow !== false} onClick={() => patch({ animGlow: S.animGlow === false })} testId="lnas-animglow" ariaLabel="Breathing panel borders" />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 3 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: '#aebad0' }}>Reduce glow</div>
               <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>Accessibility — caps neon intensity at a whisper</div>
             </div>
-            <NeonToggle on={S.reduceGlow} onClick={() => patch({ reduceGlow: !S.reduceGlow })} testId="lnas-reduceglow" />
+            <NeonToggle on={S.reduceGlow} onClick={() => patch({ reduceGlow: !S.reduceGlow })} testId="lnas-reduceglow" ariaLabel="Reduce glow" />
           </div>
         </div>
       </Card>
@@ -359,9 +362,11 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
       <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — or go minimal with a plain dark backdrop.">
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {wpCards}
-          <label
+          {/* div, not label: axe aria-allowed-role forbids role="button" on label,
+              and this picker opens a native dialog — no input to label anyway. */}
+          <div
             className="lnas-upload"
-            onClick={(e) => { e.preventDefault(); void pickCustomWallpaper(); }}
+            onClick={() => { void pickCustomWallpaper(); }}
             role="button"
             tabIndex={0}
             aria-label="Add your own wallpaper image"
@@ -373,7 +378,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
               <span style={{ fontSize: 9.5 }}>Your image</span>
             </div>
             <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', color: '#aebad0' }}>+ Add your own…</div>
-          </label>
+          </div>
         </div>
       </Card>
 
@@ -475,6 +480,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
                 on={navRailLabels !== false}
                 onClick={() => { onNavRailLabelsChange(navRailLabels === false); setSavedOk(false); }}
                 testId="lnas-raillabels"
+                ariaLabel="Nav rail labels"
               />
             </div>
           )}
@@ -491,6 +497,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
                 showLnToast(on ? 'Motion reduced — motes & neon animation paused' : 'Motion restored');
               }}
               testId="lnas-reducemotion"
+              ariaLabel="Reduce motion"
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -8,11 +8,15 @@
  * imports SETTINGS_CATEGORIES to drive its category nav instead of maintaining
  * a second, hand-written list (SKY-5694).
  *
- * Beta 4 M28 (§13; GAP #8): the settings workspace left rail follows the
- * prototype `settingsMeta` (HTML 6458) order and labels:
- * Account & profile · Appearance · AI Agents · Editor · Vault & Files ·
- * Sync & Backup · Shortcuts · About. Each category carries the prototype's
- * one-line description, shown in the page header.
+ * SKY-10668 (owner request, supersedes the M28 §13/GAP #8 order): the rail
+ * follows the prototype rail order top-to-bottom:
+ * Appearance · AI Agents · Editor · Vault & Files · Sync & Backup ·
+ * Shortcuts · About. `Account & profile` has no prototype counterpart; by
+ * owner ruling (Skyy, 2026-08-19, SKY-10668 change 3) it is KEPT and placed
+ * last, after About. That placement outranks the prototype (PLAN §0) — a
+ * fidelity pass must not flag the eighth entry as a divergence or delete it.
+ * Each category carries the prototype's one-line description, shown in the
+ * page header.
  */
 
 export type SettingsCategoryId =
@@ -35,12 +39,6 @@ export interface SettingsCategory {
 }
 
 export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
-  {
-    id: 'account',
-    label: 'Account & profile',
-    description: 'You, your plan, and your devices.',
-    sectionIds: ['section-account-profile'],
-  },
   {
     id: 'appearance',
     label: 'Appearance',
@@ -114,6 +112,16 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     label: 'About',
     description: 'Version, updates and credits.',
     sectionIds: ['section-about'],
+  },
+  {
+    // Not in the prototype rail. Owner ruling (Skyy, 2026-08-19, SKY-10668
+    // change 3): keep this page, placed last after About. Do not delete it or
+    // "restore prototype parity" by removing it — the ruling outranks the
+    // prototype for app-only pages (PLAN §0).
+    id: 'account',
+    label: 'Account & profile',
+    description: 'You, your plan, and your devices.',
+    sectionIds: ['section-account-profile'],
   },
 ] as const;
 

@@ -14,7 +14,7 @@ export function onActivateKey(handler: () => void) {
 }
 
 /** mkToggle (prototype 4180) as a component. */
-export function NeonToggle({ on, onClick, testId }: { on: boolean; onClick: () => void; testId?: string }) {
+export function NeonToggle({ on, onClick, testId, ariaLabel }: { on: boolean; onClick: () => void; testId?: string; ariaLabel?: string }) {
   const pillSt: CSSProperties = {
     width: 37, height: 21, borderRadius: 99, position: 'relative', cursor: 'pointer', flex: 'none',
     transition: 'all .2s ease',
@@ -35,6 +35,7 @@ export function NeonToggle({ on, onClick, testId }: { on: boolean; onClick: () =
       style={pillSt}
       role="switch"
       aria-checked={on}
+      aria-label={ariaLabel}
       tabIndex={0}
       onKeyDown={onActivateKey(onClick)}
       data-testid={testId}

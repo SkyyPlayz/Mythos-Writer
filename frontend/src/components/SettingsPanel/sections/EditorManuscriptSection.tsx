@@ -120,6 +120,7 @@ export default function EditorManuscriptSection({ liquidNeonV2, onChange, setSav
           <NeonToggle
             on={S.txtCfg.split}
             testId="lnas-txsplit"
+            ariaLabel="Separate story & notes colors"
             onClick={() => patch({ txtCfg: { ...S.txtCfg, split: !S.txtCfg.split, nHead: S.txtCfg.head, nBody: S.txtCfg.body } })}
           />
         </div>

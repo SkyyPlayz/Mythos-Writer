@@ -36,7 +36,21 @@ async function flushAsyncEffects() {
   });
 }
 
+// SKY-10668: the panel now opens on Appearance (prototype default). Most of
+// this suite predates that and exercises the AI Agents page, so this helper
+// navigates there after load. Tests for the true default state use
+// renderSettingsOnDefault instead.
 async function renderSettings(ui: ReactElement) {
+  const result = render(ui);
+  await flushAsyncEffects();
+  const agentsTab = await screen.findByRole('tab', { name: /ai agents/i });
+  fireEvent.click(agentsTab);
+  await flushAsyncEffects();
+  return result;
+}
+
+/** Render without navigating away from the default (Appearance) page. */
+async function renderSettingsOnDefault(ui: ReactElement) {
   const result = render(ui);
   await flushAsyncEffects();
   return result;
@@ -122,14 +136,13 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('tab', { name: /appearance/i })).toBeInTheDocument();
   });
 
-  it('SKY-2973: Agents tab is active by default, shows agent content', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-    expect(screen.getByRole('tab', { name: /agents/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument();
-    // Vault and Appearance content NOT in DOM when agents is active
+  it('SKY-10668: Appearance tab is active by default, shows appearance content', async () => {
+    await renderSettingsOnDefault(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('heading', { name: /^appearance$/i }));
+    expect(screen.getByRole('tab', { name: /appearance/i })).toHaveAttribute('aria-selected', 'true');
+    // Vault and Agents content NOT in DOM when appearance is active
     expect(screen.queryByRole('heading', { name: /^vault paths$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /^appearance$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
   it('SKY-2973: clicking Vaults tab shows vault sections', async () => {
@@ -160,8 +173,8 @@ describe('SettingsPanel', () => {
   });
 
   it('SKY-5691/M28: settings rail tabs support arrow-key navigation (roving tabIndex)', async () => {
-    // M28 rail order (prototype settingsMeta): Account & profile · Appearance ·
-    // AI Agents · Editor · Vault & Files · Sync & Backup · Shortcuts · About.
+    // SKY-10668 rail order (prototype): Appearance · AI Agents · Editor ·
+    // Vault & Files · Sync & Backup · Shortcuts · About · Account & profile.
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
@@ -171,7 +184,7 @@ describe('SettingsPanel', () => {
     const editorTab = screen.getByRole('tab', { name: /^editor$/i }) as HTMLButtonElement;
     const aboutTab = screen.getByRole('tab', { name: /^about$/i }) as HTMLButtonElement;
 
-    // Default: agents tab has tabIndex=0, others -1
+    // Active (agents, via renderSettings) tab has tabIndex=0, others -1
     expect(agentsTab.tabIndex).toBe(0);
     expect(accountTab.tabIndex).toBe(-1);
     expect(appearanceTab.tabIndex).toBe(-1);
@@ -194,17 +207,17 @@ describe('SettingsPanel', () => {
     expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument());
 
-    // ArrowUp wraps from the first entry: Account & profile → About
+    // ArrowUp wraps from the first entry (Appearance) to the last (Account & profile)
     fireEvent.keyDown(appearanceTab, { key: 'ArrowUp' });
     await waitFor(() => expect(accountTab).toHaveFocus());
     fireEvent.keyDown(accountTab, { key: 'ArrowUp' });
     await waitFor(() => expect(aboutTab).toHaveFocus());
     expect(aboutTab).toHaveAttribute('aria-selected', 'true');
 
-    // Home jumps to the first rail entry
+    // Home jumps to the first rail entry (Appearance)
     fireEvent.keyDown(aboutTab, { key: 'Home' });
-    await waitFor(() => expect(accountTab).toHaveFocus());
-    expect(accountTab).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(appearanceTab).toHaveFocus());
+    expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
   });
 
   it('loads settings from IPC on mount', async () => {
@@ -1131,9 +1144,11 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const tabs = screen.getAllByRole('tab', {}).filter((t) => t.className.includes('settings-cat-nav__tab'));
+    // SKY-10668: prototype rail order; Account & profile kept and placed last
+    // by owner ruling (Skyy, 2026-08-19).
     expect(tabs.map((t) => t.textContent)).toEqual([
-      'Account & profile', 'Appearance', 'AI Agents', 'Editor',
-      'Vault & Files', 'Sync & Backup', 'Shortcuts', 'About',
+      'Appearance', 'AI Agents', 'Editor', 'Vault & Files',
+      'Sync & Backup', 'Shortcuts', 'About', 'Account & profile',
     ]);
     // Page header shows the prototype settingsMeta description for the page
     // (M11a: prototype 6607 rewrote the AI Agents one-liner).
@@ -2336,7 +2351,16 @@ describe('SKY-3218 nav-bar configuration', () => {
       expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
     });
 
-    it('does not write settings when merely opening the Appearance tab', async () => {
+    it('SKY-10668: does not write settings when merely opening the panel (defaults to Appearance)', async () => {
+      await renderSettingsOnDefault(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByRole('heading', { name: /^appearance$/i }));
+
+      // Longer than the live-persist debounce.
+      await act(async () => { await new Promise((r) => setTimeout(r, 600)); });
+      expect(mockSettingsSet).not.toHaveBeenCalled();
+    });
+
+    it('does not write settings when navigating back to the Appearance tab', async () => {
       await renderSettings(<SettingsPanel onClose={mockOnClose} />);
       await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 

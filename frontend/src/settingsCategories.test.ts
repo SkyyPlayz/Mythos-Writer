@@ -41,6 +41,21 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('SKY-10668: rail order matches the prototype, account last by owner ruling', () => {
+    expect(SETTINGS_CATEGORIES.map((c) => c.id)).toEqual([
+      'appearance',
+      'agents',
+      'editor',
+      'vaults',
+      'sync',
+      'shortcuts',
+      'about',
+      // Not in the prototype rail; kept and placed last by owner ruling
+      // (Skyy, 2026-08-19, SKY-10668 change 3).
+      'account',
+    ]);
+  });
+
   it('has no duplicate section ids across categories', () => {
     const all: string[] = [];
     for (const cat of SETTINGS_CATEGORIES) {

@@ -158,6 +158,8 @@ test('TC-PROV-01: Ollama provider seeded in app-settings shows base URL and text
   // Open settings
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   // Provider selector should show 'ollama'
   const providerSelect = page.getByLabel('AI provider');
@@ -180,6 +182,8 @@ test('TC-PROV-02: Test connection with mocked local provider shows success', asy
   // Open settings
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   // Click test connection
   await page.click('[aria-label="Test provider connection"]');
@@ -196,6 +200,8 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   // Open settings
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   // Find the Brainstorm agent's provider override toggle. The native
   // checkbox itself is visually hidden (opacity:0; width/height:0) — the
@@ -226,6 +232,8 @@ test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent m
   // App was seeded with Ollama → per-agent model should be text input
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   // Writing Assistant model input should be a text input (not a select)
   const waModel = page.getByLabel('Writing Coach model');
@@ -249,6 +257,8 @@ test('TC-PROV-05: switching global provider fills Base URL with that provider\'s
   // keeping Ollama's URL/placeholder (SKY-6941).
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   const providerSelect = page.getByLabel('AI provider');
   const baseUrlInput = page.getByLabel('Provider base URL');
@@ -277,6 +287,8 @@ test('TC-PROV-06: Save persists global provider config to app-settings.json on d
   // Open settings
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
 
   const providerSelect = page.getByLabel('AI provider');
   await providerSelect.selectOption('lmstudio');

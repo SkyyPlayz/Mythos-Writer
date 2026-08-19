@@ -114,29 +114,41 @@ test.afterEach(async () => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test('renders the current 8-category sub-nav', async () => {
-  for (const [id, label] of [
-    ['account', 'Account & profile'],
-    ['appearance', 'Appearance'],
-    ['agents', 'AI Agents'],
-    ['editor', 'Editor'],
-    ['vaults', 'Vault & Files'],
-    ['sync', 'Sync & Backup'],
-    ['shortcuts', 'Shortcuts'],
-    ['about', 'About'],
-  ] as const) {
-    const btn = page.locator(`[data-testid="settings-cat-${id}"]`);
-    await expect(btn).toBeVisible();
-    await expect(btn).toHaveText(label);
-  }
+test('SKY-10668: renders the 8-category sub-nav in prototype order, account last', async () => {
+  // Owner-requested prototype order (SKY-10668); `Account & profile` is kept
+  // and placed last by owner ruling (Skyy, 2026-08-19).
+  const tabs = page.locator('.settings-cat-nav [role="tab"]');
+  await expect(tabs).toHaveText([
+    'Appearance',
+    'AI Agents',
+    'Editor',
+    'Vault & Files',
+    'Sync & Backup',
+    'Shortcuts',
+    'About',
+    'Account & profile',
+  ]);
 });
 
-test('AI Agents is active by default and shows its sections', async () => {
+test('SKY-10668: Appearance is active by default and shows its sections', async () => {
   const activeBtn = page.locator('.settings-cat-nav__tab--active');
-  await expect(activeBtn).toHaveText('AI Agents');
+  await expect(activeBtn).toHaveText('Appearance');
 
-  const apiKeySection = page.locator('[aria-labelledby="section-api-key"]');
-  await expect(apiKeySection).toBeVisible();
+  const themeSection = page.locator('[aria-labelledby="section-theme"]');
+  await expect(themeSection).toBeVisible();
+});
+
+test('SKY-10668: merely opening Settings writes nothing to app-settings.json', async () => {
+  // beforeEach already opened the panel — close it, snapshot the settings
+  // file, reopen, and give the live-persist debounce (400ms) time to fire.
+  await page.click('.settings-close');
+  const settingsPath = path.join(userData, 'app-settings.json');
+  const before = fs.readFileSync(settingsPath, 'utf-8');
+
+  await openSettings(page);
+  await page.waitForTimeout(1_000);
+
+  expect(fs.readFileSync(settingsPath, 'utf-8')).toBe(before);
 });
 
 test('switching to Vault & Files shows vault sections and hides Agents sections', async () => {
@@ -161,8 +173,9 @@ test('category tabs are keyboard reachable and activatable via arrow keys', asyn
   const nav = page.locator('.settings-cat-nav');
   await expect(nav).toHaveAttribute('role', 'tablist');
 
-  // Focus the active tab (AI Agents, index 2), then arrow-right to Editor (index 3).
+  // Activate AI Agents (index 1), then arrow-right to Editor (index 2).
   const agentsTab = page.locator('[data-testid="settings-cat-agents"]');
+  await agentsTab.click();
   await agentsTab.focus();
   await page.keyboard.press('ArrowRight');
 
