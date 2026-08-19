@@ -958,6 +958,12 @@ jobs:
       - name: E2E — master-over-per-agent AI precedence, disagreeing fixture (SKY-10507)
         run: xvfb-run --auto-servernum npm run test:e2e:ai-precedence
 
+      - name: E2E — comments gutter hides agent comments with AI off (SKY-10574)
+        run: xvfb-run --auto-servernum npm run test:e2e:comments-ai-off
+
+      - name: E2E — Timeline Brainstorm/Archive tabs hidden with AI off (SKY-10575)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline-ai-off
+
       - name: E2E — AI-off network silence, zero egress both layers (SKY-10604)
         run: xvfb-run --auto-servernum npm run test:e2e:ai-off-network-silence
 

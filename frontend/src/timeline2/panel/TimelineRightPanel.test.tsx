@@ -3,8 +3,9 @@
 // pin the tab strip, the three Inspector editors, and the exact-time →
 // calendar-editor modal chain (AC2).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { setAiEnabled, __resetAiEnabledForTests } from '../../hooks/useAiEnabled';
 import type { TimelinesStore } from '../../timelinesTypes';
 import { ARC_LANE, CHARACTER_LANE, WORLD_LANE } from '../axis/storyLanes';
 import TimelineRightPanel, { type TimelineRightPanelProps } from './TimelineRightPanel';
@@ -66,7 +67,10 @@ function makeProps(overrides: Partial<TimelineRightPanelProps> = {}): TimelineRi
   };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  __resetAiEnabledForTests();
+});
 afterEach(() => cleanup());
 
 describe('tab strip (§8.6)', () => {
@@ -224,5 +228,47 @@ describe('scene-card editor', () => {
     render(<TimelineRightPanel {...props} />);
     fireEvent.click(screen.getByTestId('trp-card-close'));
     expect(props.onSelectionChange).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('AI master toggle gating (M11c)', () => {
+  it('shows all three tabs when AI is enabled', () => {
+    setAiEnabled(true);
+    render(<TimelineRightPanel {...makeProps()} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-brainstorm')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-archive')).toBeInTheDocument();
+  });
+
+  it('hides Brainstorm and Archive tabs when AI is disabled', () => {
+    setAiEnabled(false);
+    render(<TimelineRightPanel {...makeProps()} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
+    expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+  });
+
+  it('redirects to Inspector when AI is toggled off while Brainstorm is active', () => {
+    setAiEnabled(true);
+    const props = makeProps({ tab: 'brainstorm' });
+    render(<TimelineRightPanel {...props} />);
+    act(() => setAiEnabled(false));
+    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
+  });
+
+  it('redirects to Inspector when AI is toggled off while Archive is active', () => {
+    setAiEnabled(true);
+    const props = makeProps({ tab: 'archive' });
+    render(<TimelineRightPanel {...props} />);
+    act(() => setAiEnabled(false));
+    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
+  });
+
+  it('does not redirect when Inspector is active and AI is toggled off', () => {
+    setAiEnabled(true);
+    const props = makeProps({ tab: 'inspector' });
+    render(<TimelineRightPanel {...props} />);
+    act(() => setAiEnabled(false));
+    expect(props.onTabChange).not.toHaveBeenCalled();
   });
 });

@@ -78,6 +78,8 @@
     "test:e2e:scene-crafter": "playwright test e2e/tests/sceneCrafter.spec.ts --reporter=list,html",
     "test:e2e:scene-crafter-ai-off": "playwright test e2e/tests/sky9878-scene-crafter-ai-off.spec.ts --reporter=list,html",
     "test:e2e:ai-precedence": "playwright test e2e/tests/sky10507-ai-precedence.spec.ts --reporter=list,html",
+    "test:e2e:comments-ai-off": "playwright test e2e/tests/sky10574-comments-gutter-ai-off.spec.ts --reporter=list,html",
+    "test:e2e:timeline-ai-off": "playwright test e2e/tests/sky10575-timeline-ai-off.spec.ts --reporter=list,html",
     "test:e2e:ai-off-network-silence": "playwright test e2e/tests/sky10604-network-silence.spec.ts --reporter=list,html",
     "test:e2e:ai-off-walkthrough": "playwright test e2e/tests/sky10604-ai-walkthrough.spec.ts --reporter=list,html",
     "test:e2e:ai-off-persistence": "playwright test e2e/tests/sky10604-ai-off-persistence.spec.ts --reporter=list,html",
