@@ -136,6 +136,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
     setTargetFolder('');
     setSessionToken(null);
     setTestStatus('idle');
+    setSyncConfirmed(false);
     setStep('provider');
   }, []);
 
@@ -144,6 +145,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
     setTargetFolder('');
     setSessionToken(null);
     setTestStatus('idle');
+    setSyncConfirmed(false);
     setStep('folder');
   }, []);
 
@@ -156,6 +158,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
     if (!res.cancelled && res.vaultRoot) {
       setTargetFolder(res.vaultRoot);
       setSessionToken(res.registrationToken ?? null);
+      setSyncConfirmed(false);
     }
   }, [destination, providerDef, currentVaultPath]);
 
@@ -272,7 +275,10 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
           {step === 'provider' && (
             <StepProvider
               selected={provider}
-              onSelect={setProvider}
+              onSelect={(p) => {
+                setProvider(p);
+                setSyncConfirmed(false);
+              }}
               onSwitchToLocal={switchToLocal}
               onNext={() => setStep('folder')}
             />

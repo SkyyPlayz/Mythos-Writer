@@ -176,6 +176,77 @@ describe('MoveVaultWizard', () => {
     expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
   });
 
+  // Regression: SKY-10483 — the sync-confirmation checkbox must not survive a
+  // change of target after it was checked, or Proceed re-enables for a folder/
+  // provider the user never actually confirmed.
+  it('going back and picking a different folder clears the sync confirmation checkbox', async () => {
+    await renderWizard();
+    await advanceToCloudFolderStep();
+    await pickLocalFolder('/home/user/Dropbox');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
+    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('mv-back-confirm'));
+    await pickLocalFolder('/home/user/Dropbox/OtherFolder');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-to-path')).toHaveTextContent('/home/user/Dropbox/OtherFolder'));
+    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
+    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
+  });
+
+  it('switching from cloud to local and back to cloud clears the sync confirmation checkbox', async () => {
+    await renderWizard();
+    await advanceToCloudFolderStep();
+    await pickLocalFolder('/home/user/Dropbox');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
+    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('mv-back-confirm'));
+    fireEvent.click(screen.getByTestId('mv-back-folder'));
+    fireEvent.click(screen.getByTestId('mv-switch-to-local'));
+    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
+
+    const radio = screen.getByTestId('provider-option-icloud').querySelector('input[type="radio"]')!;
+    fireEvent.click(radio);
+    fireEvent.click(screen.getByTestId('mv-next-provider'));
+    await pickLocalFolder('/home/user/Library/Mobile Documents/com~apple~CloudDocs');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
+    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
+    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
+  });
+
+  it('selecting a different provider clears the sync confirmation checkbox', async () => {
+    await renderWizard();
+    await advanceToCloudFolderStep('dropbox');
+    await pickLocalFolder('/home/user/Dropbox');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
+    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
+
+    fireEvent.click(screen.getByTestId('mv-back-confirm'));
+    fireEvent.click(screen.getByTestId('mv-back-folder'));
+    const radio = screen.getByTestId('provider-option-onedrive').querySelector('input[type="radio"]')!;
+    fireEvent.click(radio);
+    fireEvent.click(screen.getByTestId('mv-next-provider'));
+    await pickLocalFolder('/home/user/OneDrive');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
+    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
+    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
+  });
+
   // Step — permission test
   it('auto-runs write test on entering test step', async () => {
     await renderWizard();
