@@ -958,6 +958,15 @@ jobs:
       - name: E2E — master-over-per-agent AI precedence, disagreeing fixture (SKY-10507)
         run: xvfb-run --auto-servernum npm run test:e2e:ai-precedence
 
+      - name: E2E — AI-off network silence, zero egress both layers (SKY-10604)
+        run: xvfb-run --auto-servernum npm run test:e2e:ai-off-network-silence
+
+      - name: E2E — AI on/off six-workspace walkthrough (SKY-10604)
+        run: xvfb-run --auto-servernum npm run test:e2e:ai-off-walkthrough
+
+      - name: E2E — AI toggle restart persistence + comment round-trip (SKY-10604)
+        run: xvfb-run --auto-servernum npm run test:e2e:ai-off-persistence
+
       - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
         run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
 
