@@ -27,6 +27,7 @@
     "package": "electron-builder --win zip",
     "lint": "npm run lint -w frontend",
     "test": "npm run test -w electron-main && npm run test -w frontend",
+    "test:fidelity-harness": "node --test e2e/fidelity/own-text-dump.test.mjs",
     "test:e2e": "playwright test e2e/ --reporter=list,html",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list,html",
     "test:e2e:obsidian-import-fidelity": "playwright test e2e/obsidian-import-fidelity.spec.ts --reporter=list,html",
