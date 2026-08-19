@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { Block, Chapter, DraftState, Scene, Story } from '../types';
-import { clipAnchor, findAnchorSceneId, orderCommentsByDocument, segmentsFor, visibleComments } from './model';
+import { clipAnchor, findAnchorSceneId, orderCommentsByDocument, segmentsFor } from './model';
 import type { StoryComment } from './types';
 
 const NOW = '2026-07-07T00:00:00.000Z';
@@ -167,28 +167,5 @@ describe('clipAnchor', () => {
     const long = 'a'.repeat(40);
     expect(clipAnchor(long, 34)).toBe(`${'a'.repeat(34)}…`);
     expect(clipAnchor('short', 34)).toBe('short');
-  });
-});
-
-describe('visibleComments', () => {
-  const mixed = [
-    mkComment('u1', 's1', 'Mira'),
-    mkComment('a1', 's1', 'door', { kind: 'archive', author: 'Archive Agent' }),
-    mkComment('w1', 's2', 'rumor', { kind: 'writing', author: 'Writing Coach' }),
-    mkComment('b1', 's2', 'cards', { kind: 'beta', author: 'Beta Reader' }),
-  ];
-
-  it('AI on — passes every comment through untouched (same reference)', () => {
-    expect(visibleComments(mixed, true)).toBe(mixed);
-  });
-
-  it('AI off — keeps only the writer\'s own comments, hiding every agent kind', () => {
-    expect(visibleComments(mixed, false).map((c) => c.id)).toEqual(['u1']);
-  });
-
-  it('does not mutate the input', () => {
-    const copy = [...mixed];
-    visibleComments(mixed, false);
-    expect(mixed).toEqual(copy);
   });
 });
