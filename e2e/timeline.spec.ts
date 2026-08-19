@@ -907,6 +907,33 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
   });
 
+  // SKY-10502 (Ivy fidelity gate M10, Finding 2): a static capture can't prove
+  // the toolbar selects actually re-group — this drives each one and asserts
+  // a real DOM change, not just that the option is selected. The Show filter
+  // is already covered live at TC-TL-M23-05; this covers the View select,
+  // which TC-TL-M23-06 only exercised indirectly via the mode-bar buttons.
+  test('TC-TL-M23-07: the View select actually re-groups by switching timeline modes', async () => {
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible();
+
+    await m23Page.locator('[data-testid="tl-view-filter"]').selectOption('World Chronology');
+    await expect(m23Page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 6_000 });
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toHaveCount(0);
+    await expect(modeBar.getByRole('button', { name: 'Spreadsheet', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    await m23Page.locator('[data-testid="tl-view-filter"]').selectOption('Per Character');
+    await expect(m23Page.locator('[data-testid="timeline-subway"]')).toBeVisible({ timeout: 6_000 });
+    await expect(modeBar.getByRole('button', { name: 'Subway', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    await m23Page.locator('[data-testid="tl-view-filter"]').selectOption('Story Structure');
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
+    await expect(modeBar.getByRole('button', { name: 'Structure', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    // Restore Progress for the tests that follow.
+    await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
+  });
+
   // SKY-8435: M25 dyslexia-conformance floor on the Inspector's static-view
   // body text (M18-M19-M25-A11Y-DYSLEXIA-SPEC.md §3.3 — blurb/body copy must
   // carry the spacing bundle even though it's short "chrome" prose).
