@@ -1374,13 +1374,16 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
       )}
       <Toast message={toast?.message ?? null} level={toast?.level} />
-      {/* SKY-10712: rename-cascade summary with one-shot Undo */}
+      {/* SKY-10712: rename-cascade summary with one-shot Undo. Pinned to its
+          own third slot: the lower two are shared with the vault error toast,
+          DesktopShell's hint toasts, and the brainstorm "vault notes updated"
+          toast — any of which would cover the Undo button. */}
       <Toast
         message={cascadeToast?.message ?? null}
         level={cascadeToast?.level}
         action={cascadeUndoReady ? { label: 'Undo', onClick: handleUndoRename } : undefined}
         onDismiss={clearCascadeToast}
-        className={toast ? 'app-toast--stacked' : undefined}
+        className="app-toast--stacked-2"
       />
     </div>
   );
