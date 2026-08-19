@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./types/suggestion": "./types/suggestion.ts",
-    "./vaultNameSanitizer": "./vaultNameSanitizer.ts"
+    "./vaultNameSanitizer": "./vaultNameSanitizer.ts",
+    "./wikiLinkRename": "./wikiLinkRename.ts"
   }
 }
