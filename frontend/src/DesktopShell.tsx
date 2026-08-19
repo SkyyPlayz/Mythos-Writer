@@ -4730,6 +4730,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
   // when the master AI toggle is off (undefined handler = no mount).
   const aiEnabled = useAiEnabled();
+  // SKY-10573: the Coach sub-tab is also AI-bearing chrome — if it's active
+  // when the master toggle flips off mid-session, fall back to Editor
+  // (mirrors AgentHubPanel's assistant-tab redirect for the same toggle).
+  useEffect(() => {
+    if (!aiEnabled && view === 'coach') handleSetView('editor');
+  }, [aiEnabled, view, handleSetView]);
   const manuscriptToolbarActions = useMemo(() => ({
     onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
@@ -5241,6 +5247,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         activeSubView={view}
         onSubViewChange={handleSetView}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
+        aiEnabled={aiEnabled}
       />}
       {showSampleProjectBanner && (
         <div
@@ -5296,9 +5303,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           )}
         </div>
       )}
-      {activeDockedTabId === null && view === 'coach' && (
+      {activeDockedTabId === null && view === 'coach' && aiEnabled && (
         /* Beta 4 M12 (§5.2): the Writing Coach's page — shares the `coach`
-           session store with the right-panel Coach chat. */
+           session store with the right-panel Coach chat. SKY-10573: gated on
+           aiEnabled — the redirect effect above already steers `view` away
+           from 'coach' when the toggle flips off, this is the render-time
+           backstop for the same frame. */
         <div className="shell-coach">
           <CoachPage
             scene={selectedScene}

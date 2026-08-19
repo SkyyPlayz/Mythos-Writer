@@ -8,6 +8,7 @@ const DEFAULT_PROPS = {
   activeSubView: 'editor',
   onSubViewChange: vi.fn(),
   vaultName: 'My Story',
+  aiEnabled: true,
 };
 
 describe('StorySubViewBar', () => {
@@ -64,5 +65,23 @@ describe('StorySubViewBar', () => {
 
     rerender(<StorySubViewBar {...DEFAULT_PROPS} activeSubView="book" />);
     expect(screen.queryByTestId('nfe-mode-group')).not.toBeInTheDocument();
+  });
+
+  // SKY-10573: Coach is AI-bearing chrome — it must not render at all with AI off.
+  it('omits the Coach tab when aiEnabled is false', () => {
+    render(<StorySubViewBar {...DEFAULT_PROPS} aiEnabled={false} />);
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    expect(screen.queryByRole('tab', { name: /^coach$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /editor/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /structure/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^book$/i })).toBeInTheDocument();
+  });
+
+  it('re-adds the Coach tab when aiEnabled flips back on', () => {
+    const { rerender } = render(<StorySubViewBar {...DEFAULT_PROPS} aiEnabled={false} />);
+    expect(screen.queryByRole('tab', { name: /^coach$/i })).not.toBeInTheDocument();
+    rerender(<StorySubViewBar {...DEFAULT_PROPS} aiEnabled={true} />);
+    expect(screen.getByRole('tab', { name: /^coach$/i })).toBeInTheDocument();
   });
 });

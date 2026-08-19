@@ -10,6 +10,8 @@ interface StorySubViewBarProps {
   activeSubView: string;
   onSubViewChange: (view: StorySubView) => void;
   vaultName: string;
+  /** SKY-10573: Coach sub-tab is AI-bearing chrome — hidden when the master AI toggle is off. */
+  aiEnabled: boolean;
 }
 
 const SUB_VIEWS: { id: StorySubView; label: string }[] = [
@@ -24,7 +26,9 @@ export default function StorySubViewBar({
   activeSubView,
   onSubViewChange,
   vaultName,
+  aiEnabled,
 }: StorySubViewBarProps) {
+  const subViews = aiEnabled ? SUB_VIEWS : SUB_VIEWS.filter((sv) => sv.id !== 'coach');
   return (
     <div className="story-subview-bar" data-testid="story-subview-bar">
       {/* Left: Vault badge */}
@@ -45,7 +49,7 @@ export default function StorySubViewBar({
         aria-label="Story view"
         className="story-subview-bar__tabs"
       >
-        {SUB_VIEWS.map((sv) => (
+        {subViews.map((sv) => (
           <button
             key={sv.id}
             role="tab"
