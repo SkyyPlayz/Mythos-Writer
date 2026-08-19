@@ -83,7 +83,6 @@
     "test:e2e:ai-off-network-silence": "playwright test e2e/tests/sky10604-network-silence.spec.ts --reporter=list,html",
     "test:e2e:ai-off-walkthrough": "playwright test e2e/tests/sky10604-ai-walkthrough.spec.ts --reporter=list,html",
     "test:e2e:ai-off-persistence": "playwright test e2e/tests/sky10604-ai-off-persistence.spec.ts --reporter=list,html",
-    "test:e2e:ai-gate": "playwright test e2e/tests/sky10605-ai-gate-e2e.spec.ts --reporter=list,html",
     "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list,html",
     "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list,html",
     "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list,html",
