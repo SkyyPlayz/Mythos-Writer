@@ -127,6 +127,11 @@ test('SKY-9878: AI off — rail credits the Notes Vault, not the Brainstorm Agen
     await expect(card).toHaveAttribute('aria-pressed', 'false');
     await card.click();
     await expect(card).toHaveAttribute('aria-pressed', 'true');
+
+    // SKY-10576: the AI first-pass Generate button is an AI affordance and
+    // must not render with the master toggle off (server-side AiDisabledError
+    // is a backstop, not a substitute for hiding the control).
+    await expect(page.locator('.sc-draft-btn')).toHaveCount(0);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
@@ -145,6 +150,9 @@ test('SKY-9878: AI on (control) — rail credits the Brainstorm Agent', async ()
 
     const hint = page.locator('.sc-suggest-hint');
     await expect(hint).toContainText('the Brainstorm Agent keeps this list stocked from your vault.');
+
+    // SKY-10576 control: Generate renders normally with AI on.
+    await expect(page.locator('.sc-draft-btn')).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
