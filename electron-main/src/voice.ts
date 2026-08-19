@@ -20,7 +20,7 @@ import { spawn } from 'child_process';
 import type { AppSettings, SttSettings, TtsSettings, VoiceTranscribePayload, VoiceTranscribeResponse } from './ipc.js';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
-import { getVoiceProvider, validateBaseUrl } from './provider.js';
+import { getVoiceProvider, validateBaseUrl, isAiMasterOn, AI_DISABLED_MESSAGE } from './provider.js';
 import type { ProviderConfig } from './provider.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
@@ -279,7 +279,9 @@ export function registerVoiceHandlers(
 
     if (cloudEnabled && session.audioChunks.length > 0) {
       const openaiKey = voiceSettings?.openaiApiKey || process.env.OPENAI_API_KEY;
-      if (openaiKey) {
+      // M11a (SKY-10621): master AI toggle gates cloud egress the same way it
+      // gates every LLM call — local voice paths are unaffected.
+      if (openaiKey && isAiMasterOn()) {
         try {
           const text = await transcribeWithWhisper(openaiKey, session.audioChunks);
           pushTranscript(getSender, { sessionId: session.id, text, isFinal: true });
@@ -478,6 +480,11 @@ export async function transcribeAudio(
   }
 
   // Cloud path — 'cloud' provider, or 'auto' when local binary is unavailable.
+  // M11a (SKY-10621): master AI toggle gates cloud STT the same way it gates
+  // every LLM call — checked here, not earlier, so local STT stays available.
+  if (!isAiMasterOn()) {
+    throw new InvalidVoiceInputError(AI_DISABLED_MESSAGE);
+  }
   const voiceProvider = appSettings ? getVoiceProvider(appSettings) : null;
   const endpoint =
     settings.cloudEndpoint ??
@@ -654,6 +661,11 @@ async function speakAsync(
     }
 
     // Cloud path — 'cloud' provider, or 'auto' when local binary is unavailable.
+    // M11a (SKY-10621): master AI toggle gates cloud TTS the same way it gates
+    // every LLM call — checked here, not earlier, so local TTS stays available.
+    if (!isAiMasterOn()) {
+      throw new InvalidVoiceInputError(AI_DISABLED_MESSAGE);
+    }
     const voiceProvider = appSettings ? getVoiceProvider(appSettings) : null;
     const endpoint =
       settings.cloudEndpoint ??
