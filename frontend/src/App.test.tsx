@@ -24,6 +24,13 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
     readManifest: () => Promise.resolve(mockManifest),
     writeManifest: () => Promise.resolve({}),
     onVaultFileChanged: () => () => {},
+    // SKY-10499: GlobalRightSidebar now mounts by default (rightSidebarVisible
+    // defaults true), so ContinuityPanel inside the Assistant hub subscribes
+    // unconditionally.
+    archiveListContinuity: () => Promise.resolve({ items: [] }),
+    onArchiveContScanStart: () => () => {},
+    onArchiveContScanResult: () => () => {},
+    onArchiveContScanError: () => () => {},
     ...overrides,
   };
 }

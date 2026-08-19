@@ -25,7 +25,7 @@ const STORY_TITLE = 'M6 Sidebar Story';
  * non-skip start modes), which these tests bypass with onboardingComplete.
  * Agents are seeded disabled so no scan ever attempts a network call.
  */
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string, opts?: { seedStory?: boolean }): void {
+function seedUserData(userData: string, vaultDir: string, notesVaultDir: string, opts?: { seedStory?: boolean; omitRightSidebarVisible?: boolean }): void {
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(vaultDir, { recursive: true });
   fs.mkdirSync(notesVaultDir, { recursive: true });
@@ -35,7 +35,7 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string,
     JSON.stringify({
       onboardingComplete: true,
       theme: 'dark',
-      rightSidebarVisible: true,
+      ...(opts?.omitRightSidebarVisible ? {} : { rightSidebarVisible: true }),
       notesTabUpgradeToastShown: true,
       agents: {
         writingAssistant: { enabled: false, scanIntervalSeconds: 30, ...agentDefaults },
@@ -290,5 +290,58 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
     const hub = grs.locator('[data-testid="agent-hub-panel"] .ahp-hub');
     await expect(hub.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first())
       .toBeVisible({ timeout: 8_000 });
+  });
+});
+
+// SKY-10499: a genuinely fresh profile has NO rightSidebarVisible key at all
+// (unlike the seed above, which sets it explicitly). That's the exact
+// condition migrateV1Layout hits on every real first launch, and the one the
+// M6 acceptance check above never actually covered.
+test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)', () => {
+  let tempRoot: string;
+  let app: ElectronApplication;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky10499-fresh-'));
+    const userData = path.join(tempRoot, 'userData');
+    seedUserData(
+      userData,
+      path.join(tempRoot, 'story-vault'),
+      path.join(tempRoot, 'notes-vault'),
+      { omitRightSidebarVisible: true },
+    );
+    app = await launchApp(userData);
+    page = await firstWindow(app);
+  });
+
+  test.afterAll(async () => {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test('tab strip renders, all four tabs are clickable, Getting Started never occupies the panel as gs-aside', async () => {
+    const grs = page.locator('[data-testid="global-right-sidebar"]');
+    await expect(grs).toBeVisible({ timeout: 15_000 });
+
+    // The standalone Getting Started aside must never exist in the DOM.
+    await expect(page.locator('.gs-aside')).toHaveCount(0);
+    await expect(page.locator('aside.gs-aside')).toHaveCount(0);
+
+    const tabNames = ['Assistant', 'Scenes', 'Notes', 'References'];
+    for (const name of tabNames) {
+      const tab = grs.getByRole('tab', { name });
+      await expect(tab).toBeVisible({ timeout: 8_000 });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+    }
+
+    // Return to Assistant and confirm Getting Started is a descendant of the
+    // Assistant hub, not a sibling panel replacing the tab strip.
+    await grs.getByRole('tab', { name: 'Assistant' }).click();
+    const hub = grs.locator('[data-testid="agent-hub-panel"] .ahp-hub');
+    await expect(
+      hub.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first(),
+    ).toBeVisible({ timeout: 8_000 });
   });
 });

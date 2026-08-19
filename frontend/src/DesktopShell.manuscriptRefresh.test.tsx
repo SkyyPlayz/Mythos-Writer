@@ -92,6 +92,13 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
     // resolves a scene at the target cursor and goes through
     // handleSelectScene's session-restore save.
     sessionSaveScene: vi.fn().mockResolvedValue({ saved: true }),
+    // SKY-10499: GlobalRightSidebar now mounts by default (rightSidebarVisible
+    // defaults true), so ContinuityPanel inside the Assistant hub subscribes
+    // unconditionally.
+    archiveListContinuity: () => Promise.resolve({ items: [] }),
+    onArchiveContScanStart: () => () => {},
+    onArchiveContScanResult: () => () => {},
+    onArchiveContScanError: () => () => {},
     ...overrides,
   };
 }

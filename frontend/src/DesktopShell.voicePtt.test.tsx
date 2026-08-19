@@ -33,6 +33,13 @@ function makeMockApi(overrides: Record<string, unknown> = {}) {
     onVaultFileChanged: () => () => {},
     voiceStart: vi.fn().mockResolvedValue({ sessionId: 'session-1' }),
     voiceStop: vi.fn().mockResolvedValue({}),
+    // SKY-10499: GlobalRightSidebar now mounts by default (rightSidebarVisible
+    // defaults true), so ContinuityPanel inside the Assistant hub subscribes
+    // unconditionally.
+    archiveListContinuity: () => Promise.resolve({ items: [] }),
+    onArchiveContScanStart: () => () => {},
+    onArchiveContScanResult: () => () => {},
+    onArchiveContScanError: () => () => {},
     ...overrides,
   };
 }
