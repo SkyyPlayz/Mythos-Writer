@@ -846,6 +846,40 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await expect(m23Page.locator('[data-testid="ax-event-ev-late"]')).toBeVisible();
   });
 
+  // SKY-10510: Group By regroups the Spreadsheet only (FULL-SPEC §8.4 toolbar:
+  // "Group By regroups the sheet"; the prototype consumes tlF.group solely in
+  // the sheet's group rows — AxisView never reads it). In the lanes modes the
+  // select used to render fully interactive while changing nothing; it is
+  // disabled there now, and in Spreadsheet it must produce real group rows.
+  // (Numbered -08: -07 is taken by SKY-10502's View-select test on PR #1252.)
+  test('TC-TL-M23-08: Group By is disabled in the lanes modes and live in the Spreadsheet', async () => {
+    const groupSelect = m23Page.locator('[data-testid="groupby-select"]');
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+
+    // Progress (the §8.4 default) and Structure: visible but disabled.
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible();
+    await expect(groupSelect).toBeVisible();
+    await expect(groupSelect).toBeDisabled();
+    await modeBar.getByRole('button', { name: 'Structure', exact: true }).click();
+    await expect(groupSelect).toBeDisabled();
+
+    // Spreadsheet: enabled, and grouping adds real group header rows.
+    await modeBar.getByRole('button', { name: 'Spreadsheet', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 6_000 });
+    await expect(groupSelect).toBeEnabled();
+    await expect(m23Page.locator('.tls-group-row')).toHaveCount(0);
+    await groupSelect.selectOption('chapter');
+    await expect(m23Page.locator('.tls-group-row').first()).toBeVisible();
+    await expect(m23Page.locator('.tls-group-row').first()).toContainText('Chapter');
+
+    // Restore for the tests that follow: ungrouped, back on the Progress lanes.
+    await groupSelect.selectOption('none');
+    await expect(m23Page.locator('.tls-group-row')).toHaveCount(0);
+    await modeBar.getByRole('button', { name: 'Progress', exact: true }).click();
+    await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 6_000 });
+    await expect(groupSelect).toBeDisabled();
+  });
+
   test('TC-TL-M23-06: Today explains itself while nothing is written; modes route their surfaces', async () => {
     await m23Page.locator('[data-testid="tl-today-btn"]').click();
     // Filtered by text (see TC-TL-M23-04): concurrent app-toasts must not

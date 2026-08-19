@@ -1055,13 +1055,20 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
               <option key={o} value={o}>{o}</option>
             ))}
           </select>
+          {/* SKY-10510 scoping: Group By regroups the Spreadsheet only (FULL-SPEC
+              toolbar: "Group By regroups the sheet"; the prototype consumes
+              tlF.group solely in the sheet's group rows). The lanes' fixed
+              BOOKS/ARCS/CHAPTERS/… taxonomy has no re-grouping concept, so the
+              control is disabled outside Spreadsheet mode instead of rendering
+              as a silent no-op. */}
           <select
             id="tlr-group-select"
             className="tlr-filter-select"
-            title="Group By"
+            title={viewMode === 'spreadsheet' ? 'Group By' : 'Group By — applies to the Spreadsheet view'}
             aria-label="Group By"
             value={groupBy}
             onChange={e => handleGroupByChange(e.target.value as TimelineGroupBy)}
+            disabled={viewMode !== 'spreadsheet'}
             data-testid="groupby-select"
           >
             {GROUP_BY_OPTIONS.map(opt => (

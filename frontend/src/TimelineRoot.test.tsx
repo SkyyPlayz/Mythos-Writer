@@ -470,6 +470,8 @@ describe('TimelineRoot — persistence', () => {
 
   it('persists groupBy to localStorage on change', async () => {
     await renderRoot();
+    // SKY-10510: the select only accepts input in Spreadsheet mode.
+    fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'chapter' } });
     expect(localStorage.getItem('timeline:groupBy')).toBe('chapter');
   });
@@ -512,9 +514,25 @@ describe('TimelineRoot — grouping', () => {
 
   it('keeps groupBy when switching views', async () => {
     await renderRoot();
+    fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     fireEvent.change(screen.getByTestId('groupby-select'), { target: { value: 'location' } });
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
     expect(screen.getByTestId('mock-spreadsheet')).toHaveAttribute('data-groupby', 'location');
+  });
+
+  // SKY-10510: Group By regroups the Spreadsheet only (FULL-SPEC toolbar:
+  // "Group By regroups the sheet") — in every other mode the control used to
+  // render fully interactive while changing nothing. It is disabled there now.
+  it('disables the Group By select outside Spreadsheet mode', async () => {
+    await renderRoot();
+    expect(screen.getByTestId('groupby-select')).toBeDisabled(); // progress (default)
+    fireEvent.click(screen.getByTestId('view-mode-structure'));
+    expect(screen.getByTestId('groupby-select')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
+    expect(screen.getByTestId('groupby-select')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('view-mode-subway'));
+    expect(screen.getByTestId('groupby-select')).toBeDisabled();
   });
 });
 
