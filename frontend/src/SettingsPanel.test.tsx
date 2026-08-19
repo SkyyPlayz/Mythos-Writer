@@ -1144,8 +1144,8 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     const tabs = screen.getAllByRole('tab', {}).filter((t) => t.className.includes('settings-cat-nav__tab'));
-    // SKY-10668: prototype rail order; Account & profile parked last pending
-    // Skyy's remove-vs-keep decision.
+    // SKY-10668: prototype rail order; Account & profile kept and placed last
+    // by owner ruling (Skyy, 2026-08-19).
     expect(tabs.map((t) => t.textContent)).toEqual([
       'Appearance', 'AI Agents', 'Editor', 'Vault & Files',
       'Sync & Backup', 'Shortcuts', 'About', 'Account & profile',

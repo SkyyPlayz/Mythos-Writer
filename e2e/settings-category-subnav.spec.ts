@@ -115,8 +115,8 @@ test.afterEach(async () => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 test('SKY-10668: renders the 8-category sub-nav in prototype order, account last', async () => {
-  // Owner-requested prototype order (SKY-10668); `Account & profile` is parked
-  // last pending Skyy's remove-vs-keep decision.
+  // Owner-requested prototype order (SKY-10668); `Account & profile` is kept
+  // and placed last by owner ruling (Skyy, 2026-08-19).
   const tabs = page.locator('.settings-cat-nav [role="tab"]');
   await expect(tabs).toHaveText([
     'Appearance',
