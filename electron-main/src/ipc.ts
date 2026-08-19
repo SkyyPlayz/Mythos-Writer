@@ -328,6 +328,8 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_LIST: 'notesVault:list',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
+  // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
+  NOTES_VAULT_RENAME_UNDO: 'notesVault:renameCascade:undo',
   // SKY-95: dedicated mkdir avoids the dotfile block on .gitkeep placeholders.
   NOTES_VAULT_MKDIR: 'notesVault:mkdir',
   // SKY-8891: persisted manual order for the Notes Vault tree, stored in
@@ -855,6 +857,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_RENAME_UNDO]: (payload: never) => RenameCascadeUndoResponse;
   [IPC_CHANNELS.NOTES_VAULT_MKDIR]: (payload: VaultMkdirPayload) => VaultMkdirResponse;
   [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (payload: never) => Record<string, string[]>;
   [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload) => VaultReorderResponse;
@@ -1135,6 +1138,46 @@ export interface VaultMoveResponse {
   fromPath: string;
   toPath: string;
   moved: boolean;
+  /** SKY-10712: present when a stem-changing note rename cascade-updated inbound links. */
+  linkUpdate?: RenameCascadeLinkUpdate;
+}
+
+// ─── SKY-10712: rename → inbound-link cascade ───
+
+export interface RenameCascadeLinkUpdate {
+  linksUpdated: number;
+  filesChanged: number;
+  notesFilesChanged: number;
+  storyFilesChanged: number;
+  /** Notes-vault-relative paths of rewritten files (Obsidian-style retitle). */
+  changedNotesPaths: string[];
+  /** Story-vault-relative paths of rewritten files (display-preserving alias). */
+  changedStoryPaths: string[];
+  oldStem: string;
+  newStem: string;
+  undoAvailable: boolean;
+}
+
+/** Emitted on 'notesVault:renameCascade:progress' while a large cascade writes. */
+export interface RenameCascadeProgress {
+  current: number;
+  total: number;
+  lastAction: string;
+}
+
+export interface RenameCascadeUndoResponse {
+  undone: boolean;
+  /** Human-readable refusal when `undone` is false. */
+  reason?: string;
+  filesRestored: number;
+  /** Files edited since the rename — left untouched, never overwritten. */
+  filesSkipped: number;
+  fromPath?: string;
+  toPath?: string;
+  oldStem?: string;
+  newStem?: string;
+  restoredNotesPaths: string[];
+  restoredStoryPaths: string[];
 }
 
 // SKY-8891: set one folder's manual child order. `parentPath` is '' for the

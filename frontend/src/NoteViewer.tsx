@@ -497,6 +497,26 @@ export default function NoteViewer({
     return () => window.removeEventListener('mythos:note-frontmatter-updated', onExternalUpdate);
   }, [path, onWordCountChange]);
 
+  // SKY-10712: a note rename cascade rewrote [[links]] in files on disk —
+  // possibly this one. Re-read and adopt so a later autosave doesn't clobber
+  // the rewrite. Same guard as above: pending local edits win.
+  useEffect(() => {
+    const onLinksRewritten = async (e: Event) => {
+      const detail = (e as CustomEvent<{ changedNotesPaths?: string[] }>).detail;
+      if (!detail?.changedNotesPaths?.includes(path)) return;
+      if (saveTimerRef.current) return; // unsaved local edits — do not overwrite
+      const res = await window.api.readNotesVault(path);
+      if (!res || 'error' in res) return; // renamed/moved — tab retarget handles it
+      if (saveTimerRef.current || res.content === contentRef.current) return;
+      contentRef.current = res.content;
+      setContent(res.content);
+      setExternalRev((rev) => rev + 1);
+      onWordCountChange?.(countWords(res.content));
+    };
+    window.addEventListener('mythos:vault-links-rewritten', onLinksRewritten);
+    return () => window.removeEventListener('mythos:vault-links-rewritten', onLinksRewritten);
+  }, [path, onWordCountChange]);
+
   // ── M17: frontmatter-backed title + tags (W0.2 engine — never rendered in Rich body) ──
 
   const noteMeta = useMemo(() => parseNoteFrontmatter(content), [content]);

@@ -25,6 +25,7 @@ import {
   type VaultDeleteResponse,
   type VaultMovePayload,
   type VaultMoveResponse,
+  type RenameCascadeUndoResponse,
   type VaultMkdirPayload,
   type VaultMkdirResponse,
   type VaultReorderPayload,
@@ -585,7 +586,8 @@ import { assertBrainstormPayloadValid } from './brainstormIpcSecurity.js';
 import { listTemplates, scaffoldFromTemplate, saveAsTemplate, listNoteTemplates, resolveNoteTemplate, renameTemplate, deleteTemplate, duplicateTemplate, exportTemplate, importTemplate, loadUserTemplates } from './templates.js';
 import { listNotesTags, renameNotesTag, mergeNotesTags } from './notesTagWrangler.js';
 import { getNoteBacklinks } from './noteBacklinks.js';
-import { getGraphNodes, getGraphEdges, handleNoteFileChanged } from './vaultGraph.js';
+import { getGraphNodes, getGraphEdges, handleNoteFileChanged, invalidateNoteGraphIndex } from './vaultGraph.js';
+import { renameNoteWithCascade, undoLastRenameCascade } from './renameCascade.js';
 import { batchReadVaultIcons, listUserIconPacks, readUserPackSvg } from './iconPacks.js';
 import { executeSmartQuery, parseSmartQuery } from './smart-folders.js';
 import type { SmartFolderEntry, CustomFieldDef, OnboardingImportDryRunPayload, OnboardingImportCommitPayload } from './ipc.js';
@@ -1175,6 +1177,23 @@ let sceneSaveManifestCache: {
 } | null = null;
 let pendingEntityRefresh = false;
 const REINDEX_INCREMENTAL_MAX = 50;
+
+// SKY-10712: cascade rewrites go through writeVaultFileAtomic, whose
+// markSelfWrite suppresses the change watchers — so the fan-out the watcher
+// would have done (graph invalidation, FTS reindex, renderer refresh events)
+// must be mirrored manually after a cascade lands (or is undone).
+function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
+  invalidateNoteGraphIndex();
+  scheduleReindex(); // notes-side entity docs
+  for (const rel of changedStoryPaths) scheduleReindex(rel); // incremental FTS
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
+    mainWindow.webContents.send('vault:graph-topology-changed', {});
+    for (const rel of changedStoryPaths) {
+      mainWindow.webContents.send('vault:file-changed', { path: rel });
+    }
+  }
+}
 
 function scheduleReindex(changedRelPath?: string) {
   if (changedRelPath === undefined) {
@@ -5692,7 +5711,20 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.fromPath);
     safeVaultEntryIpcJoin(root, payload.toPath);
-    const result = moveVaultFile(root, payload.fromPath, payload.toPath);
+    // SKY-10712: a stem-changing note rename cascade-updates inbound
+    // [[wikilinks]] across both vaults (Obsidian's "Automatically update
+    // internal links"); plain moves/folder renames pass straight through.
+    const result = renameNoteWithCascade({
+      notesRoot: root,
+      storyRoot: getVaultRoot(),
+      fromPath: payload.fromPath,
+      toPath: payload.toPath,
+      onProgress: (p) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('notesVault:renameCascade:progress', p);
+        }
+      },
+    });
     // SKY-8891: keep the manual-order store in step with the rename — same
     // handler as the filesystem move so the two can't diverge. A moved
     // folder's descendants keep their manual order via prefix rewrite.
@@ -5703,6 +5735,22 @@ const handlers: IpcHandlers = {
       // encodes the icon, so only this sidecar's key needs to follow.
       const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), payload.fromPath, payload.toPath);
       if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
+    }
+    if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
+    return result;
+  },
+  // SKY-10712: one-shot undo of the last rename cascade — renames the note
+  // back and restores every rewritten file that hasn't been edited since.
+  [IPC_CHANNELS.NOTES_VAULT_RENAME_UNDO]: (): RenameCascadeUndoResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const result = undoLastRenameCascade({ notesRoot: root, storyRoot: getVaultRoot() });
+    if (result.undone && result.fromPath && result.toPath) {
+      const rewritten = rewriteOrderOnMove(readOrderMap(root), result.toPath, result.fromPath);
+      if (rewritten) writeOrderMap(root, rewritten);
+      const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), result.toPath, result.fromPath);
+      if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
+      notifyRenameCascadeApplied(result.restoredStoryPaths);
     }
     return result;
   },

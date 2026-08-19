@@ -63,6 +63,12 @@
   bottom: 3.2rem;
 }
 
+/* Third slot (SKY-10712): the rename-cascade Undo toast must stay clickable
+   even when both lower slots are occupied (hint + vault-updated toasts). */
+.app-toast--stacked-2 {
+  bottom: 4.9rem;
+}
+
 @keyframes app-toast-in {
   from {
     opacity: 0;

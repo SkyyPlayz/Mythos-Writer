@@ -1,5 +1,30 @@
 /// <reference types="vite/client" />
 
+// SKY-10712: rename → inbound-link cascade (mirrors electron-main/src/ipc.ts)
+interface RenameCascadeLinkUpdate {
+  linksUpdated: number;
+  filesChanged: number;
+  notesFilesChanged: number;
+  storyFilesChanged: number;
+  changedNotesPaths: string[];
+  changedStoryPaths: string[];
+  oldStem: string;
+  newStem: string;
+  undoAvailable: boolean;
+}
+interface RenameCascadeUndoResponse {
+  undone: boolean;
+  reason?: string;
+  filesRestored: number;
+  filesSkipped: number;
+  fromPath?: string;
+  toPath?: string;
+  oldStem?: string;
+  newStem?: string;
+  restoredNotesPaths: string[];
+  restoredStoryPaths: string[];
+}
+
 // SKY-6228: M15 — agent chat session types (mirrors electron-main/mythosFormat/agentSessions.ts)
 interface AgentSessionTurn {
   role: 'user' | 'agent';
@@ -1381,7 +1406,11 @@ interface Window {
     writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
     listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
-    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
+    moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean; linkUpdate?: RenameCascadeLinkUpdate } | { error: string }>;
+    // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
+    undoRenameCascade: () => Promise<RenameCascadeUndoResponse | { error: string }>;
+    // SKY-10712: progress while a large rename cascade rewrites files.
+    onRenameCascadeProgress: (cb: (p: { current: number; total: number; lastAction: string }) => void) => () => void;
     moveVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean } | { error: string }>;
     mkdirNotesVault: (path: string) => Promise<{ path: string; created: boolean } | { error: string }>;
     // SKY-8891: persisted manual order for the Notes Vault tree (.vb-order.json).
