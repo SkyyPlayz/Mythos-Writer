@@ -8,6 +8,9 @@
     "out/**/*",
     "package.json"
   ],
+  "asarUnpack": [
+    "out/main/**"
+  ],
   "extraResources": [
     {
       "from": "sample-project",
@@ -23,11 +26,17 @@
     "target": [
       {
         "target": "dmg",
-        "arch": ["x64", "arm64"]
+        "arch": [
+          "x64",
+          "arm64"
+        ]
       },
       {
         "target": "zip",
-        "arch": ["x64", "arm64"]
+        "arch": [
+          "x64",
+          "arm64"
+        ]
       }
     ],
     "icon": "build/icon.png",
@@ -38,20 +47,35 @@
   },
   "dmg": {
     "contents": [
-      { "x": 130, "y": 220 },
-      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
     ],
-    "window": { "width": 540, "height": 380 }
+    "window": {
+      "width": 540,
+      "height": 380
+    }
   },
   "win": {
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       },
       {
         "target": "zip",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       }
     ],
     "icon": "build/icon.ico",
@@ -69,15 +93,21 @@
     "target": [
       {
         "target": "AppImage",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       },
       {
         "target": "deb",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       },
       {
         "target": "rpm",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       }
     ],
     "artifactName": "${productName}-${version}.${ext}",
