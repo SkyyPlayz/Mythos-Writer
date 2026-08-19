@@ -21,8 +21,12 @@ export const ARC_LANE = 'lane:arcs';
 export const CHARACTER_LANE = 'lane:characters';
 export const WORLD_LANE = 'lane:world';
 export const THEME_LANE = 'lane:themes';
+/** SKY-10542: POV track (PLAN.md M10). The rendered lane derives from scene
+ *  metadata (`buildPovTrack` below), not stored items — the sentinel reserves
+ *  the rowId so any stored pov-lane item still stays out of KEY EVENTS. */
+export const POV_LANE = 'lane:pov';
 
-const SENTINEL_LANES = new Set([ARC_LANE, CHARACTER_LANE, WORLD_LANE, THEME_LANE]);
+const SENTINEL_LANES = new Set([ARC_LANE, CHARACTER_LANE, WORLD_LANE, THEME_LANE, POV_LANE]);
 
 /** True when a span belongs to the main BOOKS / SPANS & STORIES row. */
 export function isMainSpan(span: TimelineSpan): boolean {
@@ -51,6 +55,78 @@ export function plotlineRows(store: Pick<TimelinesStore, 'rows'>, timelineId: st
 
 export function plotlineCards(store: Pick<TimelinesStore, 'events'>, plotlineId: string): TimelineEvent[] {
   return store.events.filter((e) => e.rowId === plotlineId);
+}
+
+// ── SKY-10542: POV track (PLAN.md M10 — per-scene POV attribution) ──
+
+/** One manuscript scene as the POV track sees it (TimelineRoot derives these
+ *  from `timelineMetadata.pov` on the merged scene list). */
+export interface PovSceneInput {
+  id: string;
+  title: string;
+  /** POV character name; '' / whitespace = unset → no chip (the M2
+   *  Structure-card convention: unset renders nothing). */
+  pov: string;
+  /** 0-based index into the story's ordered chapters; -1 = unplaced. */
+  chapterIndex: number;
+}
+
+export interface PovChip {
+  sceneId: string;
+  sceneTitle: string;
+  pov: string;
+  chapterIndex: number;
+  /** Vertical lane — one per distinct POV name (the CHARACTER_LANE
+   *  one-lane-each convention), first narrative appearance on top. */
+  lane: number;
+  /** Horizontal slice within the chapter cell, in narrative scene order. */
+  slot: number;
+  /** POV-carrying scenes in this chapter — the chapter cell splits evenly. */
+  slotCount: number;
+}
+
+export interface PovTrack {
+  /** Distinct POV names in first-appearance order — one lane each. */
+  lanes: string[];
+  chips: PovChip[];
+}
+
+/**
+ * Partition scenes into the POV track: scenes with an unset POV or no chapter
+ * placement contribute nothing; the rest chip onto one lane per POV name.
+ * Pure and NaN-safe like the selectors above.
+ */
+export function buildPovTrack(scenes: readonly PovSceneInput[]): PovTrack {
+  const placed = scenes
+    .map((s) => ({ ...s, pov: s.pov.trim() }))
+    .filter((s) => s.pov !== '' && Number.isInteger(s.chapterIndex) && s.chapterIndex >= 0);
+  // Stable sort: chips read in narrative order, in-chapter input order kept.
+  placed.sort((a, b) => a.chapterIndex - b.chapterIndex);
+
+  const lanes: string[] = [];
+  const laneOf = new Map<string, number>();
+  const perChapter = new Map<number, number>();
+  const chips: PovChip[] = placed.map((s) => {
+    let lane = laneOf.get(s.pov);
+    if (lane === undefined) {
+      lane = lanes.length;
+      lanes.push(s.pov);
+      laneOf.set(s.pov, lane);
+    }
+    const slot = perChapter.get(s.chapterIndex) ?? 0;
+    perChapter.set(s.chapterIndex, slot + 1);
+    return {
+      sceneId: s.id,
+      sceneTitle: s.title,
+      pov: s.pov,
+      chapterIndex: s.chapterIndex,
+      lane,
+      slot,
+      slotCount: 0, // finalized below once the chapter's total is known
+    };
+  });
+  for (const chip of chips) chip.slotCount = perChapter.get(chip.chapterIndex) ?? 1;
+  return { lanes, chips };
 }
 
 /**

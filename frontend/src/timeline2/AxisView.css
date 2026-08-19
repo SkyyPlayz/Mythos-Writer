@@ -572,6 +572,20 @@
   border-radius: 3px;
 }
 
+/* ── SKY-10542: POV track (20px lanes like CHARACTERS, chapter-cell chips) ── */
+.ax-pov-chip {
+  position: absolute;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── WORLD (6700: 180px chips, r11, 56px lanes) ── */
 .ax-world-chip {
   position: absolute;
