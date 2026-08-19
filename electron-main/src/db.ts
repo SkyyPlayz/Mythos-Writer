@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { SuggestionCategory } from './suggestionCategory.js';
 export type { SuggestionStatus } from './shared/types/suggestion.js';
 import type { SuggestionStatus } from './shared/types/suggestion.js';
@@ -204,6 +204,12 @@ export function closeDb(): void {
 export function getDb(): DatabaseSync {
   if (!_db) throw new Error('DB not open — call openDb() first');
   return _db;
+}
+
+/** True when a vault DB is open — lets cache-aware callers fall back to a
+ *  pure filesystem path (unit tests, pre-vault startup) instead of throwing. */
+export function isDbOpen(): boolean {
+  return _db !== null;
 }
 
 // ─── Migrations ───
@@ -810,10 +816,76 @@ function runMigrations(db: DatabaseSync): void {
     db.exec('PRAGMA user_version = 29');
   }
 
-  // v30 is reserved by M12.2 (SKY-10731, fact-ledger schema) — in flight on a
-  // sibling branch when this was written. Whichever lands second renumbers if
-  // needed; skipping a version number is harmless (`currentVersion < 31` still
-  // runs on a v29 DB).
+  // v30 (M12.2) and v31 (M12.1) both branched from v29 in parallel and were
+  // assigned adjacent version numbers on merge. `currentVersion` is a single
+  // snapshot taken before either block runs, so on a fresh v29 (or older) DB
+  // both blocks fire — order here controls which PRAGMA write wins. The v30
+  // block MUST run before the v31 block so the final user_version lands on
+  // the higher number (31), not the lower one.
+  if (currentVersion < 30) {
+    // M12.2 (SKY-10731, SKY-10666 ruling): fact ledger + persistent vault
+    // index cache. Two buckets with different lifecycles:
+    //
+    // DERIVED (disposable — rebuildable from vault content at any time):
+    //   fact_ledger, fact_provenance, vault_index_cache. These sit alongside
+    //   entity_index / scene_entity_links / fts_indexed_at and may be wiped
+    //   wholesale by rebuildDerivedFactStores().
+    //
+    // DURABLE (author decisions — alongside suggestions / audit_log /
+    //   continuity_issues, backed up via the .mythos/ backup path):
+    //   fact_decisions. Tombstone semantics: rows are NEVER hard-deleted
+    //   (revoked_at is set instead) and NEVER touched by a derived rebuild —
+    //   deleting a dismissed flag would let the item regenerate on next scan.
+    //
+    // Binding: the ledger is a separate store from vault notes — it must
+    // never be surfaced as vault content or override the vault.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS fact_ledger (
+        id            TEXT PRIMARY KEY,
+        fingerprint   TEXT NOT NULL UNIQUE,
+        entity_key    TEXT NOT NULL,
+        fact_key      TEXT NOT NULL,
+        fact_value    TEXT NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'active',
+        superseded_by TEXT,
+        extracted_at  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_fact_ledger_entity
+        ON fact_ledger (entity_key, status);
+
+      CREATE TABLE IF NOT EXISTS fact_provenance (
+        id           TEXT PRIMARY KEY,
+        fact_id      TEXT NOT NULL REFERENCES fact_ledger(id) ON DELETE CASCADE,
+        source_path  TEXT NOT NULL,
+        source_hash  TEXT NOT NULL,
+        span_start   INTEGER,
+        span_end     INTEGER,
+        extracted_at TEXT NOT NULL,
+        UNIQUE(fact_id, source_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_fact_prov_source ON fact_provenance (source_path);
+
+      CREATE TABLE IF NOT EXISTS vault_index_cache (
+        file_path    TEXT PRIMARY KEY,
+        content_hash TEXT NOT NULL,
+        name         TEXT NOT NULL,
+        aliases_json TEXT NOT NULL,
+        type         TEXT,
+        needs_rescan INTEGER NOT NULL DEFAULT 0,
+        indexed_at   TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS fact_decisions (
+        fingerprint  TEXT PRIMARY KEY,
+        decision     TEXT NOT NULL,
+        payload_json TEXT,
+        decided_at   TEXT NOT NULL,
+        revoked_at   TEXT
+      );
+    `);
+    db.exec('PRAGMA user_version = 30');
+  }
+
   if (currentVersion < 31) {
     // M12.1 (SKY-10730): background job/queue substrate.
     //
@@ -2273,4 +2345,310 @@ export function listArchiveAuditLog(itemId?: string): DbArchiveAuditLog[] {
   return getDb()
     .prepare('SELECT * FROM archive_audit_log ORDER BY created_at DESC')
     .all() as unknown as DbArchiveAuditLog[];
+}
+
+// ─── Fact ledger (SKY-10731 / M12.2) ───
+// Derived bucket (fact_ledger, fact_provenance, vault_index_cache) is
+// disposable: rebuildDerivedFactStores() may wipe it at any time. The durable
+// bucket (fact_decisions) holds author decisions and survives every rebuild.
+
+export type FactStatus = 'active' | 'superseded';
+export type FactDecisionKind = 'dismissed' | 'dont_ask_again' | 'answered';
+
+export interface DbFact {
+  id: string;
+  /** Stable identity across rebuilds: sha256(entity_key\nfact_key\nfact_value). */
+  fingerprint: string;
+  /** Resolved vault note path — the wikilink/alias-graph anchor, never a free-text name. */
+  entity_key: string;
+  fact_key: string;
+  fact_value: string;
+  status: FactStatus;
+  superseded_by: string | null;
+  extracted_at: string;
+}
+
+export interface DbFactProvenance {
+  id: string;
+  fact_id: string;
+  source_path: string;
+  /** sha256 of the source content this fact was extracted from. */
+  source_hash: string;
+  span_start: number | null;
+  span_end: number | null;
+  extracted_at: string;
+}
+
+export interface DbFactDecision {
+  fingerprint: string;
+  decision: FactDecisionKind;
+  payload_json: string | null;
+  decided_at: string;
+  /** Tombstone: set instead of deleting the row, so the decision's history
+   *  survives and a re-dismiss cannot race a regeneration. */
+  revoked_at: string | null;
+}
+
+export interface DbVaultIndexCacheRow {
+  file_path: string;
+  content_hash: string;
+  name: string;
+  aliases_json: string;
+  type: string | null;
+  needs_rescan: number;
+  indexed_at: string;
+}
+
+/** Tables a full index rebuild is allowed to wipe. fact_decisions is
+ *  deliberately absent — the durable/derived split is load-bearing. */
+export const DERIVED_FACT_TABLES = ['fact_provenance', 'fact_ledger', 'vault_index_cache'] as const;
+
+export function factFingerprint(entityKey: string, factKey: string, factValue: string): string {
+  return createHash('sha256').update(`${entityKey}\n${factKey}\n${factValue}`, 'utf-8').digest('hex');
+}
+
+export interface UpsertFactInput {
+  entity_key: string;
+  fact_key: string;
+  fact_value: string;
+  source_path: string;
+  source_hash: string;
+  span_start?: number | null;
+  span_end?: number | null;
+  extracted_at: string;
+}
+
+/**
+ * Insert an extracted fact, collapsing duplicates: an identical fact seen
+ * again (same fingerprint) reuses the existing row — re-activated if it was
+ * superseded — and only appends/refreshes a provenance entry for the source.
+ * Returns the canonical fact row.
+ */
+export function upsertFact(input: UpsertFactInput): DbFact {
+  const db = getDb();
+  const fingerprint = factFingerprint(input.entity_key, input.fact_key, input.fact_value);
+  const existing = db
+    .prepare('SELECT * FROM fact_ledger WHERE fingerprint = ?')
+    .get(fingerprint) as DbFact | undefined;
+
+  let factId: string;
+  if (existing) {
+    factId = existing.id;
+    if (existing.status !== 'active') {
+      db.prepare(
+        `UPDATE fact_ledger SET status = 'active', superseded_by = NULL, extracted_at = ? WHERE id = ?`
+      ).run(input.extracted_at, factId);
+    }
+  } else {
+    factId = randomUUID();
+    db.prepare(
+      `INSERT INTO fact_ledger (id, fingerprint, entity_key, fact_key, fact_value, status, superseded_by, extracted_at)
+       VALUES (?, ?, ?, ?, ?, 'active', NULL, ?)`
+    ).run(factId, fingerprint, input.entity_key, input.fact_key, input.fact_value, input.extracted_at);
+  }
+
+  db.prepare(
+    `INSERT INTO fact_provenance (id, fact_id, source_path, source_hash, span_start, span_end, extracted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(fact_id, source_path) DO UPDATE SET
+       source_hash = excluded.source_hash,
+       span_start = excluded.span_start,
+       span_end = excluded.span_end,
+       extracted_at = excluded.extracted_at`
+  ).run(
+    randomUUID(),
+    factId,
+    input.source_path,
+    input.source_hash,
+    input.span_start ?? null,
+    input.span_end ?? null,
+    input.extracted_at,
+  );
+
+  return db.prepare('SELECT * FROM fact_ledger WHERE id = ?').get(factId) as unknown as DbFact;
+}
+
+export function getFactByFingerprint(fingerprint: string): DbFact | null {
+  return (
+    (getDb().prepare('SELECT * FROM fact_ledger WHERE fingerprint = ?').get(fingerprint) as
+      | DbFact
+      | undefined) ?? null
+  );
+}
+
+export function listFacts(entityKey?: string, status: FactStatus = 'active'): DbFact[] {
+  if (entityKey) {
+    return getDb()
+      .prepare('SELECT * FROM fact_ledger WHERE entity_key = ? AND status = ? ORDER BY fact_key ASC')
+      .all(entityKey, status) as unknown as DbFact[];
+  }
+  return getDb()
+    .prepare('SELECT * FROM fact_ledger WHERE status = ? ORDER BY entity_key ASC, fact_key ASC')
+    .all(status) as unknown as DbFact[];
+}
+
+export function listFactProvenance(factId: string): DbFactProvenance[] {
+  return getDb()
+    .prepare('SELECT * FROM fact_provenance WHERE fact_id = ? ORDER BY source_path ASC')
+    .all(factId) as unknown as DbFactProvenance[];
+}
+
+/**
+ * Supersede-on-re-extract: after a source is re-scanned, mark as superseded
+ * every active fact whose provenance is ONLY this source and whose fingerprint
+ * the new extraction no longer produced. Facts corroborated by other sources
+ * keep this source's stale provenance dropped but stay active.
+ * Returns the number of facts superseded.
+ */
+export function supersedeFactsForSource(sourcePath: string, keptFingerprints: string[]): number {
+  const db = getDb();
+  const kept = new Set(keptFingerprints);
+  const candidates = db
+    .prepare(
+      `SELECT f.id, f.fingerprint,
+              (SELECT COUNT(*) FROM fact_provenance p2 WHERE p2.fact_id = f.id) AS prov_count
+         FROM fact_ledger f
+         JOIN fact_provenance p ON p.fact_id = f.id
+        WHERE p.source_path = ? AND f.status = 'active'`
+    )
+    .all(sourcePath) as unknown as Array<{ id: string; fingerprint: string; prov_count: number }>;
+
+  let superseded = 0;
+  for (const c of candidates) {
+    if (kept.has(c.fingerprint)) continue;
+    db.prepare('DELETE FROM fact_provenance WHERE fact_id = ? AND source_path = ?').run(c.id, sourcePath);
+    if (c.prov_count <= 1) {
+      db.prepare(`UPDATE fact_ledger SET status = 'superseded' WHERE id = ?`).run(c.id);
+      superseded++;
+    }
+  }
+  return superseded;
+}
+
+/**
+ * Orphan purge: drop provenance rows whose source file no longer exists, then
+ * delete facts left with no provenance at all. Purely derived data — durable
+ * decisions about a purged fact remain in fact_decisions untouched.
+ * Returns the number of facts deleted.
+ */
+export function purgeOrphanFacts(existingSourcePaths: Iterable<string>): number {
+  const db = getDb();
+  const existing = new Set(existingSourcePaths);
+  const sources = db
+    .prepare('SELECT DISTINCT source_path FROM fact_provenance')
+    .all() as unknown as Array<{ source_path: string }>;
+  for (const { source_path } of sources) {
+    if (!existing.has(source_path)) {
+      db.prepare('DELETE FROM fact_provenance WHERE source_path = ?').run(source_path);
+    }
+  }
+  const result = db
+    .prepare('DELETE FROM fact_ledger WHERE id NOT IN (SELECT DISTINCT fact_id FROM fact_provenance)')
+    .run();
+  return Number(result.changes);
+}
+
+/**
+ * Wipe every derived fact store. This is the "full index rebuild" primitive:
+ * it must be safe to call at any time because everything it deletes can be
+ * regenerated from vault content. It NEVER touches fact_decisions — that is
+ * the durable/derived split the SKY-10666 ruling makes binding.
+ */
+export function rebuildDerivedFactStores(): void {
+  const db = getDb();
+  for (const table of DERIVED_FACT_TABLES) {
+    db.prepare(`DELETE FROM ${table}`).run();
+  }
+}
+
+export function recordFactDecision(
+  fingerprint: string,
+  decision: FactDecisionKind,
+  payloadJson?: string | null,
+): void {
+  getDb()
+    .prepare(
+      `INSERT INTO fact_decisions (fingerprint, decision, payload_json, decided_at, revoked_at)
+       VALUES (?, ?, ?, ?, NULL)
+       ON CONFLICT(fingerprint) DO UPDATE SET
+         decision = excluded.decision,
+         payload_json = excluded.payload_json,
+         decided_at = excluded.decided_at,
+         revoked_at = NULL`
+    )
+    .run(fingerprint, decision, payloadJson ?? null, new Date().toISOString());
+}
+
+export function getFactDecision(fingerprint: string): DbFactDecision | null {
+  return (
+    (getDb().prepare('SELECT * FROM fact_decisions WHERE fingerprint = ?').get(fingerprint) as
+      | DbFactDecision
+      | undefined) ?? null
+  );
+}
+
+export function listFactDecisions(includeRevoked = false): DbFactDecision[] {
+  if (includeRevoked) {
+    return getDb()
+      .prepare('SELECT * FROM fact_decisions ORDER BY decided_at ASC')
+      .all() as unknown as DbFactDecision[];
+  }
+  return getDb()
+    .prepare('SELECT * FROM fact_decisions WHERE revoked_at IS NULL ORDER BY decided_at ASC')
+    .all() as unknown as DbFactDecision[];
+}
+
+/** Tombstone, never delete: a revoked decision keeps its row so the ledger can
+ *  distinguish "author un-dismissed this" from "never decided". */
+export function revokeFactDecision(fingerprint: string): void {
+  getDb()
+    .prepare('UPDATE fact_decisions SET revoked_at = ? WHERE fingerprint = ? AND revoked_at IS NULL')
+    .run(new Date().toISOString(), fingerprint);
+}
+
+/** True when the author dismissed this fact (or said "don't ask again") and
+ *  has not revoked that decision — the extractor must not resurface it. */
+export function isFactSuppressed(fingerprint: string): boolean {
+  const d = getFactDecision(fingerprint);
+  return d !== null && d.revoked_at === null && (d.decision === 'dismissed' || d.decision === 'dont_ask_again');
+}
+
+// ─── Vault index cache (SKY-10731 / M12.2) ───
+// Persistent replacement for rebuilding the entity index on every panel open.
+// Derived bucket: rows are keyed by file path + SHA-256 content hash; a hash
+// mismatch flips needs_rescan so downstream extraction (M12.1) re-scans only
+// changed content.
+
+export function getVaultIndexCacheRows(): DbVaultIndexCacheRow[] {
+  return getDb()
+    .prepare('SELECT * FROM vault_index_cache ORDER BY file_path ASC')
+    .all() as unknown as DbVaultIndexCacheRow[];
+}
+
+export function upsertVaultIndexCacheRow(row: DbVaultIndexCacheRow): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO vault_index_cache
+         (file_path, content_hash, name, aliases_json, type, needs_rescan, indexed_at)
+       VALUES (@file_path, @content_hash, @name, @aliases_json, @type, @needs_rescan, @indexed_at)`
+    )
+    .run(row as unknown as Record<string, SQLInputValue>);
+}
+
+export function deleteVaultIndexCacheRows(filePaths: string[]): void {
+  if (filePaths.length === 0) return;
+  const db = getDb();
+  const stmt = db.prepare('DELETE FROM vault_index_cache WHERE file_path = ?');
+  for (const p of filePaths) stmt.run(p);
+}
+
+export function listVaultIndexNeedsRescan(): DbVaultIndexCacheRow[] {
+  return getDb()
+    .prepare('SELECT * FROM vault_index_cache WHERE needs_rescan = 1 ORDER BY file_path ASC')
+    .all() as unknown as DbVaultIndexCacheRow[];
+}
+
+/** Called by the scan job (M12.1) after re-extracting a changed file. */
+export function clearVaultIndexNeedsRescan(filePath: string): void {
+  getDb().prepare('UPDATE vault_index_cache SET needs_rescan = 0 WHERE file_path = ?').run(filePath);
 }
