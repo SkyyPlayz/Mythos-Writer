@@ -144,7 +144,12 @@ interface Props {
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
   /** SKY-10057: notified when the Review Inbox drill-down opens (side-effect hook — the
-   *  drill-down itself is rendered internally, this is not the render target). */
+   *  drill-down itself is rendered internally, this is not the render target).
+   *  dead-wiring-ignore (SKY-10926): the Review Inbox drill-down is fully self-contained
+   *  (SuggestionPreviewCard -> handleOpenInbox -> internal `inboxOpen` state, see
+   *  AgentHubPanel.test.tsx "SKY-10057: drills into a self-contained Review Inbox in
+   *  place"); this is an optional outward notification for a future caller, not the
+   *  mechanism that makes "See All Suggestions" work today. */
   onOpenSuggestionInbox?: () => void;
   /** SKY-10057: opens a suggestion's target file — passed through to the
    *  in-panel Review Inbox drill-down (SuggestionReview). */
