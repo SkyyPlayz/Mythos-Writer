@@ -3,6 +3,7 @@ import type { Story, Chapter, Scene, Part } from './types';
 import { countWords } from './wordStats';
 import { draftStateLabel, isSimpleSinglePart, sceneStatus } from './story/manuscriptModel';
 import { SCENE_NOTE_DRAG_MIME, type SceneNoteDragPayload } from './sceneNotes';
+import { ContextMenu, type MenuItemDef } from './components/ui/Menu';
 import './StoryNavigator.css';
 
 interface Props {
@@ -30,6 +31,15 @@ interface Props {
    * wrapper (LeftRail's STORY NAVIGATOR zone) already provides one.
    */
   hideHeader?: boolean;
+  /**
+   * SKY-10917: right-click menu — add chapter/scene reuse onCreateChapter/
+   * onCreateScene above; these four cover rename/delete (reorder reuses
+   * onReorderScenes, same as the existing arrow-key handler).
+   */
+  onRenameChapter?: (chapterId: string) => void;
+  onRenameScene?: (sceneId: string) => void;
+  onDeleteChapter?: (storyId: string, chapterId: string) => void;
+  onDeleteScene?: (storyId: string, chapterId: string, sceneId: string) => void;
 }
 
 export default function StoryNavigator({
@@ -47,6 +57,10 @@ export default function StoryNavigator({
   onPromoteSceneNote,
   onCycleSceneStatus,
   hideHeader = false,
+  onRenameChapter,
+  onRenameScene,
+  onDeleteChapter,
+  onDeleteScene,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -268,6 +282,91 @@ export default function StoryNavigator({
     );
   };
 
+  // SKY-10917: one right-click menu for the whole tree — the row that opens
+  // it builds its own item list + action closure, so story/chapter/scene
+  // rows (and the two duplicated single-part/parts render branches below)
+  // all share this single piece of state and portal-rendered menu instead
+  // of each owning their own.
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number;
+    y: number;
+    items: MenuItemDef[];
+    onAction: (id: string) => void;
+  } | null>(null);
+
+  const openStoryMenu = (e: React.MouseEvent, story: Story) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [{ id: 'add-chapter', label: 'Add chapter' }],
+      onAction: (id) => { if (id === 'add-chapter') onCreateChapter(story.id); },
+    });
+  };
+
+  // Rename/delete only work for chapters reached via story.chapters — a
+  // Part-grouped story's chapters live under story.parts[] instead, which
+  // createChapter/createScene/renameChapter/deleteChapter don't reach yet.
+  // Callers pass renamable=false for the parts-branch render below so the
+  // menu never offers an action that would silently no-op (§1.2 "nothing is
+  // dead").
+  const openChapterMenu = (e: React.MouseEvent, chapter: Chapter, story: Story, renamable: boolean) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items: MenuItemDef[] = [{ id: 'add-scene', label: 'Add scene' }];
+    if (renamable) {
+      items.push(
+        { id: 'rename', label: 'Rename chapter…' },
+        { id: 'delete', label: 'Delete chapter…', destructive: true, separator: true }
+      );
+    }
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      onAction: (id) => {
+        if (id === 'add-scene') onCreateScene(story.id, chapter.id);
+        else if (id === 'rename') onRenameChapter?.(chapter.id);
+        else if (id === 'delete') onDeleteChapter?.(story.id, chapter.id);
+      },
+    });
+  };
+
+  const openSceneMenu = (
+    e: React.MouseEvent,
+    scene: Scene,
+    chapter: Chapter,
+    story: Story,
+    sortedScenes: Scene[],
+    renamable: boolean
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const idx = sortedScenes.findIndex((s) => s.id === scene.id);
+    const items: MenuItemDef[] = [];
+    if (renamable) items.push({ id: 'rename', label: 'Rename scene…' });
+    items.push(
+      { id: 'move-up', label: 'Move up', disabled: idx <= 0 },
+      { id: 'move-down', label: 'Move down', disabled: idx >= sortedScenes.length - 1 }
+    );
+    if (renamable) items.push({ id: 'delete', label: 'Delete scene…', destructive: true, separator: true });
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      onAction: (id) => {
+        if (id === 'rename') { onRenameScene?.(scene.id); return; }
+        if (id === 'delete') { onDeleteScene?.(story.id, chapter.id, scene.id); return; }
+        if (id !== 'move-up' && id !== 'move-down') return;
+        const reordered = sortedScenes.map((s) => s.id);
+        reordered.splice(idx, 1);
+        reordered.splice(id === 'move-up' ? idx - 1 : idx + 1, 0, scene.id);
+        onReorderScenes?.(story.id, chapter.id, reordered);
+      },
+    });
+  };
+
   return (
     <nav
       className={`story-navigator${noteDropActive ? ' story-navigator--note-drop' : ''}`}
@@ -306,7 +405,7 @@ export default function StoryNavigator({
           );
           return (
           <div key={story.id} className="nav-story">
-            <div className="nav-story-row">
+            <div className="nav-story-row" onContextMenu={(e) => openStoryMenu(e, story)}>
               <button
                 className="nav-story-toggle"
                 aria-expanded={expandedStories.has(story.id)}
@@ -341,7 +440,7 @@ export default function StoryNavigator({
                 );
                 return (
                 <div key={chapter.id} className="nav-chapter">
-                  <div className="nav-chapter-row">
+                  <div className="nav-chapter-row" onContextMenu={(e) => openChapterMenu(e, chapter, story, true)}>
                     <button
                       className="nav-chapter-toggle"
                       aria-expanded={expandedChapters.has(chapter.id)}
@@ -380,6 +479,7 @@ export default function StoryNavigator({
                         onDragStart={() => setDraggedSceneId(scene.id)}
                         onDragEnd={() => setDraggedSceneId(null)}
                         onDragOver={(e) => e.preventDefault()}
+                        onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, true)}
                         onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
                         onDrop={() => {
                           if (!draggedSceneId || draggedSceneId === scene.id) return;
@@ -434,7 +534,7 @@ export default function StoryNavigator({
                       );
                       return (
                         <div key={chapter.id} className="nav-chapter">
-                          <div className="nav-chapter-row">
+                          <div className="nav-chapter-row" onContextMenu={(e) => openChapterMenu(e, chapter, story, false)}>
                             <button
                               className="nav-chapter-toggle"
                               aria-expanded={expandedChapters.has(chapter.id)}
@@ -472,6 +572,7 @@ export default function StoryNavigator({
                                   onDragStart={() => setDraggedSceneId(scene.id)}
                                   onDragEnd={() => setDraggedSceneId(null)}
                                   onDragOver={(e) => e.preventDefault()}
+                                  onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, false)}
                                   onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
                                   onDrop={() => {
                                     if (!draggedSceneId || draggedSceneId === scene.id) return;
@@ -517,6 +618,17 @@ export default function StoryNavigator({
         >
           Start from a template →
         </button>
+      )}
+      {ctxMenu && (
+        <ContextMenu
+          open
+          position={{ x: ctxMenu.x, y: ctxMenu.y }}
+          onClose={() => setCtxMenu(null)}
+          onAction={ctxMenu.onAction}
+          items={ctxMenu.items}
+          aria-label="Story navigator actions"
+          data-testid="story-navigator-context-menu"
+        />
       )}
     </nav>
   );

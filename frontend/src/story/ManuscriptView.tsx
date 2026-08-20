@@ -1666,7 +1666,12 @@ export default function ManuscriptView({
         marginPx={marginPx}
         min={PAGE_WIDTH_MIN}
         max={PAGE_WIDTH_MAX}
-        gutterOpen={commentsVisible}
+        // SKY-10917: must mirror the CommentsGutter render condition below
+        // (line ~1843), not just the comments-enabled preference — otherwise
+        // the ruler reserves 236px for a gutter that isn't actually on
+        // screen (e.g. a scene with zero comments), and every diamond drifts
+        // ~118px off the page/margin edges it's supposed to sit on.
+        gutterOpen={(commentsVisible && comments.length > 0) || reader.open}
         onChange={setPageW}
         onCommit={commitPageWidth}
         onMarginChange={setMarginPx}

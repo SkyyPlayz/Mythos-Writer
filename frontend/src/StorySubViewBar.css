@@ -38,13 +38,16 @@
   max-width: 140px;
 }
 
-/* ── Sub-view tabs (center) ── */
+/* ── Sub-view tabs ── */
+/* SKY-10917: was flex:1 + justify-content:center, which floats the pill in
+   the middle of the whole window instead of left-aligned inline with the
+   rest of the row (mockup: prototype dc.html ~6498 — the sub-tab pill is
+   the flex row's first child, followed by a flex:1 spacer, so it hugs the
+   left edge next to the doc tab strip / story title above it). */
 .story-subview-bar__tabs {
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 1;
-  justify-content: center;
 }
 
 .story-subview-bar__tab {

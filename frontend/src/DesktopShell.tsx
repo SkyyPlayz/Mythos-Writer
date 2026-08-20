@@ -3278,6 +3278,52 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
 
+  // SKY-10917: Story Navigator right-click "Delete scene…" — the tree had no
+  // remove path at all before this. Scoped to story.chapters like
+  // createScene/createChapter above; a Part-grouped story's chapters live
+  // under story.parts[] instead, which this (and add-chapter/add-scene)
+  // don't reach — StoryNavigator only offers this menu item on the
+  // simple-single-part render branch so it never no-ops silently.
+  const deleteScene = useCallback(async (storyId: string, chapterId: string, sceneId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
+    if (!story || !chapter || !scene) return;
+    if (!window.confirm(`Delete "${scene.title || 'Untitled Scene'}"? This cannot be undone.`)) return;
+    updateManifest(stories.map((s) =>
+      s.id !== storyId ? s : {
+        ...s,
+        chapters: s.chapters.map((ch) =>
+          ch.id !== chapterId ? ch : { ...ch, scenes: ch.scenes.filter((sc) => sc.id !== sceneId) }
+        ),
+      }
+    ));
+    window.api?.deleteVault?.(scene.path).catch(() => {});
+    if (selectedScene?.id === sceneId) {
+      setSelectedScene(null);
+      editorApiRef.current?.focus();
+    }
+    showLnToast(`Deleted "${scene.title || 'Untitled Scene'}"`);
+  }, [stories, updateManifest, selectedScene]);
+
+  const deleteChapter = useCallback(async (storyId: string, chapterId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    if (!story || !chapter) return;
+    const sceneCount = chapter.scenes.length;
+    const warn = sceneCount > 0 ? ` and its ${sceneCount} scene${sceneCount === 1 ? '' : 's'}` : '';
+    if (!window.confirm(`Delete "${chapter.title || 'Untitled Chapter'}"${warn}? This cannot be undone.`)) return;
+    updateManifest(stories.map((s) =>
+      s.id !== storyId ? s : { ...s, chapters: s.chapters.filter((c) => c.id !== chapterId) }
+    ));
+    await Promise.all(chapter.scenes.map((sc) => window.api?.deleteVault?.(sc.path).catch(() => {})));
+    if (selectedChapter?.id === chapterId) {
+      setSelectedChapter(null);
+      setSelectedScene(null);
+    }
+    showLnToast(`Deleted "${chapter.title || 'Untitled Chapter'}"`);
+  }, [stories, updateManifest, selectedChapter]);
+
   // M3 (SKY-9021): create story → instantly writable. ONE transaction builds
   // story + Part 1 (title: "", the v3 single-untitled-part shape) + Chapter 1
   // + one untitled scene holding a single empty paragraph, then opens the
@@ -4752,6 +4798,38 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     refreshManuscriptSelection(renamed);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
+  // SKY-10917: Story Navigator right-click "Rename…" — same commit path as
+  // the inline doc-header rename above, just prompted via requestText
+  // (prefilled with the current title) instead of an in-place edit, since
+  // the navigator row isn't itself contentEditable. Scoped to story.chapters
+  // like createScene/createChapter — see deleteScene's comment.
+  const handleContextRenameScene = useCallback(async (sceneId: string) => {
+    const story = stories.find((s) => s.chapters.some((ch) => ch.scenes.some((sc) => sc.id === sceneId)));
+    const chapter = story?.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
+    if (!story || !scene) return;
+    const title = await requestText('Scene title:', scene.title);
+    if (!title?.trim()) return;
+    const renamed = renameScene(story, sceneId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+    const renamedScene = renamed.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (renamedScene) persistSceneMarkdown(renamedScene);
+  }, [stories, updateManifest, requestText, refreshManuscriptSelection, persistSceneMarkdown]);
+
+  const handleContextRenameChapter = useCallback(async (chapterId: string) => {
+    const story = stories.find((s) => s.chapters.some((ch) => ch.id === chapterId));
+    const chapter = story?.chapters.find((ch) => ch.id === chapterId);
+    if (!story || !chapter) return;
+    const title = await requestText('Chapter title:', chapter.title);
+    if (!title?.trim()) return;
+    const renamed = renameChapter(story, chapterId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+  }, [stories, updateManifest, requestText, refreshManuscriptSelection]);
+
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
   // story title). TitleRow reverts empties/normalizes before committing here.
   const handleManuscriptRenameStory = useCallback((title: string) => {
@@ -5480,6 +5558,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onPromoteSceneNote={handlePromoteSceneNote}
             onCycleSceneStatus={handleManuscriptCycleStatus}
+            onRenameChapter={handleContextRenameChapter}
+            onRenameScene={handleContextRenameScene}
+            onDeleteChapter={deleteChapter}
+            onDeleteScene={deleteScene}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
           />
