@@ -31,13 +31,16 @@ export function normalizeExcerpt(excerpt: string): string {
   return excerpt.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-/** Identity key of a continuity finding for dedupe purposes. */
+/** Identity key of a continuity finding for dedupe purposes.
+ *  `scope` is optional for backward compatibility with pre-M12.B1 callers —
+ *  omitting it groups everything under one bucket, same as before. */
 export function continuityDedupeKey(
   sceneId: string,
   category: string,
   excerpt: string,
+  scope?: string,
 ): string {
-  return `${sceneId}\0${category}\0${normalizeExcerpt(excerpt)}`;
+  return `${sceneId}\0${category}\0${normalizeExcerpt(excerpt)}\0${scope ?? ''}`;
 }
 
 /** Statuses that block re-inserting the same finding. `resolved` is absent on
@@ -55,17 +58,22 @@ export function dedupeScanItems(
   const seen = new Set<string>();
   for (const row of existing) {
     if (!BLOCKING_STATUSES.has(row.status)) continue;
+    // M12.B1: pre-v29 / scope-less rows default to 'story_vault' (dbRowToItem
+    // does the same), so legacy rows still dedupe against story_vault items.
     seen.add(
-      continuityDedupeKey(row.manuscript_scene_id, row.category, row.manuscript_excerpt),
+      continuityDedupeKey(row.manuscript_scene_id, row.category, row.manuscript_excerpt, row.scope ?? 'story_vault'),
     );
   }
 
   const fresh: InconsistencyItem[] = [];
   for (const item of items) {
+    // M12.B1: scope is part of the identity — Check 1 and Check 2 findings
+    // for the same scene/category/excerpt text are NOT the same finding.
     const key = continuityDedupeKey(
       item.manuscriptAnchor.sceneId,
       item.category,
       item.manuscriptAnchor.excerpt,
+      item.scope,
     );
     if (seen.has(key)) continue;
     seen.add(key);
