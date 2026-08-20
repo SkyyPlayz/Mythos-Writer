@@ -6117,6 +6117,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 onUpdated={(updated) => setSelectedEntity(updated)}
                 onDeleted={() => setSelectedEntity(null)}
                 onOpenScene={handleOpenSceneByPath}
+                // SKY-10926: reuse the same @-mention "open entity by id"
+                // navigation used elsewhere (handleEntityMentionClick) so a
+                // backlink click here follows the identical code path as
+                // opening any other entity — was previously left unwired,
+                // permanently disabling the "Connections" backlink buttons.
+                onOpenEntity={handleEntityMentionClick}
               />
             ) : openedNotePath ? (
               // SKY-204: vault note viewer (daily notes and any other .md file)
