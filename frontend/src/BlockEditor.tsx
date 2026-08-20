@@ -331,9 +331,12 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
 
   // SKY-10937: report the live editor instance to a chromeless host on every
   // mount/unmount so it can drive real formatting commands from its own
-  // toolbar instead of this component's (suppressed) FormatToolbar.
+  // toolbar instead of this component's (suppressed) FormatToolbar. The
+  // cleanup reports null so the host drops its reference when this instance
+  // goes away (component unmount, or scene change remounting a new one).
   useEffect(() => {
     onEditorInstanceChangeRef.current?.(editor);
+    return () => onEditorInstanceChangeRef.current?.(null);
   }, [editor]);
 
   // Push updated wiki-link hint suggestions into the ProseMirror plugin

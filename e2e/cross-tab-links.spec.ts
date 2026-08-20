@@ -106,7 +106,9 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
       await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
 
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.scene-name', { hasText: 'Opening Scene' })).toBeVisible();
+      // SKY-10937: scene depth composes through ManuscriptView's unified shell —
+      // the scene title now lives in its title row, not a BlockEditor-owned header.
+      await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: 'Opening Scene' })).toBeVisible();
 
       await page.getByText('[[Character: Elara]]', { exact: true }).click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });

@@ -155,7 +155,9 @@ async function openScene(page: Page): Promise<void> {
   const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
-  await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+  // SKY-10937: scene depth composes through ManuscriptView's unified shell —
+  // the scene title now lives in its title row, not a BlockEditor-owned header.
+  await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
 }
 
 async function openSceneLinksNote(page: Page): Promise<void> {

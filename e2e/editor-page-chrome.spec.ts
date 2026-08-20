@@ -119,6 +119,52 @@ test('PC-01: manuscript formatting toolbar renders style/font/size/line-spacing 
   }
 });
 
+// SKY-10937 / SKY-10925: scene depth used to drop into BlockEditor's own
+// header + FormatToolbar + page card instead of composing through this
+// unified msv-toolbar/msv-sheet shell — the R9 violation this net pins shut.
+test('PC-09: scene depth composes through the unified shell — exactly one toolbar, no nested page card (SKY-10937)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    // Scene depth: BlockEditor mounts chromeless inside ManuscriptView's own
+    // page frame — exactly ONE formatting toolbar in the DOM, not msv-toolbar
+    // plus a second BlockEditor-owned header/FormatToolbar.
+    await expect(page.getByTestId('msv-toolbar')).toHaveCount(1);
+    await expect(page.locator('.fmt-toolbar')).toHaveCount(0);
+    await expect(page.locator('.block-editor-toolbar')).toHaveCount(0);
+
+    // The prose container is the page element (.msv-sheet), not a second
+    // nested "card" — BlockEditor's own page-card styling stands down when
+    // chromeless (transparent background, no radius, no shadow).
+    const proseCard = page.locator('.tiptap-content');
+    await expect(proseCard).toBeVisible();
+    const cardStyle = await proseCard.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { background: cs.backgroundColor, borderRadius: cs.borderRadius, boxShadow: cs.boxShadow };
+    });
+    expect(cardStyle.background).toMatch(/^(transparent|rgba\(0, ?0, ?0, ?0\))$/);
+    expect(cardStyle.borderRadius).toBe('0px');
+    expect(cardStyle.boxShadow).toBe('none');
+
+    // The editor content sits inside the depth-invariant page sheet, and the
+    // old standalone "page-mode" wrapper (a second nested page surface) is gone.
+    await expect(page.locator('[data-testid="msv-sheet"] .tiptap-content')).toHaveCount(1);
+    await expect(page.locator('.shell-editor-beta-wrap--page-mode')).toHaveCount(0);
+
+    // Book/part/chapter never had a competing toolbar — pin that the unified
+    // shell stays single-toolbar across every depth, not just scene.
+    for (const depth of ['msv-zoom-chapter', 'msv-zoom-part', 'msv-zoom-book'] as const) {
+      await page.getByTestId(depth).click();
+      await expect(page.getByTestId('msv-toolbar')).toHaveCount(1);
+      await expect(page.locator('.fmt-toolbar')).toHaveCount(0);
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
 test('PC-02: page setup popover opens from the page chip and live-updates the page width', async () => {
   const app = await launchApp(userData);
   try {
