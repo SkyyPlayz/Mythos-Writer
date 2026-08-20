@@ -8,7 +8,7 @@ import os from 'os';
 import path from 'path';
 import { openDb, closeDb } from '../db.js';
 import { JobQueue, type SpawnedWorker } from './jobQueue.js';
-import { getBackgroundJob } from './jobsDb.js';
+import { getBackgroundJob, insertBackgroundJob } from './jobsDb.js';
 import type { JobEvent, WorkerInMessage, WorkerInput, WorkerOutMessage } from './types.js';
 
 class FakeWorker implements SpawnedWorker {
@@ -109,6 +109,33 @@ describe('JobQueue lifecycle', () => {
     const row = getBackgroundJob(id)!;
     expect(row.status).toBe('failed');
     expect(row.error).toContain('code 7');
+  });
+
+  it('pumps the next queued job when spawnWorker throws synchronously', () => {
+    // Seed two already-queued jobs directly (mirrors resumeInterrupted()
+    // requeuing several interrupted jobs at boot) so a single pump() cycle
+    // has to get through both, instead of relying on a fresh enqueue() call
+    // to kick the second one loose.
+    const first = insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/a"}' }).id;
+    const second = insertBackgroundJob({ type: 'vault-scan', payloadJson: '{"vaultRoot":"/b"}' }).id;
+
+    let throwNext = true;
+    const flakySpawn = (input: WorkerInput): FakeWorker => {
+      if (throwNext) {
+        throwNext = false;
+        throw new Error('worker bundle failed to load');
+      }
+      return spawnFake(input);
+    };
+    const queue = new JobQueue({ spawnWorker: flakySpawn });
+    queue.resumeInterrupted();
+
+    expect(getBackgroundJob(first)!.status).toBe('failed');
+    // Must not stall: the second job should already be running in the same
+    // pump cycle, not left 'queued' until another enqueue() or app restart.
+    expect(getBackgroundJob(second)!.status).toBe('running');
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].input.jobId).toBe(second);
   });
 
   it('cancels a running job cooperatively', () => {
