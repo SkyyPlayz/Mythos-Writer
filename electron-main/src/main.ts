@@ -239,6 +239,7 @@ import {
 import { writeImportedStoryToVault } from './storyImportWriter.js';
 import { scanVaultSource, convertVaultSource, secondVaultDestination } from './vaultConvert.js';
 import { watchBoardFile, stopBoardWatcher } from './sceneCrafterWatcher.js';
+import { runQuitTeardownStep } from './quitTeardown.js';
 import { boardRelPath } from './sceneCrafterBoard.js';
 import {
   handleGetBoard,
@@ -9945,19 +9946,27 @@ app.whenReady().then(async () => {
   });
 });
 
+// app.quit() always runs in the finally below regardless of teardown outcome —
+// a partially-failed teardown must not hold the process hostage.
 app.on('window-all-closed', async () => {
-  stopWritingScanScheduler();
-  stopArchiveContScheduler();
-  await stopBoardWatcher();
-  await stopVaultWatcher();
-  await stopNotesVaultWatcher();
-  // SKY-10730: stop any running background job worker before the DB closes.
-  // Checkpoints are persisted continuously, so the job resumes next launch.
-  await shutdownJobService();
-  closeDb();
-  // SKY-863: release the vault lockfile so the next session doesn't see a stale lock.
-  try { releaseLockfile(getVaultRoot()); } catch { /* non-fatal */ }
-  if (process.platform !== 'darwin') {
-    app.quit();
+  try {
+    await runQuitTeardownStep('stopWritingScanScheduler', () => stopWritingScanScheduler());
+    await runQuitTeardownStep('stopArchiveContScheduler', () => stopArchiveContScheduler());
+    await runQuitTeardownStep('stopBoardWatcher', () => stopBoardWatcher());
+    await runQuitTeardownStep('stopVaultWatcher', () => stopVaultWatcher());
+    await runQuitTeardownStep('stopNotesVaultWatcher', () => stopNotesVaultWatcher());
+    // SKY-10730: stop any running background job worker before the DB closes.
+    // Checkpoints are persisted continuously, so the job resumes next launch.
+    await runQuitTeardownStep('shutdownJobService', () => shutdownJobService());
+    await runQuitTeardownStep('closeDb', () => closeDb());
+    // SKY-863: release the vault lockfile so the next session doesn't see a stale lock.
+    await runQuitTeardownStep('releaseLockfile', () => releaseLockfile(getVaultRoot()));
+  } finally {
+    // Unconditional: a partially-failed teardown must not hold the process
+    // hostage. SQLite is crash-safe and job checkpoints persist continuously,
+    // so a dirty exit here loses nothing a clean one wouldn't.
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
   }
 });
