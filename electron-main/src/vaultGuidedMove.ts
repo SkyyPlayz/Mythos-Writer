@@ -147,12 +147,16 @@ export interface GuidedMoveResult {
 // is frequently transient even after we release our own handles (watcher +
 // DB) — the OS can take a moment to actually free a just-closed handle, or a
 // background scanner (Defender, Windows Search Indexer) briefly holds one.
-// uninstallHelper.ts's removeEntry() learned this same lesson for deletes
-// (fs.rmSync's maxRetries/retryDelay); rename has no built-in retry, so we
-// apply the identical budget by hand here.
+// uninstallHelper.ts's removeEntry() started from the same 10x/100ms budget
+// for deletes, but the native-Windows `notes-windows` CI job reproduced the
+// budget being exhausted on this exact rename twice in a row (real
+// `EPERM: operation not permitted, rename ...` after all 10 retries) — a
+// held-open SQLite handle apparently takes longer to release than a plain
+// delete. Widened to 6s of headroom, still comfortably inside the wizard's
+// 15s "waiting for the move to finish" UI timeout.
 const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'ENOTEMPTY']);
-const RENAME_MAX_RETRIES = 10;
-const RENAME_RETRY_DELAY_MS = 100;
+const RENAME_MAX_RETRIES = 40;
+const RENAME_RETRY_DELAY_MS = 150;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

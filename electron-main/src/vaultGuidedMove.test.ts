@@ -472,11 +472,18 @@ describe('moveVaultAtomic', () => {
       .spyOn(fs.promises, 'rename')
       .mockRejectedValue(Object.assign(new Error('still locked'), { code: 'EPERM' }));
 
-    await expect(
-      moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} }),
-    ).rejects.toMatchObject({ message: 'still locked', code: 'EPERM' });
-    // 1 initial attempt + 10 retries.
-    expect(renameSpy).toHaveBeenCalledTimes(11);
+    // Fake timers so the full 6s retry budget doesn't cost 6 real seconds.
+    vi.useFakeTimers();
+    try {
+      const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
+      const assertion = expect(result).rejects.toMatchObject({ message: 'still locked', code: 'EPERM' });
+      await vi.runAllTimersAsync();
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+    // 1 initial attempt + 40 retries.
+    expect(renameSpy).toHaveBeenCalledTimes(41);
     // Source untouched — never fell through to the copy fallback.
     expect(fs.existsSync(src)).toBe(true);
 
