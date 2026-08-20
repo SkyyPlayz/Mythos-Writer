@@ -181,6 +181,12 @@ export const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]
     ['female', ' he '],
     ['female', ' his '],
   ],
+  // M12.B1 (SKY-10736): owner's own Check 2 example — a location note's rule
+  // ("opens only at low tide") vs a scene that enters at high tide.
+  tide: [
+    ['low tide', 'high tide'],
+    ['high tide', 'low tide'],
+  ],
 };
 
 export interface ArchiveIgnoreKey {

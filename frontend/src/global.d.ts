@@ -1635,7 +1635,7 @@ interface Window {
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
         id: string;
-        scope: 'story_vault' | 'vault_internal' | 'timeline';
+        scope: 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
         category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
         severity: 'critical' | 'high' | 'medium' | 'low';
         manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };
@@ -1653,7 +1653,7 @@ interface Window {
       sceneId: string;
       items: Array<{
         id: string;
-        scope: 'story_vault' | 'vault_internal' | 'timeline';
+        scope: 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
         category: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
         severity: 'critical' | 'high' | 'medium' | 'low';
         manuscriptAnchor: { sceneId: string; offset: number; excerpt: string };

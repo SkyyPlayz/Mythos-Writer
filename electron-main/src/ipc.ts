@@ -3930,8 +3930,11 @@ export type ArchiveScanScope = 'active_scene' | 'active_chapter' | 'full_manuscr
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
 /** M9d (SKY-9825): which two sources a flag says disagree — rendered as the
- *  card's scope tag (`Story ↔ Vault` / `Vault internal` / `Timeline`). */
-export type ContinuityScope = 'story_vault' | 'vault_internal' | 'timeline';
+ *  card's scope tag (`Story ↔ Vault` / `Vault internal` / `Timeline`).
+ *  M12.B1 (SKY-10736): `story_internal` added — the Archive agent's Check 1
+ *  (manuscript vs itself), distinct from `vault_internal` (unused/reserved,
+ *  two vault notes disagreeing with each other). */
+export type ContinuityScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface InconsistencyItem {
   id: string;
@@ -3963,6 +3966,9 @@ export interface ArchiveScanContinuityPayload {
   sceneId: string;
   text: string;
   scope?: ArchiveScanScope;
+  /** M12.B1 (SKY-10736): which continuity check(s) to run — 'story_internal'
+   *  (Check 1) and/or 'story_vault' (Check 2). Omitted = run both. */
+  checks?: Array<'story_internal' | 'story_vault'>;
 }
 
 export interface ArchiveResolveContinuityPayload {

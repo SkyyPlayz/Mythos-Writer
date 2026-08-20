@@ -347,6 +347,7 @@ import {
   listContinuityIssuesByScene,
   getContinuityIssue,
   updateContinuityIssueStatus,
+  insertArchiveProposedQuestion,
   insertArchiveAuditLog,
   insertSuggestionSnapshot,
   getSuggestionSnapshot,
@@ -491,12 +492,18 @@ import {
   runEntityPrePass,
   buildScanPrompt,
   parseScanResponse,
+  runInternalPrePass,
+  buildInternalScanPrompt,
+  parseInternalScanResponse,
+  GAP_HUNT_SYSTEM_SUFFIX,
+  parseGapQuestions,
   shouldReSurface,
   dbRowToItem,
   itemToDbRow,
   applyExcerptPatch,
   DEFAULT_SCAN_BUDGET_TOKENS,
 } from './archiveContinuityEngine.js';
+import { buildManuscriptPass, scenesBefore } from './manuscriptPass.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import {
@@ -9315,15 +9322,27 @@ function maybeGenerateSceneCrafterSuggestions(storySlug: string | null): void {
 // and returns aggregate drift metrics.
 // ─── Archive Agent v1 — continuity scan engine (SKY-1684) ───────────────────
 
-/** Run the LLM continuity scan for a scene and push events to all windows. */
-async function runArchiveContScan(
+/** M12.B1 (SKY-10736): the Archive agent's two independently-runnable
+ *  continuity checks — Check 1 'story_internal' (manuscript vs itself) and
+ *  Check 2 'story_vault' (manuscript vs vault notes). Running one never
+ *  requires the other. */
+type ArchiveContinuityCheckKind = 'story_internal' | 'story_vault';
+const ALL_ARCHIVE_CONTINUITY_CHECKS: ArchiveContinuityCheckKind[] = ['story_internal', 'story_vault'];
+
+/**
+ * Run ONE of the Archive agent's two continuity checks for a scene and push
+ * events to all windows. Check 2 ('story_vault') additionally hunts for
+ * vault gaps and emits proposed Brainstorm questions in the same LLM pass
+ * (owner ruling, SKY-10528) — a separate artifact class, never merged into
+ * the returned continuity items.
+ */
+async function runOneArchiveContinuityCheck(
+  checkKind: ArchiveContinuityCheckKind,
   sceneId: string,
   prose: string,
-  scope: import('./ipc.js').ArchiveScanScope,
+  scopeToUse: import('./ipc.js').ArchiveScanScope,
 ): Promise<import('./ipc.js').InconsistencyItem[]> {
   const settings = loadAppSettings();
-  if (!settings.archiveContinuityEnabled) return [];
-  if (!settings.agents.archive.enabled) return [];
 
   let archiveIndex = getArchiveIndex();
   if (!archiveIndex) {
@@ -9333,12 +9352,49 @@ async function runArchiveContScan(
     } catch { return []; }
   }
 
-  // Entity pre-pass (AC-CC-14): skip LLM when no mismatches detected.
-  const candidates = runEntityPrePass(prose, archiveIndex);
-  if (candidates.length === 0) return [];
-
   const budgetTokens = settings.archiveScanBudget ?? DEFAULT_SCAN_BUDGET_TOKENS;
-  const { systemPrompt: scanPrompt, userContent, partial } = buildScanPrompt(prose, candidates, budgetTokens);
+
+  let scanPrompt: string;
+  let userContent: string;
+  let partial: boolean;
+  // Check 2 only — entity id -> its vault note path (M9d "Edit notes to
+  // match"). Check 1 only — earlier scene id -> its manuscript path.
+  let entityNotePaths = new Map<string, string>();
+  let priorScenePaths = new Map<string, string>();
+
+  if (checkKind === 'story_vault') {
+    // Entity pre-pass (AC-CC-14): skip the LLM call when no mismatches detected.
+    const candidates = runEntityPrePass(prose, archiveIndex);
+    if (candidates.length === 0) return [];
+    const built = buildScanPrompt(prose, candidates, budgetTokens);
+    // Owner ruling (SKY-10528): while running Check 2, also gap-hunt the
+    // vault and propose Brainstorm questions — same call, extra instructions.
+    scanPrompt = built.systemPrompt + GAP_HUNT_SYSTEM_SUFFIX;
+    userContent = built.userContent;
+    partial = built.partial;
+    entityNotePaths = new Map(archiveIndex.entities.map((e) => [e.id, e.path]));
+  } else {
+    let priorScenes: import('./manuscriptPass.js').ManuscriptPassScene[] = [];
+    try {
+      const manifest = readManifest(getManifestPath());
+      const storySlug = deriveStorySlugFromSceneId(manifest, sceneId);
+      if (storySlug) {
+        const pass = buildManuscriptPass(getVaultRoot(), manifest, storySlug);
+        priorScenes = scenesBefore(pass, sceneId);
+      }
+    } catch { /* no manuscript pass — Check 1 has nothing to compare against */ }
+
+    if (priorScenes.length === 0) return []; // nothing established yet to contradict
+
+    const candidates = runInternalPrePass(prose, priorScenes, archiveIndex);
+    if (candidates.length === 0) return [];
+    const built = buildInternalScanPrompt(prose, candidates, budgetTokens);
+    scanPrompt = built.systemPrompt;
+    userContent = built.userContent;
+    partial = built.partial;
+    priorScenePaths = new Map(priorScenes.map((s) => [s.sceneId, s.scenePath]));
+  }
+
   // Beta 3 M22: append the Archive agent's editable identity files (persona +
   // learnings) after the engineered scan prompt. Appended — never replacing —
   // so the strict findings output format stays authoritative.
@@ -9348,8 +9404,6 @@ async function runArchiveContScan(
     archivePersona.SOUL.content.trim(),
     archivePersona.LEARNING.content.trim(),
   ].filter(Boolean).join('\n\n---\n\n');
-
-  const scopeToUse = scope ?? (settings.archiveScanScope ?? 'active_scene');
 
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
@@ -9396,7 +9450,7 @@ async function runArchiveContScan(
     try {
       insertGenerationLog({
         id: crypto.randomUUID(),
-        agent: 'archive-continuity',
+        agent: checkKind === 'story_internal' ? 'archive-continuity-internal' : 'archive-continuity',
         model: providerConfig.model,
         endpoint: 'messages.stream',
         request_id: null,
@@ -9411,16 +9465,12 @@ async function runArchiveContScan(
   }
 
   const createdAt = new Date().toISOString();
-  // M9d: anchor each finding to its entity's real note path so "Edit notes to
-  // match" can patch the note. Unknown entity ids fall back to '' — the
-  // resolve handler reports note_not_found instead of guessing.
-  const entityPaths = new Map(getArchiveIndex()?.entities.map((e) => [e.id, e.path]) ?? []);
-  const parsed = parseScanResponse(
-    text,
-    sceneId,
-    (entityId) => entityPaths.get(entityId) ?? '',
-    createdAt,
-  );
+  const parsed = checkKind === 'story_vault'
+    // M9d: anchor each finding to its entity's real note path so "Edit notes
+    // to match" can patch the note. Unknown entity ids fall back to '' — the
+    // resolve handler reports note_not_found instead of guessing.
+    ? parseScanResponse(text, sceneId, (entityId) => entityNotePaths.get(entityId) ?? '', createdAt)
+    : parseInternalScanResponse(text, sceneId, (priorSceneId) => priorScenePaths.get(priorSceneId) ?? '', createdAt);
 
   // Beta 3 M23: dedupe against existing open/ignored rows so re-scans of an
   // unchanged scene don't stack duplicate flags (and therefore duplicate
@@ -9437,6 +9487,25 @@ async function runArchiveContScan(
     } catch { /* non-fatal — duplicate ids or db closed */ }
   }
 
+  // Check 2 only — gap-hunt questions ride the same response text, but are a
+  // distinct artifact class (never merged into `items`/continuity_issues).
+  if (checkKind === 'story_vault') {
+    try {
+      for (const question of parseGapQuestions(text, sceneId, createdAt)) {
+        try {
+          insertArchiveProposedQuestion({
+            id: question.id,
+            source_scene_id: question.sourceSceneId,
+            entity_name: question.entityName,
+            question_text: question.questionText,
+            rationale: question.rationale,
+            created_at: question.createdAt,
+          });
+        } catch { /* non-fatal */ }
+      }
+    } catch { /* non-fatal */ }
+  }
+
   // SKY-3200 §4b: post-continuity-scan trigger — only when the scan found something
   // (zero findings = no narrative signal for gap detection either).
   if (items.length > 0) {
@@ -9449,8 +9518,9 @@ async function runArchiveContScan(
   const tokenUsed = Math.ceil((systemPrompt.length + userContent.length + text.length) / 4);
 
   // Beta 3 M23: the scan-result event carries the scene's full current OPEN
-  // set (persisted + newly found), not just this pass's fresh findings —
-  // the Continuity panel and the comments bridge both treat it as truth.
+  // set (persisted + newly found, across BOTH checks), not just this pass's
+  // fresh findings — the Continuity panel and the comments bridge both treat
+  // it as truth.
   let eventItems = items;
   try {
     eventItems = listContinuityIssuesByScene(sceneId, 'open').map(dbRowToItem);
@@ -9468,6 +9538,34 @@ async function runArchiveContScan(
   });
 
   return items;
+}
+
+/**
+ * Run the Archive agent's continuity check(s) for a scene and push events to
+ * all windows. Defaults to running BOTH Check 1 (story-internal) and Check 2
+ * (story-vault) — the owner's ruling is that Archive runs two distinct
+ * checks — but `checks` lets a caller run either one independently (M12.B3's
+ * panel mode-selector will drive this; automatic triggers run both).
+ */
+async function runArchiveContScan(
+  sceneId: string,
+  prose: string,
+  scope: import('./ipc.js').ArchiveScanScope,
+  checks: ArchiveContinuityCheckKind[] = ALL_ARCHIVE_CONTINUITY_CHECKS,
+): Promise<import('./ipc.js').InconsistencyItem[]> {
+  const settings = loadAppSettings();
+  if (!settings.archiveContinuityEnabled) return [];
+  if (!settings.agents.archive.enabled) return [];
+
+  const scopeToUse = scope ?? (settings.archiveScanScope ?? 'active_scene');
+
+  const results: import('./ipc.js').InconsistencyItem[] = [];
+  for (const checkKind of checks) {
+    try {
+      results.push(...await runOneArchiveContinuityCheck(checkKind, sceneId, prose, scopeToUse));
+    } catch { /* one check failing must not block the other */ }
+  }
+  return results;
 }
 
 /** On-save trigger (AC-CC-02): fires within 500 ms of scene save when enabled. */
@@ -9717,7 +9815,9 @@ function registerArchiveContinuityHandlers(): void {
       const settings = loadAppSettings();
       if (!settings.archiveContinuityEnabled || !settings.agents.archive.enabled) return [];
       const scope = payload.scope ?? settings.archiveScanScope ?? 'active_scene';
-      const items = await runArchiveContScan(payload.sceneId, payload.text, scope);
+      const items = payload.checks
+        ? await runArchiveContScan(payload.sceneId, payload.text, scope, payload.checks)
+        : await runArchiveContScan(payload.sceneId, payload.text, scope);
       // Also run re-surface check on explicit renderer-initiated scans.
       reSurfaceIgnoredItems(payload.sceneId, payload.text);
       return items;
