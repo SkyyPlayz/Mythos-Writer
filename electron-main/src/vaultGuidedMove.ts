@@ -143,6 +143,21 @@ export interface GuidedMoveResult {
   verification: PostMoveVerification;
 }
 
+// SKY-10895: on Windows, EPERM/EBUSY/ENOTEMPTY renaming the vault directory
+// is frequently transient even after we release our own handles (watcher +
+// DB) — the OS can take a moment to actually free a just-closed handle, or a
+// background scanner (Defender, Windows Search Indexer) briefly holds one.
+// uninstallHelper.ts's removeEntry() learned this same lesson for deletes
+// (fs.rmSync's maxRetries/retryDelay); rename has no built-in retry, so we
+// apply the identical budget by hand here.
+const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'ENOTEMPTY']);
+const RENAME_MAX_RETRIES = 10;
+const RENAME_RETRY_DELAY_MS = 100;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Renames `src` to `dest`, falling back to a recursive copy + source removal
  * when the OS refuses a plain rename across filesystems (EXDEV — e.g. moving
@@ -152,12 +167,25 @@ export interface GuidedMoveResult {
  * a state where both copies are incomplete.
  */
 async function renameOrCopy(src: string, dest: string): Promise<void> {
-  try {
-    await fs.promises.rename(src, dest);
-    return;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+  let needsCopyFallback = false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.promises.rename(src, dest);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EXDEV') {
+        needsCopyFallback = true;
+        break;
+      }
+      if (code && RENAME_RETRY_CODES.has(code) && attempt < RENAME_MAX_RETRIES) {
+        await delay(RENAME_RETRY_DELAY_MS);
+        continue;
+      }
+      throw err;
+    }
   }
+  if (!needsCopyFallback) return;
   try {
     await fs.promises.cp(src, dest, { recursive: true });
   } catch (copyErr) {
