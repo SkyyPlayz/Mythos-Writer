@@ -26,6 +26,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
 } from 'react';
+import type { Editor } from '@tiptap/core';
 import {
   breadcrumbs,
   buildBlocks,
@@ -230,6 +231,14 @@ export interface ManuscriptViewProps {
    *  while ManuscriptView provides the chrome (title row, ruler, page prefs). */
   sceneEditorSlot?: React.ReactNode;
   /**
+   * SKY-10937: the live TipTap Editor instance backing `sceneEditorSlot`'s
+   * chromeless BlockEditor (its `onEditorInstanceChange`) — lets the toolbar
+   * below drive real formatting commands at scene depth instead of the
+   * local-state overlay the other three depths use. Null/absent outside
+   * scene depth or before the editor mounts.
+   */
+  sceneEditor?: Editor | null;
+  /**
    * SKY-9404 (M1-S4) / SKY-5904: on-canvas prev/next depth-step arrows, now
    * anchored to `.msv-sheet` (the depth-invariant page box, present at every
    * depth) instead of a scene-only wrapper — so they hug the page column at
@@ -320,6 +329,72 @@ const ALIGN_PATHS: Array<{ k: AlignKey; label: string; p: string }> = [
   { k: 'right', label: 'Align right', p: 'M4 7h16M10 12h10M7 17h13' },
   { k: 'justify', label: 'Justify', p: 'M4 7h16M4 12h16M4 17h16' },
 ];
+
+// ── SKY-10937: scene depth drives this SAME toolbar against a live TipTap
+//    editor instead of the local-state overlay above — mirrors FormatToolbar's
+//    command set (FormatToolbar.tsx) so a scene's bold/italic/align etc. land
+//    as real document marks, not a book/part/chapter-only CSS preview.
+
+const FMT_MARK: Record<FmtKey, 'bold' | 'italic' | 'underline' | 'strike'> = {
+  b: 'bold',
+  i: 'italic',
+  u: 'underline',
+  s: 'strike',
+};
+
+function isFmtActive(ed: Editor, k: FmtKey): boolean {
+  return ed.isActive(FMT_MARK[k]);
+}
+
+function toggleFmtOnEditor(ed: Editor, k: FmtKey): void {
+  switch (k) {
+    case 'b': ed.chain().focus().toggleBold().run(); break;
+    case 'i': ed.chain().focus().toggleItalic().run(); break;
+    case 'u': ed.chain().focus().toggleUnderline().run(); break;
+    case 's': ed.chain().focus().toggleStrike().run(); break;
+  }
+}
+
+// TextAlign ships defaultAlignment: null, so an untouched block reports no
+// textAlign attr — fold that unset default into "left" (GH #642, same rule
+// FormatToolbar.tsx uses) so exactly one alignment button reads pressed.
+function isAlignActiveOnEditor(ed: Editor, k: AlignKey): boolean {
+  if (k === 'left') {
+    return (
+      ed.isActive({ textAlign: 'left' }) ||
+      (!ed.isActive({ textAlign: 'center' }) &&
+        !ed.isActive({ textAlign: 'right' }) &&
+        !ed.isActive({ textAlign: 'justify' }))
+    );
+  }
+  return ed.isActive({ textAlign: k });
+}
+
+function applyAlignToEditor(ed: Editor, k: AlignKey): void {
+  if (k === 'left' || ed.isActive({ textAlign: k })) {
+    ed.chain().focus().unsetTextAlign().run();
+  } else {
+    ed.chain().focus().setTextAlign(k).run();
+  }
+}
+
+function getActiveStyleValue(ed: Editor): string {
+  if (ed.isActive('blockquote')) return 'Quote';
+  if (ed.isActive('heading', { level: 1 })) return 'Heading 1';
+  if (ed.isActive('heading', { level: 2 })) return 'Heading 2';
+  if (ed.isActive('heading', { level: 3 })) return 'Heading 3';
+  return 'Body Text';
+}
+
+function applyStyleToEditor(ed: Editor, value: string): void {
+  switch (value) {
+    case 'Heading 1': ed.chain().focus().toggleHeading({ level: 1 }).run(); break;
+    case 'Heading 2': ed.chain().focus().toggleHeading({ level: 2 }).run(); break;
+    case 'Heading 3': ed.chain().focus().toggleHeading({ level: 3 }).run(); break;
+    case 'Quote': ed.chain().focus().toggleBlockquote().run(); break;
+    default: ed.chain().focus().setParagraph().run();
+  }
+}
 
 // ── Lazy windowing (GH#843): render only ~WINDOW blocks around the viewport,
 //    replacing everything outside with top/bottom spacers sized from an
@@ -437,6 +512,7 @@ export default function ManuscriptView({
   snapshotSavedAt,
   sceneHistory,
   sceneEditorSlot,
+  sceneEditor,
   edgeNav,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
@@ -458,6 +534,25 @@ export default function ManuscriptView({
   const [lineSpacing, setLineSpacing] = useState(() => String(resolveLineHeight(pagePrefs)));
   const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
   const [align, setAlign] = useState<AlignKey>('left');
+
+  // SKY-10937: mirror the sceneEditorSlot's live TipTap instance locally and
+  // force a re-render on every transaction/selection change — TipTap's Editor
+  // object mutates internally rather than getting a new reference, so without
+  // this tick the toolbar's isActive() reads would go stale mid-selection
+  // (same pattern FormatToolbar.tsx uses for its own bold/italic/align state).
+  const [liveSceneEditor, setLiveSceneEditor] = useState<Editor | null>(sceneEditor ?? null);
+  const [, tickSceneEditor] = useState(0);
+  useEffect(() => {
+    setLiveSceneEditor(sceneEditor ?? null);
+    if (!sceneEditor) return;
+    const tick = () => tickSceneEditor((t) => t + 1);
+    sceneEditor.on('transaction', tick);
+    sceneEditor.on('selectionUpdate', tick);
+    return () => {
+      sceneEditor.off('transaction', tick);
+      sceneEditor.off('selectionUpdate', tick);
+    };
+  }, [sceneEditor]);
 
   // M1-S3: one commit path for every page-pref control — toolbar selects,
   // ruler diamonds, edge drags, and the popover all end here.
@@ -1399,8 +1494,11 @@ export default function ManuscriptView({
           className="msv-tb-select"
           data-testid="msv-style-select"
           aria-label="Paragraph style"
-          value={styleSel}
-          onChange={(e) => setStyleSel(e.target.value)}
+          value={liveSceneEditor ? getActiveStyleValue(liveSceneEditor) : styleSel}
+          onChange={(e) => {
+            if (liveSceneEditor) applyStyleToEditor(liveSceneEditor, e.target.value);
+            else setStyleSel(e.target.value);
+          }}
         >
           {STYLE_OPTIONS.map((s) => (
             <option key={s}>{s}</option>
@@ -1469,33 +1567,46 @@ export default function ManuscriptView({
           ))}
         </select>
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
-        {FMT_KEYS.map(({ k, label }) => (
-          <button
-            key={k}
-            type="button"
-            className={`msv-tb-btn msv-tb-fmt-${k}${fmt[k] ? ' msv-tb-btn--active' : ''}`}
-            data-testid={`msv-fmt-${k}`}
-            aria-label={label}
-            aria-pressed={fmt[k]}
-            onClick={() => setFmt((prev) => ({ ...prev, [k]: !prev[k] }))}
-          >
-            <span className={`msv-tb-glyph msv-tb-glyph--${k}`}>{k.toUpperCase()}</span>
-          </button>
-        ))}
+        {FMT_KEYS.map(({ k, label }) => {
+          const active = liveSceneEditor ? isFmtActive(liveSceneEditor, k) : fmt[k];
+          return (
+            <button
+              key={k}
+              type="button"
+              className={`msv-tb-btn msv-tb-fmt-${k}${active ? ' msv-tb-btn--active' : ''}`}
+              data-testid={`msv-fmt-${k}`}
+              aria-label={label}
+              aria-pressed={active}
+              // A live editor needs onMouseDown+preventDefault so the button
+              // never steals focus/selection before the command runs (same
+              // guard FormatToolbar.tsx uses) — onClick would toggle against
+              // a collapsed/lost selection. The other three depths have no
+              // live selection to preserve, so they keep the plain onClick.
+              onMouseDown={liveSceneEditor ? (e) => { e.preventDefault(); toggleFmtOnEditor(liveSceneEditor, k); } : undefined}
+              onClick={liveSceneEditor ? undefined : () => setFmt((prev) => ({ ...prev, [k]: !prev[k] }))}
+            >
+              <span className={`msv-tb-glyph msv-tb-glyph--${k}`}>{k.toUpperCase()}</span>
+            </button>
+          );
+        })}
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
-        {ALIGN_PATHS.map(({ k, label, p }) => (
-          <button
-            key={k}
-            type="button"
-            className={`msv-tb-btn${align === k ? ' msv-tb-btn--active' : ''}`}
-            data-testid={`msv-align-${k}`}
-            aria-label={label}
-            aria-pressed={align === k}
-            onClick={() => setAlign(k)}
-          >
-            {TB_ICON(p)}
-          </button>
-        ))}
+        {ALIGN_PATHS.map(({ k, label, p }) => {
+          const active = liveSceneEditor ? isAlignActiveOnEditor(liveSceneEditor, k) : align === k;
+          return (
+            <button
+              key={k}
+              type="button"
+              className={`msv-tb-btn${active ? ' msv-tb-btn--active' : ''}`}
+              data-testid={`msv-align-${k}`}
+              aria-label={label}
+              aria-pressed={active}
+              onMouseDown={liveSceneEditor ? (e) => { e.preventDefault(); applyAlignToEditor(liveSceneEditor, k); } : undefined}
+              onClick={liveSceneEditor ? undefined : () => setAlign(k)}
+            >
+              {TB_ICON(p)}
+            </button>
+          );
+        })}
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
         {/* M1 row 5 (SKY-9013): structure actions (prototype 1003–1011).
             "+ Part" is enabled now that M2 (SKY-9017) landed the Parts data model. */}
