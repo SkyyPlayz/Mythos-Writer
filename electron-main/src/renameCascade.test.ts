@@ -298,6 +298,59 @@ describe('undo — one step, never overwrites newer work', () => {
     expect(readNote('Enemies.md')).toBe('[[Jasper]]');
   });
 
+  it('reverts just the link span in a story file edited elsewhere since the rename (SKY-10887)', () => {
+    writeNote('Jasper.md', 'x');
+    writeScene('Manuscript/01/scene-1.md', 'Then [[Jasper]] arrived. The weather was calm.');
+
+    renameNoteWithCascade({
+      notesRoot,
+      storyRoot,
+      fromPath: 'Jasper.md',
+      toPath: 'Jasper Thorne.md',
+    });
+    expect(readScene('Manuscript/01/scene-1.md')).toBe(
+      'Then [[Jasper Thorne|Jasper]] arrived. The weather was calm.',
+    );
+    // User edits the scene elsewhere, well away from the link, after the cascade.
+    writeScene(
+      'Manuscript/01/scene-1.md',
+      'Then [[Jasper Thorne|Jasper]] arrived. The weather turned stormy without warning.',
+    );
+
+    const undo = undoLastRenameCascade({ notesRoot, storyRoot });
+    expect(undo.undone).toBe(true);
+    expect(undo.filesSkipped).toBe(0);
+    expect(undo.filesRestored).toBe(1);
+    expect(undo.restoredStoryPaths).toContain('Manuscript/01/scene-1.md');
+    // Link span reverted to the original bare form; the unrelated edit survives.
+    expect(readScene('Manuscript/01/scene-1.md')).toBe(
+      'Then [[Jasper]] arrived. The weather turned stormy without warning.',
+    );
+  });
+
+  it('reverts just the link span in a notes file edited elsewhere since the rename (SKY-10887)', () => {
+    writeNote('Jasper.md', 'x');
+    writeNote('Allies.md', 'See [[Jasper]] for details.');
+
+    renameNoteWithCascade({
+      notesRoot,
+      storyRoot,
+      fromPath: 'Jasper.md',
+      toPath: 'Jasper Thorne.md',
+    });
+    expect(readNote('Allies.md')).toBe('See [[Jasper Thorne]] for details.');
+    // User edits the note elsewhere, well away from the link, after the cascade.
+    writeNote('Allies.md', 'See [[Jasper Thorne]] for details. Also new info here.');
+
+    const undo = undoLastRenameCascade({ notesRoot, storyRoot });
+    expect(undo.undone).toBe(true);
+    expect(undo.filesSkipped).toBe(0);
+    expect(undo.filesRestored).toBe(1);
+    expect(undo.restoredNotesPaths).toContain('Allies.md');
+    // Link span reverted to the original bare form; the unrelated edit survives.
+    expect(readNote('Allies.md')).toBe('See [[Jasper]] for details. Also new info here.');
+  });
+
   it('refuses when the renamed note has since moved or the old name is retaken', () => {
     writeNote('Jasper.md', 'x');
     writeNote('Allies.md', '[[Jasper]]');

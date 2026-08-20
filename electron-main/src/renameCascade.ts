@@ -15,8 +15,10 @@
 //   - The whole cascade is one transaction: a failure partway restores every
 //     written file AND renames the note back — never a half-updated vault.
 //   - The completed transaction is held for a one-shot undo that restores the
-//     rename and every touched file in a single step (files edited since are
-//     left alone and reported as skipped).
+//     rename and every touched file in a single step. A file edited since the
+//     cascade keeps that edit — undo reverts only the wikilink span(s) it
+//     touched (SKY-10887) — and a file whose touched link(s) are gone too is
+//     left alone and reported as skipped.
 
 import fs from 'fs';
 import path from 'path';
@@ -50,6 +52,7 @@ interface PlanFile {
   oldContent: string;
   newContent: string;
   linkCount: number;
+  mode: 'update-display' | 'preserve-display';
 }
 
 interface CascadeTransaction {
@@ -131,7 +134,7 @@ function buildPlan(
         mode,
       );
       if (count > 0) {
-        plan.push({ side, relPath, oldContent, newContent, linkCount: count });
+        plan.push({ side, relPath, oldContent, newContent, linkCount: count, mode });
       }
     }
   }
@@ -248,9 +251,12 @@ export interface UndoRenameCascadeOptions {
 
 /**
  * One-shot undo of the most recent rename cascade: renames the note back and
- * restores every rewritten file whose on-disk content is still exactly what
- * the cascade wrote. Files edited since are left untouched and counted as
- * skipped — undo never overwrites newer work.
+ * restores every rewritten file. A file untouched since the cascade is
+ * restored byte-for-byte; a file edited elsewhere since has only the
+ * wikilink span(s) the cascade touched reverted, leaving the rest of the
+ * user's edit in place — undo never overwrites newer prose. A file whose
+ * touched link(s) are gone too (edit removed them) is left untouched and
+ * counted as skipped.
  */
 export function undoLastRenameCascade(
   opts: UndoRenameCascadeOptions,
@@ -301,12 +307,32 @@ export function undoLastRenameCascade(
     } catch {
       /* deleted since — skip */
     }
-    if (current !== file.newContent) {
+    if (current === null) {
       filesSkipped++;
       continue;
     }
+
+    let restoredContent: string;
+    if (current === file.newContent) {
+      // Untouched since the cascade — restore byte-for-byte.
+      restoredContent = file.oldContent;
+    } else {
+      // Edited elsewhere since the cascade — revert only the wikilink
+      // span(s) the cascade touched (rewriteWikiLinksForRename is its own
+      // inverse for this rename/mode pair — see SKY-10887), leaving the
+      // rest of the user's edit untouched instead of skipping the file
+      // outright and leaving a dangling link once the note moves back.
+      const { content, count } = rewriteWikiLinksForRename(current, tx.newStem, tx.oldStem, file.mode);
+      if (count === 0) {
+        // The touched link(s) aren't present anymore either — nothing to revert.
+        filesSkipped++;
+        continue;
+      }
+      restoredContent = content;
+    }
+
     try {
-      write(root, relPath, file.oldContent);
+      write(root, relPath, restoredContent);
       filesRestored++;
       (file.side === 'notes' ? restoredNotesPaths : restoredStoryPaths).push(relPath);
     } catch {
