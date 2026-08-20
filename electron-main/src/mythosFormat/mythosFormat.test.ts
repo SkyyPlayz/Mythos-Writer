@@ -9,10 +9,12 @@ import {
   MythosFileError,
   MythosFormatVersionError,
   _clearDetectionCache,
+  agentVaultRootFor,
   createMythosFile,
   isMythosV2Root,
   manifestCachePathFor,
   mythosRootForStoryVault,
+  notesVaultRootFor,
   parseMythosFile,
   readMythosFile,
   recordSeedInMythosFile,
@@ -50,6 +52,7 @@ import {
   appendTurns,
   createSession,
   listSessions,
+  migrateSessionsToAgentVault,
   parseSessionFile,
   readSession,
   serializeSessionFile,
@@ -487,6 +490,68 @@ describe('agent session files', () => {
     const read = readSession(tmp, session.id);
     expect(read?.turns[1].cardTitle).toBeUndefined();
     expect(read?.turns[1].cardFoot).toBeUndefined();
+  });
+});
+
+// ─── SKY-10952: Agent Vault migration ────────────────────────────────────────
+
+describe('migrateSessionsToAgentVault', () => {
+  it('moves an existing Notes Vault/Sessions/ tree onto Agent Vault/Sessions/ and removes the empty source', () => {
+    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    createSession(notesVaultRootFor(tmp), { agent: 'brainstorm', title: 'Old session' });
+    createSession(notesVaultRootFor(tmp), { agent: 'coach', title: 'Another old session' });
+
+    const result = migrateSessionsToAgentVault(tmp);
+    expect(result.migratedCount).toBe(2);
+    expect(fs.existsSync(legacyDir)).toBe(false);
+
+    const migrated = listSessions(agentVaultRootFor(tmp));
+    expect(migrated).toHaveLength(2);
+    expect(migrated.map((s) => s.title).sort()).toEqual(['Another old session', 'Old session']);
+    expect(listSessions(notesVaultRootFor(tmp))).toHaveLength(0);
+  });
+
+  it('never orphans a transcript — a same-name collision at the destination is suffixed, not overwritten', () => {
+    // Pre-existing session already at the destination.
+    const { relPath: destRelPath } = createSession(agentVaultRootFor(tmp), {
+      id: '11111111-1111-1111-1111-111111111111',
+      agent: 'brainstorm',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      title: 'Destination copy',
+    });
+    const destName = path.basename(destRelPath);
+
+    // A legacy session that happens to serialize to the exact same filename.
+    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(legacyDir, destName),
+      `---\nmythosSession: 1\nid: 22222222-2222-2222-2222-222222222222\nagent: brainstorm\ntitle: Legacy collider\nstartedAt: 2026-01-01T00:00:00.000Z\nupdatedAt: 2026-01-01T00:00:00.000Z\nturns: 0\n---\n\n# Legacy collider\n`,
+    );
+
+    const result = migrateSessionsToAgentVault(tmp);
+    expect(result.migratedCount).toBe(1);
+    expect(fs.existsSync(legacyDir)).toBe(false);
+
+    const migrated = listSessions(agentVaultRootFor(tmp));
+    expect(migrated).toHaveLength(2);
+    expect(migrated.map((s) => s.title).sort()).toEqual(['Destination copy', 'Legacy collider']);
+  });
+
+  it('is a cheap no-op when there is no legacy Sessions/ folder', () => {
+    expect(migrateSessionsToAgentVault(tmp)).toEqual({ migratedCount: 0 });
+    expect(fs.existsSync(agentVaultRootFor(tmp))).toBe(false);
+  });
+
+  it('is idempotent — a second run after migration does nothing further', () => {
+    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    createSession(notesVaultRootFor(tmp), { agent: 'brainstorm', title: 'Once' });
+
+    expect(migrateSessionsToAgentVault(tmp).migratedCount).toBe(1);
+    expect(migrateSessionsToAgentVault(tmp).migratedCount).toBe(0);
+    expect(listSessions(agentVaultRootFor(tmp))).toHaveLength(1);
   });
 });
 

@@ -9,6 +9,9 @@
 //     timelines.json       ← timelines / eras / arcs / events (timelinesFile.ts)
 //     Story Vault/         ← manuscripts: <Story>/Part N/Chapter NN/Scene NN.md
 //     Notes Vault/         ← Obsidian-style notes
+//     Agent Vault/         ← machine state (agent chat sessions); visible but
+//                            not rendered in the notes UI (SKY-10952/SKY-10949,
+//                            supersedes the prototype's notes-tree Sessions/)
 //     .mythos/             ← machine-local, REGENERABLE state only (SQLite,
 //                            manifest cache, backups). Deleting it must never
 //                            lose user work (the storage rule, overview §Data
@@ -30,6 +33,11 @@ export const MYTHOS_FORMAT_VERSION = 2 as const;
 
 export const STORY_VAULT_DIRNAME = 'Story Vault';
 export const NOTES_VAULT_DIRNAME = 'Notes Vault';
+// SKY-10952 (owner ruling 2026-08-19, SKY-10949): third top-level sibling —
+// machine state (agent chat sessions today) that is visible but not rendered
+// in the notes UI. Not hidden — a curious user can open it — just kept out of
+// the user-content tree so it doesn't clutter Notes Vault.
+export const AGENT_VAULT_DIRNAME = 'Agent Vault';
 export const MYTHOS_MACHINE_DIRNAME = '.mythos';
 /** Regenerable legacy-Manifest cache for v2 vaults (never the source of truth). */
 export const MANIFEST_CACHE_FILENAME = 'manifest-cache.json';
@@ -104,6 +112,10 @@ export function storyVaultRootFor(mythosRoot: string): string {
 
 export function notesVaultRootFor(mythosRoot: string): string {
   return path.join(mythosRoot, NOTES_VAULT_DIRNAME);
+}
+
+export function agentVaultRootFor(mythosRoot: string): string {
+  return path.join(mythosRoot, AGENT_VAULT_DIRNAME);
 }
 
 export function manifestCachePathFor(storyVaultRoot: string): string {
