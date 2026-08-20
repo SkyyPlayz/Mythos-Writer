@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { checkGuidedMoveGate } from './vaultGate.js';
+import { checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   generateRegistrationToken,
@@ -191,13 +191,31 @@ describe('checkGuidedMoveGate', () => {
     if (!result.ok) expect(result.error).toMatch(/sessionToken/);
   });
 
-  it('consumes the token on success — replay is rejected', () => {
+  it('does NOT consume the token itself — the caller must call consumeGuidedMoveToken after the move succeeds (SKY-10890)', () => {
     const token = makeToken(TARGET);
     const first = checkGuidedMoveGate(
       { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
       HOME,
     );
     expect(first.ok).toBe(true);
+    // Token is still valid — a mid-move failure (antivirus, a locked file,
+    // a full disk) must not have burned it, or retry is permanently blocked
+    // with UNAUTHORIZED_PATH (the SKY-10890 bug).
+    const replay = checkGuidedMoveGate(
+      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
+      HOME,
+    );
+    expect(replay.ok).toBe(true);
+  });
+
+  it('consumeGuidedMoveToken burns the token so it cannot be replayed', () => {
+    const token = makeToken(TARGET);
+    const first = checkGuidedMoveGate(
+      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
+      HOME,
+    );
+    expect(first.ok).toBe(true);
+    consumeGuidedMoveToken(token);
     const replay = checkGuidedMoveGate(
       { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
       HOME,
@@ -445,5 +463,81 @@ describe('moveVaultAtomic', () => {
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0]).action).toBe('earlier-event');
     expect(JSON.parse(lines[1]).action).toBe('vault:guidedFolderMove');
+  });
+});
+
+// ─── §3 SKY-10890 regression: a failed move must not burn the one-shot token ──
+//
+// Reproduces the owner-reported bug end to end: gate a move, simulate the
+// underlying FS operation being blocked mid-flight (the ticket's real-world
+// trigger was Avast; here `fs.promises.rename` is stubbed to fail the same
+// way any mid-move failure — a locked file, a full disk, a dropped network
+// drive — would), then confirm the *same* token authorises a retry and the
+// retry actually succeeds, exactly as the caller in main.ts now behaves by
+// only calling consumeGuidedMoveToken after moveVaultAtomic resolves.
+
+describe('SKY-10890: failed move does not consume the registration token', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sky10890-'));
+    __clearRegistrationTokens();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('retry with the same token succeeds after a simulated mid-move failure, without re-picking the folder', async () => {
+    const src = path.join(tmpDir, 'StoryVault');
+    fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
+    const dst = path.join(tmpDir, 'NewHome');
+
+    const token = generateRegistrationToken(dst);
+    const gate = checkGuidedMoveGate(
+      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
+      tmpDir,
+    );
+    expect(gate.ok).toBe(true);
+
+    // Simulate the move being blocked mid-operation (antivirus / locked file
+    // / full disk / dropped network drive all surface the same way: the
+    // rename rejects with something other than EXDEV).
+    const renameSpy = vi
+      .spyOn(fs.promises, 'rename')
+      .mockRejectedValueOnce(Object.assign(new Error('Operation blocked'), { code: 'EPERM' }));
+
+    await expect(
+      moveVaultAtomic(src, dst, { syncProvider: 'dropbox', updateSettings: () => {} }),
+    ).rejects.toThrow('Operation blocked');
+    renameSpy.mockRestore();
+
+    // The real IPC handler only calls consumeGuidedMoveToken after
+    // moveVaultAtomic resolves, so a failed attempt like the one above must
+    // leave the token usable — gating the retry with the identical token
+    // must still succeed.
+    const retryGate = checkGuidedMoveGate(
+      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
+      tmpDir,
+    );
+    expect(retryGate.ok).toBe(true);
+
+    // And the retry itself (now unblocked) actually completes the move.
+    const retryResult = await moveVaultAtomic(src, dst, {
+      syncProvider: 'dropbox',
+      updateSettings: () => {},
+    });
+    expect(retryResult.verification.ok).toBe(true);
+    expect(fs.existsSync(path.join(dst, 'manifest.json'))).toBe(true);
+
+    // Only now — after real success — does the token get burned.
+    consumeGuidedMoveToken(token);
+    const replay = checkGuidedMoveGate(
+      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
+      tmpDir,
+    );
+    expect(replay.ok).toBe(false);
   });
 });

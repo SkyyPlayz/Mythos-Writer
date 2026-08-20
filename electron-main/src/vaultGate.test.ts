@@ -9,11 +9,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   checkSetPathsGate,
+  consumeSetPathsTokens,
   checkProjectSwitchGate,
   checkLoadSampleGate,
   checkSinglePathGate,
+  consumeSinglePathToken,
   looksLikeObsidianVault,
   checkScaffoldGate,
+  consumeScaffoldToken,
 } from './vaultGate.js';
 import {
   generateRegistrationToken,
@@ -128,7 +131,7 @@ describe('checkSetPathsGate', () => {
     expect(validateRegistrationToken(notesToken, { consume: false })).not.toBeNull();
   });
 
-  it('consumes both tokens on success so they cannot be replayed', () => {
+  it('does NOT consume tokens itself — the caller must call consumeSetPathsTokens after its own work succeeds (SKY-10890)', () => {
     const storyToken = generateRegistrationToken('/home/alice/NewStory');
     const notesToken = generateRegistrationToken('/home/alice/NewNotes');
     const first = checkSetPathsGate(
@@ -141,7 +144,34 @@ describe('checkSetPathsGate', () => {
       [],
     );
     expect(first.ok).toBe(true);
-    // Replay attempt fails — both tokens are gone.
+    // Tokens are still valid — a failed downstream operation (e.g. antivirus
+    // blocking the write) must not have burned them.
+    const replay = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/NewStory',
+        notesVaultPath: '/home/alice/NewNotes',
+        storyVaultToken: storyToken,
+        notesVaultToken: notesToken,
+      },
+      [],
+    );
+    expect(replay.ok).toBe(true);
+  });
+
+  it('consumeSetPathsTokens burns both tokens so they cannot be replayed', () => {
+    const storyToken = generateRegistrationToken('/home/alice/NewStory');
+    const notesToken = generateRegistrationToken('/home/alice/NewNotes');
+    const first = checkSetPathsGate(
+      {
+        storyVaultPath: '/home/alice/NewStory',
+        notesVaultPath: '/home/alice/NewNotes',
+        storyVaultToken: storyToken,
+        notesVaultToken: notesToken,
+      },
+      [],
+    );
+    expect(first.ok).toBe(true);
+    consumeSetPathsTokens(storyToken, notesToken);
     const replay = checkSetPathsGate(
       {
         storyVaultPath: '/home/alice/NewStory',
@@ -401,14 +431,30 @@ describe('checkSinglePathGate', () => {
     expect(validateRegistrationToken(token, { consume: false })).not.toBeNull();
   });
 
-  it('consumes the token on success so it cannot be replayed', () => {
+  it('does NOT consume the token itself — the caller must call consumeSinglePathToken after its own work succeeds (SKY-10890)', () => {
     const token = generateRegistrationToken('/home/alice/NewVault');
     const first = checkSinglePathGate(
       { targetPath: '/home/alice/NewVault', registrationToken: token },
       [],
     );
     expect(first.ok).toBe(true);
-    // Replay must fail — token is gone.
+    // Token is still valid — a failed downstream move/mkdir must not have
+    // burned it, or retry would be permanently blocked with UNAUTHORIZED_PATH.
+    const replay = checkSinglePathGate(
+      { targetPath: '/home/alice/NewVault', registrationToken: token },
+      [],
+    );
+    expect(replay.ok).toBe(true);
+  });
+
+  it('consumeSinglePathToken burns the token so it cannot be replayed', () => {
+    const token = generateRegistrationToken('/home/alice/NewVault');
+    const first = checkSinglePathGate(
+      { targetPath: '/home/alice/NewVault', registrationToken: token },
+      [],
+    );
+    expect(first.ok).toBe(true);
+    consumeSinglePathToken(token);
     const replay = checkSinglePathGate(
       { targetPath: '/home/alice/NewVault', registrationToken: token },
       [],
@@ -474,10 +520,20 @@ describe('checkScaffoldGate', () => {
     if (r.ok) expect(r.parentPath).toBe('/home/alice/projects');
   });
 
-  it('consumes the token on success — replay is rejected', () => {
+  it('does NOT consume the token itself — the caller must call consumeScaffoldToken after the scaffold write succeeds (SKY-10890)', () => {
     const token = generateRegistrationToken('/home/alice/projects');
     const first = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
     expect(first.ok).toBe(true);
+    // Token is still valid — a failed scaffold write must not have burned it.
+    const replay = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
+    expect(replay.ok).toBe(true);
+  });
+
+  it('consumeScaffoldToken burns the token so it cannot be replayed', () => {
+    const token = generateRegistrationToken('/home/alice/projects');
+    const first = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
+    expect(first.ok).toBe(true);
+    consumeScaffoldToken(token);
     const replay = checkScaffoldGate({ templateId: 'bundled:novel-3act', parentToken: token });
     expect(replay.ok).toBe(false);
   });
