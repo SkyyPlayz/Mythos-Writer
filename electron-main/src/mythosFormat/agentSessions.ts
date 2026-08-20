@@ -6,17 +6,28 @@
 // nothing durable existed. M5 establishes the durable store; M15 (agent hub +
 // sessions, "session store (M5 files)") builds its UI on it.
 //
-// Location: `Notes Vault/Sessions/<ISO-date> <Agent> <shortid>.md` — the
-// prototype's notes tree ships a `Sessions/` folder, and markdown transcripts
-// read cleanly in Obsidian. Each turn is fenced by an HTML comment marker so
-// the file is machine-parseable without sacrificing readability.
+// Location: `Agent Vault/Sessions/<ISO-date> <Agent> <shortid>.md`.
+//
+// SUPERSEDED 2026-08-19 (SKY-10952, owner ruling under SKY-10949): sessions
+// originally lived at `Notes Vault/Sessions/`, mirroring the prototype's
+// notes tree (which ships a visible `Sessions/` folder there). That put
+// machine state in the user-content tree. Agent Vault is now a third
+// top-level MythosVault sibling for machine state, so a later fidelity pass
+// against the prototype must NOT restore the Notes Vault location.
+// migrateSessionsToAgentVault() below moves any pre-existing
+// `Notes Vault/Sessions/` contents for vaults created before this change.
+//
+// Functions here are root-agnostic (the caller passes whichever vault root
+// the sessions currently live under) except migrateSessionsToAgentVault,
+// which knows about both roots.
 //
 // Pure Node.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { parseFrontmatter, serializeFrontmatter, writeFileAtomic } from '../vault.js';
+import { parseFrontmatter, serializeFrontmatter, renameSyncWithRetry, writeFileAtomic } from '../vault.js';
+import { agentVaultRootFor, notesVaultRootFor } from './mythosJson.js';
 
 export const SESSIONS_DIRNAME = 'Sessions';
 
@@ -265,4 +276,59 @@ export function listSessions(notesVaultRoot: string): AgentSessionSummary[] {
   }
   out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return out;
+}
+
+/** Suffix `name.md` → `name (2).md`, `name (3).md`, … until `dir` has no collision. */
+function uniqueDestName(dir: string, name: string): string {
+  if (!fs.existsSync(path.join(dir, name))) return name;
+  const ext = path.extname(name);
+  const base = name.slice(0, name.length - ext.length);
+  for (let n = 2; ; n++) {
+    const candidate = `${base} (${n})${ext}`;
+    if (!fs.existsSync(path.join(dir, candidate))) return candidate;
+  }
+}
+
+/**
+ * SKY-10952 (owner ruling 2026-08-19, SKY-10949): one-shot per-vault
+ * migration of pre-existing sessions off `Notes Vault/Sessions/` onto
+ * `Agent Vault/Sessions/`. Safe to call on every vault open — once the
+ * legacy folder is empty/gone this is a single existsSync check. Never
+ * orphans a transcript: a same-name collision at the destination is kept
+ * (suffixed), never overwritten or dropped.
+ */
+export function migrateSessionsToAgentVault(mythosRoot: string): { migratedCount: number } {
+  const legacyDir = sessionsDir(notesVaultRootFor(mythosRoot));
+  let names: string[];
+  try {
+    names = fs.readdirSync(legacyDir).filter((n) => {
+      try {
+        return fs.statSync(path.join(legacyDir, n)).isFile();
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return { migratedCount: 0 };
+  }
+  if (names.length === 0) {
+    // Nothing to move — still clear an empty legacy folder left by a prior
+    // partial migration.
+    try { fs.rmdirSync(legacyDir); } catch { /* not empty, or already gone */ }
+    return { migratedCount: 0 };
+  }
+  const destDir = sessionsDir(agentVaultRootFor(mythosRoot));
+  fs.mkdirSync(destDir, { recursive: true });
+  let migratedCount = 0;
+  for (const name of names) {
+    const destName = uniqueDestName(destDir, name);
+    try {
+      renameSyncWithRetry(path.join(legacyDir, name), path.join(destDir, destName));
+      migratedCount++;
+    } catch {
+      /* leave this transcript in place rather than lose it — retried next open */
+    }
+  }
+  try { fs.rmdirSync(legacyDir); } catch { /* a file failed to move, or already gone */ }
+  return { migratedCount };
 }

@@ -9,7 +9,13 @@ import {
   ensureMythosV2SeedMarker,
 } from './createVault.js';
 import { VEYNN_STORY_FOLDER, VEYNN_STORY_TITLE, writeVeynnSeed } from './veynnSeed.js';
-import { _clearDetectionCache, readMythosFile, storyVaultRootFor, notesVaultRootFor } from './mythosJson.js';
+import {
+  _clearDetectionCache,
+  agentVaultRootFor,
+  notesVaultRootFor,
+  readMythosFile,
+  storyVaultRootFor,
+} from './mythosJson.js';
 import { readTimelinesFile } from './timelinesFile.js';
 import {
   nextV2ChapterRelPath,
@@ -18,7 +24,7 @@ import {
   syncCanonicalFromManifest,
 } from './v2Manifest.js';
 import { parseBookFile } from './bookFile.js';
-import { listSessions } from './agentSessions.js';
+import { listSessions, migrateSessionsToAgentVault, readSession } from './agentSessions.js';
 import { parseV2SceneFile } from './sceneFiles.js';
 import { detectVaultFormat } from '../migration/mythosVaultMigrator.js';
 
@@ -78,6 +84,10 @@ describe('createMythosVault + Veynn seed', () => {
     expect(files).toContain('Notes Vault/Worldbuilding/Locations/The Sunken Gate.md');
     expect(files).toContain('Notes Vault/Worldbuilding/Lore & Myth/Tide Mechanics.md');
     expect(files).toContain('Notes Vault/Plot & Story/Project Bible.md');
+    // SKY-10952: Agent Vault is a third sibling; sessions live there, not in
+    // Notes Vault — the prototype's Notes Vault/Sessions/ folder is superseded.
+    expect(files.some((f) => f.startsWith('Notes Vault/Sessions/'))).toBe(false);
+    expect(files.some((f) => f.startsWith('Agent Vault/Sessions/'))).toBe(true);
 
     // mythos.json: story listed, seed marker recorded.
     const mythos = readMythosFile(result.mythosRoot);
@@ -97,7 +107,8 @@ describe('createMythosVault + Veynn seed', () => {
 
     // Timeline events + demo session.
     expect(readTimelinesFile(result.mythosRoot).events.length).toBeGreaterThanOrEqual(6);
-    expect(listSessions(notesVaultRootFor(result.mythosRoot))).toHaveLength(1);
+    expect(listSessions(agentVaultRootFor(result.mythosRoot))).toHaveLength(1);
+    expect(listSessions(notesVaultRootFor(result.mythosRoot))).toHaveLength(0);
   });
 
   it('M29: returns the first demo scene so onboarding lands the editor on prose', () => {
@@ -326,9 +337,50 @@ describe('syncCanonicalFromManifest + creation-path helpers', () => {
 });
 
 describe('storyVaultRootFor sanity', () => {
-  it('derives the twin roots from the mythos root', () => {
+  it('derives the three vault roots from the mythos root', () => {
     expect(storyVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Story Vault'));
     expect(notesVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Notes Vault'));
+    expect(agentVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Agent Vault'));
+  });
+});
+
+// SKY-10952: a vault created before Agent Vault existed has its demo/user
+// sessions sitting at Notes Vault/Sessions/. Opening it must migrate them
+// onto the new Agent Vault sibling exactly once, without losing anything.
+describe('Agent Vault migration for pre-existing vaults', () => {
+  it('migrates a vault created before Agent Vault existed, readable at the new path', () => {
+    const result = createMythosVault(tmp, { name: 'PreAgentVault' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [demoSession] = listSessions(agentVaultRootFor(result.mythosRoot));
+    expect(demoSession).toBeDefined();
+
+    // Simulate the pre-SKY-10952 layout: move the seeded session back onto
+    // Notes Vault/Sessions/ and delete the (already-created, empty) Agent Vault
+    // — exactly what a vault folder synced from before this change looks like.
+    const legacySessions = path.join(notesVaultRootFor(result.mythosRoot), 'Sessions');
+    fs.mkdirSync(legacySessions, { recursive: true });
+    for (const name of fs.readdirSync(path.join(agentVaultRootFor(result.mythosRoot), 'Sessions'))) {
+      fs.renameSync(
+        path.join(agentVaultRootFor(result.mythosRoot), 'Sessions', name),
+        path.join(legacySessions, name),
+      );
+    }
+    fs.rmSync(agentVaultRootFor(result.mythosRoot), { recursive: true, force: true });
+    expect(fs.existsSync(agentVaultRootFor(result.mythosRoot))).toBe(false);
+    expect(listSessions(notesVaultRootFor(result.mythosRoot))).toHaveLength(1);
+
+    const migrated = migrateSessionsToAgentVault(result.mythosRoot);
+    expect(migrated.migratedCount).toBe(1);
+    expect(fs.existsSync(legacySessions)).toBe(false);
+
+    const afterMigration = listSessions(agentVaultRootFor(result.mythosRoot));
+    expect(afterMigration).toHaveLength(1);
+    expect(afterMigration[0].id).toBe(demoSession.id);
+    expect(readSession(agentVaultRootFor(result.mythosRoot), demoSession.id)?.turns.length).toBeGreaterThan(0);
+
+    // A second boot-time run is a cheap no-op.
+    expect(migrateSessionsToAgentVault(result.mythosRoot).migratedCount).toBe(0);
   });
 });
 

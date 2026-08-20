@@ -419,7 +419,8 @@ import {
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
-import { resolveManifestPath, mythosRootForStoryVault } from './mythosFormat/mythosJson.js';
+import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
+import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -802,6 +803,13 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => resolveManifestPath(getVaultRoot());
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+// SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
+// root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
+// living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
+const getAgentVaultRoot = () => {
+  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+  return mythosRoot !== null ? agentVaultRootFor(mythosRoot) : getNotesVaultRoot();
+};
 
 /**
  * M5: every manifest write in this process funnels through here. For v2
@@ -1000,6 +1008,10 @@ function ensureVaultDir() {
     // recorded at CREATION time (or adopted here for pre-marker v2 vaults).
     // Demo seeding never runs on open (W0.1 rule).
     ensureMythosV2SeedMarker(mythosRoot);
+    // SKY-10952: one-shot per-vault move of any pre-existing
+    // Notes Vault/Sessions/ onto the new Agent Vault/Sessions/ sibling. Cheap
+    // no-op once migrated (single existsSync check).
+    migrateSessionsToAgentVault(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
@@ -7225,20 +7237,20 @@ const handlers: IpcHandlers = {
   // agentSessionsIpc.ts so it is unit-testable against a real temp-dir vault
   // (PR #917 review, B1/B2).
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
-    handleAgentSessionList(getNotesVaultRoot(), payload),
+    handleAgentSessionList(getAgentVaultRoot(), payload),
   // M20: hydrate one session’s full turn history (Brainstorm session switch)
   [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
-    handleAgentSessionRead(getNotesVaultRoot(), payload),
+    handleAgentSessionRead(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
-    handleAgentSessionCreate(getNotesVaultRoot(), payload),
+    handleAgentSessionCreate(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
-    handleAgentSessionRename(getNotesVaultRoot(), payload),
+    handleAgentSessionRename(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) =>
-    handleAgentSessionDuplicate(getNotesVaultRoot(), payload),
+    handleAgentSessionDuplicate(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) =>
-    handleAgentSessionDelete(getNotesVaultRoot(), payload),
+    handleAgentSessionDelete(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
-    handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
+    handleAgentSessionAppendTurns(getAgentVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───
