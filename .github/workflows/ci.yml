@@ -1415,7 +1415,10 @@ jobs:
   notes-windows:
     needs: [setup]
     runs-on: windows-latest
-    timeout-minutes: 20
+    # SKY-10910: raised from 20 — this job grew 5 more native-Windows Electron
+    # launches (vault delete/migration/quit-teardown x4 lifecycle specs) to
+    # close the Windows CI vault-lifecycle gap.
+    timeout-minutes: 35
     defaults:
       run:
         shell: bash
@@ -1454,7 +1457,11 @@ jobs:
       # assertions. Re-run here (not just in build-windows) so a regression
       # in this surface actually blocks the PR instead of only being visible
       # after merge on the non-PR, continue-on-error build-windows job.
-      - name: E2E — Notes Vault folder operations on native Windows (SKY-8881)
+      # SKY-10910: this is also the native-Windows "vault rename" gap-2
+      # coverage — FO-05/FO-13 rename folders/notes in place through the real
+      # renderer→IPC→fs path with the Notes Vault watcher + DB bound to the
+      # source, on native Windows.
+      - name: E2E — Notes Vault folder operations on native Windows (SKY-8881, SKY-10910 gap 2)
         run: npm run test:e2e:folder-ops
 
       # SKY-10895 regression guard: Move Vault wizard's default local-folder
@@ -1463,12 +1470,41 @@ jobs:
       # app's own Story Vault watcher + DB bound to the source, on native
       # Windows. Windows refuses to rename a directory with open handles
       # inside it (EPERM); POSIX (build-linux/build-macos/ci) does not, so
-      # this defect is invisible everywhere except here. Scoped to the local
-      # spec only — move-vault-real.spec.ts (cloud-sync path) overrides HOME
-      # to satisfy the homedir-containment gate, which is a POSIX-only trick;
-      # giving it native-Windows coverage is tracked separately.
+      # this defect is invisible everywhere except here.
       - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
         run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
+
+      # SKY-10910 gap 5: the cloud-sync guided-move path (move-vault-real.spec.ts)
+      # was previously POSIX-only — it satisfies checkGuidedMoveGate's
+      # homedir-containment check by overriding $HOME, which native Windows
+      # (os.homedir() reads USERPROFILE, not HOME) silently ignored. The spec
+      # now branches its home-override env var by platform so this runs for
+      # real here too.
+      - name: E2E — Move Vault wizard cloud-sync guided move on native Windows (SKY-10910 gap 5)
+        run: npx playwright test e2e/move-vault-real.spec.ts --reporter=list
+
+      # SKY-10910 gap 1: SKY-8882 ("old vault not deleted on Windows") was
+      # independently closed as fixed three separate times on Linux-only E2E.
+      # Real Settings → Danger zone → Clear all data → uninstallHelper delete
+      # path, asserting the vault directory is actually gone from disk (not
+      # just DB-marked) on native Windows.
+      - name: E2E — Delete Everything removes the vault from disk on native Windows (SKY-10910 gap 1)
+        run: npm run test:e2e:windows-vault-delete-lifecycle
+
+      # SKY-10910 gap 3: the v0.4 → MythosVault v2 boot migration
+      # (mythosMigrationStatus / MythosMigrationCenter.tsx path) copies a full
+      # vault tree into a sibling folder and repoints settings — real
+      # directory/file-handle work with no prior native-Windows E2E coverage.
+      - name: E2E — Silent boot migration on native Windows (SKY-10910 gap 3)
+        run: npm run test:e2e:windows-vault-migration-lifecycle
+
+      # SKY-10910 gap 4: SKY-10902 fixed "app can't be closed" with bounded
+      # per-step teardown timeouts, but quitTeardown.test.ts only proves that
+      # contract with MOCKED timers, which cannot catch a real hang. This
+      # drives real move/delete/rename/migration ops on native Windows, then
+      # asserts the actual Electron process exits within a bounded time.
+      - name: E2E — App quits within bounded time after real vault ops on native Windows (SKY-10902, SKY-10910 gap 4)
+        run: npm run test:e2e:windows-quit-teardown
 
       - name: Upload E2E report on failure
         if: failure()
