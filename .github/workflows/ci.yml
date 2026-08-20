@@ -1457,6 +1457,19 @@ jobs:
       - name: E2E — Notes Vault folder operations on native Windows (SKY-8881)
         run: npm run test:e2e:folder-ops
 
+      # SKY-10895 regression guard: Move Vault wizard's default local-folder
+      # path (the owner's exact repro — "Settings → Move to a different
+      # folder") through the real vault:localFolderMove IPC handler, with the
+      # app's own Story Vault watcher + DB bound to the source, on native
+      # Windows. Windows refuses to rename a directory with open handles
+      # inside it (EPERM); POSIX (build-linux/build-macos/ci) does not, so
+      # this defect is invisible everywhere except here. Scoped to the local
+      # spec only — move-vault-real.spec.ts (cloud-sync path) overrides HOME
+      # to satisfy the homedir-containment gate, which is a POSIX-only trick;
+      # giving it native-Windows coverage is tracked separately.
+      - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
+        run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
