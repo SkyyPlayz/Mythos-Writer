@@ -8,13 +8,18 @@ scan-scope UI (M12.3). Spec source: SKY-10666 mechanism #9.
 
 > No scan/extraction/agent pass may ever block typing, navigation, or saving.
 
-Concretely: **while a job runs, no main-process event-loop tick gap may exceed
-250 ms** (the host loop only relays small worker messages and does batched
+Concretely: **while a job runs, main-process event-loop tick gaps must stay
+well under half of what the identical load stalls the loop synchronously with
+no queue** (the host loop only relays small worker messages and does batched
 SQLite writes; observed gaps are ~10 ms). The renderer thread is never
-involved. `src/jobs/jobNonBlocking.integration.test.ts` enforces this with the
-required negative control: it first proves an identical synchronous, no-queue
-run stalls the loop ≥ 400 ms (so the probe demonstrably detects blocking), then
-proves the queue path stays under budget.
+involved. `src/jobs/jobNonBlocking.integration.test.ts` and
+`src/jobQueue.acceptance.test.ts` enforce this with the required negative
+control: each first proves an identical synchronous, no-queue run stalls the
+loop ≥ 400 ms (so the probe demonstrably detects blocking), then proves the
+queue path stays under half of that same-run baseline
+(`RESPONSIVE_VS_BLOCKED_RATIO`). This is a ratio, not a fixed ms ceiling
+(SKY-10889) — a fixed 250 ms threshold flaked under shared CI-runner
+scheduling/GC jitter with no code change.
 
 ## Architecture
 

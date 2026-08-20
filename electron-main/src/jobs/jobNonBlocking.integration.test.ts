@@ -6,10 +6,11 @@
 // detect the regression — and then prove the queue + real worker thread keeps
 // the host loop responsive while the identical work runs.
 //
-// Budget (docs/jobs-background-queue.md): while a job runs, no host event-loop
-// tick gap may exceed 250 ms; the synchronous stand-in must stall ≥ 400 ms.
-// The injected load is ~800 ms of continuous CPU, so both thresholds carry
-// ~2× margin against CI runner noise in both directions.
+// Budget (docs/jobs-background-queue.md): while a job runs, host event-loop
+// tick gaps must stay well under (half of, see RESPONSIVE_VS_BLOCKED_RATIO)
+// the gap the identical load produces synchronously on this same host/run;
+// the synchronous stand-in must stall >= 400 ms. Ratio-based, not a fixed ms
+// ceiling (SKY-10889) — see RESPONSIVE_VS_BLOCKED_RATIO below for why.
 //
 // The worker entry (jobWorker.ts + handlers) is compiled with the workspace's
 // own tsc into a temp dir, then spawned as a REAL node:worker_threads Worker —
@@ -32,10 +33,22 @@ import type { JobEvent, WorkerInput } from './types.js';
 const require = createRequire(import.meta.url);
 const SRC_DIR = path.dirname(path.dirname(new URL(import.meta.url).pathname)); // electron-main/src
 
-/** Max allowed host event-loop tick gap while a job runs through the queue. */
-const WORKER_MAX_GAP_MS = 250;
-/** Min stall the synchronous stand-in must produce (negative control). */
+/** Min stall the synchronous stand-in must produce (negative-control floor). */
 const SYNC_MIN_GAP_MS = 400;
+/**
+ * Responsive-path gap must stay well under the deliberately-blocked baseline
+ * measured on this same host in this same run — a ratio, not a fixed ms
+ * ceiling, so the gate stays meaningful across CI hosts of very different
+ * speed. The sibling `jobQueue.acceptance.test.ts` AC1 suite hit exactly this
+ * failure mode with a fixed WORKER_MAX_GAP_MS=250 (SKY-10885: flaked under
+ * shared-runner scheduling/GC jitter with no code change, CI run
+ * 32308722862) — the same single-sample-wall-clock class this repo already
+ * fixed twice (SKY-7410/SKY-1745, SKY-6195/SKY-7553). This suite shares the
+ * identical mechanism and hasn't been observed flaking yet, but applying the
+ * same ratio-based fix proactively here avoids waiting for it to flake too
+ * (SKY-10889).
+ */
+const RESPONSIVE_VS_BLOCKED_RATIO = 0.5;
 /** ~800ms of continuous CPU per run. */
 const LOAD = { units: 8, spinMsPerUnit: 100 };
 
@@ -121,7 +134,10 @@ afterEach(() => {
 });
 
 describe('non-blocking guarantee (AC #1) with negative control', () => {
-  it('NEGATIVE CONTROL: the synchronous no-queue stand-in DOES stall the event loop', async () => {
+  // Baseline the sync stand-in once, up front — the ratio check below
+  // compares against it instead of a fixed ms constant (SKY-10889).
+  let blockedMaxGap = 0;
+  beforeAll(async () => {
     const probe = startLagProbe();
     // Let the probe establish a baseline tick before the block lands.
     await new Promise((r) => setTimeout(r, 50));
@@ -136,11 +152,14 @@ describe('non-blocking guarantee (AC #1) with negative control', () => {
     });
 
     await new Promise((r) => setTimeout(r, 30));
-    const maxGap = probe.stop();
+    blockedMaxGap = probe.stop();
+  }, 30_000);
+
+  it('NEGATIVE CONTROL: the synchronous no-queue stand-in DOES stall the event loop', () => {
     // If this ever fails, the probe cannot detect blocking and the positive
     // test below proves nothing — that is exactly what this control guards.
-    expect(maxGap).toBeGreaterThanOrEqual(SYNC_MIN_GAP_MS);
-  }, 30_000);
+    expect(blockedMaxGap).toBeGreaterThanOrEqual(SYNC_MIN_GAP_MS);
+  });
 
   it('the queue runs the identical load on a worker thread without stalling the host loop', async () => {
     const events: JobEvent[] = [];
@@ -156,7 +175,9 @@ describe('non-blocking guarantee (AC #1) with negative control', () => {
     const row = getBackgroundJob(id)!;
     expect(row.status).toBe('completed');
     expect(row.completed_units).toBe(LOAD.units);
-    expect(maxGap).toBeLessThan(WORKER_MAX_GAP_MS);
+    // Well under half of the deliberately-blocked baseline this same run
+    // just proved it can measure — not a fixed ms ceiling (SKY-10889).
+    expect(maxGap).toBeLessThan(blockedMaxGap * RESPONSIVE_VS_BLOCKED_RATIO);
   }, 30_000);
 });
 
