@@ -143,6 +143,65 @@ export interface GuidedMoveResult {
   verification: PostMoveVerification;
 }
 
+// SKY-10895: on Windows, EPERM/EBUSY/ENOTEMPTY renaming the vault directory
+// is frequently transient even after we release our own handles (watcher +
+// DB) — the OS can take a moment to actually free a just-closed handle, or a
+// background scanner (Defender, Windows Search Indexer) briefly holds one.
+// uninstallHelper.ts's removeEntry() started from the same 10x/100ms budget
+// for deletes, but the native-Windows `notes-windows` CI job reproduced the
+// budget being exhausted on this exact rename twice in a row (real
+// `EPERM: operation not permitted, rename ...` after all 10 retries) — a
+// held-open SQLite handle apparently takes longer to release than a plain
+// delete. Widened to 6s of headroom, still comfortably inside the wizard's
+// 15s "waiting for the move to finish" UI timeout.
+const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'ENOTEMPTY']);
+const RENAME_MAX_RETRIES = 40;
+const RENAME_RETRY_DELAY_MS = 150;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// SKY-10895: `fs.rename`'s EPERM only names the top-level directory being
+// renamed, never the specific file/handle actually locked inside it — that's
+// why the retry-exhausted log has never told us anything more than "Story
+// Vault is locked", even after every known app-owned handle (watcher, DB,
+// schedulers, job queue, board watcher) was torn down and CI still failed.
+// Before giving up, probe every entry under `root` (dotfiles/dotdirs
+// included — the DB lives in `.mythos/`) with an exclusive-ish open to find
+// which one Windows still has a handle on. Best-effort: a probe failure for
+// an unrelated reason (e.g. a directory) is not itself evidence of a lock.
+function findLockedEntries(root: string): string[] {
+  const locked: string[] = [];
+  function walk(dir: string): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        const fd = fs.openSync(full, 'r+');
+        fs.closeSync(fd);
+      } catch (probeErr) {
+        const code = (probeErr as NodeJS.ErrnoException).code;
+        if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
+          locked.push(path.relative(root, full));
+        }
+      }
+    }
+  }
+  walk(root);
+  return locked;
+}
+
 /**
  * Renames `src` to `dest`, falling back to a recursive copy + source removal
  * when the OS refuses a plain rename across filesystems (EXDEV — e.g. moving
@@ -152,12 +211,29 @@ export interface GuidedMoveResult {
  * a state where both copies are incomplete.
  */
 async function renameOrCopy(src: string, dest: string): Promise<void> {
-  try {
-    await fs.promises.rename(src, dest);
-    return;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+  let needsCopyFallback = false;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.promises.rename(src, dest);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EXDEV') {
+        needsCopyFallback = true;
+        break;
+      }
+      if (code && RENAME_RETRY_CODES.has(code) && attempt < RENAME_MAX_RETRIES) {
+        await delay(RENAME_RETRY_DELAY_MS);
+        continue;
+      }
+      if (code && RENAME_RETRY_CODES.has(code)) {
+        const locked = findLockedEntries(src);
+        (err as NodeJS.ErrnoException & { lockedEntries?: string[] }).lockedEntries = locked;
+      }
+      throw err;
+    }
   }
+  if (!needsCopyFallback) return;
   try {
     await fs.promises.cp(src, dest, { recursive: true });
   } catch (copyErr) {

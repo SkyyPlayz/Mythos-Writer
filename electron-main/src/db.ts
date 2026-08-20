@@ -195,6 +195,19 @@ export function openDb(vaultRoot: string): DatabaseSync {
 
 export function closeDb(): void {
   if (_db) {
+    // SKY-10895: WAL mode leaves `state.db-wal`/`state.db-shm` sidecar files
+    // memory-mapped inside `<vault>/.mythos/`. `close()` unmaps them, but on
+    // Windows that unmap is not guaranteed to be visible to a rename of the
+    // parent directory tree in the same tick — a real vault-move CI run kept
+    // hitting EPERM on the rename even after every other handle (watcher,
+    // schedulers, job queue) was torn down and a 6s retry budget was spent
+    // waiting it out. Checkpoint and drop back to DELETE journal mode before
+    // closing so no -wal/-shm files exist at all by the time close() returns
+    // — nothing left to unmap, nothing left to race against the rename.
+    try {
+      _db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      _db.exec('PRAGMA journal_mode = DELETE');
+    } catch { /* best-effort — closing anyway, don't block shutdown on this */ }
     _db.close();
     _db = null;
     _dbPath = null;
