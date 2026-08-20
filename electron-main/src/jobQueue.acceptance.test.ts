@@ -324,8 +324,25 @@ describe('M12.1 — background job/queue infrastructure (acceptance)', () => {
 // the claim under test is specifically about which OS thread the work lands
 // on. Compiles the real jobWorker.ts entry with the workspace's own tsc so
 // this exercises actual product code.
-
-describe('AC1 — a queued job runs off the UI/renderer thread without blocking typing/navigation/saving', () => {
+//
+// QUARANTINED (SKY-10885, 2026-08-19): this block duplicates the fixed-ms
+// single-max-sample event-loop-lag-probe pattern from the sibling suite
+// electron-main/src/jobs/jobNonBlocking.integration.test.ts (which already
+// covers AC1 and stays live/unskipped), and it has already flaked on `main`
+// with NO code change: CI run 32308722862 (push d98884d9, 2026-08-19T22:26Z)
+// failed both `typing in the scene editor...` and `navigating between
+// scenes/notes...` on `expect(probe.stop()).toBeLessThan(WORKER_MAX_GAP_MS)`;
+// the very next push (c026bb6a, same test file, same jobQueue.ts) passed
+// clean. `max()` over a handful of 10ms ticks is more jitter-sensitive than
+// the `p95` metric this codebase already had to move off of for the same
+// reason (SKY-7410/SKY-1745, SKY-6195/SKY-7553: single-sample wall-clock
+// thresholds flake under shared-runner scheduling/GC jitter; the fix there
+// was median-of-N-runs with warm-up, not a raw single-sample max). Follow-up
+// fix ticket applies that same remediation (or the ratio-based
+// jammed-vs-baseline comparison PR #1286 used the same day) here — see the
+// linked SKY-10885 fix ticket. Do not un-skip without addressing the root
+// cause; AC1 coverage remains live via jobNonBlocking.integration.test.ts.
+describe.skip('AC1 — a queued job runs off the UI/renderer thread without blocking typing/navigation/saving', () => {
   const require = createRequire(import.meta.url);
   const SRC_DIR = path.dirname(new URL(import.meta.url).pathname); // electron-main/src
 
