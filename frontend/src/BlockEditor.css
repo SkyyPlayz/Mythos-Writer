@@ -130,6 +130,56 @@
   }
 }
 
+/* SKY-10937: chromeless mode (scene depth composed through ManuscriptView's
+   own page frame) — the host's .msv-sheet already supplies the page
+   background/border/shadow/margins, so this editor's own "page card" and
+   its duplicate margin padding must both stand down or the prose renders as
+   a small inset card instead of filling the unified page. */
+.block-editor--chromeless {
+  height: auto;
+  overflow: visible;
+  display: block;
+}
+
+.block-editor--chromeless .tiptap-editor-wrap {
+  padding: 0;
+  display: block;
+  overflow: visible;
+}
+
+.block-editor--chromeless .tiptap-content {
+  max-width: none;
+  width: 100%;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .block-editor--chromeless .tiptap-content {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+[data-page-preset="liquid-neon"] .block-editor--chromeless .tiptap-content {
+  box-shadow: none;
+}
+
+/* Drop-cap parity with ManuscriptView's own first-paragraph treatment
+   (.msv-para-text--dropcap below) — chromeless scene prose is TipTap-
+   rendered, so the equivalent lands on the first <p> inside the doc instead
+   of on a ParagraphRow span. Headings never match `> p:first-child`, so a
+   scene opening on a heading is unaffected, same as the plain-text depths. */
+.block-editor--chromeless .tiptap-content .ProseMirror > p:first-child::first-letter {
+  float: left;
+  font-size: 3.55em;
+  line-height: 0.82;
+  padding: 0.04em 0.12em 0 0;
+  color: #eef2fb;
+  font-weight: 500;
+}
+
 .block-editor-empty-hint {
   position: absolute;
   top: 2rem;
