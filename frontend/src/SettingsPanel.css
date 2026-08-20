@@ -37,16 +37,16 @@
 }
 
 /* K8: high-contrast keeps its opaque settings backdrop — both the explicit
-   app setting and the OS preference paths (tokens.css §contrast). */
+   app setting and the OS preference path (tokens.css §contrast). M4/M28 spec
+   scopes the opaque override to K8 only; prefers-reduced-transparency is
+   handled globally by tokens.css (--glass-fill/--blur-panel fall back to the
+   opaque token there) and must not also blank the overlay here — doing so
+   fully hid BackgroundStack behind a second, redundant opaque layer and
+   silently turned the Appearance tab's glass sliders into no-ops (SKY-10908). */
 [data-contrast="high"] .settings-overlay {
   background: var(--bg-canvas);
 }
 @media (prefers-contrast: more) {
-  .settings-overlay {
-    background: var(--bg-canvas);
-  }
-}
-@media (prefers-reduced-transparency: reduce) {
   .settings-overlay {
     background: var(--bg-canvas);
   }
