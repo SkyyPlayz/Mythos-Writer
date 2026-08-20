@@ -1719,6 +1719,15 @@ function buildScopedVaultGraph(scope: VaultGraphScopeLocal): { nodes: ScopedGrap
 function toGuidedMoveError(err: unknown): unknown {
   const code = (err as NodeJS.ErrnoException)?.code;
   if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
+    // The SafeIpcError below intentionally hides the raw OS error from the
+    // renderer, but that same detail (which path was actually locked, after
+    // the retry budget in vaultGuidedMove.ts's renameOrCopy was exhausted)
+    // is exactly what an operator needs to diagnose a report of this
+    // message — log it server-side before discarding it.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)}`,
+    );
     return new SafeIpcError('Mythos Writer still has this vault open — close and retry.');
   }
   return err;
