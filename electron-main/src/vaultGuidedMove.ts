@@ -167,6 +167,18 @@ function delay(ms: number): Promise<void> {
  * a state where both copies are incomplete.
  */
 async function renameOrCopy(src: string, dest: string): Promise<void> {
+  // On Windows, fs.promises.rename over an existing directory (even empty)
+  // fails with EPERM. validateMoveTarget already confirmed the destination is
+  // empty when it exists, so it's safe to remove it before the rename.
+  try {
+    const st = await fs.promises.stat(dest);
+    if (st.isDirectory()) {
+      await fs.promises.rm(dest, { recursive: true, force: true });
+    }
+  } catch {
+    // dest does not exist — normal case, proceed
+  }
+
   let needsCopyFallback = false;
   for (let attempt = 0; ; attempt++) {
     try {
