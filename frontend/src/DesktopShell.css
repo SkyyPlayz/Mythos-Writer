@@ -833,28 +833,20 @@
   50%       { opacity: 0.25; }
 }
 
-/* Beta-Read margin panel (MYT-237) */
+/* Beta-Read margin panel (MYT-237). SKY-10937: this now renders inside
+   ManuscriptView's .msv-sheet, which already supplies the page's own
+   background/border/shadow/max-width — a plain flex row (BlockEditor +
+   BetaReadMargin) is all this wrapper contributes; the old standalone
+   "page-mode" card (a second nested page surface) is gone. */
 .shell-editor-beta-wrap {
   display: flex;
   flex-direction: row;
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
+  width: 100%;
 }
 
 /* SKY-2095 (Phase 2 #2): Word-feel page metaphor — canvas + constrained-width page. */
 .shell-editor-scene-wrap.story-page-canvas {
   background: var(--bg-canvas, #0b0e13);
-}
-
-.shell-editor-beta-wrap--page-mode {
-  align-self: center;
-  width: 100%;
-  max-width: var(--page-width-story, 720px);
-  box-shadow:
-    0 2px 20px rgba(0, 0, 0, 0.45),
-    0 0 0 1px color-mix(in srgb, var(--neon-cyan, #00f0ff) 15%, transparent);
-  background: var(--bg-panel, #15191f);
 }
 
 .shell-editor-beta-wrap > .block-editor {
@@ -1503,13 +1495,6 @@
 .shell-drafts-splitrow--open {
   gap: 12px;
   overflow: hidden;
-}
-
-/* In row mode the page-mode wrap centers horizontally via margin (its
-   align-self: center would center it VERTICALLY in a row container). */
-.shell-drafts-splitrow--open > .shell-editor-beta-wrap--page-mode {
-  align-self: stretch;
-  margin: 0 auto;
 }
 
 /* Full diff cover — absolutely fills the splitrow (the page region),

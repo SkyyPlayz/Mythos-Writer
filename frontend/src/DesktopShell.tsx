@@ -61,6 +61,7 @@ import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './c
 import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-writer/shared/wikiLinkRename';
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
+import type { Editor } from '@tiptap/core';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
 import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
@@ -917,6 +918,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleEditorReady = useCallback((api: BlockEditorApi) => {
     editorApiRef.current = api;
   }, []);
+
+  // SKY-10937: the live TipTap instance backing the chromeless scene-depth
+  // BlockEditor — handed to ManuscriptView so its ONE toolbar can drive real
+  // formatting commands. State (not a ref): ManuscriptView must re-render
+  // when this arrives/changes to pick it up.
+  const [sceneEditorInstance, setSceneEditorInstance] = useState<Editor | null>(null);
 
   // SKY-152: seenTips — memoized to avoid new object reference on every render
   const seenTips = useMemo<Record<string, boolean>>(
@@ -5779,6 +5786,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
+                  sceneEditor={viewDepth === 'scene' ? sceneEditorInstance : null}
                   drafts={viewDepth === 'scene' && selectedScene ? {
                     drafts: sceneDrafts.drafts,
                     currentLabel: sceneDrafts.currentLabel,
@@ -5815,13 +5823,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   } : undefined}
                   sceneEditorSlot={viewDepth === 'scene' && selectedScene ? (
                     <div
-                      className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
+                      className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
                       style={{ position: 'relative' }}
                     >
                       <BlockEditor
                         key={`${selectedScene.id}-${restoreKey}`}
                         scene={selectedScene}
-                        enableHeadingFocus
+                        chromeless
+                        onEditorInstanceChange={setSceneEditorInstance}
                         onBlocksChange={handleBlocksChange}
                         onDraftStateChange={handleDraftStateChange}
                         onEditorReady={handleEditorReady}
@@ -5838,7 +5847,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                         resolvedWikiLinkTitles={wikiLinkTitleIndex}
                         wikiLinkCandidates={wikiLinkCandidates}
                         onSelectionChange={setEditorSelectionText}
-                        toolbarActions={manuscriptToolbarActions}
                         emptySceneHint={
                           isGettingStartedVisible(gettingStartedProgress) &&
                           !seenEmptySceneHints.has(selectedScene.id)
