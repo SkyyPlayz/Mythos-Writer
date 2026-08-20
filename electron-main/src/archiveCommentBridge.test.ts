@@ -122,6 +122,14 @@ describe('dedupeScanItems', () => {
     expect(out.map((i) => i.id)).toEqual(['a', 'b', 'c']);
   });
 
+  it('M12.B1: keeps a fresh finding with the same scene/category/excerpt but a different scope', () => {
+    // Check 1 and Check 2 findings must never suppress each other, even in
+    // the (unlikely) case their excerpt text and category coincide.
+    const fresh = [mkItem({ id: 'new-1', scope: 'story_internal' })];
+    const out = dedupeScanItems(fresh, [mkRow({ id: 'old-1' })]); // existing row has no scope column (legacy -> story_vault)
+    expect(out.map((i) => i.id)).toEqual(['new-1']);
+  });
+
   it('collapses intra-batch duplicates (first one wins)', () => {
     const fresh = [mkItem({ id: 'a' }), mkItem({ id: 'b' })];
     const out = dedupeScanItems(fresh, []);
