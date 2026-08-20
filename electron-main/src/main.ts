@@ -1724,9 +1724,10 @@ function toGuidedMoveError(err: unknown): unknown {
     // the retry budget in vaultGuidedMove.ts's renameOrCopy was exhausted)
     // is exactly what an operator needs to diagnose a report of this
     // message — log it server-side before discarding it.
+    const lockedEntries = (err as NodeJS.ErrnoException & { lockedEntries?: string[] })?.lockedEntries;
     // eslint-disable-next-line no-console
     console.error(
-      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)}`,
+      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)} lockedEntries=${lockedEntries && lockedEntries.length ? JSON.stringify(lockedEntries) : '(none found by probe)'}`,
     );
     return new SafeIpcError('Mythos Writer still has this vault open — close and retry.');
   }

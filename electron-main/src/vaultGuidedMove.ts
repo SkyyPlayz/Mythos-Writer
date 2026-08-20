@@ -162,6 +162,46 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// SKY-10895: `fs.rename`'s EPERM only names the top-level directory being
+// renamed, never the specific file/handle actually locked inside it — that's
+// why the retry-exhausted log has never told us anything more than "Story
+// Vault is locked", even after every known app-owned handle (watcher, DB,
+// schedulers, job queue, board watcher) was torn down and CI still failed.
+// Before giving up, probe every entry under `root` (dotfiles/dotdirs
+// included — the DB lives in `.mythos/`) with an exclusive-ish open to find
+// which one Windows still has a handle on. Best-effort: a probe failure for
+// an unrelated reason (e.g. a directory) is not itself evidence of a lock.
+function findLockedEntries(root: string): string[] {
+  const locked: string[] = [];
+  function walk(dir: string): void {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        const fd = fs.openSync(full, 'r+');
+        fs.closeSync(fd);
+      } catch (probeErr) {
+        const code = (probeErr as NodeJS.ErrnoException).code;
+        if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
+          locked.push(path.relative(root, full));
+        }
+      }
+    }
+  }
+  walk(root);
+  return locked;
+}
+
 /**
  * Renames `src` to `dest`, falling back to a recursive copy + source removal
  * when the OS refuses a plain rename across filesystems (EXDEV — e.g. moving
@@ -185,6 +225,10 @@ async function renameOrCopy(src: string, dest: string): Promise<void> {
       if (code && RENAME_RETRY_CODES.has(code) && attempt < RENAME_MAX_RETRIES) {
         await delay(RENAME_RETRY_DELAY_MS);
         continue;
+      }
+      if (code && RENAME_RETRY_CODES.has(code)) {
+        const locked = findLockedEntries(src);
+        (err as NodeJS.ErrnoException & { lockedEntries?: string[] }).lockedEntries = locked;
       }
       throw err;
     }
