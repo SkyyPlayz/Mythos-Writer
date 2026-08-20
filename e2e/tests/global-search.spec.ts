@@ -323,6 +323,14 @@ test('TC-GS-03: clicking result opens scene and scrolls to match location', asyn
 // ─── TC-GS-04: Scope selector filters results correctly ──────────────────────────
 
 test('TC-GS-04: scope selector (Story | Notes | Both) filters results correctly', async () => {
+  // SKY-10948: this test runs immediately after TC-GS-03 navigates into the
+  // scene editor. The generic `.app-container, .desktop-shell, body` click
+  // can land inside the freshly-mounted contenteditable (it covers most of
+  // the viewport) and fail to move focus off it, so Ctrl+K's keydown was
+  // sometimes lost to the editor instead of reaching the app-level listener
+  // under CI's slower render timing. Explicitly blur first so focus is
+  // deterministically off the editor before the click + shortcut.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
