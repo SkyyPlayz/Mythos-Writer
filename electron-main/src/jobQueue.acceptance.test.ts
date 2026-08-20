@@ -329,15 +329,28 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
   const require = createRequire(import.meta.url);
   const SRC_DIR = path.dirname(new URL(import.meta.url).pathname); // electron-main/src
 
-  /** Max allowed host event-loop tick gap while a job runs through the queue. */
-  const WORKER_MAX_GAP_MS = 250;
-  /** Min stall the synchronous stand-in must produce (negative control). */
+  /** Min stall the synchronous stand-in must produce (negative-control floor). */
   const SYNC_MIN_GAP_MS = 400;
+  /**
+   * Responsive-path gap must stay well under the deliberately-blocked
+   * baseline measured on this same host in this same run — a ratio, not a
+   * fixed ms ceiling, so the gate stays meaningful across CI hosts of very
+   * different speed. A fixed WORKER_MAX_GAP_MS=250 flaked under shared-runner
+   * scheduling/GC jitter with no code change (SKY-10885, CI run 32308722862)
+   * — the same single-sample-wall-clock failure class this repo already
+   * fixed twice (SKY-7410/SKY-1745, SKY-6195/SKY-7553). Follows the
+   * ratio-based baseline-comparison pattern from
+   * m12-scale-architecture-acceptance.spec.ts (SKY-10768) rather than
+   * reintroducing a fixed-ms gate (SKY-10889).
+   */
+  const RESPONSIVE_VS_BLOCKED_RATIO = 0.5;
   const LOAD = { units: 8, spinMsPerUnit: 100 };
 
   let compiledDir: string;
   let workerEntry: string;
   let realTmpDir: string;
+  /** Baseline: how much the same load stalls the host loop with no queue. */
+  let blockedMaxGap = 0;
 
   beforeAll(() => {
     compiledDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobworker-acceptance-build-'));
@@ -399,6 +412,26 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
     });
   }
 
+  // Baseline the sync stand-in once, up front, on this host/run — every
+  // ratio check below compares against it instead of a fixed ms constant.
+  beforeAll(async () => {
+    const probe = startLagProbe();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Same handler, same load, run inline on the host thread — no queue,
+    // no worker. This is the "regression" the queue exists to prevent.
+    runSyntheticLoadJob({
+      payload: LOAD,
+      checkpoint: null,
+      coverage: new Map(),
+      emit: () => {},
+      isCancelled: () => false,
+    });
+
+    await new Promise((r) => setTimeout(r, 30));
+    blockedMaxGap = probe.stop();
+  }, 30_000);
+
   beforeEach(() => {
     realTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobqueue-acceptance-real-'));
     openDb(realTmpDir);
@@ -412,25 +445,9 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
   it(
     'negative control: a synchronous stand-in (no queue) running the same scan workload DOES measurably ' +
       'raise input latency — proves this harness can detect the regression it is meant to guard against',
-    async () => {
-      const probe = startLagProbe();
-      await new Promise((r) => setTimeout(r, 50));
-
-      // Same handler, same load, run inline on the host thread — no queue,
-      // no worker. This is the "regression" the queue exists to prevent.
-      runSyntheticLoadJob({
-        payload: LOAD,
-        checkpoint: null,
-        coverage: new Map(),
-        emit: () => {},
-        isCancelled: () => false,
-      });
-
-      await new Promise((r) => setTimeout(r, 30));
-      const maxGap = probe.stop();
-      expect(maxGap).toBeGreaterThanOrEqual(SYNC_MIN_GAP_MS);
-    },
-    30_000
+    () => {
+      expect(blockedMaxGap).toBeGreaterThanOrEqual(SYNC_MIN_GAP_MS);
+    }
   );
 
   it(
@@ -448,9 +465,9 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
 
       expect(terminal.kind).toBe('done');
       expect(getBackgroundJob(id)!.status).toBe('completed');
-      // Budget: host loop tick gap stays under 250ms — well under the 400ms
-      // the negative control above proved the same load produces inline.
-      expect(maxGap).toBeLessThan(WORKER_MAX_GAP_MS);
+      // Well under half of the deliberately-blocked baseline this same run
+      // just proved it can measure — not a fixed ms ceiling (SKY-10889).
+      expect(maxGap).toBeLessThan(blockedMaxGap * RESPONSIVE_VS_BLOCKED_RATIO);
     },
     30_000
   );
@@ -467,7 +484,7 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
     const id = queue.enqueue('synthetic-load', LOAD);
     await waitForTerminal(events, id);
     await new Promise((r) => setTimeout(r, 30));
-    expect(probe.stop()).toBeLessThan(WORKER_MAX_GAP_MS);
+    expect(probe.stop()).toBeLessThan(blockedMaxGap * RESPONSIVE_VS_BLOCKED_RATIO);
   }, 30_000);
 
   it('navigating between scenes/notes stays responsive while a background job is running', async () => {
@@ -480,7 +497,7 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
     // Same host-loop-freedom guarantee covers scene/note navigation IPC —
     // there is no separate code path in the queue that treats these
     // interactions differently; the guarantee is loop-wide, not per-feature.
-    expect(probe.stop()).toBeLessThan(WORKER_MAX_GAP_MS);
+    expect(probe.stop()).toBeLessThan(blockedMaxGap * RESPONSIVE_VS_BLOCKED_RATIO);
   }, 30_000);
 
   it('saving a scene completes without added latency while a background job is running', async () => {
@@ -499,6 +516,6 @@ describe('AC1 — a queued job runs off the UI/renderer thread without blocking 
     await waitForTerminal(events, id);
     // The save write itself must not be stretched out by contention with the
     // worker thread's CPU load (they run on separate threads).
-    expect(saveMs).toBeLessThan(WORKER_MAX_GAP_MS);
+    expect(saveMs).toBeLessThan(blockedMaxGap * RESPONSIVE_VS_BLOCKED_RATIO);
   }, 30_000);
 });
