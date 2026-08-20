@@ -195,6 +195,11 @@ export class JobQueue {
         finishedAt: new Date().toISOString(),
       });
       this.emitTerminal(job.id, 'failed');
+      // Unlike finish() (which the worker lifecycle always reaches), a
+      // synchronous spawn failure returns before running the worker at all —
+      // pump again so a job queued behind this one doesn't sit stalled until
+      // the next enqueue() or app restart.
+      this.pump();
       return;
     }
     state.worker = worker;
