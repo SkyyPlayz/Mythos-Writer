@@ -155,7 +155,9 @@ async function openScene(page: Page): Promise<void> {
   const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
-  await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+  // SKY-10925: scene depth is now chromeless — .scene-name is suppressed.
+  // The scene title lives in TitleRow's msv-scope-title at scene depth.
+  await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
 }
 
 async function openSceneLinksNote(page: Page): Promise<void> {
@@ -231,7 +233,7 @@ test.describe('wiki-links and multi-vault graph', () => {
     await openSceneLinksNote(page);
     await page.locator('.note-viewer [data-wiki-link="Scene One"]').click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-    await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
   test('graph scope Both shows story and note nodes', async () => {
@@ -262,7 +264,7 @@ test.describe('wiki-links and multi-vault graph', () => {
     await expect(openButton).toHaveText(/Open in Story Writer/i, { timeout: 5_000 });
     await openButton.click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-    await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
   test('[[NonExistent]] shows an unresolved wiki-link toast', async () => {
