@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import NoteViewer, { NOTES_DEFAULT_RICH_KEY } from './NoteViewer';
+import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './NoteViewer';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
@@ -26,6 +26,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
+  // SKY-10929: per-note sticky mode — clear so one test's explicit switch
+  // never leaks into a later test reusing the same note path.
+  window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
 });
 
 // M17: mode switching lives in the gear "View options" popover (prototype
@@ -64,7 +67,7 @@ describe('NoteViewer cross-tab links', () => {
   });
 
   it('flushes note content when the tab-aware save event fires', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
 
     // Wait for loading to finish — the Source textarea only appears after setLoading(false),
     // which fires in .finally() after the .then() that calls setContent().
@@ -88,7 +91,7 @@ describe('NoteViewer cross-tab links', () => {
 
   it('debounces word-count reporting off the keystroke path (W0.5, PERFORMANCE §4)', async () => {
     const onWordCountChange = vi.fn();
-    render(<NoteViewer path="Notes/Test.md" onWordCountChange={onWordCountChange} />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" onWordCountChange={onWordCountChange} />);
     const textarea = await screen.findByLabelText('Edit note: Test.md');
     await waitFor(() => expect(onWordCountChange).toHaveBeenCalled()); // initial load count
     onWordCountChange.mockClear();
@@ -111,7 +114,7 @@ describe('NoteViewer cross-tab links', () => {
   });
 
   it('always writes through notes vault API (SKY-2976)', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
 
     // Wait for loading to finish so editor content is set before the flush fires
     await screen.findByLabelText('Edit note: Test.md');
@@ -133,12 +136,82 @@ describe('NoteViewer cross-tab links', () => {
 });
 
 // ---------------------------------------------------------------------------
-// M17 gear menu — Rich/Markdown/Source seg + always-open-rich toggle
+// SKY-10929: Rich is the default view; per-note choices are sticky
+// ---------------------------------------------------------------------------
+
+describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
+  it('opens a never-seen note in Rich view by default (no textarea)', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: Test.md')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    expect(await screen.findByRole('menuitemradio', { name: 'Rich Text' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('remembers an explicit per-note switch and reopens that note in it next time', async () => {
+    const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    await pickMode('Markdown');
+    expect(screen.getByLabelText('Edit note: Test.md')).toBeTruthy();
+    unmount();
+
+    // Re-mounting the SAME note (e.g. the user closed and reopened the tab)
+    // honours the remembered choice instead of the Rich default.
+    render(<NoteViewer path="Notes/Test.md" />);
+    await screen.findByLabelText('Edit note: Test.md');
+    expect(document.querySelector('.note-rich-editor .ProseMirror')).toBeNull();
+  });
+
+  it('a different, never-switched note is unaffected by another note’s sticky choice', async () => {
+    const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    await pickMode('Source Mode');
+    unmount();
+
+    render(<NoteViewer path="Notes/Other.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+  });
+
+  it('"Always open notes in Rich view" toggle starts on; turning it off applies to notes with no sticky choice', async () => {
+    const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    const toggle = await screen.findByTestId('note-default-rich-toggle');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('0');
+    unmount();
+
+    // A freshly-opened, never-switched note now starts in Source.
+    render(<NoteViewer path="Notes/Other.md" />);
+    await screen.findByLabelText('Edit note: Other.md');
+    expect(document.querySelector('.note-rich-editor .ProseMirror')).toBeNull();
+  });
+
+  it('always-rich default falls back to Source (no modal) when the note is lossy — CF-11', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+
+    render(<NoteViewer path="Notes/Table.md" />);
+
+    // Lands in Source with no fidelity dialog: lossy files are never fed to Rich silently.
+    const textarea = await screen.findByLabelText('Edit note: Table.md');
+    expect(textarea.tagName).toBe('TEXTAREA');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M17 gear menu — Rich/Markdown/Source seg
 // ---------------------------------------------------------------------------
 
 describe('NoteViewer M17 gear menu', () => {
   it('offers Rich Text, Markdown, and Source Mode in the gear popover', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     await screen.findByLabelText('Edit note: Test.md');
 
     fireEvent.click(screen.getByTestId('note-gear-btn'));
@@ -151,16 +224,8 @@ describe('NoteViewer M17 gear menu', () => {
     expect(screen.queryByRole('menuitemradio', { name: /Preview/ })).toBeNull();
   });
 
-  it('defaults to Source mode showing textarea', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
-    const textarea = await screen.findByLabelText('Edit note: Test.md');
-    expect(textarea.tagName).toBe('TEXTAREA');
-    fireEvent.click(screen.getByTestId('note-gear-btn'));
-    expect(await screen.findByRole('menuitemradio', { name: 'Source Mode' })).toHaveAttribute('aria-checked', 'true');
-  });
-
   it('switches to Markdown mode — raw file, editable, with the mode banner', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     await screen.findByLabelText('Edit note: Test.md');
 
     await pickMode('Markdown');
@@ -172,7 +237,7 @@ describe('NoteViewer M17 gear menu', () => {
   });
 
   it('Markdown mode edits save through the same lossless raw path', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     await screen.findByLabelText('Edit note: Test.md');
     await pickMode('Markdown');
 
@@ -185,7 +250,7 @@ describe('NoteViewer M17 gear menu', () => {
 
   it('calls onModeChange when mode switches', async () => {
     const onModeChange = vi.fn();
-    render(<NoteViewer path="Notes/Test.md" onModeChange={onModeChange} />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" onModeChange={onModeChange} />);
     await screen.findByLabelText('Edit note: Test.md');
 
     await pickMode('Markdown');
@@ -210,36 +275,6 @@ describe('NoteViewer M17 gear menu', () => {
     await screen.findByTestId('note-viewer-preview');
     expect(screen.queryByLabelText('Edit note: Test.md')).toBeNull();
   });
-
-  it('"Always open notes in Rich view" toggle persists and opens the next note in Rich', async () => {
-    const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
-    await screen.findByLabelText('Edit note: Test.md');
-
-    fireEvent.click(screen.getByTestId('note-gear-btn'));
-    const toggle = await screen.findByTestId('note-default-rich-toggle');
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('1');
-    unmount();
-
-    // A freshly-opened note now starts in Rich mode.
-    render(<NoteViewer path="Notes/Other.md" />);
-    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
-    expect(screen.queryByLabelText('Edit note: Other.md')).toBeNull();
-  });
-
-  it('always-rich pref falls back to Source (no modal) when the note is lossy — CF-11', async () => {
-    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '1');
-    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
-
-    render(<NoteViewer path="Notes/Table.md" />);
-
-    // Lands in Source with no fidelity dialog: lossy files are never fed to Rich silently.
-    const textarea = await screen.findByLabelText('Edit note: Table.md');
-    expect(textarea.tagName).toBe('TEXTAREA');
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -260,7 +295,7 @@ describe('NoteViewer LC-2 fidelity guard', () => {
 
   it('does NOT raise the guard for YAML frontmatter — W0.2 preserves it verbatim outside Rich mode', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: My Note\n---\nContent.' });
-    render(<NoteViewer path="Notes/Frontmatter.md" />);
+    render(<NoteViewer path="Notes/Frontmatter.md" mode="source" />);
     await screen.findByLabelText('Edit note: Frontmatter.md');
 
     await pickMode('Rich Text');
@@ -315,7 +350,7 @@ describe('NoteViewer LC-2 fidelity guard', () => {
 
   it('switches to Rich mode directly when content has no lossy features', async () => {
     readNotesVault.mockResolvedValue({ content: 'Just plain text with **bold** and [[link]].' });
-    render(<NoteViewer path="Notes/Plain.md" />);
+    render(<NoteViewer path="Notes/Plain.md" mode="source" />);
     await screen.findByLabelText('Edit note: Plain.md');
 
     await pickMode('Rich Text');
@@ -343,7 +378,7 @@ describe('NoteViewer LC-2 fidelity guard', () => {
 
 describe('NoteViewer save-failure surfacing (GH#616)', () => {
   async function loadAndFlush(path = 'Notes/Test.md') {
-    render(<NoteViewer path={path} />);
+    render(<NoteViewer path={path} mode="source" />);
     await screen.findByLabelText(`Edit note: ${path.split('/').pop()}`);
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
@@ -391,7 +426,7 @@ describe('NoteViewer save-failure surfacing (GH#616)', () => {
   it('clears the error as soon as the writer edits again', async () => {
     writeNotesVault.mockRejectedValueOnce(new Error('transient'));
 
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     const textarea = await screen.findByLabelText('Edit note: Test.md');
     await act(async () => {
       window.dispatchEvent(new Event('mythos:save-note'));
@@ -428,7 +463,7 @@ describe('NoteViewer M16 frontmatter-update sync', () => {
   it('adopts externally-updated content for the same path when no edits are pending', async () => {
     readNotesVault.mockResolvedValue({ content: 'original body' });
     writeNotesVault.mockClear(); // this suite's mocks persist across tests
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     const textarea = await screen.findByLabelText('Edit note: Test.md');
     expect(textarea).toHaveValue('original body');
 
@@ -445,7 +480,7 @@ describe('NoteViewer M16 frontmatter-update sync', () => {
 
   it('ignores updates for other paths', async () => {
     readNotesVault.mockResolvedValue({ content: 'original body' });
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     await screen.findByLabelText('Edit note: Test.md');
 
     await act(async () => {
@@ -459,7 +494,7 @@ describe('NoteViewer M16 frontmatter-update sync', () => {
 
   it('keeps pending local edits instead of adopting the external update', async () => {
     readNotesVault.mockResolvedValue({ content: 'original body' });
-    render(<NoteViewer path="Notes/Test.md" />);
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
     const textarea = await screen.findByLabelText('Edit note: Test.md');
 
     // Local edit arms the debounce timer — the editor now wins.
@@ -502,7 +537,7 @@ const KANBAN_BOARD = [
 describe('NoteViewer W0.2 — frontmatter never renders in Rich/Preview', () => {
   it('Rich mode renders a kanban board file without frontmatter or settings text', async () => {
     readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
-    render(<NoteViewer path="Notes/board.md" />);
+    render(<NoteViewer path="Notes/board.md" mode="source" />);
     await screen.findByLabelText('Edit note: board.md');
 
     await pickMode('Rich Text');
@@ -522,7 +557,7 @@ describe('NoteViewer W0.2 — frontmatter never renders in Rich/Preview', () => 
   it('saving from Rich mode without edits preserves the raw file byte-for-byte', async () => {
     readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
     writeNotesVault.mockClear();
-    render(<NoteViewer path="Notes/board.md" />);
+    render(<NoteViewer path="Notes/board.md" mode="source" />);
     await screen.findByLabelText('Edit note: board.md');
 
     await pickMode('Rich Text');
@@ -548,7 +583,7 @@ describe('NoteViewer W0.2 — frontmatter never renders in Rich/Preview', () => 
 
   it('Source mode keeps showing the raw file including frontmatter', async () => {
     readNotesVault.mockResolvedValue({ content: KANBAN_BOARD });
-    render(<NoteViewer path="Notes/board.md" />);
+    render(<NoteViewer path="Notes/board.md" mode="source" />);
 
     const textarea = await screen.findByLabelText('Edit note: board.md');
     expect(textarea).toHaveValue(KANBAN_BOARD);
@@ -582,20 +617,20 @@ describe('NoteViewer W0.2 — frontmatter never renders in Rich/Preview', () => 
 describe('NoteViewer M17 title + tags header', () => {
   it('shows the frontmatter title, falling back to the file stem', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: The Sunken Gate\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
     expect(screen.getByTestId('note-title').textContent).toBe('The Sunken Gate');
 
     cleanup();
     readNotesVault.mockResolvedValue({ content: 'No frontmatter here.' });
-    render(<NoteViewer path="Notes/Plain Note.md" />);
+    render(<NoteViewer path="Notes/Plain Note.md" mode="source" />);
     await screen.findByLabelText('Edit note: Plain Note.md');
     expect(screen.getByTestId('note-title').textContent).toBe('Plain Note');
   });
 
   it('committing an edited title writes the title: frontmatter field and saves', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: Old Title\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     const title = screen.getByTestId('note-title');
@@ -614,7 +649,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('creates a frontmatter block when a title is committed on a bare note', async () => {
     readNotesVault.mockResolvedValue({ content: 'Just prose.' });
-    render(<NoteViewer path="Notes/bare.md" />);
+    render(<NoteViewer path="Notes/bare.md" mode="source" />);
     await screen.findByLabelText('Edit note: bare.md');
 
     const title = screen.getByTestId('note-title');
@@ -631,7 +666,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('an emptied title reverts instead of saving (prototype noteTitleEdit)', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: Keep Me\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     const title = screen.getByTestId('note-title');
@@ -646,7 +681,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('renders frontmatter tags as chips and adds one through the add input', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntags: [location, ruins]\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     expect(screen.getByTestId('note-header-tag-location')).toBeTruthy();
@@ -667,7 +702,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('removes a tag from its chip ×', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntags: [location, ruins]\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     await act(async () => {
@@ -683,7 +718,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('duplicate or empty tags are ignored', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntags: [location]\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     const input = screen.getByTestId('note-add-tag-input');
@@ -701,7 +736,7 @@ describe('NoteViewer M17 title + tags header', () => {
 
   it('title and tags never leak into the Rich body (frontmatter stays hidden — W0.2)', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntitle: Gate\ntags: [location]\n---\nOnly this body.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     await pickMode('Rich Text');
@@ -744,7 +779,7 @@ describe('NoteViewer M17 rich body blocks', () => {
 
   it('renders the simple callout as a purple card (no fidelity guard)', async () => {
     readNotesVault.mockResolvedValue({ content: GATE_NOTE });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     await pickMode('Rich Text');
@@ -762,7 +797,7 @@ describe('NoteViewer M17 rich body blocks', () => {
 
   it('marks the links row as a links block and keeps H2s/bullets editable blocks', async () => {
     readNotesVault.mockResolvedValue({ content: GATE_NOTE });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     await pickMode('Rich Text');
@@ -779,7 +814,7 @@ describe('NoteViewer M17 rich body blocks', () => {
   it('CF-11: saving from Rich mode without edits keeps the file byte-identical (callout note)', async () => {
     readNotesVault.mockResolvedValue({ content: GATE_NOTE });
     writeNotesVault.mockClear();
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     await pickMode('Rich Text');
@@ -794,93 +829,14 @@ describe('NoteViewer M17 rich body blocks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// M17: backlinks footer (note body, not the right panel)
-// ---------------------------------------------------------------------------
-
-describe('NoteViewer M17 backlinks footer', () => {
-  const STORIES = [
-    {
-      id: 'story-1',
-      title: 'The Last City',
-      path: 'stories/last-city',
-      chapters: [
-        {
-          id: 'ch-1',
-          title: 'Chapter One',
-          path: 'stories/last-city/ch-1',
-          scenes: [
-            {
-              id: 'scene-1',
-              title: 'Into the Undercity',
-              path: 'stories/last-city/ch-1/scene-1.md',
-              blocks: [{ id: 'b1', type: 'paragraph', content: 'Mira reached [[Test]] at dusk.' }],
-            },
-          ],
-        },
-      ],
-    },
-  ] as unknown as import('./types').Story[];
-
-  it('renders the footer with note + story backlinks when wired', async () => {
-    noteBacklinks.mockResolvedValue({
-      backlinks: [{ path: 'Notes/Other.md', name: 'Other', snippet: '…links to [[Test]]…' }],
-    });
-    render(
-      <NoteViewer
-        path="Notes/Test.md"
-        stories={STORIES}
-        onOpenBacklinkNote={vi.fn()}
-        onOpenBacklinkScene={vi.fn()}
-      />,
-    );
-    await screen.findByLabelText('Edit note: Test.md');
-
-    const footer = await screen.findByTestId('note-backlinks-footer');
-    expect(footer).toBeTruthy();
-    await waitFor(() => expect(screen.getByTestId('note-backlinks-count')).toHaveTextContent('2'));
-    expect(screen.getByTestId('note-backlink-Notes/Other.md')).toBeTruthy();
-    expect(screen.getByTestId('story-backlink-scene-1')).toBeTruthy();
-  });
-
-  it('clicking a backlink routes through the wired handlers', async () => {
-    noteBacklinks.mockResolvedValue({
-      backlinks: [{ path: 'Notes/Other.md', name: 'Other', snippet: '…' }],
-    });
-    const onOpenNote = vi.fn();
-    const onOpenScene = vi.fn();
-    render(
-      <NoteViewer
-        path="Notes/Test.md"
-        stories={STORIES}
-        onOpenBacklinkNote={onOpenNote}
-        onOpenBacklinkScene={onOpenScene}
-      />,
-    );
-    await screen.findByTestId('note-backlinks-footer');
-
-    fireEvent.click(await screen.findByTestId('note-backlink-Notes/Other.md'));
-    expect(onOpenNote).toHaveBeenCalledWith('Notes/Other.md');
-
-    fireEvent.click(screen.getByTestId('story-backlink-scene-1'));
-    expect(onOpenScene).toHaveBeenCalled();
-  });
-
-  it('renders no footer when the backlink wiring is absent (story-side viewer)', async () => {
-    render(<NoteViewer path="Notes/Test.md" />);
-    await screen.findByLabelText('Edit note: Test.md');
-    expect(screen.queryByTestId('note-backlinks-footer')).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// M8d: surface-to-prototype inventory — breadcrumb, edited badge, Share,
-// favorite star, and the word/character-count + Add-tag footer.
+// M8d: surface-to-prototype inventory — breadcrumb, edited badge, gear menu
+// utilities, favorite star, and the word/character-count + Add-tag footer.
 // ---------------------------------------------------------------------------
 
 describe('NoteViewer M8d surface inventory', () => {
   it('renders a folder-path breadcrumb ending at the note title, never the raw filename', async () => {
     readNotesVault.mockResolvedValue({ content: 'Body.' });
-    render(<NoteViewer path="Notes/Characters/gate.md" />);
+    render(<NoteViewer path="Notes/Characters/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     const crumb = screen.getByTestId('note-breadcrumb');
@@ -892,7 +848,7 @@ describe('NoteViewer M8d surface inventory', () => {
   });
 
   it('shows the "Edited just now" badge only after a save, and hides it while a save error is showing', async () => {
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     const textarea = await screen.findByLabelText('Edit note: gate.md');
 
     expect(screen.queryByTestId('note-edited-badge')).toBeNull();
@@ -912,23 +868,35 @@ describe('NoteViewer M8d surface inventory', () => {
     expect(screen.queryByTestId('note-edited-badge')).toBeNull();
   });
 
-  it('Share copies the note path to the clipboard', async () => {
+  it('has no primary Share button — the app is 100% local (SKY-10929)', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Body.' });
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    expect(screen.queryByTestId('note-share-btn')).toBeNull();
+    expect(screen.queryByText('Share')).toBeNull();
+  });
+
+  it('"Copy path" in the View options menu copies the note path to the clipboard', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     readNotesVault.mockResolvedValue({ content: 'Body.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
     await act(async () => {
-      fireEvent.click(screen.getByTestId('note-share-btn'));
+      fireEvent.click(await screen.findByTestId('note-copy-path-btn'));
     });
 
     expect(writeText).toHaveBeenCalledWith('Notes/gate.md');
+    // The menu closes after the action, same as picking a mode.
+    expect(screen.queryByTestId('note-gear-menu')).toBeNull();
   });
 
   it('renders the decorative favorite star next to the title', async () => {
     readNotesVault.mockResolvedValue({ content: 'Body.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     expect(screen.getByTestId('note-star-btn')).toBeTruthy();
@@ -936,7 +904,7 @@ describe('NoteViewer M8d surface inventory', () => {
 
   it('footer reports word/character counts off the display body and hosts the Add-tag input', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntags: [location]\n---\nTwo words.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     expect(screen.getByTestId('note-word-count')).toHaveTextContent('2 words');
@@ -946,7 +914,7 @@ describe('NoteViewer M8d surface inventory', () => {
 
   it('the header "+" tag affordance focuses the footer Add-tag input', async () => {
     readNotesVault.mockResolvedValue({ content: '---\ntags: [location]\n---\nBody.' });
-    render(<NoteViewer path="Notes/gate.md" />);
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
     await screen.findByLabelText('Edit note: gate.md');
 
     fireEvent.click(screen.getByTestId('note-tag-add-btn'));

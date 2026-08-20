@@ -16,9 +16,7 @@ import { NoteCallout } from './NoteCalloutExtension';
 import { NoteLinksBlock } from './NoteLinksBlockExtension';
 import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
-import Backlinks from './Backlinks';
 import { showLnToast } from './theme/lnToast';
-import type { Story, Scene, Chapter } from './types';
 import type { AnyExtension } from '@tiptap/core';
 import './NoteViewer.css';
 
@@ -38,12 +36,6 @@ interface Props {
   wikiLinkCandidates?: WikiLinkCandidate[];
   onWordCountChange?: (wordCount: number) => void;
   onClose?: () => void;
-  /** M17: loaded stories — enables the backlinks footer under the note body. */
-  stories?: Story[];
-  /** M17: open a backlinking note (Notes-Vault-relative path). */
-  onOpenBacklinkNote?: (path: string) => void;
-  /** M17: open a backlinking story scene. */
-  onOpenBacklinkScene?: (scene: Scene, chapter: Chapter, story: Story) => void;
   /** @deprecated Use `mode` + `onModeChange`. Kept for callers that have not migrated. */
   previewMode?: boolean;
   /** @deprecated Use `mode` + `onModeChange`. */
@@ -58,21 +50,49 @@ interface Props {
 // ---------------------------------------------------------------------------
 
 export const NOTES_DEFAULT_RICH_KEY = 'mythos:notes:defaultRich';
+// SKY-10929: per-note sticky view mode — once a note has been explicitly
+// switched, it reopens in that mode regardless of the global default below.
+export const NOTES_MODE_BY_PATH_KEY = 'mythos:notes:modeByPath';
+type StickyMode = 'rich' | 'markdown' | 'source';
 
 function readDefaultRichPref(): boolean {
   try {
-    return window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY) === '1';
+    // SKY-10929: Rich is the out-of-the-box default — an explicit '0' is the
+    // only way to opt out (readMissing → true), matching the toggle default.
+    return window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
 function writeDefaultRichPref(on: boolean): void {
   try {
-    if (on) window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '1');
-    else window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
+    if (on) window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
+    else window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
   } catch {
     // storage unavailable — the toggle still works for this session
+  }
+}
+
+function readNoteModePref(path: string): StickyMode | null {
+  try {
+    const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, StickyMode>;
+    return map[path] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNoteModePref(path: string, mode: StickyMode): void {
+  try {
+    const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, StickyMode>) : {};
+    map[path] = mode;
+    window.localStorage.setItem(NOTES_MODE_BY_PATH_KEY, JSON.stringify(map));
+  } catch {
+    // storage unavailable — the choice still works for this session
   }
 }
 
@@ -329,23 +349,24 @@ export default function NoteViewer({
   wikiLinkCandidates,
   onWordCountChange,
   onClose,
-  stories,
-  onOpenBacklinkNote,
-  onOpenBacklinkScene,
   previewMode,
   onPreviewModeChange,
   toolbarActions,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
+  // SKY-10929: this note's own remembered mode, if it was ever explicitly
+  // switched — takes priority over the global default below.
+  const stickyMode = useMemo(() => readNoteModePref(path), [path]);
 
-  // Resolve mode from new prop, legacy previewMode bool, or the M17
-  // "always open rich" preference.
+  // Resolve mode from new prop, legacy previewMode bool, this note's sticky
+  // choice, or the M17 "always open rich" default (Rich unless opted out).
   const resolvedMode: NoteViewerMode =
-    modeProp ?? (previewMode ? 'preview' : (defaultRich ? 'rich' : 'source'));
+    modeProp ?? (previewMode ? 'preview' : (stickyMode ?? (defaultRich ? 'rich' : 'source')));
   const [mode, setMode] = useState<NoteViewerMode>(resolvedMode);
-  // True while the initial mode came from the always-rich pref (not an
-  // explicit prop) — the fidelity guard then downgrades silently on load.
-  const pendingPrefRichRef = useRef(modeProp === undefined && !previewMode && resolvedMode === 'rich');
+  // True while the initial mode came from the default (not an explicit prop
+  // or a remembered per-note choice) — the fidelity guard then downgrades
+  // silently on load rather than risk a surprise data loss (CF-11).
+  const pendingPrefRichRef = useRef(modeProp === undefined && !previewMode && !stickyMode && resolvedMode === 'rich');
 
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -538,7 +559,10 @@ export default function NoteViewer({
   const bodyWordCount = useMemo(() => countWords(displayBody), [displayBody]);
   const bodyCharCount = useMemo(() => countChars(displayBody), [displayBody]);
 
-  const handleShare = useCallback(() => {
+  // SKY-10929: the app is 100% local — there is nothing to "share". This
+  // copies the note path (kept as a utility, moved off the primary toolbar
+  // and into the View options menu so it never reads as cloud sharing).
+  const handleCopyPath = useCallback(() => {
     void navigator.clipboard.writeText(path)
       .then(() => showLnToast('Note path copied to clipboard'))
       .catch(() => showLnToast('Could not copy the note path'));
@@ -615,21 +639,26 @@ export default function NoteViewer({
         return;
       }
     }
+    // SKY-10929: an explicit gear-menu switch is sticky for this note.
+    // (GEAR_MODES only offers rich/markdown/source — never 'preview'.)
+    if (next !== 'preview') writeNoteModePref(path, next);
     applyMode(next);
-  }, [mode, applyMode]);
+  }, [mode, path, applyMode]);
 
   const handleFidelityEditInSource = useCallback(() => {
     setFidelityWarning(null);
     setPendingMode(null);
+    writeNoteModePref(path, 'source');
     applyMode('source');
-  }, [applyMode]);
+  }, [path, applyMode]);
 
   const handleFidelityOpenAnyway = useCallback(() => {
     setFidelityWarning(null);
     const next = pendingMode ?? 'rich';
     setPendingMode(null);
+    if (next !== 'preview') writeNoteModePref(path, next);
     applyMode(next);
-  }, [pendingMode, applyMode]);
+  }, [pendingMode, path, applyMode]);
 
   const toggleDefaultRich = useCallback(() => {
     setDefaultRich((prev) => {
@@ -654,10 +683,6 @@ export default function NoteViewer({
       </div>
     );
   }
-
-  const backlinksFooter = stories && onOpenBacklinkNote && onOpenBacklinkScene
-    ? { stories, onOpenNote: onOpenBacklinkNote, onOpenScene: onOpenBacklinkScene }
-    : null;
 
   return (
     <div className="note-viewer">
@@ -695,20 +720,6 @@ export default function NoteViewer({
             </svg>
           </span>
         )}
-        <button
-          type="button"
-          className="note-share-btn"
-          data-testid="note-share-btn"
-          aria-label="Share note"
-          title="Share"
-          onClick={handleShare}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 15V4M8 7.5L12 3.5l4 4" />
-            <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
-          </svg>
-          Share
-        </button>
         {saveError && (
           <span className="note-viewer-save-error" role="alert">
             {saveError}{' '}
@@ -779,6 +790,22 @@ export default function NoteViewer({
                   <span className={`note-gear-pill${defaultRich ? ' on' : ''}`} aria-hidden="true">
                     <span className="note-gear-knob" />
                   </span>
+                </button>
+                <div className="note-gear-divider" aria-hidden="true" />
+                {/* SKY-10929: the app is 100% local — this only copies the
+                    note's vault-relative path, never a primary "Share" action. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="note-viewer-mode"
+                  data-testid="note-copy-path-btn"
+                  onClick={() => { setGearOpen(false); handleCopyPath(); }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="7" y="7" width="12" height="14" rx="2" />
+                    <path d="M5 15V4a1 1 0 0 1 1-1h9" />
+                  </svg>
+                  Copy path
                 </button>
               </div>
             </>
@@ -940,19 +967,6 @@ export default function NoteViewer({
           onKeyDown={(e) => { if (e.key === 'Enter') commitAddTag(); }}
         />
       </div>
-
-      {/* M17: backlinks footer — lives in the note body (the right panel is
-          owned by M15/M18; see BETA-REFINE M17). */}
-      {backlinksFooter && (
-        <div className="note-backlinks-footer" data-testid="note-backlinks-footer">
-          <Backlinks
-            notePath={path}
-            stories={backlinksFooter.stories}
-            onOpenNote={backlinksFooter.onOpenNote}
-            onOpenScene={backlinksFooter.onOpenScene}
-          />
-        </div>
-      )}
     </div>
   );
 }
