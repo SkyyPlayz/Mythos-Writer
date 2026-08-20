@@ -17,6 +17,16 @@
 // call sites in production source is skipped too (nothing to assert against).
 // A prop declaration with a `dead-wiring-ignore` comment is exempt — the
 // standard's explicit allow-hatch for genuine future hooks.
+//
+// JSX call-site evidence is matched to a declared component by identity
+// (defining file + export kind, resolved through each call site's own import
+// bindings), not by bare tag text — two components that happen to share a
+// declared function name in different files (e.g. two different
+// `ContinuityPanel`s, one imported under a local alias) must not have their
+// evidence merged just because the alias-free call sites of one collide on
+// name with the other's declared name (SKY-10918 follow-up). Export-rename
+// re-exports (`export { A as B }` chained through an intermediate barrel
+// file) are resolved one hop, not transitively.
 
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -176,6 +186,85 @@ function resolveParamProps(fn, sourceFile) {
   return null;
 }
 
+// --- Module resolution for relative imports (mirrors bundler resolution closely
+// enough for our purposes: exact file, then extension probing, then index files) ---
+const RESOLVE_EXTS = ['', '.tsx', '.ts', '.jsx', '.js'];
+
+function resolveModuleToFile(fromFile, specifier) {
+  if (!specifier.startsWith('.')) return null; // only first-party relative imports
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  for (const ext of RESOLVE_EXTS) {
+    const candidate = base + ext;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  for (const ext of RESOLVE_EXTS.slice(1)) {
+    const candidate = path.join(base, 'index' + ext);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+// local declared name -> identity string, for every import binding in this file
+// that resolves to a first-party module. Identities match collectExportIdentities
+// below: "<file>#default" for default imports, "<file>#named:<exportedName>" for
+// named imports (respecting `import { A as B }` aliasing).
+function collectImportIdentities(sourceFile) {
+  const map = new Map();
+  ts.forEachChild(sourceFile, (node) => {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return;
+    const resolved = resolveModuleToFile(sourceFile.fileName, node.moduleSpecifier.text);
+    if (!resolved) return;
+    const clause = node.importClause;
+    if (!clause) return;
+    if (clause.name) map.set(clause.name.text, `${resolved}#default`);
+    if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+      for (const el of clause.namedBindings.elements) {
+        const exportedName = el.propertyName ? el.propertyName.text : el.name.text;
+        map.set(el.name.text, `${resolved}#named:${exportedName}`);
+      }
+    }
+  });
+  return map;
+}
+
+// declared local name -> identity string this component is reachable under from
+// OTHER files (default export and/or named export). Same-file usage is handled
+// separately via a "#local:<name>" identity that every declared component gets
+// regardless of export status.
+function collectExportIdentities(sourceFile) {
+  const exportedAs = new Map(); // declaredName -> Set<'default' | `named:<exportedName>`>
+  function add(name, tag) {
+    if (!exportedAs.has(name)) exportedAs.set(name, new Set());
+    exportedAs.get(name).add(tag);
+  }
+  ts.forEachChild(sourceFile, (node) => {
+    const mods = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+    const hasMod = (kind) => mods && mods.some((m) => m.kind === kind);
+    if (
+      (ts.isFunctionDeclaration(node) || ts.isVariableStatement(node)) &&
+      hasMod(ts.SyntaxKind.ExportKeyword)
+    ) {
+      const isDefault = hasMod(ts.SyntaxKind.DefaultKeyword);
+      const names = ts.isFunctionDeclaration(node)
+        ? node.name
+          ? [node.name.text]
+          : []
+        : node.declarationList.declarations
+            .filter((d) => ts.isIdentifier(d.name))
+            .map((d) => d.name.text);
+      for (const n of names) add(n, isDefault ? 'default' : `named:${n}`);
+    } else if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression)) {
+      add(node.expression.text, 'default');
+    } else if (ts.isExportDeclaration(node) && !node.moduleSpecifier && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      for (const el of node.exportClause.elements) {
+        const localName = el.propertyName ? el.propertyName.text : el.name.text;
+        add(localName, `named:${el.name.text}`);
+      }
+    }
+  });
+  return exportedAs;
+}
+
 // Unwrap `React.FC<XProps>` / `FC<XProps>` variable type annotations.
 function fcGenericPropsName(typeNode) {
   if (!typeNode || !ts.isTypeReferenceNode(typeNode)) return null;
@@ -241,16 +330,23 @@ function collectComponents(sourceFile, propsTypesInFile) {
 }
 
 // --- JSX call-site evidence across production source ---
-function collectJsxEvidence(sourceFile, evidence) {
+// Evidence is keyed by *identity* (resolved via each file's own import bindings),
+// not by the literal JSX tag text — two components that happen to share a declared
+// function name (e.g. two different `ContinuityPanel`s) must not collide just
+// because one call site imports its component under an unaliased name. A tag with
+// no resolvable import (declared+used in the same file, or an unresolvable/external
+// name) falls back to a "#local:<tag>" identity scoped to the file it appears in.
+function collectJsxEvidence(sourceFile, importIdentities, evidence) {
   ts.forEachChild(sourceFile, function visit(node) {
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = node.tagName;
       const tagName = ts.isIdentifier(tag) ? tag.text : null;
       if (tagName && /^[A-Z]/.test(tagName)) {
-        let entry = evidence.get(tagName);
+        const identity = importIdentities.get(tagName) || `${sourceFile.fileName}#local:${tagName}`;
+        let entry = evidence.get(identity);
         if (!entry) {
           entry = { passedAttrs: new Set(), hasSpread: false, callSites: 0 };
-          evidence.set(tagName, entry);
+          evidence.set(identity, entry);
         }
         entry.callSites++;
         for (const attr of node.attributes.properties) {
@@ -318,15 +414,40 @@ function main() {
 
   // Components + their resolvable optional callback props, per production file.
   const fileComponents = new Map(); // file -> [{name, props: Map|null}]
+  const exportIdentitiesByFile = new Map(); // file -> Map<declaredName, Set<'default'|`named:<name>`>>
   for (const [file, sourceFile] of parsed) {
     const propsTypesInFile = collectPropsTypes(sourceFile);
     fileComponents.set(file, collectComponents(sourceFile, propsTypesInFile));
+    exportIdentitiesByFile.set(file, collectExportIdentities(sourceFile));
   }
 
   // JSX evidence across ALL production files (a component defined in file A can
-  // be called from file B).
+  // be called from file B), keyed by identity (resolved through each call site
+  // file's own imports) rather than by bare tag text — see collectJsxEvidence.
   const evidence = new Map();
-  for (const sourceFile of parsed.values()) collectJsxEvidence(sourceFile, evidence);
+  for (const sourceFile of parsed.values()) {
+    collectJsxEvidence(sourceFile, collectImportIdentities(sourceFile), evidence);
+  }
+
+  // Merge every identity a declared component is reachable under (same-file use,
+  // default export, named export) into one evidence view.
+  function mergedEvidenceFor(file, name) {
+    const identities = [`${file}#local:${name}`];
+    for (const tag of exportIdentitiesByFile.get(file).get(name) || []) {
+      identities.push(`${file}#${tag}`);
+    }
+    let callSites = 0;
+    let hasSpread = false;
+    const passedAttrs = new Set();
+    for (const id of identities) {
+      const e = evidence.get(id);
+      if (!e) continue;
+      callSites += e.callSites;
+      hasSpread = hasSpread || e.hasSpread;
+      for (const a of e.passedAttrs) passedAttrs.add(a);
+    }
+    return { callSites, hasSpread, passedAttrs };
+  }
 
   const deadPropFindings = [];
   const disabledFindings = [];
@@ -337,8 +458,8 @@ function main() {
 
     for (const comp of components) {
       if (!comp.props || comp.props.size === 0) continue;
-      const ev = evidence.get(comp.name);
-      if (!ev || ev.callSites === 0) continue; // never used as JSX in prod source — out of scope
+      const ev = mergedEvidenceFor(file, comp.name);
+      if (ev.callSites === 0) continue; // never used as JSX in prod source — out of scope
       if (ev.hasSpread) continue; // spread call site: evidence unreliable, skip to avoid false positives
 
       const deadNames = new Set();
