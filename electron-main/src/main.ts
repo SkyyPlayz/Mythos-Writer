@@ -5900,13 +5900,21 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    // SKY-10895: release the app's own handles on the source vault before
-    // the rename. The Story Vault watcher and DB are bound at app boot —
-    // on Windows, fs.rename refuses to touch a directory that still has
-    // open handles inside it (EPERM), even though POSIX allows it. Always
-    // re-acquire in `finally` so a failed/rolled-back move never leaves the
-    // app running with no watcher and a closed DB.
+    // SKY-10895: release every handle the app holds inside the source vault
+    // before the rename — not just the watcher + DB. On Windows, fs.rename
+    // refuses to touch a directory that still has open handles anywhere in
+    // its tree (EPERM), even though POSIX allows it. This is the same
+    // constraint the SKY-8882 uninstall handler and repointToMigratedVault
+    // (main.ts) already handle correctly — mirror their full teardown, not
+    // just stopVaultWatcher+closeDb (a widened retry budget alone can't
+    // outlast a job-queue worker or scheduler that never gets torn down).
+    // Always re-acquire in `finally` so a failed/rolled-back move never
+    // leaves the app running with no watcher, no DB, and no schedulers.
+    stopWritingScanScheduler();
+    stopArchiveContScheduler();
+    await stopBoardWatcher();
     await stopVaultWatcher();
+    await shutdownJobService();
     closeDb();
     let moveResult;
     try {
@@ -5922,7 +5930,10 @@ const handlers: IpcHandlers = {
     } finally {
       const currentRoot = getVaultRoot();
       openDb(currentRoot);
+      initJobServiceForVault(currentRoot);
       await startVaultWatcher(currentRoot, notifyVaultChanged);
+      startWritingScanScheduler();
+      startArchiveContScheduler();
     }
     // SKY-10890: consume only once the move has actually succeeded — a
     // mid-move failure (antivirus, a locked file, a full disk) throws out of
@@ -5958,9 +5969,14 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    // SKY-10895: release the app's own handles on the source vault before
-    // the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    // SKY-10895: release every handle the app holds inside the source vault
+    // before the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE
+    // above.
+    stopWritingScanScheduler();
+    stopArchiveContScheduler();
+    await stopBoardWatcher();
     await stopVaultWatcher();
+    await shutdownJobService();
     closeDb();
     let moveResult;
     try {
@@ -5976,7 +5992,10 @@ const handlers: IpcHandlers = {
     } finally {
       const currentRoot = getVaultRoot();
       openDb(currentRoot);
+      initJobServiceForVault(currentRoot);
       await startVaultWatcher(currentRoot, notifyVaultChanged);
+      startWritingScanScheduler();
+      startArchiveContScheduler();
     }
     // SKY-10890: consume only once the move has actually succeeded — see the
     // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
