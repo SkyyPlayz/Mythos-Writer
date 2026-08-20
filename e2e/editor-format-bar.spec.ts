@@ -1,8 +1,14 @@
 // SKY-3204 / SKY-3209 (B6): Story editor formatting toolbar — shared <RichTextEditor> core.
-// Verifies the FormatToolbar renders above the Story editor, applies marks
+// Verifies the format toolbar renders above the Story editor, applies marks
 // (including Underline, which the shared core guarantees on every surface),
 // reflects active state accessibly (aria-pressed), and that formatted text
 // round-trips through the Markdown save path.
+//
+// SKY-10925: scene depth used to render its OWN FormatToolbar (.fmt-toolbar,
+// inside BlockEditor) stacked on top of ManuscriptView's unified msv-toolbar —
+// the duplicate-toolbar R9 violation. BlockEditor's toolbar is now suppressed
+// at scene depth (chromeless) and msv-toolbar drives the live Tiptap editor
+// directly, so this suite targets msv-toolbar's controls instead.
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -80,7 +86,11 @@ test('FB-01: format toolbar renders with all controls and accessible state', asy
     const page = await firstWindow(app);
     await openScene(page);
 
-    const toolbar = page.locator('.fmt-toolbar[aria-label="Text formatting"]');
+    // SKY-10925: exactly one formatting toolbar in the DOM at scene depth —
+    // BlockEditor's own .fmt-toolbar is gone; msv-toolbar is the only one.
+    await expect(page.locator('.fmt-toolbar')).toHaveCount(0);
+    const toolbar = page.getByTestId('msv-toolbar');
+    await expect(toolbar).toHaveCount(1);
     await expect(toolbar).toBeVisible();
 
     for (const label of ['Bold', 'Italic', 'Underline', 'Strikethrough', 'Bullet list', 'Numbered list', 'Blockquote', 'Inline code', 'Code block']) {
@@ -88,7 +98,7 @@ test('FB-01: format toolbar renders with all controls and accessible state', asy
       await expect(btn).toBeVisible();
       await expect(btn).toHaveAttribute('aria-pressed', 'false');
     }
-    await expect(toolbar.locator('select[aria-label="Heading level"]')).toBeVisible();
+    await expect(toolbar.getByTestId('msv-style-select')).toBeVisible();
   } finally {
     await app.close().catch(() => undefined);
   }
@@ -105,7 +115,7 @@ test('FB-02: bold + underline apply, reflect aria-pressed, and persist through t
     await page.keyboard.type('plain ');
 
     // Toggle Bold on, type, toggle off — active state must track the toggle.
-    const bold = page.locator('.fmt-btn[aria-label="Bold"]');
+    const bold = page.getByTestId('msv-fmt-b');
     await bold.click();
     await expect(bold).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.type('bolded');
@@ -114,7 +124,7 @@ test('FB-02: bold + underline apply, reflect aria-pressed, and persist through t
 
     // Underline — the shared-core guarantee (SKY-3204 owner decision: underline = yes).
     await page.keyboard.type(' and ');
-    const underline = page.locator('.fmt-btn[aria-label="Underline"]');
+    const underline = page.getByTestId('msv-fmt-u');
     await underline.click();
     await expect(underline).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.type('underlined');
@@ -151,15 +161,15 @@ test('FB-03: heading select applies an H2 and stays in sync with the cursor', as
     await editor.click();
     await page.keyboard.type('Section title');
 
-    const headingSelect = page.locator('select[aria-label="Heading level"]');
-    await headingSelect.selectOption('h2');
+    const headingSelect = page.getByTestId('msv-style-select');
+    await headingSelect.selectOption('Heading 2');
     await expect(editor.locator('h2', { hasText: 'Section title' })).toBeVisible();
-    await expect(headingSelect).toHaveValue('h2');
+    await expect(headingSelect).toHaveValue('Heading 2');
 
     // Back to body resets both the node and the select value.
-    await headingSelect.selectOption('body');
+    await headingSelect.selectOption('Body Text');
     await expect(editor.locator('h2')).toHaveCount(0);
-    await expect(headingSelect).toHaveValue('body');
+    await expect(headingSelect).toHaveValue('Body Text');
   } finally {
     await app.close().catch(() => undefined);
   }
@@ -172,11 +182,11 @@ test('FB-04: heading select offers H1-H6 and each level round-trips through the 
     await openScene(page);
 
     const editor = page.locator('.tiptap-editor-wrap .ProseMirror');
-    const headingSelect = page.locator('select[aria-label="Heading level"]');
+    const headingSelect = page.getByTestId('msv-style-select');
 
     // All six levels must be reachable from the dropdown, not just H1-H3.
     for (let level = 1; level <= 6; level++) {
-      await expect(headingSelect.locator(`option[value="h${level}"]`)).toHaveCount(1);
+      await expect(headingSelect.locator(`option[value="Heading ${level}"]`)).toHaveCount(1);
     }
 
     for (let level = 1; level <= 6; level++) {
@@ -190,9 +200,9 @@ test('FB-04: heading select offers H1-H6 and each level round-trips through the 
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await page.keyboard.press('Enter');
       await page.keyboard.type(`Heading Level ${level}`);
-      await headingSelect.selectOption(`h${level}`);
+      await headingSelect.selectOption(`Heading ${level}`);
       await expect(editor.locator(`h${level}`, { hasText: `Heading Level ${level}` })).toBeVisible();
-      await expect(headingSelect).toHaveValue(`h${level}`);
+      await expect(headingSelect).toHaveValue(`Heading ${level}`);
     }
 
     // Wait past the debounce so the scene file is written, then verify every
