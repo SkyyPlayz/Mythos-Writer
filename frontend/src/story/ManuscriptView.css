@@ -866,6 +866,33 @@
   border-left: none;
 }
 
+/* M2 (SKY-9017): a filled epigraph re-opens for editing on click. */
+.msv-epigraph[role='button'] {
+  cursor: pointer;
+  border-radius: 7px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.msv-epigraph[role='button']:hover,
+.msv-epigraph[role='button']:focus-visible {
+  opacity: 1;
+  background: var(--gs1, rgba(0, 240, 255, 0.05));
+  outline: none;
+}
+
+/* M2: the note field while open for editing — same contentEditable
+   treatment as the H2/H3 inline-rename titles, minus the italic epigraph
+   styling so typed text reads like an ordinary field. */
+.msv-epigraph--editing {
+  font-style: normal;
+  opacity: 1;
+  outline: none;
+  caret-color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.06));
+  box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+  min-height: 1.2em;
+}
+
 /* "+ PART NOTE" / "+ CHAPTER NOTE" affordance (ghost button). */
 .msv-note-affordance {
   display: block;

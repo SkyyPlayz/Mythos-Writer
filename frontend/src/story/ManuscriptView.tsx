@@ -441,6 +441,10 @@ export default function ManuscriptView({
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // M2 (SKY-9017): the note-slot block id (`note-part-<id>` / `note-chapter-<id>`)
+  // currently open for editing — at most one at a time, matching the inline
+  // heading-rename affordances below.
+  const [editingNoteSlot, setEditingNoteSlot] = useState<string | null>(null);
   // M1-S3: page geometry + type mirror the canonical prefs; local state gives
   // live drag feedback, the sync effects below follow external pref changes
   // (popover, another control, settings load after mount).
@@ -843,6 +847,54 @@ export default function ManuscriptView({
     }
   }, []);
 
+  // M2 (SKY-9017): part/chapter note editing. Opening a slot (empty
+  // affordance click, or clicking an existing epigraph) is local-only —
+  // nothing persists until blur/Enter commits, so an opened-then-abandoned
+  // empty note never creates a stray epigraph the UI can't reopen (that was
+  // the original bug: the affordance called onEditPartNote with '' on click).
+  const commitNoteEdit = useCallback(
+    (slotKind: 'part' | 'chapter', id: string, el: HTMLElement) => {
+      setEditingNoteSlot(null);
+      const text = el.textContent ?? '';
+      if (slotKind === 'part') onEditPartNote?.(id, text);
+      else onEditChapterNote?.(id, text);
+    },
+    [onEditPartNote, onEditChapterNote]
+  );
+
+  const noteKeyDown = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingNoteSlot(null);
+    }
+  }, []);
+
+  // Focus the note field + land the caret at the end once it mounts — same
+  // park-and-claim shape as claimPendingCaret below, scoped to this one slot.
+  useEffect(() => {
+    if (!editingNoteSlot) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-testid="msv-note-edit-${editingNoteSlot}"]`
+    );
+    if (!el) return;
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch {
+      // jsdom's Selection API is partial — focus alone is enough there.
+    }
+  }, [editingNoteSlot]);
+
   // M3 (SKY-9021): row 3's title commits an inline rename of whatever the
   // depth scopes it to — story at book/part depth (Full Book title = story
   // title), the cursor's chapter/scene otherwise. One editable title, one
@@ -1123,29 +1175,66 @@ export default function ManuscriptView({
           </div>
         );
       case 'note-slot': {
-        // M2 (SKY-9017): chapter/part note — epigraph when filled, affordance when empty.
+        // M2 (SKY-9017): chapter/part note — epigraph when filled (click to
+        // edit), an editable field while open, or the empty affordance.
         const hasNote = b.note.length > 0;
+        const ownerId = b.partId ?? b.chapterId;
+        const canEdit = b.slotKind === 'part' ? !!onEditPartNote : !!onEditChapterNote;
+
+        if (canEdit && editingNoteSlot === b.id) {
+          return (
+            <div
+              key={b.id}
+              className="msv-epigraph msv-epigraph--editing"
+              data-testid={`msv-note-edit-${b.id}`}
+              contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
+              role="textbox"
+              aria-label={b.slotKind === 'part' ? 'Part note — Enter commits' : 'Chapter note — Enter commits'}
+              onBlur={(e: ReactFocusEvent<HTMLElement>) => commitNoteEdit(b.slotKind, ownerId!, e.currentTarget)}
+              onKeyDown={noteKeyDown}
+            >
+              {hasNote ? b.note[0].content : ''}
+            </div>
+          );
+        }
+
         if (hasNote) {
           return (
-            <div key={b.id} className="msv-epigraph" data-testid={`msv-note-${b.slotKind}-${b.partId ?? b.chapterId}`}>
+            <div
+              key={b.id}
+              className="msv-epigraph"
+              data-testid={`msv-note-${b.slotKind}-${ownerId}`}
+              {...(canEdit
+                ? {
+                    role: 'button' as const,
+                    tabIndex: 0,
+                    'aria-label': b.slotKind === 'part' ? 'Edit part note' : 'Edit chapter note',
+                    onClick: () => setEditingNoteSlot(b.id),
+                    onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setEditingNoteSlot(b.id);
+                      }
+                    },
+                  }
+                : {})}
+            >
               {b.note[0].content}
             </div>
           );
         }
+
         // Empty affordance: only show when the edit handler is wired.
-        const canEdit =
-          b.slotKind === 'part' ? !!onEditPartNote : !!onEditChapterNote;
         if (!canEdit) return null;
         return (
           <button
             key={b.id}
             type="button"
             className="msv-note-affordance"
-            data-testid={`msv-note-affordance-${b.slotKind}-${b.partId ?? b.chapterId}`}
-            onClick={() => {
-              if (b.slotKind === 'part' && b.partId) onEditPartNote?.(b.partId, '');
-              else if (b.slotKind === 'chapter' && b.chapterId) onEditChapterNote?.(b.chapterId, '');
-            }}
+            data-testid={`msv-note-affordance-${b.slotKind}-${ownerId}`}
+            onClick={() => setEditingNoteSlot(b.id)}
           >
             {b.slotKind === 'part' ? '+ PART NOTE' : '+ CHAPTER NOTE'}
           </button>
