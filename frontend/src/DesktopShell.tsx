@@ -1771,6 +1771,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api.settingsSet(updated).catch(() => {});
   }, [appSettings]);
 
+  // SKY-10926: ContinuityPanel persists archiveStoryEditConsentGiven via
+  // settingsSet internally when consent is granted, but appSettings here is a
+  // local mirror loaded once — without this, the two ContinuityPanel call
+  // sites below keep gating InconsistencyCard's story-edit actions on the
+  // stale (false) value until a reload. Sync optimistically instead of
+  // re-fetching the whole settings object.
+  const handleContinuityConsentGranted = useCallback(() => {
+    setAppSettings((prev) => (prev ? { ...prev, archiveStoryEditConsentGiven: true } : prev));
+  }, []);
+
   const handleGrsVisibilityChange = useCallback((visible: boolean) => {
     setGrsVisible(visible);
     persistGrsSettings({ visible });
@@ -4393,6 +4403,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             disabledReason={(appSettings?.agents?.archive?.enabled ?? true) ? 'feature' : 'agent'}
             archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
+            onConsentGranted={handleContinuityConsentGranted}
             onCountChange={setContinuityCount}
             onOpenSettings={() => setSettingsOpen(true)}
           />
@@ -4468,7 +4479,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
     view, handleJumpToText,
-    continuityCount, setContinuityCount, setSettingsOpen,
+    continuityCount, setContinuityCount, setSettingsOpen, handleContinuityConsentGranted,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
     betaReadNote, continuityCheckNote,
@@ -6217,6 +6228,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               disabledReason={(appSettings?.agents?.archive?.enabled ?? true) ? 'feature' : 'agent'}
               archiveScanScope={appSettings?.archiveScanScope ?? 'active_scene'}
               archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
+              onConsentGranted={handleContinuityConsentGranted}
               onCountChange={setContinuityCount}
               onOpenSettings={() => setSettingsOpen(true)}
             />
