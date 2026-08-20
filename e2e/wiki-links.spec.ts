@@ -156,8 +156,11 @@ async function openScene(page: Page): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
   // SKY-10937: scene depth composes through ManuscriptView's unified shell —
-  // the scene title now lives in its title row, not a BlockEditor-owned header.
-  await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+  // BlockEditor's own header (.scene-name) is gone. The workspace tab strip
+  // (not the crowded title row, which can flex-shrink its title in narrow
+  // windows — a pre-existing TitleRow layout gap, out of this fix's scope)
+  // is the robust "the right scene is open" signal.
+  await expect(page.locator('[role="tab"][aria-selected="true"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
 }
 
 async function openSceneLinksNote(page: Page): Promise<void> {
@@ -233,7 +236,9 @@ test.describe('wiki-links and multi-vault graph', () => {
     await openSceneLinksNote(page);
     await page.locator('.note-viewer [data-wiki-link="Scene One"]').click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-    await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+    // SKY-10937: see openScene() above — the workspace tab strip, not the
+    // (possibly flex-shrunk) title row, is the robust "scene opened" signal.
+    await expect(page.locator('[role="tab"][aria-selected="true"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
   test('graph scope Both shows story and note nodes', async () => {
@@ -264,7 +269,9 @@ test.describe('wiki-links and multi-vault graph', () => {
     await expect(openButton).toHaveText(/Open in Story Writer/i, { timeout: 5_000 });
     await openButton.click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-    await expect(page.locator('.scene-name', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
+    // SKY-10937: see openScene() above — the workspace tab strip, not the
+    // (possibly flex-shrunk) title row, is the robust "scene opened" signal.
+    await expect(page.locator('[role="tab"][aria-selected="true"]', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
   });
 
   test('[[NonExistent]] shows an unresolved wiki-link toast', async () => {

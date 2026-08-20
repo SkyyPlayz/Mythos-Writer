@@ -26,7 +26,12 @@
   white-space: nowrap;
 }
 
-/* Prototype scopeTitle (901): Lora 21/600. */
+/* Prototype scopeTitle (901): Lora 21/600. SKY-10937: found while verifying
+   scene-depth navigation — every other row-3 item is `flex: none` (can't
+   shrink), so this was the row's only shrinkable child and could be squeezed
+   to 0px (fully invisible, not just truncated) in a crowded-but-plausible
+   layout (default 1200px window, both sidebars open). min-width keeps the
+   ellipsis doing its job — truncated, never gone. */
 .msv-scope-title {
   margin: 0;
   font-family: 'Lora', Georgia, serif;
@@ -36,7 +41,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  min-width: 80px;
 }
 
 /* M3 (SKY-9021): inline title rename — match the page headings' focus

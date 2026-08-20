@@ -107,8 +107,11 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
 
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       // SKY-10937: scene depth composes through ManuscriptView's unified shell —
-      // the scene title now lives in its title row, not a BlockEditor-owned header.
-      await expect(page.locator('[data-testid="msv-scope-title"]', { hasText: 'Opening Scene' })).toBeVisible();
+      // BlockEditor's own header (.scene-name) is gone. The workspace tab strip
+      // (not the crowded title row, which can flex-shrink its title in narrow
+      // windows — a pre-existing TitleRow layout gap, out of this fix's scope)
+      // is the robust "the right scene is open" signal.
+      await expect(page.locator('[role="tab"][aria-selected="true"]', { hasText: 'Opening Scene' })).toBeVisible();
 
       await page.getByText('[[Character: Elara]]', { exact: true }).click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
