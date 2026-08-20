@@ -312,9 +312,19 @@ describe('RichTextEditor wiki-link delegation', () => {
   it('Story config keeps the plain-text [[link]] click fallback (SKY-2099)', async () => {
     const onWikiLinkClick = vi.fn();
     const { editor, unmount } = await mountCore({
-      content: 'Mentioning [[Location: Harbor]] in plain prose.\n',
+      content: '',
       onWikiLinkClick,
       plainTextWikiLinkFallback: true,
+    });
+
+    // Genuinely-unparsed literal "[[...]]" text — e.g. a paste that landed as
+    // plain characters before the next markdown reparse turns it into a real
+    // wikiLink node (SKY-10929: a parsed node no longer renders its brackets
+    // in the DOM, so this is the only case the fallback still needs to catch).
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.insertText('Mentioning [[Location: Harbor]] in plain prose.', 1),
+      );
     });
 
     fireEvent.click(editor.view.dom);
