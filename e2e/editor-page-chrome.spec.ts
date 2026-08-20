@@ -341,3 +341,40 @@ test('PC-08: title row word count reflects real content (SKY-6491)', async () =>
     await app.close().catch(() => undefined);
   }
 });
+
+// SKY-10925 (R9): scene depth used to drop into BlockEditor's own card — its
+// own header/chips, its own .fmt-toolbar stacked on top of msv-toolbar, and
+// its own bordered/backgrounded box nested inside .msv-sheet (the unified
+// page). This pins the fix: exactly ONE toolbar at every depth including
+// scene, and the scene editor renders as page content, not a nested card.
+test('PC-09: scene depth has exactly one toolbar and no nested editor card (SKY-10925)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await openScene(page);
+
+    for (const depth of ['book', 'part', 'chapter', 'scene'] as const) {
+      await page.getByTestId(`msv-zoom-${depth}`).click();
+      await expect(page.getByTestId(`msv-zoom-${depth}`)).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('msv-toolbar')).toHaveCount(1);
+      await expect(page.locator('.fmt-toolbar')).toHaveCount(0);
+    }
+
+    // Back to scene depth for the card-nesting checks.
+    await page.getByTestId('msv-zoom-scene').click();
+    await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible();
+
+    // No BlockEditor-owned card wrapper (its own background/border/max-width)
+    // survives inside the page — the prose IS the page, not a box floating on it.
+    await expect(page.locator('.shell-editor-beta-wrap--page-mode')).toHaveCount(0);
+    await expect(page.locator('.block-editor-toolbar .scene-name')).toHaveCount(0);
+    await expect(page.locator('.draft-state-group')).toHaveCount(0);
+
+    // The scene editor's prose sits inside .msv-sheet — the same page frame
+    // every other depth renders into — not a separate card next to it.
+    const sheet = page.getByTestId('msv-sheet');
+    await expect(sheet.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible();
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
