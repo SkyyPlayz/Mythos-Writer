@@ -1458,9 +1458,12 @@ jobs:
       # in this surface actually blocks the PR instead of only being visible
       # after merge on the non-PR, continue-on-error build-windows job.
       # SKY-10910: this is also the native-Windows "vault rename" gap-2
-      # coverage — FO-05/FO-13 rename folders/notes in place through the real
+      # coverage — FO-13 renames a nested note in place through the real
       # renderer→IPC→fs path with the Notes Vault watcher + DB bound to the
-      # source, on native Windows.
+      # source, on native Windows. FO-05/FO-06 (folder rename/delete) are
+      # currently test.fixme'd on win32 — SKY-10910 discovered a real
+      # Windows-only bug (context-menu rename retargets to an expanded
+      # folder's child row instead of the folder), tracked as SKY-10935.
       - name: E2E — Notes Vault folder operations on native Windows (SKY-8881, SKY-10910 gap 2)
         run: npm run test:e2e:folder-ops
 
