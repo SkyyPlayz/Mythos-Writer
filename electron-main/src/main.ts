@@ -353,7 +353,7 @@ import {
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, looksLikeObsidianVault, checkScaffoldGate, checkGuidedMoveGate } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -5399,6 +5399,8 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     await stopVaultWatcher();
     await startVaultWatcher(resolved, notifyVaultChanged);
+    // SKY-10890: consume only after every fallible step above has succeeded.
+    consumeSinglePathToken(payload?.registrationToken);
     return { vaultRoot: resolved };
   },
 
@@ -5699,6 +5701,8 @@ const handlers: IpcHandlers = {
     // full SKY-15 folder layout.
     ensureVaultDir();
     ensureNotesVaultDir();
+    // SKY-10890: consume only after every fallible step above has succeeded.
+    consumeSetPathsTokens(payload.storyVaultToken, payload.notesVaultToken);
     return { storyVaultPath: gate.storyVaultPath, notesVaultPath: gate.notesVaultPath, saved: true };
   },
 
@@ -5879,6 +5883,11 @@ const handlers: IpcHandlers = {
         addToRecentProjects(newPath);
       },
     });
+    // SKY-10890: consume only once the move has actually succeeded — a
+    // mid-move failure (antivirus, a locked file, a full disk) throws out of
+    // moveVaultAtomic above, so this line is never reached and the token
+    // stays valid for retry.
+    consumeGuidedMoveToken(payload.sessionToken);
 
     const verificationWarning = !moveResult.verification.ok
       ? moveResult.verification.message
@@ -5915,6 +5924,9 @@ const handlers: IpcHandlers = {
         addToRecentProjects(newPath);
       },
     });
+    // SKY-10890: consume only once the move has actually succeeded — see the
+    // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    consumeSinglePathToken(payload?.registrationToken);
 
     const verificationWarning = !moveResult.verification.ok
       ? moveResult.verification.message
@@ -6267,6 +6279,8 @@ const handlers: IpcHandlers = {
       }
     }
     scaffoldFromTemplate(resolvedStory, resolvedNotes, template);
+    // SKY-10890: consume only after the scaffold write above has succeeded.
+    consumeScaffoldToken(payload?.parentToken);
     // Issue tokens so the caller can authorize the subsequent vault:setPaths call.
     const storyVaultToken = generateRegistrationToken(resolvedStory);
     const notesVaultToken = generateRegistrationToken(resolvedNotes);

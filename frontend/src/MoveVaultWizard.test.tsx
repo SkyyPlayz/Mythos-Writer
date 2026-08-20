@@ -339,6 +339,35 @@ describe('MoveVaultWizard', () => {
     expect(screen.getByTestId('mv-migration-error')).toHaveTextContent('Move operation failed: disk full');
   });
 
+  // SKY-10890: UNAUTHORIZED_PATH means the one-shot folder authorization is
+  // gone, not a retryable permission error — the wizard must route the user
+  // back to re-pick rather than show the raw error code as a dead end.
+  it('UNAUTHORIZED_PATH sends the user back to the folder step with a recoverable message, and Next is blocked until they re-pick', async () => {
+    mockVaultLocalFolderMove.mockResolvedValue({ error: 'UNAUTHORIZED_PATH' });
+
+    await renderWizard();
+    await pickLocalFolder('/home/user/Documents/MythosVault');
+    fireEvent.click(screen.getByTestId('mv-next-folder'));
+    await waitFor(() => screen.getByTestId('mv-proceed-confirm'));
+    fireEvent.click(screen.getByTestId('mv-proceed-confirm'));
+
+    await waitFor(() => expect(screen.getByTestId('mv-test-ok')).toBeInTheDocument());
+    await act(async () => { fireEvent.click(screen.getByTestId('mv-migrate')); });
+
+    // Bounced back to the folder step with an explanation, not a raw error code.
+    await waitFor(() => expect(screen.getByTestId('mv-folder-auth-error')).toBeInTheDocument());
+    expect(screen.getByTestId('mv-folder-auth-error')).not.toHaveTextContent('UNAUTHORIZED_PATH');
+    expect(screen.getByRole('dialog', { name: /move vault to a different folder/i })).toBeInTheDocument();
+
+    // The stale token is gone — proceeding without a fresh pick is blocked.
+    expect(screen.getByTestId('mv-next-folder')).toBeDisabled();
+
+    // Re-picking (even the same path) clears the error and issues a fresh token.
+    await pickLocalFolder('/home/user/Documents/MythosVault');
+    expect(screen.queryByTestId('mv-folder-auth-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mv-next-folder')).not.toBeDisabled();
+  });
+
   // Accessibility
   it('dialog aria-label matches the active flow (local by default, cloud after switching)', async () => {
     await renderWizard();

@@ -66,7 +66,10 @@ function isStrictChildPath(parent: string, child: string): boolean {
  * Gate `vault:setPaths`. Each of the two requested paths must independently
  * pass either the registration-token check or the recent-projects allowlist
  * check. On success returns the validated paths; otherwise returns a typed
- * error and does not consume any token.
+ * error. Never consumes a token itself — call `consumeSetPathsTokens` after
+ * the caller's own fallible work (persisting settings, seeding folders)
+ * succeeds, so a mid-operation failure (e.g. antivirus blocking a write)
+ * doesn't burn the one-shot token and permanently lock out retry (SKY-10890).
  */
 export function checkSetPathsGate(
   input: SetPathsGateInput,
@@ -80,8 +83,6 @@ export function checkSetPathsGate(
     return { ok: false, error: 'notesVaultPath: must be a non-empty string' };
   }
 
-  // Peek each token without consuming so we can fail fast without burning
-  // a still-valid pair when only one side is bad.
   const storyToken = isNonEmptyString(input.storyVaultToken) ? input.storyVaultToken : null;
   const notesToken = isNonEmptyString(input.notesVaultToken) ? input.notesVaultToken : null;
 
@@ -102,11 +103,21 @@ export function checkSetPathsGate(
     };
   }
 
-  // Both passed. Consume each supplied token so it cannot be replayed.
-  if (storyToken) validateRegistrationToken(storyToken, { now });
-  if (notesToken) validateRegistrationToken(notesToken, { now });
-
   return { ok: true, storyVaultPath: input.storyVaultPath, notesVaultPath: input.notesVaultPath };
+}
+
+/**
+ * Consumes the tokens `checkSetPathsGate` validated, so they cannot be
+ * replayed. Call only after the operation the gate authorised has actually
+ * succeeded — see the module-level note on the ordering bug this avoids.
+ */
+export function consumeSetPathsTokens(
+  storyVaultToken: unknown,
+  notesVaultToken: unknown,
+  now: number = Date.now(),
+): void {
+  if (isNonEmptyString(storyVaultToken)) validateRegistrationToken(storyVaultToken, { now });
+  if (isNonEmptyString(notesVaultToken)) validateRegistrationToken(notesVaultToken, { now });
 }
 
 /**
@@ -169,11 +180,19 @@ export interface SinglePathGateErr {
 export type SinglePathGateResult = SinglePathGateOk | SinglePathGateErr;
 
 /**
- * Gate vault:create-blank (SEC-11). The renderer-supplied targetPath must be
- * either (a) present in the recent-projects allowlist, or (b) accompanied by
- * a registration token issued by a main-process file-picker dialog and bound
- * to the exact same path. Rejects anything else so a compromised renderer
- * cannot mkdir at an arbitrary writable path and re-root the vault sandbox.
+ * Gate vault:create-blank and vault:localFolderMove (SEC-11, SKY-10890). The
+ * renderer-supplied targetPath must be either (a) present in the
+ * recent-projects allowlist, or (b) accompanied by a registration token
+ * issued by a main-process file-picker dialog and bound to the exact same
+ * path. Rejects anything else so a compromised renderer cannot mkdir at an
+ * arbitrary writable path and re-root the vault sandbox.
+ *
+ * Never consumes the token itself — call `consumeSinglePathToken` after the
+ * caller's own fallible FS work succeeds. Consuming here, before that work
+ * runs, meant a mid-operation failure (antivirus, a locked file, a full
+ * disk) burned the one-shot token with nothing to show for it, permanently
+ * blocking retry with UNAUTHORIZED_PATH until the user re-opened the picker
+ * (SKY-10890).
  *
  * Note: the caller must expand `~` before passing `targetPath` so the
  * comparison against absolute-path tokens and allowlist entries is correct.
@@ -190,9 +209,16 @@ export function checkSinglePathGate(
   if (!pathPasses(input.targetPath, token, allowlist, now)) {
     return { ok: false, error: 'UNAUTHORIZED_PATH' };
   }
-  // Path is authorised. Consume the token so it cannot be replayed.
-  if (token) validateRegistrationToken(token, { now });
   return { ok: true, targetPath: input.targetPath };
+}
+
+/**
+ * Consumes the token `checkSinglePathGate` validated, so it cannot be
+ * replayed. Call only after the operation the gate authorised has actually
+ * succeeded.
+ */
+export function consumeSinglePathToken(registrationToken: unknown, now: number = Date.now()): void {
+  if (isNonEmptyString(registrationToken)) validateRegistrationToken(registrationToken, { now });
 }
 
 /**
@@ -200,7 +226,10 @@ export function checkSinglePathGate(
  * token from a prior `vault:pick-folder` dialog call, proving the parent
  * directory was user-selected. The handler derives story/notes sub-paths from
  * the validated parent — the renderer never supplies arbitrary FS paths.
- * The token is consumed on success (one-shot).
+ *
+ * Never consumes the token itself — call `consumeScaffoldToken` after
+ * `scaffoldFromTemplate` succeeds (SKY-10890 pattern), so a failed scaffold
+ * write doesn't burn the one-shot token and block retry.
  */
 export function checkScaffoldGate(
   input: { templateId: unknown; parentToken: unknown },
@@ -212,11 +241,19 @@ export function checkScaffoldGate(
   if (!isNonEmptyString(input.parentToken)) {
     return { ok: false, error: 'parentToken: must be a non-empty string — use vault:pick-folder first' };
   }
-  const validated = validateRegistrationToken(input.parentToken, { consume: true, now });
+  const validated = validateRegistrationToken(input.parentToken, { consume: false, now });
   if (!validated) {
     return { ok: false, error: 'parentToken is invalid or expired — use vault:pick-folder first' };
   }
   return { ok: true, parentPath: validated.vaultRoot };
+}
+
+/**
+ * Consumes the parentToken `checkScaffoldGate` validated, so it cannot be
+ * replayed. Call only after the scaffold write has actually succeeded.
+ */
+export function consumeScaffoldToken(parentToken: unknown, now: number = Date.now()): void {
+  if (isNonEmptyString(parentToken)) validateRegistrationToken(parentToken, { now });
 }
 
 /**
@@ -263,7 +300,9 @@ export function looksLikeObsidianVault(
 //   1. targetPath is within os.homedir() and has no `..` components.
 //   2. syncProvider is one of the approved big-4 cloud providers.
 //   3. sessionToken is a valid registration token bound to targetPath.
-// Consuming the token on success makes this a one-shot operation.
+// Never consumes the token — call consumeGuidedMoveToken (below) after the
+// move itself succeeds, so a mid-move failure doesn't burn the one-shot
+// token and permanently block retry (SKY-10890).
 
 const VALID_SYNC_PROVIDERS = new Set<string>(['icloud', 'dropbox', 'google-drive', 'onedrive']);
 
@@ -331,8 +370,14 @@ export function checkGuidedMoveGate(
     return { ok: false, error: 'sessionToken: not bound to the requested targetPath' };
   }
 
-  // All checks passed. Consume the token (one-shot).
-  validateRegistrationToken(input.sessionToken, { consume: true, now });
-
   return { ok: true, targetPath, syncProvider: input.syncProvider as CloudSyncProvider };
+}
+
+/**
+ * Consumes the sessionToken `checkGuidedMoveGate` validated, so it cannot be
+ * replayed. Call only after the move the gate authorised has actually
+ * succeeded.
+ */
+export function consumeGuidedMoveToken(sessionToken: unknown, now: number = Date.now()): void {
+  if (isNonEmptyString(sessionToken)) validateRegistrationToken(sessionToken, { now });
 }

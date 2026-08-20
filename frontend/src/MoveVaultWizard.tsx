@@ -105,6 +105,11 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
   const [migrating, setMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [newVaultPath, setNewVaultPath] = useState<string | null>(null);
+  // SKY-10890: UNAUTHORIZED_PATH means the one-shot folder authorization is
+  // gone (expired, or already used) — not a permission problem the user can
+  // fix by retrying the same move. Route it back to the folder step with an
+  // explanation instead of showing the raw error code as a dead end.
+  const [folderAuthError, setFolderAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.vaultGetPaths().then((paths) => {
@@ -159,6 +164,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
       setTargetFolder(res.vaultRoot);
       setSessionToken(res.registrationToken ?? null);
       setSyncConfirmed(false);
+      setFolderAuthError(null);
     }
   }, [destination, providerDef, currentVaultPath]);
 
@@ -208,7 +214,20 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
             registrationToken: sessionToken,
           });
       if ('error' in result) {
-        setMigrationError(result.error ?? 'Move failed. Please try again.');
+        if (result.error === 'UNAUTHORIZED_PATH') {
+          // SKY-10890: the folder authorization is gone (expired, or was
+          // already consumed) — the "Move vault" button would just fail the
+          // same way again. Send the user back to re-pick, which issues a
+          // fresh one-shot token, rather than leaving them stuck on a raw
+          // permission-sounding error with no path forward.
+          setSessionToken(null);
+          setFolderAuthError(
+            'Your folder selection could not be re-verified. Please choose the folder again.'
+          );
+          setStep('folder');
+        } else {
+          setMigrationError(result.error ?? 'Move failed. Please try again.');
+        }
       } else if (result.moved) {
         setNewVaultPath(result.newVaultPath);
         setStep('result');
@@ -264,6 +283,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
               destination={destination}
               providerDef={providerDef}
               targetFolder={targetFolder}
+              authError={folderAuthError}
               onPick={handlePickFolder}
               onBack={destination === 'cloud' ? () => setStep('provider') : null}
               onCancel={onClose}
@@ -361,6 +381,7 @@ function StepFolder({
   destination,
   providerDef,
   targetFolder,
+  authError,
   onPick,
   onBack,
   onCancel,
@@ -370,6 +391,7 @@ function StepFolder({
   destination: Destination;
   providerDef: ProviderDef | null;
   targetFolder: string;
+  authError: string | null;
   onPick: () => void;
   onBack: (() => void) | null;
   onCancel: () => void;
@@ -387,6 +409,12 @@ function StepFolder({
       {destination === 'cloud' && providerDef && (
         <p className="mv-hint" data-testid="mv-default-hint">
           Default location: <code className="mv-code">{providerDef.defaultHint}</code>
+        </p>
+      )}
+
+      {authError && (
+        <p className="mv-migration-error" role="alert" data-testid="mv-folder-auth-error">
+          {authError}
         </p>
       )}
 
@@ -446,7 +474,7 @@ function StepFolder({
           type="button"
           className="settings-btn settings-btn-save"
           onClick={onNext}
-          disabled={!targetFolder}
+          disabled={!targetFolder || !!authError}
           data-testid="mv-next-folder"
         >
           Next
