@@ -3,7 +3,6 @@
   "entries": [
     "frontend/src/AgentHubPanel.tsx::AgentHubPanel.onOpenSuggestionInbox",
     "frontend/src/ContinuityPanel.tsx::ContinuityPanel.onConsentGranted",
-    "frontend/src/EntityDetail.tsx::EntityDetail.onOpenEntity",
     "frontend/src/NoteViewer.tsx::NoteViewer.onModeChange",
     "frontend/src/SplitEditorPane.tsx::SplitEditorPane.onSplitPane",
     "frontend/src/StoryNavigator.tsx::StoryNavigator.onCreatePart",
