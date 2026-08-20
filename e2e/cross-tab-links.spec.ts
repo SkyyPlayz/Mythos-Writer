@@ -108,7 +108,8 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.locator('.scene-name', { hasText: 'Opening Scene' })).toBeVisible();
 
-      await page.getByText('[[Character: Elara]]', { exact: true }).click();
+      // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets.
+      await page.locator('[data-wiki-link="Character: Elara"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
     } finally {

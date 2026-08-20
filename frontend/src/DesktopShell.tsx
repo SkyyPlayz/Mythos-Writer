@@ -825,10 +825,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [splitDirection, setSplitDirection] = useState<SplitDropZone>('right');
   // Beta 4 M4: shell-driven note split request (note tab dropped on a zone).
   const [noteSplitRequest, setNoteSplitRequest] = useState<{ path: string; token: number } | null>(null);
-  // SKY-9784: whether the Notes split (NotesTabPanel's own pane 1/pane 2 tab
-  // strips) is active — hides the global strip while each pane owns its own,
-  // mirroring splitWindowEnabled for the Story split editor.
-  const [notesSplitActive, setNotesSplitActive] = useState(false);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -5213,22 +5209,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         {/* SKY-8907: while the Story split editor is active, pane 1 renders its
             own copy of this strip (storyDocTabs) — hide the global one so
             there aren't two.
-            SKY-9784: same for the Notes split — NotesTabPanel's own pane 1/
-            pane 2 strips take over while notesSplitActive. */}
+            SKY-10929: the Notes strip is never rendered here at all anymore —
+            NotesTabPanel owns it (scoped to its own center pane, not spanning
+            the vault tree / Brainstorm sidebar); see notesDocTabStrip below. */}
         {showTitleBar && workspaceStripMode.kind !== 'hidden' &&
           !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') &&
-          !(notesSplitActive && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
+          !(workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
           <WorkspaceTabBar
-            tabs={
-              workspaceStripMode.kind === 'docs'
-                ? (workspaceStripMode.strip === 'notes' ? notesDocTabs : storyDocTabs)
-                : []
-            }
-            activeTabId={
-              workspaceStripMode.kind === 'docs'
-                ? (workspaceStripMode.strip === 'notes' ? activeNotesDocTabId : activeStoryDocTabId)
-                : null
-            }
+            tabs={workspaceStripMode.kind === 'docs' ? storyDocTabs : []}
+            activeTabId={workspaceStripMode.kind === 'docs' ? activeStoryDocTabId : null}
             staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
@@ -5238,21 +5227,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabPopOut={handleTabPopOut}
             onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
             agentsActive={agentsActive}
-            newTabTitle={
-              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes'
-                ? 'New note — via the notes explorer'
-                : 'New blank scene — it only saves once you type'
-            }
-            newTabPrimaryLabel={
-              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes' ? 'New note' : 'New scene'
-            }
+            newTabTitle="New blank scene — it only saves once you type"
+            newTabPrimaryLabel="New scene"
             newTabPickerItems={workspaceStripMode.kind === 'docs' ? [
               { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
               // SKY-10019: story-scoped only (mirrors OutlinePlanningPanel's
               // `story` prop) — no Notes-strip entry, unlike Entity Browser.
-              ...(workspaceStripMode.strip === 'story'
-                ? [{ key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory }]
-                : []),
+              { key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory },
             ] : undefined}
           />
         )}
@@ -5973,6 +5954,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {tabShell.activeTab === 'notes' && vaultBinding.notesValid && (
         <NotesTabPanel
+          liquidNeonV2={appSettings?.liquidNeonV2}
+          docTabStrip={showTitleBar && (
+            <WorkspaceTabBar
+              tabs={notesDocTabs}
+              activeTabId={activeNotesDocTabId}
+              onTabSelect={handleWorkspaceTabSelect}
+              onTabClose={handleWorkspaceTabClose}
+              onTabReorder={handleWorkspaceTabReorder}
+              onNewTab={handleNewWorkspaceTab}
+              onTabOpenInSplit={handleTabOpenInSplit}
+              onTabPopOut={handleTabPopOut}
+              onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
+              agentsActive={agentsActive}
+              newTabTitle="New note — via the notes explorer"
+              newTabPrimaryLabel="New note"
+              newTabPickerItems={[
+                { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
+              ]}
+            />
+          )}
           notesSubView={tabShell.notesSubView}
           onNotesSubViewChange={handleNotesSubViewChange}
           notesSidebarWidth={tabShell.notesSidebarWidth}
@@ -5999,7 +6000,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onPane1NewTab={handleNewWorkspaceTab}
           onOpenEntityBrowser={handleOpenEntityBrowserNotes}
           activeTabIsEntityBrowser={activeNotesTabIsEntityBrowser}
-          onNoteSplitActiveChange={setNotesSplitActive}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
           stories={stories}

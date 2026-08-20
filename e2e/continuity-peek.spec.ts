@@ -10,7 +10,7 @@
  *   Entity card:             .entity-card[aria-label="<entity name>"]
  *   Type badge:              .entity-type-badge[aria-label="Type: <type>"]
  *   View-full-note button:   button[aria-label="View full note: <entity name>"]
- *   Notes editor:            .note-viewer-editor
+ *   Notes editor (Rich, default per SKY-10929): .note-tiptap-content
  *
  * Acceptance coverage:
  *   TC-CP-01  With entity notes present, the shortcut opens the Continuity Peek overlay
@@ -387,7 +387,9 @@ test('TC-CP-06: entity card shows required fields and View full note opens the n
 
   await card.getByRole('button', { name: 'View full note: Marcus' }).click();
   await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
-  await expect(page.locator('.note-viewer-editor')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
+  // SKY-10929: notes now default to Rich view (ProseMirror), not Source
+  // (.note-viewer-editor is the Source/Markdown textarea, unmounted in Rich).
+  await expect(page.locator('.note-tiptap-content')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+1' : 'Control+1');
   // Exit Focus mode first -- it hides the Story Navigator sidebar, so

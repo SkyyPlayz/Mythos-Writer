@@ -92,6 +92,9 @@
 /* ── Left sidebar ────────────────────────────────────────────────────────────── */
 
 .notes-tab-sidebar-left {
+  /* SKY-10929: anchors the Liquid Neon inset border overlay (slot A), same
+     as the Story editor's .shell-left. */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -100,7 +103,16 @@
   min-width: 160px;
   max-width: 500px;
   border-right: 1px solid var(--glass-border);
-  background: var(--bg-surface);
+  background: var(--glass-fill-fallback);
+}
+
+/* SKY-10929: was a flat --bg-surface (opaque solid, never engine-tracked
+   glass/blur) — bring it in line with every other panel in the app
+   (LeftRail.css/StoryNavigator.css use the identical pattern). */
+@supports (backdrop-filter: blur(1px)) {
+  .notes-tab-sidebar-left {
+    background: var(--glass-fill);
+  }
 }
 
 .notes-sidebar-header {
@@ -231,6 +243,9 @@
 /* SKY-2102: page-background tokens applied to the Notes center pane.
    Full-width (Obsidian-feel) with a softer ambient glow vs the Story tab's vivid frame. */
 .notes-tab-center {
+  /* SKY-10929: anchors the Liquid Neon inset border overlay (slot B), same
+     as the Story editor's .shell-center-column. */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -336,6 +351,9 @@
 /* ── Right sidebar (Brainstorm) ──────────────────────────────────────────────── */
 
 .notes-tab-sidebar-right {
+  /* SKY-10929: anchors the Liquid Neon inset border overlay (slot C), same
+     as the Story editor's GlobalRightSidebar. */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -343,7 +361,16 @@
   overflow: hidden;
   min-width: 260px;
   max-width: 500px;
-  background: var(--bg-surface);
+  background: var(--glass-fill-fallback);
+}
+
+/* SKY-10929: was a flat --bg-surface (opaque solid, never engine-tracked
+   glass/blur) — this is the "chat bot in the side panel" surface from the
+   bug report; bring it in line with every other panel in the app. */
+@supports (backdrop-filter: blur(1px)) {
+  .notes-tab-sidebar-right {
+    background: var(--glass-fill);
+  }
 }
 
 .notes-right-sidebar-header {

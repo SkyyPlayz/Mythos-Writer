@@ -3,7 +3,7 @@
 // as in-tab sub-view toggles.
 // M16 (Beta 3): note splits, [[wiki link]] hover previews, and the right-panel
 // Agent/Properties tabs (properties + backlinks + tags, frontmatter-backed).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import VaultBrowser, { type VaultBrowserProps } from './components/VaultBrowser';
 import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
@@ -16,6 +16,8 @@ import NoteProperties from './NoteProperties';
 import Backlinks from './Backlinks';
 import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHoverPreview';
 import { useAiEnabled } from './hooks/useAiEnabled';
+import BorderOverlay from './theme/BorderOverlay';
+import type { LiquidNeonV2Settings } from './theme/liquidNeonEngine';
 import type { Story, Scene, Chapter } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
@@ -120,6 +122,17 @@ export interface NotesTabPanelProps {
   onOpenBrainstorm?: (seedText: string) => void;
   /** M8d: note-editor Read/Dictate toolbar buttons — reuses the app's TTS/voice pipeline. */
   noteToolbarActions?: FormatToolbarActions;
+  /** SKY-10929: Slot A/B/C breathing neon border — same settings + slot
+   * numbers (1 left · 2 center · 3 right) the Story editor's shell-panels
+   * use, so Notes gets the identical treatment instead of none at all. */
+  liquidNeonV2?: Partial<LiquidNeonV2Settings> | null;
+  /** SKY-10929: the shell's document tab strip (WorkspaceTabBar), fully
+   * configured by DesktopShell (open-in-split, pop-out, agents chip, +
+   * picker) — rendered here, scoped to the center pane, instead of
+   * DesktopShell spanning it over the vault tree and Brainstorm sidebar too.
+   * Omitted while the Notes split is active — each split pane owns its own
+   * tab strip already (see pane1Tabs above / NoteSplitPane). */
+  docTabStrip?: ReactNode;
 }
 
 export default function NotesTabPanel({
@@ -180,6 +193,8 @@ export default function NotesTabPanel({
   selectedEntityId,
   onOpenBrainstorm,
   noteToolbarActions,
+  liquidNeonV2,
+  docTabStrip,
 }: NotesTabPanelProps) {
   const isDraggingLeft = useRef(false);
   const dragStartX = useRef(0);
@@ -464,6 +479,9 @@ export default function NotesTabPanel({
             className="notes-tab-sidebar-left"
             style={{ width: notesSidebarWidth }}
           >
+            {/* SKY-10929: slot-A breathing border, same slot/delay as the
+                Story editor's left rail (shell-left). */}
+            <BorderOverlay settings={liquidNeonV2} slot={1} delay={0} />
             <div className="notes-sidebar-header">
               <span className="notes-vault-badge" aria-label="Notes Vault">
                 Notes Vault
@@ -523,6 +541,15 @@ export default function NotesTabPanel({
 
         {/* Center — sub-view body */}
         <div className="notes-tab-center" data-testid="notes-tab-center">
+          {/* SKY-10929: slot-B breathing border, same slot/delay as the
+              Story editor's center column (shell-center-column). */}
+          <BorderOverlay settings={liquidNeonV2} slot={2} delay={0.8} />
+          {/* SKY-10929: the document tab strip belongs to the center editing
+              pane only — it must not span over the vault tree / Brainstorm
+              sidebar the way DesktopShell's shell-level strip used to.
+              Omitted while split: each split pane already owns its own
+              strip (NotesPaneTabStrip, below). */}
+          {!noteSplitActive && docTabStrip}
           {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && !noteSplitActive && (
             <NoteViewer
               key={activeNotePath}
@@ -535,10 +562,6 @@ export default function NotesTabPanel({
               sceneWikiLinkTitles={sceneWikiLinkTitles}
               wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
-              // M17: backlinks footer in the note body (FULL-SPEC §6).
-              stories={stories}
-              onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
-              onOpenBacklinkScene={onSelectScene}
               toolbarActions={noteToolbarActions}
             />
           )}
@@ -586,11 +609,6 @@ export default function NotesTabPanel({
                     sceneWikiLinkTitles={sceneWikiLinkTitles}
                     wikiLinkCandidates={wikiLinkCandidates}
                     onClose={onCloseActiveNote}
-                    // M17: backlinks footer follows the primary pane only —
-                    // the split pane stays compact (prototype split excerpt).
-                    stories={stories}
-                    onOpenBacklinkNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
-                    onOpenBacklinkScene={onSelectScene}
                     toolbarActions={noteToolbarActions}
                   />
                 )}
@@ -707,6 +725,9 @@ export default function NotesTabPanel({
               style={{ width: RIGHT_SIDEBAR_W }}
               data-testid="notes-brainstorm-panel"
             >
+              {/* SKY-10929: slot-C breathing border, same slot/delay as the
+                  Story editor's right sidebar (GlobalRightSidebar). */}
+              <BorderOverlay settings={liquidNeonV2} slot={3} delay={1.6} />
               <div className="notes-right-sidebar-header">
                 {/* M16: Agent (default, Brainstorm chat + continuity flags) /
                     Properties (frontmatter props + backlinks + tags) tabs —

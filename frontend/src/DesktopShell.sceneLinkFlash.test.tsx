@@ -119,7 +119,13 @@ describe('DesktopShell scene-link flash highlight (SKY-9729)', () => {
     render(<App />);
 
     await screen.findByRole('navigation', { name: 'Main navigation' });
-    const wikiLink = await screen.findByText('[[Scene Two]]');
+    // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets
+    // — so the wiki-link node is found by its data attribute, not its text.
+    const wikiLink = await waitFor(() => {
+      const el = document.querySelector('[data-wiki-link="Scene Two"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
     expect(document.querySelector('.shell-editor-scene-wrap--flash')).not.toBeInTheDocument();
 
     fireEvent.click(wikiLink);
