@@ -259,7 +259,7 @@ import {
   rejectSceneCrafterCardSuggestion,
 } from './sceneCrafterSuggestions.js';
 import { generateSceneCrafterSuggestions } from './archiveSceneCrafterGenerator.js';
-import { wrapIpcHandler, sanitizeIpcError } from './ipcErrors.js';
+import { wrapIpcHandler, sanitizeIpcError, SafeIpcError } from './ipcErrors.js';
 import { shouldInitializeVaultStorage } from './startupVaultPolicy.js';
 import { isExistingUsableVaultRoot, validatePathForVault } from './validatePathUtil.js';
 import { isUnderRoot } from './pathSecurity.js';
@@ -1708,6 +1708,30 @@ function buildScopedVaultGraph(scope: VaultGraphScopeLocal): { nodes: ScopedGrap
 
   for (const node of nodes) node.degree = degreeNeighbours.get(node.id)?.size ?? 0;
   return { nodes, edges };
+}
+
+// SKY-10895: `validateMoveTarget` already confirmed the destination is
+// writable moments before `moveVaultAtomic` runs, so an EPERM/EACCES/EBUSY
+// thrown by the rename itself points at the *source* — almost always the
+// app's own vault watcher or DB still holding a handle open (or, more
+// rarely, another process like antivirus). The raw OS error ("Permission
+// denied.") told the user to look at the destination, which was already
+// verified writable — surface the real cause instead.
+function toGuidedMoveError(err: unknown): unknown {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
+    // The SafeIpcError below intentionally hides the raw OS error from the
+    // renderer, but that same detail (which path was actually locked, after
+    // the retry budget in vaultGuidedMove.ts's renameOrCopy was exhausted)
+    // is exactly what an operator needs to diagnose a report of this
+    // message — log it server-side before discarding it.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)}`,
+    );
+    return new SafeIpcError('Mythos Writer still has this vault open — close and retry.');
+  }
+  return err;
 }
 
 // ─── IPC Handlers ───
@@ -5864,7 +5888,12 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
     payload: VaultGuidedMovePayload,
   ) => {
-    const homeDir = app.getPath('home');
+    // SKY-10910: os.homedir() reads USERPROFILE on win32 (unlike app.getPath('home')
+    // which reads from the Windows API and may return a different path form — e.g.
+    // 8.3 short name vs long name). Using os.homedir() keeps gate semantics consistent
+    // with what the test's USERPROFILE env override sets, and is equivalent on real
+    // user machines where USERPROFILE always points to the same directory.
+    const homeDir = os.homedir();
 
     // Gate: validates targetPath (homedir containment, no ..), syncProvider,
     // and sessionToken (registration token bound to targetPath).
@@ -5877,13 +5906,30 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    const moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
-      syncProvider: gate.syncProvider,
-      updateSettings: (newPath) => {
-        saveVaultSettings({ vaultRoot: newPath });
-        addToRecentProjects(newPath);
-      },
-    });
+    // SKY-10895: release the app's own handles on the source vault before
+    // the rename. The Story Vault watcher and DB are bound at app boot —
+    // on Windows, fs.rename refuses to touch a directory that still has
+    // open handles inside it (EPERM), even though POSIX allows it. Always
+    // re-acquire in `finally` so a failed/rolled-back move never leaves the
+    // app running with no watcher and a closed DB.
+    await stopVaultWatcher();
+    closeDb();
+    let moveResult;
+    try {
+      moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+        syncProvider: gate.syncProvider,
+        updateSettings: (newPath) => {
+          saveVaultSettings({ vaultRoot: newPath });
+          addToRecentProjects(newPath);
+        },
+      });
+    } catch (err) {
+      throw toGuidedMoveError(err);
+    } finally {
+      const currentRoot = getVaultRoot();
+      openDb(currentRoot);
+      await startVaultWatcher(currentRoot, notifyVaultChanged);
+    }
     // SKY-10890: consume only once the move has actually succeeded — a
     // mid-move failure (antivirus, a locked file, a full disk) throws out of
     // moveVaultAtomic above, so this line is never reached and the token
@@ -5918,13 +5964,26 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    const moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
-      syncProvider: 'local',
-      updateSettings: (newPath) => {
-        saveVaultSettings({ vaultRoot: newPath });
-        addToRecentProjects(newPath);
-      },
-    });
+    // SKY-10895: release the app's own handles on the source vault before
+    // the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    await stopVaultWatcher();
+    closeDb();
+    let moveResult;
+    try {
+      moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
+        syncProvider: 'local',
+        updateSettings: (newPath) => {
+          saveVaultSettings({ vaultRoot: newPath });
+          addToRecentProjects(newPath);
+        },
+      });
+    } catch (err) {
+      throw toGuidedMoveError(err);
+    } finally {
+      const currentRoot = getVaultRoot();
+      openDb(currentRoot);
+      await startVaultWatcher(currentRoot, notifyVaultChanged);
+    }
     // SKY-10890: consume only once the move has actually succeeded — see the
     // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
     consumeSinglePathToken(payload?.registrationToken);
