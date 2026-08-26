@@ -43,6 +43,7 @@ import WorkspaceSplitDropZones, { type SplitDropZone } from './WorkspaceSplitDro
 // Beta 4 M4: tabs are documents (scenes/notes), not module mirrors (§4).
 import {
   makeSceneTab,
+  makeNoteTab,
   upsertSceneTab,
   upsertNoteTab,
   noteTitleFromPath,
@@ -3510,6 +3511,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Opening a note surfaces/focuses its tab in the Notes strip.
   useEffect(() => {
     if (!openedNotePath) return;
+    // SKY-10926: if the already-active tab is already this note, leave it
+    // alone — otherwise upsertNoteTab's docPath lookup would find the FIRST
+    // tab for this path and steal focus back to it, which would silently
+    // collapse an explicitly-opened duplicate tab (e.g. "Open in new tab")
+    // back onto an existing one for the same note.
+    const activeTab = notesDocTabs.find((t) => t.id === activeNotesDocTabId);
+    if (activeTab?.kind === 'note' && activeTab.docPath === openedNotePath) return;
     const result = upsertNoteTab(notesDocTabs, openedNotePath);
     const activeChanged = activeNotesDocTabId !== result.activeId;
     if (result.tabs !== notesDocTabs) setNotesDocTabs(result.tabs);
@@ -3749,6 +3757,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       persistDocTabs({ notes: { tabs: result.tabs, activeId: result.activeId } });
       return result.tabs;
     });
+  }, [handleTabChange, handleNotesSubViewChange, persistDocTabs]);
+
+  // SKY-10926: notes-tree "Open in new tab" (context menu) / backlink- and
+  // pane-drag-opens-in-new-tab — unlike opening a note normally (which
+  // surfaces/focuses its EXISTING tab via the upsertNoteTab effect above),
+  // this always appends a brand new pane 1 tab for the path, even if the
+  // note is already open elsewhere in the strip. The "surface tab" effect's
+  // active-tab-already-matches guard (above) keeps it from immediately
+  // collapsing this new tab back onto an existing one for the same path.
+  const handleOpenNoteInNewTab = useCallback((path: string) => {
+    handleTabChange('notes');
+    handleNotesSubViewChange('editor');
+    const tab = makeNoteTab(path);
+    setNotesDocTabs((prev) => {
+      const next = [...prev, tab];
+      persistDocTabs({ notes: { tabs: next, activeId: tab.id } });
+      return next;
+    });
+    setActiveNotesDocTabId(tab.id);
+    setOpenedNotePath(path);
   }, [handleTabChange, handleNotesSubViewChange, persistDocTabs]);
 
   // Global bar dispatcher — routes to whichever strip is currently showing
@@ -6029,6 +6057,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             setOpenedNotePath(path);
             handleNotesSubViewChange('editor');
           }}
+          onOpenInNewTab={handleOpenNoteInNewTab}
           onOpenScene={handleOpenGraphScene}
           onBetaRead={betaReadNote}
           onContinuityCheck={continuityCheckNote}

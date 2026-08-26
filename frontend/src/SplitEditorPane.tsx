@@ -195,7 +195,11 @@ export interface SplitEditorPaneProps {
   onCloseEmptyPane?: () => void;
   /** SKY-9342: per-pane ⋮ menu — "Close pane" action (always-available). */
   onClosePane?: () => void;
-  /** SKY-9342: per-pane ⋮ menu — "Split pane" action. */
+  /** SKY-9342: per-pane ⋮ menu — "Split pane" action.
+   * dead-wiring-ignore: menu item for a future 3rd-pane split; the app only
+   * supports a 2-pane split today (SKY-1699 — see DesktopShell's singular
+   * `pane2Scene`/`focusedPane: 1 | 2` state and the "Split editor (2 panes)"
+   * toggle), so no caller can wire this until 3-pane layout exists. */
   onSplitPane?: () => void;
 
   // ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
