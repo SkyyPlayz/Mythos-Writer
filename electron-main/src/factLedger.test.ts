@@ -1,5 +1,4 @@
-// Entity-index facts + persistent vault index cache (SKY-10731 / M12.2) —
-// real DB in a temp directory, no mocks.
+// Fact ledger (SKY-10731 / M12.2) — real DB in a temp directory, no mocks.
 // Verifies the durable-vs-derived split is load-bearing: a full derived
 // rebuild wipes facts/provenance/cache but never author decisions.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -44,7 +43,7 @@ function makeFact(overrides: Partial<Parameters<typeof upsertFact>[0]> = {}) {
   };
 }
 
-describe('entity-index facts + persistent vault index cache', () => {
+describe('fact ledger', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -59,11 +58,11 @@ describe('entity-index facts + persistent vault index cache', () => {
 
   it('migration v30 creates both buckets', () => {
     const tables = getDb()
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('entity_index_facts','fact_provenance','vault_index_cache','fact_decisions')")
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('fact_ledger','fact_provenance','vault_index_cache','fact_decisions')")
       .all()
       .map((r) => (r as { name: string }).name)
       .sort();
-    expect(tables).toEqual(['entity_index_facts', 'fact_decisions', 'fact_provenance', 'vault_index_cache']);
+    expect(tables).toEqual(['fact_decisions', 'fact_ledger', 'fact_provenance', 'vault_index_cache']);
   });
 
   it('collapses duplicate extractions into one fact row with N provenance entries', () => {
@@ -235,13 +234,13 @@ describe('entity-index facts + persistent vault index cache', () => {
     });
   });
 
-  // SKY-10769 AC4/AC5: vault and entity-index facts are separate stores — no
-  // schema entanglement. The checker flags any foreign key that crosses the
-  // vault/index boundary. Negative control first: a deliberately merged
-  // schema (fact row keyed by FK into a vault table) must be caught,
+  // SKY-10769 AC4/AC5: vault and fact ledger are separate stores — no schema
+  // entanglement. The checker flags any foreign key that crosses the
+  // vault/ledger boundary. Negative control first: a deliberately merged
+  // schema (ledger row keyed by FK into a vault table) must be caught,
   // proving the checker can fail — then the real schema must pass it.
-  describe('vault/entity-index store separation (SKY-10769 AC5)', () => {
-    const ENTITY_INDEX_TABLES = ['entity_index_facts', 'fact_provenance', 'vault_index_cache', 'fact_decisions'];
+  describe('vault/ledger store separation (SKY-10769 AC5)', () => {
+    const LEDGER_TABLES = ['fact_ledger', 'fact_provenance', 'vault_index_cache', 'fact_decisions'];
 
     function findStoreEntanglements(db: DatabaseSync): string[] {
       const tables = db
@@ -250,10 +249,10 @@ describe('entity-index facts + persistent vault index cache', () => {
         .map((r) => (r as { name: string }).name);
       const violations: string[] = [];
       for (const table of tables) {
-        const fromEntityIndex = ENTITY_INDEX_TABLES.includes(table);
+        const fromLedger = LEDGER_TABLES.includes(table);
         const fks = db.prepare(`PRAGMA foreign_key_list("${table}")`).all() as { table: string }[];
         for (const fk of fks) {
-          if (fromEntityIndex !== ENTITY_INDEX_TABLES.includes(fk.table)) {
+          if (fromLedger !== LEDGER_TABLES.includes(fk.table)) {
             violations.push(`${table} → ${fk.table}`);
           }
         }
@@ -265,14 +264,14 @@ describe('entity-index facts + persistent vault index cache', () => {
       const merged = new DatabaseSync(':memory:');
       merged.exec(`
         CREATE TABLE entity_index (id TEXT PRIMARY KEY, name TEXT);
-        CREATE TABLE entity_index_facts (
+        CREATE TABLE fact_ledger (
           id         TEXT PRIMARY KEY,
           entity_id  TEXT NOT NULL REFERENCES entity_index(id),
           fact_key   TEXT NOT NULL,
           fact_value TEXT NOT NULL
         );
       `);
-      expect(findStoreEntanglements(merged)).toEqual(['entity_index_facts → entity_index']);
+      expect(findStoreEntanglements(merged)).toEqual(['fact_ledger → entity_index']);
       merged.close();
     });
 
@@ -286,7 +285,7 @@ describe('entity-index facts + persistent vault index cache', () => {
       // — resolvable against the vault but never a DB-level reference into it.
       expect(fact.entity_key).toBe('Universes/Characters/Lyra.md');
       const cols = getDb()
-        .prepare("PRAGMA table_info('entity_index_facts')")
+        .prepare("PRAGMA table_info('fact_ledger')")
         .all() as { name: string; type: string }[];
       expect(cols.find((c) => c.name === 'entity_key')?.type).toBe('TEXT');
     });
