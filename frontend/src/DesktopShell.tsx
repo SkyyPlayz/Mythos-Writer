@@ -4573,14 +4573,27 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Mouse X1/X2 side buttons (standard DOM MouseEvent.button values 3/4) +
   // the Electron main-process app-command bridge (Windows can deliver the
   // side-button gesture as `app-command` without a `mousedown` at all).
+  //
+  // SKY-11042: on Windows, a physical side-button click can fire BOTH a DOM
+  // `mousedown` (button 3/4) AND the app-command IPC event for the same
+  // gesture. The ref below records when the last mousedown-driven nav fired so
+  // the IPC callback can skip if it arrives within 50 ms — enough to coalesce
+  // the pair without suppressing a genuine standalone IPC gesture (keyboard
+  // shortcut or accessibility tool triggering `app-command` without a click).
+  const lastMouseNavAtRef = useRef<number>(0);
+
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 3) { e.preventDefault(); tryGoBack(); }
-      else if (e.button === 4) { e.preventDefault(); tryGoForward(); }
+      if (e.button === 3) { e.preventDefault(); lastMouseNavAtRef.current = Date.now(); tryGoBack(); }
+      else if (e.button === 4) { e.preventDefault(); lastMouseNavAtRef.current = Date.now(); tryGoForward(); }
     };
     window.addEventListener('mousedown', onMouseDown);
-    const unsubBack = window.api?.onNavHistoryBack?.(() => { tryGoBack(); });
-    const unsubForward = window.api?.onNavHistoryForward?.(() => { tryGoForward(); });
+    const unsubBack = window.api?.onNavHistoryBack?.(() => {
+      if (Date.now() - lastMouseNavAtRef.current > 50) tryGoBack();
+    });
+    const unsubForward = window.api?.onNavHistoryForward?.(() => {
+      if (Date.now() - lastMouseNavAtRef.current > 50) tryGoForward();
+    });
     return () => {
       window.removeEventListener('mousedown', onMouseDown);
       unsubBack?.();
