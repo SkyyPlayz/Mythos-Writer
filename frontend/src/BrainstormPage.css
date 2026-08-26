@@ -6,9 +6,21 @@
   flex-direction: column;
   flex: 1;
   height: 100%;
-  background: var(--bg-base);
+  /* SKY-11047: was a flat --bg-base (opaque solid, never engine-tracked
+     glass/blur) — the chat panel is the only layer painting a background
+     here (no ancestor glass sheet like .notes-tab-center), so it takes the
+     same top-level glass pattern as .settings-panel/.notes-tab-sidebar-right. */
+  background: var(--glass-fill-fallback);
   color: var(--text-primary);
   overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .brainstorm-page {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--blur-panel));
+    -webkit-backdrop-filter: blur(var(--blur-panel));
+  }
 }
 
 /* Header */
@@ -54,7 +66,12 @@
 .brainstorm-header {
   padding: 14px 20px 12px;
   gap: 12px;
-  background: var(--bg-bar);
+  /* SKY-11047: was a flat --bg-bar opaque strip, painted a second solid
+     layer over .brainstorm-page's own (now glass) background — same fix
+     shape as NoteViewer's toolbar (SKY-10929): let the page glass read
+     through, keep separation with a border instead of a second fill. */
+  background: transparent;
+  border-bottom: 1px solid var(--glass-border);
 }
 
 /* W0.3 (GAP P0#3): compact sidebar contexts (notes-tab agent panel) use the
@@ -210,7 +227,7 @@
 
 .bs-assistant-text {
   background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--glass-border);
   border-radius: 14px 14px 14px 4px;
   padding: 10px 13px;
   font-size: 12.5px;

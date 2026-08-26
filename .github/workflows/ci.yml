@@ -655,6 +655,9 @@ jobs:
       - name: "E2E — App-wide navigation history, Back/Forward across wikilinks (SKY-10916)"
         run: xvfb-run --auto-servernum npm run test:e2e:nav-history
 
+      - name: "E2E — Brainstorm chat panel is glass + tracks the Appearance slider (SKY-11047)"
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-glass
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
