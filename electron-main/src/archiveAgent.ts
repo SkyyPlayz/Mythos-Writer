@@ -35,6 +35,9 @@ export interface ArchiveScanResult {
   inconsistenciesFound: number;
   wikiLinksFound: number;
   relationsFound: number;
+  /** Check 2 side effect — proposed questions for Brainstorm (M12.B2), never flags. */
+  questions: ArchiveProposedQuestion[];
+  questionsFound: number;
 }
 
 export type ArchiveIndexStatus = 'idle' | 'indexing' | 'ready';
@@ -181,6 +184,11 @@ export const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]
     ['female', ' he '],
     ['female', ' his '],
   ],
+  // World/lore rules tracked as vault properties (e.g. a strait's tide
+  // pattern) are just another property key — Check 2 needs no special case.
+  tide: [
+    ['rises at dawn', 'tide is highest at dusk'],
+  ],
 };
 
 export interface ArchiveIgnoreKey {
@@ -230,6 +238,7 @@ export function detectInconsistencies(
             target_anchor: snippet,
             payload_json: JSON.stringify({
               kind: 'inconsistency',
+              scope: 'story_vault',
               entityId: record.id,
               entityName: record.name,
               propKey,
@@ -297,6 +306,53 @@ export function detectWikiLinkOpportunities(
   return suggestions;
 }
 
+// ─── Vault-gap questions (Check 2 side effect) ───
+// Owner ruling (SKY-10528): "a flag is a defect, a question is an invitation"
+// — a proposed question is a distinct artifact class from a `DbSuggestion`
+// flag, so it does not reuse that shape or its resolve/ignore semantics.
+// This function only *emits* questions found while running Check 2; the
+// queue they land and get drained in is sibling ticket M12.B2's data model.
+
+export interface ArchiveProposedQuestion {
+  id: string;
+  entityId: string;
+  entityName: string;
+  question: string;
+  scenePath: string;
+  createdAt: string;
+}
+
+/**
+ * Check 2 side effect — an entity mentioned in the scene whose vault record
+ * has no tracked properties at all is a gap: the story references someone or
+ * something the vault knows nothing about yet.
+ */
+export function detectVaultGapQuestions(
+  sceneText: string,
+  index: ArchiveIndex,
+  scenePath: string,
+): ArchiveProposedQuestion[] {
+  const questions: ArchiveProposedQuestion[] = [];
+  const now = new Date().toISOString();
+
+  for (const record of index.entities) {
+    const terms = entityTerms(record);
+    if (!findPlainMention(sceneText, terms)) continue; // entity not referenced here
+    if (Object.keys(record.properties).length > 0) continue; // vault already has details
+
+    questions.push({
+      id: crypto.randomUUID(),
+      entityId: record.id,
+      entityName: record.name,
+      question: `"${record.name}" appears in the manuscript but the vault has no tracked details yet — what should be recorded?`,
+      scenePath,
+      createdAt: now,
+    });
+  }
+
+  return questions;
+}
+
 // ─── Combined scan ───
 
 export function runArchiveScan(
@@ -308,10 +364,163 @@ export function runArchiveScan(
   const inconsistencies = detectInconsistencies(sceneText, index, scenePath, ignoreList);
   const wikiLinks = detectWikiLinkOpportunities(sceneText, index, scenePath);
   const relations = detectRelationSuggestions(sceneText, index);
+  const questions = detectVaultGapQuestions(sceneText, index, scenePath);
   return {
     suggestions: [...inconsistencies, ...wikiLinks, ...relations],
     inconsistenciesFound: inconsistencies.length,
     wikiLinksFound: wikiLinks.length,
     relationsFound: relations.length,
+    questions,
+    questionsFound: questions.length,
   };
+}
+
+// ─── Check 1: Story internal (manuscript vs itself) ───
+// Owner ruling (SKY-10528, 2026-08-19): Check 1 verifies the manuscript stays
+// consistent with itself — wrong hair/eye colour, a world/magic rule broken
+// that the book previously established, time/location drift between scenes.
+// This never reads the vault; it only compares scenes against earlier scenes
+// in the same manuscript. Kept as a distinct entry point from Check 2
+// (`detectInconsistencies`) per the owner's "two checks" ruling — do not fold
+// them into one pass or share their scope tag.
+
+export interface ManuscriptScene {
+  path: string;
+  text: string;
+}
+
+// Descriptive phrases as they actually appear in narrative prose (not the
+// vault-property substrings `PROPERTY_CONTRADICTION_PAIRS` matches against —
+// scene-vs-scene comparison has no vault ground truth to anchor a bare word
+// like "blonde" to, so each family lists full phrases instead).
+const HAIR_PHRASE_FAMILY = ['blonde hair', 'dark hair', 'black hair', 'brown hair', 'red hair'];
+const EYE_PHRASE_FAMILY = ['blue eyes', 'brown eyes', 'green eyes'];
+
+const CHARACTER_PHRASE_FAMILIES: Array<{ propKey: string; phrases: string[] }> = [
+  { propKey: 'hair', phrases: HAIR_PHRASE_FAMILY },
+  { propKey: 'eyes', phrases: EYE_PHRASE_FAMILY },
+];
+
+// Entity-agnostic phrase pairs for world/magic rules and object descriptions
+// that aren't tied to a tracked vault entity (e.g. a lantern's fuel source).
+export const WORLD_RULE_CONTRADICTION_PAIRS: Array<[string, string]> = [
+  ['oil-lit', 'crystal-lit'],
+  ['oil lit', 'crystal lit'],
+];
+
+function internalSuggestion(
+  rationale: string,
+  laterScene: ManuscriptScene,
+  laterPhrase: string,
+  extra: Record<string, unknown>,
+  now: string,
+): DbSuggestion {
+  const lower = laterScene.text.toLowerCase();
+  const idx = lower.indexOf(laterPhrase);
+  const snippet = buildSnippet(laterScene.text, idx, laterPhrase.length);
+  return {
+    id: crypto.randomUUID(),
+    source_agent: 'archive',
+    confidence: 0.7,
+    rationale,
+    target_kind: 'manuscript',
+    target_path: laterScene.path,
+    target_anchor: snippet,
+    payload_json: JSON.stringify({
+      kind: 'internal-inconsistency',
+      scope: 'story_internal',
+      laterPhrase,
+      ...extra,
+    }),
+    status: 'proposed',
+    created_at: now,
+    applied_at: null,
+    applied_run_id: null,
+    budget_exceeded: 0,
+    category: 'other',
+  };
+}
+
+/**
+ * Check 1 — flags the manuscript contradicting itself across scenes, with no
+ * vault involved. `scenes` must be in manuscript reading order; the first
+ * scene to state a phrase establishes it, and a later scene stating a
+ * conflicting phrase from the same family is flagged as drift.
+ */
+export function detectInternalContinuity(
+  scenes: ManuscriptScene[],
+  index: ArchiveIndex,
+): DbSuggestion[] {
+  const suggestions: DbSuggestion[] = [];
+  const now = new Date().toISOString();
+
+  // Character property drift: same entity, contradicting phrase from the
+  // same family (hair/eyes) established in an earlier scene vs a later one.
+  for (const record of index.entities) {
+    const terms = entityTerms(record);
+    for (const { phrases } of CHARACTER_PHRASE_FAMILIES) {
+      let established: { phrase: string; path: string } | null = null;
+      for (const scene of scenes) {
+        if (!findPlainMention(scene.text, terms)) continue; // entity not mentioned here
+        const lower = scene.text.toLowerCase();
+        const found = phrases.find((p) => lower.includes(p));
+        if (!found) continue;
+        if (!established) {
+          established = { phrase: found, path: scene.path };
+        } else if (found !== established.phrase) {
+          suggestions.push(
+            internalSuggestion(
+              `${record.name} is described as "${established.phrase}" in an earlier scene but "${found}" here`,
+              scene,
+              found,
+              {
+                entityId: record.id,
+                entityName: record.name,
+                earlierPhrase: established.phrase,
+                earlierScenePath: established.path,
+              },
+              now,
+            ),
+          );
+          // Don't let the drift itself become the new baseline — later scenes
+          // are compared against the originally-established phrase, matching
+          // "the book previously established" rather than the latest scene.
+        }
+      }
+    }
+  }
+
+  // World-rule / object drift: entity-agnostic phrase pairs that must not
+  // both appear across the manuscript.
+  for (const [phraseA, phraseB] of WORLD_RULE_CONTRADICTION_PAIRS) {
+    let firstA: { path: string } | null = null;
+    let firstB: { path: string } | null = null;
+    for (const scene of scenes) {
+      const lower = scene.text.toLowerCase();
+      if (!firstA && lower.includes(phraseA)) firstA = { path: scene.path };
+      if (!firstB && lower.includes(phraseB)) firstB = { path: scene.path };
+      if (firstA && firstB) break;
+    }
+    if (!firstA || !firstB || firstA.path === firstB.path) continue;
+
+    // Whichever phrase's scene comes later in reading order is the drift.
+    const laterIsB = scenes.findIndex((s) => s.path === firstA!.path)
+      < scenes.findIndex((s) => s.path === firstB!.path);
+    const earlierPhrase = laterIsB ? phraseA : phraseB;
+    const laterPhrase = laterIsB ? phraseB : phraseA;
+    const earlierPath = laterIsB ? firstA.path : firstB.path;
+    const laterScene = scenes.find((s) => s.path === (laterIsB ? firstB.path : firstA.path))!;
+
+    suggestions.push(
+      internalSuggestion(
+        `Established "${earlierPhrase}" in an earlier scene but "${laterPhrase}" appears here`,
+        laterScene,
+        laterPhrase,
+        { earlierPhrase, earlierScenePath: earlierPath },
+        now,
+      ),
+    );
+  }
+
+  return suggestions;
 }
