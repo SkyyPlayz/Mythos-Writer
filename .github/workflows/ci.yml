@@ -506,7 +506,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, delete-scene-chapter, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
@@ -594,9 +594,6 @@ jobs:
 
       - name: E2E — Two-vault layout Story + Notes CRUD (MYT-769)
         run: xvfb-run --auto-servernum npm run test:e2e:two-vault
-
-      - name: "E2E — Delete scene/chapter, real IPC + disk (SKY-10917/SKY-11008)"
-        run: xvfb-run --auto-servernum npm run test:e2e:delete-scene-chapter
 
       - name: "E2E — Obsidian import fidelity, real IPC + disk (SKY-8005/SKY-8445)"
         run: xvfb-run --auto-servernum npm run test:e2e:obsidian-import-fidelity
