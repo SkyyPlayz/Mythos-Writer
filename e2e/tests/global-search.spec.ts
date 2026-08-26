@@ -261,6 +261,23 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
+// SKY-10948: e2e-shard-3 runs ~17 Electron launches sequentially in one CI
+// job (see ci.yml's e2e-shard-3 step list) before reaching this file, and on
+// the memory-constrained public-repo runner the Electron instance backing
+// this suite has been observed dying mid-run with zero renderer/main output
+// for 12s followed by a brand-new process (different PID) picking up the
+// remaining tests — i.e. the shared Electron process is killed outright
+// (consistent with an OOM-kill), not a slow or stuck render. Playwright's
+// own worker-crash recovery already re-runs `beforeAll` for whichever tests
+// come after the crash in the same file (that's why TC-GS-05/06 pass even
+// when TC-GS-04 hits this), but it doesn't retry the one test that was
+// in-flight when the process died. A scoped retry does: on a fresh worker
+// (fresh Electron process, no accumulated CI memory pressure from this
+// file's own prior tests) this suite passes in under a second every time
+// locally, including under deliberate CPU/core contention — this is not a
+// timing issue in the app.
+test.describe.configure({ retries: 1 });
+
 // ─── TC-GS-01: Ctrl+K opens Global Search panel ────────────────────────────────
 
 test('TC-GS-01: Ctrl+K opens Global Search panel', async () => {
@@ -326,15 +343,12 @@ test('TC-GS-04: scope selector (Story | Notes | Both) filters results correctly'
   await page.click('.app-container, .desktop-shell, body');
   await page.keyboard.press('Control+K');
   const searchPanel = page.locator('[role="dialog"][aria-label="Search vault"]');
-  // SKY-10917: unlike the other Ctrl+K checks in this file, this one follows
-  // TC-GS-03 landing in the scene editor, which kicks off an async
-  // comments-gutter fetch (ManuscriptView's gutterOpen now depends on
-  // `comments.length`, not just the sync preference toggle). Under CI's
-  // parallel-shard CPU contention that extra render work has pushed this
-  // specific reopen past the shared 6s budget 4/4 times while passing
-  // instantly (~400ms) in an unloaded local run — a wider budget here,
-  // not a code fix, is the correct tolerance for a load-sensitive reopen.
-  await expect(searchPanel).toBeVisible({ timeout: 15_000 });
+  // SKY-10948: this used to carry a theory that landing in the scene editor
+  // (TC-GS-03) delayed this reopen via an async comments-gutter fetch — that
+  // was disproven (CI logs show the whole Electron process going silent and
+  // being replaced by a new one, i.e. a process crash, not a slow render).
+  // See test.describe.configure({ retries: 1 }) above for the real mitigation.
+  await expect(searchPanel).toBeVisible({ timeout: 8_000 });
   await page.locator('.gsp-scope-btn', { hasText: 'All' }).click();
   const input = page.locator('.gsp-input');
   await input.fill(SEARCH_TERM);
