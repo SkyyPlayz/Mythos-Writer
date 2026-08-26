@@ -998,6 +998,19 @@ interface NoteTemplate {
   fields: NoteTemplateField[];
 }
 
+/**
+ * SKY-11068: a vault's author-set icon (or the absence of one — callers
+ * render an initials-on-accent default when kind is null).
+ */
+interface VaultIconRef {
+  vaultRoot: string;
+  kind: 'glyph' | 'image' | null;
+  /** kind === 'glyph': the emoji / short text. */
+  value?: string;
+  /** kind === 'image': base64 data URL of the stored icon file. */
+  dataUrl?: string;
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -1312,6 +1325,14 @@ interface Window {
     projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
     projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
+    // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+    projectIcons?: () => Promise<{ icons: VaultIconRef[] }>;
+    projectIconSet?: (payload:
+      | { vaultRoot: string; icon: { kind: 'glyph'; value: string } }
+      | { vaultRoot: string; icon: { kind: 'image'; sourcePath: string } }
+      | { vaultRoot: string; icon: null },
+    ) => Promise<{ ok: boolean; error?: string; icon?: VaultIconRef }>;
+    projectIconPick?: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 

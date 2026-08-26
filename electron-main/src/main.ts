@@ -5520,6 +5520,19 @@ const handlers: IpcHandlers = {
     return setProjectIcon(payload);
   },
 
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose Story Icon',
+      buttonLabel: 'Set Icon',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
     // MYT-789: gate the switch behind the recent-projects allowlist. Without
     // this, a renderer could re-root the vault sandbox at any existing,

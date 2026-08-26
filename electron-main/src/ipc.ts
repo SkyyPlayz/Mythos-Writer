@@ -309,6 +309,7 @@ export const IPC_CHANNELS = {
   // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
   PROJECT_ICONS: 'project:icons',
   PROJECT_ICON_SET: 'project:iconSet',
+  PROJECT_ICON_PICK: 'project:iconPick',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -863,6 +864,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_STATS]: (payload: never) => ProjectStatsResponse;
   [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => ProjectIconsResponse;
   [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => ProjectIconSetResponse;
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -2741,6 +2743,11 @@ export interface ProjectIconSetResponse {
   error?: string;
   /** Resolved icon after the write, for immediate display. */
   icon?: VaultIconEntry;
+}
+
+export interface ProjectIconPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
