@@ -414,6 +414,11 @@ export default function SplitEditorPane({
             onWikiLinkClick={onWikiLinkClick}
             resolvedWikiLinkTitles={resolvedWikiLinkTitles}
             wikiLinkCandidates={wikiLinkCandidates}
+            /* SKY-10998 (R9): .spe-header already shows this pane's scene
+               title (PaneSceneSelector) — chromeless suppresses BlockEditor's
+               own duplicate header + FormatToolbar so the pane has exactly
+               one toolbar/header, not two stacked. */
+            chromeless
           />
         ) : (
           <SceneEditorEmptyState
