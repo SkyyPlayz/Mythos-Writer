@@ -429,6 +429,28 @@ import {
   isCanonicalV2ChapterPath,
 } from './mythosFormat/v2Manifest.js';
 import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
+// SKY-11058: notes vault registry
+import {
+  ensureNotesVaultRegistry,
+  createBlankNotesVault,
+  registerImportedNotesVault,
+  setActiveNotesVault,
+  renameNotesVault,
+  getActiveNotesVaultPath,
+  notesVaultAbsPath,
+  buildLinkResolutionReport,
+} from './mythosFormat/notesVaultRegistry.js';
+import type {
+  NotesVaultRegistryListResponse,
+  NotesVaultRegistryCreatePayload,
+  NotesVaultRegistryCreateResponse,
+  NotesVaultRegistrySetActivePreviewPayload,
+  NotesVaultRegistrySetActivePreviewResponse,
+  NotesVaultRegistrySetActivePayload,
+  NotesVaultRegistrySetActiveResponse,
+  NotesVaultRegistryRenamePayload,
+  NotesVaultRegistryRenameResponse,
+} from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
 import {
@@ -813,8 +835,24 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 // manifest to a regenerable cache under `.mythos/` — canonical structure
 // lives in mythos.json + book.md + scene frontmatter (see writeManifest).
 const getManifestPath = () => resolveManifestPath(getVaultRoot());
-const getNotesVaultRoot = () =>
-  loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+const getNotesVaultRoot = () => {
+  // SKY-11058: v2 vaults resolve through the per-vault registry so the
+  // caller always gets the currently-active notes vault path.
+  // ensureNotesVaultRegistry is idempotent and fast after the first call
+  // (reads one JSON file). Legacy v0.4 vaults fall back to the userData
+  // vault-settings entry unchanged.
+  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+  if (mythosRoot !== null) {
+    try {
+      const registry = ensureNotesVaultRegistry(mythosRoot);
+      const entry = registry.vaults.find((v) => v.id === registry.activeId);
+      if (entry) return notesVaultAbsPath(mythosRoot, entry);
+    } catch {
+      // Fall through to legacy on any registry I/O error.
+    }
+  }
+  return loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+};
 // SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
 // root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
 // living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
@@ -6583,6 +6621,74 @@ const handlers: IpcHandlers = {
     setIcon(root, payload.path, payload.icon);
     return { path: payload.path, icon: payload.icon };
   },
+
+  // ─── SKY-11058: Notes vault registry ────────────────────────────────────
+
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_LIST]: (): NotesVaultRegistryListResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) {
+      // Legacy v0.4 vault — surface single synthetic entry so picker still works.
+      const root = loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+      return {
+        vaults: null,
+        activeId: null,
+      };
+    }
+    const registry = ensureNotesVaultRegistry(mythosRoot);
+    return { vaults: registry.vaults, activeId: registry.activeId };
+  },
+
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_CREATE]: (
+    payload: NotesVaultRegistryCreatePayload,
+  ): NotesVaultRegistryCreateResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = createBlankNotesVault(mythosRoot, payload.displayName ?? 'Notes');
+    mainWindow?.webContents.send('notesVaultRegistry:changed');
+    return { entry };
+  },
+
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW]: (
+    payload: NotesVaultRegistrySetActivePreviewPayload,
+  ): NotesVaultRegistrySetActivePreviewResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const registry = ensureNotesVaultRegistry(mythosRoot);
+    const target = registry.vaults.find((v) => v.id === payload.id);
+    if (!target) throw new Error(`Notes vault not found: ${payload.id}`);
+    const targetPath = notesVaultAbsPath(mythosRoot, target);
+    const report = buildLinkResolutionReport(getVaultRoot(), getNotesVaultRoot(), targetPath);
+    return report;
+  },
+
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE]: (
+    payload: NotesVaultRegistrySetActivePayload,
+  ): NotesVaultRegistrySetActiveResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = setActiveNotesVault(mythosRoot, payload.id);
+    // Keep vault-settings.json in sync so all existing consumers (watchers,
+    // graph, agents) pick up the new root without a restart.
+    const newNotesRoot = notesVaultAbsPath(mythosRoot, entry);
+    saveVaultSettings({ notesVaultRoot: newNotesRoot });
+    // Re-point the notes vault watcher at the new root.
+    stopNotesVaultWatcher().catch(() => {}).finally(() => {
+      startNotesVaultWatcher(newNotesRoot, notifyNotesVaultChanged).catch(() => {});
+    });
+    mainWindow?.webContents.send('notesVaultRegistry:changed');
+    return { entry };
+  },
+
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_RENAME]: (
+    payload: NotesVaultRegistryRenamePayload,
+  ): NotesVaultRegistryRenameResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = renameNotesVault(mythosRoot, payload.id, payload.displayName);
+    mainWindow?.webContents.send('notesVaultRegistry:changed');
+    return { entry };
+  },
+
   [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (): import('./iconPacks.js').UserIconPack[] => {
     const iconsDir = path.join(app.getPath('home'), 'Mythos', '.icons');
     return listUserIconPacks(iconsDir);

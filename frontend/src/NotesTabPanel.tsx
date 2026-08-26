@@ -18,6 +18,7 @@ import WikiLinkHoverPreview, { type WikiLinkPreviewResolver } from './WikiLinkHo
 import { useAiEnabled } from './hooks/useAiEnabled';
 import BorderOverlay from './theme/BorderOverlay';
 import type { LiquidNeonV2Settings } from './theme/liquidNeonEngine';
+import NotesVaultPicker from './components/NotesVaultPicker';
 import type { Story, Scene, Chapter } from './types';
 import type { EntityEntry } from './types';
 import type { ExportScope } from './ExportDialog';
@@ -422,6 +423,8 @@ export default function NotesTabPanel({
             </button>
           ))}
         </div>
+        {/* SKY-11058: notes vault switcher (FULL-SPEC §119) */}
+        <NotesVaultPicker />
         {/* M16: note split toggle — prototype "Split notes" header button.
             SKY-9920/SKY-10081: while pane 1 shows Entity Browser, or has no
             active note at all (e.g. its last tab was just closed), starting

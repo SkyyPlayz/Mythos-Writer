@@ -482,6 +482,13 @@ export const IPC_CHANNELS = {
   // read-only NOTES_VAULT_READ_ICONS above (frontmatter-derived, file-only).
   NOTES_VAULT_SET_ICON: 'notesVault:setIcon',
 
+  // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
+  NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
+  NOTES_VAULT_REGISTRY_CREATE: 'notesVaultRegistry:create',
+  NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW: 'notesVaultRegistry:setActivePreview',
+  NOTES_VAULT_REGISTRY_SET_ACTIVE: 'notesVaultRegistry:setActive',
+  NOTES_VAULT_REGISTRY_RENAME: 'notesVaultRegistry:rename',
+
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   SMART_FOLDER_LIST: 'smartFolder:list',
   SMART_FOLDER_CREATE: 'smartFolder:create',
@@ -879,6 +886,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (payload: never) => Record<string, string[]>;
   [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload) => VaultReorderResponse;
   [IPC_CHANNELS.NOTES_VAULT_SET_ICON]: (payload: VaultSetIconPayload) => VaultSetIconResponse;
+  // SKY-11058: notes vault registry
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_LIST]: (payload: never) => NotesVaultRegistryListResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_CREATE]: (payload: NotesVaultRegistryCreatePayload) => NotesVaultRegistryCreateResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW]: (payload: NotesVaultRegistrySetActivePreviewPayload) => NotesVaultRegistrySetActivePreviewResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE]: (payload: NotesVaultRegistrySetActivePayload) => NotesVaultRegistrySetActiveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_RENAME]: (payload: NotesVaultRegistryRenamePayload) => NotesVaultRegistryRenameResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
@@ -1218,6 +1231,59 @@ export interface VaultReorderResponse {
 }
 
 // SKY-9310: assign (icon truthy) or clear (icon null) one path's icon.
+// ─── SKY-11058: Notes vault registry ─────────────────────────────────────────
+
+export interface NotesVaultRegistryEntry {
+  id: string;
+  displayName: string;
+  dirName: string;
+  createdAt: string;
+  origin: 'created' | 'imported';
+}
+
+export interface NotesVaultRegistryListResponse {
+  /** null when the current vault is a legacy v0.4 vault (no registry). */
+  vaults: NotesVaultRegistryEntry[] | null;
+  activeId: string | null;
+}
+
+export interface NotesVaultRegistryCreatePayload {
+  displayName: string;
+}
+
+export interface NotesVaultRegistryCreateResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+export interface NotesVaultRegistrySetActivePreviewPayload {
+  id: string;
+}
+
+export interface NotesVaultRegistrySetActivePreviewResponse {
+  resolvedCount: number;
+  unresolvedStems: string[];
+  totalStems: number;
+}
+
+export interface NotesVaultRegistrySetActivePayload {
+  id: string;
+}
+
+export interface NotesVaultRegistrySetActiveResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+export interface NotesVaultRegistryRenamePayload {
+  id: string;
+  displayName: string;
+}
+
+export interface NotesVaultRegistryRenameResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface VaultSetIconPayload {
   path: string;
   icon: string | null;

@@ -1310,6 +1310,27 @@ interface Window {
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
     projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+
+    // SKY-11058: notes vault registry
+    notesVaultRegistryList?: () => Promise<{
+      vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' }> | null;
+      activeId: string | null;
+    }>;
+    notesVaultRegistryCreate?: (displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    notesVaultRegistrySetActivePreview?: (id: string) => Promise<{
+      resolvedCount: number;
+      unresolvedStems: string[];
+      totalStems: number;
+    }>;
+    notesVaultRegistrySetActive?: (id: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    notesVaultRegistryRename?: (id: string, displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    onNotesVaultRegistryChanged?: (cb: () => void) => () => void;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
     projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
