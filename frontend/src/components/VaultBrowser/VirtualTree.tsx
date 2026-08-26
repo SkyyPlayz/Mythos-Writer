@@ -49,6 +49,7 @@ interface RowData {
   onRenameCancel?: () => void;
   focusedIdx: number;
   onMoveFocus: (newIdx: number) => void;
+  onFocusRow: (newIdx: number) => void;
   iconMap?: Record<string, string>;
   // Drag-and-drop
   draggedPath: string | null;
@@ -79,7 +80,7 @@ function RenameInput({ value, error, onChange, onCommit, onCancel }: { value: st
 function Row({
   index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  focusedIdx, onMoveFocus, iconMap,
+  focusedIdx, onMoveFocus, onFocusRow, iconMap,
   draggedPath, dropTargetPath, dropEdge, onDragStart, onDragEnd, onDragOverRow, onDropRow,
   // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
   // we emit role="treeitem" + aria-level instead.
@@ -182,7 +183,17 @@ function Row({
       onDoubleClick={handleDoubleClick}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, row); }}
       onKeyDown={handleKeyDown}
-      onFocus={() => { if (index !== focusedIdx) onMoveFocus(index); }}
+      // SKY-10935: on native Windows, right-clicking a row moves DOM focus to
+      // it before the browser's `contextmenu` event fires (Xvfb/synthetic
+      // clicks don't reproduce this). onMoveFocus also scrollToRow()s — a
+      // no-op when the row is fully in view, but a real few-pixel corrective
+      // scroll when it's only partially visible at the pane's top/bottom
+      // edge, which repositions every on-screen row right as the pending
+      // native contextmenu event is about to hit-test one of them, letting
+      // it land on a neighboring row (a directory's expanded first child)
+      // instead. A focus event never needs to scroll — the row is on screen
+      // either way — so onFocusRow updates the focus index without it.
+      onFocus={() => { if (index !== focusedIdx) onFocusRow(index); }}
       title={isEditing ? undefined : node.path}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -301,6 +312,15 @@ export default function VirtualTree({
     listRef.current?.scrollToRow({ index: newIdx, align: 'auto' });
   }, []);
 
+  // SKY-10935: a row-level browser `focus` event (e.g. the native focus-shift
+  // a right-click causes on Windows) should update which row is "focused" for
+  // keyboard nav, but never scroll — the row triggering it is already
+  // on-screen (see the onFocus comment on Row above for why scrolling here
+  // was unsafe, not just unnecessary).
+  const onFocusRow = useCallback((newIdx: number) => {
+    setFocusedIdx(newIdx);
+  }, []);
+
   const clearDwell = useCallback(() => {
     if (dwellRef.current) {
       window.clearTimeout(dwellRef.current.timer);
@@ -391,7 +411,7 @@ export default function VirtualTree({
           rows, onToggle, onOpen, onContextMenu,
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-          focusedIdx, onMoveFocus, iconMap,
+          focusedIdx, onMoveFocus, onFocusRow, iconMap,
           draggedPath, dropTargetPath, dropEdge,
           onDragStart: handleDragStart,
           onDragEnd: handleDragEnd,
