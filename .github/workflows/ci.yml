@@ -1429,6 +1429,16 @@ jobs:
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
+      # SKY-10895: real-time Windows Defender scanning of freshly-written
+      # files is a documented source of transient EPERM/EBUSY on this
+      # runner's TEMP dir (where every e2e spec's mkdtempSync fixtures live),
+      # independent of anything our own code holds open. This is
+      # defense-in-depth alongside the app-level retry + copy/delete fallback
+      # in vaultGuidedMove.ts, not a substitute for it.
+      - name: Exclude runner TEMP from Windows Defender real-time scanning (SKY-10895)
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "$env:TEMP"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -1459,6 +1469,19 @@ jobs:
       # after merge on the non-PR, continue-on-error build-windows job.
       - name: E2E — Notes Vault folder operations on native Windows (SKY-8881)
         run: npm run test:e2e:folder-ops
+
+      # SKY-10895 regression guard: Move Vault wizard's default local-folder
+      # path (the owner's exact repro — "Settings → Move to a different
+      # folder") through the real vault:localFolderMove IPC handler, with the
+      # app's own Story Vault watcher + DB bound to the source, on native
+      # Windows. Windows refuses to rename a directory with open handles
+      # inside it (EPERM); POSIX (build-linux/build-macos/ci) does not, so
+      # this defect is invisible everywhere except here. Scoped to the local
+      # spec only — move-vault-real.spec.ts (cloud-sync path) overrides HOME
+      # to satisfy the homedir-containment gate, which is a POSIX-only trick;
+      # giving it native-Windows coverage is tracked separately.
+      - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
+        run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
 
       - name: Upload E2E report on failure
         if: failure()
