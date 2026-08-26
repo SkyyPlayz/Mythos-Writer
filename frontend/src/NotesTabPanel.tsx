@@ -74,10 +74,6 @@ export interface NotesTabPanelProps {
    * (the shell's lifted notesDocTabs). Omitted → pane 1's + stays a
    * single-click "new note" action. */
   onOpenEntityBrowser?: () => void;
-  /** Notifies the shell whether the Notes split is active, so it can hide
-   * the global tab strip while each pane owns its own (mirrors the Story
-   * split editor hiding the global strip for storyDocTabs). */
-  onNoteSplitActiveChange?: (active: boolean) => void;
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
@@ -161,7 +157,6 @@ export default function NotesTabPanel({
   onPane1TabReorder = () => {},
   onPane1NewTab = () => {},
   onOpenEntityBrowser,
-  onNoteSplitActiveChange,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
   stories,
@@ -233,10 +228,6 @@ export default function NotesTabPanel({
     () => (notePaths ?? []).filter((p) => p.toLowerCase().endsWith('.md')),
     [notePaths],
   );
-
-  useEffect(() => {
-    onNoteSplitActiveChange?.(noteSplitTabs.length > 0);
-  }, [noteSplitTabs.length, onNoteSplitActiveChange]);
 
   const handleToggleNoteSplit = useCallback(() => {
     if (noteSplitTabs.length > 0) {
