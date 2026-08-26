@@ -27,8 +27,15 @@ import {
   type VaultListItem,
 } from './crafterState';
 
-function item(path: string, isDirectory = false, excerpt?: string): VaultListItem {
-  return { path, name: path.split('/').pop() ?? path, isDirectory, modifiedAt: '2026-06-30T12:00:00.000Z', excerpt };
+function item(path: string, isDirectory = false, excerpt?: string, characterTag?: boolean): VaultListItem {
+  return {
+    path,
+    name: path.split('/').pop() ?? path,
+    isDirectory,
+    modifiedAt: '2026-06-30T12:00:00.000Z',
+    excerpt,
+    characterTag,
+  };
 }
 
 describe('crafter setup state', () => {
@@ -145,6 +152,35 @@ describe('suggested cards from the vault listing', () => {
     const cards = suggestedFromVault(items);
     expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'The Lamplighter']);
     expect(placesFromSuggested(cards).map((c) => c.t)).toEqual(['Ward Violet']);
+  });
+
+  // SKY-11049 item 7: the owner's real vault has no top-level `Characters`
+  // folder — notes live under `Main Characters/` and carry a `#Character`
+  // tag instead. castCardsFromSuggested must find them via the tag signal.
+  it('falls back to the vault-wide character signal when there is no Characters folder', () => {
+    const noFolderItems = [
+      item('Main Characters/Mira Veynn.md', false, 'Runs the lamplighter guild.', true),
+      item('Main Characters/Untagged Extra.md', false, 'Just a name in the same folder.', false),
+      item('Locations/Ward Violet.md'),
+    ];
+    const cards = suggestedFromVault(noFolderItems);
+    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Mira Veynn']);
+    expect(castFromSuggested(cards)).toEqual(['Mira Veynn']);
+  });
+
+  it('prefers the Characters folder over the tag fallback when both exist', () => {
+    const mixedItems = [
+      item('Characters/Liora Ashen.md'),
+      item('Notes/Side Character.md', false, undefined, true),
+    ];
+    const cards = suggestedFromVault(mixedItems);
+    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen']);
+  });
+
+  it('resolves to no cast at all when neither a Characters folder nor any tag exists', () => {
+    const cards = suggestedFromVault([item('Locations/Ward Violet.md')]);
+    expect(castCardsFromSuggested(cards)).toEqual([]);
+    expect(castFromSuggested(cards)).toEqual([]);
   });
 });
 

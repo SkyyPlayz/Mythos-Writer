@@ -251,28 +251,74 @@ describe('SceneCrafterPage — M19 scene setup form (§7.1, AC1)', () => {
     return renderPage();
   }
 
-  it('POV select is populated from the vault Characters group, title-cased', async () => {
+  it('POV is a typeable field, not a <select> — no hidden Custom… step (SKY-11049 item 7)', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
-    expect(optionLabels).toEqual(expect.arrayContaining(['Mira Veynn', 'Kael Thorne']));
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    expect(field.tagName).toBe('INPUT');
+    expect(screen.queryByText('Custom…')).not.toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'A nameless watcher' } });
+    expect(field).toHaveValue('A nameless watcher');
   });
 
-  it('picking a cast member sets POV without showing the custom input', async () => {
+  it('focusing POV shows the vault Characters group as cards, title-cased (SKY-11049 item 7)', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    fireEvent.change(select, { target: { value: 'Mira Veynn' } });
-    expect(select).toHaveValue('Mira Veynn');
-    expect(screen.queryByRole('textbox', { name: /custom pov name/i })).not.toBeInTheDocument();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    const listbox = screen.getByRole('listbox', { name: /vault characters/i });
+    const optionLabels = within(listbox).getAllByRole('option').map((o) => o.textContent);
+    expect(optionLabels).toEqual(expect.arrayContaining([expect.stringContaining('Mira Veynn'), expect.stringContaining('Kael Thorne')]));
   });
 
-  it('choosing Custom… reveals a free-text POV input', async () => {
+  it('picking a character card fills POV and closes the dropdown', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    fireEvent.change(select, { target: { value: '__custom__' } });
-    const custom = screen.getByRole('textbox', { name: /custom pov name/i });
-    fireEvent.change(custom, { target: { value: 'A nameless watcher' } });
-    expect(custom).toHaveValue('A nameless watcher');
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    fireEvent.click(screen.getByRole('option', { name: /mira veynn/i }));
+    expect(field).toHaveValue('Mira Veynn');
+    expect(screen.queryByRole('listbox', { name: /vault characters/i })).not.toBeInTheDocument();
+  });
+
+  it('typing filters the character-card dropdown by name', async () => {
+    await renderWithCast();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: 'kael' } });
+    const listbox = screen.getByRole('listbox', { name: /vault characters/i });
+    expect(within(listbox).getAllByRole('option')).toHaveLength(1);
+    expect(within(listbox).getByRole('option', { name: /kael thorne/i })).toBeInTheDocument();
+  });
+
+  it('an empty vault-wide character list is never a dead control — POV stays a plain text box with a hint', async () => {
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+    });
+    await renderPage();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    expect(screen.queryByRole('listbox', { name: /vault characters/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Type a name — or add characters in your Notes vault')).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'A nameless watcher' } });
+    expect(field).toHaveValue('A nameless watcher');
+  });
+
+  it('resolves characters from a #Character-tagged note when there is no Characters folder (owner vault shape)', async () => {
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          {
+            path: 'Main Characters/Liora Ashen.md',
+            name: 'Liora Ashen.md',
+            isDirectory: false,
+            modifiedAt: '2026-01-01T00:00:00.000Z',
+            characterTag: true,
+          },
+        ],
+      }),
+    });
+    await renderPage();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    expect(screen.getByRole('option', { name: /liora ashen/i })).toBeInTheDocument();
   });
 
   it('beats reorder with the up/down buttons and stay bounded at the edges', async () => {
