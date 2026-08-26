@@ -823,11 +823,11 @@ function runMigrations(db: DatabaseSync): void {
   // block MUST run before the v31 block so the final user_version lands on
   // the higher number (31), not the lower one.
   if (currentVersion < 30) {
-    // M12.2 (SKY-10731, SKY-10666 ruling): fact ledger + persistent vault
-    // index cache. Two buckets with different lifecycles:
+    // M12.2 (SKY-10731, SKY-10666 ruling): entity-index facts + persistent
+    // vault index cache. Two buckets with different lifecycles:
     //
     // DERIVED (disposable — rebuildable from vault content at any time):
-    //   fact_ledger, fact_provenance, vault_index_cache. These sit alongside
+    //   entity_index_facts, fact_provenance, vault_index_cache. These sit alongside
     //   entity_index / scene_entity_links / fts_indexed_at and may be wiped
     //   wholesale by rebuildDerivedFactStores().
     //
@@ -840,7 +840,7 @@ function runMigrations(db: DatabaseSync): void {
     // Binding: the ledger is a separate store from vault notes — it must
     // never be surfaced as vault content or override the vault.
     db.exec(`
-      CREATE TABLE IF NOT EXISTS fact_ledger (
+      CREATE TABLE IF NOT EXISTS entity_index_facts (
         id            TEXT PRIMARY KEY,
         fingerprint   TEXT NOT NULL UNIQUE,
         entity_key    TEXT NOT NULL,
@@ -850,12 +850,12 @@ function runMigrations(db: DatabaseSync): void {
         superseded_by TEXT,
         extracted_at  TEXT NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_fact_ledger_entity
-        ON fact_ledger (entity_key, status);
+      CREATE INDEX IF NOT EXISTS idx_entity_index_facts_entity
+        ON entity_index_facts (entity_key, status);
 
       CREATE TABLE IF NOT EXISTS fact_provenance (
         id           TEXT PRIMARY KEY,
-        fact_id      TEXT NOT NULL REFERENCES fact_ledger(id) ON DELETE CASCADE,
+        fact_id      TEXT NOT NULL REFERENCES entity_index_facts(id) ON DELETE CASCADE,
         source_path  TEXT NOT NULL,
         source_hash  TEXT NOT NULL,
         span_start   INTEGER,
@@ -2347,8 +2347,8 @@ export function listArchiveAuditLog(itemId?: string): DbArchiveAuditLog[] {
     .all() as unknown as DbArchiveAuditLog[];
 }
 
-// ─── Fact ledger (SKY-10731 / M12.2) ───
-// Derived bucket (fact_ledger, fact_provenance, vault_index_cache) is
+// ─── Entity-index facts (SKY-10731 / M12.2) ───
+// Derived bucket (entity_index_facts, fact_provenance, vault_index_cache) is
 // disposable: rebuildDerivedFactStores() may wipe it at any time. The durable
 // bucket (fact_decisions) holds author decisions and survives every rebuild.
 
@@ -2401,7 +2401,7 @@ export interface DbVaultIndexCacheRow {
 
 /** Tables a full index rebuild is allowed to wipe. fact_decisions is
  *  deliberately absent — the durable/derived split is load-bearing. */
-export const DERIVED_FACT_TABLES = ['fact_provenance', 'fact_ledger', 'vault_index_cache'] as const;
+export const DERIVED_FACT_TABLES = ['fact_provenance', 'entity_index_facts', 'vault_index_cache'] as const;
 
 export function factFingerprint(entityKey: string, factKey: string, factValue: string): string {
   return createHash('sha256').update(`${entityKey}\n${factKey}\n${factValue}`, 'utf-8').digest('hex');
@@ -2428,7 +2428,7 @@ export function upsertFact(input: UpsertFactInput): DbFact {
   const db = getDb();
   const fingerprint = factFingerprint(input.entity_key, input.fact_key, input.fact_value);
   const existing = db
-    .prepare('SELECT * FROM fact_ledger WHERE fingerprint = ?')
+    .prepare('SELECT * FROM entity_index_facts WHERE fingerprint = ?')
     .get(fingerprint) as DbFact | undefined;
 
   let factId: string;
@@ -2436,13 +2436,13 @@ export function upsertFact(input: UpsertFactInput): DbFact {
     factId = existing.id;
     if (existing.status !== 'active') {
       db.prepare(
-        `UPDATE fact_ledger SET status = 'active', superseded_by = NULL, extracted_at = ? WHERE id = ?`
+        `UPDATE entity_index_facts SET status = 'active', superseded_by = NULL, extracted_at = ? WHERE id = ?`
       ).run(input.extracted_at, factId);
     }
   } else {
     factId = randomUUID();
     db.prepare(
-      `INSERT INTO fact_ledger (id, fingerprint, entity_key, fact_key, fact_value, status, superseded_by, extracted_at)
+      `INSERT INTO entity_index_facts (id, fingerprint, entity_key, fact_key, fact_value, status, superseded_by, extracted_at)
        VALUES (?, ?, ?, ?, ?, 'active', NULL, ?)`
     ).run(factId, fingerprint, input.entity_key, input.fact_key, input.fact_value, input.extracted_at);
   }
@@ -2465,12 +2465,12 @@ export function upsertFact(input: UpsertFactInput): DbFact {
     input.extracted_at,
   );
 
-  return db.prepare('SELECT * FROM fact_ledger WHERE id = ?').get(factId) as unknown as DbFact;
+  return db.prepare('SELECT * FROM entity_index_facts WHERE id = ?').get(factId) as unknown as DbFact;
 }
 
 export function getFactByFingerprint(fingerprint: string): DbFact | null {
   return (
-    (getDb().prepare('SELECT * FROM fact_ledger WHERE fingerprint = ?').get(fingerprint) as
+    (getDb().prepare('SELECT * FROM entity_index_facts WHERE fingerprint = ?').get(fingerprint) as
       | DbFact
       | undefined) ?? null
   );
@@ -2479,11 +2479,11 @@ export function getFactByFingerprint(fingerprint: string): DbFact | null {
 export function listFacts(entityKey?: string, status: FactStatus = 'active'): DbFact[] {
   if (entityKey) {
     return getDb()
-      .prepare('SELECT * FROM fact_ledger WHERE entity_key = ? AND status = ? ORDER BY fact_key ASC')
+      .prepare('SELECT * FROM entity_index_facts WHERE entity_key = ? AND status = ? ORDER BY fact_key ASC')
       .all(entityKey, status) as unknown as DbFact[];
   }
   return getDb()
-    .prepare('SELECT * FROM fact_ledger WHERE status = ? ORDER BY entity_key ASC, fact_key ASC')
+    .prepare('SELECT * FROM entity_index_facts WHERE status = ? ORDER BY entity_key ASC, fact_key ASC')
     .all(status) as unknown as DbFact[];
 }
 
@@ -2507,7 +2507,7 @@ export function supersedeFactsForSource(sourcePath: string, keptFingerprints: st
     .prepare(
       `SELECT f.id, f.fingerprint,
               (SELECT COUNT(*) FROM fact_provenance p2 WHERE p2.fact_id = f.id) AS prov_count
-         FROM fact_ledger f
+         FROM entity_index_facts f
          JOIN fact_provenance p ON p.fact_id = f.id
         WHERE p.source_path = ? AND f.status = 'active'`
     )
@@ -2518,7 +2518,7 @@ export function supersedeFactsForSource(sourcePath: string, keptFingerprints: st
     if (kept.has(c.fingerprint)) continue;
     db.prepare('DELETE FROM fact_provenance WHERE fact_id = ? AND source_path = ?').run(c.id, sourcePath);
     if (c.prov_count <= 1) {
-      db.prepare(`UPDATE fact_ledger SET status = 'superseded' WHERE id = ?`).run(c.id);
+      db.prepare(`UPDATE entity_index_facts SET status = 'superseded' WHERE id = ?`).run(c.id);
       superseded++;
     }
   }
@@ -2543,7 +2543,7 @@ export function purgeOrphanFacts(existingSourcePaths: Iterable<string>): number 
     }
   }
   const result = db
-    .prepare('DELETE FROM fact_ledger WHERE id NOT IN (SELECT DISTINCT fact_id FROM fact_provenance)')
+    .prepare('DELETE FROM entity_index_facts WHERE id NOT IN (SELECT DISTINCT fact_id FROM fact_provenance)')
     .run();
   return Number(result.changes);
 }
