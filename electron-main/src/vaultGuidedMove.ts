@@ -158,89 +158,193 @@ const RENAME_RETRY_CODES = new Set(['EPERM', 'EBUSY', 'ENOTEMPTY']);
 const RENAME_MAX_RETRIES = 40;
 const RENAME_RETRY_DELAY_MS = 150;
 
+// Budget for deleting the source tree file-by-file after a copy fallback
+// (see `renameOrCopy`). Smaller than the rename budget on purpose: only the
+// specific entries that are actually still locked pay this cost — most files
+// delete on the first try — so this only matters for the same handful of
+// stuck paths the rename retry already spent RENAME_MAX_RETRIES on.
+const DELETE_RETRY_MAX = 20;
+const DELETE_RETRY_DELAY_MS = 150;
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function withRetry<T>(
+  codes: Set<string>,
+  maxRetries: number,
+  delayMs: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code && codes.has(code) && attempt < maxRetries) {
+        await delay(delayMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // SKY-10895: `fs.rename`'s EPERM only names the top-level directory being
 // renamed, never the specific file/handle actually locked inside it — that's
-// why the retry-exhausted log has never told us anything more than "Story
-// Vault is locked", even after every known app-owned handle (watcher, DB,
+// why the retry-exhausted log never told us anything more than "Story Vault
+// is locked", even after every known app-owned handle (watcher, DB,
 // schedulers, job queue, board watcher) was torn down and CI still failed.
-// Before giving up, probe every entry under `root` (dotfiles/dotdirs
-// included — the DB lives in `.mythos/`) with an exclusive-ish open to find
-// which one Windows still has a handle on. Best-effort: a probe failure for
-// an unrelated reason (e.g. a directory) is not itself evidence of a lock.
+//
+// The original version of this probe opened each file with `fs.openSync(f,
+// 'r+')`, which tests read/write access — but that is NOT what blocks a
+// Windows rename. Windows refuses to rename a directory tree if ANY open
+// handle anywhere inside it lacks `FILE_SHARE_DELETE`, and a *fresh* r+ open
+// from the probe itself succeeds regardless of that flag on someone else's
+// handle. It also never tested directories at all (`entry.isDirectory()`
+// just recursed, never probed the directory entry itself), so a handle held
+// on a directory (not a file) inside the tree was invisible to it — which is
+// exactly why every prior run of this probe found nothing.
+//
+// Test the actual operation that matters instead: try renaming the entry to
+// a sibling name and back. This is bottom-up, so a directory is only probed
+// once every descendant has already proven clean — if a directory still
+// fails after all its children pass, the lock is on that directory's own
+// handle, not something inside it.
+function canRename(full: string): boolean {
+  const probe = `${full}.__sky10895_lockprobe__`;
+  try {
+    fs.renameSync(full, probe);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    // An unrelated failure (e.g. ENOENT — entry vanished mid-walk) is not
+    // evidence of a lock; only flag the codes we already treat as lock-like.
+    return !(code === 'EPERM' || code === 'EACCES' || code === 'EBUSY');
+  }
+  fs.renameSync(probe, full);
+  return true;
+}
+
 function findLockedEntries(root: string): string[] {
   const locked: string[] = [];
-  function walk(dir: string): void {
+  // Returns true when `dir` and everything under it renamed clean.
+  function walk(dir: string): boolean {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      return;
+      return true;
     }
+    let allClean = true;
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
+      const childClean = entry.isDirectory() ? walk(full) : true;
+      if (!childClean) {
+        allClean = false;
+        continue; // a descendant already failed; blaming this dir too would be noise.
       }
-      if (!entry.isFile()) continue;
-      try {
-        const fd = fs.openSync(full, 'r+');
-        fs.closeSync(fd);
-      } catch (probeErr) {
-        const code = (probeErr as NodeJS.ErrnoException).code;
-        if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') {
-          locked.push(path.relative(root, full));
-        }
+      if (!canRename(full)) {
+        locked.push(path.relative(root, full));
+        allClean = false;
       }
     }
+    return allClean;
   }
   walk(root);
   return locked;
 }
 
 /**
+ * Removes `dir` file-by-file, bottom-up, retrying each entry independently.
+ * A single `fs.rm(dir, {recursive:true})` (or an `fs.rename` of the whole
+ * tree) needs every descendant free of conflicting handles at one instant;
+ * deleting entry-by-entry only needs each one clear at the moment it is
+ * actually touched, which tolerates one lingering handle (see `renameOrCopy`)
+ * far better than an all-or-nothing whole-tree operation.
+ */
+async function removeTreeWithRetry(dir: string): Promise<void> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw err;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await removeTreeWithRetry(full);
+    } else {
+      await withRetry(RENAME_RETRY_CODES, DELETE_RETRY_MAX, DELETE_RETRY_DELAY_MS, () =>
+        fs.promises.unlink(full),
+      );
+    }
+  }
+  await withRetry(RENAME_RETRY_CODES, DELETE_RETRY_MAX, DELETE_RETRY_DELAY_MS, () =>
+    fs.promises.rmdir(dir),
+  );
+}
+
+/**
  * Renames `src` to `dest`, falling back to a recursive copy + source removal
- * when the OS refuses a plain rename across filesystems (EXDEV — e.g. moving
- * a local vault to a different drive, common on Windows). The copy fallback
- * is not atomic, but a failure partway through leaves the untouched source
- * intact (dest is removed and the error re-thrown) so callers never observe
- * a state where both copies are incomplete.
+ * when the OS refuses a plain rename:
+ *   - EXDEV — moving across filesystems (e.g. a different drive).
+ *   - EPERM/EBUSY/ENOTEMPTY that survive the full retry budget — same-device,
+ *     but Windows won't rename the tree while some handle inside it (ours or
+ *     not) lacks FILE_SHARE_DELETE. A copy only needs read access to `src`
+ *     (almost always available even while such a handle is open) and a
+ *     per-entry retried delete afterwards, instead of requiring the entire
+ *     tree lock-free at one instant the way `fs.rename` does.
+ * The copy fallback is not atomic, but a failure partway through leaves the
+ * untouched source intact (dest is removed and the error re-thrown) so
+ * callers never observe a state where both copies are incomplete.
  */
 async function renameOrCopy(src: string, dest: string): Promise<void> {
-  let needsCopyFallback = false;
+  let sameDeviceFailure: NodeJS.ErrnoException | undefined;
   for (let attempt = 0; ; attempt++) {
     try {
       await fs.promises.rename(src, dest);
       return;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'EXDEV') {
-        needsCopyFallback = true;
-        break;
-      }
+      if (code === 'EXDEV') break;
       if (code && RENAME_RETRY_CODES.has(code) && attempt < RENAME_MAX_RETRIES) {
         await delay(RENAME_RETRY_DELAY_MS);
         continue;
       }
-      if (code && RENAME_RETRY_CODES.has(code)) {
-        const locked = findLockedEntries(src);
-        (err as NodeJS.ErrnoException & { lockedEntries?: string[] }).lockedEntries = locked;
-      }
-      throw err;
+      if (!code || !RENAME_RETRY_CODES.has(code)) throw err;
+      const locked = findLockedEntries(src);
+      (err as NodeJS.ErrnoException & { lockedEntries?: string[] }).lockedEntries = locked;
+      // eslint-disable-next-line no-console
+      console.error(
+        `[vault-move] rename retry budget exhausted, falling back to copy+delete: ` +
+          `code=${code} lockedEntries=${locked.length ? locked.join(', ') : '(none found by probe)'}`,
+      );
+      sameDeviceFailure = err as NodeJS.ErrnoException;
+      break;
     }
   }
-  if (!needsCopyFallback) return;
   try {
     await fs.promises.cp(src, dest, { recursive: true });
   } catch (copyErr) {
-    await fs.promises.rm(dest, { recursive: true, force: true });
-    throw copyErr;
+    await fs.promises.rm(dest, { recursive: true, force: true }).catch(() => {});
+    throw sameDeviceFailure ?? copyErr;
   }
-  await fs.promises.rm(src, { recursive: true, force: true });
+  try {
+    await removeTreeWithRetry(src);
+  } catch (rmErr) {
+    if (sameDeviceFailure) {
+      const locked = findLockedEntries(src);
+      (sameDeviceFailure as NodeJS.ErrnoException & { lockedEntries?: string[] }).lockedEntries = locked;
+      // eslint-disable-next-line no-console
+      console.error(
+        `[vault-move] copy succeeded but source cleanup still failed after its own retry budget: ` +
+          `${(rmErr as Error).message} lockedEntries=${locked.length ? locked.join(', ') : '(none found by probe)'}`,
+      );
+      throw sameDeviceFailure;
+    }
+    throw rmErr;
+  }
 }
 
 /**
