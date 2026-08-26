@@ -2,18 +2,13 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--glass-fill-fallback);
-  border-right: 1px solid var(--glass-border);
+  /* SKY-11068: transparent — .shell-left already paints the single dark --glass
+     card (border + glow). Stacking a second --glass-fill layer here brightened
+     the whole rail into a milky sheet vs the prototype rail glass. */
+  background: transparent;
   overflow: hidden;
   position: relative;
   z-index: 1;
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .left-rail {
-    background: var(--glass-fill);
-    border-right: 1px solid var(--glass-border);
-  }
 }
 
 /* Collapsed state: icon-only rail */

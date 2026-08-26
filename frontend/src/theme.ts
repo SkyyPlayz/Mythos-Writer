@@ -176,9 +176,13 @@ export function applyLiquidNeonTokens(
   const p: LiquidNeonPrefs = { ...LIQUID_NEON_DEFAULTS, ...prefs };
   const root = document.documentElement;
 
-  // Glass fill alpha: glass=0 → lighter (more transparent), glass=1 → darker (more opaque)
-  const glassAlpha = lerp(0.15, 0.04, p.glass);
-  root.style.setProperty('--glass-fill', `rgba(255,255,255,${glassAlpha.toFixed(3)})`);
+  // Glass fill alpha: glass=0 → lighter (more transparent), glass=1 → darker (more opaque).
+  // SKY-11068: same dark base as the v2 bridge (liquidNeonEngine panelGlassTokens) and
+  // tokens.css — a white-family fill here read as a milky film whenever v1 was the last
+  // writer (v1-only call sites, or the v1/v2 async wallpaper race on vault load).
+  // Default glass=0.4 lands at 0.71, matching the prototype rail's rgba(13,16,28,.72).
+  const glassAlpha = lerp(0.55, 0.95, p.glass);
+  root.style.setProperty('--glass-fill', `rgba(13,16,28,${glassAlpha.toFixed(3)})`);
 
   // Glass fill fallback for no-backdrop-filter (opaque interpolation)
   const fbR = Math.round(lerp(0x25, 0x0e, p.glass));
