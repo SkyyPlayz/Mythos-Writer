@@ -2635,12 +2635,22 @@ export interface OnboardingImportObsidianPayload {
   destParentPath?: string;
   /** Optional vault name; uniquified against destParentPath when taken. */
   destVaultName?: string;
+  /** SKY-11058 item 4: 'extra-notes-vault' copies the (notes-kind only)
+   *  source verbatim into a NEW directory inside the CURRENTLY OPEN Mythos
+   *  vault and registers it as an additional notes vault — no new Mythos
+   *  vault, and the active notes vault is never changed. Default
+   *  'new-mythos-vault' is the SKY-10388 flow above, byte-for-byte unchanged. */
+  destMode?: 'new-mythos-vault' | 'extra-notes-vault';
 }
 
 export interface OnboardingImportObsidianResponse {
   ok: boolean;
   /** Root folder of the freshly created Mythos vault. */
   mythosVaultRoot?: string;
+  /** SKY-11058 (destMode 'extra-notes-vault' only): registry id + label of
+   *  the newly added notes vault. */
+  notesVaultId?: string;
+  notesVaultDisplayName?: string;
   error?: string;
   /** Total files found across all source folders. */
   sourceCount?: number;

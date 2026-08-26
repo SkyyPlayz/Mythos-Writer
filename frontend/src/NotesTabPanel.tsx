@@ -423,8 +423,13 @@ export default function NotesTabPanel({
             </button>
           ))}
         </div>
-        {/* SKY-11058: notes vault switcher (FULL-SPEC §119) */}
-        <NotesVaultPicker />
+        {/* SKY-11058: notes vault switcher (FULL-SPEC §119). "Import a
+            vault…" replays the onboarding wizard on its Import screen via
+            DesktopShell's window-event listener (same no-callback-prop
+            CustomEvent pattern as 'mythos:nav'). */}
+        <NotesVaultPicker
+          onImportVault={() => window.dispatchEvent(new Event('mythos:import-notes-vault'))}
+        />
         {/* M16: note split toggle — prototype "Split notes" header button.
             SKY-9920/SKY-10081: while pane 1 shows Entity Browser, or has no
             active note at all (e.g. its last tab was just closed), starting

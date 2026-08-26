@@ -54,11 +54,14 @@ contextBridge.exposeInMainWorld('api', {
   importDocxToStoryVault: (filePaths: string[]) =>
     ipcRenderer.invoke('onboarding:importDocxToStoryVault', { filePaths }),
   // SKY-2993 / SKY-10388: Obsidian vault importer — all selected sources go
-  // into ONE new Mythos vault created under destParentPath.
+  // into ONE new Mythos vault created under destParentPath. SKY-11058:
+  // destMode 'extra-notes-vault' instead registers the (notes-kind only)
+  // source as an additional notes vault inside the currently open vault.
   importObsidianVault: (payload: {
     targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>;
     destParentPath?: string;
     destVaultName?: string;
+    destMode?: 'new-mythos-vault' | 'extra-notes-vault';
   }) =>
     ipcRenderer.invoke('onboarding:importObsidianVault', payload),
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') =>

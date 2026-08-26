@@ -10,6 +10,7 @@ import Dialog, {
   DialogFooter,
 } from './ui/Dialog';
 import { Button } from './ui/Button';
+import { useTextPrompt } from '../useTextPrompt';
 
 interface NotesVaultEntry {
   id: string;
@@ -20,9 +21,8 @@ interface NotesVaultEntry {
 }
 
 interface NotesVaultPickerProps {
-  /** Called when the user chooses "Import a vault…". Caller opens the import UI.
-   * dead-wiring-ignore: SKY-11058 Phase 2 will wire this once the guided re-vault screen exists. */
-  onImportVault?: () => void; // dead-wiring-ignore
+  /** Called when the user chooses "Import a vault…". Caller opens the import UI. */
+  onImportVault?: () => void;
 }
 
 interface LinkReport {
@@ -43,6 +43,9 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
   const [pending, setPending] = useState<PendingSwitch | null>(null);
   const [switching, setSwitching] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
+  // window.prompt is unsupported in Electron ("prompt() is not supported") —
+  // useTextPrompt renders the in-app modal replacement instead.
+  const { requestText, promptModal } = useTextPrompt();
 
   const load = useCallback(async () => {
     const result = await window.api?.notesVaultRegistryList?.();
@@ -77,8 +80,10 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
     setMenuOpen(false);
 
     if (id === 'create') {
-      const name = window.prompt('Notes vault name:');
+      const name = await requestText('Notes vault name:');
       if (!name?.trim()) return;
+      // Deliberately no setActive here — a freshly created vault becomes
+      // active only when the user explicitly switches to it (SKY-11058).
       await window.api?.notesVaultRegistryCreate?.(name.trim());
       return;
     }
@@ -149,6 +154,8 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
         aria-label="Notes vault options"
         data-testid="notes-vault-picker-menu"
       />
+
+      {promptModal}
 
       {pending && (
         <Dialog

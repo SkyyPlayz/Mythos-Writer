@@ -1425,7 +1425,7 @@ interface Window {
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
     // SKY-2993 / SKY-10388: Obsidian vault importer — every selected source is
     // copied into ONE new Mythos vault created under destParentPath.
-    importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string }) => Promise<{ ok: boolean; mythosVaultRoot?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
+    importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string; destMode?: 'new-mythos-vault' | 'extra-notes-vault' }) => Promise<{ ok: boolean; mythosVaultRoot?: string; notesVaultId?: string; notesVaultDisplayName?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
     dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
     onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
     // Beta 3 M24: Settings → Vault & Files import flows

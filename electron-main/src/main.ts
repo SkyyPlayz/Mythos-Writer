@@ -222,7 +222,7 @@ import {
 } from './agentSessionsIpc.js';
 import { parseDocxBuffer } from './docxImporter.js';
 import { describeFileError } from './migrationVerify.js';
-import { importObsidianToVaultDir, dryRunObsidianImport } from './obsidianImporter.js';
+import { importObsidianToVaultDir, importObsidianAsExtraNotesVault, dryRunObsidianImport } from './obsidianImporter.js';
 // Beta 3 M24 — Settings → Vault & Files import flows
 import {
   STORY_IMPORT_FILTERS,
@@ -3501,6 +3501,36 @@ const handlers: IpcHandlers = {
         return { ok: false, error: `duplicate target kind: ${target.kind}` };
       }
       seenKinds.add(target.kind);
+    }
+    // SKY-11058 item 4 (owner ruling): destMode 'extra-notes-vault' copies the
+    // source into the CURRENTLY OPEN Mythos vault as an additional notes
+    // vault. Never touches vault-settings.json, watchers, or the active notes
+    // vault — the picker's notesVaultRegistry:changed push surfaces the entry.
+    if (payload.destMode === 'extra-notes-vault') {
+      const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+      if (mythosRoot === null) {
+        return { ok: false, error: 'Adding a notes vault requires an open v2 Mythos vault' };
+      }
+      const result = importObsidianAsExtraNotesVault(mythosRoot, targets);
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: result.error,
+          sourceCount: result.sourceCount,
+          imported: result.imported,
+          skipped: result.skipped,
+        };
+      }
+      mainWindow?.webContents.send('notesVaultRegistry:changed');
+      return {
+        ok: true,
+        notesVaultId: result.vaultId,
+        notesVaultDisplayName: result.displayName,
+        sourceCount: result.sourceCount,
+        imported: result.imported,
+        skipped: result.skipped,
+        dropWarning: result.dropWarning,
+      };
     }
     const destParent = (typeof payload.destParentPath === 'string' && payload.destParentPath.trim())
       ? payload.destParentPath.trim().replace(/^~/, app.getPath('home'))
