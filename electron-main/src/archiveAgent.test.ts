@@ -592,6 +592,39 @@ describe('detectInternalContinuity', () => {
     ];
     expect(detectInternalContinuity(scenes, emptyIndex)).toHaveLength(0);
   });
+
+  it('does not flag two spelling variants of the same canonical value as a contradiction', () => {
+    // "oil-lit" (hyphenated) and "oil lit" (spaced) are variants of the same
+    // canonical — the old pair-based implementation would have flagged these.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit, its flame warm and steady.' },
+      { path: 'scenes/ch2.md', text: 'She carried the oil lit lantern into the tunnel.' },
+    ];
+    expect(detectInternalContinuity(scenes, emptyIndex)).toHaveLength(0);
+  });
+
+  it('includes worldRuleLabel in the payload', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'The lantern was crystal-lit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.worldRuleLabel).toBe('light-source fuel type');
+  });
+
+  it('flags drift to a third canonical value (not just the original two)', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lamp was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'The lamp was candlelit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.earlierPhrase).toBe('oil-lit');
+    expect(payload.laterPhrase).toBe('candlelit');
+  });
 });
 
 // ─── Vault-gap questions (Check 2 side effect) ───
