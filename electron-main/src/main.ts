@@ -7615,6 +7615,17 @@ function createWindow() {
     if (!isAllowed) event.preventDefault();
   });
 
+  // SKY-10916: Windows-native mouse X1/X2 side buttons surface as a
+  // BrowserWindow-level `app-command` event (not `mousedown`, and not on
+  // `webContents` despite most other window events living there), so the
+  // renderer's own button-3/4 listener alone misses them on Windows. Forward
+  // to the app-wide nav history stack the same way the renderer's mouse
+  // handler does.
+  mainWindow.on('app-command', (_event, cmd) => {
+    if (cmd === 'browser-backward') mainWindow?.webContents.send(IPC_CHANNELS.NAV_HISTORY_BACK, {});
+    else if (cmd === 'browser-forward') mainWindow?.webContents.send(IPC_CHANNELS.NAV_HISTORY_FORWARD, {});
+  });
+
   // SKY-114: use system locale for the spell checker, falling back to en-US.
   // setSpellCheckerLanguages accepts an array; Electron tries each in order.
   // Strip POSIX modifiers (@posix, @euro) and convert underscores to hyphens

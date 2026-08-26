@@ -705,6 +705,13 @@ interface AppSettings {
   layoutMigrationDone?: boolean;
   /** SKY-3218: Nav-bar configuration. Absent → NAV_RAIL_DEFAULTS applied at runtime. */
   navConfig?: NavRailConfig;
+  /**
+   * SKY-10916: app-wide navigation history stack (Back/Forward, Alt+←/→,
+   * mouse X1/X2). Debounce-written (nav changes every navigation, unlike
+   * most other settings) — see useNavigationHistory + DesktopShell's
+   * persistNavHistory. Absent → the hook seeds a fresh one-entry stack.
+   */
+  navHistory?: import('./hooks/useNavigationHistory').PersistedNavHistory;
 }
 
 /** SKY-2094 (Phase 2 #1): Top-level app sections. SKY-9019 M5: vault-graph added as standalone destination. */
@@ -1732,6 +1739,10 @@ interface Window {
     onNavigatorSceneChanged?: (cb: (data: { sceneId: string | null }) => void) => () => void;
     onNavigatorSceneSynced?: (cb: (data: { sceneId: string | null }) => void) => () => void;
     onNavigatorManifestChanged?: (cb: () => void) => () => void;
+
+    // SKY-10916: app-wide nav history — Windows-native mouse X1/X2 side buttons.
+    onNavHistoryBack?: (cb: () => void) => () => void;
+    onNavHistoryForward?: (cb: () => void) => () => void;
 
     // SKY-3026: Outline planning surface
     outline: {
