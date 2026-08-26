@@ -248,6 +248,14 @@ export interface ManuscriptViewProps {
     onPrev: () => void;
     onNext: () => void;
   };
+  /**
+   * SKY-10916: app-wide nav history owns plain Alt+←/→ everywhere else in the
+   * app, but this view already binds that combo to the scene/chapter stepper
+   * (`step`, below). History takes priority when it has an entry to replay in
+   * that direction — return true to consume the keystroke, false to fall
+   * back to the stepper. Absent → stepper-only (legacy behavior).
+   */
+  onHistoryAltArrow?: (direction: 'back' | 'forward') => boolean;
 }
 
 /** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
@@ -450,6 +458,7 @@ export default function ManuscriptView({
   sceneEditorSlot,
   sceneEditor,
   edgeNav,
+  onHistoryAltArrow,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -705,16 +714,24 @@ export default function ManuscriptView({
         return;
       }
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      if (cursor.zoom === 'book') return;
+      // SKY-10916: app-wide nav history owns plain Alt+←/→ everywhere else in
+      // the app; here it takes priority over the scene/chapter stepper below
+      // whenever there's history to replay in that direction (checked first,
+      // even at 'book' zoom where the stepper itself is a no-op) — falls
+      // back to the stepper only when there's nothing to go back/forward to.
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
+        const direction = e.key === 'ArrowRight' ? 'forward' : 'back';
         const active = document.activeElement;
         if (active instanceof HTMLElement && active.closest?.('[contenteditable="true"]')) {
           active.blur();
         }
+        if (onHistoryAltArrow?.(direction)) return;
+        if (cursor.zoom === 'book') return;
         step(e.key === 'ArrowRight' ? 1 : -1);
         return;
       }
+      if (cursor.zoom === 'book') return;
       const target = e.target as HTMLElement | null;
       const tag = (target?.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -725,7 +742,7 @@ export default function ManuscriptView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cursor, onCursorChange, step]);
+  }, [cursor, onCursorChange, step, onHistoryAltArrow]);
 
   // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
   // outside any paragraph), Escape, and losing window focus all clear it.

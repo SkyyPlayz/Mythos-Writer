@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type Rea
 import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
+import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
@@ -682,6 +683,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-2966: stable ref so navigator sync callbacks don't re-subscribe on every render
   const storiesRef = useRef<Story[]>([]);
   storiesRef.current = stories;
+  // SKY-10916: loadVault (defined below, before the nav-history hook itself
+  // is constructed further down) needs to call navHistory.hydrate once
+  // settings load — a plain forward reference would trip TS's block-scoped
+  // "used before declaration" check, so mirror it through a ref instead
+  // (same pattern as storiesRef above), assigned in-render once the hook
+  // exists (no effect indirection needed — see appApiRef-style assignments
+  // elsewhere in this file).
+  const navHistoryHydrateRef = useRef<(persisted: PersistedNavHistory | null | undefined) => void>(() => {});
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -1399,6 +1408,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (s) {
         setAppSettings(s);
+        // SKY-10916: hydrate the nav history stack from the last session.
+        // One-shot (hydrate no-ops after the first call) — see its own
+        // comment for why this doesn't try to suppress the next auto-push.
+        navHistoryHydrateRef.current(s.navHistory);
         // Restore global right sidebar state from persisted settings (SKY-1686)
         if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
@@ -4283,6 +4296,226 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
+  // ─── SKY-10916: app-wide navigation history (Back/Forward, Alt+←/→, mouse X1/X2) ───
+  // Composite "where are we" derived from the same state every existing call
+  // site already funnels through (handleSelectScene, setOpenedNotePath,
+  // handleSelectEntity, handleTabChange, setView/setViewDepth, pane-2
+  // setters) — no per-call-site instrumentation needed; this stays correct
+  // for every current AND future navigation entry point.
+  const currentNavLocation = useMemo<NavigationLocation>(() => ({
+    tab: tabShell.activeTab,
+    focusedPane,
+    view,
+    viewDepth,
+    notesSubView: tabShell.notesSubView,
+    sceneId: selectedScene?.id ?? null,
+    chapterId: selectedChapter?.id ?? null,
+    storyId: selectedStory?.id ?? null,
+    entityId: selectedEntity?.id ?? null,
+    notePath: openedNotePath,
+    // SKY-10916: load-bearing for the Entity Browser / Outline Planning
+    // pseudo-tabs, which clear selectedScene/selectedEntity/openedNotePath
+    // without any of those fields distinguishing one pseudo-tab from
+    // another — see handleWorkspaceTabSelect's 'entities'/'outline' branch.
+    storyDocTabId: activeStoryDocTabId,
+    notesDocTabId: activeNotesDocTabId,
+    splitWindowEnabled,
+    pane2SceneId: pane2Scene?.id ?? null,
+    pane2ChapterId: pane2Chapter?.id ?? null,
+    pane2StoryId: pane2Story?.id ?? null,
+    scrollTop: 0, // not meaningful live — the hook freezes this into outgoing entries itself
+  }), [
+    tabShell.activeTab, tabShell.notesSubView, focusedPane, view, viewDepth,
+    selectedScene, selectedChapter, selectedStory, selectedEntity, openedNotePath,
+    activeStoryDocTabId, activeNotesDocTabId,
+    splitWindowEnabled, pane2Scene, pane2Chapter, pane2Story,
+  ]);
+
+  // Pragmatic real scroll tracking (SKY-10916): sessionSaveScene's scrollTop
+  // field is dead/write-only everywhere (always hardcoded 0, never read
+  // back) — this is a separate, real readout keyed off the DOM container
+  // each surface actually scrolls: `.msv-page` for the manuscript / scene
+  // editor (sceneEditorSlot renders BlockEditor inside it too) when not
+  // split, `.spe-content` per pane when split, and the notes editor's
+  // rich-text scroll region otherwise.
+  const getNavScrollTop = useCallback((): number => {
+    if (tabShell.activeTab === 'story') {
+      const el = splitWindowEnabled
+        ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+        : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      return el?.scrollTop ?? 0;
+    }
+    if (tabShell.activeTab === 'notes') {
+      const el = document.querySelector<HTMLElement>('.note-tiptap-content')
+        ?? document.querySelector<HTMLElement>('.note-viewer-preview')
+        ?? document.querySelector<HTMLElement>('.note-viewer');
+      return el?.scrollTop ?? 0;
+    }
+    return 0;
+  }, [tabShell.activeTab, splitWindowEnabled, focusedPane]);
+
+  const navHistory = useNavigationHistory(currentNavLocation, getNavScrollTop);
+  navHistoryHydrateRef.current = navHistory.hydrate;
+
+  // Restores every field a pushed NavigationLocation captured, via the same
+  // setters every other call site uses.
+  const applyNavLocation = useCallback((loc: NavigationLocation) => {
+    if (loc.sceneId) {
+      const found = findSceneLocation(loc.sceneId);
+      if (found) handleSelectScene(found.scene, found.chapter, found.story);
+    } else if (loc.entityId) {
+      const cached = allEntities.find((e) => e.id === loc.entityId);
+      if (cached) {
+        handleSelectEntity(cached);
+      } else {
+        window.api?.entityRead(loc.entityId)
+          .then((entry: EntityEntry | null) => { if (entry) handleSelectEntity(entry); })
+          .catch(() => {});
+      }
+    } else if (loc.notePath) {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(loc.notePath);
+    } else {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(null);
+      // SKY-10916: the only case left that still needs restoring is a
+      // pseudo-tab (Entity Browser / Outline Planning) — those clear every
+      // other identity field, so storyDocTabId/notesDocTabId is the sole
+      // signal. Reuses the existing tab-select handler (kind-aware; no-ops
+      // harmlessly if the tab has since been closed).
+      if (loc.tab === 'story' && loc.storyDocTabId) {
+        handleWorkspaceTabSelect(loc.storyDocTabId);
+      } else if (loc.tab === 'notes' && loc.notesDocTabId) {
+        handleWorkspaceTabSelect(loc.notesDocTabId);
+      }
+    }
+
+    handleTabChange(loc.tab);
+    if (loc.tab === 'story') handleSetView(loc.view);
+    if (loc.tab === 'notes') handleNotesSubViewChange(loc.notesSubView);
+    setViewDepth(loc.viewDepth);
+
+    if (loc.splitWindowEnabled && loc.pane2SceneId) {
+      const found2 = findSceneLocation(loc.pane2SceneId);
+      if (found2) {
+        setPane2Scene(found2.scene);
+        setPane2Chapter(found2.chapter);
+        setPane2Story(found2.story);
+      }
+      setSplitWindowEnabled(true);
+    } else {
+      setPane2Scene(null);
+      setPane2Chapter(null);
+      setPane2Story(null);
+      setSplitWindowEnabled(loc.splitWindowEnabled);
+    }
+    setFocusedPane(loc.focusedPane);
+
+    // Restore scroll once the newly-applied location's content has actually
+    // painted — a double rAF gives async-mounted content (BlockEditor's
+    // TipTap init, NoteViewer's load) a tick to land in the DOM first.
+    const { scrollTop: targetScrollTop, tab: targetTab, splitWindowEnabled: targetSplit, focusedPane: targetPane } = loc;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        let el: HTMLElement | null = null;
+        if (targetTab === 'story') {
+          el = targetSplit
+            ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${targetPane}"] .spe-content`)
+            : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+        } else if (targetTab === 'notes') {
+          el = document.querySelector<HTMLElement>('.note-tiptap-content')
+            ?? document.querySelector<HTMLElement>('.note-viewer-preview')
+            ?? document.querySelector<HTMLElement>('.note-viewer');
+        }
+        if (el) el.scrollTop = targetScrollTop;
+      });
+    });
+  }, [findSceneLocation, allEntities, handleSelectEntity, handleTabChange, handleSetView, handleNotesSubViewChange, handleSelectScene, handleWorkspaceTabSelect]);
+
+  // Returns true only when history actually had somewhere to go — lets
+  // ManuscriptView's Alt+←/→ handler fall back to its own scene/chapter
+  // stepper when there's nothing to replay (see the onHistoryAltArrow prop
+  // on its render below), and lets the mouse/keyboard handlers below no-op
+  // cleanly at the ends of the stack.
+  const tryGoBack = useCallback((): boolean => {
+    const loc = navHistory.goBack();
+    if (!loc) return false;
+    applyNavLocation(loc);
+    return true;
+  }, [navHistory, applyNavLocation]);
+
+  const tryGoForward = useCallback((): boolean => {
+    const loc = navHistory.goForward();
+    if (!loc) return false;
+    applyNavLocation(loc);
+    return true;
+  }, [navHistory, applyNavLocation]);
+
+  // Debounced persistence (app-settings.json, existing settingsSet
+  // convention — same shape as persistGrsSettings/persistTabShell). Nav
+  // history changes on every navigation, unlike most AppSettings fields, so
+  // writing synchronously on every push would be excessive I/O.
+  const navHistoryPersistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
+    navHistoryPersistDebounceRef.current = setTimeout(() => {
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const updated: AppSettings = { ...prev, navHistory: navHistory.getSnapshot() };
+        window.api.settingsSet(updated).catch(() => {});
+        return updated;
+      });
+    }, 500);
+    return () => {
+      if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
+    };
+    // navHistory.version is the intentional trigger; getSnapshot/setAppSettings are stable/functional-update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navHistory.version]);
+
+  // Plain Alt+←/→ everywhere the Story editor isn't the active surface
+  // (Notes, Brainstorm, Vault Graph, Coach/Kanban/Timeline/Book sub-views…).
+  // ManuscriptView owns the combo directly there via onHistoryAltArrow (its
+  // own window-level listener already claims it for the scene/chapter
+  // stepper — see the "Real keyboard conflict" note on that component).
+  // Deliberately a separate effect from the big "Writing mode keyboard
+  // shortcuts" one above (~2476) rather than folding in there, to avoid
+  // growing that effect's already-large dependency array.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (tabShell.activeTab === 'story' && view === 'editor') return; // ManuscriptView owns this combo there
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') tryGoBack(); else tryGoForward();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tabShell.activeTab, view, tryGoBack, tryGoForward]);
+
+  // Mouse X1/X2 side buttons (standard DOM MouseEvent.button values 3/4) +
+  // the Electron main-process app-command bridge (Windows can deliver the
+  // side-button gesture as `app-command` without a `mousedown` at all).
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 3) { e.preventDefault(); tryGoBack(); }
+      else if (e.button === 4) { e.preventDefault(); tryGoForward(); }
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    const unsubBack = window.api?.onNavHistoryBack?.(() => { tryGoBack(); });
+    const unsubForward = window.api?.onNavHistoryForward?.(() => { tryGoForward(); });
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      unsubBack?.();
+      unsubForward?.();
+    };
+  }, [tryGoBack, tryGoForward]);
+
   // SKY-1699: The editor context that right-sidebar agents (Writing Assistant, Archive)
   // should respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
   const usePane2SidebarContext = splitWindowEnabled && focusedPane === 2;
@@ -5998,6 +6231,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     onPrev: handleDepthPrev,
                     onNext: handleDepthNext,
                   }}
+                  onHistoryAltArrow={(dir) => (dir === 'back' ? tryGoBack() : tryGoForward())}
                 />
               </div>
             ) : selectedEntity ? (

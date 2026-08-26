@@ -929,6 +929,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('navigator:manifest-changed', handler);
   },
 
+  // SKY-10916: app-wide nav history — Windows-native mouse X1/X2 side
+  // buttons, forwarded from main's `app-command` handler.
+  onNavHistoryBack: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('nav-history:back', handler);
+    return () => ipcRenderer.removeListener('nav-history:back', handler);
+  },
+
+  onNavHistoryForward: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('nav-history:forward', handler);
+    return () => ipcRenderer.removeListener('nav-history:forward', handler);
+  },
+
   // SKY-1684: Archive Agent v1 — continuity scan
   archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
     ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
