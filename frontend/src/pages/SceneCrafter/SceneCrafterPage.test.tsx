@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneCrafterPage from './SceneCrafterPage';
@@ -99,8 +100,24 @@ beforeEach(() => {
   __resetAiEnabledForTests();
 });
 
+/** SKY-11069: the shell owns which board shows full-screen (openBoardId =
+ * the active board tab's docId). This harness stands in for DesktopShell so
+ * gallery clicks / Add-to-scene-board still reach the canvas view in tests. */
+function PageWithShellTabs() {
+  const [openBoardId, setOpenBoardId] = useState<string | null>(null);
+  return (
+    <SceneCrafterPage
+      story={STORY}
+      onOpenNote={vi.fn()}
+      onOpenScene={vi.fn()}
+      openBoardId={openBoardId}
+      onOpenBoard={(board) => setOpenBoardId(board.id)}
+    />
+  );
+}
+
 async function renderPage() {
-  const result = render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+  const result = render(<PageWithShellTabs />);
   await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
   return result;
 }

@@ -8,7 +8,10 @@ import './ScenesPanel.css';
 
 interface Props {
   story: Story | null;
-  onOpenFull: () => void;
+  /** SKY-11069: "Open full →" carries the previewed board so the shell can
+   * open it in its own Scene Crafter tab (upsertBoardTab — same board twice
+   * focuses the existing tab); null = no boards yet, land on the Setup tab. */
+  onOpenFull: (board: { id: string; name: string } | null) => void;
   onOpenNote?: (notePath: string) => void;
 }
 
@@ -111,14 +114,18 @@ export default function ScenesPanel({ story, onOpenFull, onOpenNote }: Props) {
           <p>No canvas boards yet.</p>
           <p>
             Draft one in the{' '}
-            <button type="button" className="scenes-panel-empty-action" onClick={onOpenFull}>
+            <button type="button" className="scenes-panel-empty-action" onClick={() => onOpenFull(null)}>
               Scene Crafter
             </button>{' '}
             and it appears here.
           </p>
         </div>
       )}
-      <button type="button" className="scenes-panel-open-full" onClick={onOpenFull}>
+      <button
+        type="button"
+        className="scenes-panel-open-full"
+        onClick={() => onOpenFull(board ? { id: board.id, name: board.name } : null)}
+      >
         Open full →
       </button>
     </div>

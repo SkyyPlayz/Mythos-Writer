@@ -352,7 +352,7 @@ export default function WorkspaceTabBar({
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     setDropTargetIndex(index);
-  }, []);
+  }, [tabs]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent, index: number) => {
