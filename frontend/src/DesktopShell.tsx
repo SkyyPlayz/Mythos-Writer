@@ -31,7 +31,8 @@ import { showLnToast } from './theme/lnToast';
 import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
-import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, isSimpleSinglePart, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
+import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
@@ -2887,12 +2888,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       updatedAt: now(),
     };
     updateManifest(stories.map((s) =>
-      s.id !== story.id ? s : {
-        ...s,
-        chapters: s.chapters.map((ch) =>
-          ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }
-        ),
-      }
+      s.id !== story.id ? s : updateChapterOwner(s, chapter.id, (chapters) =>
+        chapters.map((ch) => (ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
+      )
     ));
     const result = upsertSceneTab(pane2Tabs, scene);
     setPane2Tabs(result.tabs);
@@ -2947,15 +2945,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const updatedScene: Scene = { ...pane2Scene, blocks, updatedAt: now() };
     setPane2Scene(updatedScene);
     const updatedStories = stories.map((story) =>
-      story.id !== pane2Story.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
+      story.id !== pane2Story.id ? story : updateChapterOwner(story, pane2Chapter.id, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== pane2Chapter.id ? ch : {
             ...ch,
             scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
     persistSceneMarkdown(updatedScene);
@@ -2971,9 +2968,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const isProvisional = provisionalScene?.sceneId === updatedScene.id;
     if (isProvisional && !content.trim()) return;
     const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
+      story.id !== selectedStory.id ? story : updateChapterOwner(story, selectedChapter.id, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== selectedChapter.id ? ch : {
             ...ch,
             // Committing a provisional scene appends it to its chapter;
@@ -2982,8 +2978,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               ? [...ch.scenes, updatedScene]
               : ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
     // SKY-9404 (M1-S4): ManuscriptView's title-row word count (scopeWords)
@@ -3074,15 +3070,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const updatedScene: Scene = { ...selectedScene, draftState: state, updatedAt: now() };
     setSelectedScene(updatedScene);
     const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
+      story.id !== selectedStory.id ? story : updateChapterOwner(story, selectedChapter.id, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== selectedChapter.id ? ch : {
             ...ch,
             scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
           }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
   }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest]);
@@ -3180,7 +3175,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       scenes: [], createdAt: now(), updatedAt: now(),
     };
     updateManifest(stories.map((s) =>
-      s.id !== storyId ? s : { ...s, chapters: [...s.chapters, chapter] }
+      s.id !== storyId ? s : appendChapterToStory(s, chapter)
     ));
   }, [stories, updateManifest, requestText]);
 
@@ -3266,12 +3261,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       createdAt: now(), updatedAt: now(),
     };
     updateManifest(stories.map((s) =>
-      s.id !== storyId ? s : {
-        ...s,
-        chapters: s.chapters.map((ch) =>
-          ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }
-        ),
-      }
+      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
+        chapters.map((ch) => (ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
+      )
     ));
     // Auto-navigate to the newly created scene so the editor opens immediately.
     handleSelectScene(scene, chapter, story);
@@ -3327,9 +3319,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
-      s.id !== storyId ? s : {
-        ...s,
-        chapters: s.chapters.map((ch) =>
+      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== chapterId ? ch : {
             ...ch,
             scenes: orderedIds.map((id, idx) => {
@@ -3337,8 +3328,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               return { ...scene, order: idx };
             }),
           }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
@@ -3356,14 +3347,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (!fromChapter) return s;
       const scene = fromChapter.scenes.find((sc) => sc.id === sceneId);
       if (!scene) return s;
-      const updatedChapters = s.chapters.map((ch) => {
-        if (ch.id === fromChapterId) {
+      // fromChapterId and toChapterId may live in different Parts — apply
+      // each half through the owning-part helper in sequence.
+      let next = updateChapterOwner(s, fromChapterId, (chapters) =>
+        chapters.map((ch) => {
+          if (ch.id !== fromChapterId) return ch;
           const remaining = ch.scenes
             .filter((sc) => sc.id !== sceneId)
             .map((sc, idx) => ({ ...sc, order: idx }));
           return { ...ch, scenes: remaining };
-        }
-        if (ch.id === toChapterId) {
+        })
+      );
+      next = updateChapterOwner(next, toChapterId, (chapters) =>
+        chapters.map((ch) => {
+          if (ch.id !== toChapterId) return ch;
           const withoutScene = ch.scenes.filter((sc) => sc.id !== sceneId);
           const insertIdx = insertBeforeSceneId
             ? withoutScene.findIndex((sc) => sc.id === insertBeforeSceneId)
@@ -3376,10 +3373,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             ...withoutScene.slice(idx),
           ].map((sc, i) => ({ ...sc, order: i }));
           return { ...ch, scenes: newScenes };
-        }
-        return ch;
-      });
-      return { ...s, chapters: updatedChapters };
+        })
+      );
+      return next;
     });
     updateManifest(updatedStories);
   }, [stories, updateManifest]);
@@ -3573,10 +3569,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         });
         return touched ? { ...scene, blocks } : scene;
       };
-      const patchStory = (story: Story): Story => ({
-        ...story,
-        chapters: story.chapters.map((ch) => ({ ...ch, scenes: ch.scenes.map(patchScene) })),
-      });
+      const patchStory = (story: Story): Story =>
+        mapAllChapters(story, (ch) => ({ ...ch, scenes: ch.scenes.map(patchScene) }));
       // Disk is already rewritten by the main process — this is state-only
       // convergence, so no updateManifest/persist here.
       setStories((prev) => prev.map(patchStory));
@@ -4587,6 +4581,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     );
   }, []);
 
+  // manuscriptModel.ts's pure split/merge/remove/rename fns only ever
+  // rewrite `.chapters` (they predate the Part tier) — their output's
+  // `.parts` is the same stale reference the input story had. This injects
+  // the one chapter they touched back into `baseStory`'s Part-owned
+  // structure via the owning-part helper, re-syncing story.chapters after.
+  const reinjectChapter = useCallback((baseStory: Story, chapter: Chapter): Story =>
+    updateChapterOwner(baseStory, chapter.id, (chapters) =>
+      chapters.map((c) => (c.id === chapter.id ? chapter : c))
+    ), []);
+
   // Chapter-agnostic persistence (book zoom edits any chapter's scene — the
   // SKY-3211 handlers assume selectedChapter, so these find the owner).
   const handleManuscriptEditParagraph = useCallback((sceneId: string, blockId: string, newText: string) => {
@@ -4597,12 +4601,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const blocks = scene.blocks.map((b) => (b.id === blockId ? { ...b, content: newText } : b));
     const updatedScene: Scene = { ...scene, blocks, updatedAt: now() };
     const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
+      story.id !== selectedStory.id ? story : updateChapterOwner(story, owner.id, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
     // Beta 4 M8: the manuscript renders selectedStory — refresh it so a
@@ -4628,12 +4631,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const draftState = cycleDraftState(scene.draftState);
     const updatedScene: Scene = { ...scene, draftState, updatedAt: now() };
     const updatedStories = stories.map((story) =>
-      story.id !== ownerStory.id ? story : {
-        ...story,
-        chapters: story.chapters.map((ch) =>
+      story.id !== ownerStory.id ? story : updateChapterOwner(story, owner.id, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== owner.id ? ch : { ...ch, scenes: ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)) }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
     // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
@@ -4653,14 +4655,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!res) return;
     const stamp = now();
     const changed = new Set(res.changedSceneIds);
-    const stampedStory: Story = {
-      ...res.story,
-      chapters: res.story.chapters.map((ch) =>
-        ch.scenes.some((sc) => changed.has(sc.id))
-          ? { ...ch, scenes: ch.scenes.map((sc) => (changed.has(sc.id) ? { ...sc, updatedAt: stamp } : sc)) }
-          : ch
-      ),
-    };
+    // moveParagraph only rewrote res.story.chapters (its .parts is the same
+    // stale reference selectedStory had) — re-inject each touched chapter
+    // (up to 2, possibly in different Parts) back through the owning-part
+    // helper instead of trusting res.story directly.
+    let stampedStory = selectedStory;
+    for (const ch of res.story.chapters) {
+      if (!ch.scenes.some((sc) => changed.has(sc.id))) continue;
+      const stampedChapter: Chapter = {
+        ...ch,
+        scenes: ch.scenes.map((sc) => (changed.has(sc.id) ? { ...sc, updatedAt: stamp } : sc)),
+      };
+      stampedStory = reinjectChapter(stampedStory, stampedChapter);
+    }
     updateManifest(stories.map((st) => (st.id === selectedStory.id ? stampedStory : st)));
     // Beta 4 M8: the manuscript renders selectedStory — refresh it so the
     // reordered blocks actually appear (the move is already persisted to
@@ -4675,30 +4682,33 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     }
     showLnToast('Block moved');
-  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, persistSceneMarkdown]);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, persistSceneMarkdown, reinjectChapter]);
 
   // Beta 4 M8: shared persistence for model-driven single-scene block edits
   // (split/merge/empty-removal) — stamp the scene, write the manifest, then
   // the scene's own markdown + snapshot (per-scene storage contract).
   const applyManuscriptSceneChange = useCallback((nextStory: Story, sceneId: string) => {
+    if (!selectedStory) return;
     const stamp = now();
-    const stamped: Story = {
-      ...nextStory,
-      chapters: nextStory.chapters.map((ch) =>
-        ch.scenes.some((sc) => sc.id === sceneId)
-          ? { ...ch, scenes: ch.scenes.map((sc) => (sc.id === sceneId ? { ...sc, updatedAt: stamp } : sc)) }
-          : ch
-      ),
+    // nextStory came from a manuscriptModel.ts pure fn — only its .chapters
+    // is trustworthy (see reinjectChapter above); locate the owning chapter
+    // there, stamp the changed scene, then re-inject through selectedStory.
+    const owner = nextStory.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    if (!owner) return;
+    const stampedChapter: Chapter = {
+      ...owner,
+      scenes: owner.scenes.map((sc) => (sc.id === sceneId ? { ...sc, updatedAt: stamp } : sc)),
     };
+    const stamped = reinjectChapter(selectedStory, stampedChapter);
     updateManifest(stories.map((st) => (st.id === stamped.id ? stamped : st)));
     refreshManuscriptSelection(stamped);
-    const scene = stamped.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    const scene = stampedChapter.scenes.find((sc) => sc.id === sceneId);
     if (scene) {
       persistSceneMarkdown(scene);
       const content = [...scene.blocks].sort((a, b) => a.order - b.order).map((b) => b.content).join('\n\n');
       window.api.snapshotSave?.(sceneId, content).catch(() => {});
     }
-  }, [stories, updateManifest, persistSceneMarkdown, refreshManuscriptSelection]);
+  }, [selectedStory, stories, updateManifest, persistSceneMarkdown, refreshManuscriptSelection, reinjectChapter]);
 
   // Beta 4 M8: Enter splits the paragraph at the caret (prototype paraKey).
   const handleManuscriptSplitParagraph = useCallback((sceneId: string, blockId: string, before: string, after: string): string | null => {
@@ -4738,12 +4748,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const updatedScene: Scene = { ...selectedScene, title, updatedAt: now() };
       setSelectedScene(updatedScene);
       const updatedStories = stories.map((story) =>
-        story.id !== provisionalScene.storyId ? story : {
-          ...story,
-          chapters: story.chapters.map((ch) =>
+        story.id !== provisionalScene.storyId ? story : updateChapterOwner(story, provisionalScene.chapterId, (chapters) =>
+          chapters.map((ch) =>
             ch.id !== provisionalScene.chapterId ? ch : { ...ch, scenes: [...ch.scenes, updatedScene] }
-          ),
-        }
+          )
+        )
       );
       updateManifest(updatedStories);
       persistSceneMarkdown(updatedScene);
@@ -4764,11 +4773,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!selectedStory) return;
     const renamed = renameScene(selectedStory, sceneId, title, now());
     if (!renamed) return;
-    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
-    refreshManuscriptSelection(renamed);
-    const scene = renamed.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    const owner = renamed.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    if (!owner) return;
+    const synced = reinjectChapter(selectedStory, owner);
+    updateManifest(stories.map((st) => (st.id === synced.id ? synced : st)));
+    refreshManuscriptSelection(synced);
+    const scene = owner.scenes.find((sc) => sc.id === sceneId);
     if (scene) persistSceneMarkdown(scene); // the title lives in the scene file's frontmatter
-  }, [provisionalScene, selectedScene, selectedStory, stories, updateManifest, persistSceneMarkdown, storyDocTabs, persistDocTabs, refreshManuscriptSelection]);
+  }, [provisionalScene, selectedScene, selectedStory, stories, updateManifest, persistSceneMarkdown, storyDocTabs, persistDocTabs, refreshManuscriptSelection, reinjectChapter]);
 
   // Beta 4 M8: inline chapter-heading rename (manifest-only — chapter titles
   // have no per-chapter file).
@@ -4776,9 +4788,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!selectedStory) return;
     const renamed = renameChapter(selectedStory, chapterId, title, now());
     if (!renamed) return;
-    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
-    refreshManuscriptSelection(renamed);
-  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
+    const owner = renamed.chapters.find((ch) => ch.id === chapterId);
+    if (!owner) return;
+    const synced = reinjectChapter(selectedStory, owner);
+    updateManifest(stories.map((st) => (st.id === synced.id ? synced : st)));
+    refreshManuscriptSelection(synced);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, reinjectChapter]);
 
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
   // story title). TitleRow reverts empties/normalizes before committing here.
@@ -4789,6 +4804,71 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     refreshManuscriptSelection(renamed);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
+  // M2 (SKY-9017): "+ Part" — titles the first (still-implicit) part if the
+  // story hasn't split yet, else appends a fresh untitled part to the end.
+  // Either way this is the moment the story stops being "simple single
+  // part" and story.parts becomes the mutation authority (see storyParts.ts).
+  const handleAddPart = useCallback(async () => {
+    if (!selectedStory) return;
+    const reconciled = reconcileParts(selectedStory);
+    const parts = reconciled.parts ?? [];
+    if (isSimpleSinglePart(reconciled)) {
+      const title = await requestText('Part title:');
+      if (!title?.trim()) return;
+      const updatedParts = parts.map((p, i) => (i === 0 ? { ...p, title: title.trim(), updatedAt: now() } : p));
+      const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
+      updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+      refreshManuscriptSelection(updated);
+      return;
+    }
+    const newPart: Part = {
+      id: generateId(), title: '', order: parts.length, note: [], chapters: [],
+      createdAt: now(), updatedAt: now(),
+    };
+    const updated = syncChaptersFromParts({ ...reconciled, parts: [...parts, newPart] });
+    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    refreshManuscriptSelection(updated);
+  }, [selectedStory, stories, updateManifest, requestText, refreshManuscriptSelection]);
+
+  // M2: edit/create the part note. Empty text with no existing note is a
+  // no-op — never persist an empty epigraph the UI has no way to re-open.
+  const handleEditPartNote = useCallback((partId: string, text: string) => {
+    if (!selectedStory) return;
+    const reconciled = reconcileParts(selectedStory);
+    const target = (reconciled.parts ?? []).find((p) => p.id === partId);
+    if (!target) return;
+    const trimmed = text.trim();
+    if (!trimmed && target.note.length === 0) return;
+    const nextNote: Block[] = trimmed
+      ? [{ id: target.note[0]?.id ?? generateId(), type: 'prose', content: trimmed, order: 0, updatedAt: now() }]
+      : [];
+    const updatedParts = (reconciled.parts ?? []).map((p) =>
+      p.id === partId ? { ...p, note: nextNote, updatedAt: now() } : p
+    );
+    const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
+    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    refreshManuscriptSelection(updated);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
+
+  // M2: edit/create a chapter note — same empty-is-no-op contract as the part note.
+  const handleEditChapterNote = useCallback((chapterId: string, text: string) => {
+    if (!selectedStory) return;
+    const owner = selectedStory.chapters.find((ch) => ch.id === chapterId);
+    if (!owner) return;
+    const trimmed = text.trim();
+    if (!trimmed && !owner.note?.length) return;
+    const updated = updateChapterOwner(selectedStory, chapterId, (chapters) =>
+      chapters.map((ch) => {
+        if (ch.id !== chapterId) return ch;
+        const nextNote: Block[] = trimmed
+          ? [{ id: ch.note?.[0]?.id ?? generateId(), type: 'prose', content: trimmed, order: 0, updatedAt: now() }]
+          : [];
+        return { ...ch, note: nextNote, updatedAt: now() };
+      })
+    );
+    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    refreshManuscriptSelection(updated);
+  }, [selectedStory, stories, updateManifest, refreshManuscriptSelection]);
 
   // Beta 4 M7 (§5.1): the Page setup popover's page-style quick-switch —
   // same live-apply + persist shape as the width handler above, scoped to
@@ -5803,6 +5883,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     const target = cursorChapter(selectedStory, manuscriptCursor) ?? selectedChapter;
                     if (target) void createScene(selectedStory.id, target.id);
                   }}
+                  onAddPart={() => { void handleAddPart(); }}
+                  onEditPartNote={handleEditPartNote}
+                  onEditChapterNote={handleEditChapterNote}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
                   ttsSettings={appSettings?.tts}
