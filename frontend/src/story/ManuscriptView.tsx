@@ -26,6 +26,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
 } from 'react';
+import type { Editor } from '@tiptap/core';
 import {
   breadcrumbs,
   buildBlocks,
@@ -229,6 +230,12 @@ export interface ManuscriptViewProps {
    *  the inline heading-zone block list — keeps TipTap/BlockEditor at scene depth
    *  while ManuscriptView provides the chrome (title row, ruler, page prefs). */
   sceneEditorSlot?: React.ReactNode;
+  /** SKY-10925: the live Tiptap editor instance backing sceneEditorSlot's
+   *  chromeless BlockEditor. When set, the msv-toolbar's B/I/U/S and alignment
+   *  buttons drive this editor's real formatting commands instead of the
+   *  decorative whole-sheet style toggles used at non-scene depths — the ONE
+   *  toolbar (R9) has to actually format text, not just look the part. */
+  sceneEditor?: Editor | null;
   /**
    * SKY-9404 (M1-S4) / SKY-5904: on-canvas prev/next depth-step arrows, now
    * anchored to `.msv-sheet` (the depth-invariant page box, present at every
@@ -301,6 +308,10 @@ const STATUS_TIP: Record<SceneStatus, string> = {
 //    paragraphs are plain text — no list/indent markup) and were removed.
 
 const STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Quote'];
+// SKY-10925: scene depth drives real Tiptap heading commands (unlike the
+// decorative options above) and FormatToolbar offered H1-H6 — match that
+// range so unifying the toolbar doesn't shrink what a scene's headings can be.
+const SCENE_STYLE_OPTIONS = ['Body Text', 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4', 'Heading 5', 'Heading 6', 'Quote'];
 // Spec order (§5.1): 1.85 is the toolbar default (LINE_HEIGHT_DEFAULT, theme.ts).
 const LINE_SPACING_OPTIONS = ['1.15', '1.3', '1.5', '1.85', '2', '2.5', '3', '3.5', '4', '5', '6'];
 
@@ -437,10 +448,15 @@ export default function ManuscriptView({
   snapshotSavedAt,
   sceneHistory,
   sceneEditorSlot,
+  sceneEditor,
   edgeNav,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // M2 (SKY-9017): the note-slot block id (`note-part-<id>` / `note-chapter-<id>`)
+  // currently open for editing — at most one at a time, matching the inline
+  // heading-rename affordances below.
+  const [editingNoteSlot, setEditingNoteSlot] = useState<string | null>(null);
   // M1-S3: page geometry + type mirror the canonical prefs; local state gives
   // live drag feedback, the sync effects below follow external pref changes
   // (popover, another control, settings load after mount).
@@ -458,6 +474,87 @@ export default function ManuscriptView({
   const [lineSpacing, setLineSpacing] = useState(() => String(resolveLineHeight(pagePrefs)));
   const [fmt, setFmt] = useState<Record<FmtKey, boolean>>({ b: false, i: false, u: false, s: false });
   const [align, setAlign] = useState<AlignKey>('left');
+
+  // SKY-10925: re-render on every selection/transaction so isActive() reads on
+  // sceneEditor stay fresh (same subscription FormatToolbar used before it was
+  // removed from scene depth — this toolbar now does that job at scene depth).
+  const [, tickSceneEditor] = useState(0);
+  useEffect(() => {
+    if (!sceneEditor) return;
+    const update = () => tickSceneEditor((n) => n + 1);
+    sceneEditor.on('selectionUpdate', update);
+    sceneEditor.on('transaction', update);
+    return () => {
+      sceneEditor.off('selectionUpdate', update);
+      sceneEditor.off('transaction', update);
+    };
+  }, [sceneEditor]);
+
+  const sceneFmtActive: Record<FmtKey, boolean> = sceneEditor
+    ? {
+        b: sceneEditor.isActive('bold'),
+        i: sceneEditor.isActive('italic'),
+        u: sceneEditor.isActive('underline'),
+        s: sceneEditor.isActive('strike'),
+      }
+    : fmt;
+
+  const SCENE_FMT_COMMANDS: Record<FmtKey, () => void> = {
+    b: () => sceneEditor?.chain().focus().toggleBold().run(),
+    i: () => sceneEditor?.chain().focus().toggleItalic().run(),
+    u: () => sceneEditor?.chain().focus().toggleUnderline().run(),
+    s: () => sceneEditor?.chain().focus().toggleStrike().run(),
+  };
+
+  // TextAlign ships defaultAlignment: null, so an untouched block reports no
+  // textAlign attr at all — fold that unset default into "left" (mirrors
+  // FormatToolbar's GH #642 fix) so exactly one alignment button reads active.
+  const sceneAlignActive: AlignKey | null = sceneEditor
+    ? (['center', 'right', 'justify'] as const).find((a) => sceneEditor.isActive({ textAlign: a })) ?? 'left'
+    : null;
+
+  function applySceneAlign(a: AlignKey) {
+    if (!sceneEditor) return;
+    if (a === 'left' || sceneEditor.isActive({ textAlign: a })) {
+      sceneEditor.chain().focus().unsetTextAlign().run();
+    } else {
+      sceneEditor.chain().focus().setTextAlign(a).run();
+    }
+  }
+
+  function getSceneStyleValue(ed: Editor): string {
+    if (ed.isActive('blockquote')) return 'Quote';
+    for (let level = 1; level <= 6; level++) {
+      if (ed.isActive('heading', { level })) return `Heading ${level}`;
+    }
+    return 'Body Text';
+  }
+
+  function applySceneStyle(ed: Editor, value: string) {
+    if (value === 'Quote') {
+      ed.chain().focus().toggleBlockquote().run();
+      return;
+    }
+    if (value === 'Body Text') {
+      ed.chain().focus().setParagraph().run();
+      return;
+    }
+    const level = Number(value.replace('Heading ', '')) as 1 | 2 | 3 | 4 | 5 | 6;
+    ed.chain().focus().toggleHeading({ level }).run();
+  }
+
+  // SKY-10925: FormatToolbar's list/quote/code toggles carry no msv-toolbar
+  // equivalent at any depth — deleting BlockEditor's toolbar without them
+  // would silently drop capability the owner never asked to lose. They render
+  // only when a live scene editor exists (the one depth they're meaningful
+  // for); every other depth's toolbar is unaffected.
+  const SCENE_BLOCK_KEYS: Array<{ key: string; label: string; isActive: (ed: Editor) => boolean; run: (ed: Editor) => void; glyph: React.ReactNode }> = [
+    { key: 'bullet', label: 'Bullet list', isActive: (ed) => ed.isActive('bulletList'), run: (ed) => ed.chain().focus().toggleBulletList().run(), glyph: <span aria-hidden="true" className="msv-tb-glyph">•≡</span> },
+    { key: 'ordered', label: 'Numbered list', isActive: (ed) => ed.isActive('orderedList'), run: (ed) => ed.chain().focus().toggleOrderedList().run(), glyph: <span aria-hidden="true" className="msv-tb-glyph">1≡</span> },
+    { key: 'quote', label: 'Blockquote', isActive: (ed) => ed.isActive('blockquote'), run: (ed) => ed.chain().focus().toggleBlockquote().run(), glyph: <span aria-hidden="true" className="msv-tb-glyph">❝</span> },
+    { key: 'code', label: 'Inline code', isActive: (ed) => ed.isActive('code'), run: (ed) => ed.chain().focus().toggleCode().run(), glyph: <span aria-hidden="true" className="msv-tb-glyph">{'`·`'}</span> },
+    { key: 'codeBlock', label: 'Code block', isActive: (ed) => ed.isActive('codeBlock'), run: (ed) => ed.chain().focus().toggleCodeBlock().run(), glyph: <span aria-hidden="true" className="msv-tb-glyph">{'{ }'}</span> },
+  ];
 
   // M1-S3: one commit path for every page-pref control — toolbar selects,
   // ruler diamonds, edge drags, and the popover all end here.
@@ -843,6 +940,54 @@ export default function ManuscriptView({
     }
   }, []);
 
+  // M2 (SKY-9017): part/chapter note editing. Opening a slot (empty
+  // affordance click, or clicking an existing epigraph) is local-only —
+  // nothing persists until blur/Enter commits, so an opened-then-abandoned
+  // empty note never creates a stray epigraph the UI can't reopen (that was
+  // the original bug: the affordance called onEditPartNote with '' on click).
+  const commitNoteEdit = useCallback(
+    (slotKind: 'part' | 'chapter', id: string, el: HTMLElement) => {
+      setEditingNoteSlot(null);
+      const text = el.textContent ?? '';
+      if (slotKind === 'part') onEditPartNote?.(id, text);
+      else onEditChapterNote?.(id, text);
+    },
+    [onEditPartNote, onEditChapterNote]
+  );
+
+  const noteKeyDown = useCallback((e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingNoteSlot(null);
+    }
+  }, []);
+
+  // Focus the note field + land the caret at the end once it mounts — same
+  // park-and-claim shape as claimPendingCaret below, scoped to this one slot.
+  useEffect(() => {
+    if (!editingNoteSlot) return;
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-testid="msv-note-edit-${editingNoteSlot}"]`
+    );
+    if (!el) return;
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch {
+      // jsdom's Selection API is partial — focus alone is enough there.
+    }
+  }, [editingNoteSlot]);
+
   // M3 (SKY-9021): row 3's title commits an inline rename of whatever the
   // depth scopes it to — story at book/part depth (Full Book title = story
   // title), the cursor's chapter/scene otherwise. One editable title, one
@@ -1123,29 +1268,66 @@ export default function ManuscriptView({
           </div>
         );
       case 'note-slot': {
-        // M2 (SKY-9017): chapter/part note — epigraph when filled, affordance when empty.
+        // M2 (SKY-9017): chapter/part note — epigraph when filled (click to
+        // edit), an editable field while open, or the empty affordance.
         const hasNote = b.note.length > 0;
+        const ownerId = b.partId ?? b.chapterId;
+        const canEdit = b.slotKind === 'part' ? !!onEditPartNote : !!onEditChapterNote;
+
+        if (canEdit && editingNoteSlot === b.id) {
+          return (
+            <div
+              key={b.id}
+              className="msv-epigraph msv-epigraph--editing"
+              data-testid={`msv-note-edit-${b.id}`}
+              contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
+              role="textbox"
+              aria-label={b.slotKind === 'part' ? 'Part note — Enter commits' : 'Chapter note — Enter commits'}
+              onBlur={(e: ReactFocusEvent<HTMLElement>) => commitNoteEdit(b.slotKind, ownerId!, e.currentTarget)}
+              onKeyDown={noteKeyDown}
+            >
+              {hasNote ? b.note[0].content : ''}
+            </div>
+          );
+        }
+
         if (hasNote) {
           return (
-            <div key={b.id} className="msv-epigraph" data-testid={`msv-note-${b.slotKind}-${b.partId ?? b.chapterId}`}>
+            <div
+              key={b.id}
+              className="msv-epigraph"
+              data-testid={`msv-note-${b.slotKind}-${ownerId}`}
+              {...(canEdit
+                ? {
+                    role: 'button' as const,
+                    tabIndex: 0,
+                    'aria-label': b.slotKind === 'part' ? 'Edit part note' : 'Edit chapter note',
+                    onClick: () => setEditingNoteSlot(b.id),
+                    onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setEditingNoteSlot(b.id);
+                      }
+                    },
+                  }
+                : {})}
+            >
               {b.note[0].content}
             </div>
           );
         }
+
         // Empty affordance: only show when the edit handler is wired.
-        const canEdit =
-          b.slotKind === 'part' ? !!onEditPartNote : !!onEditChapterNote;
         if (!canEdit) return null;
         return (
           <button
             key={b.id}
             type="button"
             className="msv-note-affordance"
-            data-testid={`msv-note-affordance-${b.slotKind}-${b.partId ?? b.chapterId}`}
-            onClick={() => {
-              if (b.slotKind === 'part' && b.partId) onEditPartNote?.(b.partId, '');
-              else if (b.slotKind === 'chapter' && b.chapterId) onEditChapterNote?.(b.chapterId, '');
-            }}
+            data-testid={`msv-note-affordance-${b.slotKind}-${ownerId}`}
+            onClick={() => setEditingNoteSlot(b.id)}
           >
             {b.slotKind === 'part' ? '+ PART NOTE' : '+ CHAPTER NOTE'}
           </button>
@@ -1399,11 +1581,11 @@ export default function ManuscriptView({
           className="msv-tb-select"
           data-testid="msv-style-select"
           aria-label="Paragraph style"
-          value={styleSel}
-          onChange={(e) => setStyleSel(e.target.value)}
+          value={sceneEditor ? getSceneStyleValue(sceneEditor) : styleSel}
+          onChange={(e) => (sceneEditor ? applySceneStyle(sceneEditor, e.target.value) : setStyleSel(e.target.value))}
         >
-          {STYLE_OPTIONS.map((s) => (
-            <option key={s}>{s}</option>
+          {(sceneEditor ? SCENE_STYLE_OPTIONS : STYLE_OPTIONS).map((s) => (
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
         <select
@@ -1473,11 +1655,12 @@ export default function ManuscriptView({
           <button
             key={k}
             type="button"
-            className={`msv-tb-btn msv-tb-fmt-${k}${fmt[k] ? ' msv-tb-btn--active' : ''}`}
+            className={`msv-tb-btn msv-tb-fmt-${k}${sceneFmtActive[k] ? ' msv-tb-btn--active' : ''}`}
             data-testid={`msv-fmt-${k}`}
             aria-label={label}
-            aria-pressed={fmt[k]}
-            onClick={() => setFmt((prev) => ({ ...prev, [k]: !prev[k] }))}
+            aria-pressed={sceneFmtActive[k]}
+            onMouseDown={sceneEditor ? (e) => e.preventDefault() : undefined}
+            onClick={() => (sceneEditor ? SCENE_FMT_COMMANDS[k]() : setFmt((prev) => ({ ...prev, [k]: !prev[k] })))}
           >
             <span className={`msv-tb-glyph msv-tb-glyph--${k}`}>{k.toUpperCase()}</span>
           </button>
@@ -1487,15 +1670,35 @@ export default function ManuscriptView({
           <button
             key={k}
             type="button"
-            className={`msv-tb-btn${align === k ? ' msv-tb-btn--active' : ''}`}
+            className={`msv-tb-btn${(sceneEditor ? sceneAlignActive === k : align === k) ? ' msv-tb-btn--active' : ''}`}
             data-testid={`msv-align-${k}`}
             aria-label={label}
-            aria-pressed={align === k}
-            onClick={() => setAlign(k)}
+            aria-pressed={sceneEditor ? sceneAlignActive === k : align === k}
+            onMouseDown={sceneEditor ? (e) => e.preventDefault() : undefined}
+            onClick={() => (sceneEditor ? applySceneAlign(k) : setAlign(k))}
           >
             {TB_ICON(p)}
           </button>
         ))}
+        {sceneEditor && (
+          <>
+            <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
+            {SCENE_BLOCK_KEYS.map(({ key, label, isActive, run, glyph }) => (
+              <button
+                key={key}
+                type="button"
+                className={`msv-tb-btn${isActive(sceneEditor) ? ' msv-tb-btn--active' : ''}`}
+                data-testid={`msv-block-${key}`}
+                aria-label={label}
+                aria-pressed={isActive(sceneEditor)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => run(sceneEditor)}
+              >
+                {glyph}
+              </button>
+            ))}
+          </>
+        )}
         <div className="msv-tb-sep" role="separator" aria-orientation="vertical" />
         {/* M1 row 5 (SKY-9013): structure actions (prototype 1003–1011).
             "+ Part" is enabled now that M2 (SKY-9017) landed the Parts data model. */}
@@ -1666,7 +1869,12 @@ export default function ManuscriptView({
         marginPx={marginPx}
         min={PAGE_WIDTH_MIN}
         max={PAGE_WIDTH_MAX}
-        gutterOpen={commentsVisible}
+        // SKY-10917: must mirror the CommentsGutter render condition below
+        // (line ~1843), not just the comments-enabled preference — otherwise
+        // the ruler reserves 236px for a gutter that isn't actually on
+        // screen (e.g. a scene with zero comments), and every diamond drifts
+        // ~118px off the page/margin edges it's supposed to sit on.
+        gutterOpen={(commentsVisible && comments.length > 0) || reader.open}
         onChange={setPageW}
         onCommit={commitPageWidth}
         onMarginChange={setMarginPx}

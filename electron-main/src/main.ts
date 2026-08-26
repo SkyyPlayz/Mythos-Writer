@@ -419,7 +419,8 @@ import {
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
-import { resolveManifestPath, mythosRootForStoryVault } from './mythosFormat/mythosJson.js';
+import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
+import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -802,6 +803,13 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 const getManifestPath = () => resolveManifestPath(getVaultRoot());
 const getNotesVaultRoot = () =>
   loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+// SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
+// root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
+// living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
+const getAgentVaultRoot = () => {
+  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+  return mythosRoot !== null ? agentVaultRootFor(mythosRoot) : getNotesVaultRoot();
+};
 
 /**
  * M5: every manifest write in this process funnels through here. For v2
@@ -1000,6 +1008,10 @@ function ensureVaultDir() {
     // recorded at CREATION time (or adopted here for pre-marker v2 vaults).
     // Demo seeding never runs on open (W0.1 rule).
     ensureMythosV2SeedMarker(mythosRoot);
+    // SKY-10952: one-shot per-vault move of any pre-existing
+    // Notes Vault/Sessions/ onto the new Agent Vault/Sessions/ sibling. Cheap
+    // no-op once migrated (single existsSync check).
+    migrateSessionsToAgentVault(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
@@ -1725,9 +1737,10 @@ function toGuidedMoveError(err: unknown): unknown {
     // the retry budget in vaultGuidedMove.ts's renameOrCopy was exhausted)
     // is exactly what an operator needs to diagnose a report of this
     // message — log it server-side before discarding it.
+    const lockedEntries = (err as NodeJS.ErrnoException & { lockedEntries?: string[] })?.lockedEntries;
     // eslint-disable-next-line no-console
     console.error(
-      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)}`,
+      `[vault-move] rename failed after retry budget exhausted: code=${code} path=${(err as NodeJS.ErrnoException)?.path ?? '(unknown)'} message=${(err as Error)?.message ?? String(err)} lockedEntries=${lockedEntries && lockedEntries.length ? JSON.stringify(lockedEntries) : '(none found by probe)'}`,
     );
     return new SafeIpcError('Mythos Writer still has this vault open — close and retry.');
   }
@@ -5906,13 +5919,21 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    // SKY-10895: release the app's own handles on the source vault before
-    // the rename. The Story Vault watcher and DB are bound at app boot —
-    // on Windows, fs.rename refuses to touch a directory that still has
-    // open handles inside it (EPERM), even though POSIX allows it. Always
-    // re-acquire in `finally` so a failed/rolled-back move never leaves the
-    // app running with no watcher and a closed DB.
+    // SKY-10895: release every handle the app holds inside the source vault
+    // before the rename — not just the watcher + DB. On Windows, fs.rename
+    // refuses to touch a directory that still has open handles anywhere in
+    // its tree (EPERM), even though POSIX allows it. This is the same
+    // constraint the SKY-8882 uninstall handler and repointToMigratedVault
+    // (main.ts) already handle correctly — mirror their full teardown, not
+    // just stopVaultWatcher+closeDb (a widened retry budget alone can't
+    // outlast a job-queue worker or scheduler that never gets torn down).
+    // Always re-acquire in `finally` so a failed/rolled-back move never
+    // leaves the app running with no watcher, no DB, and no schedulers.
+    stopWritingScanScheduler();
+    stopArchiveContScheduler();
+    await stopBoardWatcher();
     await stopVaultWatcher();
+    await shutdownJobService();
     closeDb();
     let moveResult;
     try {
@@ -5928,7 +5949,10 @@ const handlers: IpcHandlers = {
     } finally {
       const currentRoot = getVaultRoot();
       openDb(currentRoot);
+      initJobServiceForVault(currentRoot);
       await startVaultWatcher(currentRoot, notifyVaultChanged);
+      startWritingScanScheduler();
+      startArchiveContScheduler();
     }
     // SKY-10890: consume only once the move has actually succeeded — a
     // mid-move failure (antivirus, a locked file, a full disk) throws out of
@@ -5964,9 +5988,14 @@ const handlers: IpcHandlers = {
     const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
     if (!targetCheck.ok) return { error: targetCheck.error };
 
-    // SKY-10895: release the app's own handles on the source vault before
-    // the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    // SKY-10895: release every handle the app holds inside the source vault
+    // before the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE
+    // above.
+    stopWritingScanScheduler();
+    stopArchiveContScheduler();
+    await stopBoardWatcher();
     await stopVaultWatcher();
+    await shutdownJobService();
     closeDb();
     let moveResult;
     try {
@@ -5982,7 +6011,10 @@ const handlers: IpcHandlers = {
     } finally {
       const currentRoot = getVaultRoot();
       openDb(currentRoot);
+      initJobServiceForVault(currentRoot);
       await startVaultWatcher(currentRoot, notifyVaultChanged);
+      startWritingScanScheduler();
+      startArchiveContScheduler();
     }
     // SKY-10890: consume only once the move has actually succeeded — see the
     // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
@@ -7284,20 +7316,20 @@ const handlers: IpcHandlers = {
   // agentSessionsIpc.ts so it is unit-testable against a real temp-dir vault
   // (PR #917 review, B1/B2).
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
-    handleAgentSessionList(getNotesVaultRoot(), payload),
+    handleAgentSessionList(getAgentVaultRoot(), payload),
   // M20: hydrate one session’s full turn history (Brainstorm session switch)
   [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
-    handleAgentSessionRead(getNotesVaultRoot(), payload),
+    handleAgentSessionRead(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
-    handleAgentSessionCreate(getNotesVaultRoot(), payload),
+    handleAgentSessionCreate(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
-    handleAgentSessionRename(getNotesVaultRoot(), payload),
+    handleAgentSessionRename(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) =>
-    handleAgentSessionDuplicate(getNotesVaultRoot(), payload),
+    handleAgentSessionDuplicate(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) =>
-    handleAgentSessionDelete(getNotesVaultRoot(), payload),
+    handleAgentSessionDelete(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
-    handleAgentSessionAppendTurns(getNotesVaultRoot(), payload),
+    handleAgentSessionAppendTurns(getAgentVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───

@@ -7,7 +7,7 @@ import { useCallback, useRef, useState } from 'react';
  * element the caller renders somewhere in its tree.
  */
 export function useTextPrompt(): {
-  requestText: (label: string) => Promise<string | null>;
+  requestText: (label: string, defaultValue?: string) => Promise<string | null>;
   promptModal: React.ReactNode;
 } {
   const [label, setLabel] = useState<string | null>(null);
@@ -22,10 +22,10 @@ export function useTextPrompt(): {
     resolve?.(result);
   }, []);
 
-  const requestText = useCallback((promptLabel: string): Promise<string | null> => {
+  const requestText = useCallback((promptLabel: string, defaultValue = ''): Promise<string | null> => {
     // Resolve any previous outstanding prompt as cancelled before opening a new one.
     resolverRef.current?.(null);
-    setValue('');
+    setValue(defaultValue);
     setLabel(promptLabel);
     return new Promise<string | null>((resolve) => {
       resolverRef.current = resolve;
@@ -49,6 +49,7 @@ export function useTextPrompt(): {
             className="prompt-modal-input"
             autoFocus
             value={value}
+            onFocus={(e) => e.target.select()}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') settle(value);

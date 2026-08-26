@@ -5,6 +5,24 @@
   overflow: hidden;
 }
 
+/* SKY-10925: chromeless BlockEditor is embedded directly in ManuscriptView's
+   .msv-sheet (the unified page — see .msv-page's own overflow-y: auto), not a
+   fixed-height panel of its own. Flow naturally instead of claiming 100% of
+   an ancestor that no longer has a definite height, and drop the second
+   nested scroll container that would otherwise fight the page's. */
+.block-editor--chromeless {
+  display: block;
+  height: auto;
+  overflow: visible;
+}
+
+.block-editor-toolbar--chromeless {
+  justify-content: flex-start;
+  background: transparent;
+  border-bottom: none;
+  padding: 0 0 0.6rem;
+}
+
 .block-editor-toolbar {
   display: flex;
   align-items: center;
@@ -128,6 +146,42 @@
   .tiptap-content {
     background: color-mix(in srgb, var(--page-bg-fill) 95%, Canvas 5%);
   }
+}
+
+/* SKY-10925 (R9): chromeless BlockEditor's prose IS ManuscriptView's page —
+   .msv-sheet already supplies the one page frame (border/shadow/padding) at
+   every depth. Drop this component's own competing page card (background,
+   radius, glow, max-width cap) and let the prose fill .msv-sheet's content
+   box, and drop the wrap's own padding/scroll so .msv-sheet's ruler-driven
+   margins and .msv-page's single scroll container are authoritative. */
+.block-editor--chromeless .tiptap-editor-wrap {
+  overflow-y: visible;
+  padding: 0;
+  justify-content: flex-start;
+}
+
+.block-editor--chromeless .tiptap-content {
+  max-width: none;
+  background: transparent;
+  border-radius: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-page-preset="liquid-neon"] .block-editor--chromeless .tiptap-content {
+  box-shadow: none;
+}
+
+/* M8 drop cap (ManuscriptView.css .msv-para-text--dropcap) — the unified page
+   applies the same treatment to the scene editor's first paragraph so scene
+   depth matches book/part/chapter typography (RED — SKY-10925). */
+.block-editor--chromeless .tiptap-content .ProseMirror > p:first-child::first-letter {
+  float: left;
+  font-size: 3.55em;
+  line-height: 0.82;
+  padding: 0.04em 0.12em 0 0;
+  color: #eef2fb;
+  font-weight: 500;
 }
 
 .block-editor-empty-hint {

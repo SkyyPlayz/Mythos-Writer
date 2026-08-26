@@ -634,6 +634,9 @@ jobs:
       - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
         run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
 
+      - name: "E2E — TemplatePicker onCreated wiring (SKY-10926)"
+        run: xvfb-run --auto-servernum npm run test:e2e:note-template-picker-oncreated
+
       - name: E2E — Icons (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:icons
 
@@ -1428,6 +1431,16 @@ jobs:
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
+
+      # SKY-10895: real-time Windows Defender scanning of freshly-written
+      # files is a documented source of transient EPERM/EBUSY on this
+      # runner's TEMP dir (where every e2e spec's mkdtempSync fixtures live),
+      # independent of anything our own code holds open. This is
+      # defense-in-depth alongside the app-level retry + copy/delete fallback
+      # in vaultGuidedMove.ts, not a substitute for it.
+      - name: Exclude runner TEMP from Windows Defender real-time scanning (SKY-10895)
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "$env:TEMP"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

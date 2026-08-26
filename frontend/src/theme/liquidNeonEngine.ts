@@ -335,6 +335,26 @@ export function applyLiquidNeonV2Tokens(
     el.style.setProperty(k, v);
     if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
   }
+  // SKY-10914: bridge the v1 panel-glass tokens onto v2's live glassA/blur so
+  // every panel that reads --glass-fill/--blur-panel (Settings, DesktopShell,
+  // vault views, etc.) reacts to the Appearance tab's Glass opacity/Backdrop
+  // blur sliders the same way --glass/--blur (v2's own preview + BackgroundStack)
+  // already do. v2 is applied after v1 at every call site, so this intentionally
+  // wins — same color family as --glass above, just under the legacy var names
+  // most panel CSS still reads. The K8 high-contrast and prefers-reduced-
+  // transparency overrides in tokens.css win over this regardless: K8 declares
+  // --glass-fill locally on every element via `:where(*)`, so it never depends
+  // on :root's inline value; reduced-transparency intentionally only touches
+  // :root's own value (SKY-10908), so per-panel glass stays live either way.
+  const panelGlassTokens: Record<string, string> = {
+    '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
+    '--glass-fill-fallback': 'rgb(13,16,28)',
+    '--blur-panel': `${S.blur}px`,
+  };
+  for (const [k, v] of Object.entries(panelGlassTokens)) {
+    el.style.setProperty(k, v);
+    if (!APPLIED_KEYS.includes(k)) APPLIED_KEYS.push(k);
+  }
   // Customized button text was previously applied but is now default again —
   // clear the stale inline token so Button.css variants take back over.
   if (!tokens['--btn-text']) el.style.removeProperty('--btn-text');

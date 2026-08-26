@@ -550,6 +550,21 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     [aeonData.chapters],
   );
 
+  // SKY-10926: Tension curve's Enter/Space on a focused chapter point opens
+  // that chapter's manuscript scene — reuses the same `onOpenScene` chapter
+  // navigation every other timeline view (Lanes, Relationships, Subway) wires
+  // up, keyed off the POV track's 0-based chapterIndex (SKY-10542).
+  const handleOpenChapterTensionEvent = useCallback(
+    (chapter: number) => {
+      const chapterIndex = chapter - 1;
+      const scene = povScenes.find(
+        (s) => s.chapterIndex === chapterIndex && !s.id.startsWith('plan:'),
+      );
+      if (scene) onOpenScene?.(scene.id);
+    },
+    [povScenes, onOpenScene],
+  );
+
   const calendar = safeCalendar(activeTimeline?.calendar);
   const domain = useMemo(
     () => (timelinesStore ? deriveAxisDomain(timelinesStore, activeId, calendar) : ([0, 1] as const)),
@@ -1310,6 +1325,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
               store={timelinesStore}
               onStoreChange={setTimelinesStore}
               chapters={axisChapters}
+              onOpenChapterEvent={handleOpenChapterTensionEvent}
             />
           )}
           {viewMode === 'tension' && !timelinesStore && (

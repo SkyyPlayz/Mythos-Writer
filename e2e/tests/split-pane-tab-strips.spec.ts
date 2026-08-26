@@ -241,3 +241,59 @@ test.describe('SKY-8907 per-pane tab strips', () => {
     await expect(page.locator('[data-testid="split-pane-1"] [data-testid="se-empty-action-close"]')).toBeVisible();
   });
 });
+
+// SKY-10998: SKY-10925 (PR #1313) fixed the primary single-pane scene view's
+// duplicate-toolbar R9 violation (see editor-page-chrome.spec.ts PC-09) — it
+// scoped SplitEditorPane out as "intentionally distinct" with no unified-shell
+// equivalent. A follow-up audit found the same shape live in SplitEditorPane
+// too: its BlockEditor mount passed no chromeless prop, so it rendered its
+// own .block-editor-toolbar (scene-name + draft-state-group) and its own
+// .fmt-toolbar stacked on top of SplitEditorPane's own .spe-header (pane
+// label + PaneSceneSelector). This mirrors PC-09's toolbar-count assertions,
+// scoped to the split-view surface.
+test.describe('SKY-10998 split-pane chromeless — no duplicate toolbar/header', () => {
+  let userData: string;
+  let vaultDir: string;
+  let notesVaultDir: string;
+  let app: ElectronApplication | undefined;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-'));
+    vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-vault-'));
+    notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sp-chrome-notes-'));
+    seedBaseSettings(userData, vaultDir, notesVaultDir);
+    seedVault(vaultDir);
+    app = await launchApp(userData);
+    page = await firstWindow(app);
+    await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
+    await page.locator('[data-testid="split-toggle-btn"]').click();
+    await expect(page.locator('[data-testid="split-divider"]')).toBeVisible({ timeout: 8_000 });
+    await selectSceneInPane(page, 1, SCENE_ALPHA_ID);
+  });
+
+  test.afterAll(async () => {
+    await app?.close();
+    fs.rmSync(userData, { recursive: true, force: true });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    fs.rmSync(notesVaultDir, { recursive: true, force: true });
+  });
+
+  test('the pane shows exactly one toolbar/header — SplitEditorPane\'s own chrome, not BlockEditor\'s', async () => {
+    const pane1 = page.locator('[data-testid="split-pane-1"]');
+
+    // The pane's prose mounts — suppressing BlockEditor's chrome doesn't
+    // suppress its content.
+    await expect(pane1.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 8_000 });
+
+    // SplitEditorPane's own chrome (pane label + scene selector) is the ONE
+    // header for this pane's scene.
+    await expect(pane1.locator('.spe-header')).toBeVisible();
+    await expect(pane1.locator('[data-testid="spe-scene-btn"]')).toBeVisible();
+
+    // BlockEditor's own duplicate header/toolbar must NOT also render.
+    await expect(pane1.locator('.block-editor-toolbar .scene-name')).toHaveCount(0);
+    await expect(pane1.locator('.draft-state-group')).toHaveCount(0);
+    await expect(pane1.locator('.fmt-toolbar')).toHaveCount(0);
+  });
+});

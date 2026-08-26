@@ -6,6 +6,18 @@ interface Props {
   activePresetId: string | null;
   onSelect: (presetId: string | null) => void;
   showFirstRunTip?: boolean;
+  // dead-wiring-ignore: this whole file (components/PresetSelector/index.tsx)
+  // is shadowed by the sibling components/PresetSelector.tsx — module
+  // resolution for './components/PresetSelector' prefers the exact file
+  // match over this directory's index.tsx, so this component (and every
+  // prop on it, including onDismissTip) is never imported or rendered by
+  // any caller. BrainstormPage.tsx and WritingAssistantPanel.tsx both
+  // render the sibling PresetSelector.tsx, which has no first-run-tip
+  // feature at all. Confirmed via `tsc --noEmit`: passing showFirstRunTip/
+  // onDismissTip at either call site fails to typecheck against the
+  // sibling file's Props. SKY-10926 investigation; deleting this orphaned
+  // duplicate (or porting a first-run tip onto the live component) is a
+  // separate, larger change out of scope for this ticket.
   onDismissTip?: () => void;
 }
 
