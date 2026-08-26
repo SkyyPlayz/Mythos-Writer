@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
+import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { Toast } from './components/Toast/Toast';
@@ -905,6 +906,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // written — read by the before-quit flush handshake below.
   const pendingManifestRef = useRef<Manifest | null>(null);
   const editorApiRef = useRef<BlockEditorApi | null>(null);
+  // SKY-10925: the live Tiptap instance for the chromeless scene editor, so
+  // ManuscriptView's unified toolbar (the ONE toolbar — R9) can drive real
+  // formatting commands instead of BlockEditor's own (now-removed) toolbar.
+  const [sceneLiveEditor, setSceneLiveEditor] = useState<Editor | null>(null);
   const [wikiLinkSuggestions, setWikiLinkSuggestions] = useState<WLSuggestion[]>([]);
   // SKY-192: entity registry for the auto-linker
   const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
@@ -5935,18 +5940,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     currentContent: editorApiRef.current?.getMarkdown() ?? selectedScene.blocks.map(b => b.content).join('\n\n'),
                     onRestore: handleSceneRestore,
                   } : undefined}
+                  sceneEditor={viewDepth === 'scene' ? sceneLiveEditor : null}
                   sceneEditorSlot={viewDepth === 'scene' && selectedScene ? (
                     <div
-                      className={`shell-editor-beta-wrap shell-editor-beta-wrap--page-mode${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
+                      className={`shell-editor-beta-wrap${isGettingStartedVisible(gettingStartedProgress) && !seenEmptySceneHints.has(selectedScene.id) ? ' shell-editor-beta-wrap--hint' : ''}`}
                       style={{ position: 'relative' }}
                     >
                       <BlockEditor
                         key={`${selectedScene.id}-${restoreKey}`}
                         scene={selectedScene}
+                        chromeless
                         enableHeadingFocus
                         onBlocksChange={handleBlocksChange}
                         onDraftStateChange={handleDraftStateChange}
                         onEditorReady={handleEditorReady}
+                        onLiveEditorChange={setSceneLiveEditor}
                         onBetaReadRequest={handleBetaReadRequest}
                         wikiLinkSuggestions={wikiLinkSuggestions}
                         onAcceptWikiLink={handleEditorAcceptWikiLink}

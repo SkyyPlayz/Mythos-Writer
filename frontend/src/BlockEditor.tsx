@@ -66,6 +66,17 @@ interface Props {
   enableHeadingFocus?: boolean;
   /** Beta 3 M10: optional Read/Dictate/Assist toolbar buttons (prototype 766–777). */
   toolbarActions?: FormatToolbarActions;
+  /**
+   * SKY-10925: when true, suppress this component's own header (scene title +
+   * draft-state chips — already unified into ManuscriptView's TitleRow) and its
+   * own FormatToolbar (already unified into ManuscriptView's msv-toolbar). Used
+   * when BlockEditor is mounted inside ManuscriptView's sceneEditorSlot so scene
+   * depth renders through the same chrome as every other depth (R9).
+   */
+  chromeless?: boolean;
+  /** SKY-10925: reports the live Tiptap editor instance so a chromeless host
+   *  (ManuscriptView's unified toolbar) can drive real formatting commands. */
+  onLiveEditorChange?: (editor: Editor | null) => void;
 }
 
 const DRAFT_STATE_LABELS: Record<DraftState, string> = {
@@ -107,7 +118,7 @@ export function blocksToMarkdownBody(blocks: Block[]): string {
 
 const WC_DEBOUNCE_MS = 250;
 
-export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start writing…', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions }: Props) {
+export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange, onEditorReady, onBetaReadRequest, wikiLinkSuggestions, onAcceptWikiLink, onRejectWikiLink, autoLinkerEntities, autoLinkerMode, initialCursorPos, onCursorPosChange, emptySceneHint = 'Start writing…', onEntityClick, onWikiLinkClick, resolvedWikiLinkTitles, wikiLinkCandidates, onSelectionChange, autoFocus = true, enableHeadingFocus = false, toolbarActions, chromeless = false, onLiveEditorChange }: Props) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(scene.draftState ?? 'in-progress');
   // Beta 4 M2: the toolbar word-count badge is gone — the app status bar is
@@ -136,6 +147,8 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
   const onEditorReadyRef = useRef(onEditorReady);
   onEditorReadyRef.current = onEditorReady;
+  const onLiveEditorChangeRef = useRef(onLiveEditorChange);
+  onLiveEditorChangeRef.current = onLiveEditorChange;
   const onBetaReadRef = useRef(onBetaReadRequest);
   onBetaReadRef.current = onBetaReadRequest;
   const onSelectionChangeRef = useRef(onSelectionChange);
@@ -313,6 +326,13 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
+  // SKY-10925: report the live editor instance to a chromeless host so its
+  // unified toolbar can drive real formatting commands.
+  useEffect(() => {
+    onLiveEditorChangeRef.current?.(editor);
+    return () => onLiveEditorChangeRef.current?.(null);
+  }, [editor]);
+
   // Push updated wiki-link hint suggestions into the ProseMirror plugin
   useEffect(() => {
     if (!editor) return;
@@ -423,67 +443,79 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     editor?.commands.setTextSelection(editor.state.selection.from);
   }, [selectionText, editor]);
 
+  const headingFocusGroup = enableHeadingFocus && editor && headingLevelOptions.length > 0 && (
+    <div className="heading-focus-group" role="group" aria-label="Heading focus" data-testid="heading-focus-group">
+      <select
+        className="heading-focus-select"
+        aria-label="Heading focus level"
+        value={hf.level === null ? 'all' : String(hf.level)}
+        onChange={(e) => handleFocusLevelChange(e.target.value)}
+      >
+        <option value="all">All</option>
+        {headingLevelOptions.map((l) => (
+          <option key={l} value={String(l)}>H{l}</option>
+        ))}
+      </select>
+      {hf.level !== null && hfStep && hfStep.count > 0 && (
+        <>
+          <button
+            className="heading-focus-step"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => handleFocusStep('prev')}
+            disabled={!hfStep.canPrev}
+            aria-label={`Previous H${hf.level} section`}
+          >
+            ‹
+          </button>
+          <span className="heading-focus-pos" aria-live="polite">
+            {hfStep.index + 1}/{hfStep.count}
+          </span>
+          <button
+            className="heading-focus-step"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => handleFocusStep('next')}
+            disabled={!hfStep.canNext}
+            aria-label={`Next H${hf.level} section`}
+          >
+            ›
+          </button>
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div className="block-editor">
-      <div className="block-editor-toolbar">
-        <span className="scene-name">{scene.title}</span>
-        {/* Beta 4 M2: no in-editor word-count badge — ONE status bar (§4).
-            Words/chars/read-time live in the app-level BottomBar only. */}
-        <div className="draft-state-group">
-          {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
-            <button
-              key={s}
-              className={`draft-btn draft-${s}${draftState === s ? ' active' : ''}`}
-              onClick={() => handleDraftChange(s)}
-              aria-pressed={draftState === s}
-            >
-              {DRAFT_STATE_LABELS[s]}
-            </button>
-          ))}
-        </div>
-        {/* GH #631: heading-focus — narrow the view to one Hn section; the
-            document (and scene version backups) always keep the full text. */}
-        {enableHeadingFocus && editor && headingLevelOptions.length > 0 && (
-          <div className="heading-focus-group" role="group" aria-label="Heading focus" data-testid="heading-focus-group">
-            <select
-              className="heading-focus-select"
-              aria-label="Heading focus level"
-              value={hf.level === null ? 'all' : String(hf.level)}
-              onChange={(e) => handleFocusLevelChange(e.target.value)}
-            >
-              <option value="all">All</option>
-              {headingLevelOptions.map((l) => (
-                <option key={l} value={String(l)}>H{l}</option>
-              ))}
-            </select>
-            {hf.level !== null && hfStep && hfStep.count > 0 && (
-              <>
-                <button
-                  className="heading-focus-step"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleFocusStep('prev')}
-                  disabled={!hfStep.canPrev}
-                  aria-label={`Previous H${hf.level} section`}
-                >
-                  ‹
-                </button>
-                <span className="heading-focus-pos" aria-live="polite">
-                  {hfStep.index + 1}/{hfStep.count}
-                </span>
-                <button
-                  className="heading-focus-step"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleFocusStep('next')}
-                  disabled={!hfStep.canNext}
-                  aria-label={`Next H${hf.level} section`}
-                >
-                  ›
-                </button>
-              </>
-            )}
+    <div className={`block-editor${chromeless ? ' block-editor--chromeless' : ''}`}>
+      {/* SKY-10925: at scene depth (chromeless) the title + draft-state chips
+          are ManuscriptView's TitleRow (msv-status-chip) — rendering them here
+          too was the duplicate-header R9 violation. Heading-focus (GH #631) is
+          a distinct feature with no unified-shell equivalent, so it survives
+          as a slim bar of its own when active. */}
+      {!chromeless && (
+        <div className="block-editor-toolbar">
+          <span className="scene-name">{scene.title}</span>
+          {/* Beta 4 M2: no in-editor word-count badge — ONE status bar (§4).
+              Words/chars/read-time live in the app-level BottomBar only. */}
+          <div className="draft-state-group">
+            {(Object.keys(DRAFT_STATE_LABELS) as DraftState[]).map((s) => (
+              <button
+                key={s}
+                className={`draft-btn draft-${s}${draftState === s ? ' active' : ''}`}
+                onClick={() => handleDraftChange(s)}
+                aria-pressed={draftState === s}
+              >
+                {DRAFT_STATE_LABELS[s]}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+          {headingFocusGroup}
+        </div>
+      )}
+      {chromeless && headingFocusGroup && (
+        <div className="block-editor-toolbar block-editor-toolbar--chromeless">
+          {headingFocusGroup}
+        </div>
+      )}
       <RichTextEditor
         content={blocksToMarkdownBody(scene.blocks)}
         extraExtensions={STORY_EXTENSIONS}
@@ -494,6 +526,7 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
         onBeforeFlush={handleBeforeFlush}
         onChangeMarkdown={handleChangeMarkdown}
         onWikiLinkClick={onWikiLinkClick}
+        showToolbar={!chromeless}
         plainTextWikiLinkFallback
         onEntityClick={onEntityClick}
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
