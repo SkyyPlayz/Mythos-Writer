@@ -512,7 +512,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
@@ -604,6 +604,13 @@ jobs:
 
       - name: "E2E — Obsidian import fidelity, real IPC + disk (SKY-8005/SKY-8445)"
         run: xvfb-run --auto-servernum npm run test:e2e:obsidian-import-fidelity
+
+      # SKY-11058 reachability: fresh profile → create a second notes vault via
+      # the picker → swap active → link-resolution report → relaunch → still
+      # active. The second vault is user-created through the real UI, never
+      # pre-seeded (§4c).
+      - name: E2E — Notes-vault registry picker reachability (SKY-11058)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-vault-registry
 
       - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
         run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
@@ -1438,7 +1445,9 @@ jobs:
     # SKY-10910: raised from 20 — this job grew 5 more native-Windows Electron
     # launches (vault delete/migration/quit-teardown x4 lifecycle specs) to
     # close the Windows CI vault-lifecycle gap.
-    timeout-minutes: 35
+    # SKY-11058: raised from 35 — one more launch (notes-vault swap
+    # handle-release spec).
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -1515,6 +1524,15 @@ jobs:
       # real here too.
       - name: E2E — Move Vault wizard cloud-sync guided move on native Windows (SKY-10910 gap 5)
         run: npx playwright test e2e/move-vault-real.spec.ts --reporter=list
+
+      # SKY-11058: swapping the active notes vault re-points the chokidar
+      # watcher + DB handles from the old vault dir to the new one. Windows
+      # refuses to rename a directory with open handles (EPERM); POSIX does
+      # not — so a handle leak on swap is invisible on every Linux job. This
+      # swaps while a note from the original vault is open, then proves the
+      # original dir can be renamed (handles released, SKY-10895 pattern).
+      - name: E2E — Notes-vault swap releases old-vault handles on native Windows (SKY-11058)
+        run: npx playwright test e2e/notes-vault-swap-windows-real.spec.ts --reporter=list
 
       # SKY-10910 gap 1: SKY-8882 ("old vault not deleted on Windows") was
       # independently closed as fixed three separate times on Linux-only E2E.
