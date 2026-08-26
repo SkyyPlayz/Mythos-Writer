@@ -106,6 +106,26 @@ function classifyError(errorMsg: string): PanelState {
   return 'error_llm';
 }
 
+/** M12.B3 (SKY-10738): which of the Archive Agent's two checks the panel's
+ *  "Continuity pass ▾" control is set to. */
+export type ContinuityCheckType = 'story_internal' | 'story_vault';
+
+const CHECK_TYPE_OPTIONS: Array<{ value: ContinuityCheckType; label: string }> = [
+  { value: 'story_vault', label: 'Check 2 — Story ↔ Vault' },
+  { value: 'story_internal', label: 'Check 1 — Story internal' },
+];
+
+/** "Last scan — 4m ago" copy per the owner's annotated screenshot ruling
+ *  (SKY-10528) — a distinct abbreviated form from NoteViewer's "N min ago". */
+function formatScanAgo(scannedAt: string): string {
+  const mins = Math.floor((Date.now() - new Date(scannedAt).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export interface ContinuityPanelProps {
   scene: Scene | null;
   enabled?: boolean;
@@ -121,6 +141,9 @@ export interface ContinuityPanelProps {
   archiveScanScope?: 'active_scene' | 'active_chapter' | 'full_manuscript';
   onConsentGranted?: () => void;
   onCountChange?: (count: number) => void;
+  /** M12.B3: feeds the chat view's composer quick-action chips, which are
+   *  generated from the panel's current open flags (not static). */
+  onItemsChange?: (items: InconsistencyItem[]) => void;
   onOpenSettings?: () => void;
   /**
    * SKY-6978 (Beta4/M18): the Notes editor's right-panel "CONTINUITY FLAGS"
@@ -140,6 +163,7 @@ export default function ContinuityPanel({
   archiveScanScope = 'active_scene',
   onConsentGranted,
   onCountChange,
+  onItemsChange,
   onOpenSettings,
   flagsHeader = false,
 }: ContinuityPanelProps) {
@@ -152,6 +176,9 @@ export default function ContinuityPanel({
   // Beta 3 M22: archive scans light the workspace tab strip's agents chip.
   useAgentActivity(panelState === 'scanning');
   const [lastTokenUsed, setLastTokenUsed] = useState<number | null>(null);
+  // M12.B3 (SKY-10738): "Continuity pass ▾" — which check the next scan runs.
+  const [checkType, setCheckType] = useState<ContinuityCheckType>('story_vault');
+  const [scanMeta, setScanMeta] = useState<{ scannedAt: string; scenesChecked: number; notesChecked: number } | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
   // M12.3: scan scope picked at the trigger; default = scene (or the legacy
   // Settings-level scope when one is set).
@@ -168,12 +195,18 @@ export default function ContinuityPanel({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<GroupKey>>(new Set(['low', 'ignored']));
   const onCountChangeRef = useRef(onCountChange);
   onCountChangeRef.current = onCountChange;
+  const onItemsChangeRef = useRef(onItemsChange);
+  onItemsChangeRef.current = onItemsChange;
 
   const openCount = items.filter((i) => i.status === 'open').length;
 
   useEffect(() => {
     onCountChangeRef.current?.(openCount);
   }, [openCount]);
+
+  useEffect(() => {
+    onItemsChangeRef.current?.(items);
+  }, [items]);
 
   // Load persisted open items on mount / scene change
   useEffect(() => {
@@ -254,6 +287,7 @@ export default function ContinuityPanel({
     const unsubResult = window.api.onArchiveContScanResult((data) => {
       const incoming = data.items as InconsistencyItem[];
       setLastTokenUsed(data.tokenUsed);
+      setScanMeta({ scannedAt: data.scannedAt, scenesChecked: data.scenesChecked, notesChecked: data.notesChecked });
       setItems(incoming);
 
       if (data.partial) {
@@ -351,7 +385,7 @@ export default function ContinuityPanel({
     if (!scene) return;
     const prose = scene.blocks.map((b) => b.content).join('\n\n');
     // The LLM continuity scan honors the picked scope via its legacy vocabulary…
-    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope]);
+    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope], checkType);
     // …and the M12.1 extraction queue gets the real scoped scene set —
     // identifiers only; main resolves them to paths from the manifest.
     // Enqueue failures come back as { error } resolved values, not throws —
@@ -362,6 +396,16 @@ export default function ContinuityPanel({
         if (res?.error) setActionError(`Background scan didn’t start — ${res.error}`);
       })
       .catch(() => {});
+  }, [scene, scanScope, checkType]);
+
+  // M12.B3: switching "Continuity pass ▾" re-scans immediately with the
+  // newly selected check — the control "selects which check runs" (SKY-10738
+  // acceptance criteria), not just a display filter over stale results.
+  const handleCheckTypeChange = useCallback((next: ContinuityCheckType) => {
+    setCheckType(next);
+    if (!scene) return;
+    const prose = scene.blocks.map((b) => b.content).join('\n\n');
+    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope], next);
   }, [scene, scanScope]);
 
   const toggleGroup = useCallback((group: GroupKey) => {
@@ -373,16 +417,54 @@ export default function ContinuityPanel({
     });
   }, []);
 
+  // M12.B3 (SKY-10738): "Continuity pass ▾" — owner's screenshot ruling adds
+  // a mode selector to the header, absent from the prototype. Reused by
+  // Epic A's M12.3 scan-scope work once it lands (currently unwired).
+  const checkTypeSelect = (
+    <span className="cp-header-controls" onClick={(e) => e.stopPropagation()}>
+      <label className="cp-check-type-label">
+        <span className="sr-only">Continuity pass</span>
+        <select
+          className="cp-check-type-select"
+          aria-label="Continuity pass"
+          value={checkType}
+          onChange={(e) => handleCheckTypeChange(e.target.value as ContinuityCheckType)}
+        >
+          {CHECK_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+    </span>
+  );
+
   const header = flagsHeader ? (
     <PanelHeader
       title={<span className="cp-flags-label">CONTINUITY FLAGS</span>}
-      actions={<span className="cp-flags-badge">ARCHIVE AGENT</span>}
+      actions={
+        <>
+          <span className="cp-flags-badge">ARCHIVE AGENT</span>
+          {checkTypeSelect}
+        </>
+      }
     />
   ) : (
     <PanelHeader
       icon={<ScrollText size={14} aria-hidden="true" />}
       title="Continuity"
+      actions={checkTypeSelect}
     />
+  );
+
+  // M12.B3: "Last scan — 4m ago. 28 scenes and 124 notes checked; 2
+  // continuity flags are open." Session-only (same convention as the
+  // existing token-cost footer) — absent until a scan runs this session.
+  const scanStatusLine = scanMeta && (
+    <p className="cp-scan-status" data-testid="cp-scan-status">
+      Last scan — {formatScanAgo(scanMeta.scannedAt)}. {scanMeta.scenesChecked} {scanMeta.scenesChecked === 1 ? 'scene' : 'scenes'}
+      {scanMeta.notesChecked > 0 && <> and {scanMeta.notesChecked} {scanMeta.notesChecked === 1 ? 'note' : 'notes'}</>} checked;{' '}
+      {openCount} continuity {openCount === 1 ? 'flag is' : 'flags are'} open.
+    </p>
   );
 
   // M11b surface contract: master AI off → continuity flags are gone, not
@@ -409,6 +491,7 @@ export default function ContinuityPanel({
   return (
     <div className="cp-panel">
       {header}
+      {scanStatusLine}
       {/* Always-in-DOM aria-live status region */}
       <p
         role="status"

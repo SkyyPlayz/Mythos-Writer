@@ -4,9 +4,10 @@
 // token budget enforcement, and Levenshtein re-surface check.
 
 import crypto from 'crypto';
-import type { ArchiveIndex } from './archiveAgent.js';
+import type { ArchiveIndex, ManuscriptScene } from './archiveAgent.js';
 import { PROPERTY_CONTRADICTION_PAIRS } from './archiveAgent.js';
 import type { InconsistencyItem } from './ipc.js';
+import type { DbSuggestion } from './db.js';
 
 // ─── Token budget ───
 // Heuristic: 1 token ≈ 4 chars (works reasonably for English prose).
@@ -701,4 +702,74 @@ export function itemToDbRow(
   };
 }
 
+// ─── Check 1 (story-internal) suggestion → InconsistencyItem mapper ────────
+// M12.B3 (SKY-10738).
 
+function snippetAround(text: string, index: number, len: number): string {
+  if (index < 0) return '';
+  const start = Math.max(0, index - 40);
+  const end = Math.min(text.length, index + len + 40);
+  return text.slice(start, end);
+}
+
+/** Maps a Check 1 (`detectInternalContinuity`, SKY-10736) suggestion onto the
+ *  panel's `InconsistencyItem` shape. There is no vault side to a
+ *  story-internal flag, so `vaultAnchor` is repurposed to carry the EARLIER
+ *  scene's excerpt — the two anchors read as "established here →
+ *  contradicted here", both manuscript-side. `resolveContinuityItemById`
+ *  refuses `match_archive_to_story` for `scope: 'story_internal'` rows
+ *  precisely because `vaultAnchor.notePath` here is a scene path, not a
+ *  vault note. */
+export function internalSuggestionToInconsistencyItem(
+  suggestion: DbSuggestion,
+  pathToId: Map<string, string>,
+  scenes: ManuscriptScene[],
+  createdAt: string,
+): InconsistencyItem {
+  let payload: { earlierPhrase?: string; earlierScenePath?: string; entityId?: string } = {};
+  try { payload = JSON.parse(suggestion.payload_json ?? '{}'); } catch { /* malformed — fall back to empty */ }
+
+  const category: InconsistencyItem['category'] =
+    payload.entityId ? 'character_attribute_drift' : 'factual_contradiction';
+  // Character drift (hair/eyes) is flagged with equal confidence to
+  // world-rule breaks, but a broken world rule (e.g. a relit lantern) is the
+  // more disruptive read for the author — surfaced as the higher severity.
+  const severity: InconsistencyItem['severity'] = payload.entityId ? 'medium' : 'high';
+
+  const earlierScene = scenes.find((s) => s.path === payload.earlierScenePath);
+  const earlierExcerpt = earlierScene && payload.earlierPhrase
+    ? snippetAround(
+      earlierScene.text,
+      earlierScene.text.toLowerCase().indexOf(payload.earlierPhrase.toLowerCase()),
+      payload.earlierPhrase.length,
+    )
+    : '';
+
+  return {
+    id: suggestion.id,
+    scope: 'story_internal',
+    category,
+    severity,
+    manuscriptAnchor: {
+      sceneId: (suggestion.target_path ? pathToId.get(suggestion.target_path) : undefined) ?? '',
+      offset: 0,
+      excerpt: (suggestion.target_anchor ?? '').slice(0, 120),
+    },
+    vaultAnchor: {
+      notePath: payload.earlierScenePath ?? '',
+      line: 0,
+      excerpt: earlierExcerpt.slice(0, 120),
+    },
+    rationale: suggestion.rationale.slice(0, 200),
+    proposedResolution: {
+      matchArchiveToStory: '',
+      suggestStoryChange: payload.earlierPhrase
+        ? `Change this to match "${payload.earlierPhrase}", established earlier.`
+        : 'Update this scene to match what was established earlier.',
+    },
+    status: 'open',
+    resolvedAt: null,
+    resolvedAction: null,
+    createdAt,
+  };
+}

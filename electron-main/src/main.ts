@@ -533,7 +533,9 @@ import {
   getArchiveIndex,
   getArchiveStatus,
   runArchiveScan,
+  detectInternalContinuity,
   type ArchiveIgnoreKey,
+  type ManuscriptScene,
 } from './archiveAgent.js';
 import { ingestArchiveQuestions } from './brainstormQuestionQueue.js';
 import {
@@ -550,6 +552,7 @@ import {
   itemToDbRow,
   applyExcerptPatch,
   DEFAULT_SCAN_BUDGET_TOKENS,
+  internalSuggestionToInconsistencyItem,
 } from './archiveContinuityEngine.js';
 import { buildManuscriptSnapshot } from './manuscriptPass.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
@@ -9892,6 +9895,88 @@ async function runOneArchiveContinuityCheck(
         items: eventItems,
         tokenUsed,
         partial,
+        // M12.B3: Check 2 scans one scene against the vault entities it
+        // mentions — "notes checked" is the vault's tracked entity count.
+        scannedAt: createdAt,
+        scenesChecked: 1,
+        notesChecked: archiveIndex.entities.length,
+      } satisfies import('./ipc.js').ArchiveContScanResultEvent);
+    }
+  });
+
+  return items;
+}
+
+/**
+ * Check 1 — Story internal (SKY-10738/M12.B3). Runs the heuristic,
+ * no-LLM `detectInternalContinuity` detector (SKY-10736) across the whole
+ * story the given scene belongs to, maps its `DbSuggestion` output onto the
+ * panel's `InconsistencyItem` shape, and persists/broadcasts it through the
+ * same continuity-issue pipeline Check 2 uses so both checks share one list,
+ * one resolve flow, and one "Continuity pass ▾" panel.
+ */
+async function runArchiveInternalContinuityScan(
+  sceneId: string,
+): Promise<import('./ipc.js').InconsistencyItem[]> {
+  const settings = loadAppSettings();
+  if (!settings.archiveContinuityEnabled) return [];
+  if (!settings.agents.archive.enabled) return [];
+
+  let archiveIndex = getArchiveIndex();
+  if (!archiveIndex) {
+    try {
+      const manifest = readManifest(getManifestPath());
+      archiveIndex = buildArchiveIndex(getVaultRoot(), manifest);
+    } catch { return []; }
+  }
+
+  const manifest = readManifest(getManifestPath());
+  const story = manifest.stories.find((s) =>
+    s.chapters.some((c) => c.scenes.some((sc) => sc.id === sceneId)),
+  );
+  if (!story) return [];
+
+  const pathToId = new Map<string, string>();
+  const scenes: ManuscriptScene[] = [];
+  for (const chapter of story.chapters) {
+    for (const scene of chapter.scenes) {
+      let prose = '';
+      try { prose = readSceneFile(getVaultRoot(), scene.path).prose; } catch { continue; }
+      pathToId.set(scene.path, scene.id);
+      scenes.push({ path: scene.path, text: prose });
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  const suggestions = detectInternalContinuity(scenes, archiveIndex);
+  const parsed = suggestions.map((s) => internalSuggestionToInconsistencyItem(s, pathToId, scenes, createdAt));
+
+  let items = parsed;
+  try {
+    items = dedupeScanItems(parsed, listContinuityIssuesByScene(sceneId));
+  } catch { /* db closed — fall back to raw parse */ }
+
+  for (const item of items) {
+    try { insertContinuityIssue(itemToDbRow(item)); } catch { /* non-fatal — duplicate ids or db closed */ }
+  }
+
+  let eventItems = items;
+  try {
+    eventItems = listContinuityIssuesByScene(sceneId, 'open').map(dbRowToItem);
+  } catch { /* db closed — fall back to fresh findings */ }
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_RESULT, {
+        sceneId,
+        items: eventItems,
+        tokenUsed: 0,
+        partial: false,
+        scannedAt: createdAt,
+        // Check 1 compares every scene in the story against every other —
+        // it never reads the vault (owner ruling, SKY-10528).
+        scenesChecked: scenes.length,
+        notesChecked: 0,
       } satisfies import('./ipc.js').ArchiveContScanResultEvent);
     }
   });
@@ -10082,6 +10167,12 @@ function resolveContinuityItemById(
   // M9d (SKY-9825): the actions do what they say. Side effects run BEFORE the
   // status flip so a failed edit leaves the flag open for the author to retry.
   if (action === 'match_archive_to_story') {
+    // M12.B3 (SKY-10738): a `story_internal` row's `vault_note_path` holds an
+    // EARLIER SCENE path, not a vault note (Check 1 never reads the vault) —
+    // patching it here would silently overwrite manuscript prose. Refuse.
+    if (row.scope === 'story_internal') {
+      return { ok: false, reason: 'note_not_found' };
+    }
     // The flagged note lives in the Notes Vault (Continuity Peek entities) or
     // the Story Vault (manifest entity notes, where scans index from) — try
     // both roots, patching wherever the note actually is.
@@ -10173,6 +10264,12 @@ function registerArchiveContinuityHandlers(): void {
       if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
       const settings = loadAppSettings();
       if (!settings.archiveContinuityEnabled || !settings.agents.archive.enabled) return [];
+      // M12.B3: "Continuity pass ▾" selects which check runs — Check 1 never
+      // touches the vault, so it skips the re-surface check below (that's a
+      // Check 2/vault-comparison concern).
+      if (payload.checkType === 'story_internal') {
+        return runArchiveInternalContinuityScan(payload.sceneId);
+      }
       const scope = payload.scope ?? settings.archiveScanScope ?? 'active_scene';
       const items = payload.checks
         ? await runArchiveContScan(payload.sceneId, payload.text, scope, payload.checks)

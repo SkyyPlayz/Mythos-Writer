@@ -344,8 +344,9 @@ test('TC-CP-02: seeded SQLite inconsistency renders, dismisses, and stays gone a
     await expect(card.getByRole('img', { name: /medium severity/i })).toBeVisible();
     await expect(card.getByTitle(/Glass Bridge under twin moons/)).toBeVisible();
     await expect(card.getByTitle(/Glass Bridge only appears in daylight/)).toBeVisible();
-    await expect(card.getByRole('button', { name: /match archive to story/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /suggest story change/i })).toBeVisible();
+    // M12.B3 (SKY-10738): owner's screenshot ruling — two actions per card.
+    await expect(card.getByRole('button', { name: /suggest fix/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /open sources/i })).toBeVisible();
 
     const badge = card.getByRole('img', { name: /medium severity/i });
     await expect(badge).toHaveClass(/ic-severity-badge--medium/);
@@ -384,7 +385,9 @@ test('TC-CP-03: Match Archive resolution removes the card and persists resolved 
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    await card.getByRole('button', { name: /match archive to story/i }).click();
+    // M12.B3: "Suggest fix" opens the choice between the two fix directions.
+    await card.getByRole('button', { name: /suggest fix/i }).click();
+    await card.getByRole('button', { name: /update your notes/i }).click();
     await expect(sidebar.getByText('Proposed vault change')).toBeVisible();
     await card.getByRole('button', { name: /apply vault change/i }).click();
 
@@ -461,9 +464,12 @@ test('TC-CP-05: seeded flags render prototype scope tags (Story ↔ Vault / Vaul
     const sidebar = opened.page.getByTestId('global-right-sidebar');
     const tags = sidebar.getByTestId('ic-scope-tag');
     await expect(tags).toHaveCount(3, { timeout: 12_000 });
-    await expect(sidebar.getByText('Story ↔ Vault')).toBeVisible();
-    await expect(sidebar.getByText('Vault internal')).toBeVisible();
-    await expect(sidebar.getByText('Timeline', { exact: true })).toBeVisible();
+    // Scoped to the scope-tag elements themselves — M12.B3's "Continuity
+    // pass ▾" dropdown also contains the substring "Story ↔ Vault" in one of
+    // its options, which a loose sidebar-wide text query would also match.
+    await expect(tags.filter({ hasText: 'Story ↔ Vault' })).toBeVisible();
+    await expect(tags.filter({ hasText: 'Vault internal' })).toBeVisible();
+    await expect(tags.filter({ hasText: 'Timeline' })).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
@@ -485,7 +491,8 @@ test('TC-CP-06: "Edit notes to match" patches the conflicting note on disk', asy
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    await card.getByRole('button', { name: /match archive to story/i }).click();
+    await card.getByRole('button', { name: /suggest fix/i }).click();
+    await card.getByRole('button', { name: /update your notes/i }).click();
     await expect(sidebar.getByText('Proposed vault change')).toBeVisible();
     await card.getByRole('button', { name: /apply vault change/i }).click();
 
@@ -515,7 +522,8 @@ test('TC-CP-07: "Suggest story change" drafts an archive suggestion carrying the
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    await card.getByRole('button', { name: /suggest story change/i }).click();
+    await card.getByRole('button', { name: /suggest fix/i }).click();
+    await card.getByRole('button', { name: /suggest a change to the story/i }).click();
     await expect(sidebar.getByText('Suggested manuscript change')).toBeVisible();
     await card.getByRole('button', { name: /edit before applying/i }).click();
     const edited = 'Mara waits for the dawn bells before she crosses the Glass Bridge.';
@@ -539,7 +547,10 @@ test('TC-CP-07: "Suggest story change" drafts an archive suggestion carrying the
   }
 });
 
-test('TC-CP-08: "Ignore" hides the flag and persists ignored status', async () => {
+test('TC-CP-08: dismiss (header ×) hides the flag and persists ignored status', async () => {
+  // M12.B3 (SKY-10738): the action row's "Ignore" button was replaced by
+  // "Suggest fix"/"Open sources" — dismiss/ignore now lives on the header's
+  // × button only (same handler, same persisted outcome).
   const fixture = createFixture([{ id: 'inc-ignore', severity: 'high' }]);
   let app: ElectronApplication | undefined;
   try {
@@ -550,7 +561,7 @@ test('TC-CP-08: "Ignore" hides the flag and persists ignored status', async () =
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    await card.getByRole('button', { name: /^Ignore —/ }).click();
+    await card.getByRole('button', { name: /^Dismiss —/ }).click();
     await expect(sidebar.getByText(/Glass Bridge under twin moons/)).toBeHidden({ timeout: 8_000 });
 
     await expect.poll(async () => {
@@ -589,9 +600,10 @@ test('TC-CP-09: granting story-edit consent via the modal persists and survives 
     const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(card).toBeVisible({ timeout: 12_000 });
 
-    // Consent not yet given — "Suggest story change" opens the consent gate,
-    // not the edit area.
-    await card.getByRole('button', { name: /suggest story change/i }).click();
+    // Consent not yet given — "Suggest fix" → "Suggest a change to the
+    // story" opens the consent gate, not the edit area.
+    await card.getByRole('button', { name: /suggest fix/i }).click();
+    await card.getByRole('button', { name: /suggest a change to the story/i }).click();
     const consentDialog = page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i });
     await expect(consentDialog).toBeVisible();
     await expect(card.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeHidden();
@@ -621,8 +633,9 @@ test('TC-CP-09: granting story-edit consent via the modal persists and survives 
     app = undefined;
     expect(readAppSettings(fixture.userData).archiveStoryEditConsentGiven).toBe(true);
 
-    // Reopen: a fresh card's "Suggest story change" now skips the consent
-    // modal entirely — the gated feature stayed active across reload.
+    // Reopen: a fresh card's "Suggest fix" → "Suggest a change to the story"
+    // now skips the consent modal entirely — the gated feature stayed active
+    // across reload.
     opened = await openApp(fixture);
     app = opened.app;
     page = opened.page;
@@ -630,7 +643,8 @@ test('TC-CP-09: granting story-edit consent via the modal persists and survives 
     const reopenedCard = reopenedSidebar.getByRole('listitem', { name: /high character attribute drift/i });
     await expect(reopenedCard).toBeVisible({ timeout: 12_000 });
 
-    await reopenedCard.getByRole('button', { name: /suggest story change/i }).click();
+    await reopenedCard.getByRole('button', { name: /suggest fix/i }).click();
+    await reopenedCard.getByRole('button', { name: /suggest a change to the story/i }).click();
     await expect(page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i })).toBeHidden();
     await expect(reopenedCard.getByText('Suggested manuscript change')).toBeVisible();
   } finally {
@@ -692,6 +706,40 @@ test('TC-CP-11: a contradiction flagged in a DIFFERENT scene surfaces via the gl
     await expect(globalSection).toContainText('Elsewhere in manuscript');
     await expect(globalSection).toContainText('The Glass Bridge shattered years ago.');
     await expect(globalSection).not.toContainText('DRIFT-ROW-MUST-NOT-SURFACE');
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+// M12.B3 (SKY-10738): the Archive agent's own chat panel in the right
+// sidebar (owner's placement) — previously "coming soon", now the
+// redesigned panel + dynamic composer quick-action chips + mini chat.
+test('TC-CP-12: Archive agent chat view renders the panel, dynamic quick-action chips, and a composer', async () => {
+  const fixture = createFixture([{ id: 'inc-chat', severity: 'high' }]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+
+    await sidebar.getByTestId('ahp-agent-row-archive').click();
+    const chatView = page.locator('.ahp-chat-view');
+    await expect(chatView.locator('.ahp-chat-agent-name')).toHaveText('Archive Agent', { timeout: 8_000 });
+
+    // The redesigned ContinuityPanel still renders inside the chat view.
+    await expect(chatView.getByRole('listitem', { name: /high character attribute drift/i })).toBeVisible({ timeout: 8_000 });
+
+    // Composer quick-action chips: dynamic, not static — the global scan
+    // chip is always present, and a seeded open flag adds two context chips.
+    await expect(chatView.getByRole('button', { name: 'Run full scan' })).toBeVisible();
+    await expect(chatView.getByRole('button', { name: 'Explain flag #1' })).toBeVisible();
+    await expect(chatView.getByRole('button', { name: /^Suggest a fix for the /i })).toBeVisible();
+
+    // The mini chat composer (MiniAgentChat, reused from Timeline2's
+    // ArchiveTab — same shared Archive agent session).
+    await expect(chatView.getByTestId('ahp-archive-chat-input')).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

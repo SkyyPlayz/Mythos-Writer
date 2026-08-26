@@ -4,7 +4,8 @@ import './InconsistencyCard.css';
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
 /** M9d (SKY-9825): which two sources the flag says disagree.
- *  M12.B1 (SKY-10736): 'story_internal' — Archive Check 1 (manuscript vs itself). */
+ *  M12.B1 (SKY-10736) / M12.B3 (SKY-10738): `story_internal` is Check 1 —
+ *  the manuscript contradicting itself across scenes; there is no vault side to it. */
 export type ContinuityScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface InconsistencyItem {
@@ -42,13 +43,24 @@ const CATEGORY_LABEL: Record<InconsistencyItem['category'], string> = {
   factual_contradiction: 'Factual Contradiction',
 };
 
-/** M9d: scope tag copy — exact prototype labels (PLAN.md §M9 item 4). */
+/** M9d: scope tag copy — exact prototype labels (PLAN.md §M9 item 4).
+ *  M12.B3 (SKY-10738): `story_internal` label + placement per the owner's
+ *  annotated screenshot ruling (SKY-10528) — build to the screenshot, not
+ *  the prototype, where the two disagree. */
 const SCOPE_LABEL: Record<ContinuityScope, string> = {
   story_internal: 'Story internal',
   story_vault: 'Story ↔ Vault',
   vault_internal: 'Vault internal',
   timeline: 'Timeline',
+  story_internal: 'Story internal',
 };
+
+/** M12.B3: the card's second anchor is a vault note for every scope except
+ *  `story_internal`, where Check 1 compares two manuscript scenes instead —
+ *  the label and "Open sources" copy read accordingly. */
+function secondAnchorLabel(scope: ContinuityScope): string {
+  return scope === 'story_internal' ? 'Earlier scene' : 'Vault note';
+}
 
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
@@ -65,7 +77,10 @@ export interface InconsistencyCardProps {
 }
 
 interface ExpandState {
-  kind: 'match' | 'suggest';
+  /** M12.B3: `fix-choice` is the "Suggest fix" entry point for scopes that
+   *  have a vault side — it offers `match` or `suggest` as sub-choices.
+   *  `story_internal` items (no vault side) skip straight to `suggest`. */
+  kind: 'fix-choice' | 'match' | 'suggest' | 'sources';
   suggestText: string;
   editMode: boolean;
   editValue: string;
@@ -149,6 +164,28 @@ export function InconsistencyCard({
 
   const handleCancelExpand = useCallback(() => {
     setExpand(null);
+  }, []);
+
+  // M12.B3 (SKY-10738): "Suggest fix" replaces the old two top-level buttons
+  // ("Edit notes to match" / "Suggest story change") with one entry point.
+  // A `story_internal` flag has no vault side, so it skips the choice and
+  // goes straight to the manuscript-side suggestion; every other scope shows
+  // both underlying fix directions as a sub-choice, preserving both flows.
+  const handleSuggestFix = useCallback(() => {
+    if (item.scope === 'story_internal') {
+      handleSuggestEdit();
+      return;
+    }
+    setExpand({ kind: 'fix-choice', suggestText: '', editMode: false, editValue: '', busy: false });
+  }, [item.scope, handleSuggestEdit]);
+
+  // M12.B3: "Open sources" — reveals the flag's two full, untruncated
+  // anchors in place (no navigation surface exists at this layer to jump
+  // into a specific scene/note, so this is the anchor-level "source" reveal).
+  const handleToggleSources = useCallback(() => {
+    setExpand((prev) =>
+      prev?.kind === 'sources' ? null : { kind: 'sources', suggestText: '', editMode: false, editValue: '', busy: false },
+    );
   }, []);
 
   const expandOpen = expand !== null;
@@ -274,42 +311,83 @@ export function InconsistencyCard({
           )}
         </div>
 
-        {/* Action row — labels match the M9 comments-v2 archive-action wording
-            verbatim (frontend/src/comments/agentActions.ts AGENT_ACTIONS) so
-            the Notes right panel's flag cards (SKY-6978) read identically to
-            the manuscript's Archive Agent comment card. */}
+        {/* Action row — M12.B3 (SKY-10738): two actions per the owner's
+            annotated screenshot ruling (`Suggest fix` / `Open sources`),
+            replacing the prototype's three. Dismiss/ignore stays reachable
+            via the header's × button, so no capability is lost. */}
         <div className="ic-action-row" role="group" aria-label="Inconsistency actions">
           <button
             type="button"
             className="ic-btn ic-btn--primary"
-            aria-label={`Match Archive to Story — ${excerptLabel}`}
-            onClick={handleMatchArchive}
+            aria-label={`Suggest fix — ${excerptLabel}`}
+            onClick={handleSuggestFix}
             disabled={isBusy || expandOpen}
           >
-            Edit notes to match
+            Suggest fix
           </button>
           <button
             type="button"
             className="ic-btn ic-btn--secondary"
-            aria-label={`Suggest Story Change — ${excerptLabel}`}
-            onClick={handleSuggestEdit}
-            disabled={isBusy || expandOpen}
+            aria-label={`Open sources — ${excerptLabel}`}
+            aria-pressed={expand?.kind === 'sources'}
+            onClick={handleToggleSources}
+            disabled={isBusy || (expandOpen && expand?.kind !== 'sources')}
           >
-            Suggest story change
-          </button>
-          <button
-            type="button"
-            className="ic-btn ic-btn--ghost"
-            aria-label={`Ignore — ${excerptLabel}`}
-            onClick={() => void handleIgnore()}
-            disabled={isBusy || expandOpen}
-          >
-            Ignore
+            Open sources
           </button>
         </div>
 
         {/* Expand area */}
         <div className={`ic-expand-area${expandOpen ? ' ic-expand-area--open' : ''}`} aria-hidden={expandOpen ? undefined : true}>
+          {expand?.kind === 'fix-choice' && (
+            <div className="ic-fix-choice">
+              <p className="ic-diff-label">How should this be fixed?</p>
+              <div className="ic-expand-actions">
+                <button
+                  type="button"
+                  className="ic-btn ic-btn--primary"
+                  onClick={handleMatchArchive}
+                  aria-label="Update your notes to match the story"
+                >
+                  Update your notes
+                </button>
+                <button
+                  type="button"
+                  className="ic-btn ic-btn--secondary"
+                  onClick={handleSuggestEdit}
+                  aria-label="Suggest a change to the story"
+                >
+                  Suggest a story change
+                </button>
+                <button
+                  type="button"
+                  className="ic-btn ic-btn--ghost"
+                  onClick={handleCancelExpand}
+                  aria-label="Cancel suggest fix"
+                >
+                  ✗ Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {expand?.kind === 'sources' && (
+            <div className="ic-sources-preview" data-testid="ic-sources-preview">
+              <p className="ic-diff-label">Manuscript</p>
+              <p className="ic-diff-old">{item.manuscriptAnchor.excerpt || '(no excerpt captured)'}</p>
+              <p className="ic-diff-label">{secondAnchorLabel(item.scope)}</p>
+              <p className="ic-diff-old">{item.vaultAnchor.excerpt || '(no excerpt captured)'}</p>
+              <div className="ic-expand-actions">
+                <button
+                  type="button"
+                  className="ic-btn ic-btn--ghost"
+                  onClick={handleCancelExpand}
+                  aria-label="Close sources"
+                >
+                  ✗ Close
+                </button>
+              </div>
+            </div>
+          )}
           {expand?.kind === 'match' && (
             <div className="ic-diff-preview">
               <p className="ic-diff-label">Proposed vault change</p>

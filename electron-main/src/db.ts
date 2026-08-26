@@ -2273,8 +2273,8 @@ export type ContinuityCategory =
 export type ContinuitySeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ContinuityIssueStatus = 'open' | 'resolved' | 'ignored';
 /** M9d: card scope tag — which two sources the flag says disagree.
- *  M12.B1 (SKY-10736): 'story_internal' added — Archive Check 1 (manuscript
- *  vs itself), distinct from 'vault_internal' (unused/reserved). */
+ *  M12.B1 (SKY-10736) / M12.B3 (SKY-10738): 'story_internal' — Archive
+ *  Check 1 (manuscript vs itself), no vault involved. */
 export type ContinuityIssueScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface DbContinuityIssue {
