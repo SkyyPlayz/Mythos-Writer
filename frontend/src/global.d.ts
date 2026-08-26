@@ -700,6 +700,11 @@ interface AppSettings {
     notesDocTabs?: WorkspaceTab[];
     /** Beta 4 M4: active Notes-strip document tab id. */
     activeNotesDocTabId?: string | null;
+    /** SKY-11069: open Scene Crafter board tabs (kind 'board', all stories —
+     * filtered by storyId at render; the synthetic Setup tab never persists). */
+    boardDocTabs?: WorkspaceTab[];
+    /** SKY-11069: active board tab id; null = the Setup tab. */
+    activeBoardDocTabId?: string | null;
   };
 
   // ── SKY-1700 (Wave 2f): Named workspace layout library ──
@@ -795,7 +800,7 @@ interface DockedTab {
  * Beta 4 M4 (§4): tabs are documents — 'scene' and 'note' are the document
  * kinds shown in the strip; the module kinds remain only for the legacy
  * right-hand WorkspaceSplitPane restore path and old persisted layouts. */
-type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm' | 'scene' | 'note' | 'outline';
+type WorkspaceTabKind = 'story-editor' | 'notes-editor' | 'kanban' | 'timeline' | 'entities' | 'vault-graph' | 'brainstorm' | 'scene' | 'note' | 'outline' | 'board';
 
 /** SKY-3097 (v0.3): A tab in the Obsidian-style WorkspaceTabBar. */
 interface WorkspaceTab {
@@ -814,6 +819,8 @@ interface WorkspaceTab {
   status?: 'todo' | 'draft' | 'done';
   /** Beta 4 M4 (§1.5): provisional scene tab — nothing persists until the first keystroke. */
   provisional?: boolean;
+  /** SKY-11069: pinned view tab (Scene Crafter Setup) — no ×, Ctrl+W no-op, not reorderable. */
+  permanent?: boolean;
 }
 
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */
