@@ -67,6 +67,16 @@ export interface MythosMigrationRecord {
   migratorVersion: number;
 }
 
+/**
+ * SKY-11068: per-vault icon shown on the story switcher / rail header.
+ * `glyph` is an emoji or a couple of letters; `image` names an icon file
+ * stored directly at the mythos root, so it travels with the vault on
+ * move/copy (vaults are self-contained, SKY-10949).
+ */
+export type MythosVaultIcon =
+  | { kind: 'glyph'; value: string }
+  | { kind: 'image'; file: string };
+
 export interface MythosFile {
   formatVersion: number;
   id: string;
@@ -74,6 +84,8 @@ export interface MythosFile {
   createdAt: string;
   /** Theme preset key applied when this vault is opened (per-vault default theme). */
   defaultTheme?: string;
+  /** Author-set vault icon; absent → callers render an initials default. */
+  icon?: MythosVaultIcon;
   stories: MythosStoryRef[];
   /**
    * Seed-once marker. Non-null means "a seed decision was recorded for this
@@ -165,6 +177,32 @@ function sanitizeStoryRef(raw: unknown): MythosStoryRef | null {
 }
 
 /**
+ * SKY-11068: validate a raw vault-icon value. Mirrors sanitizeStoryRef's
+ * refusal of path-capable strings — `file` is joined onto the mythos root by
+ * the icon loader, so it must be a bare file name. Returns null when invalid
+ * (callers drop the field rather than failing the whole parse).
+ */
+export function sanitizeVaultIcon(raw: unknown): MythosVaultIcon | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === 'glyph') {
+    if (typeof r.value !== 'string') return null;
+    const value = r.value.trim();
+    // Emoji ZWJ sequences can span several UTF-16 units; 16 is plenty for
+    // any glyph while refusing pasted prose.
+    if (!value || value.length > 16 || /[\n\r\0]/.test(value)) return null;
+    return { kind: 'glyph', value };
+  }
+  if (r.kind === 'image') {
+    if (typeof r.file !== 'string' || !r.file) return null;
+    if (r.file.includes('/') || r.file.includes('\\') || r.file.includes('\0')) return null;
+    if (r.file === '.' || r.file === '..') return null;
+    return { kind: 'image', file: r.file };
+  }
+  return null;
+}
+
+/**
  * Parse + validate a mythos.json payload.
  * Throws MythosFormatVersionError for a too-new file (never touch it),
  * MythosFileError for corrupt/invalid content.
@@ -215,6 +253,7 @@ export function parseMythosFile(rawText: string, filePath = MYTHOS_JSON_FILENAME
       migratorVersion: typeof m.migratorVersion === 'number' ? m.migratorVersion : 1,
     };
   }
+  const icon = sanitizeVaultIcon(r.icon);
   return {
     formatVersion: MYTHOS_FORMAT_VERSION,
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
@@ -223,6 +262,7 @@ export function parseMythosFile(rawText: string, filePath = MYTHOS_JSON_FILENAME
     ...(typeof r.defaultTheme === 'string' && r.defaultTheme
       ? { defaultTheme: r.defaultTheme }
       : {}),
+    ...(icon ? { icon } : {}),
     stories,
     seed,
     ...(migratedFrom ? { migratedFrom } : {}),

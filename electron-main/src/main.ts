@@ -538,6 +538,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
+import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -5505,6 +5506,18 @@ const handlers: IpcHandlers = {
         ...getRecentProjects(),
       ]),
     };
+  },
+
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos
+  // vaults. Same recent-projects + active-vault list as PROJECT_STATS.
+  [IPC_CHANNELS.PROJECT_ICONS]: () => {
+    return {
+      icons: collectProjectIcons([{ vaultRoot: getVaultRoot() }, ...getRecentProjects()]),
+    };
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: import('./ipc.js').ProjectIconSetPayload) => {
+    return setProjectIcon(payload);
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {

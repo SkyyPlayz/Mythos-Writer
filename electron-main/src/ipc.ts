@@ -306,6 +306,9 @@ export const IPC_CHANNELS = {
   PROJECT_SWITCH: 'project:switch',
   // Beta 4 M2 — per-vault stats for the title-bar Mythos-vault switcher (§4)
   PROJECT_STATS: 'project:stats',
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+  PROJECT_ICONS: 'project:icons',
+  PROJECT_ICON_SET: 'project:iconSet',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -858,6 +861,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.PROJECT_STATS]: (payload: never) => ProjectStatsResponse;
+  [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => ProjectIconsResponse;
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => ProjectIconSetResponse;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -2708,6 +2713,34 @@ export interface ProjectStatsResponse {
     /** `.md` files under the paired Notes Vault root; null when unpaired. */
     noteCount: number | null;
   }>;
+}
+
+// SKY-11068 — per-vault icon, stored vault-local (mythos.json `icon` field +
+// a `vault-icon.<ext>` file at the mythos root so it travels on move/copy).
+
+export interface VaultIconEntry {
+  vaultRoot: string;
+  kind: 'glyph' | 'image' | null;
+  /** kind === 'glyph': the emoji / short text. */
+  value?: string;
+  /** kind === 'image': base64 data URL of the stored icon file. */
+  dataUrl?: string;
+}
+
+export interface ProjectIconsResponse {
+  icons: VaultIconEntry[];
+}
+
+export type ProjectIconSetPayload =
+  | { vaultRoot: string; icon: { kind: 'glyph'; value: string } }
+  | { vaultRoot: string; icon: { kind: 'image'; sourcePath: string } }
+  | { vaultRoot: string; icon: null };
+
+export interface ProjectIconSetResponse {
+  ok: boolean;
+  error?: string;
+  /** Resolved icon after the write, for immediate display. */
+  icon?: VaultIconEntry;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
