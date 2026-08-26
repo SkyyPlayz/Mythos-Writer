@@ -173,6 +173,30 @@ export function createBlankNotesVault(
 }
 
 /**
+ * Reserve a unique, filesystem-safe directory name under mythosRoot for a
+ * future notes vault, WITHOUT creating the directory or writing the
+ * registry. Callers that need to copy files into place before registering
+ * (e.g. vault imports) use this to pick the destination dir name first.
+ *
+ * Collision-checked against the current registry only (does not touch disk
+ * beyond the registry read) — mirrors the slugify + collision-loop logic in
+ * `createBlankNotesVault`.
+ */
+export function reserveNotesVaultDirName(mythosRoot: string, displayName: string): string {
+  const registry = ensureNotesVaultRegistry(mythosRoot);
+
+  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'Notes Vault';
+  let dirName = slug;
+  let attempt = 2;
+  const used = new Set(registry.vaults.map((v) => v.dirName.toLowerCase()));
+  while (used.has(dirName.toLowerCase())) {
+    dirName = `${slug} ${attempt++}`;
+  }
+
+  return dirName;
+}
+
+/**
  * Register an existing directory (e.g. after an Obsidian import) as a new
  * notes vault entry. The directory must already exist inside mythosRoot.
  */
