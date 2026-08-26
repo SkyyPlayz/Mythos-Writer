@@ -635,6 +635,17 @@ let mainWindow: BrowserWindow | null = null;
 // falls through to the real close instead of re-triggering the handshake.
 let quitFlushHandled = false;
 
+// SKY-10995: tracks whether a real quit was requested (Cmd+Q, the app menu,
+// or a caller — including Playwright's Electron driver, which calls
+// app.quit() directly — evaluating app.quit() before window-all-closed ever
+// fires). window-all-closed's darwin guard below must only skip the final
+// app.quit() call for the ordinary "user closed the window, stay in the
+// dock" case; if quit was already requested, the guard must not swallow it,
+// or the process is left running with zero windows until whatever is
+// waiting on it (e.g. Playwright's app.close()) hits its own timeout.
+let quitRequested = false;
+app.on('before-quit', () => { quitRequested = true; });
+
 // SKY-9973: before the window actually closes, ask the renderer to flush any
 // pending debounced manifest save (scheduleManifestSave's 900ms timer) and
 // await its ack — otherwise an edit made just before quit is silently lost.
@@ -10067,7 +10078,11 @@ app.on('window-all-closed', async () => {
     // Unconditional: a partially-failed teardown must not hold the process
     // hostage. SQLite is crash-safe and job checkpoints persist continuously,
     // so a dirty exit here loses nothing a clean one wouldn't.
-    if (process.platform !== 'darwin') {
+    // SKY-10995: the darwin skip is only for the ordinary "user closed the
+    // window, app stays in the dock" case — quitRequested (set by
+    // before-quit) means quit is already underway, so this call must still
+    // run there too, or the process never actually exits.
+    if (process.platform !== 'darwin' || quitRequested) {
       app.quit();
     }
   }

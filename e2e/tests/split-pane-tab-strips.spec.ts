@@ -147,7 +147,16 @@ async function dragTabToOtherPane(page: Page, fromPane: 1 | 2, tabTitle: string,
     el.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
     el.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }));
   });
-  await fromTab.evaluate((el) => el.dispatchEvent(new DragEvent('dragend', { bubbles: true } as never))).catch(() => {});
+  // Best-effort cleanup dispatch: the drop above may already have moved this
+  // tab into the other pane's strip, in which case fromTab no longer matches
+  // any element and Playwright would otherwise poll for its default 30s
+  // action timeout before the .catch() below swallows the error. A short
+  // timeout here fails fast instead of stalling every drag by ~30s.
+  await fromTab.evaluate(
+    (el) => el.dispatchEvent(new DragEvent('dragend', { bubbles: true } as never)),
+    undefined,
+    { timeout: 1_000 },
+  ).catch(() => {});
 }
 
 test.describe('SKY-8907 per-pane tab strips', () => {
