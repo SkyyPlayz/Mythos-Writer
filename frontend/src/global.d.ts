@@ -581,9 +581,6 @@ interface AppSettings {
    *  path → user-chosen label. A local rename only (the on-disk vault + its
    *  registry entry are untouched); absent → derive from the project entry. */
   vaultDisplayNames?: Record<string, string>;
-  /** SKY-11048: nav-rail vault-tile icon — Story Vault root path → a short
-   *  glyph/emoji shown on the tile instead of initials. Absent → initials. */
-  vaultIcons?: Record<string, string>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
