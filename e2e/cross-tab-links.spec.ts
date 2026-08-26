@@ -119,6 +119,61 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
     }
   });
 
+  // SKY-10916: one app-wide Back/Forward history spanning wikilink jumps
+  // across Notes and Story — the owner-reported bug was that Back did
+  // nothing at all after following a wikilink.
+  test('Back/Forward walk one shared history across a Notes -> Story -> Notes wikilink chain', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
+
+      // Notes: "Cross Links" -> wikilink -> Story: "Opening Scene".
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
+      await page.getByText('Cross Links', { exact: true }).click();
+      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('[data-testid="note-gear-mode-rich"]').click();
+      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      // SKY-10925: scene depth is chromeless — ManuscriptView's unified
+      // TitleRow shows the scene title, not BlockEditor's own header.
+      await expect(page.getByTestId('msv-scope-title')).toHaveText('Opening Scene', { timeout: 5_000 });
+
+      // Story: "Opening Scene" -> wikilink -> Notes: "Elara" (entity).
+      await page.getByText('[[Character: Elara]]', { exact: true }).click();
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
+
+      // Back once: Elara -> Opening Scene (Story tab).
+      await page.keyboard.press('Alt+ArrowLeft');
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.getByTestId('msv-scope-title')).toHaveText('Opening Scene', { timeout: 5_000 });
+
+      // Back again: Opening Scene -> the "Cross Links" note (Notes tab) —
+      // this is the exact reported defect: Back did nothing after a wikilink.
+      await page.keyboard.press('Alt+ArrowLeft');
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 5_000 });
+
+      // Forward twice retraces the same chain back to Elara.
+      await page.keyboard.press('Alt+ArrowRight');
+      await expect(page.getByTestId('msv-scope-title')).toHaveText('Opening Scene', { timeout: 5_000 });
+      await page.keyboard.press('Alt+ArrowRight');
+      await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
+
+      // Mouse side buttons (button 3 = back, button 4 = forward) drive the
+      // same stack. Playwright cannot press real extra mouse buttons, so
+      // this dispatches the same synthetic event Chromium fires for them —
+      // real hardware behavior needs a manual pass (browser button mapping
+      // can vary by OS/driver).
+      await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 3, bubbles: true })));
+      await expect(page.getByTestId('msv-scope-title')).toHaveText('Opening Scene', { timeout: 5_000 });
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
   // SKY-9019 M5: Vault Graph is a standalone rail destination now, not a
   // Notes sub-view — Ctrl+G from Notes intentionally navigates away to it
   // (DesktopShell's Ctrl+G handler), while Ctrl+B (Brainstorm collapse)

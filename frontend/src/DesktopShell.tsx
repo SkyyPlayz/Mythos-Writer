@@ -92,6 +92,7 @@ import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
+import { useNavigationHistory, type NavLocation, type NavTarget, type NavHistoryEntry } from './useNavigationHistory';
 import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
 import {
   createInitialGettingStartedProgress,
@@ -4282,6 +4283,83 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         .catch(() => {});
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
+
+  // SKY-10916: single app-wide back/forward history. `currentNavLocation`
+  // derives "what's the active document" from the same state every
+  // navigation call site already writes to (selectedScene/selectedEntity/
+  // openedNotePath + tabShell.activeTab) — the hook watches it and pushes a
+  // history entry on every genuine change, so no individual call site needs
+  // to opt in. Entity-in-tab highlighting (handleSelectEntityInTab) doesn't
+  // clear selectedScene, so it correctly falls through without pushing.
+  const currentNavLocation = useMemo<NavLocation | null>(() => {
+    if (loading) return null;
+    const tab = tabShell.activeTab;
+    if (selectedScene && selectedChapter && selectedStory) {
+      return {
+        tab,
+        target: { kind: 'scene', sceneId: selectedScene.id, chapterId: selectedChapter.id, storyId: selectedStory.id },
+        view, viewDepth,
+      };
+    }
+    if (selectedEntity) return { tab, target: { kind: 'entity', entityId: selectedEntity.id }, view, viewDepth };
+    if (openedNotePath) return { tab, target: { kind: 'note', notePath: openedNotePath }, view, viewDepth };
+    return { tab, target: { kind: 'home' }, view, viewDepth };
+  }, [loading, tabShell.activeTab, selectedScene, selectedChapter, selectedStory, selectedEntity, openedNotePath, view, viewDepth]);
+
+  const canResolveNavTarget = useCallback((target: NavTarget): boolean => {
+    switch (target.kind) {
+      case 'scene': return findSceneLocation(target.sceneId) !== null;
+      case 'entity': return allEntities.some((e) => e.id === target.entityId);
+      case 'note': return allNotePaths.includes(target.notePath);
+      case 'home': return true;
+    }
+  }, [findSceneLocation, allEntities, allNotePaths]);
+
+  const applyNavLocation = useCallback((entry: NavHistoryEntry): void | Promise<void> => {
+    const { target } = entry;
+    if (target.kind === 'scene') {
+      const loc = findSceneLocation(target.sceneId);
+      if (loc) handleSelectScene(loc.scene, loc.chapter, loc.story);
+    } else if (target.kind === 'entity') {
+      return window.api.entityRead(target.entityId).then((entity) => {
+        if (!entity) return;
+        setSelectedScene(null);
+        setSelectedChapter(null);
+        setSelectedStory(null);
+        setOpenedNotePath(null);
+        setSelectedEntity(entity);
+      });
+    } else if (target.kind === 'note') {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(target.notePath);
+      handleNotesSubViewChange('editor');
+    } else {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(null);
+    }
+    handleTabChange(entry.tab);
+    if (entry.tab === 'story') setView(entry.view);
+    setViewDepth(entry.viewDepth);
+  }, [findSceneLocation, handleSelectScene, handleNotesSubViewChange, handleTabChange]);
+
+  // ManuscriptView (story/ManuscriptView.tsx) also binds plain Alt+←/→, to
+  // same-level scene/chapter stepping (M8 keyboard map), whenever the
+  // manuscript is showing at non-book zoom. The hook resolves the priority:
+  // Back/Forward wins whenever there's real history to replay in that
+  // direction; the M8 stepper only gets the keypress when there isn't
+  // (e.g. stepping to a sibling scene never visited this session).
+  const manuscriptStepperActive = useCallback(
+    () => tabShell.activeTab === 'story' && view === 'editor' && viewDepth !== 'book',
+    [tabShell.activeTab, view, viewDepth],
+  );
+
+  useNavigationHistory(currentNavLocation, applyNavLocation, canResolveNavTarget, manuscriptStepperActive);
 
   // SKY-1699: The editor context that right-sidebar agents (Writing Assistant, Archive)
   // should respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
