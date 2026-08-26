@@ -4461,16 +4461,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // convention — same shape as persistGrsSettings/persistTabShell). Nav
   // history changes on every navigation, unlike most AppSettings fields, so
   // writing synchronously on every push would be excessive I/O.
+  //
+  // SKY-11017: merges onto a freshly-fetched settingsGet(), not the
+  // in-render `prev` closure. `prev` can be stale relative to disk whenever
+  // something writes settings out-of-band from React state (dev-only
+  // onboarding:reset, "Replay onboarding"/"Replay welcome tour" — both call
+  // saveAppSettings directly on the main process without notifying the
+  // renderer). Since navHistory changes on nearly every navigation, this
+  // debounce is "hot" far more often than the other settingsSet call sites
+  // it mirrors, making that stale-merge collision realistic instead of
+  // theoretical — it's what caused AC-OB-19 (onboarding:reset then
+  // relaunch) to intermittently fail: a pending debounce fired after reset
+  // and silently wrote the stale in-memory onboardingComplete:true back to
+  // disk, undoing the reset.
   const navHistoryPersistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
     navHistoryPersistDebounceRef.current = setTimeout(() => {
-      setAppSettings((prev) => {
-        if (!prev) return prev;
-        const updated: AppSettings = { ...prev, navHistory: navHistory.getSnapshot() };
+      window.api.settingsGet().then((fresh) => {
+        const updated: AppSettings = { ...fresh, navHistory: navHistory.getSnapshot() };
+        setAppSettings(updated);
         window.api.settingsSet(updated).catch(() => {});
-        return updated;
-      });
+      }).catch(() => {});
     }, 500);
     return () => {
       if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
