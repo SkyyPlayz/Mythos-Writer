@@ -221,7 +221,22 @@ function canRename(full: string): boolean {
     // evidence of a lock; only flag the codes we already treat as lock-like.
     return !(code === 'EPERM' || code === 'EACCES' || code === 'EBUSY');
   }
-  fs.renameSync(probe, full);
+  try {
+    fs.renameSync(probe, full);
+  } catch (revertErr) {
+    // The probe rename succeeded but reverting it did not — `full` is now
+    // stuck on disk under the `probe` name. This runs inside the error path
+    // of an already-failed move, so throwing here would replace the real
+    // failure with this one and abort the walk over every other entry.
+    // Surface it loudly for manual recovery and report the entry as locked —
+    // the safest signal, since we can no longer confirm it is free.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[vault-move] lock probe could not rename ${probe} back to ${full} — ` +
+        `manual recovery needed: ${(revertErr as Error).message}`,
+    );
+    return false;
+  }
   return true;
 }
 
