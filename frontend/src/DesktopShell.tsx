@@ -3290,21 +3290,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
     if (!story || !chapter || !scene) return;
     if (!window.confirm(`Delete "${scene.title || 'Untitled Scene'}"? This cannot be undone.`)) return;
-    updateManifest(stories.map((s) =>
+    const updatedStories = stories.map((s) =>
       s.id !== storyId ? s : {
         ...s,
         chapters: s.chapters.map((ch) =>
           ch.id !== chapterId ? ch : { ...ch, scenes: ch.scenes.filter((sc) => sc.id !== sceneId) }
         ),
       }
-    ));
+    );
+    updateManifest(updatedStories);
     window.api?.deleteVault?.(scene.path).catch(() => {});
+    // SKY-11008: selectedStory is a separate snapshot updateManifest alone
+    // doesn't refresh (see refreshManuscriptSelection's own comment above) —
+    // without this, ManuscriptView keeps resolving its cursor against the
+    // pre-delete tree and can keep rendering the deleted scene's content.
+    const updatedStory = updatedStories.find((s) => s.id === storyId);
+    if (updatedStory && selectedStory?.id === storyId) setSelectedStory(updatedStory);
     if (selectedScene?.id === sceneId) {
       setSelectedScene(null);
       editorApiRef.current?.focus();
     }
     showLnToast(`Deleted "${scene.title || 'Untitled Scene'}"`);
-  }, [stories, updateManifest, selectedScene]);
+  }, [stories, updateManifest, selectedScene, selectedStory]);
 
   const deleteChapter = useCallback(async (storyId: string, chapterId: string) => {
     const story = stories.find((s) => s.id === storyId);
@@ -3313,16 +3320,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const sceneCount = chapter.scenes.length;
     const warn = sceneCount > 0 ? ` and its ${sceneCount} scene${sceneCount === 1 ? '' : 's'}` : '';
     if (!window.confirm(`Delete "${chapter.title || 'Untitled Chapter'}"${warn}? This cannot be undone.`)) return;
-    updateManifest(stories.map((s) =>
+    const updatedStories = stories.map((s) =>
       s.id !== storyId ? s : { ...s, chapters: s.chapters.filter((c) => c.id !== chapterId) }
-    ));
+    );
+    updateManifest(updatedStories);
     await Promise.all(chapter.scenes.map((sc) => window.api?.deleteVault?.(sc.path).catch(() => {})));
+    // SKY-11008: same stale-selectedStory issue as deleteScene above.
+    const updatedStory = updatedStories.find((s) => s.id === storyId);
+    if (updatedStory && selectedStory?.id === storyId) setSelectedStory(updatedStory);
     if (selectedChapter?.id === chapterId) {
       setSelectedChapter(null);
       setSelectedScene(null);
     }
     showLnToast(`Deleted "${chapter.title || 'Untitled Chapter'}"`);
-  }, [stories, updateManifest, selectedChapter]);
+  }, [stories, updateManifest, selectedChapter, selectedStory]);
 
   // M3 (SKY-9021): create story → instantly writable. ONE transaction builds
   // story + Part 1 (title: "", the v3 single-untitled-part shape) + Chapter 1
