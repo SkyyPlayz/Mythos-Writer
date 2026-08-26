@@ -24,6 +24,11 @@ interface Props {
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   /** M6 (SKY-9022): scene status dot click — cycles the scene's draftState. */
   onCycleSceneStatus?: (sceneId: string) => void;
+  /** SKY-10917: Story Navigator right-click menu — add/rename/delete/reorder. */
+  onRenameChapter?: (chapterId: string) => void;
+  onRenameScene?: (sceneId: string) => void;
+  onDeleteChapter?: (storyId: string, chapterId: string) => void;
+  onDeleteScene?: (storyId: string, chapterId: string, sceneId: string) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -48,6 +53,10 @@ export default function LeftRail({
   onTemplateCtaClick,
   onPromoteSceneNote,
   onCycleSceneStatus,
+  onRenameChapter,
+  onRenameScene,
+  onDeleteChapter,
+  onDeleteScene,
   sidebarCollapsed,
   onToggleCollapsed,
 }: Props) {
@@ -176,6 +185,10 @@ export default function LeftRail({
               onTemplateCtaClick={onTemplateCtaClick}
               onPromoteSceneNote={onPromoteSceneNote}
               onCycleSceneStatus={onCycleSceneStatus}
+              onRenameChapter={onRenameChapter}
+              onRenameScene={onRenameScene}
+              onDeleteChapter={onDeleteChapter}
+              onDeleteScene={onDeleteScene}
               hideHeader
             />
           </div>

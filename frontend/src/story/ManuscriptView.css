@@ -456,6 +456,12 @@
   min-width: 320px;
   min-height: 0;
   overflow-y: auto;
+  /* SKY-10917: reserve the scrollbar gutter on both edges so a scene long
+     enough to scroll doesn't shift .msv-sheet-wrap's centered position —
+     the ruler above computes its diamond positions from this row's width
+     with no scrollbar, so a one-sided scrollbar would pull the sheet ~half
+     its width off the ruler's math even after the gutterOpen fix. */
+  scrollbar-gutter: stable both-edges;
   padding: 22px 26px 60px;
   position: relative;
 }
