@@ -324,6 +324,7 @@ async function renameOrCopy(src: string, dest: string): Promise<void> {
       break;
     }
   }
+
   try {
     await fs.promises.cp(src, dest, { recursive: true });
   } catch (copyErr) {

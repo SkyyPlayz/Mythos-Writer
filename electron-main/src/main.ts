@@ -5901,7 +5901,12 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
     payload: VaultGuidedMovePayload,
   ) => {
-    const homeDir = app.getPath('home');
+    // SKY-10910: os.homedir() reads USERPROFILE on win32 (unlike app.getPath('home')
+    // which reads from the Windows API and may return a different path form — e.g.
+    // 8.3 short name vs long name). Using os.homedir() keeps gate semantics consistent
+    // with what the test's USERPROFILE env override sets, and is equivalent on real
+    // user machines where USERPROFILE always points to the same directory.
+    const homeDir = os.homedir();
 
     // Gate: validates targetPath (homedir containment, no ..), syncProvider,
     // and sessionToken (registration token bound to targetPath).
