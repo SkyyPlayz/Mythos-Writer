@@ -21,6 +21,7 @@ import {
   groupSuggested,
   legacyBeatsFromLanes,
   moveBeat,
+  normalizeVaultPath,
   planNotesFromVault,
   refCardsForColumn,
   refPickerCards,
@@ -36,7 +37,14 @@ import {
   type VaultListItem,
   type VaultRefColumnKey,
 } from './crafterState';
-import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
+import {
+  BOARD_FILE_SUFFIX,
+  boardFilePath,
+  boardsDirForStory,
+  loadCrafterBoards,
+  saveCrafterBoard,
+} from './crafterBoardStore';
+import { formatEditedAgo } from '../../NoteViewer';
 import { useIpcStream } from '../../hooks/useIpcStream';
 import { useAiEnabled } from '../../hooks/useAiEnabled';
 import './SceneCrafterPage.css';
@@ -247,6 +255,20 @@ interface Props {
   story: Story;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
+  /** SKY-11069: the board shown full-screen — the active board tab's docId
+   * (a board's id IS its vault file path); null shows the Setup view. The
+   * shell owns this via the Scene Crafter tab strip — one navigation model. */
+  openBoardId?: string | null;
+  /** SKY-11069: open a board in a Scene Crafter tab (shell upserts the tab —
+   * same board twice focuses the existing tab). */
+  onOpenBoard?: (board: { id: string; name: string }) => void;
+  /** SKY-11069: boards found on disk after a load — the shell drops board
+   * tabs whose file is gone and refreshes renamed titles. */
+  onBoardsLoaded?: (boards: { id: string; name: string }[]) => void;
+  /** SKY-11069: hands the shell a "create a new empty board" action for the
+   * board strip's + button (creation state lives here). Called with null on
+   * unmount. */
+  registerCreateBoard?: (create: (() => void) | null) => void;
 }
 
 /** Debounce for persisting canvas edits (drag/resize emit change storms). */
@@ -291,6 +313,10 @@ export default function SceneCrafterPage({
   story,
   onOpenNote,
   onOpenScene,
+  openBoardId = null,
+  onOpenBoard,
+  onBoardsLoaded,
+  registerCreateBoard,
 }: Props) {
   const storySlug = useMemo(() => storySlugFromStory(story), [story]);
   const [board, setBoard] = useState<SceneCrafterBoard | null>(null);
@@ -306,7 +332,6 @@ export default function SceneCrafterPage({
   const [sugQ, setSugQ] = useState('');
   const [vaultItems, setVaultItems] = useState<VaultListItem[]>([]);
   const [boards, setBoards] = useState<CanvasBoardData[]>([]);
-  const [openBoardId, setOpenBoardId] = useState<string | null>(null);
   const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState('');
   const [boardsNote, setBoardsNote] = useState<string | null>(null);
@@ -340,6 +365,11 @@ export default function SceneCrafterPage({
   // on purpose, since an empty setup.beats is indistinguishable from "never
   // migrated" — see __repro_sky11072_migration.test.tsx.
   const beatsMigratedRef = useRef(false);
+  // SKY-11069: latest-render refs so loadBoard/registration effects don't
+  // re-fire when these callbacks or the boards list change identity.
+  const onBoardsLoadedRef = useRef(onBoardsLoaded);
+  onBoardsLoadedRef.current = onBoardsLoaded;
+  const createBoardRef = useRef<() => Promise<void>>();
 
   // Best-effort: a notes-vault hiccup must not block the kanban board. Shared
   // by the initial load and the live-restock subscription below (SKY-9878).
@@ -378,6 +408,9 @@ export default function SceneCrafterPage({
           setSetup((prev) => (prev.beats.length > 0 ? prev : { ...prev, beats: legacyBeats }));
         }
       }
+      // SKY-11069: disk truth reached the page — let the shell reconcile
+      // board tabs (drop deleted boards, refresh renamed titles).
+      onBoardsLoadedRef.current?.(savedBoards.map((b) => ({ id: b.id, name: b.name })));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load Scene Crafter board.');
     } finally {
@@ -466,6 +499,19 @@ export default function SceneCrafterPage({
   const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
   const planNotes = planNotesFromVault(vaultItems);
   const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
+  // SKY-11069: gallery "Edited …" metadata — the vault listing already
+  // carries modifiedAt; boards are keyed by their file path. Fresh boards
+  // created this session appear here after the next vault-updated push.
+  const boardModifiedAt = useMemo(() => {
+    const prefix = `${boardsDirForStory(storySlug)}/`;
+    const map = new Map<string, string>();
+    for (const item of vaultItems) {
+      if (item.isDirectory) continue;
+      const path = normalizeVaultPath(item.path);
+      if (path.startsWith(prefix) && path.endsWith(BOARD_FILE_SUFFIX)) map.set(path, item.modifiedAt);
+    }
+    return map;
+  }, [vaultItems, storySlug]);
   // R11/M11c copy (SKY-9878): the rail itself never calls AI either way —
   // only who's credited with keeping it stocked changes.
   const vaultStockedCopy = aiEnabled
@@ -566,14 +612,38 @@ export default function SceneCrafterPage({
   /** Add to scene board (B4-9): the draft card lands on a new canvas board — never in the manuscript. */
   async function addDraftToBoard() {
     if (!draftStreamId || !draftStream.done || draftStream.error) return;
-    const boardId = 'b' + Date.now();
-    const draftCard = composeDraftPassCard(setup, draftStream.text, `${boardId}-first-pass`);
-    const next = composeDraftBoard(setup, chosenCards(), boards.length + 1, boardId, draftCard);
+    const seedId = 'b' + Date.now();
+    const draftCard = composeDraftPassCard(setup, draftStream.text, `${seedId}-first-pass`);
+    const composed = composeDraftBoard(setup, chosenCards(), boards.length + 1, seedId, draftCard);
+    // SKY-11069: a board's id is its vault file path from birth — the same
+    // key loadCrafterBoards assigns — so persisted board tabs (docId) survive
+    // an app restart.
+    const next = { ...composed, id: boardFilePath(storySlug, composed.name) };
     setBoards((prev) => [...prev, next]);
     discardDraft();
     await persistBoard(next);
-    setOpenBoardId(next.id);
+    onOpenBoard?.({ id: next.id, name: next.name });
   }
+
+  /** SKY-11069: "+ New board" — an empty named canvas, opened in its tab. */
+  async function createBoard() {
+    const names = new Set(boards.map((b) => b.name));
+    let n = boards.length + 1;
+    while (names.has(`Board ${n}`)) n += 1;
+    const name = `Board ${n}`;
+    const next: CanvasBoardData = { id: boardFilePath(storySlug, name), name, cards: [], links: [] };
+    setBoards((prev) => [...prev, next]);
+    await persistBoard(next);
+    onOpenBoard?.({ id: next.id, name });
+  }
+  createBoardRef.current = createBoard;
+
+  // SKY-11069: the board strip's + button in the shell creates boards here.
+  useEffect(() => {
+    if (!registerCreateBoard) return;
+    registerCreateBoard(() => void createBoardRef.current?.());
+    return () => registerCreateBoard(null);
+  }, [registerCreateBoard]);
 
   /** Canvas mutations update state immediately and persist on a debounce. */
   function handleCanvasChange(next: CanvasBoardData) {
@@ -617,12 +687,8 @@ export default function SceneCrafterPage({
     return (
       <section className="scene-crafter-page sc-canvas-view" aria-label={`Canvas board ${openBoard.name}`}>
         <header className="sc-canvas-head">
-          <button type="button" className="sc-canvas-back" onClick={() => setOpenBoardId(null)}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 6l-6 6 6 6" />
-            </svg>
-            Boards
-          </button>
+          {/* SKY-11069: no back button — the Scene Crafter tab strip is the one
+              navigation model; the pinned Setup tab is always one click away. */}
           <span className="sc-canvas-name">{openBoard.name}</span>
           <span className="sc-canvas-chip">CANVAS</span>
           <span className="sc-canvas-hint">Drag cards · corner to resize · ⚯ to connect · drag space to pan · scroll to zoom</span>
@@ -875,15 +941,20 @@ export default function SceneCrafterPage({
                 </>
               )}
 
+              {/* SKY-11069 owner ruling: BOARDS is a gallery of every board for
+                  this story; a card click opens the board full-screen in its
+                  own Scene Crafter tab (same board twice focuses the existing
+                  tab — the shell's upsertBoardTab). */}
               <div className="sc-field-label sc-section-label">BOARDS</div>
-              {boards.length > 0 && (
-                <div className="sc-board-list" data-testid="crafter-board-list">
-                  {boards.map((row) => (
+              <div className="sc-board-list" data-testid="crafter-board-list">
+                {boards.map((row) => {
+                  const modifiedAt = boardModifiedAt.get(row.id);
+                  return (
                     <button
                       type="button"
                       key={row.id}
                       className="sc-board-row"
-                      onClick={() => setOpenBoardId(row.id)}
+                      onClick={() => onOpenBoard?.({ id: row.id, name: row.name })}
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
                         <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
@@ -893,16 +964,29 @@ export default function SceneCrafterPage({
                       </svg>
                       <span className="sc-board-row-text">
                         <span className="sc-board-row-name">{row.name}</span>
-                        <span className="sc-board-row-meta">{row.cards.length} cards · {row.links.length} links</span>
+                        <span className="sc-board-row-meta">
+                          {row.cards.length} {row.cards.length === 1 ? 'card' : 'cards'}
+                          {modifiedAt ? ` · edited ${formatEditedAgo(new Date(modifiedAt))}` : ''}
+                        </span>
                       </span>
                       <span className="sc-board-chip">CANVAS</span>
                     </button>
-                  ))}
+                  );
+                })}
+                <button
+                  type="button"
+                  className="sc-board-row sc-board-row--new"
+                  data-testid="crafter-new-board"
+                  onClick={() => void createBoard()}
+                >
+                  + New board
+                </button>
+              </div>
+              {boards.length === 0 && (
+                <div className="sc-help">
+                  Draft board builds a canvas here — click it to open, drag cards, draw connectors.
                 </div>
               )}
-              <div className="sc-help">
-                Draft board builds a canvas here — click it to open, drag cards, draw connectors.
-              </div>
             </div>
           </section>
 
