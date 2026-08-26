@@ -317,6 +317,8 @@ export interface ArchiveProposedQuestion {
   id: string;
   entityId: string;
   entityName: string;
+  /** M12.B2: lets the question queue pick a note kind when authoring the answer. */
+  entityType: EntityEntry['type'];
   question: string;
   scenePath: string;
   createdAt: string;
@@ -344,6 +346,7 @@ export function detectVaultGapQuestions(
       id: crypto.randomUUID(),
       entityId: record.id,
       entityName: record.name,
+      entityType: record.type,
       question: `"${record.name}" appears in the manuscript but the vault has no tracked details yet — what should be recorded?`,
       scenePath,
       createdAt: now,

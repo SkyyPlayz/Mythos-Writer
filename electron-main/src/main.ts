@@ -489,6 +489,7 @@ import {
   runArchiveScan,
   type ArchiveIgnoreKey,
 } from './archiveAgent.js';
+import { ingestArchiveQuestions } from './brainstormQuestionQueue.js';
 import {
   runEntityPrePass,
   buildScanPrompt,
@@ -4511,6 +4512,9 @@ const handlers: IpcHandlers = {
     for (const suggestion of result.suggestions) {
       upsertSuggestion(suggestion);
     }
+    // M12.B2: Check 2's proposed questions land in Brainstorm's queue, never
+    // the continuity-flag store above — distinct artifact class, distinct table.
+    ingestArchiveQuestions(result.questions);
     return {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,

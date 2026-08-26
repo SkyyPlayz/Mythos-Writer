@@ -871,6 +871,39 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 31');
   }
+
+  if (currentVersion < 32) {
+    // M12.B2 (SKY-10737): Brainstorm question-queue data model.
+    //
+    // Owner ruling (SKY-10528): "a flag is a defect, a question is an
+    // invitation." A question is a distinct artifact class from
+    // continuity_issues/suggestions — it does not share their table shape
+    // or resolve/ignore semantics. It is drained by conversation and
+    // answered, never resolved/dismissed/deleted. Answering tombstones the
+    // row (status -> 'answered', answer/answered_at/note_path set) so the
+    // same gap is never re-asked — no DELETE is exposed for this table.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS brainstorm_questions (
+        id           TEXT PRIMARY KEY,
+        source       TEXT NOT NULL,
+        entity_id    TEXT,
+        entity_name  TEXT,
+        entity_type  TEXT,
+        question     TEXT NOT NULL,
+        scene_path   TEXT,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        answer       TEXT,
+        answered_at  TEXT,
+        note_path    TEXT,
+        created_at   TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_brainstorm_questions_status
+        ON brainstorm_questions (status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_brainstorm_questions_entity_scene
+        ON brainstorm_questions (entity_id, scene_path);
+    `);
+    db.exec('PRAGMA user_version = 32');
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -2247,6 +2280,91 @@ export function updateContinuityIssueStatus(
 
 export function deleteContinuityIssue(id: string): void {
   getDb().prepare('DELETE FROM continuity_issues WHERE id = ?').run(id);
+}
+
+// ─── Brainstorm question queue (M12.B2 / SKY-10737) ───
+// Owner ruling (SKY-10528): "a flag is a defect, a question is an
+// invitation" — a distinct artifact class from continuity_issues, with its
+// own status vocabulary and no delete path. A question is drained by
+// conversation with the author, not resolved/ignored like a defect; once
+// answered it is tombstoned (durable), never removed.
+
+export type BrainstormQuestionSource = 'archive_check2' | 'brainstorm_gap_hunt' | 'obscured_reference';
+export type BrainstormQuestionStatus = 'pending' | 'answered';
+
+export interface DbBrainstormQuestion {
+  id: string;
+  source: BrainstormQuestionSource;
+  entity_id: string | null;
+  entity_name: string | null;
+  entity_type: string | null;
+  question: string;
+  scene_path: string | null;
+  status: BrainstormQuestionStatus;
+  answer: string | null;
+  answered_at: string | null;
+  note_path: string | null;
+  created_at: string;
+}
+
+export function insertBrainstormQuestion(q: DbBrainstormQuestion): void {
+  getDb()
+    .prepare(
+      `INSERT INTO brainstorm_questions
+         (id, source, entity_id, entity_name, entity_type, question, scene_path,
+          status, answer, answered_at, note_path, created_at)
+       VALUES
+         (@id, @source, @entity_id, @entity_name, @entity_type, @question, @scene_path,
+          @status, @answer, @answered_at, @note_path, @created_at)`
+    )
+    .run(q as unknown as Record<string, SQLInputValue>);
+}
+
+export function listBrainstormQuestions(status?: BrainstormQuestionStatus): DbBrainstormQuestion[] {
+  if (status) {
+    return getDb()
+      .prepare('SELECT * FROM brainstorm_questions WHERE status = ? ORDER BY created_at ASC')
+      .all(status) as unknown as DbBrainstormQuestion[];
+  }
+  return getDb()
+    .prepare('SELECT * FROM brainstorm_questions ORDER BY created_at ASC')
+    .all() as unknown as DbBrainstormQuestion[];
+}
+
+export function getBrainstormQuestion(id: string): DbBrainstormQuestion | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM brainstorm_questions WHERE id = ?')
+      .get(id) as DbBrainstormQuestion | undefined) ?? null
+  );
+}
+
+/** Finds a prior question (pending or already answered) for the same entity+scene gap, so re-scans don't re-queue it. */
+export function findBrainstormQuestionByEntityScene(
+  entityId: string,
+  scenePath: string,
+): DbBrainstormQuestion | null {
+  return (
+    (getDb()
+      .prepare('SELECT * FROM brainstorm_questions WHERE entity_id = ? AND scene_path = ?')
+      .get(entityId, scenePath) as DbBrainstormQuestion | undefined) ?? null
+  );
+}
+
+/** Tombstones a pending question — durable, never deleted (matches the fact-ledger durable/disposable split). */
+export function answerBrainstormQuestion(
+  id: string,
+  answer: string,
+  notePath: string | null,
+  answeredAt: string,
+): void {
+  getDb()
+    .prepare(
+      `UPDATE brainstorm_questions
+          SET status = 'answered', answer = @answer, answered_at = @answered_at, note_path = @note_path
+        WHERE id = @id AND status = 'pending'`
+    )
+    .run({ id, answer, answered_at: answeredAt, note_path: notePath });
 }
 
 // ─── Archive Audit Log (SKY-1683 / Archive Agent v1) ───
