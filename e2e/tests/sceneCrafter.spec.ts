@@ -927,11 +927,16 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
 
     // Open it and type a body with an inline #Character hashtag — the
     // owner's own tagging convention, not a frontmatter field a UI never
-    // exposes. A fresh profile's NoteViewer defaults to Source mode (raw
-    // textarea), not the rendered rich-text editor — both write the same
-    // underlying markdown.
+    // exposes. SKY-10929 made Rich view the default for a fresh profile, so
+    // force Source mode (raw textarea) via the gear menu — both write the
+    // same underlying markdown, and this keeps the assertion independent of
+    // that default.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
+    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+    await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
     await expect(editor).toBeVisible({ timeout: 8_000 });
     await editor.click();
