@@ -6,7 +6,6 @@
     "frontend/src/NoteViewer.tsx::NoteViewer.onModeChange",
     "frontend/src/SplitEditorPane.tsx::SplitEditorPane.onSplitPane",
     "frontend/src/StoryNavigator.tsx::StoryNavigator.onCreatePart",
-    "frontend/src/TemplatePicker.tsx::TemplatePicker.onCreated",
     "frontend/src/components/ContinuityPanel/ContinuityPanel.tsx::ContinuityPanel.onOpenEntityNote",
     "frontend/src/story/ManuscriptView.tsx::ManuscriptView.onAddPart",
     "frontend/src/story/ManuscriptView.tsx::ManuscriptView.onEditChapterNote",

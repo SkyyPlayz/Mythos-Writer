@@ -704,6 +704,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  // SKY-10926: bumped when TemplatePicker creates a new note, so the Notes
+  // Vault tree (VaultBrowser) refetches and shows it without a manual reload.
+  const [notesRefreshSignal, setNotesRefreshSignal] = useState(0);
   const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
@@ -4403,6 +4406,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
             onBetaRead={betaReadNote}
             onContinuityCheck={continuityCheckNote}
+            notesRefreshSignal={notesRefreshSignal}
           />
         );
       case 'vault-graph':
@@ -4543,6 +4547,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange, handleSetView,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
     sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
+    notesRefreshSignal,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -5545,6 +5550,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
           onClose={() => setTemplatePickerOpen(false)}
+          // SKY-10926: onCreated only fires for a brand-new note (not just
+          // applying/closing) — mirrors EntityBrowser's onEntityCreated
+          // pattern below (checkGettingStartedItem('add-character')): mark
+          // the Notes Vault checklist item done so the Getting Started
+          // panel/CTA update immediately, and bump the Notes tree's refresh
+          // signal so an already-mounted VaultBrowser (Notes tab) shows the
+          // new note without a manual reload.
+          onCreated={() => {
+            checkGettingStartedItem('notes-vault');
+            setNotesRefreshSignal((n) => n + 1);
+          }}
         />
       )}
       {/* SKY-5592: outer flex row — GlobalRightSidebar persists across all top-level tabs (Story/Notes/Brainstorm) */}
@@ -6225,6 +6241,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onNoteSplitActiveChange={setNotesSplitActive}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
+          notesRefreshSignal={notesRefreshSignal}
           stories={stories}
           selectedSceneId={selectedScene?.id ?? null}
           onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
