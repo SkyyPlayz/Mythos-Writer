@@ -59,6 +59,8 @@ const SCOPE_LABELS: { id: SearchScope; label: string }[] = [
 ];
 
 export default function GlobalSearchPanel({ open, onNavigate, onClose, initialTagFilter, defaultScope = 'both', commands, initialQuery }: Props) {
+  // eslint-disable-next-line no-console
+  console.log('[DIAG] GlobalSearchPanel render, open=', open);
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState<SearchScope>(defaultScope);
   const [results, setResults] = useState<SearchResultItem[]>([]);

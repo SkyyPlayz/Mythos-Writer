@@ -2475,6 +2475,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'k' || e.key === 'K') {
+        // eslint-disable-next-line no-console
+        console.log('[DIAG] window keydown k seen, ctrl=', e.ctrlKey, 'meta=', e.metaKey, 'target=', (e.target as HTMLElement)?.tagName, 'defaultPrevented=', e.defaultPrevented);
+      }
       // Cmd/Ctrl+/ opens the keyboard shortcuts dialog from anywhere.
       if (e.key === '/' && (e.ctrlKey || e.metaKey) && !e.altKey) {
         e.preventDefault();
@@ -2517,6 +2521,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // (§1.2). The old story-tab Scene Crafter binding moved to the Insert
       // menu ("Beat (Scene Crafter)") and the nav rail.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        // eslint-disable-next-line no-console
+        console.log('[DIAG] ctrl-k handler fired, defaultPrevented=', e.defaultPrevented);
         e.preventDefault();
         setGlobalSearchSeed('');
         setGlobalSearchOpen(true);
