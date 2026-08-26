@@ -79,12 +79,15 @@ interface Props {
   onSaved?: (settings: AppSettings) => void;
   focusPrefs?: FocusPrefs;
   onFocusPrefsChange?: (prefs: FocusPrefs) => void;
+  /** SKY-11048: open directly to a category — e.g. a nav-rail vault tile's
+   *  "Settings → this vault" context-menu action jumps to 'vaults'. */
+  initialCategory?: SettingsCategoryId;
 }
 
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange }: Props) {
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -217,7 +220,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // SKY-2973: Settings category navigation. Opens on Appearance per the
   // prototype (SKY-10668 owner request) — safe with the live-persist debounce
   // because appearanceLiveReady consumes the load commit (see below).
-  const [settingsCategory, setSettingsCategory] = useState<SettingsCat>('appearance');
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCat>(initialCategory ?? 'appearance');
   const settingsCatNavRef = useRef<HTMLElement>(null);
 
   // SKY-3218: Nav-bar configuration
