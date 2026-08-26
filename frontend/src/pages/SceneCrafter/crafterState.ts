@@ -92,6 +92,8 @@ export interface VaultListItem {
   modifiedAt: string;
   /** SKY-10511: the note's hook line, computed main-side during the listing. */
   excerpt?: string;
+  /** SKY-11049: vault-wide character signal (frontmatter/tag), main-side. */
+  characterTag?: boolean;
 }
 
 export interface SuggestedCard {
@@ -105,6 +107,8 @@ export interface SuggestedCard {
   group: string;
   /** Vault note path without `.md` — wikilink for the kanban, `nid` on canvas. */
   nid: string;
+  /** SKY-11049: vault-wide character signal, independent of `group`. */
+  characterTag: boolean;
 }
 
 export interface SuggestedGroup {
@@ -156,19 +160,29 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
       av: avatarForTitle(title),
       group: top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES',
       nid: path.replace(/\.md$/i, ''),
+      characterTag: item.characterTag ?? false,
     });
   }
   return cards;
 }
 
-/** Character names for the POV select — every suggested card grouped under CHARACTERS. */
-export function castFromSuggested(cards: SuggestedCard[]): string[] {
-  return cards.filter((card) => card.group === 'CHARACTERS').map((card) => card.t);
+/**
+ * Cards for the right kanban's CAST column and the POV picker (§7.1, SKY-11049
+ * item 7): prefer a top-level `Characters` folder when the vault has one —
+ * otherwise fall back to any note carrying a character signal anywhere in the
+ * vault (frontmatter `type`/`tags`, or an inline `#character` hashtag), so a
+ * vault organized as `Main Characters/` + `#Character` tags still resolves.
+ * Never both at once — an explicit `Characters` folder is the stronger signal.
+ */
+export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
+  const byFolder = cards.filter((card) => card.group === 'CHARACTERS');
+  if (byFolder.length > 0) return byFolder;
+  return cards.filter((card) => card.characterTag);
 }
 
-/** Cards for the right kanban's CAST column (§7.1) — full cards, not just names. */
-export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'CHARACTERS');
+/** Character names for the POV field's filter list — see `castCardsFromSuggested`. */
+export function castFromSuggested(cards: SuggestedCard[]): string[] {
+  return castCardsFromSuggested(cards).map((card) => card.t);
 }
 
 /** Cards for the right kanban's PLACES column (§7.1). */

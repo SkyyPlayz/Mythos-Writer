@@ -226,8 +226,18 @@ UX defect — flag it back to product if per-scene board scoping becomes a real 
 
 Confirmed matching prototype + this spec (no action needed): two-view model, canvas world size/zoom
 range/pan behavior, card anatomy, dock, right kanban, draft generation flow including the added
-Discard button, POV-from-cast dropdown with Custom escape hatch, keyboard-accessible beat reordering
-(↑/↓ buttons alongside drag), draft error state with Retry/Discard.
+Discard button, keyboard-accessible beat reordering (↑/↓ buttons alongside drag), draft error state
+with Retry/Discard.
+
+**POV field — superseded by SKY-11049 item 7 (owner, 2026-08-26):** the PR #973 dropdown-with-Custom
+design above resolved cast names from a `CHARACTERS`-named vault folder only; the owner's real vault
+has no such folder (notes tagged `#Character` instead), which left the control with nothing to pick —
+"the POV selector should either be a blank box to type in, or pull up character cards. Right now it
+doesn't have anything to select." Fixed: POV is now always a free-text input (no hidden "Custom…"
+step); focusing/typing shows a card-family dropdown (same visual family as Suggested Cards) built from
+`castCardsFromSuggested`, which resolves a `Characters` folder if one exists, else any note carrying a
+character signal anywhere in the vault (frontmatter `type`/`tags`, or an inline `#character` tag), else
+nothing — an empty result is a plain text box with a hint, never a dead control.
 
 Three concrete findings posted to PR #973 as review comments — **all three since closed**:
 1. **`ScenesPanel.tsx` empty states have no glyph** — fixed for the canvas-preview empty state

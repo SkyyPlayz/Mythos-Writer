@@ -359,8 +359,54 @@
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
 }
 
-.sc-pov-custom {
-  margin-top: 6px;
+/* SKY-11049 item 7: POV is a typeable field with a character-card dropdown,
+   not a <select> — .sc-field's shared input/select/textarea rule above
+   already sizes the text input; this only adds the dropdown + hint. */
+.sc-pov-field {
+  position: relative;
+}
+
+.sc-pov-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 11px;
+  background: #141a29;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.55);
+}
+
+.scene-crafter-page button.sc-pov-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scene-crafter-page button.sc-pov-option:hover,
+.scene-crafter-page button.sc-pov-option--hi {
+  background: var(--gs2, rgba(155, 95, 255, 0.14));
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+}
+
+.sc-pov-hint {
+  font-size: 9.5px;
+  color: #7686a2;
+  line-height: 1.5;
+  margin-top: 5px;
 }
 
 .sc-len-custom {

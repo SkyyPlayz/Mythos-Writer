@@ -855,3 +855,110 @@ test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the
   await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();
   await expect(stageAfterReload.locator('.cvb-card', { hasText: '— first pass' })).toBeVisible();
 });
+
+// ─── SKY-11049 item 7: POV picker resolves a real, non-"Characters"-folder ───
+// vault shape. Owner report: his vault has no top-level Characters folder —
+// notes live wherever he keeps them and carry a #Character tag instead, so
+// the old group==='CHARACTERS' filter left the POV control with nothing to
+// pick. Nothing is pre-seeded: the character note is created through the
+// Notes vault UI itself, exactly like the owner would.
+//
+// Own describe block with its own fresh Electron app/vault (not the file's
+// shared instance): castCardsFromSuggested deliberately prefers a Characters
+// folder over the tag fallback vault-wide (see crafterState.ts), and the
+// shared suite's notes vault already has a Characters/Mira Veynn.md note
+// from the item-2 reachability test above — reusing it would mask the exact
+// fallback path this test exists to prove.
+
+/**
+ * The seed vault's twin-root layout (separate vaultRoot/notesVaultRoot dirs)
+ * reads as a "v0.4" vault to MythosMigrationCenter, whose prompt can pop up
+ * (SKY-8882, unrelated to Scene Crafter) and intercept clicks. Dismiss it if
+ * present.
+ */
+async function dismissMigrationPromptIfPresent(pg: Page): Promise<void> {
+  const dismissBtn = pg.locator('[data-testid="mythos-migration-prompt-dismiss"]');
+  if (await dismissBtn.isVisible({ timeout: 500 }).catch(() => false)) await dismissBtn.click();
+}
+
+test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh profile)', () => {
+  let localApp: ElectronApplication | undefined;
+  let localPage: Page;
+  let localUserData: string;
+  let localVaultDir: string;
+  let localNotesVaultDir: string;
+
+  test.beforeAll(async () => {
+    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-'));
+    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-story-'));
+    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-notes-'));
+    seedUserData(localUserData, localVaultDir, localNotesVaultDir);
+    localApp = await launchApp(localUserData);
+    localPage = await firstWindow(localApp);
+    await expect(localPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    await localApp?.close().catch(() => {});
+    fs.rmSync(localUserData, { recursive: true, force: true });
+    fs.rmSync(localVaultDir, { recursive: true, force: true });
+    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('a #Character-tagged note created via the UI appears in the POV picker and fills the field', async () => {
+    const storyIndex = await createStory(localPage);
+    await selectStory(localPage, storyIndex);
+
+    // Create ONE note via the Notes Editor UI — no top-level "Characters"
+    // folder, matching the owner's real vault shape (§4c: never pre-seed the
+    // thing under test).
+    await localPage.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(localPage.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+    await dismissMigrationPromptIfPresent(localPage);
+
+    const addNoteBtn = localPage.locator('[data-testid="vb-btn-new-note"]').first();
+    await expect(addNoteBtn).toBeVisible({ timeout: 6_000 });
+    await addNoteBtn.click();
+    const dialog = localPage.locator('.ntd-dialog');
+    await expect(dialog).toBeVisible({ timeout: 6_000 });
+    await dialog.locator('[data-testid="ntd-blank-title"]').fill('Kael Thorne');
+    await dialog.locator('[data-testid="ntd-submit"]').click();
+    await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+
+    // Open it and type a body with an inline #Character hashtag — the
+    // owner's own tagging convention, not a frontmatter field a UI never
+    // exposes. A fresh profile's NoteViewer defaults to Source mode (raw
+    // textarea), not the rendered rich-text editor — both write the same
+    // underlying markdown.
+    await dismissMigrationPromptIfPresent(localPage);
+    await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
+    const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await editor.fill('A wandering blade, haunted by his last war. #Character');
+    await expect(editor).toHaveValue(/#Character/);
+
+    // Wait for the debounced autosave to actually land on disk — Scene
+    // Crafter's character signal is computed from the file, not React state.
+    const notePath = path.join(localNotesVaultDir, 'Kael Thorne.md');
+    await expect.poll(
+      () => (fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : ''),
+      { timeout: 8_000 },
+    ).toContain('#Character');
+
+    await dismissMigrationPromptIfPresent(localPage);
+    await openBoardView(localPage);
+
+    const povField = localPage.getByRole('combobox', { name: 'POV' });
+    await expect(povField).toBeVisible({ timeout: 8_000 });
+    await expect(povField).toHaveJSProperty('tagName', 'INPUT'); // typeable, not a <select> (item 7 point 1)
+
+    await povField.click();
+    const option = localPage.getByRole('option', { name: /kael thorne/i });
+    await expect(option).toBeVisible({ timeout: 8_000 });
+    await option.click();
+
+    await expect(povField).toHaveValue('Kael Thorne');
+    await expect(localPage.getByRole('listbox', { name: /vault characters/i })).not.toBeVisible();
+  });
+});

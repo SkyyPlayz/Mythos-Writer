@@ -1131,6 +1131,13 @@ export interface VaultListItem {
    * rows and on the story-vault VAULT_LIST, which has no use for it.
    */
   excerpt?: string;
+  /**
+   * SKY-11049: true when the note carries a character signal (frontmatter
+   * `type: character`, a `character` tag, or an inline `#character` hashtag)
+   * — lets Scene Crafter's POV picker find characters that live outside a
+   * top-level `Characters` folder. Same availability as `excerpt`.
+   */
+  characterTag?: boolean;
 }
 
 export interface VaultListResponse {
