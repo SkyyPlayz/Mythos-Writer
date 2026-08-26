@@ -115,7 +115,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
 
       // B -> C: follow a second wikilink back into Notes (Elara's profile).
-      await page.getByText('[[Character: Elara]]', { exact: true }).click();
+      await page.locator('[data-wiki-link="Character: Elara"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
 
