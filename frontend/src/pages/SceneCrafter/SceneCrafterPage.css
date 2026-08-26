@@ -186,6 +186,26 @@
   box-shadow: 0 0 14px -5px var(--g2, rgba(155, 95, 255, 0.4));
 }
 
+/* SKY-11049: the Setup (closed) view's only feedback for "this card is
+   selected as draft context" — aria-pressed toggled with zero paired visual
+   before this rule existed, which read to a sighted user as "click does
+   nothing" (the owner's report). Slot A / n1 (cyan) per canvas spec §5's
+   "suggested-card active states" row — also keeps selected visually distinct
+   from the purple :hover rule above, and matches the sibling
+   .sc-plan-card--on selection style (css:638) for the same "chosen" concept.
+   The :hover variant is listed explicitly too: :hover alone outweighs a
+   plain class selector on specificity, so without it the purple hover glow
+   silently wins over the selected state for as long as the pointer rests on
+   a just-clicked card — the same "nothing visibly happened" bug, just
+   hover-gated. */
+.scene-crafter-page button.sc-sugg-card--on,
+.scene-crafter-page button.sc-sugg-card--on:hover {
+  background: var(--gs1, rgba(0, 240, 255, 0.12));
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 14px -4px var(--g1, rgba(0, 240, 255, 0.4));
+  color: #eef2fb;
+}
+
 .sc-sugg-av {
   width: 26px;
   height: 26px;
@@ -228,10 +248,15 @@
   padding: 2px;
 }
 
-/* Columns scroller (prototype line 1058: one horizontal board scroller). */
+/* Columns scroller (prototype line 1058: one horizontal board scroller).
+   flex: 0 1 auto — SKY-11049: `flex: 1` grew this past its two fixed-width
+   columns on wide viewports, opening a dead gap before .sc-right-kanban
+   (which sits after it in DOM order) instead of trailing after everything
+   the way the mockup lays out. Shrink stays enabled so narrow viewports
+   still fall back to the horizontal scroller. */
 .sc-columns {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   gap: 16px;
   align-items: stretch;
   min-width: 0;

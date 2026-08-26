@@ -44,28 +44,6 @@ Never merge these into one screen — the setup form needs full-width fields; th
 space. The prototype's separation is correct and PR #973 preserves it (`SceneCrafterPage.tsx` +
 `canvas/CanvasBoard.tsx`).
 
-### 1.1a Known drift — legacy Kanban lanes board (SKY-7589/SKY-7597, tracked SKY-7601)
-
-The shipped `SceneCrafterPage.tsx` (`:963–1078`) also renders a third element inside `.sc-columns`: a
-5-fixed-lane Kanban board (Idea/Outline/Draft/Revision/Done, `"N lanes · N cards"` header, `Add lane`
-button) sitting as a full-width sibling right after the Scene Draft column, reachable only by scrolling
-`.sc-columns`' horizontal scroller past Setup and Draft. **This is not part of the two-state model above
-and is not an approved third view** — resolve it as a drift finding, not new IA to design around:
-
-- It's Beta-2/3 Scene Crafter (see the outdated `plans/ProjectGoalOverView/07-scene-crafter.md`: same
-  concept, same "link a card to a real scene" behavior, earlier column names Ideas/Drafting/Writing/
-  Revised/Cut), which `plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`
-  ("Explicitly obsolete — no carry-forward") already retired in favor of this spec's §7.1/Canvas Board.
-  `SceneCrafterPage.css:939` even self-labels the block `/* Kanban lanes (Beta-2 selectors... */`.
-- It never got deleted when Canvas Board (M18/M19) shipped, and Beta-4 code (`chosenCards()`,
-  `addSuggestedCard()`) was subsequently built depending on it — clicking a suggested card writes into
-  `board.lanes[0]` so it counts toward the AI draft prompt. That coupling, plus ~15 lane-specific tests,
-  is why it can't simply be deleted outright without a rewire.
-- **Disposition: retire, don't document as permanent.** SKY-7601 scopes the migration (rewire
-  `chosenCards()`/suggested-card-click onto the real Plan Cards mechanism, decide the fate of
-  `manuscriptSceneId`/"Go to scene," remove the lanes UI, retire the lane tests). Once SKY-7601 ships,
-  this subsection should be deleted — the two-state model becomes accurate again with no caveat.
-
 ### 1.2 Canvas
 - World size: **2200×1500px** fixed, independent of viewport — cards are absolutely positioned within it.
 - Surface: dotted grid, 22px pitch, `radial-gradient(rgba(158,178,214,.14) 1px, transparent 1.3px)`, over
@@ -170,15 +148,18 @@ column added later.
   but pair it with a "Card deleted" toast + Undo per the Forgiveness heuristic, matching how the app
   already handles "Empty scene discarded" elsewhere. Deleting a card also removes its connections.
 
-### 4.5 Keyboard paths — **not yet implemented, spec proposal**
+### 4.5 Keyboard paths — **implemented** (SKY-7929 #1043, SKY-7330 #1092)
 
-Verified against the shipped code: `canvas/CanvasBoard.tsx` has no `tabIndex`, `onKeyDown`, or `role`
-on any card — the canvas is currently mouse-only end to end (create/move/connect/delete all require a
-pointer). This is a real gap against this issue's own DoD line ("keyboard paths") and against WCAG
-2.1.1 (keyboard operable), and it isn't unique to Scene Crafter — `canvas/CanvasBoard.tsx` is shared
-with the M20 Brainstorm board (PR #958), so fixing it here fixes both surfaces.
+`canvas/CanvasBoard.tsx` now has a full keyboard path: `tabIndex`/`onKeyDown`/`role="group"` on the
+pan layer and every card head/resize handle, arrow-key nudge, Enter/Space to start/complete a link,
+Escape to cancel, Delete/Backspace to delete with the same undo toast as the mouse path. Landed as a
+shared-engine fix (`canvas/CanvasBoard.tsx`), so it also covers the M20 Brainstorm board (PR #958) as
+originally scoped. Two small deviations from the model below, left as-is (not worth a follow-up):
+Tab's first stop inside the canvas is the pan layer, not the first card (one extra Tab reaches it);
+`aria-label` composes title + description rather than a "category" field, since `CanvasCard` has no
+category field to read.
 
-Proposed model (component-agnostic, applies to any board built on this engine):
+Original proposal (component-agnostic, applies to any board built on this engine) — kept for reference:
 1. `Tab` into the canvas focuses the first card in DOM order; `Tab`/`Shift+Tab` cycle cards.
    Focused card gets `var(--focus-ring)` outline (not `--color-accent}` — per the existing
    accessibility lesson already logged for this codebase).
@@ -191,14 +172,9 @@ Proposed model (component-agnostic, applies to any board built on this engine):
 6. Each card needs `role="group"` + `aria-label` combining title and category so a screen reader user
    gets equivalent information to the visual avatar+title.
 
-This is scoped as its own follow-up (see §8) — it's a shared-engine change, not a one-file fix, and
-shouldn't block PR #973's merge.
-
-### 4.6 Reduced motion
-- The busy-state skeleton pulse (`sc-pulse`, `SceneCrafterPage.css`) is a 1.1s infinite animation with
-  **no `prefers-reduced-motion` override** — every sibling CSS file in this codebase (including
-  `canvas/CanvasBoard.css`, which this same PR touches) has one; this file is the exception. Concrete
-  fix in §8.
+### 4.6 Reduced motion — **implemented** (SKY-7589 #1007)
+- The busy-state skeleton pulse (`sc-pulse`, `SceneCrafterPage.css`) now has a `prefers-reduced-motion`
+  override, matching every sibling CSS file in this codebase.
 - Canvas pan/zoom itself is user-driven (not an ambient loop) so it isn't subject to this — only the
   `lnPulse`-style looping animations (busy skeletons, the "Connecting…" pulse text) need the guard.
 
@@ -243,7 +219,7 @@ UX defect — flag it back to product if per-scene board scoping becomes a real 
 | `crafterState` (setup, draft prompt, card composition helpers) | `frontend/src/pages/SceneCrafter/crafterState.ts` | Implemented, PR #973 |
 | `CanvasBoard` (shared engine, `readOnly` prop) | `frontend/src/canvas/CanvasBoard.tsx` | Implemented M18 (#864), extended PR #973 |
 | `ScenesPanel` (editor right-panel mini canvas) | `frontend/src/ScenesPanel.tsx` | Implemented, PR #973 |
-| Keyboard interaction layer (§4.5) | `frontend/src/canvas/CanvasBoard.tsx` | **Not implemented — spec only, follow-up issue** |
+| Keyboard interaction layer (§4.5) | `frontend/src/canvas/CanvasBoard.tsx` | Implemented, SKY-7929 #1043 + SKY-7330 #1092 |
 | Canvas empty-state ghost hint (§1.3) | `frontend/src/canvas/CanvasBoard.tsx` | **Not implemented — small follow-up** |
 
 ## 8. Cross-check against PR #973 — disposition
@@ -253,15 +229,11 @@ range/pan behavior, card anatomy, dock, right kanban, draft generation flow incl
 Discard button, POV-from-cast dropdown with Custom escape hatch, keyboard-accessible beat reordering
 (↑/↓ buttons alongside drag), draft error state with Retry/Discard.
 
-Three concrete findings posted to PR #973 as review comments:
-1. **`ScenesPanel.tsx` empty states have no glyph** — reproduces the exact anti-pattern GAP-REPORT-v2
-   #12 already named for this surface. Small CSS/markup fix.
-2. **`SceneCrafterPage.css`'s `sc-pulse` animation has no `prefers-reduced-motion` override** — every
-   sibling stylesheet in the codebase has one; this is the one exception. One-block fix.
-3. **Canvas cards have no keyboard path** (create is keyboard-reachable via the dock button, but
-   move/connect/delete are pointer-only) — real WCAG gap, but shared-engine scope (also affects M20).
-   Scoped as a follow-up issue, not a blocker for this PR.
-
-Findings 1–2 are small enough to land in PR #973 directly before merge. Finding 3 is filed as a
-follow-up child issue (canvas keyboard accessibility) since it touches shared engine code used by two
-in-flight milestones.
+Three concrete findings posted to PR #973 as review comments — **all three since closed**:
+1. **`ScenesPanel.tsx` empty states have no glyph** — fixed for the canvas-preview empty state
+   (`LayoutGrid` glyph). Two secondary empty/loading states in the same file (no-story-selected,
+   loading) are still plain text; minor, not the state this finding named — see SKY-11049's
+   conformance table for a possible follow-up.
+2. **`SceneCrafterPage.css`'s `sc-pulse` animation has no `prefers-reduced-motion` override** — fixed,
+   SKY-7589 #1007.
+3. **Canvas cards have no keyboard path** — fixed, SKY-7929 #1043 + SKY-7330 #1092 (§4.5).

@@ -780,3 +780,78 @@ test('SKY-9878: a vault write while the canvas rail is open restocks it with no 
 
   await expect(suggested.getByText('The Sunken Gate')).toBeVisible({ timeout: 8_000 });
 });
+
+// ─── SKY-11049: full reachability loop — click a suggested card, watch it ────
+// land in the generated draft board, watch it survive a reload. Nothing is
+// pre-seeded: a fresh story (AC-SC-14's pattern) starts with zero boards.
+
+/** Replace the streaming IPC with a deterministic, no-network mock (mirrors
+ *  m19-scene-crafter-prose-invariant.spec.ts's installDraftStreamMock). */
+async function installDraftStreamMock(electronApp: ElectronApplication, text: string): Promise<void> {
+  await electronApp.evaluate(({ ipcMain }, args) => {
+    try { ipcMain.removeHandler('stream:start'); } catch { /* not registered */ }
+    ipcMain.handle('stream:start', (event) => {
+      const streamId = 'mock-sky11049-stream';
+      setTimeout(() => {
+        event.sender.send('stream:token', { streamId, token: args.text });
+        event.sender.send('stream:end', { streamId });
+      }, 30);
+      return { streamId };
+    });
+  }, { text });
+}
+
+test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the generated board, and survives reload', async () => {
+  if (!app) throw new Error('shared Electron app not launched');
+  await installDraftStreamMock(app, 'A gust of cold air rolled through the doorway.');
+
+  // A fresh story so this test starts with zero boards — the owner report
+  // constraint (§4c: never pre-seed the thing under test).
+  await clickStoryNav(page);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+  const storyIndex = await createStory(page);
+  await selectStory(page, storyIndex);
+  await openBoardView(page);
+  await expect(page.locator('.sc-board-row')).toHaveCount(0);
+
+  fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
+  fs.writeFileSync(
+    path.join(notesVaultDir, 'Characters', 'Mira Veynn.md'),
+    'Reluctant heir — resourceful, haunted.',
+  );
+  await reloadBoardView(page);
+
+  const suggestedCard = page.locator('.sc-suggest').getByRole('button', { name: /Mira Veynn/i });
+  await expect(suggestedCard).toBeVisible({ timeout: 8_000 });
+  await expect(suggestedCard).toHaveAttribute('aria-pressed', 'false');
+  await expect(suggestedCard).not.toHaveClass(/sc-sugg-card--on/);
+
+  // Click does something visible (SKY-11049 owner report): aria-pressed
+  // flips AND the selected-state style is actually applied — SceneCrafterPage
+  // .css previously had no rule for .sc-sugg-card--on at all.
+  await suggestedCard.click();
+  await expect(suggestedCard).toHaveAttribute('aria-pressed', 'true');
+  await expect(suggestedCard).toHaveClass(/sc-sugg-card--on/);
+  await expect(suggestedCard).toHaveCSS('border-color', /0, *240, *255/);
+
+  // Generate a draft with the suggested card selected as context, then add
+  // it to the scene board.
+  await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
+  await expect(page.locator('[data-testid="sc-draft-card"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="sc-draft-card"]').getByRole('button', { name: 'Add to scene board' }).click();
+
+  // A brand-new canvas board opens, carrying the chosen suggested card — the
+  // "click places it on the board" half of the owner report.
+  await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
+  const stage = page.getByTestId('canvas-stage');
+  await expect(stage.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible({ timeout: 5_000 });
+  await expect(stage.locator('.cvb-card', { hasText: '— first pass' })).toBeVisible();
+
+  // Survives a real reload (unmount + IPC re-read from disk, not just React state).
+  await reloadBoardView(page);
+  await page.locator('.sc-board-row').first().click();
+  await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
+  const stageAfterReload = page.getByTestId('canvas-stage');
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: '— first pass' })).toBeVisible();
+});
