@@ -505,11 +505,16 @@ test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.
 
   // Wait for outline panel to load
   const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
-  await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
+  // SKY-10969: page.reload() re-triggers the whole app boot cascade (settings,
+  // vault manifest, story tree, scene reselect) before the outline panel's own
+  // window.api.outline.load() IPC round-trip can even start. On a contended
+  // shard-4 runner (see SKY-9620) that cascade alone can eat several seconds,
+  // so 6s was too tight for either wait below — give both real headroom.
+  await expect(outlinePanel).toBeVisible({ timeout: 12_000 });
 
   // Verify nodes are rendered
   const inputs = page.locator('.opl-title-input');
-  await expect(inputs.first()).toHaveValue(beforeReload?.nodes?.[0]?.title || 'First outline node', { timeout: 6_000 });
+  await expect(inputs.first()).toHaveValue(beforeReload?.nodes?.[0]?.title || 'First outline node', { timeout: 12_000 });
 
   // Verify file content matches what was before
   const afterReload = readOutlineFile(outlineFilePath) as any;
