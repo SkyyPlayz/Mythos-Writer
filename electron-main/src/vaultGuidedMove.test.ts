@@ -307,28 +307,6 @@ describe('validateMoveTarget', () => {
   });
 });
 
-// `vi.runAllTimersAsync()` can return while a real disk op (e.g. fs.promises.cp
-// in the copy fallback) is still in flight: it only drains *currently pending*
-// fake timers, and a real I/O completion is a real event-loop macrotask, not
-// a microtask its internal loop yields to. If code schedules a *new* fake
-// timer only after that real op resolves (e.g. a second retry loop that
-// starts after the copy), runAllTimersAsync has already returned and that
-// timer never advances — the fake clock is simply never touched again.
-// Polling advanceTimersByTimeAsync in short slices — each of which yields a
-// real turn of the event loop — gives pending real I/O a chance to resolve
-// between fake-timer slices, so a second wave of timers scheduled afterward
-// still gets picked up.
-async function advanceUntilSettled(promise: Promise<unknown>): Promise<void> {
-  let settled = false;
-  promise.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  for (let i = 0; i < 200 && !settled; i++) {
-    await vi.advanceTimersByTimeAsync(200);
-  }
-}
-
 describe('moveVaultAtomic', () => {
   let tmpDir: string;
 
@@ -572,20 +550,19 @@ describe('moveVaultAtomic', () => {
       .spyOn(fs.promises, 'unlink')
       .mockRejectedValue(Object.assign(new Error('cannot delete'), { code: 'EPERM' }));
 
-    vi.useFakeTimers();
-    let result: ReturnType<typeof moveVaultAtomic>;
-    try {
-      result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
-      const assertion = expect(result).rejects.toMatchObject({
-        message: 'still locked',
-        code: 'EPERM',
-        lockedEntries: expect.any(Array),
-      });
-      await advanceUntilSettled(result);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    // Real timers, not fake: this test needs a real disk copy (fs.promises.cp)
+    // to finish, then a *second* retry loop (the delete-cleanup retries) to
+    // start only after that. A single `vi.runAllTimersAsync()` returns before
+    // the real copy settles, so any fake timer scheduled after it never
+    // advances — real timers sidestep that fake-clock/real-I/O race entirely.
+    // Worst case here is bounded (40 rename retries + 20 delete retries, all
+    // at 150ms), well under the suite's test timeout.
+    const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
+    await expect(result).rejects.toMatchObject({
+      message: 'still locked',
+      code: 'EPERM',
+      lockedEntries: expect.any(Array),
+    });
 
     // The copy already landed at dest even though source cleanup failed —
     // the caller must see the original rename failure, not the unlink one,
@@ -624,24 +601,18 @@ describe('moveVaultAtomic', () => {
 
     const dst = path.join(tmpDir, 'MovedVault');
 
-    vi.useFakeTimers();
-    let result: ReturnType<typeof moveVaultAtomic>;
-    try {
-      // The diagnostic lock probe runs synchronously inside the async
-      // rename-retry loop; asserting the outer promise still settles (rather
-      // than an unhandled throw from the unguarded revert killing the whole
-      // walk) is the point of this test. The probe leaving the file stuck
-      // under its `.__sky10895_lockprobe__` suffix is a known, reported
-      // consequence (surfaced via a failed checksum below) — not a crash.
-      result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
-      const assertion = expect(result).resolves.toMatchObject({
-        verification: expect.objectContaining({ ok: false, dropped: 0, checksumMatch: false }),
-      });
-      await advanceUntilSettled(result);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+    // Real timers (see the sibling SKY-11039 test above for why): the
+    // diagnostic lock probe runs synchronously inside the async rename-retry
+    // loop, followed by a real disk copy. Asserting the outer promise still
+    // settles (rather than an unhandled throw from the unguarded revert
+    // killing the whole walk) is the point of this test. The probe leaving
+    // the file stuck under its `.__sky10895_lockprobe__` suffix is a known,
+    // reported consequence (surfaced via a failed checksum below) — not a
+    // crash.
+    const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
+    await expect(result).resolves.toMatchObject({
+      verification: expect.objectContaining({ ok: false, dropped: 0, checksumMatch: false }),
+    });
 
     // The stuck probe-suffixed file made it to the destination instead of
     // crashing the move outright.
