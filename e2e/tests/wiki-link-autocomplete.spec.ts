@@ -182,7 +182,8 @@ test('WL-01/02: typing [[ opens the picker, filters to the entity, and selecting
 
   const link = page.locator(`[data-wiki-link="${ENTITY_NAME}"]`);
   await expect(link).toBeVisible({ timeout: 4_000 });
-  await expect(link).toContainText(`[[${ENTITY_NAME}]]`);
+  // SKY-10929: Rich view renders styled link text only, no [[ ]] brackets.
+  await expect(link).toContainText(ENTITY_NAME);
   await expect(link).not.toHaveClass(/wiki-link-unresolved/);
 });
 

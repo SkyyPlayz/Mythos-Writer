@@ -2,7 +2,10 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--bg-primary, #1a1a1a);
+  /* SKY-10929: no opaque fill here — .notes-tab-center already paints the
+     Slot-2 glass page background (page-bg-fill); painting one here again
+     hid it, which read as "the glass isn't working" for the note body. */
+  background: transparent;
   color: var(--text-primary, #e0e0e0);
   position: relative;
 }
@@ -25,10 +28,18 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--border, #2a2a2a);
-  background: var(--bg-secondary, #111);
+  border-bottom: 1px solid var(--glass-border);
+  /* SKY-10929: glass chrome, matching .block-editor-toolbar (Story side) —
+     was a flat opaque fill that broke the glass read on the Notes side. */
+  background: var(--glass-fill-fallback);
   min-height: 36px;
   flex-shrink: 0;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .note-viewer-toolbar {
+    background: var(--glass-fill);
+  }
 }
 
 .note-viewer-filename {
@@ -88,28 +99,6 @@
   font-size: 11px;
   white-space: nowrap;
   flex: none;
-}
-
-/* ── M8d: Share button (prototype 1481-1483) ─────────────────────────────── */
-
-.note-share-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
-  border-radius: 9px;
-  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.5));
-  background: none;
-  color: var(--n1, #00f0ff);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  flex: none;
-}
-
-.note-share-btn:hover {
-  background: var(--gs1, rgb(0 240 255 / 0.12));
-  box-shadow: 0 0 12px -3px var(--g1, rgb(0 240 255 / 0.4));
 }
 
 /* GH#616: failed-save surface — must read as an error, never as "saved". */
@@ -852,12 +841,3 @@
   border: 1px dashed rgb(255 255 255 / 0.22); /* prototype unresolved chip */
 }
 
-/* ── M17: backlinks footer (note body, not the right panel) ────────────── */
-
-.note-backlinks-footer {
-  flex-shrink: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  border-top: 1px solid rgb(255 255 255 / 0.06); /* prototype footer divider */
-  padding: 10px 20px 14px;
-}
