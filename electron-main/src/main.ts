@@ -5517,7 +5517,19 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: import('./ipc.js').ProjectIconSetPayload) => {
-    return setProjectIcon(payload);
+    // SKY-11068 follow-up (mirrors MYT-789 on PROJECT_SWITCH): setProjectIcon
+    // writes into <vaultRoot's mythos root>/vault-icon.<ext> and rewrites its
+    // mythos.json. Without this gate a compromised renderer could pass any
+    // structurally-valid v2 vault path — not just the active/known vaults —
+    // and get an arbitrary-directory file write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return setProjectIcon({ ...payload, vaultRoot: gate.vaultRoot });
   },
 
   [IPC_CHANNELS.PROJECT_ICON_PICK]: async () => {
