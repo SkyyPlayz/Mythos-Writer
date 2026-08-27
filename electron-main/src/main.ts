@@ -279,7 +279,7 @@ import { registerPresetHandlers } from './presetIpc.js';
 // separate chunk by electron-vite's ?nodeWorker suffix and spawned as a
 // node:worker_threads Worker so scan passes never run on the main thread.
 import createJobWorker from './jobs/jobWorker?nodeWorker';
-import { initJobService, shutdownJobService } from './jobs/jobService.js';
+import { initJobService, shutdownJobService, getJobQueue } from './jobs/jobService.js';
 import { registerJobsIpc } from './jobs/jobsIpc.js';
 import {
   buildVaultSummary,
@@ -351,6 +351,10 @@ import {
   insertArchiveAuditLog,
   insertSuggestionSnapshot,
   getSuggestionSnapshot,
+  rebuildDerivedFactStores,
+  listFactDecisions,
+  listEntityIndex,
+  getVaultIndexCacheRows,
 } from './db.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
@@ -7343,6 +7347,36 @@ const handlers: IpcHandlers = {
     const vaultRoot = getNotesVaultRoot() || getVaultRoot();
     const index = autoLinkerBuildIndex(vaultRoot, opts);
     return { count: index.length };
+  },
+
+  // SKY-10772 M12.5: AI Agents index controls
+  [IPC_CHANNELS.AGENT_INDEX_GET_STATS]: () => {
+    const entities = listEntityIndex();
+    const decisions = listFactDecisions(true);
+    const cache = getVaultIndexCacheRows();
+    const lastScanned = cache.reduce<string | null>((max, row) => {
+      if (!max || row.indexed_at > max) return row.indexed_at;
+      return max;
+    }, null);
+    return {
+      entityCount: entities.length,
+      lastScanAt: lastScanned,
+      factDecisionCount: decisions.length,
+      cacheRowCount: cache.length,
+    };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_CLEAN]: () => {
+    const before = listFactDecisions(true).length;
+    rebuildDerivedFactStores();
+    const after = listFactDecisions(true).length;
+    return { decisionsPreserved: after, derivedWiped: true, tombstonesIntact: before === after };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_REBUILD]: () => {
+    const queue = getJobQueue();
+    if (!queue) return { error: 'No vault open — job queue unavailable.' };
+    rebuildDerivedFactStores();
+    const jobId = queue.enqueue('vault-scan', { vaultRoot: getVaultRoot() });
+    return { jobId };
   },
 
   // SKY-6306 M21: Multi-timeline store

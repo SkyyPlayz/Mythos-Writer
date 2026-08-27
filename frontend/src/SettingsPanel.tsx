@@ -911,6 +911,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               <AgentsSection
                 settings={settings}
+                setSettings={setSettings}
                 providerKind={providerKind}
                 agentOverrides={agentOverrides}
                 agentTestStatus={agentTestStatus}

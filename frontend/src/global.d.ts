@@ -632,6 +632,8 @@ interface AppSettings {
   };
   /** SKY-6225: Built-in Auto Note Linker settings. Absent = defaults. */
   autoLinkerSettings?: AutoLinkerSettings;
+  /** SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default). */
+  agentIndexAutoScan?: boolean;
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
   /** SKY-204: opt-in daily notes / journal mode. */
@@ -1824,6 +1826,18 @@ interface Window {
     // flush a pending debounced manifest save before the window closes.
     onFlushBeforeQuit?: (cb: () => void) => () => void;
     notifyFlushBeforeQuitDone?: () => void;
+
+    // SKY-10772 M12.5: AI Agents index controls
+    agentIndex: {
+      getStats: () => Promise<{
+        entityCount: number;
+        lastScanAt: string | null;
+        factDecisionCount: number;
+        cacheRowCount: number;
+      }>;
+      clean: () => Promise<{ decisionsPreserved: number; derivedWiped: boolean; tombstonesIntact: boolean }>;
+      rebuild: () => Promise<{ jobId: string } | { error: string }>;
+    };
 
   };
 
