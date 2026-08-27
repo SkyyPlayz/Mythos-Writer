@@ -41,8 +41,12 @@ const byOrder = <T extends { order: number }>(items: T[]): T[] =>
  *  authoritative and story.chapters is the derived mirror. With no real tier
  *  (absent, empty, or the single untitled M2-migration wrapper part),
  *  story.chapters is authoritative — the wrapper's chapters can be a stale
- *  migration-time snapshot that only heals on a structural write. */
-function chaptersOf(story: StoryEntry): ChapterEntry[] {
+ *  migration-time snapshot that only heals on a structural write.
+ *
+ *  Exported as the ONE main-process reading-order traversal — the manuscript
+ *  pass (manuscriptPass.ts, SKY-10875) shares it so scoped scans and
+ *  whole-book passes can never disagree on chapter order. */
+export function chaptersOf(story: StoryEntry): ChapterEntry[] {
   const parts = realParts(story);
   if (parts) {
     return byOrder(parts).flatMap((p) => byOrder(p.chapters));

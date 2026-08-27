@@ -221,12 +221,15 @@ describe('buildManuscriptSnapshot', () => {
     expect(snapshot.scenes.map((s) => s.chapterNumber)).toEqual([1, 2]);
   });
 
-  it('falls back to the flat chapter mirror when the parts tier exists but holds no chapters', () => {
-    // A stale hand-edited vault (parts present but empty) must not silently
-    // produce an empty manuscript for the checks to bless.
+  it('treats a single untitled wrapper part as no Part tier — the flat mirror is authoritative', () => {
+    // Part-tier contract (chaptersOf, shared with SKY-10770): the M2
+    // migration's single untitled wrapper is not a real Part tier, and its
+    // chapters can be a stale migration-time snapshot. The live flat mirror
+    // must win — a stale empty wrapper must not silently produce an empty
+    // manuscript for the checks to bless.
     const manifest = writeStandardVault();
     manifest.stories[0].parts = [
-      { id: 'p-1', title: 'Part 1', order: 0, note: [], chapters: [], createdAt: CREATED_AT, updatedAt: CREATED_AT },
+      { id: 'p-1', title: '', order: 0, note: [], chapters: [], createdAt: CREATED_AT, updatedAt: CREATED_AT },
     ];
     const snapshot = buildManuscriptSnapshot(tmpDir, manifest);
     expect(snapshot.scenes.map((s) => s.sceneId)).toEqual(['sc-a', 'sc-b', 'sc-c']);

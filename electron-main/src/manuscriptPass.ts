@@ -10,9 +10,10 @@
 // mutation belongs exclusively to the M12.B4b command layer — a continuity
 // check driven from here can never rewrite timeline data.
 
-import type { ChapterEntry, Manifest, StoryEntry } from './ipc.js';
+import type { Manifest } from './ipc.js';
 import type { SceneFileData } from './vault.js';
 import { readSceneFile } from './vault.js';
+import { chaptersOf } from './jobs/scanScopeResolver.js';
 import type {
   ArchiveIgnoreKey,
   ArchiveIndex,
@@ -66,26 +67,14 @@ export interface ManuscriptSnapshot {
 /** Injectable for tests (spy readers proving the single-read guarantee). */
 export type SceneFileReader = (vaultRoot: string, relativePath: string) => SceneFileData;
 
-/**
- * Reading order for one story. Parts are the mutation authority (M2 /
- * SKY-9017): when they exist, reading order is parts by `part.order`, then
- * chapters by `chapter.order` WITHIN each part — matching BookPreview and
- * manuscriptModel's flatUnits. A global sort of the flat `story.chapters`
- * mirror diverges from that whenever per-part chapter orders are
- * non-monotonic (reachable via delete-chapter → add-part → add-chapter), so
- * the mirror is only trusted for part-less pre-M2 shapes — or when the parts
- * tier exists but holds no chapters (a stale hand-edited vault must not
- * silently produce an empty manuscript).
- */
-function orderedChapters(story: StoryEntry): ChapterEntry[] {
-  const byOrder = <T extends { order: number }>(items: T[]): T[] =>
-    [...items].sort((a, b) => a.order - b.order);
-  if (story.parts && story.parts.length > 0) {
-    const partChapters = byOrder(story.parts).flatMap((part) => byOrder(part.chapters));
-    if (partChapters.length > 0) return partChapters;
-  }
-  return byOrder(story.chapters);
-}
+// Reading order comes from the ONE main-process traversal, shared with the
+// scoped-scan resolver (chaptersOf, SKY-10770): parts by part.order, then
+// chapters by chapter.order WITHIN each part when a REAL Part tier exists
+// (absent/empty/single-untitled-wrapper parts don't count — the wrapper's
+// chapters can be a stale migration snapshot); the flat story.chapters mirror
+// otherwise. A global sort of the mirror is wrong — per-part chapter orders
+// are not globally monotonic (reachable via delete-chapter → add-part →
+// add-chapter).
 
 export function buildManuscriptSnapshot(
   vaultRoot: string,
@@ -96,7 +85,7 @@ export function buildManuscriptSnapshot(
   const missingSceneIds: string[] = [];
 
   for (const story of manifest.stories) {
-    const chapters = orderedChapters(story);
+    const chapters = chaptersOf(story);
     chapters.forEach((chapter, chapterIdx) => {
       const orderedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
       for (const scene of orderedScenes) {
