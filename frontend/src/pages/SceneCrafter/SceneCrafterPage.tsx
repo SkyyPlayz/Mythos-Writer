@@ -12,7 +12,6 @@ import {
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
-  castFromSuggested,
   composeDraftBoard,
   composeDraftPassCard,
   defaultCrafterSetup,
@@ -111,6 +110,112 @@ function SuggestedCardsRail({
   );
 }
 
+interface PovFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  /** Cast cards from `castCardsFromSuggested` — folder or tag-fallback resolved. */
+  characters: SuggestedCard[];
+}
+
+/**
+ * SKY-11049 item 7: the POV field is always a free-text input — no hidden
+ * "Custom…" step (owner: "the POV selector should either be a blank box to
+ * type in, or pull up character cards"). Focusing or typing shows the vault's
+ * characters as the same card family as the Suggested Cards rail, filtered
+ * as you type; picking one fills the field. An empty vault-wide character
+ * list is never a dead control — it just stays a plain text box with a hint.
+ */
+function PovField({ value, onChange, characters }: PovFieldProps) {
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+
+  const filtered = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    if (!q) return characters;
+    return characters.filter((card) => card.t.toLowerCase().includes(q));
+  }, [characters, value]);
+
+  function commit(name: string) {
+    onChange(name);
+    setOpen(false);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        setOpen(true);
+        setHighlight(0);
+      }
+      return;
+    }
+    if (filtered.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setHighlight((i) => (i + 1) % filtered.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlight((i) => (i - 1 + filtered.length) % filtered.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      commit(filtered[highlight].t);
+    } else if (event.key === 'Escape') {
+      setOpen(false);
+    }
+  }
+
+  const showDropdown = open && filtered.length > 0;
+  const showEmptyHint = characters.length === 0;
+
+  return (
+    <div className="sc-pov-field">
+      <input
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-controls="sc-pov-listbox"
+        aria-autocomplete="list"
+        aria-label="POV"
+        placeholder="Who carries the camera?"
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setOpen(true);
+          setHighlight(0);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={handleKeyDown}
+      />
+      {showDropdown && (
+        <ul className="sc-pov-dropdown" id="sc-pov-listbox" role="listbox" aria-label="Vault characters">
+          {filtered.map((card, i) => (
+            <li key={card.nid} role="presentation">
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === highlight}
+                className={`sc-pov-option${i === highlight ? ' sc-pov-option--hi' : ''}`}
+                // Keeps focus on the input so `onBlur` never fires before the
+                // click's `onClick` — the standard combobox-listbox pattern.
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => commit(card.t)}
+              >
+                <span className="sc-sugg-av">{card.av}</span>
+                <span className="sc-sugg-text">
+                  <span className="sc-sugg-t">{card.t}</span>
+                  <span className="sc-sugg-d">{card.d}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showEmptyHint && <div className="sc-pov-hint">Type a name — or add characters in your Notes vault</div>}
+    </div>
+  );
+}
+
 export interface SceneCrafterCard {
   wikilink: string;
   title: string;
@@ -199,10 +304,6 @@ export default function SceneCrafterPage({
   const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState('');
   const [boardsNote, setBoardsNote] = useState<string | null>(null);
-  // Explicit "Custom…" selection in the POV dropdown — tracked separately from
-  // setup.pov because an empty custom value is indistinguishable from "no POV
-  // chosen yet" if derived from the text alone (§7.1, AC1).
-  const [povCustomMode, setPovCustomMode] = useState(false);
   // AI first-pass draft generation (§7.1): streamId drives useIpcStream; a
   // failure to even start the stream (e.g. no API key) lands in draftStartError
   // since useIpcStream only observes post-start stream:error events.
@@ -348,10 +449,9 @@ export default function SceneCrafterPage({
     event.dataTransfer.setData(CANVAS_CARD_DRAG_MIME, JSON.stringify(cardSeedFromSuggested(card)));
     event.dataTransfer.effectAllowed = 'copy';
   }
-  // ── M19: POV select sourced from the vault's Characters group (§7.1, AC1) ──
-  const cast = castFromSuggested(allSuggested);
-  const povIsCustom = povCustomMode || (setup.pov.trim() !== '' && !cast.includes(setup.pov));
   // ── M19: right kanban — beats/cast/places (§7.1, AC8) ───────────────────────
+  // SKY-11049 item 7: also the POV field's character-card dropdown — same
+  // folder-or-tag resolution feeds both surfaces.
   const castCards = castCardsFromSuggested(allSuggested);
   const placeCards = placesFromSuggested(allSuggested);
 
@@ -611,34 +711,11 @@ export default function SceneCrafterPage({
               </label>
               <label className="sc-field">
                 <span className="sc-field-label">POV</span>
-                <select
-                  aria-label="POV"
-                  value={povIsCustom ? '__custom__' : setup.pov}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (next === '__custom__') {
-                      setPovCustomMode(true);
-                    } else {
-                      setPovCustomMode(false);
-                      patchSetup({ pov: next });
-                    }
-                  }}
-                >
-                  <option value="">Who carries the camera?</option>
-                  {cast.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                {povIsCustom && (
-                  <input
-                    className="sc-pov-custom"
-                    aria-label="Custom POV name"
-                    value={setup.pov}
-                    placeholder="Name this scene's POV"
-                    onChange={(event) => patchSetup({ pov: event.target.value })}
-                  />
-                )}
+                <PovField
+                  value={setup.pov}
+                  onChange={(pov) => patchSetup({ pov })}
+                  characters={castCards}
+                />
               </label>
               <label className="sc-field">
                 <span className="sc-field-label">GOAL</span>

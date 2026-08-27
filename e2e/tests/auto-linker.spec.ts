@@ -212,8 +212,9 @@ test('AL-01–03: type entity name → hint appears → accept → becomes [[wik
   const acceptBtn = tooltip.locator('.wl-hint-accept');
   await acceptBtn.click({ force: true });
 
-  // The editor should now contain [[Elara Voss]] (wikiLink node renders as [[...]] text)
-  await expect(editor).toContainText(`[[${ENTITY_NAME}]]`, { timeout: 6_000 });
+  // The editor should now contain a wikiLink node for the entity.
+  // SKY-10929: Rich view renders styled link text only, no [[ ]] brackets.
+  await expect(editor.locator(`[data-wiki-link="${ENTITY_NAME}"]`)).toBeVisible({ timeout: 6_000 });
 
   // The standalone plain-text occurrence should be gone
   // (hint decoration disappears once the node is a wikiLink atom)

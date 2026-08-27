@@ -533,6 +533,95 @@ describe('moveVaultAtomic', () => {
     renameSpy.mockRestore();
   });
 
+  it('SKY-11039: surfaces the original rename error (not the cleanup error) when copy succeeds but source cleanup fails', async () => {
+    const src = path.join(tmpDir, 'StoryVault');
+    fs.mkdirSync(src);
+    fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
+
+    const dst = path.join(tmpDir, 'MovedVault');
+
+    const renameSpy = vi
+      .spyOn(fs.promises, 'rename')
+      .mockRejectedValue(Object.assign(new Error('still locked'), { code: 'EPERM' }));
+    // Copy succeeds (real fs.cp), but deleting the now-copied source keeps
+    // failing — e.g. another process still has manifest.json open even
+    // though it no longer blocks a read.
+    const unlinkSpy = vi
+      .spyOn(fs.promises, 'unlink')
+      .mockRejectedValue(Object.assign(new Error('cannot delete'), { code: 'EPERM' }));
+
+    // Real timers, not fake: this test needs a real disk copy (fs.promises.cp)
+    // to finish, then a *second* retry loop (the delete-cleanup retries) to
+    // start only after that. A single `vi.runAllTimersAsync()` returns before
+    // the real copy settles, so any fake timer scheduled after it never
+    // advances — real timers sidestep that fake-clock/real-I/O race entirely.
+    // Worst case here is bounded (40 rename retries + 20 delete retries, all
+    // at 150ms), well under the suite's test timeout.
+    const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
+    await expect(result).rejects.toMatchObject({
+      message: 'still locked',
+      code: 'EPERM',
+      lockedEntries: expect.any(Array),
+    });
+
+    // The copy already landed at dest even though source cleanup failed —
+    // the caller must see the original rename failure, not the unlink one,
+    // while the copied data and the (not fully cleaned up) source both
+    // remain on disk rather than being silently lost.
+    expect(fs.existsSync(path.join(dst, 'manifest.json'))).toBe(true);
+    expect(fs.existsSync(src)).toBe(true);
+
+    unlinkSpy.mockRestore();
+    renameSpy.mockRestore();
+  });
+
+  it('SKY-11039: lock probe does not crash the diagnostic walk when reverting its own probe rename fails', async () => {
+    const src = path.join(tmpDir, 'StoryVault');
+    fs.mkdirSync(src);
+    const lockedFile = path.join(src, 'manifest.json');
+    fs.writeFileSync(lockedFile, '{}');
+    const probePath = `${lockedFile}.__sky10895_lockprobe__`;
+
+    const renameSpy = vi
+      .spyOn(fs.promises, 'rename')
+      .mockRejectedValue(Object.assign(new Error('still locked'), { code: 'EPERM' }));
+
+    // Simulate something grabbing a handle on the probe-renamed file between
+    // the probe rename and its revert: the sync probe-out succeeds for real,
+    // but the sync revert back to the original name fails.
+    const realRenameSync = fs.renameSync;
+    const renameSyncSpy = vi
+      .spyOn(fs, 'renameSync')
+      .mockImplementation((from: fs.PathLike, to: fs.PathLike) => {
+        if (from === probePath && to === lockedFile) {
+          throw Object.assign(new Error('probe revert blocked'), { code: 'EPERM' });
+        }
+        return realRenameSync(from, to);
+      });
+
+    const dst = path.join(tmpDir, 'MovedVault');
+
+    // Real timers (see the sibling SKY-11039 test above for why): the
+    // diagnostic lock probe runs synchronously inside the async rename-retry
+    // loop, followed by a real disk copy. Asserting the outer promise still
+    // settles (rather than an unhandled throw from the unguarded revert
+    // killing the whole walk) is the point of this test. The probe leaving
+    // the file stuck under its `.__sky10895_lockprobe__` suffix is a known,
+    // reported consequence (surfaced via a failed checksum below) — not a
+    // crash.
+    const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
+    await expect(result).resolves.toMatchObject({
+      verification: expect.objectContaining({ ok: false, dropped: 0, checksumMatch: false }),
+    });
+
+    // The stuck probe-suffixed file made it to the destination instead of
+    // crashing the move outright.
+    expect(fs.existsSync(path.join(dst, 'manifest.json.__sky10895_lockprobe__'))).toBe(true);
+
+    renameSyncSpy.mockRestore();
+    renameSpy.mockRestore();
+  });
+
   it('appends to an existing audit log rather than overwriting it', async () => {
     const src = path.join(tmpDir, 'Vault1');
     fs.mkdirSync(src);

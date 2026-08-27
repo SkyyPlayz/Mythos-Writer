@@ -328,6 +328,7 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y,
     # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
+    # split-pane-tab-strips (SKY-8907, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -486,6 +487,11 @@ jobs:
       - name: E2E — Beta read (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:beta-read
 
+      - name: E2E — Split-pane per-pane tab strips (SKY-8907)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:split-pane-tab-strips
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -509,6 +515,7 @@ jobs:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
+    # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -658,6 +665,11 @@ jobs:
       - name: "E2E — Brainstorm chat panel is glass + tracks the Appearance slider (SKY-11047)"
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-glass
 
+      - name: E2E — Notes split per-pane tab strips (SKY-9784)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -683,6 +695,7 @@ jobs:
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
     # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
+    # onboarding-v2 (SKY-2009, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -844,6 +857,11 @@ jobs:
       - name: E2E — Background job-queue responsiveness + negative control (SKY-10768)
         run: xvfb-run --auto-servernum npm run test:e2e:jobs-responsiveness
 
+      - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -866,6 +884,11 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     # editor-format-bar, notes-parity, word-count (SKY-6933 sweep), theme-export-import (SKY-8210)
+    # SKY-11045: onboarding-v2, split-pane-tab-strips, and notes-split-pane-tab-strips moved
+    # OUT to shards 3/1/2 — this shard ran ~2x the wall-clock of its siblings (measured
+    # 442s vs 243-285s on run 32925624377), correlating with 7 of the last 11 e2e-shard
+    # failures on main being on shard-4 despite a different spec failing each time
+    # (tight per-test timeouts tripping under normal tail latency, not one bad test).
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -985,9 +1008,6 @@ jobs:
       - name: E2E — AI toggle restart persistence + comment/brainstorm round-trips (SKY-10604)
         run: xvfb-run --auto-servernum npm run test:e2e:ai-off-persistence
 
-      - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
-        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
-
       - name: E2E — Writing Assistant panel AC-WA-01..27 (SKY-2633)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant
 
@@ -1026,12 +1046,6 @@ jobs:
 
       - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
-
-      - name: E2E — Split-pane per-pane tab strips (SKY-8907)
-        run: xvfb-run --auto-servernum npm run test:e2e:split-pane-tab-strips
-
-      - name: E2E — Notes split per-pane tab strips (SKY-9784)
-        run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
 
       - name: E2E — Scene notes add/persist/drag-promote to vault (SKY-9823, M9b)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-notes-promote

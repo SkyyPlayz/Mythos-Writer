@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
+import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { reorderNavConfigItems } from './components/SettingsPanel/settingsPanelTypes';
+import { ContextMenu, type MenuItemDef } from './components/ui/Menu';
+import { avatarForTitle } from './canvas/canvasTypes';
 import './AppNavRail.css';
 
 /** Beta 3 M7: one row of the Stories popover (prototype HTML 179–203). */
@@ -10,6 +12,21 @@ export interface NavRailStory {
   active: boolean;
   /** Beta 4 M3: genre · voice · POV line under the title (prototype s.sub). */
   subtitle?: string;
+}
+
+/**
+ * SKY-11048: one Mythos-vault tile (prototype `vaultTiles`, HTML 171–172 /
+ * 5826–5833 — `{id:'mythos',init:'MV',...}`). A vault is its own Story +
+ * Notes + Agent bundle; this is NOT the per-story switcher (SKY-11046) and
+ * NOT the notes-vault dropdown.
+ */
+export interface NavRailVault {
+  /** Story Vault root path — stable identity, matches ProjectEntry.vaultRoot. */
+  id: string;
+  name: string;
+  active: boolean;
+  /** Short glyph/emoji set via the tile's context menu. Absent → initials. */
+  icon?: string;
 }
 
 export interface AppNavRailProps {
@@ -41,6 +58,22 @@ export interface AppNavRailProps {
    */
   editableItems?: NavRailItemConfig[];
   onEditableItemsChange?: (items: NavRailItemConfig[]) => void;
+  /**
+   * SKY-11048: vault-tile group, pinned above Settings (DESIGN-SPEC.md:19 —
+   * "vault tiles (per-universe vaults) with minimized `+`"). Always includes
+   * the current vault, even when it's the only one — plus a trailing `+`
+   * tile that creates a new vault. Deliberately NOT part of `editableItems`:
+   * per the ticket, vault tiles are not hideable via the rail edit popover.
+   * Absent → the group is not rendered.
+   */
+  vaults?: NavRailVault[];
+  onVaultSelect?: (vaultId: string) => void;
+  onNewVault?: () => void;
+  onVaultRename?: (vaultId: string) => void;
+  onVaultSetIcon?: (vaultId: string) => void;
+  /** Only the active vault can be revealed (no per-path reveal IPC exists). */
+  onVaultReveal?: (vaultId: string) => void;
+  onVaultOpenSettings?: (vaultId: string) => void;
 }
 
 /**
@@ -209,12 +242,21 @@ export default function AppNavRail({
   onNewStory,
   editableItems,
   onEditableItemsChange,
+  vaults,
+  onVaultSelect,
+  onNewVault,
+  onVaultRename,
+  onVaultSetIcon,
+  onVaultReveal,
+  onVaultOpenSettings,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
   const [storiesOpen, setStoriesOpen] = useState(false);
   // Beta 4 M3: rail edit popover + drag-reorder source row index.
   const [editOpen, setEditOpen] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // SKY-11048: vault-tile right-click menu (Rename / Set icon / Reveal / Settings).
+  const [vaultMenu, setVaultMenu] = useState<{ vaultId: string; x: number; y: number } | null>(null);
 
   // A collapsed (slim) rail only has room for the icon; and when the user
   // hides labels, icons become the only visible affordance — so at least one
@@ -325,6 +367,38 @@ export default function AppNavRail({
     [dragIndex, handleMoveItem],
   );
 
+  // ── SKY-11048: vault tiles ────────────────────────────────────────────────
+  const handleVaultClick = useCallback(
+    (vault: NavRailVault) => {
+      if (vault.active) return;
+      onVaultSelect?.(vault.id);
+    },
+    [onVaultSelect],
+  );
+
+  const handleVaultContextMenu = useCallback((vaultId: string) => (e: MouseEvent) => {
+    e.preventDefault();
+    setVaultMenu({ vaultId, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const vaultMenuItems = useCallback((vault: NavRailVault): MenuItemDef[] => [
+    { id: 'rename', label: 'Rename', disabled: !onVaultRename },
+    { id: 'set-icon', label: 'Set icon', disabled: !onVaultSetIcon },
+    {
+      id: 'reveal',
+      label: vault.active ? 'Reveal in Explorer' : 'Reveal in Explorer — switch to this vault first',
+      disabled: !onVaultReveal || !vault.active,
+    },
+    { id: 'settings', label: 'Settings → this vault', disabled: !onVaultOpenSettings, separator: true },
+  ], [onVaultRename, onVaultSetIcon, onVaultReveal, onVaultOpenSettings]);
+
+  const handleVaultMenuAction = useCallback((vaultId: string) => (actionId: string) => {
+    if (actionId === 'rename') onVaultRename?.(vaultId);
+    else if (actionId === 'set-icon') onVaultSetIcon?.(vaultId);
+    else if (actionId === 'reveal') onVaultReveal?.(vaultId);
+    else if (actionId === 'settings') onVaultOpenSettings?.(vaultId);
+  }, [onVaultRename, onVaultSetIcon, onVaultReveal, onVaultOpenSettings]);
+
   return (
     <nav
       className={`nav-rail${collapsed ? ' nav-rail--collapsed' : ''}`}
@@ -433,6 +507,56 @@ export default function AppNavRail({
             </div>
           </div>
         </>
+      )}
+
+      {/* SKY-11048: vault tiles (DESIGN-SPEC.md:19; prototype HTML 170–174,
+          vaultTiles 5826–5833) — pinned directly above Settings. Always
+          rendered when `vaults` is provided, even for a single vault, so the
+          `+` tile is always reachable. Not part of `editableItems` — the rail
+          edit popover cannot hide these. */}
+      {vaults && (
+        <div className="nav-rail__vaults" role="group" aria-label="Mythos vaults" data-testid="nav-rail-vaults">
+          {vaults.map((vault) => (
+            <button
+              key={vault.id}
+              type="button"
+              className={`nav-rail__vault-tile${vault.active ? ' nav-rail__vault-tile--active' : ''}`}
+              onClick={() => handleVaultClick(vault)}
+              onContextMenu={handleVaultContextMenu(vault.id)}
+              aria-label={vault.active ? `Current vault: ${vault.name}` : `Switch to vault ${vault.name}`}
+              aria-current={vault.active ? 'page' : undefined}
+              title={vault.name}
+              data-testid={`nav-rail-vault-tile-${vault.id}`}
+            >
+              {vault.icon || avatarForTitle(vault.name)}
+            </button>
+          ))}
+          {onNewVault && (
+            <button
+              type="button"
+              className="nav-rail__vault-add"
+              onClick={onNewVault}
+              aria-label="New Mythos vault"
+              title="New Mythos vault — local folder, Dropbox, network drive…"
+              data-testid="nav-rail-vault-add"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
+          {vaultMenu && vaults.some((v) => v.id === vaultMenu.vaultId) && (
+            <ContextMenu
+              open
+              position={{ x: vaultMenu.x, y: vaultMenu.y }}
+              items={vaultMenuItems(vaults.find((v) => v.id === vaultMenu.vaultId)!)}
+              onAction={handleVaultMenuAction(vaultMenu.vaultId)}
+              onClose={() => setVaultMenu(null)}
+              aria-label="Vault actions"
+              data-testid="nav-rail-vault-menu"
+            />
+          )}
+        </div>
       )}
 
       {/* Divider + settings + slim toggle — pinned to bottom (prototype 211–238) */}
