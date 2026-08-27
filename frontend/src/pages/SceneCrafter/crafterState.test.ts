@@ -9,7 +9,6 @@ import {
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
-  castFromSuggested,
   composeDraftBoard,
   composeDraftPassCard,
   defaultCrafterSetup,
@@ -143,11 +142,6 @@ describe('suggested cards from the vault listing', () => {
     expect(cards.map((c) => c.t)).toEqual(['Chaper 1', 'McMillan']);
   });
 
-  it('castFromSuggested returns names from the CHARACTERS group only', () => {
-    const cards = suggestedFromVault(items);
-    expect(castFromSuggested(cards)).toEqual(['Liora Ashen', 'The Lamplighter']);
-  });
-
   it('castCardsFromSuggested and placesFromSuggested split the right kanban columns (§7.1)', () => {
     const cards = suggestedFromVault(items);
     expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'The Lamplighter']);
@@ -165,7 +159,6 @@ describe('suggested cards from the vault listing', () => {
     ];
     const cards = suggestedFromVault(noFolderItems);
     expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Mira Veynn']);
-    expect(castFromSuggested(cards)).toEqual(['Mira Veynn']);
   });
 
   it('prefers the Characters folder over the tag fallback when both exist', () => {
@@ -180,7 +173,6 @@ describe('suggested cards from the vault listing', () => {
   it('resolves to no cast at all when neither a Characters folder nor any tag exists', () => {
     const cards = suggestedFromVault([item('Locations/Ward Violet.md')]);
     expect(castCardsFromSuggested(cards)).toEqual([]);
-    expect(castFromSuggested(cards)).toEqual([]);
   });
 });
 
