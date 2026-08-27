@@ -107,3 +107,16 @@ When a stale CI-monitor routine is suspected, first compare the routine `status`
 **Fix:** prefer `git rebase <target> ` over `git merge <target>` when reconciling a feature branch with a moved base, specifically because rebase replays each commit's own diff (no silent-duplicate-insertion failure mode) where merge 3-way-combines full trees (can duplicate). If a merge is unavoidable (e.g., the branch is public/shared and a force-push is off the table), always rerun the *full* test suite afterward, not just the tests the issue names — a targeted rerun of only the "required" tests will not surface a duplicate-insertion bug unless one of those specific tests happens to assert single-match semantics on the duplicated content. Also: before pushing a from-scratch reconciliation, `git fetch` the target branch one more time — another agent may have already completed and pushed the same reconciliation while you were mid-work (this happened here, on the very issue about duplicate parallel work); prefer their already-pushed result over overwriting it if it's equivalent or better.
 
 ---
+
+## SKY-10770 — manifest scene `order` is per-chapter, never global
+
+**Area:** manuscript structure / scan scoping
+
+**Lesson:** `SceneEntry.order` (and `ChapterEntry.order`) is ordinal WITHIN its
+container only. Flattening scenes across chapters and then sorting the flat
+list by `order` interleaves chapters (a chapter-2 scene with order 0 sorts
+before a chapter-1 scene with order 1). To produce manuscript order, sort
+parts → chapters → scenes each inside their own container and concatenate.
+Caught by the scanScopeResolver book-scope test before it shipped.
+
+---
