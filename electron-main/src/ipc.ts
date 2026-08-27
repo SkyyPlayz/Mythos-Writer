@@ -588,6 +588,9 @@ export const IPC_CHANNELS = {
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
   ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',
   ARCHIVE_LIST_CONTINUITY: 'archive:list-continuity',
+  // M12.3 (SKY-10770): global contradiction query — always whole-manuscript,
+  // independent of any scan scope.
+  ARCHIVE_LIST_GLOBAL_CONTRADICTIONS: 'archive:list-global-contradictions',
   // Push events (main → renderer)
   ARCHIVE_CONT_SCAN_START: 'archive:cont-scan-start',
   ARCHIVE_CONT_SCAN_RESULT: 'archive:cont-scan-result',

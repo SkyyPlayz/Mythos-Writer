@@ -958,6 +958,11 @@ contextBridge.exposeInMainWorld('api', {
   archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) =>
     ipcRenderer.invoke('archive:list-continuity', options),
 
+  // M12.3 (SKY-10770): open contradictions across the WHOLE manuscript —
+  // independent of scan scope by design.
+  archiveListGlobalContradictions: () =>
+    ipcRenderer.invoke('archive:list-global-contradictions'),
+
   onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => {
     const handler = (_: unknown, data: { sceneId: string; scope: string }) => cb(data);
     ipcRenderer.on('archive:cont-scan-start', handler);
@@ -1089,7 +1094,10 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-10730 M12.1: background job queue — whole-vault scan passes run on a
   // worker thread; the UI queries progress/ETA and subscribes to push events.
   jobs: {
-    enqueue: (type: string) => ipcRenderer.invoke('jobs:enqueue', { type }),
+    // M12.3 (SKY-10770): scoped manuscript scans pass identifiers only — the
+    // main process resolves level + sceneId to scene paths from the manifest.
+    enqueue: (type: string, opts?: { scope?: { level: string; sceneId: string } }) =>
+      ipcRenderer.invoke('jobs:enqueue', { type, scope: opts?.scope }),
     list: (opts?: { status?: string; type?: string; limit?: number }) =>
       ipcRenderer.invoke('jobs:list', opts ?? {}),
     progress: (jobId: string) => ipcRenderer.invoke('jobs:progress', { jobId }),

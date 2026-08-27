@@ -355,7 +355,9 @@ import {
   listFactDecisions,
   listEntityIndex,
   getVaultIndexCacheRows,
+  isDbOpen,
 } from './db.js';
+import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
@@ -9964,6 +9966,18 @@ function registerArchiveContinuityHandlers(): void {
       return { items: rows.map(dbRowToItem) };
     }),
   );
+
+  // M12.3 (SKY-10770): global contradiction query. Deliberately ignores scan
+  // scope — a contradiction flagged in ANY scene surfaces here (SKY-10666:
+  // detection is a cheap global DB read, never a re-extraction).
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS, (event) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      if (!isDbOpen()) return { items: [] };
+      return { items: queryGlobalContradictions() };
+    }),
+  );
 }
 
 function registerContinuityHandler(): void {
@@ -10088,7 +10102,15 @@ app.whenReady().then(async () => {
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
-  registerJobsIpc(getVaultRoot);
+  registerJobsIpc(getVaultRoot, () => {
+    // M12.3: scoped scans resolve scene sets from main's own manifest read —
+    // renderer-supplied scope is identifiers only, never paths.
+    try {
+      return readManifest(getManifestPath());
+    } catch {
+      return null;
+    }
+  });
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
   registerNavigatorSyncHandlers();
