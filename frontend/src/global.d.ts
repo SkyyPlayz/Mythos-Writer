@@ -1682,6 +1682,55 @@ interface Window {
         createdAt: string;
       }>;
     }>;
+    /** M12.3 (SKY-10770): open contradictions across the WHOLE manuscript —
+     *  a cheap global DB query, independent of any scan scope. Optional so
+     *  older test harnesses that stub window.api piecemeal stay valid. */
+    archiveListGlobalContradictions?: () => Promise<{
+      items: Array<{
+        id: string;
+        category: string;
+        severity: string;
+        sceneId: string;
+        offset: number;
+        excerpt: string;
+        vaultNotePath: string;
+        vaultExcerpt: string;
+        rationale: string;
+        createdAt: string;
+        entityName: string | null;
+        entityType: string | null;
+      }>;
+    }>;
+    /** SKY-10730 M12.1 / SKY-10770 M12.3: background job queue. Scoped
+     *  manuscript scans pass identifiers only (level + anchor scene id) —
+     *  the main process resolves them to scene paths from the manifest.
+     *  Optional so older test harnesses that stub window.api stay valid. */
+    jobs?: {
+      enqueue: (
+        type: string,
+        opts?: { scope?: { level: 'scene' | 'chapter' | 'part' | 'book'; sceneId: string } },
+      ) => Promise<{ jobId?: string; error?: string }>;
+      list: (opts?: { status?: string; type?: string; limit?: number }) => Promise<{
+        jobs?: Array<Record<string, unknown>>;
+        error?: string;
+      }>;
+      progress: (jobId: string) => Promise<{ progress?: Record<string, unknown>; error?: string }>;
+      cancel: (jobId: string) => Promise<{ cancelled?: boolean; error?: string }>;
+      onEvent: (cb: (evt: {
+        kind: 'progress' | 'done' | 'failed' | 'cancelled';
+        progress: {
+          jobId: string;
+          type: string;
+          status: string;
+          totalUnits: number | null;
+          completedUnits: number;
+          skippedUnits: number;
+          etaMs: number | null;
+          ratePerSec: number | null;
+          error: string | null;
+        };
+      }) => void) => () => void;
+    };
     onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => () => void;
     onArchiveContScanResult: (cb: (data: {
       sceneId: string;

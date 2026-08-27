@@ -6,9 +6,53 @@ import type { Scene } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
 import { PanelHeader } from './components/ui/PanelChrome';
+import { DropdownSelect } from './components/ui/DropdownSelect';
 import './ContinuityPanel.css';
 
 export type { InconsistencyItem };
+
+// M12.3 (SKY-10770): scan-scope selection. The picker chooses how much of the
+// manuscript the extraction pass covers; contradiction detection stays a
+// global DB query regardless (SKY-10666 binding).
+export type ScanScopeLevel = 'scene' | 'chapter' | 'part' | 'book';
+
+const SCOPE_OPTIONS: Array<{ value: ScanScopeLevel; label: string }> = [
+  { value: 'scene', label: 'Scene' },
+  { value: 'chapter', label: 'Chapter' },
+  { value: 'part', label: 'Part' },
+  { value: 'book', label: 'Book' },
+];
+
+/** The legacy LLM continuity scan speaks active_scene/active_chapter/
+ *  full_manuscript — map the four-level picker onto it. */
+const LEGACY_SCAN_SCOPE: Record<ScanScopeLevel, 'active_scene' | 'active_chapter' | 'full_manuscript'> = {
+  scene: 'active_scene',
+  chapter: 'active_chapter',
+  part: 'full_manuscript',
+  book: 'full_manuscript',
+};
+
+function initialScope(legacy?: 'active_scene' | 'active_chapter' | 'full_manuscript'): ScanScopeLevel {
+  if (legacy === 'active_chapter') return 'chapter';
+  if (legacy === 'full_manuscript') return 'book';
+  return 'scene';
+}
+
+interface GlobalContradictionItem {
+  id: string;
+  category: string;
+  severity: string;
+  sceneId: string;
+  excerpt: string;
+  vaultNotePath: string;
+  rationale: string;
+}
+
+interface BgScanProgress {
+  completedUnits: number;
+  skippedUnits: number;
+  totalUnits: number | null;
+}
 
 type PanelState =
   | 'loading'
@@ -109,6 +153,15 @@ export default function ContinuityPanel({
   useAgentActivity(panelState === 'scanning');
   const [lastTokenUsed, setLastTokenUsed] = useState<number | null>(null);
   const [statusMsg, setStatusMsg] = useState('');
+  // M12.3: scan scope picked at the trigger; default = scene (or the legacy
+  // Settings-level scope when one is set).
+  const [scanScope, setScanScope] = useState<ScanScopeLevel>(() => initialScope(archiveScanScope));
+  // M12.3: live progress of the scoped background extraction pass.
+  const [bgScan, setBgScan] = useState<BgScanProgress | null>(null);
+  // M12.3: open contradictions across the whole manuscript — global query,
+  // never narrowed by the scan scope.
+  const [globalItems, setGlobalItems] = useState<GlobalContradictionItem[]>([]);
+  const [globalCollapsed, setGlobalCollapsed] = useState(false);
   // M9d: visible failure line when a flag action couldn't do what it says.
   const [actionError, setActionError] = useState<string | null>(null);
   const [footerExpanded, setFooterExpanded] = useState(false);
@@ -150,6 +203,41 @@ export default function ContinuityPanel({
     return () => { cancelled = true; };
   }, [enabled, scene?.id]);
 
+  // M12.3: refresh the global contradiction list — a cheap whole-manuscript
+  // DB query, deliberately independent of scene and scan scope.
+  const refreshGlobalContradictions = useCallback(() => {
+    window.api.archiveListGlobalContradictions?.()
+      .then((result) => {
+        const items = (result?.items ?? []).filter((i) => i.category === 'factual_contradiction');
+        setGlobalItems(items);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    refreshGlobalContradictions();
+  }, [enabled, scene?.id, refreshGlobalContradictions]);
+
+  // M12.3: track the scoped background extraction pass for the progress line.
+  useEffect(() => {
+    if (!enabled) return;
+    const unsub = window.api.jobs?.onEvent((evt) => {
+      if (evt.progress.type !== 'manuscript-scan') return;
+      if (evt.kind === 'progress') {
+        setBgScan({
+          completedUnits: evt.progress.completedUnits,
+          skippedUnits: evt.progress.skippedUnits,
+          totalUnits: evt.progress.totalUnits,
+        });
+      } else {
+        setBgScan(null);
+        if (evt.kind === 'done') refreshGlobalContradictions();
+      }
+    });
+    return () => { unsub?.(); };
+  }, [enabled, refreshGlobalContradictions]);
+
   // IPC event subscriptions
   useEffect(() => {
     if (!enabled) return;
@@ -172,6 +260,9 @@ export default function ContinuityPanel({
       } else {
         setPanelState('open_issues');
       }
+      // M12.3: a finished scan may have written new flags anywhere in the
+      // manuscript — refresh the global contradiction section too.
+      refreshGlobalContradictions();
     });
 
     const unsubError = window.api.onArchiveContScanError((data) => {
@@ -197,7 +288,7 @@ export default function ContinuityPanel({
       unsubError();
       unsubItemResolved?.();
     };
-  }, [enabled]);
+  }, [enabled, refreshGlobalContradictions]);
 
   const handleResolve = useCallback(async (id: string, action: ResolutionAction, note?: string) => {
     let previousItem: InconsistencyItem | undefined;
@@ -250,8 +341,14 @@ export default function ContinuityPanel({
   const handleScanNow = useCallback(() => {
     if (!scene) return;
     const prose = scene.blocks.map((b) => b.content).join('\n\n');
-    void window.api.archiveScanContinuity(scene.id, prose, archiveScanScope);
-  }, [scene, archiveScanScope]);
+    // The LLM continuity scan honors the picked scope via its legacy vocabulary…
+    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope]);
+    // …and the M12.1 extraction queue gets the real scoped scene set —
+    // identifiers only; main resolves them to paths from the manifest.
+    void window.api.jobs?.enqueue('manuscript-scan', {
+      scope: { level: scanScope, sceneId: scene.id },
+    });
+  }, [scene, scanScope]);
 
   const toggleGroup = useCallback((group: GroupKey) => {
     setCollapsedGroups((prev) => {
@@ -307,6 +404,42 @@ export default function ContinuityPanel({
       >
         {statusMsg}
       </p>
+
+      {/* M12.3: scope picker attached to the scan trigger. Default = scene;
+          wider scopes cost more extraction but never change what the global
+          contradiction section below can see. */}
+      <div className="cp-scan-toolbar">
+        <span className="cp-scan-scope-label" id="cp-scan-scope-label">Scope</span>
+        {/* Scope can be picked ahead of opening a scene — only the trigger
+            needs one. */}
+        <DropdownSelect
+          value={scanScope}
+          options={SCOPE_OPTIONS}
+          onChange={(v) => setScanScope(v as ScanScopeLevel)}
+          aria-label="Scan scope"
+          id="cp-scan-scope"
+          disabled={panelState === 'scanning'}
+        />
+        {panelState !== 'not_scanned' && (
+          <button
+            type="button"
+            className="cp-scan-now-btn cp-scan-now-btn--compact"
+            onClick={handleScanNow}
+            disabled={!scene || panelState === 'scanning'}
+            aria-label="Scan for continuity issues"
+          >
+            Scan
+          </button>
+        )}
+      </div>
+
+      {bgScan !== null && (
+        <p className="cp-bg-scan-line" role="status" data-testid="cp-bg-scan-progress">
+          <span className="cp-spinner" aria-hidden="true" />
+          Background scan {bgScan.completedUnits + bgScan.skippedUnits}
+          {bgScan.totalUnits !== null ? `/${bgScan.totalUnits}` : ''}
+        </p>
+      )}
 
       {/* Panel body */}
       {panelState === 'loading' && (
@@ -420,6 +553,44 @@ export default function ContinuityPanel({
           })}
         </ul>
       )}
+
+      {/* M12.3: contradictions elsewhere in the manuscript — fed by the
+          GLOBAL query, so a flag in a scene outside the current scan scope
+          (or the current editor scene) still surfaces here. */}
+      {(() => {
+        const elsewhere = globalItems.filter((g) => g.sceneId !== scene?.id);
+        if (elsewhere.length === 0) return null;
+        return (
+          <section
+            className="cp-global-section"
+            aria-label="Contradictions elsewhere in the manuscript"
+            data-testid="cp-global-contradictions"
+          >
+            <button
+              type="button"
+              className="cp-group-header"
+              aria-expanded={!globalCollapsed}
+              onClick={() => setGlobalCollapsed((v) => !v)}
+            >
+              <span aria-hidden="true">{globalCollapsed ? '▶' : '▼'}</span>
+              <span>Elsewhere in manuscript</span>
+              <span aria-label={`${elsewhere.length} ${elsewhere.length === 1 ? 'contradiction' : 'contradictions'}`}>
+                ({elsewhere.length})
+              </span>
+            </button>
+            {!globalCollapsed && (
+              <ul role="list" className="cp-global-list">
+                {elsewhere.map((g) => (
+                  <li key={g.id} className={`cp-global-item cp-global-item--${g.severity}`}>
+                    <span className="cp-global-excerpt">{g.excerpt}</span>
+                    <span className="cp-global-meta">{g.vaultNotePath}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })()}
 
       {/* Panel footer: token cost */}
       {lastTokenUsed !== null && panelState !== 'empty' && panelState !== 'not_scanned' && (
