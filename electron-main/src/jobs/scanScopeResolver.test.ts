@@ -108,6 +108,26 @@ describe('resolveScanScopeUnits', () => {
     expect(ids(units)).toEqual(['s1', 's2']);
   });
 
+  it('single-implicit-part story: story.chapters is authoritative over a stale wrapper-part snapshot', () => {
+    // storyParts.ts contract: the M2 migration's single untitled wrapper part
+    // can hold a stale migration-time chapter snapshot; story.chapters is the
+    // live list until a structural write heals the wrapper. s2 was added (and
+    // sDead deleted) after migration — only story.chapters knows.
+    const sDead = scene('s-dead', 5);
+    const divergent = manifest([
+      story('book-f', {
+        parts: [part('p0', 0, [chapter('c-stale', 0, [s1, sDead])], '')],
+        chapters: [chapter('c-live', 0, [s1, s2])],
+      }),
+    ]);
+    // The post-migration scene is reachable as an anchor…
+    expect(ids(resolveScanScopeUnits(divergent, { level: 'scene', sceneId: 's2' }))).toEqual(['s2']);
+    // …and book scope reflects the live list, not the snapshot.
+    const book = ids(resolveScanScopeUnits(divergent, { level: 'book', sceneId: 's1' }));
+    expect(book).toEqual(['s1', 's2']);
+    expect(book).not.toContain('s-dead');
+  });
+
   it('orders units by scene order and de-duplicates repeated ids', () => {
     const dupA = scene('dup', 1);
     const dupB = scene('dup', 0, 'scenes/dup-elsewhere.md');

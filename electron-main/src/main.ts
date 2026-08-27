@@ -1008,9 +1008,13 @@ function initJobServiceForVault(vaultRoot: string): void {
     vaultRoot,
     (input) => createJobWorker({ workerData: input }),
     (evt) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
-      }
+      // M12.3: floating panels (e.g. popped-out Continuity) track scoped
+      // scans too — broadcast like ARCHIVE_CONT_SCAN_START, not main-only.
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
+        }
+      });
     },
   );
 }

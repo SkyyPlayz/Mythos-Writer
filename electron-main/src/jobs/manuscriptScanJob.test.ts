@@ -103,6 +103,33 @@ describe('manuscript-scan scoped job', () => {
     expect(run.coverage.map((e) => e.scopePath)).toEqual([UNIT_A.path]);
   });
 
+  it('fails loudly when EVERY unit file is unreadable (stale enqueue-time resolution)', () => {
+    fs.rmSync(path.join(vaultRoot, UNIT_A.path));
+    fs.rmSync(path.join(vaultRoot, UNIT_B.path));
+    const run = runScan([UNIT_A, UNIT_B]);
+    expect(run.done).toBeUndefined();
+    const error = run.msgs.find((m) => m.kind === 'error');
+    expect(error).toBeDefined();
+    expect((error as { message: string }).message).toMatch(/changed since the scan was queued/);
+    expect(run.coverage).toEqual([]);
+  });
+
+  it('SEC: a manifest-listed scene that is a symlink out of the vault is never read into coverage', () => {
+    const outside = path.join(os.tmpdir(), `msscan-secret-${path.basename(vaultRoot)}.md`);
+    fs.writeFileSync(outside, 'SECRET OUTSIDE THE VAULT');
+    try {
+      const linkRel = 'stories/book/scenes/link.md';
+      fs.symlinkSync(outside, path.join(vaultRoot, linkRel));
+      const run = runScan([UNIT_A, { sceneId: 'scene-link', path: linkRel }]);
+      // The symlinked unit is treated like an unreadable file: counted, no
+      // coverage row, and its target's hash is never persisted.
+      expect(run.done!.completedUnits).toBe(2);
+      expect(run.coverage.map((e) => e.scopePath)).toEqual([UNIT_A.path]);
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
   it('resumes from a checkpoint that matches the unit list', () => {
     const cp: ManuscriptScanCheckpoint = {
       cursor: 1,

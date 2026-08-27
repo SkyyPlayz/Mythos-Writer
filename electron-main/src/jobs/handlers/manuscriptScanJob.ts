@@ -9,6 +9,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { assertUnderRoot } from '../../pathSecurity.js';
 import type { CoverageEntry, JobHandlerContext, ScanScopeLevel, ScanUnit } from '../types.js';
 import { coverageKey } from '../types.js';
 
@@ -71,6 +72,9 @@ export function runManuscriptScanJob(ctx: JobHandlerContext): void {
   let start = 0;
   let completed = 0;
   let skipped = 0;
+  // Units whose file couldn't be read (vanished path, containment violation).
+  // Not persisted in checkpoints — only used to fail an entirely-stale run.
+  let missing = 0;
   if (cp && typeof cp.cursor === 'number' && cp.unitListHash === unitListHash) {
     start = Math.min(Math.max(0, cp.cursor), units.length);
     completed = typeof cp.completedUnits === 'number' ? cp.completedUnits : start;
@@ -104,9 +108,15 @@ export function runManuscriptScanJob(ctx: JobHandlerContext): void {
     const unit = units[i];
     let content: Buffer;
     try {
-      content = fs.readFileSync(path.join(payload.vaultRoot, ...unit.path.split('/')));
+      const abs = path.join(payload.vaultRoot, ...unit.path.split('/'));
+      // Containment incl. symlink targets (pathSecurity): a manifest-listed
+      // scene that is a symlink pointing outside the vault must never be
+      // read — treated exactly like an unreadable file.
+      assertUnderRoot(payload.vaultRoot, abs);
+      content = fs.readFileSync(abs);
     } catch {
-      completed += 1; // scene file missing/unreadable — count it and move on
+      completed += 1; // scene file missing/unreadable/escaping — move on
+      missing += 1;
       continue;
     }
     const hash = sha256(content);
@@ -121,6 +131,18 @@ export function runManuscriptScanJob(ctx: JobHandlerContext): void {
 
     ctx.emit({ kind: 'progress', completedUnits: completed, skippedUnits: skipped });
     if ((i + 1 - start) % CHECKPOINT_EVERY === 0) flush(i + 1);
+  }
+
+  // Units resolve at ENQUEUE time, so a scan that sat queued across a story
+  // rename/vault move can find none of its files. Reporting that as success
+  // would claim a scan that never read a byte — fail it loudly instead.
+  if (start === 0 && units.length > 0 && missing === units.length) {
+    ctx.emit({
+      kind: 'error',
+      message:
+        'None of the scoped scene files could be read — the manuscript changed since the scan was queued. Run the scan again.',
+    });
+    return;
   }
 
   ctx.emit({ kind: 'done', completedUnits: completed, skippedUnits: skipped, coverage: pendingCoverage });

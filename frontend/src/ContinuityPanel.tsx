@@ -233,6 +233,10 @@ export default function ContinuityPanel({
       } else {
         setBgScan(null);
         if (evt.kind === 'done') refreshGlobalContradictions();
+        // A worker crash must not be indistinguishable from success.
+        if (evt.kind === 'failed') {
+          setActionError(`Background scan failed — ${evt.progress.error ?? 'unknown error'}`);
+        }
       }
     });
     return () => { unsub?.(); };
@@ -280,6 +284,8 @@ export default function ContinuityPanel({
             : item,
         ),
       );
+      // M12.3: the resolved flag may be one of the cross-scene contradictions.
+      refreshGlobalContradictions();
     });
 
     return () => {
@@ -325,11 +331,14 @@ export default function ContinuityPanel({
           : 'Couldn’t update the note — it no longer exists in your vault.';
         setActionError(msg);
         setStatusMsg(msg);
+      } else {
+        // M12.3: keep the cross-scene contradiction section in step.
+        refreshGlobalContradictions();
       }
     } catch {
       revert();
     }
-  }, []);
+  }, [refreshGlobalContradictions]);
 
   const handleConsentGranted = useCallback(() => {
     onConsentGranted?.();
@@ -345,9 +354,14 @@ export default function ContinuityPanel({
     void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope]);
     // …and the M12.1 extraction queue gets the real scoped scene set —
     // identifiers only; main resolves them to paths from the manifest.
-    void window.api.jobs?.enqueue('manuscript-scan', {
-      scope: { level: scanScope, sceneId: scene.id },
-    });
+    // Enqueue failures come back as { error } resolved values, not throws —
+    // surface them, or the panel would look busy while the pass never ran.
+    void window.api.jobs
+      ?.enqueue('manuscript-scan', { scope: { level: scanScope, sceneId: scene.id } })
+      .then((res) => {
+        if (res?.error) setActionError(`Background scan didn’t start — ${res.error}`);
+      })
+      .catch(() => {});
   }, [scene, scanScope]);
 
   const toggleGroup = useCallback((group: GroupKey) => {

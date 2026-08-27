@@ -37,12 +37,20 @@ function realParts(story: StoryEntry): PartEntry[] | null {
 const byOrder = <T extends { order: number }>(items: T[]): T[] =>
   items.slice().sort((a, b) => a.order - b.order);
 
+/** Part-tier contract (storyParts.ts): with a REAL Part tier, parts[] is
+ *  authoritative and story.chapters is the derived mirror. With no real tier
+ *  (absent, empty, or the single untitled M2-migration wrapper part),
+ *  story.chapters is authoritative — the wrapper's chapters can be a stale
+ *  migration-time snapshot that only heals on a structural write. */
 function chaptersOf(story: StoryEntry): ChapterEntry[] {
-  const parts = story.parts ?? [];
-  if (parts.length > 0) {
+  const parts = realParts(story);
+  if (parts) {
     return byOrder(parts).flatMap((p) => byOrder(p.chapters));
   }
-  return byOrder(story.chapters ?? []);
+  const live = byOrder(story.chapters ?? []);
+  if (live.length > 0) return live;
+  // Defensive: a wrapper-part manifest with no mirrored chapters list.
+  return byOrder(story.parts ?? []).flatMap((p) => byOrder(p.chapters));
 }
 
 /** Scenes of a chapter in manuscript order. `order` is per-chapter, so

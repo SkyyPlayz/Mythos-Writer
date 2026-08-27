@@ -493,6 +493,41 @@ describe('ContinuityPanel — M12.3 scan scope picker', () => {
     fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
     expect(mockArchiveScanContinuity).toHaveBeenCalled();
   });
+
+  it('surfaces an enqueue error instead of silently dropping the scoped scan', async () => {
+    const jobs = jobsMock();
+    jobs.enqueue.mockResolvedValue({ error: 'Scan scope resolved to no scenes — the anchor scene is not in the manifest.' });
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
+    await flushAsyncEffects();
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/Background scan didn’t start/);
+  });
+
+  it('a failed background scan reports the failure — not silence', async () => {
+    let onEventCb: ((evt: unknown) => void) | null = null;
+    const jobs = {
+      ...jobsMock(),
+      onEvent: vi.fn((cb: (evt: unknown) => void) => {
+        onEventCb = cb;
+        return vi.fn();
+      }),
+    };
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+
+    await act(async () => {
+      onEventCb?.({
+        kind: 'failed',
+        progress: {
+          jobId: 'j1', type: 'manuscript-scan', status: 'failed',
+          totalUnits: 4, completedUnits: 1, skippedUnits: 0,
+          etaMs: null, ratePerSec: null, error: 'Worker exited unexpectedly',
+        },
+      });
+    });
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/Background scan failed — Worker exited unexpectedly/);
+  });
 });
 
 describe('ContinuityPanel — M12.3 global contradictions (scope-independent)', () => {
