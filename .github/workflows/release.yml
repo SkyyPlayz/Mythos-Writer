@@ -292,9 +292,22 @@ jobs:
           PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v "$TAG" | head -1 || echo "")
 
           if [ -z "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --oneline --format="- %h %s" | head -20)
+            CHANGELOG=$(git log --oneline --format="- %h %s" | head -50)
           else
             CHANGELOG=$(git log "${PREV_TAG}..HEAD" --oneline --format="- %h %s")
+          fi
+
+          # Defensively truncate body to ~120k chars to avoid GitHub's ~125k limit.
+          # If truncated, append "…and N more" instead of failing the release.
+          MAX_CHARS=122880
+          BODY_LENGTH=${#CHANGELOG}
+          if [ $BODY_LENGTH -gt $MAX_CHARS ]; then
+            # Count how many commits we're truncating
+            TOTAL_COMMITS=$(echo "$CHANGELOG" | wc -l)
+            TRUNCATED=$(echo "$CHANGELOG" | head -c $MAX_CHARS)
+            REMAINING=$((TOTAL_COMMITS - $(echo "$TRUNCATED" | wc -l)))
+            CHANGELOG="${TRUNCATED}
+…and $REMAINING more commits"
           fi
 
           echo "notes<<EOF" >> $GITHUB_OUTPUT
@@ -304,6 +317,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update release with notes (keep as draft)
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
