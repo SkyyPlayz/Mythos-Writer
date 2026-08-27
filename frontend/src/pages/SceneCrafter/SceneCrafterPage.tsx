@@ -8,7 +8,9 @@ import {
   CRAFTER_GENERATE_COPY,
   CRAFTER_LENGTHS,
   CRAFTER_TONES,
+  VAULT_REF_COLUMNS,
   addBeat,
+  addRef,
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
@@ -17,10 +19,13 @@ import {
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
+  legacyBeatsFromLanes,
   moveBeat,
-  placesFromSuggested,
   planNotesFromVault,
+  refCardsForColumn,
+  refPickerCards,
   removeBeat,
+  removeRef,
   suggestedFromVault,
   toggleTone,
   wordCount,
@@ -29,6 +34,7 @@ import {
   type SuggestedCard,
   type SuggestedGroup,
   type VaultListItem,
+  type VaultRefColumnKey,
 } from './crafterState';
 import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
 import { useIpcStream } from '../../hooks/useIpcStream';
@@ -319,12 +325,21 @@ export default function SceneCrafterPage({
   // SKY-9878: a suggested card clicked (not dragged) while a canvas board is
   // open — handed to CanvasBoard, which places it and clears this back to null.
   const [pendingExternalCard, setPendingExternalCard] = useState<CanvasCardSeed | null>(null);
+  // SKY-11072: which vault-reference column has its `+` picker open (one at a time).
+  const [refPickerCol, setRefPickerCol] = useState<VaultRefColumnKey | null>(null);
+  const [refPickerQ, setRefPickerQ] = useState('');
 
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<CanvasBoardData | null>(null);
   const draftStreamIdRef = useRef<string | null>(null);
   draftStreamIdRef.current = draftStreamId;
+  // SKY-11072 instruction 3: the legacy-lanes → Setup-beats migration must run
+  // at most once per mount. Without this guard, a "Use disk version" reload
+  // (or Retry) re-runs loadBoard and re-seeds beats the writer just cleared
+  // on purpose, since an empty setup.beats is indistinguishable from "never
+  // migrated" — see __repro_sky11072_migration.test.tsx.
+  const beatsMigratedRef = useRef(false);
 
   // Best-effort: a notes-vault hiccup must not block the kanban board. Shared
   // by the initial load and the live-restock subscription below (SKY-9878).
@@ -352,6 +367,17 @@ export default function SceneCrafterPage({
       setBoard(nextBoard);
       setVaultItems(items);
       setBoards(savedBoards);
+      // SKY-11072 instruction 3: beats saved by the retired lanes-kanban era
+      // surface into the Setup beats list (read-only — the board file on disk
+      // is never rewritten, B4-3). Runs once per mount (beatsMigratedRef) so a
+      // later reload/retry can't re-seed beats the writer deliberately cleared.
+      if (!beatsMigratedRef.current) {
+        beatsMigratedRef.current = true;
+        const legacyBeats = legacyBeatsFromLanes(nextBoard.lanes);
+        if (legacyBeats.length > 0) {
+          setSetup((prev) => (prev.beats.length > 0 ? prev : { ...prev, beats: legacyBeats }));
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load Scene Crafter board.');
     } finally {
@@ -449,11 +475,9 @@ export default function SceneCrafterPage({
     event.dataTransfer.setData(CANVAS_CARD_DRAG_MIME, JSON.stringify(cardSeedFromSuggested(card)));
     event.dataTransfer.effectAllowed = 'copy';
   }
-  // ── M19: right kanban — beats/cast/places (§7.1, AC8) ───────────────────────
-  // SKY-11049 item 7: also the POV field's character-card dropdown — same
-  // folder-or-tag resolution feeds both surfaces.
+  // SKY-11049 item 7: the POV field's character-card dropdown — the same
+  // folder-or-tag resolution that stocks the CHARACTERS reference column.
   const castCards = castCardsFromSuggested(allSuggested);
-  const placeCards = placesFromSuggested(allSuggested);
 
   function patchSetup(patch: Partial<CrafterSetup>) {
     setSetup((prev) => ({ ...prev, ...patch }));
@@ -975,46 +999,116 @@ export default function SceneCrafterPage({
             )}
             {boardsNote && <div className="sc-boards-note">{boardsNote}</div>}
           </section>
-        </div>
 
-        {/* ── Right kanban: beats / cast / places (§7.1, AC8) ── */}
-        <aside className="sc-right-kanban" aria-label="Scene board: beats, cast, and places">
-          <div className="sc-right-kanban-col" aria-label="Beats">
-            <div className="sc-right-kanban-head">BEATS</div>
-            {setup.beats.length === 0 && <div className="sc-help">Add beats in Scene Setup — they&apos;ll show up here.</div>}
-            {setup.beats.map((beat, index) => (
-              <div className="sc-right-kanban-card" key={`${beat}-${index}`}>{beat}</div>
-            ))}
-          </div>
-          <div className="sc-right-kanban-col" aria-label="Cast">
-            <div className="sc-right-kanban-head">CAST</div>
-            {castCards.length === 0 && <div className="sc-help">No Characters notes in your vault yet.</div>}
-            {castCards.map((card) => (
-              <button
-                type="button"
-                key={card.nid}
-                className="sc-right-kanban-card sc-right-kanban-card--linked"
-                onClick={() => onOpenNote?.(card.nid)}
+          {/* ── Vault-reference columns (SKY-11072 owner ruling — prototype
+              crafterVaultCols, canvas spec §3). Inline in the same scroller
+              as Setup/Draft, exactly where the prototype puts them. Cards are
+              references to vault notes: click opens the note, × removes it
+              from THIS scene only, + adds any vault note via the same card
+              family as the suggested rail. Beats live in Scene Setup. */}
+          {VAULT_REF_COLUMNS.map((col) => {
+            const cards = refCardsForColumn(col.key, allSuggested, setup);
+            const pickerOpen = refPickerCol === col.key;
+            const pickerCards = pickerOpen
+              ? refPickerCards(col.key, allSuggested, setup, refPickerQ)
+              : [];
+            return (
+              <section
+                key={col.key}
+                className={`sc-col sc-ref-col sc-ref-col--${col.key}`}
+                aria-label={`${col.title} vault references`}
+                data-testid={`sc-ref-col-${col.key}`}
               >
-                {card.t}
-              </button>
-            ))}
-          </div>
-          <div className="sc-right-kanban-col" aria-label="Places">
-            <div className="sc-right-kanban-head">PLACES</div>
-            {placeCards.length === 0 && <div className="sc-help">No Locations notes in your vault yet.</div>}
-            {placeCards.map((card) => (
-              <button
-                type="button"
-                key={card.nid}
-                className="sc-right-kanban-card sc-right-kanban-card--linked"
-                onClick={() => onOpenNote?.(card.nid)}
-              >
-                {card.t}
-              </button>
-            ))}
-          </div>
-        </aside>
+                <div className="sc-col-head sc-ref-head">
+                  <span className="sc-ref-title">{col.title}</span>
+                  <button
+                    type="button"
+                    className="sc-ref-add"
+                    aria-label={`Add a note to ${col.title}`}
+                    aria-expanded={pickerOpen}
+                    title="Reference another vault note in this scene"
+                    onClick={() => {
+                      setRefPickerCol(pickerOpen ? null : col.key);
+                      setRefPickerQ('');
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+                {pickerOpen && (
+                  <div className="sc-ref-picker">
+                    <div className="sc-suggest-search">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <circle cx="11" cy="11" r="6.5" />
+                        <path d="M20.5 20.5L16 16" />
+                      </svg>
+                      <input
+                        autoFocus
+                        placeholder="Search your vault…"
+                        aria-label={`Search notes to add to ${col.title}`}
+                        value={refPickerQ}
+                        onChange={(event) => setRefPickerQ(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setRefPickerCol(null);
+                        }}
+                      />
+                    </div>
+                    {pickerCards.length === 0 && (
+                      <div className="sc-help">No matching vault notes to add.</div>
+                    )}
+                    {pickerCards.map((card) => (
+                      <button
+                        type="button"
+                        key={card.nid}
+                        className="sc-sugg-card sc-ref-picker-card"
+                        onClick={() => {
+                          setSetup((prev) => addRef(prev, col.key, card.nid));
+                          setRefPickerCol(null);
+                        }}
+                      >
+                        <span className="sc-sugg-av">{card.av}</span>
+                        <span className="sc-sugg-text">
+                          <span className="sc-sugg-t">{card.t}</span>
+                          <span className="sc-sugg-d">{card.d}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {cards.length === 0 && !pickerOpen && (
+                  <div className="sc-help">
+                    No {col.noun} notes in your vault yet — press + to reference any note.
+                  </div>
+                )}
+                {cards.map((card) => (
+                  <div key={card.nid} className="sc-ref-card">
+                    <button
+                      type="button"
+                      className="sc-ref-open"
+                      title="Open the note"
+                      onClick={() => onOpenNote?.(card.nid)}
+                    >
+                      <span className="sc-ref-band" aria-hidden="true">{card.av}</span>
+                      <span className="sc-ref-name">{card.t}</span>
+                      <span className="sc-ref-role">{card.d}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="sc-ref-remove"
+                      aria-label={`Remove ${card.t} from this scene`}
+                      title="Removes it from this scene only — the note stays in your vault"
+                      onClick={() => setSetup((prev) => removeRef(prev, col.key, card.nid))}
+                    >
+                      <svg width="8" height="8" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+                        <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
