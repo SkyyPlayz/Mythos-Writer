@@ -92,8 +92,11 @@ space. The prototype's separation is correct and PR #973 preserves it (`SceneCra
 - Grouped under category headers (uppercase, 9px, letter-spaced) sourced live from the vault
   (Characters/Locations/Items & Systems today — extensible to any vault folder).
 
-**Vault-reference card** (inline columns beside Scene Draft, same visual family as suggested cards, plus
-a "remove from board" × in the top-right corner of the avatar swatch).
+**Vault-reference card** (inline columns beside Scene Draft, §3 — prototype line 1451): 13px radius,
+glass fill, 1px border in the column's slot color; a 52px initials band (gradient of the slot color
+toward the next slot), then name (12px/600, one line, ellipsis) and one-line role/excerpt (10.5px,
+ellipsis); a "remove from this scene" × in the top-right corner of the band (hover → red). Hover lifts
+the card 2px with a slot-color glow. Click opens the referenced note.
 
 **Draft card** (Scene Draft column — the AI first-pass output):
 - Header: ✎ avatar + `<Scene title> — first pass`.
@@ -111,17 +114,33 @@ a "remove from board" × in the top-right corner of the avatar swatch).
     button** (the prototype only shows two — Add to board / Retry). Keep it; it's a straightforward
     forgiveness-heuristic improvement over the prototype and costs nothing.
 
-## 3. Right kanban (beats / cast / places)
+## 3. Vault-reference columns (characters / locations / items & systems)
 
-Inline aside beside the canvas-adjacent Scene Draft column (not a separate app-level right panel —
-distinct from the editor's "Scenes" tab, which is a different, read-only mini-canvas surface, §6).
-Three columns, each a vertical card stack:
-- **BEATS** — mirrors the Scene Setup beat list live.
-- **CAST** — vault Characters notes; click opens the note.
-- **PLACES** — vault Locations notes; click opens the note.
-Empty-column copy should say what's missing and where to fix it (`No Characters notes in your vault
-yet.`) rather than just "Empty" — this is already how PR #973 wrote it; keep that pattern for any new
-column added later.
+**Owner ruling, 2026-08-26 (SKY-11072):** the Setup view's right side is the prototype's
+`crafterVaultCols` — three vault-reference columns — not the earlier BEATS/CAST/PLACES kanban this
+section used to describe. The prototype wins over FULL-SPEC §7.1's old wording (both docs now agree).
+
+Three 250px columns inline in the same horizontal scroller as Scene Setup and Scene Draft (not a
+separate app-level right panel — distinct from the editor's "Scenes" tab, the read-only mini-canvas
+surface of §6), each a vertical stack of **vault-reference cards** (§2):
+- **CHARACTERS** (slot A header) — vault `Characters` folder, or any `#Character`-signalled note
+  when no such folder exists (same resolution as the POV picker).
+- **LOCATIONS** (slot B header) — vault `Locations` folder.
+- **ITEMS & SYSTEMS** (slot D header) — vault `Items & Systems` folder.
+
+Column headers carry their slot color with the prototype's soft text glow. Behaviour:
+- Cards are **references** to vault notes — click opens the note.
+- **×** (top-right of the initials band) removes the reference from THIS scene only. It never
+  deletes or edits the note; the tooltip says so.
+- **`+`** on a column header opens a picker in the same card family as the SUGGESTED CARDS rail
+  (searchable, any vault note). Picking a note adds it to that column; picking a previously-removed
+  note is the un-remove path.
+- **Beats are not a column.** Beat editing lives in the Scene Setup form only. Boards saved by the
+  retired lanes-kanban era that hold a `Beats` lane migrate those card titles into the Setup beats
+  list on load — read-only; the board file on disk is never rewritten (B4-3).
+
+Empty-column copy keeps the "say what's missing and where to fix it" pattern
+(`No Characters notes in your vault yet — press + to reference any note.`) rather than just "Empty".
 
 ## 4. Interaction spec
 
@@ -196,6 +215,12 @@ common-region: same-type cards read as a group at a glance without needing a leg
 per-category (not per-panel) assignment if new categories are added later — don't reuse slot F (chrome)
 for a 6th category; if a 6th type is needed, differentiate by icon/glyph within an existing slot color
 rather than breaking the chrome/content color separation.
+
+**Carve-out — the AI first-pass draft card (owner ruling, 2026-08-26, SKY-11072):** the one deliberate
+exception to "slot F is never used for cards". The `— first pass` card `composeDraftPassCard` places on
+the canvas (`c: 5`) keeps the **chrome color** — it marks system-generated scaffolding, not vault
+content, and the owner ruled it stays that way. No other card may use slot F. Also ruled at the same
+time: the selected-card glow on the suggested rail stays **cyan** (slot A), as shipped in PR #1343.
 
 All glass/blur/glow values (`--glass2`, `--gr`, `--bw`) inherit the user's global intensity/glass/blur
 Appearance settings — nothing on this surface should hardcode an opacity or blur radius that bypasses
