@@ -1760,14 +1760,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-11048: switch through the exact same IPC call + completion handler
   // WindowChrome's project menu uses (window.api.projectSwitch →
-  // handleProjectSwitched) — no second switch path.
-  const handleVaultTileSelect = useCallback((vaultId: string) => {
-    if (vaultId === activeVaultRoot) return;
+  // handleProjectSwitched) — no second switch path. Resolves once the vault
+  // is active (no-op if it already is) so callers can chain follow-up work
+  // (SKY-11086: e.g. opening Settings) onto the *target* vault, not whatever
+  // was active when the action was invoked.
+  const switchToVault = useCallback((vaultId: string): Promise<void> => {
+    if (vaultId === activeVaultRoot) return Promise.resolve();
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-      .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
-      .catch(() => { /* switch failed — tile stays as-is */ });
+    return (
+      window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
+        .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
+        .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
+      ?? Promise.resolve()
+    );
   }, [activeVaultRoot, navRailProjects, handleProjectSwitched]);
+
+  const handleVaultTileSelect = useCallback((vaultId: string) => {
+    switchToVault(vaultId);
+  }, [switchToVault]);
 
   // Both handlers below only touch `appSettings` (a per-vault override layered
   // on top of the registry) — no need to re-fetch the vault list itself;
@@ -1807,11 +1817,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.revealVaultFolder?.().catch(() => {});
   }, [activeVaultRoot]);
 
-  const handleVaultOpenSettings = useCallback(() => {
-    setSettingsInitialCategory('vaults');
-    setSettingsOpenToken((t) => t + 1);
-    setSettingsOpen(true);
-  }, []);
+  // SKY-11086: previously ignored `vaultId` and just opened Settings against
+  // whatever vault happened to be active — right-clicking an INACTIVE tile
+  // and choosing "Settings → this vault" silently showed the wrong vault's
+  // Vault & Files settings. Switch to the target vault first (same as a tile
+  // click), then jump the panel to that vault's settings.
+  const handleVaultOpenSettings = useCallback((vaultId: string) => {
+    switchToVault(vaultId).then(() => {
+      setSettingsInitialCategory('vaults');
+      setSettingsOpenToken((t) => t + 1);
+      setSettingsOpen(true);
+    });
+  }, [switchToVault]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
