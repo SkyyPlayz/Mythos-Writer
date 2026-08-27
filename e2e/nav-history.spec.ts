@@ -197,17 +197,25 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
 
-      // Fire the DOM mousedown (button 3 = X1 back) first, then immediately
-      // fire the IPC `nav-history:back` channel from the main process — this
-      // simulates the Windows double-delivery within the 50 ms coalescing window.
-      // The guard must suppress the IPC copy, leaving exactly one step back.
-      await page.evaluate(() => {
-        window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }));
-      });
-      // Send the IPC back event from main — arrives async but well within 50 ms
-      await app.evaluate(({ BrowserWindow }) => {
+      // Fire the DOM mousedown (button 3 = X1 back), then immediately fire the
+      // IPC `nav-history:back` channel — this simulates the Windows
+      // double-delivery within the 50 ms coalescing window. The guard must
+      // suppress the IPC copy, leaving exactly one step back.
+      //
+      // Both events MUST be delivered from one main-process evaluate: firing
+      // the mousedown via a separate page.evaluate adds a full Playwright
+      // round-trip before the IPC send, which on a slow CI runner exceeds the
+      // 50 ms window — the app then correctly treats the late IPC as a
+      // standalone back gesture and double-navigates (SKY-11083 flake).
+      // executeJavaScript resolves after the renderer runs the dispatch, so
+      // the follow-up send() is a single main→renderer hop (~1-5 ms) behind.
+      await app.evaluate(async ({ BrowserWindow }) => {
         const win = BrowserWindow.getAllWindows()[0];
-        win?.webContents.send('nav-history:back');
+        if (!win) throw new Error('no BrowserWindow for SKY-11042 double-delivery simulation');
+        await win.webContents.executeJavaScript(
+          "window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }))",
+        );
+        win.webContents.send('nav-history:back');
       });
 
       // Should have gone back exactly once: we're on the Notes tab showing "Cross Links"
