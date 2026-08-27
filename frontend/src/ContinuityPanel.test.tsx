@@ -564,6 +564,7 @@ describe('ContinuityPanel — M12.3 scan scope picker', () => {
       'sc-1',
       expect.stringContaining('Her eyes were green'),
       'active_chapter',
+      'story_vault',
     );
   });
 
