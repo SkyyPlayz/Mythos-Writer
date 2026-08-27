@@ -658,6 +658,11 @@ export const IPC_CHANNELS = {
   JOBS_CANCEL: 'jobs:cancel',
   /** Push channel (main → renderer): JobEvent progress/terminal updates. */
   JOBS_EVENT: 'jobs:event',
+
+  // SKY-10772 M12.5: AI Agents index controls (Settings panel)
+  AGENT_INDEX_GET_STATS: 'agent-index:get-stats',
+  AGENT_INDEX_CLEAN: 'agent-index:clean',
+  AGENT_INDEX_REBUILD: 'agent-index:rebuild',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -1079,6 +1084,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
   [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
   [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
+  // SKY-10772 M12.5: AI Agents index controls
+  [IPC_CHANNELS.AGENT_INDEX_GET_STATS]: (payload: never) => { entityCount: number; lastScanAt: string | null; factDecisionCount: number; cacheRowCount: number };
+  [IPC_CHANNELS.AGENT_INDEX_CLEAN]: (payload: never) => { decisionsPreserved: number; derivedWiped: boolean; tombstonesIntact: boolean };
+  [IPC_CHANNELS.AGENT_INDEX_REBUILD]: (payload: never) => { jobId: string } | { error: string };
   // SKY-6306 M21: Multi-timeline store
   [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload: TimelinesGetStorePayload) => TimelinesGetStoreResponse;
   [IPC_CHANNELS.TIMELINES_UPSERT]: (payload: TimelinesUpsertPayload) => TimelinesUpsertResponse;
@@ -2435,6 +2444,9 @@ export interface AppSettings {
 
   // SKY-6225: Built-in Auto Note Linker settings (separate from legacy autoLinker.mode)
   autoLinkerSettings?: import('./autoLinker/index.js').AutoLinkerSettings;
+
+  // SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default).
+  agentIndexAutoScan?: boolean;
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */

@@ -1101,6 +1101,13 @@ contextBridge.exposeInMainWorld('api', {
     },
   },
 
+  // SKY-10772 M12.5: AI Agents index controls
+  agentIndex: {
+    getStats: () => ipcRenderer.invoke('agent-index:get-stats'),
+    clean: () => ipcRenderer.invoke('agent-index:clean'),
+    rebuild: () => ipcRenderer.invoke('agent-index:rebuild'),
+  },
+
   // SKY-3189 (G3): true when running in a packaged Electron build.
   // Web Speech API does not function in packaged builds (requires Google's servers, absent in shipped app).
   isPackaged: process.env.MYTHOS_IS_PACKAGED === '1',
