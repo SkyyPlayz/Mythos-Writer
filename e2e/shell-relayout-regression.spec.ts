@@ -4,8 +4,9 @@
 //   - Single GlobalRightSidebar instance across every AppNavRail/tab mode (Story, Notes, Brainstorm).
 //   - Story sub-view render sweep (editor/kanban/structure/timeline) under the new shell.
 //   - Beta 4 M4: workspace tab strip visibility — tabs are documents now, so
-//     the strip starts empty on a fresh vault, shows a static pseudo-tab on
-//     Scene Crafter, and is hidden on Timeline/Brainstorm (FULL-SPEC §4).
+//     the strip starts empty on a fresh vault, shows the pinned Scene Crafter
+//     Setup tab on Scene Crafter (SKY-11069: docs/board strip), and is hidden
+//     on Timeline/Brainstorm (FULL-SPEC §4).
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -181,10 +182,16 @@ test.describe('Shell relayout — M4 workspace tab strip visibility', () => {
     await expect(page.locator('[data-testid="wtb-new-tab-btn"]')).toBeVisible();
   });
 
-  test('Scene Crafter (kanban) shows the static view pseudo-tab', async () => {
+  test('Scene Crafter (kanban) shows the pinned Setup tab in the workspace strip', async () => {
+    // SKY-11069 owner ruling: Scene Crafter is a docs/board strip now — a
+    // pinned "Scene Crafter" Setup tab, not the static view pseudo-tab.
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
-    await expect(page.locator('[data-testid="wtb-static-tab"]')).toHaveText(/Scene Crafter/, { timeout: 5_000 });
-    // The + (provisional scene) stays available (prototype 512).
+    const setupTab = page.locator(
+      '[role="tablist"][aria-label="Workspace tabs"] [role="tab"]',
+      { hasText: 'Scene Crafter' },
+    );
+    await expect(setupTab).toBeVisible({ timeout: 5_000 });
+    // The + (new board) stays available (SKY-11069: board strip "+" creates a board).
     await expect(page.locator('[data-testid="wtb-new-tab-btn"]')).toBeVisible();
   });
 
