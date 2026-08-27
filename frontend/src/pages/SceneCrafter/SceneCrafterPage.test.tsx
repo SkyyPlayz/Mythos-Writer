@@ -451,6 +451,43 @@ describe('SceneCrafterPage — SKY-11072 vault-reference columns (owner ruling: 
     expect(screen.getByTestId('sc-beat-0')).toHaveTextContent('Cold open on the sealed door');
     expect(screen.getByTestId('sc-beat-1')).toHaveTextContent('The door answers');
   });
+
+  it('does not re-seed legacy beats a writer deliberately cleared after a reload (Use disk version)', async () => {
+    const legacyBoard = cloneBoard();
+    legacyBoard.lanes.push({
+      name: 'Beats',
+      cards: [
+        { wikilink: 'x', title: 'Cold open on the sealed door', done: false, tags: [], raw: '' },
+        { wikilink: 'y', title: 'The door answers', done: false, tags: [], raw: '' },
+      ],
+    });
+    let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const api = makeApi({
+      sceneCrafterGetBoard: vi.fn().mockResolvedValue(legacyBoard),
+      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
+        externalEditHandler = cb;
+        return vi.fn();
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    // Migration seeded both legacy beats; the writer clears them on purpose.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat Cold open on the sealed door' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat The door answers' }));
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
+
+    // An external edit reloads the board (Use disk version) — the migration
+    // must not run a second time and re-seed what was just cleared.
+    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: /use disk version/i }));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
+  });
 });
 
 describe('SceneCrafterPage — SKY-8207 saved boards survive a remount (app-restart simulation)', () => {

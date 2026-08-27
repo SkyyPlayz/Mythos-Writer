@@ -334,6 +334,12 @@ export default function SceneCrafterPage({
   const pendingSaveRef = useRef<CanvasBoardData | null>(null);
   const draftStreamIdRef = useRef<string | null>(null);
   draftStreamIdRef.current = draftStreamId;
+  // SKY-11072 instruction 3: the legacy-lanes → Setup-beats migration must run
+  // at most once per mount. Without this guard, a "Use disk version" reload
+  // (or Retry) re-runs loadBoard and re-seeds beats the writer just cleared
+  // on purpose, since an empty setup.beats is indistinguishable from "never
+  // migrated" — see __repro_sky11072_migration.test.tsx.
+  const beatsMigratedRef = useRef(false);
 
   // Best-effort: a notes-vault hiccup must not block the kanban board. Shared
   // by the initial load and the live-restock subscription below (SKY-9878).
@@ -363,11 +369,14 @@ export default function SceneCrafterPage({
       setBoards(savedBoards);
       // SKY-11072 instruction 3: beats saved by the retired lanes-kanban era
       // surface into the Setup beats list (read-only — the board file on disk
-      // is never rewritten, B4-3). Beats the writer already typed this session
-      // win over the migration on a reload/retry.
-      const legacyBeats = legacyBeatsFromLanes(nextBoard.lanes);
-      if (legacyBeats.length > 0) {
-        setSetup((prev) => (prev.beats.length > 0 ? prev : { ...prev, beats: legacyBeats }));
+      // is never rewritten, B4-3). Runs once per mount (beatsMigratedRef) so a
+      // later reload/retry can't re-seed beats the writer deliberately cleared.
+      if (!beatsMigratedRef.current) {
+        beatsMigratedRef.current = true;
+        const legacyBeats = legacyBeatsFromLanes(nextBoard.lanes);
+        if (legacyBeats.length > 0) {
+          setSetup((prev) => (prev.beats.length > 0 ? prev : { ...prev, beats: legacyBeats }));
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load Scene Crafter board.');
