@@ -10,7 +10,7 @@
 // mutation belongs exclusively to the M12.B4b command layer — a continuity
 // check driven from here can never rewrite timeline data.
 
-import type { Manifest } from './ipc.js';
+import type { ChapterEntry, Manifest, StoryEntry } from './ipc.js';
 import type { SceneFileData } from './vault.js';
 import { readSceneFile } from './vault.js';
 import type {
@@ -49,11 +49,13 @@ export interface ManuscriptPassScene {
   metaMood?: string;
   entityCharacterIds?: string[];
   entityLocationId?: string;
+  entityArcs?: string[];
+  metaWordCount?: number;
 }
 
 export interface ManuscriptSnapshot {
   /** Every story's scenes in manuscript reading order (story order as listed,
-   *  then chapter.order, then scene.order — same traversal as export). */
+   *  then part-aware chapter order — see orderedChapters — then scene.order). */
   scenes: ManuscriptPassScene[];
   /** Scenes whose .md could not be read. Surfaced, never silent — a missing
    *  file must not masquerade as an empty scene (gh-944). */
@@ -64,6 +66,27 @@ export interface ManuscriptSnapshot {
 /** Injectable for tests (spy readers proving the single-read guarantee). */
 export type SceneFileReader = (vaultRoot: string, relativePath: string) => SceneFileData;
 
+/**
+ * Reading order for one story. Parts are the mutation authority (M2 /
+ * SKY-9017): when they exist, reading order is parts by `part.order`, then
+ * chapters by `chapter.order` WITHIN each part — matching BookPreview and
+ * manuscriptModel's flatUnits. A global sort of the flat `story.chapters`
+ * mirror diverges from that whenever per-part chapter orders are
+ * non-monotonic (reachable via delete-chapter → add-part → add-chapter), so
+ * the mirror is only trusted for part-less pre-M2 shapes — or when the parts
+ * tier exists but holds no chapters (a stale hand-edited vault must not
+ * silently produce an empty manuscript).
+ */
+function orderedChapters(story: StoryEntry): ChapterEntry[] {
+  const byOrder = <T extends { order: number }>(items: T[]): T[] =>
+    [...items].sort((a, b) => a.order - b.order);
+  if (story.parts && story.parts.length > 0) {
+    const partChapters = byOrder(story.parts).flatMap((part) => byOrder(part.chapters));
+    if (partChapters.length > 0) return partChapters;
+  }
+  return byOrder(story.chapters);
+}
+
 export function buildManuscriptSnapshot(
   vaultRoot: string,
   manifest: Manifest,
@@ -73,7 +96,7 @@ export function buildManuscriptSnapshot(
   const missingSceneIds: string[] = [];
 
   for (const story of manifest.stories) {
-    const chapters = [...story.chapters].sort((a, b) => a.order - b.order);
+    const chapters = orderedChapters(story);
     chapters.forEach((chapter, chapterIdx) => {
       const orderedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
       for (const scene of orderedScenes) {
@@ -102,6 +125,8 @@ export function buildManuscriptSnapshot(
           metaMood: data.metaMood,
           entityCharacterIds: data.entityCharacterIds,
           entityLocationId: data.entityLocationId,
+          entityArcs: data.entityArcs,
+          metaWordCount: data.metaWordCount,
         });
       }
     });

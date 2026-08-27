@@ -19,11 +19,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChapterEntry, Manifest, SceneEntry, StoryEntry } from './ipc.js';
+import type { ChapterEntry, Manifest, PartEntry, SceneEntry, StoryEntry } from './ipc.js';
 import type { SceneFileData } from './vault.js';
 import { defaultManifest, readSceneFile, writeManifest, writeSceneFile } from './vault.js';
 import type { ArchiveIndex } from './archiveAgent.js';
 import { createSeedTimelinesStore, readTimelinesStore, writeTimelinesStore } from './timelines/store.js';
+import { writeProposalStore } from './timelineProposals.js';
 import {
   buildManuscriptSnapshot,
   runContinuityChecksFromSnapshot,
@@ -150,6 +151,8 @@ function writeStandardVault(): Manifest {
     pov: 'Elara',
     metaMood: 'calm',
     entityCharacterIds: ['e-elara'],
+    entityArcs: ['arc-tide'],
+    metaWordCount: 21,
   });
   writeSceneFixture(tmpDir, sceneB, 'She walked on.');
   writeSceneFixture(tmpDir, sceneC, PROSE_CH2);
@@ -184,7 +187,49 @@ describe('buildManuscriptSnapshot', () => {
     expect(sceneA.pov).toBe('Elara');
     expect(sceneA.metaMood).toBe('calm');
     expect(sceneA.entityCharacterIds).toEqual(['e-elara']);
+    // Full entity/meta triples — TIMELINE_GET_SCENES exposes entityArcs and
+    // metaWordCount too, so the M12.B4b rebuild must get them from this same
+    // read rather than re-opening scene files.
+    expect(sceneA.entityArcs).toEqual(['arc-tide']);
+    expect(sceneA.metaWordCount).toBe(21);
     expect(sceneA.prose).toBe(PROSE_CH1);
+  });
+
+  it('follows parts order when parts exist (parts are the mutation authority, M2/SKY-9017)', () => {
+    // The delete-chapter → add-part → add-chapter history leaves per-part
+    // chapter orders non-monotonic: Part 1 holds ch-c(order 2), Part 2 holds
+    // ch-n(order 1). Every reading surface renders ch-c first; a global
+    // chapter.order sort would reverse them.
+    const sceneC = makeScene('sc-c', 1, { path: 'scenes/sc-c.md' });
+    const sceneN = makeScene('sc-n', 1, { path: 'scenes/sc-n.md' });
+    const chC = makeChapter('ch-c', 2, [sceneC]);
+    const chN = makeChapter('ch-n', 1, [sceneN]);
+    const parts: PartEntry[] = [
+      { id: 'p-1', title: 'Part 1', order: 0, note: [], chapters: [chC], createdAt: CREATED_AT, updatedAt: CREATED_AT },
+      { id: 'p-2', title: 'Part 2', order: 1, note: [], chapters: [chN], createdAt: CREATED_AT, updatedAt: CREATED_AT },
+    ];
+    const manifest: Manifest = {
+      ...defaultManifest(tmpDir),
+      stories: [{ ...makeStory('st-1', [chC, chN]), parts }],
+    };
+    writeManifest(path.join(tmpDir, 'manifest.json'), manifest);
+    writeSceneFixture(tmpDir, sceneC, 'Part one prose.');
+    writeSceneFixture(tmpDir, sceneN, 'Part two prose.');
+
+    const snapshot = buildManuscriptSnapshot(tmpDir, manifest);
+    expect(snapshot.scenes.map((s) => s.sceneId)).toEqual(['sc-c', 'sc-n']);
+    expect(snapshot.scenes.map((s) => s.chapterNumber)).toEqual([1, 2]);
+  });
+
+  it('falls back to the flat chapter mirror when the parts tier exists but holds no chapters', () => {
+    // A stale hand-edited vault (parts present but empty) must not silently
+    // produce an empty manuscript for the checks to bless.
+    const manifest = writeStandardVault();
+    manifest.stories[0].parts = [
+      { id: 'p-1', title: 'Part 1', order: 0, note: [], chapters: [], createdAt: CREATED_AT, updatedAt: CREATED_AT },
+    ];
+    const snapshot = buildManuscriptSnapshot(tmpDir, manifest);
+    expect(snapshot.scenes.map((s) => s.sceneId)).toEqual(['sc-a', 'sc-b', 'sc-c']);
   });
 
   it('toManuscriptScenes adapts to Check 1 input preserving order', () => {
@@ -222,6 +267,27 @@ describe('single manuscript read shared by both consumers (M12.B4a AC §1)', () 
     expect(events).toHaveLength(3);
     // The proof: no consumer triggered another manuscript read.
     expect(spyReader).toHaveBeenCalledTimes(3);
+  });
+
+  it('fs-level proof: the combined run opens each scene file exactly once, even via read paths that bypass the injection seam', () => {
+    const manifest = writeStandardVault();
+    // Spy at the fs boundary, not the injection seam — a regression that calls
+    // readSceneFile (or fs directly) inside the checks or a consumer would be
+    // invisible to an injected spy reader but is counted here.
+    const readSpy = vi.spyOn(fs, 'readFileSync');
+
+    const snapshot = buildManuscriptSnapshot(tmpDir, manifest);
+    const continuity = runContinuityChecksFromSnapshot(snapshot, makeIndex());
+    const events = snapshot.scenes.map((s) => ({
+      sceneId: s.sceneId,
+      chapter: s.chapterNumber,
+      chronologicalDate: s.chronologicalDate,
+    }));
+    expect(continuity.vaultSuggestions.length).toBeGreaterThan(0);
+    expect(events).toHaveLength(3);
+
+    const sceneFileReads = readSpy.mock.calls.filter(([p]) => String(p).endsWith('.md'));
+    expect(sceneFileReads).toHaveLength(3);
   });
 });
 
@@ -322,14 +388,41 @@ function naiveContinuityCheckThatAlsoRebuildsTimeline(
 describe('read-only w.r.t. timeline data (M12.B4a AC §2 + §3)', () => {
   function writeVaultWithTimeline(): Manifest {
     const manifest = writeStandardVault();
-    // Persist a real timelines store so there is timeline data to protect.
-    writeTimelinesStore(tmpDir, createSeedTimelinesStore(CREATED_AT));
+    // Persist a real timelines store TWICE — the second write rotates the
+    // first into timelines.json.bak, so the backup genuinely exists and a
+    // pass that rewrites-or-rotates-only-when-present is still caught.
+    const store = createSeedTimelinesStore(CREATED_AT);
+    writeTimelinesStore(tmpDir, store);
+    writeTimelinesStore(tmpDir, store);
+    // …and a populated proposals store, the third timeline file the ticket
+    // names, via its real writer.
+    writeProposalStore(tmpDir, {
+      proposals: [
+        {
+          id: 'prop-1',
+          sceneId: 'sc-a',
+          kind: 'date',
+          value: '0002-03-04',
+          reason: 'ISO date in prose',
+          confidence: 0.85,
+          source: 'ai',
+          isEstimated: true,
+          status: 'pending',
+          createdAt: CREATED_AT,
+        },
+      ],
+    });
     return manifest;
   }
 
   it('a full continuity check leaves every vault file byte-identical (timelines.json included)', () => {
     const manifest = writeVaultWithTimeline();
     const before = hashVaultFiles(tmpDir);
+    // Guard against fixture rot: all three protected timeline files must
+    // actually exist before the byte-identity claim means anything.
+    expect(Object.keys(before)).toEqual(
+      expect.arrayContaining(['timelines.json', 'timelines.json.bak', 'timeline-proposals.json']),
+    );
 
     const snapshot = buildManuscriptSnapshot(tmpDir, manifest);
     runContinuityChecksFromSnapshot(snapshot, makeIndex());
