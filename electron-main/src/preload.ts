@@ -626,6 +626,11 @@ contextBridge.exposeInMainWorld('api', {
   projectList: () => ipcRenderer.invoke('project:list', undefined),
   // Beta 4 M2 — per-vault stats for the vault-switcher popover
   projectStats: () => ipcRenderer.invoke('project:stats', undefined),
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+  projectIcons: () => ipcRenderer.invoke('project:icons', undefined),
+  projectIconSet: (payload: import('./ipc.js').ProjectIconSetPayload) =>
+    ipcRenderer.invoke('project:iconSet', payload),
+  projectIconPick: () => ipcRenderer.invoke('project:iconPick', undefined),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {

@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
@@ -1713,14 +1714,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       .catch(() => { /* non-fatal — rail renders without vault tiles */ });
   }, []);
 
-  useEffect(() => { loadVaults(); }, [loadVaults]);
+  // SKY-11068: per-vault icon, vault-local — shared by the nav-rail tiles,
+  // the title-bar switcher, and Settings > Mythos vaults.
+  const { icons: vaultIconsByRoot, loadIcons: loadVaultIcons, setVaultIcon, pickIconImage } = useVaultIcons();
+
+  useEffect(() => { loadVaults(); loadVaultIcons(); }, [loadVaults, loadVaultIcons]);
 
   // Derived display shape — recomputed whenever the raw list, the active
   // vault, or a per-vault display-name/icon override changes.
   const navRailVaults: NavRailVault[] = navRailProjects.map((p) => ({
     id: p.vaultRoot,
     name: appSettings?.vaultDisplayNames?.[p.vaultRoot] ?? (deriveVaultDisplayName(p) || p.name),
-    icon: appSettings?.vaultIcons?.[p.vaultRoot],
+    icon: vaultIconsByRoot[p.vaultRoot],
     active: p.vaultRoot === activeVaultRoot,
   }));
 
@@ -1796,19 +1801,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, [navRailVaults, requestText]);
 
-  const handleVaultSetIcon = useCallback(async (vaultId: string) => {
-    const icon = await requestText('Icon for this vault (an emoji or 1-2 letters):');
-    if (icon === null) return;
-    const trimmed = icon.trim().slice(0, 4);
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const vaultIcons = { ...(prev.vaultIcons ?? {}) };
-      if (trimmed) vaultIcons[vaultId] = trimmed; else delete vaultIcons[vaultId];
-      const next = { ...prev, vaultIcons };
-      window.api?.settingsSet?.(next).catch(() => {});
-      return next;
+  // SKY-11068: replaces the old text-prompt + app-global appSettings.vaultIcons
+  // storage — icons are now vault-local (mythos.json) via useVaultIcons, so a
+  // vault's icon travels with it on move/copy instead of living in this app's
+  // settings file.
+  const handleVaultIconPickImage = useCallback((vaultId: string) => {
+    pickIconImage()?.then((res) => {
+      if (res?.filePath) setVaultIcon(vaultId, { kind: 'image', sourcePath: res.filePath });
     });
-  }, [requestText]);
+  }, [pickIconImage, setVaultIcon]);
+
+  const handleVaultIconSet = useCallback((vaultId: string, icon: VaultIconSetInput) => {
+    setVaultIcon(vaultId, icon);
+  }, [setVaultIcon]);
 
   // Only the active vault can be revealed — no IPC reveals an arbitrary path,
   // just the current Story Vault root (global.d.ts revealVaultFolder).
@@ -5796,7 +5801,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onVaultSelect={handleVaultTileSelect}
             onNewVault={() => { void createMythosVault(); }}
             onVaultRename={(id) => { void handleVaultRename(id); }}
-            onVaultSetIcon={(id) => { void handleVaultSetIcon(id); }}
+            onVaultIconPickImage={handleVaultIconPickImage}
+            onVaultIconSet={handleVaultIconSet}
             onVaultReveal={handleVaultReveal}
             onVaultOpenSettings={handleVaultOpenSettings}
           />

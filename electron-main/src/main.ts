@@ -538,6 +538,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
+import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -5505,6 +5506,43 @@ const handlers: IpcHandlers = {
         ...getRecentProjects(),
       ]),
     };
+  },
+
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos
+  // vaults. Same recent-projects + active-vault list as PROJECT_STATS.
+  [IPC_CHANNELS.PROJECT_ICONS]: () => {
+    return {
+      icons: collectProjectIcons([{ vaultRoot: getVaultRoot() }, ...getRecentProjects()]),
+    };
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: import('./ipc.js').ProjectIconSetPayload) => {
+    // SKY-11068 follow-up (mirrors MYT-789 on PROJECT_SWITCH): setProjectIcon
+    // writes into <vaultRoot's mythos root>/vault-icon.<ext> and rewrites its
+    // mythos.json. Without this gate a compromised renderer could pass any
+    // structurally-valid v2 vault path — not just the active/known vaults —
+    // and get an arbitrary-directory file write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return setProjectIcon({ ...payload, vaultRoot: gate.vaultRoot });
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose Story Icon',
+      buttonLabel: 'Set Icon',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
