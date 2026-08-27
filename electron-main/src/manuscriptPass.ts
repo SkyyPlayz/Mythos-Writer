@@ -13,6 +13,7 @@
 import type { Manifest } from './ipc.js';
 import type { SceneFileData } from './vault.js';
 import { readSceneFile } from './vault.js';
+import { chaptersOf } from './jobs/scanScopeResolver.js';
 import type {
   ArchiveIgnoreKey,
   ArchiveIndex,
@@ -49,11 +50,13 @@ export interface ManuscriptPassScene {
   metaMood?: string;
   entityCharacterIds?: string[];
   entityLocationId?: string;
+  entityArcs?: string[];
+  metaWordCount?: number;
 }
 
 export interface ManuscriptSnapshot {
   /** Every story's scenes in manuscript reading order (story order as listed,
-   *  then chapter.order, then scene.order — same traversal as export). */
+   *  then part-aware chapter order — see orderedChapters — then scene.order). */
   scenes: ManuscriptPassScene[];
   /** Scenes whose .md could not be read. Surfaced, never silent — a missing
    *  file must not masquerade as an empty scene (gh-944). */
@@ -64,6 +67,15 @@ export interface ManuscriptSnapshot {
 /** Injectable for tests (spy readers proving the single-read guarantee). */
 export type SceneFileReader = (vaultRoot: string, relativePath: string) => SceneFileData;
 
+// Reading order comes from the ONE main-process traversal, shared with the
+// scoped-scan resolver (chaptersOf, SKY-10770): parts by part.order, then
+// chapters by chapter.order WITHIN each part when a REAL Part tier exists
+// (absent/empty/single-untitled-wrapper parts don't count — the wrapper's
+// chapters can be a stale migration snapshot); the flat story.chapters mirror
+// otherwise. A global sort of the mirror is wrong — per-part chapter orders
+// are not globally monotonic (reachable via delete-chapter → add-part →
+// add-chapter).
+
 export function buildManuscriptSnapshot(
   vaultRoot: string,
   manifest: Manifest,
@@ -73,7 +85,7 @@ export function buildManuscriptSnapshot(
   const missingSceneIds: string[] = [];
 
   for (const story of manifest.stories) {
-    const chapters = [...story.chapters].sort((a, b) => a.order - b.order);
+    const chapters = chaptersOf(story);
     chapters.forEach((chapter, chapterIdx) => {
       const orderedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
       for (const scene of orderedScenes) {
@@ -102,6 +114,8 @@ export function buildManuscriptSnapshot(
           metaMood: data.metaMood,
           entityCharacterIds: data.entityCharacterIds,
           entityLocationId: data.entityLocationId,
+          entityArcs: data.entityArcs,
+          metaWordCount: data.metaWordCount,
         });
       }
     });
