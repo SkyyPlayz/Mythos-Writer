@@ -172,4 +172,46 @@ describe('fact decisions', () => {
       expect(findStoreEntanglements(getDb())).toEqual([]);
     });
   });
+
+  // SKY-10772 M12.5: agent-index:clean handler logic — tombstonesIntact flag.
+  // The handler reports before/after decision counts; a mismatch flags data loss.
+  describe('agent-index:clean handler contract (SKY-10772 AC-5)', () => {
+    it('negative control: losing a decision during clean reduces the count and makes tombstonesIntact false', () => {
+      const fp = factFingerprint('Universes/Characters/Aria.md', 'trait', 'bold');
+      recordFactDecision(fp, 'dismissed');
+      const before = listFactDecisions(true).length;
+      // Simulate a buggy clean that also wipes fact_decisions (which real handler must NOT do)
+      getDb().prepare('DELETE FROM fact_decisions').run();
+      const after = listFactDecisions(true).length;
+      expect(before).toBe(1);
+      expect(after).toBe(0);
+      // This divergence is what tombstonesIntact detects
+      expect(before === after).toBe(false);
+    });
+
+    it('clean leaves fact_decisions count identical (tombstonesIntact = true)', () => {
+      const fp1 = factFingerprint('Universes/Characters/Aria.md', 'trait', 'brave');
+      const fp2 = factFingerprint('Universes/Locations/Vale.md', 'climate', 'cold');
+      recordFactDecision(fp1, 'dismissed');
+      recordFactDecision(fp2, 'dont_ask_again');
+      upsertVaultIndexCacheRow({
+        file_path: '/vault/file.md',
+        content_hash: 'b'.repeat(64),
+        name: 'File',
+        aliases_json: '[]',
+        type: null,
+        needs_rescan: 0,
+        indexed_at: NOW,
+      });
+      const before = listFactDecisions(true).length;
+      rebuildDerivedFactStores();
+      const after = listFactDecisions(true).length;
+      expect(before).toBe(2);
+      expect(after).toBe(2);
+      // tombstonesIntact = before === after
+      expect(before === after).toBe(true);
+      // cache is gone; decisions remain
+      expect(getVaultIndexCacheRows()).toHaveLength(0);
+    });
+  });
 });

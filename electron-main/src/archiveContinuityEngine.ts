@@ -356,7 +356,7 @@ export interface InternalPrePassCandidate {
   /** Where this entity was already mentioned, earlier in the manuscript —
    *  the "established" facts the current scene is checked against. Capped
    *  to bound prompt size on long manuscripts. */
-  priorMentions: Array<{ sceneId: string; sceneTitle: string; scenePath: string; excerpt: string }>;
+  priorMentions: Array<{ sceneId: string; title: string; scenePath: string; excerpt: string }>;
 }
 
 const MAX_PRIOR_MENTIONS_PER_ENTITY = 5;
@@ -388,7 +388,7 @@ function findMentionExcerpt(text: string, name: string, aliases: string[]): stri
  */
 export function runInternalPrePass(
   sceneText: string,
-  priorScenes: Array<{ sceneId: string; sceneTitle: string; scenePath: string; prose: string }>,
+  priorScenes: Array<{ sceneId: string; title: string; scenePath: string; prose: string }>,
   archiveIndex: ArchiveIndex,
 ): InternalPrePassCandidate[] {
   const candidates: InternalPrePassCandidate[] = [];
@@ -401,7 +401,7 @@ export function runInternalPrePass(
     for (const scene of priorScenes) {
       const excerpt = findMentionExcerpt(scene.prose, record.name, record.aliases);
       if (excerpt) {
-        priorMentions.push({ sceneId: scene.sceneId, sceneTitle: scene.sceneTitle, scenePath: scene.scenePath, excerpt });
+        priorMentions.push({ sceneId: scene.sceneId, title: scene.title, scenePath: scene.scenePath, excerpt });
       }
     }
     if (priorMentions.length === 0) continue; // first appearance — nothing established yet
@@ -700,3 +700,5 @@ export function itemToDbRow(
     created_at: item.createdAt,
   };
 }
+
+

@@ -9,10 +9,12 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { runJobWorker } from './jobWorkerCore.js';
 import type { JobHandler, WorkerInput } from './types.js';
 import { runVaultScanJob } from './handlers/vaultScanJob.js';
+import { runManuscriptScanJob } from './handlers/manuscriptScanJob.js';
 import { runSyntheticLoadJob } from './handlers/syntheticLoadJob.js';
 
 const HANDLERS: Record<string, JobHandler> = {
   'vault-scan': runVaultScanJob,
+  'manuscript-scan': runManuscriptScanJob,
   'synthetic-load': runSyntheticLoadJob,
 };
 

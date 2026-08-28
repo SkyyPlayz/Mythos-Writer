@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { reorderNavConfigItems } from './components/SettingsPanel/settingsPanelTypes';
 import { ContextMenu, type MenuItemDef } from './components/ui/Menu';
-import { avatarForTitle } from './canvas/canvasTypes';
+import { VaultIconAvatar } from './components/ui/VaultIconAvatar';
+import { VaultIconEditMenu } from './components/ui/VaultIconEditMenu';
+import type { VaultIconSetInput } from './hooks/useVaultIcons';
 import './AppNavRail.css';
 
 /** Beta 3 M7: one row of the Stories popover (prototype HTML 179–203). */
@@ -25,8 +27,11 @@ export interface NavRailVault {
   id: string;
   name: string;
   active: boolean;
-  /** Short glyph/emoji set via the tile's context menu. Absent → initials. */
-  icon?: string;
+  /**
+   * SKY-11068: the vault's author-set icon (image or glyph), stored
+   * vault-local. Absent/null-kind → VaultIconAvatar renders initials.
+   */
+  icon?: VaultIconRef;
 }
 
 export interface AppNavRailProps {
@@ -70,7 +75,10 @@ export interface AppNavRailProps {
   onVaultSelect?: (vaultId: string) => void;
   onNewVault?: () => void;
   onVaultRename?: (vaultId: string) => void;
-  onVaultSetIcon?: (vaultId: string) => void;
+  /** SKY-11068: opens the native file picker; the caller sets the icon on completion. */
+  onVaultIconPickImage?: (vaultId: string) => void;
+  /** SKY-11068: sets a glyph icon, or clears it (icon: null). */
+  onVaultIconSet?: (vaultId: string, icon: VaultIconSetInput) => void;
   /** Only the active vault can be revealed (no per-path reveal IPC exists). */
   onVaultReveal?: (vaultId: string) => void;
   onVaultOpenSettings?: (vaultId: string) => void;
@@ -246,7 +254,8 @@ export default function AppNavRail({
   onVaultSelect,
   onNewVault,
   onVaultRename,
-  onVaultSetIcon,
+  onVaultIconPickImage,
+  onVaultIconSet,
   onVaultReveal,
   onVaultOpenSettings,
 }: AppNavRailProps) {
@@ -257,6 +266,8 @@ export default function AppNavRail({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   // SKY-11048: vault-tile right-click menu (Rename / Set icon / Reveal / Settings).
   const [vaultMenu, setVaultMenu] = useState<{ vaultId: string; x: number; y: number } | null>(null);
+  // SKY-11068: icon-edit picker, opened from the "Set icon" row at the same position.
+  const [iconEditFor, setIconEditFor] = useState<{ vaultId: string; x: number; y: number } | null>(null);
 
   // A collapsed (slim) rail only has room for the icon; and when the user
   // hides labels, icons become the only visible affordance — so at least one
@@ -383,21 +394,23 @@ export default function AppNavRail({
 
   const vaultMenuItems = useCallback((vault: NavRailVault): MenuItemDef[] => [
     { id: 'rename', label: 'Rename', disabled: !onVaultRename },
-    { id: 'set-icon', label: 'Set icon', disabled: !onVaultSetIcon },
+    { id: 'set-icon', label: 'Set icon', disabled: !onVaultIconSet && !onVaultIconPickImage },
     {
       id: 'reveal',
       label: vault.active ? 'Reveal in Explorer' : 'Reveal in Explorer — switch to this vault first',
       disabled: !onVaultReveal || !vault.active,
     },
     { id: 'settings', label: 'Settings → this vault', disabled: !onVaultOpenSettings, separator: true },
-  ], [onVaultRename, onVaultSetIcon, onVaultReveal, onVaultOpenSettings]);
+  ], [onVaultRename, onVaultIconSet, onVaultIconPickImage, onVaultReveal, onVaultOpenSettings]);
 
   const handleVaultMenuAction = useCallback((vaultId: string) => (actionId: string) => {
     if (actionId === 'rename') onVaultRename?.(vaultId);
-    else if (actionId === 'set-icon') onVaultSetIcon?.(vaultId);
+    else if (actionId === 'set-icon') {
+      if (vaultMenu) setIconEditFor({ vaultId, x: vaultMenu.x, y: vaultMenu.y });
+    }
     else if (actionId === 'reveal') onVaultReveal?.(vaultId);
     else if (actionId === 'settings') onVaultOpenSettings?.(vaultId);
-  }, [onVaultRename, onVaultSetIcon, onVaultReveal, onVaultOpenSettings]);
+  }, [onVaultRename, onVaultReveal, onVaultOpenSettings, vaultMenu]);
 
   return (
     <nav
@@ -528,7 +541,7 @@ export default function AppNavRail({
               title={vault.name}
               data-testid={`nav-rail-vault-tile-${vault.id}`}
             >
-              {vault.icon || avatarForTitle(vault.name)}
+              <VaultIconAvatar icon={vault.icon} label={vault.name} size="sm" />
             </button>
           ))}
           {onNewVault && (
@@ -554,6 +567,17 @@ export default function AppNavRail({
               onClose={() => setVaultMenu(null)}
               aria-label="Vault actions"
               data-testid="nav-rail-vault-menu"
+            />
+          )}
+          {iconEditFor && vaults.some((v) => v.id === iconEditFor.vaultId) && (
+            <VaultIconEditMenu
+              open
+              position={{ x: iconEditFor.x, y: iconEditFor.y }}
+              hasIcon={vaults.find((v) => v.id === iconEditFor.vaultId)?.icon?.kind != null}
+              onClose={() => setIconEditFor(null)}
+              data-testid="nav-rail-vault-icon-edit-menu"
+              onPickImage={() => { onVaultIconPickImage?.(iconEditFor.vaultId); setIconEditFor(null); }}
+              onSetIcon={(icon) => { onVaultIconSet?.(iconEditFor.vaultId, icon); setIconEditFor(null); }}
             />
           )}
         </div>

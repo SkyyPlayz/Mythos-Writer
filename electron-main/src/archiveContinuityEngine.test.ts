@@ -532,7 +532,7 @@ describe('heartbeat backoff (AC-CC-03)', () => {
 describe('runInternalPrePass (Check 1)', () => {
   const priorScene = {
     sceneId: 'sc-1',
-    sceneTitle: 'Chapter 1',
+    title: 'Chapter 1',
     scenePath: 'Stories/Ash and Oath/ch1/sc-1.md',
     prose: "Mira's lantern cast a trembling circle of light. It was oil-lit, and dim.",
   };
@@ -583,7 +583,7 @@ describe('buildInternalScanPrompt', () => {
     entityType: 'item',
     aliases: [],
     currentExcerpt: 'crystal-lit now',
-    priorMentions: [{ sceneId: 'sc-1', sceneTitle: 'Chapter 1', scenePath: 'sc-1.md', excerpt: 'oil-lit, and dim' }],
+    priorMentions: [{ sceneId: 'sc-1', title: 'Chapter 1', scenePath: 'sc-1.md', excerpt: 'oil-lit, and dim' }],
   };
 
   it('names Check 1 and explicitly excludes the vault as a comparison source', () => {
@@ -730,7 +730,7 @@ describe('M12.B1 acceptance: Check 1 / Check 2 split — lantern & tide fixtures
 
   const chapter1 = {
     sceneId: 'sc-ch1',
-    sceneTitle: 'The Watcher’s Call',
+    title: 'The Watcher’s Call',
     scenePath: 'Stories/Ash and Oath/ch1/sc-1.md',
     // Only the lantern appears earlier in the manuscript — the Gate/tide
     // rule is never stated in prose, only in the vault note.

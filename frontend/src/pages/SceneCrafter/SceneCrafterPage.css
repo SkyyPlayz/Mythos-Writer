@@ -249,11 +249,10 @@
 }
 
 /* Columns scroller (prototype line 1058: one horizontal board scroller).
-   flex: 0 1 auto — SKY-11049: `flex: 1` grew this past its two fixed-width
-   columns on wide viewports, opening a dead gap before .sc-right-kanban
-   (which sits after it in DOM order) instead of trailing after everything
-   the way the mockup lays out. Shrink stays enabled so narrow viewports
-   still fall back to the horizontal scroller. */
+   Holds Setup, Draft, and the three vault-reference columns (SKY-11072).
+   flex: 0 1 auto — SKY-11049: `flex: 1` once grew this past its fixed-width
+   columns on wide viewports, opening a dead gap after them. Shrink stays
+   enabled so narrow viewports still fall back to the horizontal scroller. */
 .sc-columns {
   display: flex;
   flex: 0 1 auto;
@@ -977,53 +976,175 @@
   gap: 0;
 }
 
-/* Right kanban: beats / cast / places (Beta 4/M19, §7.1, AC8). */
-.sc-right-kanban {
+/* ── Vault-reference columns: CHARACTERS / LOCATIONS / ITEMS & SYSTEMS ──────
+   (SKY-11072 owner ruling — prototype crafterVaultCols, canvas spec §3).
+   Inline in the .sc-columns scroller after Scene Draft, per the prototype.
+   Each column carries its canvas slot color (spec §5) as --ref-c, with the
+   prototype's band gradient blending toward the next slot (--ref-c2). */
+.sc-ref-col {
+  width: 250px;
+  flex: none;
+  gap: 9px;
+}
+
+.sc-ref-col--characters {
+  --ref-c: var(--n1, #00f0ff);
+  --ref-c2: var(--n2, #9b5fff);
+}
+
+.sc-ref-col--locations {
+  --ref-c: var(--n2, #9b5fff);
+  --ref-c2: var(--n3, #ff4dff);
+}
+
+.sc-ref-col--items {
+  --ref-c: var(--n4, #ff9a3d);
+  --ref-c2: var(--n1, #00f0ff);
+}
+
+.sc-ref-head {
   display: flex;
-  flex: 0 0 200px;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 12px;
-  border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.sc-right-kanban-col {
+.sc-ref-title {
+  color: var(--ref-c);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--ref-c) 45%, transparent);
+}
+
+.scene-crafter-page button.sc-ref-add {
+  width: 18px;
+  height: 18px;
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.sc-right-kanban-head {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: #7686a2;
-  padding: 0 2px;
-}
-
-.sc-right-kanban-card {
-  padding: 7px 9px;
-  border-radius: 9px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #cdd8ea;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  text-align: left;
-}
-
-.scene-crafter-page button.sc-right-kanban-card--linked {
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: #8e9db8;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
-  border-radius: 9px;
 }
 
-.scene-crafter-page button.sc-right-kanban-card--linked:hover {
-  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+.scene-crafter-page button.sc-ref-add:hover {
   color: #f0f3fc;
+  border-color: color-mix(in srgb, var(--ref-c) 60%, transparent);
+}
+
+/* The + picker — same card family as the suggested rail (.sc-sugg-card). */
+.sc-ref-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(13, 17, 30, 0.92);
+  max-height: 300px;
+  overflow-y: auto;
+  flex: none;
+}
+
+/* Vault-reference card (spec §2): initials band, name, one-line role, × to
+   remove. Matches the prototype card (line 1451): 13px radius, glass fill,
+   slot-colored border, lift + glow on hover. */
+.sc-ref-card {
+  position: relative;
+  flex: none;
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  border: 1px solid color-mix(in srgb, var(--ref-c) 38%, transparent);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.sc-ref-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ref-c) 75%, transparent);
+  box-shadow: 0 0 20px -6px color-mix(in srgb, var(--ref-c) 55%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-ref-card,
+  .sc-ref-card:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
+.scene-crafter-page button.sc-ref-open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  padding: 0 0 10px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sc-ref-band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  margin-bottom: 9px;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--ref-c) 30%, transparent),
+    color-mix(in srgb, var(--ref-c2) 22%, transparent)
+  );
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Dyslexia constraint (canvas spec, named constraint): name and role each
+   stay one line, ellipsis-truncated — never wrapped mid-word. */
+.sc-ref-name {
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef2fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-ref-role {
+  padding: 3px 12px 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #9cabc4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scene-crafter-page button.sc-ref-remove {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 17px;
+  height: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(8, 10, 18, 0.5);
+  cursor: pointer;
+}
+
+.scene-crafter-page button.sc-ref-remove:hover {
+  color: #fff;
+  background: rgba(255, 80, 110, 0.4);
 }
 
 .scene-crafter-modal {

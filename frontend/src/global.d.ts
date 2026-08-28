@@ -581,9 +581,6 @@ interface AppSettings {
    *  path → user-chosen label. A local rename only (the on-disk vault + its
    *  registry entry are untouched); absent → derive from the project entry. */
   vaultDisplayNames?: Record<string, string>;
-  /** SKY-11048: nav-rail vault-tile icon — Story Vault root path → a short
-   *  glyph/emoji shown on the tile instead of initials. Absent → initials. */
-  vaultIcons?: Record<string, string>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
@@ -635,6 +632,8 @@ interface AppSettings {
   };
   /** SKY-6225: Built-in Auto Note Linker settings. Absent = defaults. */
   autoLinkerSettings?: AutoLinkerSettings;
+  /** SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default). */
+  agentIndexAutoScan?: boolean;
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
   /** SKY-204: opt-in daily notes / journal mode. */
@@ -998,6 +997,19 @@ interface NoteTemplate {
   fields: NoteTemplateField[];
 }
 
+/**
+ * SKY-11068: a vault's author-set icon (or the absence of one — callers
+ * render an initials-on-accent default when kind is null).
+ */
+interface VaultIconRef {
+  vaultRoot: string;
+  kind: 'glyph' | 'image' | null;
+  /** kind === 'glyph': the emoji / short text. */
+  value?: string;
+  /** kind === 'image': base64 data URL of the stored icon file. */
+  dataUrl?: string;
+}
+
 interface Window {
   /** Primary IPC bridge — use this in new code. */
   api: {
@@ -1007,7 +1019,7 @@ interface Window {
     deleteVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     readManifest: () => Promise<unknown>;
     writeManifest: (manifest: unknown) => Promise<unknown>;
-    openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
+    openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; error?: string }>;
     getVaultRoot: () => Promise<{ vaultRoot: string }>;
     /** SKY-5790: reveal the current Story Vault root in the OS file manager. */
     revealVaultFolder: () => Promise<{ opened: boolean }>;
@@ -1312,6 +1324,14 @@ interface Window {
     projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
     projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
+    // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+    projectIcons?: () => Promise<{ icons: VaultIconRef[] }>;
+    projectIconSet?: (payload:
+      | { vaultRoot: string; icon: { kind: 'glyph'; value: string } }
+      | { vaultRoot: string; icon: { kind: 'image'; sourcePath: string } }
+      | { vaultRoot: string; icon: null },
+    ) => Promise<{ ok: boolean; error?: string; icon?: VaultIconRef }>;
+    projectIconPick?: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
@@ -1662,6 +1682,55 @@ interface Window {
         createdAt: string;
       }>;
     }>;
+    /** M12.3 (SKY-10770): open contradictions across the WHOLE manuscript —
+     *  a cheap global DB query, independent of any scan scope. Optional so
+     *  older test harnesses that stub window.api piecemeal stay valid. */
+    archiveListGlobalContradictions?: () => Promise<{
+      items: Array<{
+        id: string;
+        category: string;
+        severity: string;
+        sceneId: string;
+        offset: number;
+        excerpt: string;
+        vaultNotePath: string;
+        vaultExcerpt: string;
+        rationale: string;
+        createdAt: string;
+        entityName: string | null;
+        entityType: string | null;
+      }>;
+    }>;
+    /** SKY-10730 M12.1 / SKY-10770 M12.3: background job queue. Scoped
+     *  manuscript scans pass identifiers only (level + anchor scene id) —
+     *  the main process resolves them to scene paths from the manifest.
+     *  Optional so older test harnesses that stub window.api stay valid. */
+    jobs?: {
+      enqueue: (
+        type: string,
+        opts?: { scope?: { level: 'scene' | 'chapter' | 'part' | 'book'; sceneId: string } },
+      ) => Promise<{ jobId?: string; error?: string }>;
+      list: (opts?: { status?: string; type?: string; limit?: number }) => Promise<{
+        jobs?: Array<Record<string, unknown>>;
+        error?: string;
+      }>;
+      progress: (jobId: string) => Promise<{ progress?: Record<string, unknown>; error?: string }>;
+      cancel: (jobId: string) => Promise<{ cancelled?: boolean; error?: string }>;
+      onEvent: (cb: (evt: {
+        kind: 'progress' | 'done' | 'failed' | 'cancelled';
+        progress: {
+          jobId: string;
+          type: string;
+          status: string;
+          totalUnits: number | null;
+          completedUnits: number;
+          skippedUnits: number;
+          etaMs: number | null;
+          ratePerSec: number | null;
+          error: string | null;
+        };
+      }) => void) => () => void;
+    };
     onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => () => void;
     onArchiveContScanResult: (cb: (data: {
       sceneId: string;
@@ -1806,6 +1875,18 @@ interface Window {
     // flush a pending debounced manifest save before the window closes.
     onFlushBeforeQuit?: (cb: () => void) => () => void;
     notifyFlushBeforeQuitDone?: () => void;
+
+    // SKY-10772 M12.5: AI Agents index controls
+    agentIndex: {
+      getStats: () => Promise<{
+        entityCount: number;
+        lastScanAt: string | null;
+        factDecisionCount: number;
+        cacheRowCount: number;
+      }>;
+      clean: () => Promise<{ decisionsPreserved: number; derivedWiped: boolean; tombstonesIntact: boolean }>;
+      rebuild: () => Promise<{ jobId: string } | { error: string }>;
+    };
 
   };
 

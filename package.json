@@ -1,6 +1,6 @@
 {
   "name": "mythos-writer",
-  "version": "0.5.0-beta.2",
+  "version": "0.5.0-beta.3",
   "description": "AI-powered desktop notes and writing app",
   "homepage": "https://github.com/SkyyPlayz/Mythos-Writer",
   "author": {
@@ -31,6 +31,7 @@
     "test:e2e": "playwright test e2e/ --reporter=list,html",
     "test:e2e:smoke": "playwright test e2e/smoke.spec.ts --reporter=list,html",
     "test:e2e:obsidian-import-fidelity": "playwright test e2e/obsidian-import-fidelity.spec.ts --reporter=list,html",
+    "test:e2e:vault-open-folder-guard": "playwright test e2e/vault-open-folder-guard-sky11132.spec.ts --reporter=list,html",
     "test:e2e:auto-update": "MYTHOS_AUTO_UPDATE=1 playwright test e2e/auto-update-beta.spec.ts --reporter=list,html",
     "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/settings-new-vault.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts e2e/story-import-epub.spec.ts e2e/tests/sky-11008-delete-scene-chapter.spec.ts e2e/tests/sky-11048-nav-rail-vault-tiles.spec.ts --reporter=list,html",
     "test:e2e:archive-quickadd": "playwright test e2e/timeline-archive-quickadd.spec.ts --reporter=list,html",

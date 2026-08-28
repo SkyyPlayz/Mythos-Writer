@@ -187,6 +187,7 @@ export const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]
   // M12.B1 (SKY-10736): owner's own Check 2 example — a location note's rule
   // ("opens only at low tide") vs a scene that enters at high tide.
   tide: [
+    ['rises at dawn', 'tide is highest at dusk'],
     ['low tide', 'high tide'],
     ['high tide', 'low tide'],
   ],
@@ -480,6 +481,11 @@ export function detectInternalContinuity(
     const terms = entityTerms(record);
     for (const { phrases } of CHARACTER_PHRASE_FAMILIES) {
       let established: { phrase: string; path: string } | null = null;
+      // A recurring scene that repeats an already-flagged phrase (e.g. the
+      // character stays "dark hair" for the rest of the book after drifting
+      // from "blonde hair") must not re-flag on every occurrence — only the
+      // first scene stating each distinct drifted phrase is surfaced.
+      const flaggedPhrases = new Set<string>();
       for (const scene of scenes) {
         if (!findPlainMention(scene.text, terms)) continue; // entity not mentioned here
         const lower = scene.text.toLowerCase();
@@ -487,7 +493,8 @@ export function detectInternalContinuity(
         if (!found) continue;
         if (!established) {
           established = { phrase: found, path: scene.path };
-        } else if (found !== established.phrase) {
+        } else if (found !== established.phrase && !flaggedPhrases.has(found)) {
+          flaggedPhrases.add(found);
           suggestions.push(
             internalSuggestion(
               `${record.name} is described as "${established.phrase}" in an earlier scene but "${found}" here`,
@@ -516,6 +523,10 @@ export function detectInternalContinuity(
   // is flagged. Spelling variants of the same canonical are not contradictions.
   for (const family of WORLD_RULE_PHRASE_FAMILIES) {
     let established: { canonicalName: string; path: string } | null = null;
+    // Once a drift to a given canonical has been flagged, a recurring scene
+    // (e.g. the lantern stays "crystal-lit" for the rest of the book) must
+    // not re-flag the same contradiction again on every later occurrence.
+    const flaggedNames = new Set<string>();
     for (const scene of scenes) {
       const lower = scene.text.toLowerCase();
       let foundName: string | null = null;
@@ -527,7 +538,8 @@ export function detectInternalContinuity(
       if (!foundName || !foundPhrase) continue;
       if (!established) {
         established = { canonicalName: foundName, path: scene.path };
-      } else if (foundName !== established.canonicalName) {
+      } else if (foundName !== established.canonicalName && !flaggedNames.has(foundName)) {
+        flaggedNames.add(foundName);
         suggestions.push(
           internalSuggestion(
             `Established "${established.canonicalName}" (${family.label}) in an earlier scene but "${foundName}" appears here`,
