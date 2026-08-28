@@ -18,6 +18,9 @@ import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/pr
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
 import VaultDestinationPicker from './VaultDestinationPicker';
+import { useVaultIcons } from '../../../hooks/useVaultIcons';
+import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
+import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
@@ -56,6 +59,11 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdVault, setCreatedVault] = useState<CreatedVault | null>(null);
   const createNameRef = useRef<HTMLInputElement | null>(null);
+  // SKY-11068: per-vault icon — vault-local, shared with the nav-rail tiles
+  // and title-bar switcher.
+  const { icons: vaultIcons, loadIcons, setVaultIcon, pickIconImage } = useVaultIcons();
+  const [iconEditFor, setIconEditFor] = useState<string | null>(null);
+  const iconEditTriggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
@@ -65,10 +73,11 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
   useEffect(() => {
     refreshVaults();
+    loadIcons();
     window.api?.getVaultRoot?.()
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
-  }, [refreshVaults]);
+  }, [refreshVaults, loadIcons]);
 
   useEffect(() => {
     if (createOpen) createNameRef.current?.focus();
@@ -337,6 +346,32 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 }
               }}
             >
+              <button
+                type="button"
+                className="mvs-card-icon-edit"
+                ref={(el) => { if (el) iconEditTriggerRefs.current.set(v.vaultRoot, el); else iconEditTriggerRefs.current.delete(v.vaultRoot); }}
+                aria-label={`Set icon for ${deriveVaultDisplayName(v) || v.name}`}
+                data-testid={`mvs-icon-edit-${v.vaultRoot}`}
+                style={{ flex: 'none', background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', borderRadius: 8 }}
+                onClick={(e) => { e.stopPropagation(); setIconEditFor((cur) => (cur === v.vaultRoot ? null : v.vaultRoot)); }}
+              >
+                <VaultIconAvatar icon={vaultIcons[v.vaultRoot]} label={deriveVaultDisplayName(v) || v.name} size="md" />
+              </button>
+              {iconEditFor === v.vaultRoot && (
+                <VaultIconEditMenu
+                  open
+                  anchorEl={iconEditTriggerRefs.current.get(v.vaultRoot) ?? null}
+                  hasIcon={vaultIcons[v.vaultRoot]?.kind != null}
+                  data-testid={`mvs-icon-edit-menu-${v.vaultRoot}`}
+                  onClose={() => setIconEditFor(null)}
+                  onPickImage={() => {
+                    pickIconImage()?.then((res) => {
+                      if (res?.filePath) setVaultIcon(v.vaultRoot, { kind: 'image', sourcePath: res.filePath });
+                    });
+                  }}
+                  onSetIcon={(icon) => { setVaultIcon(v.vaultRoot, icon); setIconEditFor(null); }}
+                />
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{deriveVaultDisplayName(v) || v.name}</div>
                 <div style={{ fontSize: 10, color: '#8e9db8', marginTop: 2, fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

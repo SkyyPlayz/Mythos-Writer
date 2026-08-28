@@ -927,11 +927,16 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
 
     // Open it and type a body with an inline #Character hashtag — the
     // owner's own tagging convention, not a frontmatter field a UI never
-    // exposes. A fresh profile's NoteViewer defaults to Source mode (raw
-    // textarea), not the rendered rich-text editor — both write the same
-    // underlying markdown.
+    // exposes. SKY-10929 made Rich view the default for a fresh profile, so
+    // force Source mode (raw textarea) via the gear menu — both write the
+    // same underlying markdown, and this keeps the assertion independent of
+    // that default.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
+    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+    await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
     await expect(editor).toBeVisible({ timeout: 8_000 });
     await editor.click();
@@ -960,5 +965,111 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
 
     await expect(povField).toHaveValue('Kael Thorne');
     await expect(localPage.getByRole('listbox', { name: /vault characters/i })).not.toBeVisible();
+  });
+});
+
+// ─── SKY-11072 — vault-reference columns (owner ruling: prototype wins) ──────
+// The Setup view's right side is three vault-reference columns — CHARACTERS /
+// LOCATIONS / ITEMS & SYSTEMS — replacing the BEATS/CAST/PLACES kanban.
+// Reachability (§4c), never pre-seeded: ONE character note created through
+// the Notes vault UI must appear in CHARACTERS, its × must remove it from
+// THIS scene only (the note survives on disk and in the suggested rail), and
+// the column's + picker must re-add it.
+//
+// Own fresh app/vault: the note is tagged #Character with no Characters
+// folder (the owner's real vault shape), and the shared suite's vault already
+// has folder-filed notes that would mask the fallback path.
+
+test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profile)', () => {
+  let localApp: ElectronApplication | undefined;
+  let localPage: Page;
+  let localUserData: string;
+  let localVaultDir: string;
+  let localNotesVaultDir: string;
+
+  test.beforeAll(async () => {
+    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-'));
+    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-story-'));
+    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-notes-'));
+    seedUserData(localUserData, localVaultDir, localNotesVaultDir);
+    localApp = await launchApp(localUserData);
+    localPage = await firstWindow(localApp);
+    await expect(localPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    await localApp?.close().catch(() => {});
+    fs.rmSync(localUserData, { recursive: true, force: true });
+    fs.rmSync(localVaultDir, { recursive: true, force: true });
+    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('a character note created via the UI appears in CHARACTERS; × removes it from this scene without deleting the note; + re-adds it', async () => {
+    const storyIndex = await createStory(localPage);
+    await selectStory(localPage, storyIndex);
+
+    // Create ONE note through the Notes vault UI (§4c: never pre-seed).
+    await localPage.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(localPage.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+    await dismissMigrationPromptIfPresent(localPage);
+
+    const addNoteBtn = localPage.locator('[data-testid="vb-btn-new-note"]').first();
+    await expect(addNoteBtn).toBeVisible({ timeout: 6_000 });
+    await addNoteBtn.click();
+    const dialog = localPage.locator('.ntd-dialog');
+    await expect(dialog).toBeVisible({ timeout: 6_000 });
+    await dialog.locator('[data-testid="ntd-blank-title"]').fill('Mira Veynn');
+    await dialog.locator('[data-testid="ntd-submit"]').click();
+    await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+
+    // Tag it #Character in Source mode (same flow the SKY-11049 POV test
+    // proved out) so the CHARACTERS column's tag fallback resolves it.
+    await dismissMigrationPromptIfPresent(localPage);
+    await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Mira Veynn' }).first().click();
+    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+    await localPage.locator('[data-testid="note-gear-mode-source"]').click();
+    const editor = localPage.getByRole('textbox', { name: 'Edit note: Mira Veynn.md' });
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await editor.fill('Reluctant heir — resourceful, haunted. #Character');
+    await expect(editor).toHaveValue(/#Character/);
+
+    // Wait for the debounced autosave to land on disk — the column stock is
+    // computed from the file listing, not React state.
+    const notePath = path.join(localNotesVaultDir, 'Mira Veynn.md');
+    await expect.poll(
+      () => (fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : ''),
+      { timeout: 8_000 },
+    ).toContain('#Character');
+
+    await dismissMigrationPromptIfPresent(localPage);
+    await openBoardView(localPage);
+
+    // 1. The note appears in the CHARACTERS vault-reference column.
+    const characters = localPage.locator('[data-testid="sc-ref-col-characters"]');
+    await expect(characters).toBeVisible({ timeout: 8_000 });
+    const card = characters.locator('.sc-ref-card', { hasText: 'Mira Veynn' });
+    await expect(card).toBeVisible({ timeout: 8_000 });
+
+    // 2. × removes it from THIS scene only.
+    await characters.getByRole('button', { name: 'Remove Mira Veynn from this scene' }).click();
+    await expect(card).not.toBeVisible();
+
+    // 3. The note itself survives — on disk and in the suggested rail.
+    expect(fs.existsSync(notePath)).toBe(true);
+    await expect(localPage.locator('.sc-suggest').getByText('Mira Veynn')).toBeVisible();
+
+    // 4. The column's + picker re-adds it (the un-remove path).
+    await characters.getByRole('button', { name: 'Add a note to CHARACTERS' }).click();
+    const search = localPage.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
+    await expect(search).toBeVisible();
+    await search.fill('mira');
+    await characters.locator('.sc-ref-picker').getByRole('button', { name: /mira veynn/i }).click();
+    await expect(characters.locator('.sc-ref-card', { hasText: 'Mira Veynn' })).toBeVisible();
+
+    // The full cycle never touched the file: the note is still on disk.
+    expect(fs.readFileSync(notePath, 'utf-8')).toContain('#Character');
   });
 });

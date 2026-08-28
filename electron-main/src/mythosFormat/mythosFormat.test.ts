@@ -19,6 +19,7 @@ import {
   readMythosFile,
   recordSeedInMythosFile,
   resolveManifestPath,
+  sanitizeVaultIcon,
   serializeMythosFile,
   storyVaultRootFor,
   tryReadMythosFile,
@@ -149,6 +150,59 @@ describe('mythos.json codec', () => {
     recordSeedInMythosFile(tmp, { layout: 'first', mode: 'default' });
     recordSeedInMythosFile(tmp, { layout: 'second', mode: 'blank' });
     expect(readMythosFile(tmp).seed?.layout).toBe('first');
+  });
+
+  // SKY-11068 — per-vault icon field.
+  it('round-trips a glyph icon', () => {
+    const file = { ...createMythosFile('Icon Vault'), icon: { kind: 'glyph' as const, value: '📖' } };
+    const parsed = parseMythosFile(serializeMythosFile(file));
+    expect(parsed.icon).toEqual({ kind: 'glyph', value: '📖' });
+  });
+
+  it('round-trips an image icon', () => {
+    const file = { ...createMythosFile('Icon Vault'), icon: { kind: 'image' as const, file: 'vault-icon.png' } };
+    const parsed = parseMythosFile(serializeMythosFile(file));
+    expect(parsed.icon).toEqual({ kind: 'image', file: 'vault-icon.png' });
+  });
+
+  it('omits the icon field entirely when unset (default is initials, not a stored value)', () => {
+    const parsed = parseMythosFile(serializeMythosFile(createMythosFile('No Icon')));
+    expect(parsed.icon).toBeUndefined();
+  });
+});
+
+describe('sanitizeVaultIcon', () => {
+  it('accepts a short glyph', () => {
+    expect(sanitizeVaultIcon({ kind: 'glyph', value: '🐉' })).toEqual({ kind: 'glyph', value: '🐉' });
+  });
+
+  it('rejects an overlong glyph value (pasted prose, not an icon)', () => {
+    expect(sanitizeVaultIcon({ kind: 'glyph', value: 'x'.repeat(17) })).toBeNull();
+  });
+
+  it('rejects a glyph containing newlines/nulls', () => {
+    expect(sanitizeVaultIcon({ kind: 'glyph', value: 'a\nb' })).toBeNull();
+  });
+
+  it('accepts a bare image file name', () => {
+    expect(sanitizeVaultIcon({ kind: 'image', file: 'vault-icon.png' })).toEqual({
+      kind: 'image', file: 'vault-icon.png',
+    });
+  });
+
+  it('rejects an image file name with path segments (traversal guard)', () => {
+    expect(sanitizeVaultIcon({ kind: 'image', file: '../../etc/passwd' })).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'image', file: 'sub/vault-icon.png' })).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'image', file: 'a\\b.png' })).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'image', file: '.' })).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'image', file: '..' })).toBeNull();
+  });
+
+  it('rejects unknown/malformed shapes', () => {
+    expect(sanitizeVaultIcon(null)).toBeNull();
+    expect(sanitizeVaultIcon('📖')).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'lucide', value: 'book' })).toBeNull();
+    expect(sanitizeVaultIcon({ kind: 'glyph', value: 42 })).toBeNull();
   });
 });
 

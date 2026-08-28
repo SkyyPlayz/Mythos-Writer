@@ -176,6 +176,24 @@ test('TC-SKY-11048-01: + tile creates a second vault, tiles switch, per-vault th
     await pg.getByRole('menuitem', { name: 'Settings → this vault' }).click();
     await expect(pg.locator('#settings-category-tab-vaults')).toHaveClass(/settings-cat-nav__tab--active/, { timeout: 10_000 });
     await expect(pg.locator('[data-testid="mvs-new-vault"]')).toBeVisible();
+
+    // 6. Regression guard (SKY-11086): "Settings → this vault" on an INACTIVE
+    // tile must switch to THAT vault before opening Settings. The handler
+    // used to drop the vaultId argument entirely and just reopen Settings
+    // against whichever vault was already active — right-clicking Second
+    // (inactive; First is active from step 5) would silently show First's
+    // Vault & Files path instead of Second's.
+    await secondTile.click({ button: 'right' });
+    await pg.locator('[data-testid="nav-rail-vault-menu"]').waitFor({ timeout: 5_000 });
+    await pg.getByRole('menuitem', { name: 'Settings → this vault' }).click();
+    await expect.poll(
+      () => readVaultSettings(userData).vaultRoot,
+      { timeout: 30_000, intervals: [200, 400, 800, 1000] },
+    ).toBe(secondStory);
+    await expect(secondTile).toHaveClass(/nav-rail__vault-tile--active/);
+    await expect(firstTile).not.toHaveClass(/nav-rail__vault-tile--active/);
+    await expect(pg.locator('#settings-category-tab-vaults')).toHaveClass(/settings-cat-nav__tab--active/, { timeout: 10_000 });
+    await expect(pg.locator('.settings-vault-path-display')).toHaveText(secondStory, { timeout: 10_000 });
   } finally {
     await app.close().catch(() => {});
   }

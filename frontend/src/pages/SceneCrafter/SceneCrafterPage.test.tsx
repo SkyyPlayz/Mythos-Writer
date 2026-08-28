@@ -352,37 +352,141 @@ describe('SceneCrafterPage — M19 scene setup form (§7.1, AC1)', () => {
   });
 });
 
-describe('SceneCrafterPage — M19 right kanban: beats/cast/places (§7.1, AC8)', () => {
-  it('shows beats from the setup and cast/places notes from the vault, and opens a note on click', async () => {
-    const onOpenNote = vi.fn();
+describe('SceneCrafterPage — SKY-11072 vault-reference columns (owner ruling: prototype wins)', () => {
+  const REF_VAULT_ITEMS = [
+    { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Items & Systems/Drownlight.md', name: 'Drownlight.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Loose Note.md', name: 'Loose Note.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  async function renderRefColumns(onOpenNote = vi.fn()) {
     const api = makeApi({
-      listNotesVault: vi.fn().mockResolvedValue({
-        items: [
-          { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-          { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-        ],
-      }),
+      listNotesVault: vi.fn().mockResolvedValue({ items: REF_VAULT_ITEMS }),
     });
     (window as unknown as { api: unknown }).api = api;
     render(<SceneCrafterPage story={STORY} onOpenNote={onOpenNote} onOpenScene={vi.fn()} />);
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    return onOpenNote;
+  }
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Mira Veynn')).toBeInTheDocument();
-    expect(within(kanban).getByText('Ward Violet')).toBeInTheDocument();
+  it('renders CHARACTERS / LOCATIONS / ITEMS & SYSTEMS columns stocked from the vault, and opens a note on click', async () => {
+    const onOpenNote = await renderRefColumns();
 
-    fireEvent.click(within(kanban).getByRole('button', { name: 'Ward Violet' }));
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    const locations = screen.getByTestId('sc-ref-col-locations');
+    const items = screen.getByTestId('sc-ref-col-items');
+    expect(within(characters).getByText('Mira Veynn')).toBeInTheDocument();
+    expect(within(locations).getByText('Ward Violet')).toBeInTheDocument();
+    expect(within(items).getByText('Drownlight')).toBeInTheDocument();
+
+    fireEvent.click(within(locations).getByRole('button', { name: /^ward violet/i }));
     expect(onOpenNote).toHaveBeenCalledWith('Locations/Ward Violet');
   });
 
-  it('lists beats added in Scene Setup under the BEATS column', async () => {
+  it('× removes the card from this scene only — the note stays in the suggested rail', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
+    expect(within(characters).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
+    // The vault note is untouched: still listed by the suggested rail.
+    const rail = screen.getByLabelText('Suggested cards');
+    expect(within(rail).getByText('Mira Veynn')).toBeInTheDocument();
+  });
+
+  it('the + picker offers vault notes not in the column and adds the picked one', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
+
+    const search = screen.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
+    fireEvent.change(search, { target: { value: 'loose' } });
+    fireEvent.click(within(characters).getByRole('button', { name: /loose note/i }));
+
+    // Picker closes; the note now sits in the column as a reference card.
+    expect(screen.queryByRole('textbox', { name: 'Search notes to add to CHARACTERS' })).not.toBeInTheDocument();
+    expect(within(characters).getByRole('button', { name: 'Remove Loose Note from this scene' })).toBeInTheDocument();
+  });
+
+  it('re-adding a removed note via the + picker restores it (un-remove path)', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
+    expect(within(characters).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
+    fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
+    fireEvent.click(within(characters).getByRole('button', { name: /mira veynn/i }));
+    expect(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' })).toBeInTheDocument();
+  });
+
+  it('beats live in Scene Setup only — the old beats/cast/places kanban is gone', async () => {
     await renderPage();
+    expect(screen.queryByLabelText('Scene board: beats, cast, and places')).not.toBeInTheDocument();
+
     const addInput = screen.getByRole('textbox', { name: 'Add a beat' });
     fireEvent.change(addInput, { target: { value: 'Cold open on the sealed door' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // The beat renders once — in the Setup list — not mirrored anywhere else.
+    expect(screen.getAllByText('Cold open on the sealed door')).toHaveLength(1);
+  });
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Cold open on the sealed door')).toBeInTheDocument();
+  it('migrates beats from a legacy "Beats" lane on the saved board into the Setup list (instruction 3)', async () => {
+    const legacyBoard = cloneBoard();
+    legacyBoard.lanes.push({
+      name: 'Beats',
+      cards: [
+        { wikilink: 'x', title: 'Cold open on the sealed door', done: false, tags: [], raw: '' },
+        { wikilink: 'y', title: 'The door answers', done: false, tags: [], raw: '' },
+      ],
+    });
+    const api = makeApi({ sceneCrafterGetBoard: vi.fn().mockResolvedValue(legacyBoard) });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    expect(screen.getByTestId('sc-beat-0')).toHaveTextContent('Cold open on the sealed door');
+    expect(screen.getByTestId('sc-beat-1')).toHaveTextContent('The door answers');
+  });
+
+  it('does not re-seed legacy beats a writer deliberately cleared after a reload (Use disk version)', async () => {
+    const legacyBoard = cloneBoard();
+    legacyBoard.lanes.push({
+      name: 'Beats',
+      cards: [
+        { wikilink: 'x', title: 'Cold open on the sealed door', done: false, tags: [], raw: '' },
+        { wikilink: 'y', title: 'The door answers', done: false, tags: [], raw: '' },
+      ],
+    });
+    let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const api = makeApi({
+      sceneCrafterGetBoard: vi.fn().mockResolvedValue(legacyBoard),
+      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
+        externalEditHandler = cb;
+        return vi.fn();
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    // Migration seeded both legacy beats; the writer clears them on purpose.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat Cold open on the sealed door' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat The door answers' }));
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
+
+    // An external edit reloads the board (Use disk version) — the migration
+    // must not run a second time and re-seed what was just cleared.
+    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: /use disk version/i }));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
   });
 });
 
