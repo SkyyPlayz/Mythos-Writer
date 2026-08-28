@@ -1322,6 +1322,27 @@ interface Window {
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
     projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+
+    // SKY-11058: notes vault registry
+    notesVaultRegistryList?: () => Promise<{
+      vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' }> | null;
+      activeId: string | null;
+    }>;
+    notesVaultRegistryCreate?: (displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    notesVaultRegistrySetActivePreview?: (id: string) => Promise<{
+      resolvedCount: number;
+      unresolvedStems: string[];
+      totalStems: number;
+    }>;
+    notesVaultRegistrySetActive?: (id: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    notesVaultRegistryRename?: (id: string, displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+    }>;
+    onNotesVaultRegistryChanged?: (cb: () => void) => () => void;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
     projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
     // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
@@ -1424,7 +1445,7 @@ interface Window {
     importDocxToStoryVault: (filePaths: string[]) => Promise<{ ok: boolean; importedStories: unknown[]; errors: unknown[] }>;
     // SKY-2993 / SKY-10388: Obsidian vault importer — every selected source is
     // copied into ONE new Mythos vault created under destParentPath.
-    importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string }) => Promise<{ ok: boolean; mythosVaultRoot?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
+    importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string; destMode?: 'new-mythos-vault' | 'extra-notes-vault' }) => Promise<{ ok: boolean; mythosVaultRoot?: string; notesVaultId?: string; notesVaultDisplayName?: string; error?: string; sourceCount?: number; imported?: number; skipped?: number; dropWarning?: string }>;
     dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: { markdownCount: number; attachmentCount: number; totalFiles: number; topLevelFolders: string[]; sampleFiles: string[] }; error?: string }>;
     onObsidianImportProgress: (cb: (data: { current: number; total: number; lastAction: string }) => void) => () => void;
     // Beta 3 M24: Settings → Vault & Files import flows

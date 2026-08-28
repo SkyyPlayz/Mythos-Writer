@@ -77,6 +77,7 @@ import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
+import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
@@ -5533,6 +5534,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const replayOnboardingWizard = useCallback(() => {
     window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
   }, []);
+
+  // SKY-11058: NotesVaultPicker's "Import a vault…" (dispatched from
+  // NotesTabPanel — same no-callback-prop CustomEvent pattern as
+  // 'mythos:nav') reuses the wizard-replay path but lands on the Import
+  // screen: the sessionStorage flag survives the replay reload and
+  // OnboardingWizard consumes it on mount to open step-import directly.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        sessionStorage.setItem(WIZARD_OPEN_IMPORT_STEP_KEY, '1');
+      } catch { /* non-fatal — wizard just opens on its landing screen */ }
+      replayOnboardingWizard();
+    };
+    window.addEventListener('mythos:import-notes-vault', handler);
+    return () => window.removeEventListener('mythos:import-notes-vault', handler);
+  }, [replayOnboardingWizard]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
