@@ -1539,6 +1539,17 @@ jobs:
       - name: E2E — App quits within bounded time after real vault ops on native Windows (SKY-10902, SKY-10910 gap 4)
         run: npm run test:e2e:windows-quit-teardown
 
+      # SKY-11132 (owner data-safety bug): Open Vault Folder used to accept
+      # any OS-dialog folder unconditionally and repoint the Story Vault at
+      # it, seeding app files into whatever was picked — including the
+      # owner's real, cloud-synced Obsidian vault. checkOpenFolderGate
+      # (vaultGate.ts) now refuses that; this proves the source folder's
+      # contents and mtimes survive a refused open-folder attempt on native
+      # Windows, where path/mtime semantics differ from the POSIX runners
+      # this class of bug is otherwise invisible on.
+      - name: E2E — Open Vault Folder refuses a foreign non-empty folder, source untouched, on native Windows (SKY-11132)
+        run: npm run test:e2e:vault-open-folder-guard
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true

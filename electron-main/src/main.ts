@@ -360,7 +360,7 @@ import {
 import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken, checkOpenFolderGate } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -422,6 +422,7 @@ import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
   NOTES_VAULT_SEED_LAYOUT,
+  hasSeedMarker,
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
@@ -529,6 +530,7 @@ import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { buildManuscriptHtml } from './pdfExport.js';
 import { readSceneProseTracked } from './exportProse.js';
+import { buildTextExport, resolveExportScope } from './exportScope.js';
 import os from 'os';
 import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
@@ -1380,166 +1382,14 @@ function validateVaultPath(p: string, field: string): void {
 }
 
 // ─── Export helpers (SKY-153) ───
-
-function safeExportFilename(s: string): string {
-  return s.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'export';
-}
-
-function buildTextExport(
-  manifest: import('./ipc.js').Manifest,
-  scope: import('./ipc.js').ExportScope,
-  format: 'markdown' | 'plaintext',
-): { content: string; defaultFilename: string; missingSceneIds: string[] } {
-  const missing = new Set<string>();
-  const readProse = (sc: import('./ipc.js').SceneEntry): ExportableScene => ({
-    title: sc.title,
-    prose: readSceneProseTracked(getVaultRoot(), sc, missing),
-  });
-  const toChapter = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({
-    title: ch.title,
-    scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-  });
-  const toStory = (st: import('./ipc.js').StoryEntry): ExportableStory => ({
-    title: st.title,
-    chapters: [...st.chapters].sort((a, b) => a.order - b.order).map(toChapter),
-  });
-  const md = format === 'markdown';
-
-  switch (scope.kind) {
-    case 'scene': {
-      let found: import('./ipc.js').SceneEntry | null = null;
-      outer: for (const story of manifest.stories) {
-        for (const ch of story.chapters) {
-          const sc = ch.scenes.find((s) => s.id === scope.sceneId);
-          if (sc) { found = sc; break outer; }
-        }
-      }
-      if (!found) {
-        found = (manifest.scenes ?? []).find(
-          (s: import('./ipc.js').SceneEntry) => s.id === scope.sceneId,
-        ) ?? null;
-      }
-      if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-      const exportScene = readProse(found);
-      return {
-        content: md ? sceneToMarkdown(exportScene) : sceneToPlaintext(exportScene),
-        defaultFilename: safeExportFilename(found.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'chapter': {
-      const story = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
-      const ch = story.chapters.find((c) => c.id === scope.chapterId);
-      if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse);
-      return {
-        content: md ? chapterToMarkdown(ch.title, scenes) : chapterToPlaintext(ch.title, scenes),
-        defaultFilename: safeExportFilename(ch.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'story': {
-      const story = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
-      const exportStory = toStory(story);
-      return {
-        content: md ? storyToMarkdown(exportStory) : storyToPlaintext(exportStory),
-        defaultFilename: safeExportFilename(story.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'vault': {
-      const exportStories = manifest.stories.map(toStory);
-      return {
-        content: md ? vaultToMarkdown(exportStories) : vaultToPlaintext(exportStories),
-        defaultFilename: 'vault-export',
-        missingSceneIds: [...missing],
-      };
-    }
-  }
-}
+// buildTextExport / resolveExportScope live in exportScope.ts — pure over a
+// vault root + manifest, no Electron dependency, so they're unit-testable
+// (main.ts itself isn't, due to app-lifecycle side effects at module load).
 
 // Beta 4 M14 — last file written by any export handler. Read only by
 // EXPORT_REVEAL_LAST ("Show in folder" on the export modal Done state); the
 // renderer never supplies the path.
 let lastExportPath: string | null = null;
-
-// ─── Export scope resolution (Beta 4 M14 — shared by DOCX + PDF) ───
-
-interface ResolvedExportScope {
-  title: string;
-  synopsis?: string;
-  chapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }>;
-  missingSceneIds: string[];
-}
-
-function resolveExportScope(
-  manifest: import('./ipc.js').Manifest,
-  scope: import('./ipc.js').ExportScope,
-): ResolvedExportScope {
-  const missing = new Set<string>();
-  const readProse = (sc: import('./ipc.js').SceneEntry): { id: string; title: string; prose: string } => ({
-    id: sc.id,
-    title: sc.title,
-    prose: readSceneProseTracked(getVaultRoot(), sc, missing),
-  });
-
-  if (scope.kind === 'scene') {
-    let found: import('./ipc.js').SceneEntry | null = null;
-    outer: for (const st of manifest.stories) {
-      for (const ch of st.chapters) {
-        const sc = ch.scenes.find((s) => s.id === scope.sceneId);
-        if (sc) { found = sc; break outer; }
-      }
-    }
-    if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-    const scene = readProse(found);
-    return { title: found.title, chapters: [{ id: found.id, title: found.title, scenes: [scene] }], missingSceneIds: [...missing] };
-  }
-  if (scope.kind === 'chapter') {
-    const st = manifest.stories.find((s) => s.id === scope.storyId);
-    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-    const ch = st.chapters.find((c) => c.id === scope.chapterId);
-    if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-    return {
-      title: ch.title,
-      synopsis: st.synopsis,
-      chapters: [{
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      }],
-      missingSceneIds: [...missing],
-    };
-  }
-  if (scope.kind === 'story') {
-    const st = manifest.stories.find((s) => s.id === scope.storyId);
-    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-    return {
-      title: st.title,
-      synopsis: st.synopsis,
-      chapters: [...st.chapters].sort((a, b) => a.order - b.order).map((ch) => ({
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      })),
-      missingSceneIds: [...missing],
-    };
-  }
-  // vault
-  const chapters: ResolvedExportScope['chapters'] = [];
-  for (const st of manifest.stories) {
-    for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
-      chapters.push({
-        id: ch.id,
-        title: `${st.title} — ${ch.title}`,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      });
-    }
-  }
-  return { title: 'Vault Export', chapters, missingSceneIds: [...missing] };
-}
 
 // ─── PDF rendering (Beta 4 M14) — hidden BrowserWindow + printToPDF ───
 // No new dependencies: Chromium is the PDF engine. The compiled HTML is
@@ -1836,6 +1686,19 @@ const handlers: IpcHandlers = {
       return { vaultRoot: null, cancelled: true };
     }
     const newRoot = result.filePaths[0];
+    // SKY-11132: never repoint the Story Vault at a folder that isn't
+    // already a recognized Mythos vault. This handler used to accept any
+    // OS-dialog folder unconditionally and immediately seed app files into
+    // it via ensureVaultDir() below — that's how "Open Vault Folder" (wired
+    // up in the UI as "Import a vault…") could silently adopt a user's real
+    // Obsidian vault as the Story Vault.
+    const openGate = checkOpenFolderGate({
+      root: newRoot,
+      isRecognizedVault: mythosRootForStoryVault(newRoot) !== null || hasSeedMarker(newRoot),
+    });
+    if (!openGate.ok) {
+      return { vaultRoot: null, cancelled: false, error: openGate.error };
+    }
     saveVaultSettings({ vaultRoot: newRoot });
     // SKY-320: legacy "open folder" only switches the Story Vault; pair it
     // with the currently-configured Notes Vault so the recents allowlist
@@ -4815,7 +4678,7 @@ const handlers: IpcHandlers = {
       ? payload.scope
       : { kind: 'story', storyId: payload.storyId! };
 
-    const { title: docxTitle, synopsis, chapters: docxChapters, missingSceneIds: docxMissing } = resolveExportScope(manifest, scope);
+    const { title: docxTitle, synopsis, chapters: docxChapters, missingSceneIds: docxMissing } = resolveExportScope(getVaultRoot(), manifest, scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export DOCX',
@@ -4841,7 +4704,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_PDF]: async (payload: { scope: import('./ipc.js').ExportScope; options?: import('./ipc.js').ExportOptions }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { title: pdfTitle, synopsis, chapters: pdfChapters, missingSceneIds: pdfMissing } = resolveExportScope(manifest, payload.scope);
+    const { title: pdfTitle, synopsis, chapters: pdfChapters, missingSceneIds: pdfMissing } = resolveExportScope(getVaultRoot(), manifest, payload.scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export PDF',
@@ -4882,7 +4745,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_MARKDOWN]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename, missingSceneIds: mdMissing } = buildTextExport(manifest, payload.scope, 'markdown');
+    const { content, defaultFilename, missingSceneIds: mdMissing } = buildTextExport(getVaultRoot(), manifest, payload.scope, 'markdown');
     const result = await dialog.showSaveDialog({
       title: 'Export Markdown',
       defaultPath: `${defaultFilename}.md`,
@@ -4898,7 +4761,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename, missingSceneIds: txtMissing } = buildTextExport(manifest, payload.scope, 'plaintext');
+    const { content, defaultFilename, missingSceneIds: txtMissing } = buildTextExport(getVaultRoot(), manifest, payload.scope, 'plaintext');
     const result = await dialog.showSaveDialog({
       title: 'Export Plain Text',
       defaultPath: `${defaultFilename}.txt`,

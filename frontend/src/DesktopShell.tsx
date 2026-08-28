@@ -3291,7 +3291,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const openVaultViaPicker = useCallback(async () => {
     try {
       const result = await window.api?.openVaultFolder?.();
-      if (!result?.cancelled && result?.vaultRoot) handleProjectSwitched(result.vaultRoot);
+      if (!result?.cancelled && result?.vaultRoot) {
+        handleProjectSwitched(result.vaultRoot);
+      } else if (result?.error) {
+        alert(result.error);
+      }
     } catch { /* non-fatal */ }
   }, [handleProjectSwitched]);
 
