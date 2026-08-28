@@ -1019,7 +1019,7 @@ interface Window {
     deleteVault: (path: string) => Promise<{ path: string; deleted: boolean }>;
     readManifest: () => Promise<unknown>;
     writeManifest: (manifest: unknown) => Promise<unknown>;
-    openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean }>;
+    openVaultFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; error?: string }>;
     getVaultRoot: () => Promise<{ vaultRoot: string }>;
     /** SKY-5790: reveal the current Story Vault root in the OS file manager. */
     revealVaultFolder: () => Promise<{ opened: boolean }>;

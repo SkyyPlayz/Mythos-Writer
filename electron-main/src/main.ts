@@ -360,7 +360,7 @@ import {
 import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken, checkOpenFolderGate } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -422,6 +422,7 @@ import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
   NOTES_VAULT_SEED_LAYOUT,
+  hasSeedMarker,
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
@@ -1836,6 +1837,19 @@ const handlers: IpcHandlers = {
       return { vaultRoot: null, cancelled: true };
     }
     const newRoot = result.filePaths[0];
+    // SKY-11132: never repoint the Story Vault at a folder that isn't
+    // already a recognized Mythos vault. This handler used to accept any
+    // OS-dialog folder unconditionally and immediately seed app files into
+    // it via ensureVaultDir() below — that's how "Open Vault Folder" (wired
+    // up in the UI as "Import a vault…") could silently adopt a user's real
+    // Obsidian vault as the Story Vault.
+    const openGate = checkOpenFolderGate({
+      root: newRoot,
+      isRecognizedVault: mythosRootForStoryVault(newRoot) !== null || hasSeedMarker(newRoot),
+    });
+    if (!openGate.ok) {
+      return { vaultRoot: null, cancelled: false, error: openGate.error };
+    }
     saveVaultSettings({ vaultRoot: newRoot });
     // SKY-320: legacy "open folder" only switches the Story Vault; pair it
     // with the currently-configured Notes Vault so the recents allowlist
