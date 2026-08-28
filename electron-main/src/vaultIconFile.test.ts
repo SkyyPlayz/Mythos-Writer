@@ -61,40 +61,38 @@ describe('isVaultIconFileName — strict literal match (no path segments possibl
 });
 
 describe('readVaultIconAsDataUrl — FS access gated by the allowlist', () => {
-  it('returns null for a non-absolute mythos root without touching the filesystem', () => {
-    const existsSpy = vi.spyOn(fs, 'existsSync');
-    const result = readVaultIconAsDataUrl('relative/root', 'vault-icon.png');
+  it('returns null for a non-absolute mythos root without touching the filesystem', async () => {
+    const statSpy = vi.spyOn(fs.promises, 'stat');
+    const result = await readVaultIconAsDataUrl('relative/root', 'vault-icon.png');
     expect(result.dataUrl).toBeNull();
-    expect(existsSpy).not.toHaveBeenCalled();
+    expect(statSpy).not.toHaveBeenCalled();
   });
 
-  it('returns null for a renderer-supplied non-literal file name', () => {
-    const existsSpy = vi.spyOn(fs, 'existsSync');
-    const result = readVaultIconAsDataUrl('/home/user/vault', '../../etc/passwd');
+  it('returns null for a renderer-supplied non-literal file name', async () => {
+    const statSpy = vi.spyOn(fs.promises, 'stat');
+    const result = await readVaultIconAsDataUrl('/home/user/vault', '../../etc/passwd');
     expect(result.dataUrl).toBeNull();
-    expect(existsSpy).not.toHaveBeenCalled();
+    expect(statSpy).not.toHaveBeenCalled();
   });
 
-  it('returns null for a file exceeding MAX_VAULT_ICON_BYTES without reading', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-    vi.spyOn(fs, 'statSync').mockReturnValue({ size: MAX_VAULT_ICON_BYTES + 1 } as fs.Stats);
-    const readSpy = vi.spyOn(fs, 'readFileSync');
-    const result = readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
+  it('returns null for a file exceeding MAX_VAULT_ICON_BYTES without reading', async () => {
+    vi.spyOn(fs.promises, 'stat').mockResolvedValue({ size: MAX_VAULT_ICON_BYTES + 1 } as fs.Stats);
+    const readSpy = vi.spyOn(fs.promises, 'readFile');
+    const result = await readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
     expect(result.dataUrl).toBeNull();
     expect(readSpy).not.toHaveBeenCalled();
   });
 
-  it('returns null for a missing file', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-    const result = readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
+  it('returns null for a missing file', async () => {
+    vi.spyOn(fs.promises, 'stat').mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const result = await readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
     expect(result.dataUrl).toBeNull();
   });
 
-  it('returns null and does not throw on a read error', () => {
-    vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-    vi.spyOn(fs, 'statSync').mockReturnValue({ size: 100 } as fs.Stats);
-    vi.spyOn(fs, 'readFileSync').mockImplementation(() => { throw new Error('EPERM'); });
-    const result = readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
+  it('returns null and does not throw on a read error', async () => {
+    vi.spyOn(fs.promises, 'stat').mockResolvedValue({ size: 100 } as fs.Stats);
+    vi.spyOn(fs.promises, 'readFile').mockRejectedValue(new Error('EPERM'));
+    const result = await readVaultIconAsDataUrl('/home/user/vault', 'vault-icon.png');
     expect(result.dataUrl).toBeNull();
   });
 });
@@ -113,7 +111,7 @@ describe('importVaultIconFile / readVaultIconAsDataUrl — real round trip', () 
     fs.rmSync(sourceDir, { recursive: true, force: true });
   });
 
-  it('copies an allowed source image into <mythosRoot>/vault-icon.<ext> and reads it back', () => {
+  it('copies an allowed source image into <mythosRoot>/vault-icon.<ext> and reads it back', async () => {
     const source = path.join(sourceDir, 'picked.png');
     fs.writeFileSync(source, Buffer.from('PNG_BYTES'));
 
@@ -121,7 +119,7 @@ describe('importVaultIconFile / readVaultIconAsDataUrl — real round trip', () 
     expect(file).toBe('vault-icon.png');
     expect(fs.existsSync(path.join(mythosRoot, 'vault-icon.png'))).toBe(true);
 
-    const { dataUrl } = readVaultIconAsDataUrl(mythosRoot, file!);
+    const { dataUrl } = await readVaultIconAsDataUrl(mythosRoot, file!);
     expect(dataUrl).toBe(`data:image/png;base64,${Buffer.from('PNG_BYTES').toString('base64')}`);
   });
 

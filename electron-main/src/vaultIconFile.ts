@@ -80,10 +80,10 @@ export function importVaultIconFile(
  *   - the file does not exist or exceeds MAX_VAULT_ICON_BYTES
  *   - any read error occurs
  */
-export function readVaultIconAsDataUrl(
+export async function readVaultIconAsDataUrl(
   mythosRoot: string,
   fileName: string,
-): { dataUrl: string | null } {
+): Promise<{ dataUrl: string | null }> {
   try {
     if (!mythosRoot || !path.isAbsolute(mythosRoot)) return { dataUrl: null };
     if (!isVaultIconFileName(fileName)) return { dataUrl: null };
@@ -91,10 +91,12 @@ export function readVaultIconAsDataUrl(
     const mime = ALLOWED_VAULT_ICON_MIME[ext];
     if (!mime) return { dataUrl: null };
     const filePath = path.join(mythosRoot, fileName);
-    if (!fs.existsSync(filePath)) return { dataUrl: null };
-    const stat = fs.statSync(filePath);
+    // SKY-11108: async fs so a 5 MB icon read never blocks the main-process
+    // IPC queue (readFileSync here delayed every other in-flight IPC round
+    // trip, e.g. outline.load(), while boot-time loadVaultIcons() ran).
+    const stat = await fs.promises.stat(filePath);
     if (stat.size > MAX_VAULT_ICON_BYTES) return { dataUrl: null };
-    const data = fs.readFileSync(filePath);
+    const data = await fs.promises.readFile(filePath);
     return { dataUrl: `data:${mime};base64,${data.toString('base64')}` };
   } catch {
     return { dataUrl: null };
