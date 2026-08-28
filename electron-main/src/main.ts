@@ -279,7 +279,7 @@ import { registerPresetHandlers } from './presetIpc.js';
 // separate chunk by electron-vite's ?nodeWorker suffix and spawned as a
 // node:worker_threads Worker so scan passes never run on the main thread.
 import createJobWorker from './jobs/jobWorker?nodeWorker';
-import { initJobService, shutdownJobService } from './jobs/jobService.js';
+import { initJobService, shutdownJobService, getJobQueue } from './jobs/jobService.js';
 import { registerJobsIpc } from './jobs/jobsIpc.js';
 import {
   buildVaultSummary,
@@ -351,7 +351,13 @@ import {
   insertArchiveAuditLog,
   insertSuggestionSnapshot,
   getSuggestionSnapshot,
+  rebuildDerivedFactStores,
+  listFactDecisions,
+  listEntityIndex,
+  getVaultIndexCacheRows,
+  isDbOpen,
 } from './db.js';
+import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
 import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
@@ -560,6 +566,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
+import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -1039,9 +1046,13 @@ function initJobServiceForVault(vaultRoot: string): void {
     vaultRoot,
     (input) => createJobWorker({ workerData: input }),
     (evt) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
-      }
+      // M12.3: floating panels (e.g. popped-out Continuity) track scoped
+      // scans too — broadcast like ARCHIVE_CONT_SCAN_START, not main-only.
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
+        }
+      });
     },
   );
 }
@@ -5575,6 +5586,43 @@ const handlers: IpcHandlers = {
     };
   },
 
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos
+  // vaults. Same recent-projects + active-vault list as PROJECT_STATS.
+  [IPC_CHANNELS.PROJECT_ICONS]: () => {
+    return {
+      icons: collectProjectIcons([{ vaultRoot: getVaultRoot() }, ...getRecentProjects()]),
+    };
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: import('./ipc.js').ProjectIconSetPayload) => {
+    // SKY-11068 follow-up (mirrors MYT-789 on PROJECT_SWITCH): setProjectIcon
+    // writes into <vaultRoot's mythos root>/vault-icon.<ext> and rewrites its
+    // mythos.json. Without this gate a compromised renderer could pass any
+    // structurally-valid v2 vault path — not just the active/known vaults —
+    // and get an arbitrary-directory file write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return setProjectIcon({ ...payload, vaultRoot: gate.vaultRoot });
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose Story Icon',
+      buttonLabel: 'Set Icon',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
     // MYT-789: gate the switch behind the recent-projects allowlist. Without
     // this, a renderer could re-root the vault sandbox at any existing,
@@ -7441,6 +7489,36 @@ const handlers: IpcHandlers = {
     const vaultRoot = getNotesVaultRoot() || getVaultRoot();
     const index = autoLinkerBuildIndex(vaultRoot, opts);
     return { count: index.length };
+  },
+
+  // SKY-10772 M12.5: AI Agents index controls
+  [IPC_CHANNELS.AGENT_INDEX_GET_STATS]: () => {
+    const entities = listEntityIndex();
+    const decisions = listFactDecisions(true);
+    const cache = getVaultIndexCacheRows();
+    const lastScanned = cache.reduce<string | null>((max, row) => {
+      if (!max || row.indexed_at > max) return row.indexed_at;
+      return max;
+    }, null);
+    return {
+      entityCount: entities.length,
+      lastScanAt: lastScanned,
+      factDecisionCount: decisions.length,
+      cacheRowCount: cache.length,
+    };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_CLEAN]: () => {
+    const before = listFactDecisions(true).length;
+    rebuildDerivedFactStores();
+    const after = listFactDecisions(true).length;
+    return { decisionsPreserved: after, derivedWiped: true, tombstonesIntact: before === after };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_REBUILD]: () => {
+    const queue = getJobQueue();
+    if (!queue) return { error: 'No vault open — job queue unavailable.' };
+    rebuildDerivedFactStores();
+    const jobId = queue.enqueue('vault-scan', { vaultRoot: getVaultRoot() });
+    return { jobId };
   },
 
   // SKY-6306 M21: Multi-timeline store
@@ -10028,6 +10106,18 @@ function registerArchiveContinuityHandlers(): void {
       return { items: rows.map(dbRowToItem) };
     }),
   );
+
+  // M12.3 (SKY-10770): global contradiction query. Deliberately ignores scan
+  // scope — a contradiction flagged in ANY scene surfaces here (SKY-10666:
+  // detection is a cheap global DB read, never a re-extraction).
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS, (event) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      if (!isDbOpen()) return { items: [] };
+      return { items: queryGlobalContradictions() };
+    }),
+  );
 }
 
 function registerContinuityHandler(): void {
@@ -10152,7 +10242,15 @@ app.whenReady().then(async () => {
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
-  registerJobsIpc(getVaultRoot);
+  registerJobsIpc(getVaultRoot, () => {
+    // M12.3: scoped scans resolve scene sets from main's own manifest read —
+    // renderer-supplied scope is identifiers only, never paths.
+    try {
+      return readManifest(getManifestPath());
+    } catch {
+      return null;
+    }
+  });
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
   registerNavigatorSyncHandlers();

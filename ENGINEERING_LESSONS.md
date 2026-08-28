@@ -107,8 +107,27 @@ When a stale CI-monitor routine is suspected, first compare the routine `status`
 **Fix:** prefer `git rebase <target> ` over `git merge <target>` when reconciling a feature branch with a moved base, specifically because rebase replays each commit's own diff (no silent-duplicate-insertion failure mode) where merge 3-way-combines full trees (can duplicate). If a merge is unavoidable (e.g., the branch is public/shared and a force-push is off the table), always rerun the *full* test suite afterward, not just the tests the issue names — a targeted rerun of only the "required" tests will not surface a duplicate-insertion bug unless one of those specific tests happens to assert single-match semantics on the duplicated content. Also: before pushing a from-scratch reconciliation, `git fetch` the target branch one more time — another agent may have already completed and pushed the same reconciliation while you were mid-work (this happened here, on the very issue about duplicate parallel work); prefer their already-pushed result over overwriting it if it's equivalent or better.
 
 ---
+## Electron renderers: `window.prompt()` is dead, so promptable UI paths need real-app E2E (SKY-11058)
+
 **2026-08-26** — SKY-11058: a merged, CI-green picker feature shipped with a create flow that was dead in the real app because it called `window.prompt()`, which Electron's renderer does not implement (silently no-ops/throws — no dialog ever appears). Nothing caught it: unit tests mock the layer above, typecheck/lint pass (`window.prompt` is valid DOM API), and no e2e drove the flow. The repo already has `frontend/src/useTextPrompt.tsx` built specifically to replace `window.prompt` (its doc comment says exactly this) — the bug was re-introduced anyway.
 
 **Fix:** in renderer code never use `window.prompt`/`window.alert`/`window.confirm` for anything the real app must actually do — use `useTextPrompt` (prompt) or the `ui/Dialog` components (confirm). And any "user can create/name X" UI claim needs one e2e that drives the real flow through the built Electron app; that is the only layer that catches Electron-vs-browser DOM API gaps.
+
+---
+
+## SKY-10770 — manifest scene `order` is per-chapter, never global
+
+**Area:** manuscript structure / scan scoping
+
+**Lesson:** `SceneEntry.order` (and `ChapterEntry.order`) is ordinal WITHIN its
+container only. Flattening scenes across chapters and then sorting the flat
+list by `order` interleaves chapters (a chapter-2 scene with order 0 sorts
+before a chapter-1 scene with order 1). To produce manuscript order, sort
+parts → chapters → scenes each inside their own container and concatenate.
+Caught by the scanScopeResolver book-scope test before it shipped.
+
+**2026-08-27** — (SKY-10875, FoundingEngineer) Manuscript reading order has TWO representations and they diverge: `story.parts` is the mutation authority (M2/SKY-9017 — parts sorted by `part.order`, chapters by `chapter.order` WITHIN each part; this is what BookPreview/manuscriptModel render), while `story.chapters` is a derived flat mirror whose `order` fields are NOT globally monotonic. A reachable UI history (delete chapters → add part → add chapter; `deleteChapter` filters without renumbering, `createChapter` assigns `order = chapters.length`) leaves per-part orders like P1{order 2}, P2{order 1} — any consumer that globally sorts the flat mirror by `chapter.order` reads the book in the wrong order and computes wrong chapter numbers. Traverse parts when they exist; only trust the flat mirror for part-less pre-M2 shapes (see `orderedChapters` in `electron-main/src/manuscriptPass.ts`). Note: `buildTextExport`/`resolveExportScope` in main.ts still use the global sort — latent bug, tracked separately.
+
+**Fix pattern for "never re-reads / never writes" acceptance criteria:** an injected spy reader only proves the seam you injected; it is blind to code that calls the real reader directly. Spy at the fs boundary (`vi.spyOn(fs, 'readFileSync')`, filter to the file class) across the combined run, and mutation-test the spec once (plant the forbidden read/write, watch the test fail) before trusting it. Same for byte-identity: seed every protected file through its real writer first (a byte-identity check over files that don't exist is vacuous) and assert their existence in the snapshot.
 
 ---
