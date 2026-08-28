@@ -30,19 +30,24 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    background: var(--glass-fill);
-    backdrop-filter: blur(var(--blur-panel));
-    -webkit-backdrop-filter: blur(var(--blur-panel));
+    /* SKY-11133: Settings reads the overlay tier (glassA/blur × 1.25,
+       clamped) instead of --glass-fill/--blur-panel directly, so it stays
+       legible at the owner's preferred low global glass. Same slider, same
+       reactivity — see liquidNeonEngine.ts panelGlassTokens. */
+    background: var(--glass-fill-overlay);
+    backdrop-filter: blur(var(--blur-panel-overlay));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
   }
 }
 
 /* K8: high-contrast keeps its opaque settings backdrop — both the explicit
    app setting and the OS preference path (tokens.css §contrast). M4/M28 spec
    scopes the opaque override to K8 only; prefers-reduced-transparency is
-   handled globally by tokens.css (--glass-fill/--blur-panel fall back to the
-   opaque token there) and must not also blank the overlay here — doing so
-   fully hid BackgroundStack behind a second, redundant opaque layer and
-   silently turned the Appearance tab's glass sliders into no-ops (SKY-10908). */
+   handled globally by tokens.css (--glass-fill-overlay/--blur-panel-overlay
+   fall back to the opaque token there, same as --glass-fill/--blur-panel)
+   and must not also blank the overlay here — doing so fully hid
+   BackgroundStack behind a second, redundant opaque layer and silently
+   turned the Appearance tab's glass sliders into no-ops (SKY-10908). */
 [data-contrast="high"] .settings-overlay {
   background: var(--bg-canvas);
 }

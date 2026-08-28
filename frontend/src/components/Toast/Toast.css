@@ -6,7 +6,10 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: var(--bg-panel, #2a2a2e);
+  /* SKY-11133: overlay tier — toasts float over content and read the same
+     boosted opacity/blur as Settings/popovers so they stay legible at a low
+     global glass setting. */
+  background: var(--glass-fill-overlay, #2a2a2e);
   color: var(--text-primary, #f0f0f0);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: 6px;
@@ -17,6 +20,13 @@
   white-space: nowrap;
   pointer-events: none;
   animation: app-toast-in 0.2s ease-out;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .app-toast {
+    backdrop-filter: blur(var(--blur-panel-overlay));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
+  }
 }
 
 .app-toast--info {
