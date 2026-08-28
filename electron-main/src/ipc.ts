@@ -1561,6 +1561,9 @@ export interface SystemInfo {
 export interface VaultOpenFolderResponse {
   vaultRoot: string | null;
   cancelled: boolean;
+  /** SKY-11132: set when the picked folder was refused — not a recognized
+   *  Mythos vault, so it was never adopted or seeded. */
+  error?: string;
 }
 
 /**

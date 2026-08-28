@@ -295,6 +295,51 @@ export function looksLikeObsidianVault(
   return existsSync(joinPathLike(p, '.obsidian'));
 }
 
+export type OpenFolderGateResult = { ok: true } | { ok: false; error: string };
+
+export interface OpenFolderGateInput {
+  root: string;
+  existsSync?: (fsPath: string) => boolean;
+  readdirSync?: (fsPath: string) => string[];
+  /** True when `root` is already a recognized Mythos vault by a check that
+   *  lives outside this module (a MythosVault v2 root, or a root carrying
+   *  the SKY-15 seed marker) — the caller composes those checks in. */
+  isRecognizedVault?: boolean;
+}
+
+/**
+ * Guard for `vault:open-folder` (SKY-11132). Refuses to adopt `root` as the
+ * Story Vault when it is a non-empty folder that isn't already a recognized
+ * Mythos vault — e.g. a user's real Obsidian vault. Without this gate, Open
+ * Vault Folder repointed the Story Vault at whatever folder the OS dialog
+ * returned and immediately seeded app files into it (ensureVaultDir), no
+ * copy, no confirmation. Empty or missing folders are still fine — that's
+ * genuinely starting a fresh vault there.
+ */
+export function checkOpenFolderGate(input: OpenFolderGateInput): OpenFolderGateResult {
+  const {
+    root,
+    existsSync = fs.existsSync,
+    readdirSync = fs.readdirSync,
+    isRecognizedVault = false,
+  } = input;
+  if (!existsSync(root)) return { ok: true };
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return { ok: true };
+  }
+  if (entries.length === 0) return { ok: true };
+  if (isRecognizedVault || existsSync(joinPathLike(root, 'manifest.json'))) return { ok: true };
+  return {
+    ok: false,
+    error: looksLikeObsidianVault(root, existsSync)
+      ? 'This is an Obsidian vault, not a Mythos vault — Open Vault Folder never repoints at it. Use Settings → Vault & Files → Import another vault to copy it in instead.'
+      : "This folder doesn't look like a Mythos vault (no manifest.json or mythos.json found). Pick an existing Mythos vault folder, or use Import another vault / New vault to create one.",
+  };
+}
+
 // ─── checkGuidedMoveGate (SKY-862) ───────────────────────────────────────────
 // Gate for vault:guidedFolderMove. Validates all three required proof layers:
 //   1. targetPath is within os.homedir() and has no `..` components.

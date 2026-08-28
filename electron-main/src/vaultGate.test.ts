@@ -17,6 +17,7 @@ import {
   looksLikeObsidianVault,
   checkScaffoldGate,
   consumeScaffoldToken,
+  checkOpenFolderGate,
 } from './vaultGate.js';
 import {
   generateRegistrationToken,
@@ -342,6 +343,80 @@ describe('looksLikeObsidianVault', () => {
     expect(checked).toHaveLength(1);
     expect(checked[0]).toMatch(/\.obsidian$/);
     expect(checked[0]).not.toBe('/some/dir');
+  });
+});
+
+// ─── checkOpenFolderGate (SKY-11132) ──────────────────────────────────────────
+
+describe('checkOpenFolderGate', () => {
+  it('allows a folder that does not exist yet (fresh vault location)', () => {
+    const result = checkOpenFolderGate({ root: '/home/alice/NewVault', existsSync: () => false });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('allows an empty existing folder', () => {
+    const result = checkOpenFolderGate({
+      root: '/home/alice/EmptyDir',
+      existsSync: () => true,
+      readdirSync: () => [],
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('allows a non-empty folder that already has manifest.json (v0.4 vault)', () => {
+    const result = checkOpenFolderGate({
+      root: '/home/alice/MyStoryVault',
+      existsSync: () => true,
+      readdirSync: () => ['manifest.json', 'Manuscript'],
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('allows a non-empty folder the caller already recognizes as a vault (v2 / seed marker)', () => {
+    const result = checkOpenFolderGate({
+      root: '/home/alice/MythosVault/Story Vault',
+      existsSync: () => false,
+      readdirSync: () => ['book.md'],
+      isRecognizedVault: true,
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('refuses a non-empty, unrecognized Obsidian vault — the SKY-11132 owner repro', () => {
+    // Regression: this is exactly the shape of the owner's real Obsidian
+    // vault — non-empty, has .obsidian, no manifest.json, never seeded.
+    const root = 'C:\\Users\\SkyLo\\Documents\\Obsidian Vault';
+    const existsSync = (p: string) => p === root || p.endsWith('.obsidian');
+    const readdirSync = () => ['.obsidian', 'Daily Notes', 'Projects'];
+    const result = checkOpenFolderGate({ root, existsSync, readdirSync });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/Obsidian vault, not a Mythos vault/);
+      expect(result.error).toMatch(/Import another vault/);
+    }
+  });
+
+  it('refuses a non-empty, unrecognized non-Obsidian folder with a generic message', () => {
+    const root = '/home/alice/Downloads';
+    const result = checkOpenFolderGate({
+      root,
+      existsSync: (p: string) => p === root,
+      readdirSync: () => ['random.txt'],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/doesn't look like a Mythos vault/);
+    }
+  });
+
+  it('never calls readdirSync when the folder does not exist (read-only intent, no directory listing of nonexistent path)', () => {
+    let readdirCalled = false;
+    checkOpenFolderGate({
+      root: '/nope',
+      existsSync: () => false,
+      readdirSync: () => { readdirCalled = true; return []; },
+    });
+    expect(readdirCalled).toBe(false);
   });
 });
 
