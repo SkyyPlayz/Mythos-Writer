@@ -251,28 +251,74 @@ describe('SceneCrafterPage — M19 scene setup form (§7.1, AC1)', () => {
     return renderPage();
   }
 
-  it('POV select is populated from the vault Characters group, title-cased', async () => {
+  it('POV is a typeable field, not a <select> — no hidden Custom… step (SKY-11049 item 7)', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    const optionLabels = within(select).getAllByRole('option').map((o) => o.textContent);
-    expect(optionLabels).toEqual(expect.arrayContaining(['Mira Veynn', 'Kael Thorne']));
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    expect(field.tagName).toBe('INPUT');
+    expect(screen.queryByText('Custom…')).not.toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'A nameless watcher' } });
+    expect(field).toHaveValue('A nameless watcher');
   });
 
-  it('picking a cast member sets POV without showing the custom input', async () => {
+  it('focusing POV shows the vault Characters group as cards, title-cased (SKY-11049 item 7)', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    fireEvent.change(select, { target: { value: 'Mira Veynn' } });
-    expect(select).toHaveValue('Mira Veynn');
-    expect(screen.queryByRole('textbox', { name: /custom pov name/i })).not.toBeInTheDocument();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    const listbox = screen.getByRole('listbox', { name: /vault characters/i });
+    const optionLabels = within(listbox).getAllByRole('option').map((o) => o.textContent);
+    expect(optionLabels).toEqual(expect.arrayContaining([expect.stringContaining('Mira Veynn'), expect.stringContaining('Kael Thorne')]));
   });
 
-  it('choosing Custom… reveals a free-text POV input', async () => {
+  it('picking a character card fills POV and closes the dropdown', async () => {
     await renderWithCast();
-    const select = screen.getByRole('combobox', { name: 'POV' });
-    fireEvent.change(select, { target: { value: '__custom__' } });
-    const custom = screen.getByRole('textbox', { name: /custom pov name/i });
-    fireEvent.change(custom, { target: { value: 'A nameless watcher' } });
-    expect(custom).toHaveValue('A nameless watcher');
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    fireEvent.click(screen.getByRole('option', { name: /mira veynn/i }));
+    expect(field).toHaveValue('Mira Veynn');
+    expect(screen.queryByRole('listbox', { name: /vault characters/i })).not.toBeInTheDocument();
+  });
+
+  it('typing filters the character-card dropdown by name', async () => {
+    await renderWithCast();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: 'kael' } });
+    const listbox = screen.getByRole('listbox', { name: /vault characters/i });
+    expect(within(listbox).getAllByRole('option')).toHaveLength(1);
+    expect(within(listbox).getByRole('option', { name: /kael thorne/i })).toBeInTheDocument();
+  });
+
+  it('an empty vault-wide character list is never a dead control — POV stays a plain text box with a hint', async () => {
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+    });
+    await renderPage();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    expect(screen.queryByRole('listbox', { name: /vault characters/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Type a name — or add characters in your Notes vault')).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'A nameless watcher' } });
+    expect(field).toHaveValue('A nameless watcher');
+  });
+
+  it('resolves characters from a #Character-tagged note when there is no Characters folder (owner vault shape)', async () => {
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          {
+            path: 'Main Characters/Liora Ashen.md',
+            name: 'Liora Ashen.md',
+            isDirectory: false,
+            modifiedAt: '2026-01-01T00:00:00.000Z',
+            characterTag: true,
+          },
+        ],
+      }),
+    });
+    await renderPage();
+    const field = screen.getByRole('combobox', { name: 'POV' });
+    fireEvent.focus(field);
+    expect(screen.getByRole('option', { name: /liora ashen/i })).toBeInTheDocument();
   });
 
   it('beats reorder with the up/down buttons and stay bounded at the edges', async () => {
@@ -306,37 +352,141 @@ describe('SceneCrafterPage — M19 scene setup form (§7.1, AC1)', () => {
   });
 });
 
-describe('SceneCrafterPage — M19 right kanban: beats/cast/places (§7.1, AC8)', () => {
-  it('shows beats from the setup and cast/places notes from the vault, and opens a note on click', async () => {
-    const onOpenNote = vi.fn();
+describe('SceneCrafterPage — SKY-11072 vault-reference columns (owner ruling: prototype wins)', () => {
+  const REF_VAULT_ITEMS = [
+    { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Items & Systems/Drownlight.md', name: 'Drownlight.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Loose Note.md', name: 'Loose Note.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  async function renderRefColumns(onOpenNote = vi.fn()) {
     const api = makeApi({
-      listNotesVault: vi.fn().mockResolvedValue({
-        items: [
-          { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-          { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-        ],
-      }),
+      listNotesVault: vi.fn().mockResolvedValue({ items: REF_VAULT_ITEMS }),
     });
     (window as unknown as { api: unknown }).api = api;
     render(<SceneCrafterPage story={STORY} onOpenNote={onOpenNote} onOpenScene={vi.fn()} />);
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    return onOpenNote;
+  }
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Mira Veynn')).toBeInTheDocument();
-    expect(within(kanban).getByText('Ward Violet')).toBeInTheDocument();
+  it('renders CHARACTERS / LOCATIONS / ITEMS & SYSTEMS columns stocked from the vault, and opens a note on click', async () => {
+    const onOpenNote = await renderRefColumns();
 
-    fireEvent.click(within(kanban).getByRole('button', { name: 'Ward Violet' }));
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    const locations = screen.getByTestId('sc-ref-col-locations');
+    const items = screen.getByTestId('sc-ref-col-items');
+    expect(within(characters).getByText('Mira Veynn')).toBeInTheDocument();
+    expect(within(locations).getByText('Ward Violet')).toBeInTheDocument();
+    expect(within(items).getByText('Drownlight')).toBeInTheDocument();
+
+    fireEvent.click(within(locations).getByRole('button', { name: /^ward violet/i }));
     expect(onOpenNote).toHaveBeenCalledWith('Locations/Ward Violet');
   });
 
-  it('lists beats added in Scene Setup under the BEATS column', async () => {
+  it('× removes the card from this scene only — the note stays in the suggested rail', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
+    expect(within(characters).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
+    // The vault note is untouched: still listed by the suggested rail.
+    const rail = screen.getByLabelText('Suggested cards');
+    expect(within(rail).getByText('Mira Veynn')).toBeInTheDocument();
+  });
+
+  it('the + picker offers vault notes not in the column and adds the picked one', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
+
+    const search = screen.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
+    fireEvent.change(search, { target: { value: 'loose' } });
+    fireEvent.click(within(characters).getByRole('button', { name: /loose note/i }));
+
+    // Picker closes; the note now sits in the column as a reference card.
+    expect(screen.queryByRole('textbox', { name: 'Search notes to add to CHARACTERS' })).not.toBeInTheDocument();
+    expect(within(characters).getByRole('button', { name: 'Remove Loose Note from this scene' })).toBeInTheDocument();
+  });
+
+  it('re-adding a removed note via the + picker restores it (un-remove path)', async () => {
+    await renderRefColumns();
+
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
+    expect(within(characters).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
+    fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
+    fireEvent.click(within(characters).getByRole('button', { name: /mira veynn/i }));
+    expect(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' })).toBeInTheDocument();
+  });
+
+  it('beats live in Scene Setup only — the old beats/cast/places kanban is gone', async () => {
     await renderPage();
+    expect(screen.queryByLabelText('Scene board: beats, cast, and places')).not.toBeInTheDocument();
+
     const addInput = screen.getByRole('textbox', { name: 'Add a beat' });
     fireEvent.change(addInput, { target: { value: 'Cold open on the sealed door' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // The beat renders once — in the Setup list — not mirrored anywhere else.
+    expect(screen.getAllByText('Cold open on the sealed door')).toHaveLength(1);
+  });
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Cold open on the sealed door')).toBeInTheDocument();
+  it('migrates beats from a legacy "Beats" lane on the saved board into the Setup list (instruction 3)', async () => {
+    const legacyBoard = cloneBoard();
+    legacyBoard.lanes.push({
+      name: 'Beats',
+      cards: [
+        { wikilink: 'x', title: 'Cold open on the sealed door', done: false, tags: [], raw: '' },
+        { wikilink: 'y', title: 'The door answers', done: false, tags: [], raw: '' },
+      ],
+    });
+    const api = makeApi({ sceneCrafterGetBoard: vi.fn().mockResolvedValue(legacyBoard) });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    expect(screen.getByTestId('sc-beat-0')).toHaveTextContent('Cold open on the sealed door');
+    expect(screen.getByTestId('sc-beat-1')).toHaveTextContent('The door answers');
+  });
+
+  it('does not re-seed legacy beats a writer deliberately cleared after a reload (Use disk version)', async () => {
+    const legacyBoard = cloneBoard();
+    legacyBoard.lanes.push({
+      name: 'Beats',
+      cards: [
+        { wikilink: 'x', title: 'Cold open on the sealed door', done: false, tags: [], raw: '' },
+        { wikilink: 'y', title: 'The door answers', done: false, tags: [], raw: '' },
+      ],
+    });
+    let externalEditHandler: ((storySlug: string) => void) | undefined;
+    const api = makeApi({
+      sceneCrafterGetBoard: vi.fn().mockResolvedValue(legacyBoard),
+      onSceneCrafterExternalEdit: vi.fn((cb: (storySlug: string) => void) => {
+        externalEditHandler = cb;
+        return vi.fn();
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    // Migration seeded both legacy beats; the writer clears them on purpose.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat Cold open on the sealed door' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove beat The door answers' }));
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
+
+    // An external edit reloads the board (Use disk version) — the migration
+    // must not run a second time and re-seed what was just cleared.
+    await act(async () => { externalEditHandler?.('Skyfall Chronicles'); });
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: /use disk version/i }));
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+
+    expect(screen.queryByTestId('sc-beat-0')).not.toBeInTheDocument();
   });
 });
 

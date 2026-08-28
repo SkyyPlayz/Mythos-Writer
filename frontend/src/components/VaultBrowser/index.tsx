@@ -1159,11 +1159,18 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
                 data-testid="vb-vault-picker-import"
                 onClick={() => {
                   setVaultPickerOpen(false);
-                  window.api.openVaultFolder?.();
+                  window.api.openVaultFolder?.().then((result) => {
+                    // SKY-11132: this opens an existing Mythos vault folder —
+                    // it never copies. Surface the refusal when the picked
+                    // folder isn't already a recognized Mythos vault so a
+                    // foreign folder (e.g. an Obsidian vault) is never
+                    // silently repointed at and seeded.
+                    if (result?.error) alert(result.error);
+                  }).catch(() => { /* non-fatal */ });
                 }}
               >
                 <div className="vb-vault-picker-info">
-                  <span className="vb-vault-picker-label">Import a vault…</span>
+                  <span className="vb-vault-picker-label">Open a Mythos vault…</span>
                 </div>
               </button>
             </div>

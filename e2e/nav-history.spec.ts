@@ -115,7 +115,8 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
 
       // B -> C: follow a second wikilink back into Notes (Elara's profile).
-      await page.getByText('[[Character: Elara]]', { exact: true }).click();
+      // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets.
+      await page.locator('[data-wiki-link="Character: Elara"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
 
@@ -171,6 +172,57 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       });
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+
+  // SKY-11042: Windows side-button can fire both a DOM mousedown (button 3/4)
+  // AND an Electron app-command IPC event for the same physical click. Without
+  // the 50 ms coalescing guard the nav history would step twice — landing two
+  // entries back instead of one. Simulate both paths firing in rapid succession
+  // and assert exactly one back-navigation occurred.
+  test('simultaneous mousedown + IPC back does not double-navigate (SKY-11042)', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
+
+      // Build a two-step history: Home → Notes → Story (via wikilink)
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
+      await page.getByText('Cross Links', { exact: true }).click();
+      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('[data-testid="note-gear-mode-rich"]').click();
+      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+
+      // Fire the DOM mousedown (button 3 = X1 back), then immediately fire the
+      // IPC `nav-history:back` channel — this simulates the Windows
+      // double-delivery within the 50 ms coalescing window. The guard must
+      // suppress the IPC copy, leaving exactly one step back.
+      //
+      // Both events MUST be delivered from one main-process evaluate: firing
+      // the mousedown via a separate page.evaluate adds a full Playwright
+      // round-trip before the IPC send, which on a slow CI runner exceeds the
+      // 50 ms window — the app then correctly treats the late IPC as a
+      // standalone back gesture and double-navigates (SKY-11083 flake).
+      // executeJavaScript resolves after the renderer runs the dispatch, so
+      // the follow-up send() is a single main→renderer hop (~1-5 ms) behind.
+      await app.evaluate(async ({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win) throw new Error('no BrowserWindow for SKY-11042 double-delivery simulation');
+        await win.webContents.executeJavaScript(
+          "window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }))",
+        );
+        win.webContents.send('nav-history:back');
+      });
+
+      // Should have gone back exactly once: we're on the Notes tab showing "Cross Links"
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
+      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 5_000 });
+      // We should NOT have gone all the way back past Notes (double-fire would)
+      await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
     } finally {
       await app.close().catch(() => undefined);
     }

@@ -56,6 +56,16 @@
   outline-offset: 2px;
 }
 
+/* Shared with .nav-rail__vault-tile--active below — both are the prototype's
+   "current-vault tile" gradient look; kept as one selector so the two can't
+   silently drift apart. */
+.nav-rail__brand-glyph,
+.nav-rail__vault-tile--active {
+  color: #0b0d17;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
+}
+
 .nav-rail__brand-glyph {
   width: 30px;
   height: 30px;
@@ -66,9 +76,6 @@
   font-size: 13px;
   font-weight: 700;
   flex: none;
-  color: #0b0d17;
-  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
-  box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
   transition: all .16s ease;
 }
 
@@ -328,6 +335,104 @@
   padding: 0 4px 2px;
 }
 
+/* ── SKY-11048: vault tiles (prototype 170–174 / vaultTiles 5826–5833) ──
+   Pinned directly above the bottom cluster. Active tile reuses the exact
+   look of the brand glyph above (:59-72) — both draw from the prototype's
+   "current-vault tile" style; inactive tiles fall back to a neutral chip
+   bordered in the CURRENT theme's slot-1 color (prototype st/stH, 5829-5830 —
+   tiles don't carry their own persisted color, only the active/inactive
+   states differ). */
+.nav-rail__vaults {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.nav-rail--collapsed .nav-rail__vaults {
+  gap: 5px;
+}
+
+.nav-rail__vault-tile {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  color: #8e9db8;
+  background: rgba(255, 255, 255, .05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .3));
+  transition: all .16s ease;
+}
+
+.nav-rail--collapsed .nav-rail__vault-tile {
+  width: 26px;
+  height: 26px;
+}
+
+.nav-rail__vault-tile:hover {
+  color: #fff;
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+}
+
+.nav-rail__vault-tile:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* prototype vaultTiles st (5829): current vault = the same rainbow-gradient
+   glow the rail already uses for "this is the primary/active surface"
+   (color/background/box-shadow shared with .nav-rail__brand-glyph above). */
+.nav-rail__vault-tile--active {
+  cursor: default;
+  border-color: transparent;
+}
+
+/* prototype newMythosVaultH tile (HTML 174): dashed "minimized +" affordance.
+   Always visible (not hover-revealed like the prototype's 8px-tall collapsed
+   state) so it's reachable without a pointer — a11y takes priority over the
+   literal prototype pixels here. */
+.nav-rail__vault-add {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  cursor: pointer;
+  color: #586a88;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, .22);
+  font-family: inherit;
+  transition: all .16s ease;
+}
+
+.nav-rail--collapsed .nav-rail__vault-add {
+  width: 26px;
+  height: 26px;
+}
+
+.nav-rail__vault-add:hover {
+  color: var(--n1, #00f0ff);
+  border-color: var(--b1, rgba(0, 240, 255, .5));
+}
+
+.nav-rail__vault-add:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 /* ── Bottom: divider + settings + slim toggle (prototype 211–238) ─────── */
 
 .nav-rail__bottom {
@@ -565,7 +670,9 @@
 
   .nav-rail__brand-glyph,
   .nav-rail__item,
-  .nav-rail__settings {
+  .nav-rail__settings,
+  .nav-rail__vault-tile,
+  .nav-rail__vault-add {
     transition: none;
   }
 

@@ -29,11 +29,11 @@ describe('WikiLink alias parsing (SKY-5702)', () => {
     expect(span?.getAttribute('data-wiki-link-alias')).toBe('Elara');
   });
 
-  it('displays the alias, not the raw target, as the visible text', () => {
+  it('displays the alias, not the raw target, as the visible text — no [[ ]] brackets (SKY-10929)', () => {
     const editor = makeEditor('[[Elara Brightwood|Elara]]');
     const span = editor.view.dom.querySelector('span[data-wiki-link]');
     editor.destroy();
-    expect(span?.textContent).toBe('[[Elara]]');
+    expect(span?.textContent).toBe('Elara');
   });
 
   it('round-trips [[Target|Alias]] without corrupting content', () => {
@@ -49,7 +49,7 @@ describe('WikiLink alias parsing (SKY-5702)', () => {
     const md = editor.storage.markdown.getMarkdown() as string;
     editor.destroy();
     expect(span?.getAttribute('data-wiki-link-alias')).toBeNull();
-    expect(span?.textContent).toBe('[[Elara Brightwood]]');
+    expect(span?.textContent).toBe('Elara Brightwood');
     expect(md).toContain('[[Elara Brightwood]]');
     expect(md).not.toContain('|');
   });

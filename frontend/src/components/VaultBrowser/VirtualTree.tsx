@@ -50,6 +50,8 @@ interface RowData {
   focusedIdx: number;
   onMoveFocus: (newIdx: number) => void;
   iconMap?: Record<string, string>;
+  // SKY-10935: suppress scroll-on-focus during right-click on Windows (focus fires before contextmenu).
+  rightClickPendingRef: React.MutableRefObject<boolean>;
   // Drag-and-drop
   draggedPath: string | null;
   dropTargetPath: string | null;
@@ -79,7 +81,7 @@ function RenameInput({ value, error, onChange, onCommit, onCancel }: { value: st
 function Row({
   index, style, rows, onToggle, onOpen, onContextMenu,
   editingPath, editingValue, editError, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  focusedIdx, onMoveFocus, iconMap,
+  focusedIdx, onMoveFocus, iconMap, rightClickPendingRef,
   draggedPath, dropTargetPath, dropEdge, onDragStart, onDragEnd, onDragOverRow, onDropRow,
   // ariaAttributes (aria-posinset/aria-setsize/role="listitem") is intentionally unused;
   // we emit role="treeitem" + aria-level instead.
@@ -180,9 +182,18 @@ function Row({
       draggable={!isEditing}
       onClick={isEditing ? undefined : handleClick}
       onDoubleClick={handleDoubleClick}
+      onMouseDown={(e) => {
+        // SKY-10935: on Windows, right-click fires focus before contextmenu.
+        // Block scrollToRow during that window so the virtualized list doesn't
+        // recycle the DOM node and point contextmenu at the wrong row.
+        if (e.button === 2) {
+          rightClickPendingRef.current = true;
+          setTimeout(() => { rightClickPendingRef.current = false; }, 0);
+        }
+      }}
       onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, row); }}
       onKeyDown={handleKeyDown}
-      onFocus={() => { if (index !== focusedIdx) onMoveFocus(index); }}
+      onFocus={() => { if (!rightClickPendingRef.current && index !== focusedIdx) onMoveFocus(index); }}
       title={isEditing ? undefined : node.path}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -293,6 +304,8 @@ export default function VirtualTree({
   const [draggedPath, setDraggedPath] = useState<string | null>(null);
   const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
   const [dropEdge, setDropEdge] = useState<DropEdge>('into');
+  // SKY-10935: tracks an in-flight right-click so Row.onFocus skips scrollToRow on Windows.
+  const rightClickPendingRef = useRef(false);
   // SKY-8891: hover auto-expand — pending dwell timer for the hovered folder.
   const dwellRef = useRef<{ path: string; timer: number } | null>(null);
 
@@ -391,7 +404,7 @@ export default function VirtualTree({
           rows, onToggle, onOpen, onContextMenu,
           editingPath, editingValue, editError,
           onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-          focusedIdx, onMoveFocus, iconMap,
+          focusedIdx, onMoveFocus, iconMap, rightClickPendingRef,
           draggedPath, dropTargetPath, dropEdge,
           onDragStart: handleDragStart,
           onDragEnd: handleDragEnd,

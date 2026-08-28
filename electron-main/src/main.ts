@@ -279,7 +279,7 @@ import { registerPresetHandlers } from './presetIpc.js';
 // separate chunk by electron-vite's ?nodeWorker suffix and spawned as a
 // node:worker_threads Worker so scan passes never run on the main thread.
 import createJobWorker from './jobs/jobWorker?nodeWorker';
-import { initJobService, shutdownJobService } from './jobs/jobService.js';
+import { initJobService, shutdownJobService, getJobQueue } from './jobs/jobService.js';
 import { registerJobsIpc } from './jobs/jobsIpc.js';
 import {
   buildVaultSummary,
@@ -351,10 +351,16 @@ import {
   insertArchiveAuditLog,
   insertSuggestionSnapshot,
   getSuggestionSnapshot,
+  rebuildDerivedFactStores,
+  listFactDecisions,
+  listEntityIndex,
+  getVaultIndexCacheRows,
+  isDbOpen,
 } from './db.js';
+import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken, checkOpenFolderGate } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -391,7 +397,7 @@ import {
   scaffoldNotesVault,
   isEmptyOrMissing,
   parseFrontmatter,
-  readNoteExcerpt,
+  readNoteListingMeta,
   serializeFrontmatter,
   safePath,
   safeVaultIpcJoin,
@@ -416,6 +422,7 @@ import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
   NOTES_VAULT_SEED_LAYOUT,
+  hasSeedMarker,
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
@@ -489,6 +496,7 @@ import {
   runArchiveScan,
   type ArchiveIgnoreKey,
 } from './archiveAgent.js';
+import { ingestArchiveQuestions } from './brainstormQuestionQueue.js';
 import {
   runEntityPrePass,
   buildScanPrompt,
@@ -522,6 +530,7 @@ import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
 import { buildManuscriptHtml } from './pdfExport.js';
 import { readSceneProseTracked } from './exportProse.js';
+import { buildTextExport, resolveExportScope } from './exportScope.js';
 import os from 'os';
 import {
   sceneToMarkdown, chapterToMarkdown, storyToMarkdown, vaultToMarkdown,
@@ -537,6 +546,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
+import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -634,6 +644,17 @@ let mainWindow: BrowserWindow | null = null;
 // for the in-flight window-close, so the second (post-flush) `close()` call
 // falls through to the real close instead of re-triggering the handshake.
 let quitFlushHandled = false;
+
+// SKY-10995: tracks whether a real quit was requested (Cmd+Q, the app menu,
+// or a caller — including Playwright's Electron driver, which calls
+// app.quit() directly — evaluating app.quit() before window-all-closed ever
+// fires). window-all-closed's darwin guard below must only skip the final
+// app.quit() call for the ordinary "user closed the window, stay in the
+// dock" case; if quit was already requested, the guard must not swallow it,
+// or the process is left running with zero windows until whatever is
+// waiting on it (e.g. Playwright's app.close()) hits its own timeout.
+let quitRequested = false;
+app.on('before-quit', () => { quitRequested = true; });
 
 // SKY-9973: before the window actually closes, ask the renderer to flush any
 // pending debounced manifest save (scheduleManifestSave's 900ms timer) and
@@ -989,9 +1010,13 @@ function initJobServiceForVault(vaultRoot: string): void {
     vaultRoot,
     (input) => createJobWorker({ workerData: input }),
     (evt) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
-      }
+      // M12.3: floating panels (e.g. popped-out Continuity) track scoped
+      // scans too — broadcast like ARCHIVE_CONT_SCAN_START, not main-only.
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.JOBS_EVENT, evt);
+        }
+      });
     },
   );
 }
@@ -1357,166 +1382,14 @@ function validateVaultPath(p: string, field: string): void {
 }
 
 // ─── Export helpers (SKY-153) ───
-
-function safeExportFilename(s: string): string {
-  return s.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'export';
-}
-
-function buildTextExport(
-  manifest: import('./ipc.js').Manifest,
-  scope: import('./ipc.js').ExportScope,
-  format: 'markdown' | 'plaintext',
-): { content: string; defaultFilename: string; missingSceneIds: string[] } {
-  const missing = new Set<string>();
-  const readProse = (sc: import('./ipc.js').SceneEntry): ExportableScene => ({
-    title: sc.title,
-    prose: readSceneProseTracked(getVaultRoot(), sc, missing),
-  });
-  const toChapter = (ch: import('./ipc.js').ChapterEntry): ExportableChapter => ({
-    title: ch.title,
-    scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-  });
-  const toStory = (st: import('./ipc.js').StoryEntry): ExportableStory => ({
-    title: st.title,
-    chapters: [...st.chapters].sort((a, b) => a.order - b.order).map(toChapter),
-  });
-  const md = format === 'markdown';
-
-  switch (scope.kind) {
-    case 'scene': {
-      let found: import('./ipc.js').SceneEntry | null = null;
-      outer: for (const story of manifest.stories) {
-        for (const ch of story.chapters) {
-          const sc = ch.scenes.find((s) => s.id === scope.sceneId);
-          if (sc) { found = sc; break outer; }
-        }
-      }
-      if (!found) {
-        found = (manifest.scenes ?? []).find(
-          (s: import('./ipc.js').SceneEntry) => s.id === scope.sceneId,
-        ) ?? null;
-      }
-      if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-      const exportScene = readProse(found);
-      return {
-        content: md ? sceneToMarkdown(exportScene) : sceneToPlaintext(exportScene),
-        defaultFilename: safeExportFilename(found.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'chapter': {
-      const story = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
-      const ch = story.chapters.find((c) => c.id === scope.chapterId);
-      if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-      const scenes = [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse);
-      return {
-        content: md ? chapterToMarkdown(ch.title, scenes) : chapterToPlaintext(ch.title, scenes),
-        defaultFilename: safeExportFilename(ch.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'story': {
-      const story = manifest.stories.find((s) => s.id === scope.storyId);
-      if (!story) throw new Error(`Story not found: ${scope.storyId}`);
-      const exportStory = toStory(story);
-      return {
-        content: md ? storyToMarkdown(exportStory) : storyToPlaintext(exportStory),
-        defaultFilename: safeExportFilename(story.title),
-        missingSceneIds: [...missing],
-      };
-    }
-    case 'vault': {
-      const exportStories = manifest.stories.map(toStory);
-      return {
-        content: md ? vaultToMarkdown(exportStories) : vaultToPlaintext(exportStories),
-        defaultFilename: 'vault-export',
-        missingSceneIds: [...missing],
-      };
-    }
-  }
-}
+// buildTextExport / resolveExportScope live in exportScope.ts — pure over a
+// vault root + manifest, no Electron dependency, so they're unit-testable
+// (main.ts itself isn't, due to app-lifecycle side effects at module load).
 
 // Beta 4 M14 — last file written by any export handler. Read only by
 // EXPORT_REVEAL_LAST ("Show in folder" on the export modal Done state); the
 // renderer never supplies the path.
 let lastExportPath: string | null = null;
-
-// ─── Export scope resolution (Beta 4 M14 — shared by DOCX + PDF) ───
-
-interface ResolvedExportScope {
-  title: string;
-  synopsis?: string;
-  chapters: Array<{ id: string; title: string; scenes: Array<{ id: string; title: string; prose: string }> }>;
-  missingSceneIds: string[];
-}
-
-function resolveExportScope(
-  manifest: import('./ipc.js').Manifest,
-  scope: import('./ipc.js').ExportScope,
-): ResolvedExportScope {
-  const missing = new Set<string>();
-  const readProse = (sc: import('./ipc.js').SceneEntry): { id: string; title: string; prose: string } => ({
-    id: sc.id,
-    title: sc.title,
-    prose: readSceneProseTracked(getVaultRoot(), sc, missing),
-  });
-
-  if (scope.kind === 'scene') {
-    let found: import('./ipc.js').SceneEntry | null = null;
-    outer: for (const st of manifest.stories) {
-      for (const ch of st.chapters) {
-        const sc = ch.scenes.find((s) => s.id === scope.sceneId);
-        if (sc) { found = sc; break outer; }
-      }
-    }
-    if (!found) throw new Error(`Scene not found: ${scope.sceneId}`);
-    const scene = readProse(found);
-    return { title: found.title, chapters: [{ id: found.id, title: found.title, scenes: [scene] }], missingSceneIds: [...missing] };
-  }
-  if (scope.kind === 'chapter') {
-    const st = manifest.stories.find((s) => s.id === scope.storyId);
-    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-    const ch = st.chapters.find((c) => c.id === scope.chapterId);
-    if (!ch) throw new Error(`Chapter not found: ${scope.chapterId}`);
-    return {
-      title: ch.title,
-      synopsis: st.synopsis,
-      chapters: [{
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      }],
-      missingSceneIds: [...missing],
-    };
-  }
-  if (scope.kind === 'story') {
-    const st = manifest.stories.find((s) => s.id === scope.storyId);
-    if (!st) throw new Error(`Story not found: ${scope.storyId}`);
-    return {
-      title: st.title,
-      synopsis: st.synopsis,
-      chapters: [...st.chapters].sort((a, b) => a.order - b.order).map((ch) => ({
-        id: ch.id,
-        title: ch.title,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      })),
-      missingSceneIds: [...missing],
-    };
-  }
-  // vault
-  const chapters: ResolvedExportScope['chapters'] = [];
-  for (const st of manifest.stories) {
-    for (const ch of [...st.chapters].sort((a, b) => a.order - b.order)) {
-      chapters.push({
-        id: ch.id,
-        title: `${st.title} — ${ch.title}`,
-        scenes: [...ch.scenes].sort((a, b) => a.order - b.order).map(readProse),
-      });
-    }
-  }
-  return { title: 'Vault Export', chapters, missingSceneIds: [...missing] };
-}
 
 // ─── PDF rendering (Beta 4 M14) — hidden BrowserWindow + printToPDF ───
 // No new dependencies: Chromium is the PDF engine. The compiled HTML is
@@ -1813,6 +1686,19 @@ const handlers: IpcHandlers = {
       return { vaultRoot: null, cancelled: true };
     }
     const newRoot = result.filePaths[0];
+    // SKY-11132: never repoint the Story Vault at a folder that isn't
+    // already a recognized Mythos vault. This handler used to accept any
+    // OS-dialog folder unconditionally and immediately seed app files into
+    // it via ensureVaultDir() below — that's how "Open Vault Folder" (wired
+    // up in the UI as "Import a vault…") could silently adopt a user's real
+    // Obsidian vault as the Story Vault.
+    const openGate = checkOpenFolderGate({
+      root: newRoot,
+      isRecognizedVault: mythosRootForStoryVault(newRoot) !== null || hasSeedMarker(newRoot),
+    });
+    if (!openGate.ok) {
+      return { vaultRoot: null, cancelled: false, error: openGate.error };
+    }
     saveVaultSettings({ vaultRoot: newRoot });
     // SKY-320: legacy "open folder" only switches the Story Vault; pair it
     // with the currently-configured Notes Vault so the recents allowlist
@@ -4511,6 +4397,9 @@ const handlers: IpcHandlers = {
     for (const suggestion of result.suggestions) {
       upsertSuggestion(suggestion);
     }
+    // M12.B2: Check 2's proposed questions land in Brainstorm's queue, never
+    // the continuity-flag store above — distinct artifact class, distinct table.
+    ingestArchiveQuestions(result.questions);
     return {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,
@@ -4789,7 +4678,7 @@ const handlers: IpcHandlers = {
       ? payload.scope
       : { kind: 'story', storyId: payload.storyId! };
 
-    const { title: docxTitle, synopsis, chapters: docxChapters, missingSceneIds: docxMissing } = resolveExportScope(manifest, scope);
+    const { title: docxTitle, synopsis, chapters: docxChapters, missingSceneIds: docxMissing } = resolveExportScope(getVaultRoot(), manifest, scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export DOCX',
@@ -4815,7 +4704,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_PDF]: async (payload: { scope: import('./ipc.js').ExportScope; options?: import('./ipc.js').ExportOptions }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { title: pdfTitle, synopsis, chapters: pdfChapters, missingSceneIds: pdfMissing } = resolveExportScope(manifest, payload.scope);
+    const { title: pdfTitle, synopsis, chapters: pdfChapters, missingSceneIds: pdfMissing } = resolveExportScope(getVaultRoot(), manifest, payload.scope);
 
     const result = await dialog.showSaveDialog({
       title: 'Export PDF',
@@ -4856,7 +4745,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_MARKDOWN]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename, missingSceneIds: mdMissing } = buildTextExport(manifest, payload.scope, 'markdown');
+    const { content, defaultFilename, missingSceneIds: mdMissing } = buildTextExport(getVaultRoot(), manifest, payload.scope, 'markdown');
     const result = await dialog.showSaveDialog({
       title: 'Export Markdown',
       defaultPath: `${defaultFilename}.md`,
@@ -4872,7 +4761,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.EXPORT_PLAINTEXT]: async (payload: { scope: import('./ipc.js').ExportScope }) => {
     ensureVaultDir();
     const manifest = readManifest(getManifestPath());
-    const { content, defaultFilename, missingSceneIds: txtMissing } = buildTextExport(manifest, payload.scope, 'plaintext');
+    const { content, defaultFilename, missingSceneIds: txtMissing } = buildTextExport(getVaultRoot(), manifest, payload.scope, 'plaintext');
     const result = await dialog.showSaveDialog({
       title: 'Export Plain Text',
       defaultPath: `${defaultFilename}.txt`,
@@ -5492,6 +5381,43 @@ const handlers: IpcHandlers = {
     };
   },
 
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos
+  // vaults. Same recent-projects + active-vault list as PROJECT_STATS.
+  [IPC_CHANNELS.PROJECT_ICONS]: () => {
+    return {
+      icons: collectProjectIcons([{ vaultRoot: getVaultRoot() }, ...getRecentProjects()]),
+    };
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: import('./ipc.js').ProjectIconSetPayload) => {
+    // SKY-11068 follow-up (mirrors MYT-789 on PROJECT_SWITCH): setProjectIcon
+    // writes into <vaultRoot's mythos root>/vault-icon.<ext> and rewrites its
+    // mythos.json. Without this gate a compromised renderer could pass any
+    // structurally-valid v2 vault path — not just the active/known vaults —
+    // and get an arbitrary-directory file write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return setProjectIcon({ ...payload, vaultRoot: gate.vaultRoot });
+  },
+
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Choose Story Icon',
+      buttonLabel: 'Set Icon',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { filePath: null, cancelled: true };
+    }
+    return { filePath: result.filePaths[0], cancelled: false };
+  },
+
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
     // MYT-789: gate the switch behind the recent-projects allowlist. Without
     // this, a renderer could re-root the vault sandbox at any existing,
@@ -5775,15 +5701,17 @@ const handlers: IpcHandlers = {
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
     const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
     // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
-    // Compute it here — one bounded read per note during the listing, after
-    // filtering so story internals are never opened — instead of per-card IPC
-    // round-trips from the renderer (an N+1 over the vault).
+    // SKY-11049: same bounded read also surfaces a character signal for the
+    // POV picker's vault-wide fallback. Compute both here — one bounded read
+    // per note during the listing, after filtering so story internals are
+    // never opened — instead of per-card IPC round-trips from the renderer
+    // (an N+1 over the vault).
     return {
-      items: filtered.map((item) =>
-        !item.isDirectory && /\.md$/i.test(item.path)
-          ? { ...item, excerpt: readNoteExcerpt(path.join(listedRoot, item.path)) }
-          : item,
-      ),
+      items: filtered.map((item) => {
+        if (item.isDirectory || !/\.md$/i.test(item.path)) return item;
+        const { excerpt, characterTag } = readNoteListingMeta(path.join(listedRoot, item.path));
+        return { ...item, excerpt, characterTag };
+      }),
     };
   },
   // SKY-7995: delete/move accept directories, so they route through
@@ -7288,6 +7216,36 @@ const handlers: IpcHandlers = {
     const vaultRoot = getNotesVaultRoot() || getVaultRoot();
     const index = autoLinkerBuildIndex(vaultRoot, opts);
     return { count: index.length };
+  },
+
+  // SKY-10772 M12.5: AI Agents index controls
+  [IPC_CHANNELS.AGENT_INDEX_GET_STATS]: () => {
+    const entities = listEntityIndex();
+    const decisions = listFactDecisions(true);
+    const cache = getVaultIndexCacheRows();
+    const lastScanned = cache.reduce<string | null>((max, row) => {
+      if (!max || row.indexed_at > max) return row.indexed_at;
+      return max;
+    }, null);
+    return {
+      entityCount: entities.length,
+      lastScanAt: lastScanned,
+      factDecisionCount: decisions.length,
+      cacheRowCount: cache.length,
+    };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_CLEAN]: () => {
+    const before = listFactDecisions(true).length;
+    rebuildDerivedFactStores();
+    const after = listFactDecisions(true).length;
+    return { decisionsPreserved: after, derivedWiped: true, tombstonesIntact: before === after };
+  },
+  [IPC_CHANNELS.AGENT_INDEX_REBUILD]: () => {
+    const queue = getJobQueue();
+    if (!queue) return { error: 'No vault open — job queue unavailable.' };
+    rebuildDerivedFactStores();
+    const jobId = queue.enqueue('vault-scan', { vaultRoot: getVaultRoot() });
+    return { jobId };
   },
 
   // SKY-6306 M21: Multi-timeline store
@@ -9875,6 +9833,18 @@ function registerArchiveContinuityHandlers(): void {
       return { items: rows.map(dbRowToItem) };
     }),
   );
+
+  // M12.3 (SKY-10770): global contradiction query. Deliberately ignores scan
+  // scope — a contradiction flagged in ANY scene surfaces here (SKY-10666:
+  // detection is a cheap global DB read, never a re-extraction).
+  ipcMain.handle(
+    IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS,
+    wrapIpcHandler(IPC_CHANNELS.ARCHIVE_LIST_GLOBAL_CONTRADICTIONS, (event) => {
+      if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+      if (!isDbOpen()) return { items: [] };
+      return { items: queryGlobalContradictions() };
+    }),
+  );
 }
 
 function registerContinuityHandler(): void {
@@ -9999,7 +9969,15 @@ app.whenReady().then(async () => {
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
 
   registerPresetHandlers();
-  registerJobsIpc(getVaultRoot);
+  registerJobsIpc(getVaultRoot, () => {
+    // M12.3: scoped scans resolve scene sets from main's own manifest read —
+    // renderer-supplied scope is identifiers only, never paths.
+    try {
+      return readManifest(getManifestPath());
+    } catch {
+      return null;
+    }
+  });
   registerPanelPopoutHandler();
   registerFloatingPanelHandlers();
   registerNavigatorSyncHandlers();
@@ -10067,7 +10045,11 @@ app.on('window-all-closed', async () => {
     // Unconditional: a partially-failed teardown must not hold the process
     // hostage. SQLite is crash-safe and job checkpoints persist continuously,
     // so a dirty exit here loses nothing a clean one wouldn't.
-    if (process.platform !== 'darwin') {
+    // SKY-10995: the darwin skip is only for the ordinary "user closed the
+    // window, app stays in the dock" case — quitRequested (set by
+    // before-quit) means quit is already underway, so this call must still
+    // run there too, or the process never actually exits.
+    if (process.platform !== 'darwin' || quitRequested) {
       app.quit();
     }
   }

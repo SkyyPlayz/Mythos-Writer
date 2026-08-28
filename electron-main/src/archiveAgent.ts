@@ -317,6 +317,8 @@ export interface ArchiveProposedQuestion {
   id: string;
   entityId: string;
   entityName: string;
+  /** M12.B2: lets the question queue pick a note kind when authoring the answer. */
+  entityType: EntityEntry['type'];
   question: string;
   scenePath: string;
   createdAt: string;
@@ -344,6 +346,7 @@ export function detectVaultGapQuestions(
       id: crypto.randomUUID(),
       entityId: record.id,
       entityName: record.name,
+      entityType: record.type,
       question: `"${record.name}" appears in the manuscript but the vault has no tracked details yet — what should be recorded?`,
       scenePath,
       createdAt: now,
@@ -401,11 +404,27 @@ const CHARACTER_PHRASE_FAMILIES: Array<{ propKey: string; phrases: string[] }> =
   { propKey: 'eyes', phrases: EYE_PHRASE_FAMILY },
 ];
 
-// Entity-agnostic phrase pairs for world/magic rules and object descriptions
-// that aren't tied to a tracked vault entity (e.g. a lantern's fuel source).
-export const WORLD_RULE_CONTRADICTION_PAIRS: Array<[string, string]> = [
-  ['oil-lit', 'crystal-lit'],
-  ['oil lit', 'crystal lit'],
+// Entity-agnostic world-rule families: each family names mutually-exclusive
+// canonical values, and each canonical value lists its spelling variants.
+// "oil-lit" and "oil lit" are variants of the same value — they do NOT
+// contradict each other. Only two *different* canonicals from the same family
+// appearing across scenes are flagged as drift.
+//
+// Extend this table with new families as the story world requires. For an
+// LLM-driven general-purpose world-rule engine see SKY-11018 (M12.2).
+export const WORLD_RULE_PHRASE_FAMILIES: Array<{
+  label: string;
+  canonicals: Array<{ name: string; phrases: string[] }>;
+}> = [
+  {
+    label: 'light-source fuel type',
+    canonicals: [
+      { name: 'oil-lit',     phrases: ['oil-lit', 'oil lit', 'oil lamp', 'oil lantern'] },
+      { name: 'crystal-lit', phrases: ['crystal-lit', 'crystal lit', 'crystal lamp', 'crystal lantern'] },
+      { name: 'candle-lit',  phrases: ['candle-lit', 'candlelit', 'candle lit'] },
+      { name: 'gas-lit',     phrases: ['gas-lit', 'gaslit', 'gas lit'] },
+    ],
+  },
 ];
 
 function internalSuggestion(
@@ -460,6 +479,11 @@ export function detectInternalContinuity(
     const terms = entityTerms(record);
     for (const { phrases } of CHARACTER_PHRASE_FAMILIES) {
       let established: { phrase: string; path: string } | null = null;
+      // A recurring scene that repeats an already-flagged phrase (e.g. the
+      // character stays "dark hair" for the rest of the book after drifting
+      // from "blonde hair") must not re-flag on every occurrence — only the
+      // first scene stating each distinct drifted phrase is surfaced.
+      const flaggedPhrases = new Set<string>();
       for (const scene of scenes) {
         if (!findPlainMention(scene.text, terms)) continue; // entity not mentioned here
         const lower = scene.text.toLowerCase();
@@ -467,7 +491,8 @@ export function detectInternalContinuity(
         if (!found) continue;
         if (!established) {
           established = { phrase: found, path: scene.path };
-        } else if (found !== established.phrase) {
+        } else if (found !== established.phrase && !flaggedPhrases.has(found)) {
+          flaggedPhrases.add(found);
           suggestions.push(
             internalSuggestion(
               `${record.name} is described as "${established.phrase}" in an earlier scene but "${found}" here`,
@@ -490,36 +515,44 @@ export function detectInternalContinuity(
     }
   }
 
-  // World-rule / object drift: entity-agnostic phrase pairs that must not
-  // both appear across the manuscript.
-  for (const [phraseA, phraseB] of WORLD_RULE_CONTRADICTION_PAIRS) {
-    let firstA: { path: string } | null = null;
-    let firstB: { path: string } | null = null;
+  // World-rule / object drift: canonical-value families.
+  // The first canonical value established in reading order sets the rule;
+  // any later scene introducing a *different* canonical from the same family
+  // is flagged. Spelling variants of the same canonical are not contradictions.
+  for (const family of WORLD_RULE_PHRASE_FAMILIES) {
+    let established: { canonicalName: string; path: string } | null = null;
+    // Once a drift to a given canonical has been flagged, a recurring scene
+    // (e.g. the lantern stays "crystal-lit" for the rest of the book) must
+    // not re-flag the same contradiction again on every later occurrence.
+    const flaggedNames = new Set<string>();
     for (const scene of scenes) {
       const lower = scene.text.toLowerCase();
-      if (!firstA && lower.includes(phraseA)) firstA = { path: scene.path };
-      if (!firstB && lower.includes(phraseB)) firstB = { path: scene.path };
-      if (firstA && firstB) break;
+      let foundName: string | null = null;
+      let foundPhrase: string | null = null;
+      for (const canonical of family.canonicals) {
+        const hit = canonical.phrases.find((p) => lower.includes(p));
+        if (hit) { foundName = canonical.name; foundPhrase = hit; break; }
+      }
+      if (!foundName || !foundPhrase) continue;
+      if (!established) {
+        established = { canonicalName: foundName, path: scene.path };
+      } else if (foundName !== established.canonicalName && !flaggedNames.has(foundName)) {
+        flaggedNames.add(foundName);
+        suggestions.push(
+          internalSuggestion(
+            `Established "${established.canonicalName}" (${family.label}) in an earlier scene but "${foundName}" appears here`,
+            scene,
+            foundPhrase,
+            {
+              worldRuleLabel: family.label,
+              earlierPhrase: established.canonicalName,
+              earlierScenePath: established.path,
+            },
+            now,
+          ),
+        );
+      }
     }
-    if (!firstA || !firstB || firstA.path === firstB.path) continue;
-
-    // Whichever phrase's scene comes later in reading order is the drift.
-    const laterIsB = scenes.findIndex((s) => s.path === firstA!.path)
-      < scenes.findIndex((s) => s.path === firstB!.path);
-    const earlierPhrase = laterIsB ? phraseA : phraseB;
-    const laterPhrase = laterIsB ? phraseB : phraseA;
-    const earlierPath = laterIsB ? firstA.path : firstB.path;
-    const laterScene = scenes.find((s) => s.path === (laterIsB ? firstB.path : firstA.path))!;
-
-    suggestions.push(
-      internalSuggestion(
-        `Established "${earlierPhrase}" in an earlier scene but "${laterPhrase}" appears here`,
-        laterScene,
-        laterPhrase,
-        { earlierPhrase, earlierScenePath: earlierPath },
-        now,
-      ),
-    );
   }
 
   return suggestions;

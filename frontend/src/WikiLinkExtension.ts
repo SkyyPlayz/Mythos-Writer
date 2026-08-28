@@ -51,10 +51,13 @@ export const WikiLink = Node.create({
     const alias = node.attrs.alias as string | null;
     const attrs: Record<string, string> = { 'data-wiki-link': target };
     if (alias) attrs['data-wiki-link-alias'] = alias;
+    // SKY-10929: Rich view renders styled link text only — the [[ ]] source
+    // syntax (and the |Alias delimiter) never shows. Source/Markdown modes
+    // still show the raw file, brackets included.
     return [
       'span',
       mergeAttributes(HTMLAttributes, attrs),
-      `[[${alias || target}]]`,
+      alias || target,
     ];
   },
 
@@ -106,6 +109,8 @@ export const WikiLink = Node.create({
             // & first (to avoid double-escaping), then < > " for attribute and
             // text contexts.  Without < / > escaping, [[<script>...]] would
             // inject a live element into the editor DOM (XSS -- SKY-234).
+            // SKY-10929: no [[ ]] in the rendered text — Rich view shows styled
+            // link text only (alias, when present, replaces the target).
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             md.renderer.rules['wiki_link'] = (tokens: any[], idx: number) => {
               const target = tokens[idx].attrGet('data-wiki-link') ?? '';
@@ -113,7 +118,7 @@ export const WikiLink = Node.create({
               const escapedTarget = escapeHtml(target);
               const aliasAttr = alias ? ` data-wiki-link-alias="${escapeHtml(alias)}"` : '';
               const display = escapeHtml(alias || target);
-              return `<span data-wiki-link="${escapedTarget}"${aliasAttr}>[[${display}]]</span>`;
+              return `<span data-wiki-link="${escapedTarget}"${aliasAttr}>${display}</span>`;
             };
           },
         },

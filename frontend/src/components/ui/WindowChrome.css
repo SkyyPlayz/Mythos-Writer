@@ -40,6 +40,7 @@
 .wc-menu,
 .wc-menu-item,
 .wc-pop-row,
+.wc-pop-row-icon-edit,
 .wc-icon-btn,
 .wc-avatar {
   font: inherit;
@@ -56,6 +57,7 @@
 .wc-menu:focus-visible,
 .wc-menu-item:focus-visible,
 .wc-pop-row:focus-visible,
+.wc-pop-row-icon-edit:focus-visible,
 .wc-icon-btn:focus-visible,
 .wc-avatar:focus-visible,
 .wc-search-input:focus-visible {
@@ -179,6 +181,38 @@
   box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g2, rgba(155, 95, 255, .4));
   color: #c6d1e5;
   font-weight: 400;
+}
+
+/* SKY-11068 — icon-edit trigger sits beside the row instead of nesting a
+   button inside a button; both share the row's hover height. */
+.wc-pop-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wc-pop-row-wrap .wc-pop-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.wc-pop-row-icon-edit {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wc-pop-row-icon-edit:hover,
+.wc-pop-row-icon-edit:focus-visible {
+  background: rgba(255, 255, 255, .1);
+}
+
+.wc-active-vault-icon {
+  margin: 0 -2px 0 1px;
 }
 
 .wc-pop-row {

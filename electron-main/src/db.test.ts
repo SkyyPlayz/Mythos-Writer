@@ -669,7 +669,7 @@ describe('world DB migration — entity tables', () => {
   it('sets user_version to 27 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(31);
+    expect(row.user_version).toBe(32);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -716,7 +716,7 @@ describe('world DB migration — entity tables', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(31);
+    expect(row.user_version).toBe(32);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -751,7 +751,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(31);
+    expect(row.user_version).toBe(32);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -1023,7 +1023,7 @@ describe('scene_snapshots / SKY-1611', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(31);
+    expect(row.user_version).toBe(32);
   });
 });
 
@@ -1068,7 +1068,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(31);
+    expect(row.user_version).toBe(32);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
@@ -1644,5 +1644,61 @@ describe('beta_reports table', () => {
     insertBetaReport(makeReport({ id: 'r2', story_id: 'story-b' }));
     expect(listBetaReports('story-a')).toHaveLength(1);
     expect(listBetaReports('story-nonexistent')).toEqual([]);
+  });
+});
+
+// SKY-11084 regression: v29→v31 DBs (M12.1 only) skipped the v30 block and
+// were missing vault_index_cache / fact_decisions. The self-heal in runMigrations
+// must create those tables even when currentVersion starts at 31.
+describe('SKY-11084 migration self-heal — v31 DB missing v30 tables', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11084-'));
+  });
+
+  afterEach(() => {
+    closeDb();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates vault_index_cache and fact_decisions on a DB that jumped v29→v31', () => {
+    const mythosDir = path.join(tmpDir, '.mythos');
+    fs.mkdirSync(mythosDir, { recursive: true });
+    const dbPath = path.join(mythosDir, 'state.db');
+
+    // Seed a DB at user_version=31 with only the v31 tables present (no v30 tables).
+    const raw = new DatabaseSync(dbPath);
+    raw.exec(`
+      CREATE TABLE background_jobs (
+        id TEXT PRIMARY KEY, type TEXT NOT NULL,
+        payload_json TEXT, status TEXT NOT NULL DEFAULT 'queued',
+        checkpoint_json TEXT, total_units INTEGER,
+        completed_units INTEGER NOT NULL DEFAULT 0,
+        skipped_units INTEGER NOT NULL DEFAULT 0,
+        error TEXT, created_at TEXT NOT NULL,
+        started_at TEXT, updated_at TEXT NOT NULL, finished_at TEXT
+      );
+      CREATE TABLE scan_coverage (
+        id TEXT PRIMARY KEY, job_type TEXT NOT NULL,
+        scope_kind TEXT NOT NULL, scope_path TEXT NOT NULL,
+        content_hash TEXT NOT NULL, job_id TEXT, scanned_at TEXT NOT NULL,
+        UNIQUE (job_type, scope_kind, scope_path)
+      );
+      PRAGMA user_version = 31;
+    `);
+    raw.close();
+
+    // openDb must run the self-heal without throwing.
+    openDb(tmpDir);
+
+    // Both v30 tables must exist after self-heal.
+    const db = openDb(tmpDir);
+    const tables = (
+      db
+        .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name IN ('vault_index_cache','fact_decisions') ORDER BY name`)
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name);
+    expect(tables).toEqual(['fact_decisions', 'vault_index_cache']);
   });
 });
