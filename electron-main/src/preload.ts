@@ -633,6 +633,18 @@ contextBridge.exposeInMainWorld('api', {
   projectIconPick: () => ipcRenderer.invoke('project:iconPick', undefined),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
+
+  // SKY-11153 — Vault surface: Recycle Bin delete + hide/show
+  vaultSurfaceBlastRadius: (mythosVaultRoot: string) =>
+    ipcRenderer.invoke('vault:surface:blastRadius', { mythosVaultRoot }),
+  vaultSurfaceTrash: (payload: import('./ipc.js').VaultSurfaceTrashPayload) =>
+    ipcRenderer.invoke('vault:surface:trash', payload),
+  vaultSurfaceHide: (payload: import('./ipc.js').VaultSurfaceHidePayload) =>
+    ipcRenderer.invoke('vault:surface:hide', payload),
+  vaultSurfaceUnhide: (vaultRoot: string) =>
+    ipcRenderer.invoke('vault:surface:unhide', { vaultRoot }),
+  vaultSurfaceListHidden: () =>
+    ipcRenderer.invoke('vault:surface:listHidden', undefined),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
     const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);

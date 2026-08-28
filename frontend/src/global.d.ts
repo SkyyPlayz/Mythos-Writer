@@ -1335,6 +1335,13 @@ interface Window {
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
+    // SKY-11153 — Vault surface: Recycle Bin delete + hide/show
+    vaultSurfaceBlastRadius: (mythosVaultRoot: string) => Promise<{ vaultName: string; innerCount: number }>;
+    vaultSurfaceTrash: (payload: { vaultPath: string; level: 'mythos' | 'notes' | 'story' }) => Promise<{ trashed: boolean; error?: string }>;
+    vaultSurfaceHide: (payload: { vaultRoot: string; level: 'mythos' | 'notes' | 'story' }) => Promise<{ hidden: boolean; pairedStoryVaultName?: string }>;
+    vaultSurfaceUnhide: (vaultRoot: string) => Promise<{ ok: true }>;
+    vaultSurfaceListHidden: () => Promise<{ hiddenVaultRoots: string[] }>;
+
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
     // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
     // a custom parent (e.g. a OneDrive folder) for Obsidian-style placement.
