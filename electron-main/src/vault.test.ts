@@ -12,7 +12,8 @@ import {
   listVaultFiles,
   deleteVaultFile,
   excerptFromMarkdown,
-  readNoteExcerpt,
+  noteHasCharacterSignal,
+  readNoteListingMeta,
   parseFrontmatter,
   serializeFrontmatter,
   writeSceneFile,
@@ -604,7 +605,7 @@ describe('Note excerpt — hook line for Scene Crafter suggested cards (SKY-1051
     expect(excerptFromMarkdown(line)).toBe(line);
   });
 
-  describe('readNoteExcerpt — bounded file read', () => {
+  describe('readNoteListingMeta — bounded file read', () => {
     let tmpDir: string;
 
     beforeEach(() => {
@@ -618,18 +619,54 @@ describe('Note excerpt — hook line for Scene Crafter suggested cards (SKY-1051
     it('reads the hook line from a real note file', () => {
       const p = path.join(tmpDir, 'Ward Violet.md');
       fs.writeFileSync(p, "# Ward Violet\n\nThe district that doesn't exist.\n");
-      expect(readNoteExcerpt(p)).toBe("The district that doesn't exist.");
+      expect(readNoteListingMeta(p).excerpt).toBe("The district that doesn't exist.");
     });
 
     it('only reads the head of a large note — hook still found, tail ignored', () => {
       const p = path.join(tmpDir, 'big.md');
       fs.writeFileSync(p, `# Big\n\nHook line first.\n${'lorem ipsum '.repeat(10_000)}`);
-      expect(readNoteExcerpt(p)).toBe('Hook line first.');
+      expect(readNoteListingMeta(p).excerpt).toBe('Hook line first.');
     });
 
     it('returns "" for a missing file instead of throwing', () => {
-      expect(readNoteExcerpt(path.join(tmpDir, 'nope.md'))).toBe('');
+      expect(readNoteListingMeta(path.join(tmpDir, 'nope.md')).excerpt).toBe('');
     });
+
+    it('surfaces the character signal from a real note file (SKY-11049)', () => {
+      const p = path.join(tmpDir, 'Kael Thorne.md');
+      fs.writeFileSync(p, '# Kael Thorne\n\nA wandering blade. #Character\n');
+      expect(readNoteListingMeta(p).characterTag).toBe(true);
+    });
+
+    it('a missing file is not a character', () => {
+      expect(readNoteListingMeta(path.join(tmpDir, 'nope.md')).characterTag).toBe(false);
+    });
+  });
+});
+
+describe('noteHasCharacterSignal — vault-wide POV picker fallback (SKY-11049)', () => {
+  it('matches frontmatter type: character', () => {
+    expect(noteHasCharacterSignal('---\ntype: Character\n---\n# Mira\n')).toBe(true);
+  });
+
+  it('matches a frontmatter tags: entry of character', () => {
+    expect(noteHasCharacterSignal('---\ntags: [protagonist, Character]\n---\n# Mira\n')).toBe(true);
+  });
+
+  it('matches an inline #Character hashtag anywhere in the body', () => {
+    expect(noteHasCharacterSignal('# Mira Veynn\n\nRuns the lamplighter guild. #Character\n')).toBe(true);
+  });
+
+  it('matches a nested #character/pov hashtag', () => {
+    expect(noteHasCharacterSignal('# Mira\n\n#character/pov figure of this arc.\n')).toBe(true);
+  });
+
+  it('does not match unrelated notes', () => {
+    expect(noteHasCharacterSignal('# Ward Violet\n\nA district, not a person. #location\n')).toBe(false);
+  });
+
+  it('does not match a hashtag that merely starts with "character"', () => {
+    expect(noteHasCharacterSignal('# Style Guide\n\nOur #charactersheet template lives elsewhere.\n')).toBe(false);
   });
 });
 

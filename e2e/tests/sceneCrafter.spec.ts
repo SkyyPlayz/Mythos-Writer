@@ -780,3 +780,296 @@ test('SKY-9878: a vault write while the canvas rail is open restocks it with no 
 
   await expect(suggested.getByText('The Sunken Gate')).toBeVisible({ timeout: 8_000 });
 });
+
+// ─── SKY-11049: full reachability loop — click a suggested card, watch it ────
+// land in the generated draft board, watch it survive a reload. Nothing is
+// pre-seeded: a fresh story (AC-SC-14's pattern) starts with zero boards.
+
+/** Replace the streaming IPC with a deterministic, no-network mock (mirrors
+ *  m19-scene-crafter-prose-invariant.spec.ts's installDraftStreamMock). */
+async function installDraftStreamMock(electronApp: ElectronApplication, text: string): Promise<void> {
+  await electronApp.evaluate(({ ipcMain }, args) => {
+    try { ipcMain.removeHandler('stream:start'); } catch { /* not registered */ }
+    ipcMain.handle('stream:start', (event) => {
+      const streamId = 'mock-sky11049-stream';
+      setTimeout(() => {
+        event.sender.send('stream:token', { streamId, token: args.text });
+        event.sender.send('stream:end', { streamId });
+      }, 30);
+      return { streamId };
+    });
+  }, { text });
+}
+
+test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the generated board, and survives reload', async () => {
+  if (!app) throw new Error('shared Electron app not launched');
+  await installDraftStreamMock(app, 'A gust of cold air rolled through the doorway.');
+
+  // A fresh story so this test starts with zero boards — the owner report
+  // constraint (§4c: never pre-seed the thing under test).
+  await clickStoryNav(page);
+  await page.locator('[data-testid="story-subview-editor"]').click();
+  const storyIndex = await createStory(page);
+  await selectStory(page, storyIndex);
+  await openBoardView(page);
+  await expect(page.locator('.sc-board-row')).toHaveCount(0);
+
+  fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
+  fs.writeFileSync(
+    path.join(notesVaultDir, 'Characters', 'Mira Veynn.md'),
+    'Reluctant heir — resourceful, haunted.',
+  );
+  await reloadBoardView(page);
+
+  const suggestedCard = page.locator('.sc-suggest').getByRole('button', { name: /Mira Veynn/i });
+  await expect(suggestedCard).toBeVisible({ timeout: 8_000 });
+  await expect(suggestedCard).toHaveAttribute('aria-pressed', 'false');
+  await expect(suggestedCard).not.toHaveClass(/sc-sugg-card--on/);
+
+  // Click does something visible (SKY-11049 owner report): aria-pressed
+  // flips AND the selected-state style is actually applied — SceneCrafterPage
+  // .css previously had no rule for .sc-sugg-card--on at all.
+  await suggestedCard.click();
+  await expect(suggestedCard).toHaveAttribute('aria-pressed', 'true');
+  await expect(suggestedCard).toHaveClass(/sc-sugg-card--on/);
+  await expect(suggestedCard).toHaveCSS('border-color', /0, *240, *255/);
+
+  // Generate a draft with the suggested card selected as context, then add
+  // it to the scene board.
+  await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
+  await expect(page.locator('[data-testid="sc-draft-card"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="sc-draft-card"]').getByRole('button', { name: 'Add to scene board' }).click();
+
+  // A brand-new canvas board opens, carrying the chosen suggested card — the
+  // "click places it on the board" half of the owner report.
+  await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
+  const stage = page.getByTestId('canvas-stage');
+  await expect(stage.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible({ timeout: 5_000 });
+  await expect(stage.locator('.cvb-card', { hasText: '— first pass' })).toBeVisible();
+
+  // Survives a real reload (unmount + IPC re-read from disk, not just React state).
+  await reloadBoardView(page);
+  await page.locator('.sc-board-row').first().click();
+  await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
+  const stageAfterReload = page.getByTestId('canvas-stage');
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();
+  await expect(stageAfterReload.locator('.cvb-card', { hasText: '— first pass' })).toBeVisible();
+});
+
+// ─── SKY-11049 item 7: POV picker resolves a real, non-"Characters"-folder ───
+// vault shape. Owner report: his vault has no top-level Characters folder —
+// notes live wherever he keeps them and carry a #Character tag instead, so
+// the old group==='CHARACTERS' filter left the POV control with nothing to
+// pick. Nothing is pre-seeded: the character note is created through the
+// Notes vault UI itself, exactly like the owner would.
+//
+// Own describe block with its own fresh Electron app/vault (not the file's
+// shared instance): castCardsFromSuggested deliberately prefers a Characters
+// folder over the tag fallback vault-wide (see crafterState.ts), and the
+// shared suite's notes vault already has a Characters/Mira Veynn.md note
+// from the item-2 reachability test above — reusing it would mask the exact
+// fallback path this test exists to prove.
+
+/**
+ * The seed vault's twin-root layout (separate vaultRoot/notesVaultRoot dirs)
+ * reads as a "v0.4" vault to MythosMigrationCenter, whose prompt can pop up
+ * (SKY-8882, unrelated to Scene Crafter) and intercept clicks. Dismiss it if
+ * present.
+ */
+async function dismissMigrationPromptIfPresent(pg: Page): Promise<void> {
+  const dismissBtn = pg.locator('[data-testid="mythos-migration-prompt-dismiss"]');
+  if (await dismissBtn.isVisible({ timeout: 500 }).catch(() => false)) await dismissBtn.click();
+}
+
+test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh profile)', () => {
+  let localApp: ElectronApplication | undefined;
+  let localPage: Page;
+  let localUserData: string;
+  let localVaultDir: string;
+  let localNotesVaultDir: string;
+
+  test.beforeAll(async () => {
+    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-'));
+    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-story-'));
+    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-pov-notes-'));
+    seedUserData(localUserData, localVaultDir, localNotesVaultDir);
+    localApp = await launchApp(localUserData);
+    localPage = await firstWindow(localApp);
+    await expect(localPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    await localApp?.close().catch(() => {});
+    fs.rmSync(localUserData, { recursive: true, force: true });
+    fs.rmSync(localVaultDir, { recursive: true, force: true });
+    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('a #Character-tagged note created via the UI appears in the POV picker and fills the field', async () => {
+    const storyIndex = await createStory(localPage);
+    await selectStory(localPage, storyIndex);
+
+    // Create ONE note via the Notes Editor UI — no top-level "Characters"
+    // folder, matching the owner's real vault shape (§4c: never pre-seed the
+    // thing under test).
+    await localPage.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(localPage.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+    await dismissMigrationPromptIfPresent(localPage);
+
+    const addNoteBtn = localPage.locator('[data-testid="vb-btn-new-note"]').first();
+    await expect(addNoteBtn).toBeVisible({ timeout: 6_000 });
+    await addNoteBtn.click();
+    const dialog = localPage.locator('.ntd-dialog');
+    await expect(dialog).toBeVisible({ timeout: 6_000 });
+    await dialog.locator('[data-testid="ntd-blank-title"]').fill('Kael Thorne');
+    await dialog.locator('[data-testid="ntd-submit"]').click();
+    await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+
+    // Open it and type a body with an inline #Character hashtag — the
+    // owner's own tagging convention, not a frontmatter field a UI never
+    // exposes. SKY-10929 made Rich view the default for a fresh profile, so
+    // force Source mode (raw textarea) via the gear menu — both write the
+    // same underlying markdown, and this keeps the assertion independent of
+    // that default.
+    await dismissMigrationPromptIfPresent(localPage);
+    await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
+    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+    await localPage.locator('[data-testid="note-gear-mode-source"]').click();
+    const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await editor.fill('A wandering blade, haunted by his last war. #Character');
+    await expect(editor).toHaveValue(/#Character/);
+
+    // Wait for the debounced autosave to actually land on disk — Scene
+    // Crafter's character signal is computed from the file, not React state.
+    const notePath = path.join(localNotesVaultDir, 'Kael Thorne.md');
+    await expect.poll(
+      () => (fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : ''),
+      { timeout: 8_000 },
+    ).toContain('#Character');
+
+    await dismissMigrationPromptIfPresent(localPage);
+    await openBoardView(localPage);
+
+    const povField = localPage.getByRole('combobox', { name: 'POV' });
+    await expect(povField).toBeVisible({ timeout: 8_000 });
+    await expect(povField).toHaveJSProperty('tagName', 'INPUT'); // typeable, not a <select> (item 7 point 1)
+
+    await povField.click();
+    const option = localPage.getByRole('option', { name: /kael thorne/i });
+    await expect(option).toBeVisible({ timeout: 8_000 });
+    await option.click();
+
+    await expect(povField).toHaveValue('Kael Thorne');
+    await expect(localPage.getByRole('listbox', { name: /vault characters/i })).not.toBeVisible();
+  });
+});
+
+// ─── SKY-11072 — vault-reference columns (owner ruling: prototype wins) ──────
+// The Setup view's right side is three vault-reference columns — CHARACTERS /
+// LOCATIONS / ITEMS & SYSTEMS — replacing the BEATS/CAST/PLACES kanban.
+// Reachability (§4c), never pre-seeded: ONE character note created through
+// the Notes vault UI must appear in CHARACTERS, its × must remove it from
+// THIS scene only (the note survives on disk and in the suggested rail), and
+// the column's + picker must re-add it.
+//
+// Own fresh app/vault: the note is tagged #Character with no Characters
+// folder (the owner's real vault shape), and the shared suite's vault already
+// has folder-filed notes that would mask the fallback path.
+
+test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profile)', () => {
+  let localApp: ElectronApplication | undefined;
+  let localPage: Page;
+  let localUserData: string;
+  let localVaultDir: string;
+  let localNotesVaultDir: string;
+
+  test.beforeAll(async () => {
+    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-'));
+    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-story-'));
+    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sc-refs-notes-'));
+    seedUserData(localUserData, localVaultDir, localNotesVaultDir);
+    localApp = await launchApp(localUserData);
+    localPage = await firstWindow(localApp);
+    await expect(localPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    await localApp?.close().catch(() => {});
+    fs.rmSync(localUserData, { recursive: true, force: true });
+    fs.rmSync(localVaultDir, { recursive: true, force: true });
+    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('a character note created via the UI appears in CHARACTERS; × removes it from this scene without deleting the note; + re-adds it', async () => {
+    const storyIndex = await createStory(localPage);
+    await selectStory(localPage, storyIndex);
+
+    // Create ONE note through the Notes vault UI (§4c: never pre-seed).
+    await localPage.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(localPage.locator('[data-testid="vault-browser"]')).toBeVisible({ timeout: 8_000 });
+    await dismissMigrationPromptIfPresent(localPage);
+
+    const addNoteBtn = localPage.locator('[data-testid="vb-btn-new-note"]').first();
+    await expect(addNoteBtn).toBeVisible({ timeout: 6_000 });
+    await addNoteBtn.click();
+    const dialog = localPage.locator('.ntd-dialog');
+    await expect(dialog).toBeVisible({ timeout: 6_000 });
+    await dialog.locator('[data-testid="ntd-blank-title"]').fill('Mira Veynn');
+    await dialog.locator('[data-testid="ntd-submit"]').click();
+    await expect(dialog).not.toBeVisible({ timeout: 6_000 });
+
+    // Tag it #Character in Source mode (same flow the SKY-11049 POV test
+    // proved out) so the CHARACTERS column's tag fallback resolves it.
+    await dismissMigrationPromptIfPresent(localPage);
+    await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Mira Veynn' }).first().click();
+    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
+    await localPage.locator('[data-testid="note-gear-mode-source"]').click();
+    const editor = localPage.getByRole('textbox', { name: 'Edit note: Mira Veynn.md' });
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await editor.fill('Reluctant heir — resourceful, haunted. #Character');
+    await expect(editor).toHaveValue(/#Character/);
+
+    // Wait for the debounced autosave to land on disk — the column stock is
+    // computed from the file listing, not React state.
+    const notePath = path.join(localNotesVaultDir, 'Mira Veynn.md');
+    await expect.poll(
+      () => (fs.existsSync(notePath) ? fs.readFileSync(notePath, 'utf-8') : ''),
+      { timeout: 8_000 },
+    ).toContain('#Character');
+
+    await dismissMigrationPromptIfPresent(localPage);
+    await openBoardView(localPage);
+
+    // 1. The note appears in the CHARACTERS vault-reference column.
+    const characters = localPage.locator('[data-testid="sc-ref-col-characters"]');
+    await expect(characters).toBeVisible({ timeout: 8_000 });
+    const card = characters.locator('.sc-ref-card', { hasText: 'Mira Veynn' });
+    await expect(card).toBeVisible({ timeout: 8_000 });
+
+    // 2. × removes it from THIS scene only.
+    await characters.getByRole('button', { name: 'Remove Mira Veynn from this scene' }).click();
+    await expect(card).not.toBeVisible();
+
+    // 3. The note itself survives — on disk and in the suggested rail.
+    expect(fs.existsSync(notePath)).toBe(true);
+    await expect(localPage.locator('.sc-suggest').getByText('Mira Veynn')).toBeVisible();
+
+    // 4. The column's + picker re-adds it (the un-remove path).
+    await characters.getByRole('button', { name: 'Add a note to CHARACTERS' }).click();
+    const search = localPage.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
+    await expect(search).toBeVisible();
+    await search.fill('mira');
+    await characters.locator('.sc-ref-picker').getByRole('button', { name: /mira veynn/i }).click();
+    await expect(characters.locator('.sc-ref-card', { hasText: 'Mira Veynn' })).toBeVisible();
+
+    // The full cycle never touched the file: the note is still on disk.
+    expect(fs.readFileSync(notePath, 'utf-8')).toContain('#Character');
+  });
+});

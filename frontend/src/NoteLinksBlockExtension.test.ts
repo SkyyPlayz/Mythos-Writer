@@ -75,7 +75,8 @@ describe('NoteLinksBlock decorations', () => {
     );
     const decorated = editor.view.dom.querySelectorAll('p.note-links-block');
     expect(decorated).toHaveLength(1);
-    expect(decorated[0].textContent).toContain('[[The Great Deep]]');
+    // SKY-10929: Rich view shows styled link text only — no [[ ]] brackets.
+    expect(decorated[0].textContent).toContain('The Great Deep');
     editor.destroy();
   });
 

@@ -10,11 +10,37 @@
 
 /** Job types runnable in the worker. Renderer-enqueueable types are a
  *  stricter allowlist — see RENDERER_ENQUEUEABLE_JOB_TYPES. */
-export type JobType = 'vault-scan' | 'synthetic-load';
+export type JobType = 'vault-scan' | 'manuscript-scan' | 'synthetic-load';
 
 /** Job types the renderer may enqueue over IPC. 'synthetic-load' is a
  *  diagnostics/test-only CPU load and stays main-process-internal. */
-export const RENDERER_ENQUEUEABLE_JOB_TYPES: readonly JobType[] = ['vault-scan'];
+export const RENDERER_ENQUEUEABLE_JOB_TYPES: readonly JobType[] = [
+  'vault-scan',
+  'manuscript-scan',
+];
+
+// ─── Scan scope (M12.3, SKY-10770) ───
+
+/** Granularity of a manuscript scan. The renderer picks a level + anchor
+ *  scene; the MAIN process resolves that to the concrete scene set from its
+ *  own manifest read (the renderer never supplies file paths — see
+ *  jobsIpc.ts). Extraction cost scales with the level; contradiction
+ *  detection stays a global DB query regardless (SKY-10666 binding). */
+export type ScanScopeLevel = 'scene' | 'chapter' | 'part' | 'book';
+
+export const SCAN_SCOPE_LEVELS: readonly ScanScopeLevel[] = [
+  'scene',
+  'chapter',
+  'part',
+  'book',
+];
+
+/** One manuscript unit a scoped scan will process. Path is vault-relative
+ *  with POSIX separators, exactly as recorded in the manifest. */
+export interface ScanUnit {
+  sceneId: string;
+  path: string;
+}
 
 export type BackgroundJobStatus =
   | 'queued'

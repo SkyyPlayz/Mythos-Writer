@@ -626,6 +626,11 @@ contextBridge.exposeInMainWorld('api', {
   projectList: () => ipcRenderer.invoke('project:list', undefined),
   // Beta 4 M2 — per-vault stats for the vault-switcher popover
   projectStats: () => ipcRenderer.invoke('project:stats', undefined),
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+  projectIcons: () => ipcRenderer.invoke('project:icons', undefined),
+  projectIconSet: (payload: import('./ipc.js').ProjectIconSetPayload) =>
+    ipcRenderer.invoke('project:iconSet', payload),
+  projectIconPick: () => ipcRenderer.invoke('project:iconPick', undefined),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
@@ -929,6 +934,20 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('navigator:manifest-changed', handler);
   },
 
+  // SKY-10916: app-wide nav history — Windows-native mouse X1/X2 side
+  // buttons, forwarded from main's `app-command` handler.
+  onNavHistoryBack: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('nav-history:back', handler);
+    return () => ipcRenderer.removeListener('nav-history:back', handler);
+  },
+
+  onNavHistoryForward: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('nav-history:forward', handler);
+    return () => ipcRenderer.removeListener('nav-history:forward', handler);
+  },
+
   // SKY-1684: Archive Agent v1 — continuity scan
   archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
     ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
@@ -938,6 +957,11 @@ contextBridge.exposeInMainWorld('api', {
 
   archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) =>
     ipcRenderer.invoke('archive:list-continuity', options),
+
+  // M12.3 (SKY-10770): open contradictions across the WHOLE manuscript —
+  // independent of scan scope by design.
+  archiveListGlobalContradictions: () =>
+    ipcRenderer.invoke('archive:list-global-contradictions'),
 
   onArchiveContScanStart: (cb: (data: { sceneId: string; scope: string }) => void) => {
     const handler = (_: unknown, data: { sceneId: string; scope: string }) => cb(data);
@@ -1070,7 +1094,10 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-10730 M12.1: background job queue — whole-vault scan passes run on a
   // worker thread; the UI queries progress/ETA and subscribes to push events.
   jobs: {
-    enqueue: (type: string) => ipcRenderer.invoke('jobs:enqueue', { type }),
+    // M12.3 (SKY-10770): scoped manuscript scans pass identifiers only — the
+    // main process resolves level + sceneId to scene paths from the manifest.
+    enqueue: (type: string, opts?: { scope?: { level: string; sceneId: string } }) =>
+      ipcRenderer.invoke('jobs:enqueue', { type, scope: opts?.scope }),
     list: (opts?: { status?: string; type?: string; limit?: number }) =>
       ipcRenderer.invoke('jobs:list', opts ?? {}),
     progress: (jobId: string) => ipcRenderer.invoke('jobs:progress', { jobId }),
@@ -1080,6 +1107,13 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('jobs:event', handler);
       return () => ipcRenderer.removeListener('jobs:event', handler);
     },
+  },
+
+  // SKY-10772 M12.5: AI Agents index controls
+  agentIndex: {
+    getStats: () => ipcRenderer.invoke('agent-index:get-stats'),
+    clean: () => ipcRenderer.invoke('agent-index:clean'),
+    rebuild: () => ipcRenderer.invoke('agent-index:rebuild'),
   },
 
   // SKY-3189 (G3): true when running in a packaged Electron build.

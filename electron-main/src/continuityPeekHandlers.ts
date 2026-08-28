@@ -2,7 +2,7 @@
 // Filesystem + matching logic; no LLM calls.
 import fs from 'fs';
 import path from 'path';
-import { buildEntityIndex } from './vault/entityIndex.js';
+import { loadEntityIndex } from './vault/entityIndex.js';
 import { findBestMatch, searchEntities } from './vault/entityMatcher.js';
 import { parseEntityFrontmatter } from './vault/entityFrontmatterParser.js';
 import type {
@@ -64,7 +64,7 @@ export function handleContinuityMatchSelection(
   const { selectedText, notesVaultRoot } = payload;
   if (!selectedText.trim() || !notesVaultRoot) return { match: null };
 
-  const index = buildEntityIndex(notesVaultRoot);
+  const index = loadEntityIndex(notesVaultRoot);
   const entry = findBestMatch(selectedText, index);
   if (!entry) return { match: null };
 
@@ -77,7 +77,7 @@ export function handleContinuitySearch(
   const { query, notesVaultRoot } = payload;
   if (!query.trim() || !notesVaultRoot) return { results: [] };
 
-  const index = buildEntityIndex(notesVaultRoot);
+  const index = loadEntityIndex(notesVaultRoot);
   const entries = searchEntities(query, index);
   const results = entries.map((e) => toEntityResult(e, e.path, notesVaultRoot));
   return { results };

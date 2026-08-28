@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type Rea
 import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
+import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
@@ -38,7 +40,8 @@ import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
-import AppNavRail from './AppNavRail';
+import AppNavRail, { type NavRailVault } from './AppNavRail';
+import type { SettingsCategoryId } from './settingsCategories';
 import WorkspaceTabBar from './WorkspaceTabBar';
 import WorkspaceSplitPane from './WorkspaceSplitPane';
 import WorkspaceSplitDropZones, { type SplitDropZone } from './WorkspaceSplitDropZones';
@@ -682,6 +685,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-2966: stable ref so navigator sync callbacks don't re-subscribe on every render
   const storiesRef = useRef<Story[]>([]);
   storiesRef.current = stories;
+  // SKY-10916: loadVault (defined below, before the nav-history hook itself
+  // is constructed further down) needs to call navHistory.hydrate once
+  // settings load — a plain forward reference would trip TS's block-scoped
+  // "used before declaration" check, so mirror it through a ref instead
+  // (same pattern as storiesRef above), assigned in-render once the hook
+  // exists (no effect indirection needed — see appApiRef-style assignments
+  // elsewhere in this file).
+  const navHistoryHydrateRef = useRef<(persisted: PersistedNavHistory | null | undefined) => void>(() => {});
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -697,13 +708,38 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // SKY-11048: which Settings category to open to — a vault tile's
+  // "Settings → this vault" context-menu action jumps straight to Vault & Files.
+  // `settingsOpenToken` is bumped on every such jump and used as SettingsPanel's
+  // `key` so it remounts (and re-reads initialCategory) even when the panel is
+  // already open on a different category — plain state alone wouldn't: the
+  // panel only consumes `initialCategory` once, via a useState initializer.
+  const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
+  const [settingsOpenToken, setSettingsOpenToken] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
+  // fetched (even a lone vault renders a tile + the `+` tile). The raw list
+  // is kept separate from WindowChrome's own local `projects` state (same
+  // IPC, different consumer) rather than adding a third prop-drilled copy
+  // through this already-large component tree; `navRailVaults` below derives
+  // the display shape from it plus the live theme/icon/active settings.
+  // Known trade-off (flagged in review): this is now the third independent
+  // projectList-fetch + projectSwitch-completion pattern (WindowChrome.tsx's
+  // loadProjects/projItems, MythosVaultsSection.tsx's refreshVaults/onCardClick,
+  // this one) — extracting a shared `useVaultList()` hook would remove the
+  // duplication, but touching those two existing, independently-tested
+  // components is out of scope for a ticket framed as "wire a new surface to
+  // existing plumbing" (SKY-11048 §1). Left as a follow-up, not silently.
+  const [navRailProjects, setNavRailProjects] = useState<Array<{ vaultRoot: string; notesVaultRoot?: string; name: string }>>([]);
   // Beta 4 M27 (SKY-6982): Beta Reader agent view — full overlay, not a
   // StorySubView/AppTab (opened from the agent hub row + Tools menu only).
   const [betaReaderOpen, setBetaReaderOpen] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [gettingStartedProgress, setGettingStartedProgress] = useState<GettingStartedProgress | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  // SKY-10926: bumped when TemplatePicker creates a new note, so the Notes
+  // Vault tree (VaultBrowser) refetches and shows it without a manual reload.
+  const [notesRefreshSignal, setNotesRefreshSignal] = useState(0);
   const [seenEmptySceneHints, setSeenEmptySceneHints] = useState<Set<string>>(() => new Set());
   const [vaultBinding, setVaultBinding] = useState<VaultBindingState>({ storyPath: '', notesPath: '', storyValid: true, notesValid: true });
   const { toast: budgetToastState, showToast: showBudgetToast } = useToast(5000);
@@ -828,10 +864,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [splitDirection, setSplitDirection] = useState<SplitDropZone>('right');
   // Beta 4 M4: shell-driven note split request (note tab dropped on a zone).
   const [noteSplitRequest, setNoteSplitRequest] = useState<{ path: string; token: number } | null>(null);
-  // SKY-9784: whether the Notes split (NotesTabPanel's own pane 1/pane 2 tab
-  // strips) is active — hides the global strip while each pane owns its own,
-  // mirroring splitWindowEnabled for the Story split editor.
-  const [notesSplitActive, setNotesSplitActive] = useState(false);
 
   // SKY-1699 (Wave 2e): split window — 2-pane manuscript editing
   const [splitWindowEnabled, setSplitWindowEnabled] = useState(false);
@@ -1399,6 +1431,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (s) {
         setAppSettings(s);
+        // SKY-10916: hydrate the nav history stack from the last session.
+        // One-shot (hydrate no-ops after the first call) — see its own
+        // comment for why this doesn't try to suppress the next auto-push.
+        navHistoryHydrateRef.current(s.navHistory);
         // Restore global right sidebar state from persisted settings (SKY-1686)
         if (typeof s.rightSidebarVisible === 'boolean') setGrsVisible(s.rightSidebarVisible);
         if (typeof s.rightSidebarWidth === 'number') setGrsWidth(s.rightSidebarWidth);
@@ -1670,6 +1706,29 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
   }, [loadEntities]);
 
+  // SKY-11048: nav-rail vault tiles — refreshed on mount and after every
+  // switch/create, since either can add a not-yet-seen vault to the list.
+  const loadVaults = useCallback(() => {
+    window.api?.projectList?.()
+      .then((res) => { if (res?.projects) setNavRailProjects(res.projects); })
+      .catch(() => { /* non-fatal — rail renders without vault tiles */ });
+  }, []);
+
+  // SKY-11068: per-vault icon, vault-local — shared by the nav-rail tiles,
+  // the title-bar switcher, and Settings > Mythos vaults.
+  const { icons: vaultIconsByRoot, loadIcons: loadVaultIcons, setVaultIcon, pickIconImage } = useVaultIcons();
+
+  useEffect(() => { loadVaults(); loadVaultIcons(); }, [loadVaults, loadVaultIcons]);
+
+  // Derived display shape — recomputed whenever the raw list, the active
+  // vault, or a per-vault display-name/icon override changes.
+  const navRailVaults: NavRailVault[] = navRailProjects.map((p) => ({
+    id: p.vaultRoot,
+    name: appSettings?.vaultDisplayNames?.[p.vaultRoot] ?? (deriveVaultDisplayName(p) || p.name),
+    icon: vaultIconsByRoot[p.vaultRoot],
+    active: p.vaultRoot === activeVaultRoot,
+  }));
+
   // Handle project switches pushed from main process
   useEffect(() => {
     if (!window.api?.onProjectSwitched) return;
@@ -1684,10 +1743,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // SKY-130: allow restore to fire again for the new project
       sceneRestoreAttemptedRef.current = false;
       loadVault();
+      loadVaults();
       notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
     });
     return () => unsub?.();
-  }, [loadVault]);
+  }, [loadVault, loadVaults]);
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
@@ -1699,8 +1759,81 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // SKY-130: allow restore to fire again for the new project
     sceneRestoreAttemptedRef.current = false;
     loadVault();
+    loadVaults();
     notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
-  }, [loadVault]);
+  }, [loadVault, loadVaults]);
+
+  // SKY-11048: switch through the exact same IPC call + completion handler
+  // WindowChrome's project menu uses (window.api.projectSwitch →
+  // handleProjectSwitched) — no second switch path. Resolves once the vault
+  // is active (no-op if it already is) so callers can chain follow-up work
+  // (SKY-11086: e.g. opening Settings) onto the *target* vault, not whatever
+  // was active when the action was invoked.
+  const switchToVault = useCallback((vaultId: string): Promise<void> => {
+    if (vaultId === activeVaultRoot) return Promise.resolve();
+    const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
+    return (
+      window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
+        .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
+        .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
+      ?? Promise.resolve()
+    );
+  }, [activeVaultRoot, navRailProjects, handleProjectSwitched]);
+
+  const handleVaultTileSelect = useCallback((vaultId: string) => {
+    switchToVault(vaultId);
+  }, [switchToVault]);
+
+  // Both handlers below only touch `appSettings` (a per-vault override layered
+  // on top of the registry) — no need to re-fetch the vault list itself;
+  // `navRailVaults` re-derives from the new settings on the next render.
+  const handleVaultRename = useCallback(async (vaultId: string) => {
+    const current = navRailVaults.find((v) => v.id === vaultId);
+    const name = await requestText(`Rename vault "${current?.name ?? ''}" to:`);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, vaultDisplayNames: { ...(prev.vaultDisplayNames ?? {}), [vaultId]: trimmed } };
+      window.api?.settingsSet?.(next).catch(() => {});
+      return next;
+    });
+  }, [navRailVaults, requestText]);
+
+  // SKY-11068: replaces the old text-prompt + app-global appSettings.vaultIcons
+  // storage — icons are now vault-local (mythos.json) via useVaultIcons, so a
+  // vault's icon travels with it on move/copy instead of living in this app's
+  // settings file.
+  const handleVaultIconPickImage = useCallback((vaultId: string) => {
+    pickIconImage()?.then((res) => {
+      if (res?.filePath) setVaultIcon(vaultId, { kind: 'image', sourcePath: res.filePath });
+    });
+  }, [pickIconImage, setVaultIcon]);
+
+  const handleVaultIconSet = useCallback((vaultId: string, icon: VaultIconSetInput) => {
+    setVaultIcon(vaultId, icon);
+  }, [setVaultIcon]);
+
+  // Only the active vault can be revealed — no IPC reveals an arbitrary path,
+  // just the current Story Vault root (global.d.ts revealVaultFolder).
+  const handleVaultReveal = useCallback((vaultId: string) => {
+    if (vaultId !== activeVaultRoot) return;
+    window.api?.revealVaultFolder?.().catch(() => {});
+  }, [activeVaultRoot]);
+
+  // SKY-11086: previously ignored `vaultId` and just opened Settings against
+  // whatever vault happened to be active — right-clicking an INACTIVE tile
+  // and choosing "Settings → this vault" silently showed the wrong vault's
+  // Vault & Files settings. Switch to the target vault first (same as a tile
+  // click), then jump the panel to that vault's settings.
+  const handleVaultOpenSettings = useCallback((vaultId: string) => {
+    switchToVault(vaultId).then(() => {
+      setSettingsInitialCategory('vaults');
+      setSettingsOpenToken((t) => t + 1);
+      setSettingsOpen(true);
+    });
+  }, [switchToVault]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
@@ -3158,7 +3291,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const openVaultViaPicker = useCallback(async () => {
     try {
       const result = await window.api?.openVaultFolder?.();
-      if (!result?.cancelled && result?.vaultRoot) handleProjectSwitched(result.vaultRoot);
+      if (!result?.cancelled && result?.vaultRoot) {
+        handleProjectSwitched(result.vaultRoot);
+      } else if (result?.error) {
+        alert(result.error);
+      }
     } catch { /* non-fatal */ }
   }, [handleProjectSwitched]);
 
@@ -3285,6 +3422,63 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setViewDepth('scene');
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
+
+  // SKY-10917: Story Navigator right-click "Delete scene…" — the tree had no
+  // remove path at all before this. Scoped to story.chapters like
+  // createScene/createChapter above; a Part-grouped story's chapters live
+  // under story.parts[] instead, which this (and add-chapter/add-scene)
+  // don't reach — StoryNavigator only offers this menu item on the
+  // simple-single-part render branch so it never no-ops silently.
+  const deleteScene = useCallback(async (storyId: string, chapterId: string, sceneId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
+    if (!story || !chapter || !scene) return;
+    if (!window.confirm(`Delete "${scene.title || 'Untitled Scene'}"? This cannot be undone.`)) return;
+    const updatedStories = stories.map((s) =>
+      s.id !== storyId ? s : {
+        ...s,
+        chapters: s.chapters.map((ch) =>
+          ch.id !== chapterId ? ch : { ...ch, scenes: ch.scenes.filter((sc) => sc.id !== sceneId) }
+        ),
+      }
+    );
+    updateManifest(updatedStories);
+    window.api?.deleteVault?.(scene.path).catch(() => {});
+    // SKY-11008: selectedStory is a separate snapshot updateManifest alone
+    // doesn't refresh (see refreshManuscriptSelection's own comment above) —
+    // without this, ManuscriptView keeps resolving its cursor against the
+    // pre-delete tree and can keep rendering the deleted scene's content.
+    const updatedStory = updatedStories.find((s) => s.id === storyId);
+    if (updatedStory && selectedStory?.id === storyId) setSelectedStory(updatedStory);
+    if (selectedScene?.id === sceneId) {
+      setSelectedScene(null);
+      editorApiRef.current?.focus();
+    }
+    showLnToast(`Deleted "${scene.title || 'Untitled Scene'}"`);
+  }, [stories, updateManifest, selectedScene, selectedStory]);
+
+  const deleteChapter = useCallback(async (storyId: string, chapterId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    if (!story || !chapter) return;
+    const sceneCount = chapter.scenes.length;
+    const warn = sceneCount > 0 ? ` and its ${sceneCount} scene${sceneCount === 1 ? '' : 's'}` : '';
+    if (!window.confirm(`Delete "${chapter.title || 'Untitled Chapter'}"${warn}? This cannot be undone.`)) return;
+    const updatedStories = stories.map((s) =>
+      s.id !== storyId ? s : { ...s, chapters: s.chapters.filter((c) => c.id !== chapterId) }
+    );
+    updateManifest(updatedStories);
+    await Promise.all(chapter.scenes.map((sc) => window.api?.deleteVault?.(sc.path).catch(() => {})));
+    // SKY-11008: same stale-selectedStory issue as deleteScene above.
+    const updatedStory = updatedStories.find((s) => s.id === storyId);
+    if (updatedStory && selectedStory?.id === storyId) setSelectedStory(updatedStory);
+    if (selectedChapter?.id === chapterId) {
+      setSelectedChapter(null);
+      setSelectedScene(null);
+    }
+    showLnToast(`Deleted "${chapter.title || 'Untitled Chapter'}"`);
+  }, [stories, updateManifest, selectedChapter, selectedStory]);
 
   // M3 (SKY-9021): create story → instantly writable. ONE transaction builds
   // story + Part 1 (title: "", the v3 single-untitled-part shape) + Chapter 1
@@ -4283,6 +4477,251 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, [stories, handleSelectScene, handleSelectEntity]);
 
+  // ─── SKY-10916: app-wide navigation history (Back/Forward, Alt+←/→, mouse X1/X2) ───
+  // Composite "where are we" derived from the same state every existing call
+  // site already funnels through (handleSelectScene, setOpenedNotePath,
+  // handleSelectEntity, handleTabChange, setView/setViewDepth, pane-2
+  // setters) — no per-call-site instrumentation needed; this stays correct
+  // for every current AND future navigation entry point.
+  const currentNavLocation = useMemo<NavigationLocation>(() => ({
+    tab: tabShell.activeTab,
+    focusedPane,
+    view,
+    viewDepth,
+    notesSubView: tabShell.notesSubView,
+    sceneId: selectedScene?.id ?? null,
+    chapterId: selectedChapter?.id ?? null,
+    storyId: selectedStory?.id ?? null,
+    entityId: selectedEntity?.id ?? null,
+    notePath: openedNotePath,
+    // SKY-10916: load-bearing for the Entity Browser / Outline Planning
+    // pseudo-tabs, which clear selectedScene/selectedEntity/openedNotePath
+    // without any of those fields distinguishing one pseudo-tab from
+    // another — see handleWorkspaceTabSelect's 'entities'/'outline' branch.
+    storyDocTabId: activeStoryDocTabId,
+    notesDocTabId: activeNotesDocTabId,
+    splitWindowEnabled,
+    pane2SceneId: pane2Scene?.id ?? null,
+    pane2ChapterId: pane2Chapter?.id ?? null,
+    pane2StoryId: pane2Story?.id ?? null,
+    scrollTop: 0, // not meaningful live — the hook freezes this into outgoing entries itself
+  }), [
+    tabShell.activeTab, tabShell.notesSubView, focusedPane, view, viewDepth,
+    selectedScene, selectedChapter, selectedStory, selectedEntity, openedNotePath,
+    activeStoryDocTabId, activeNotesDocTabId,
+    splitWindowEnabled, pane2Scene, pane2Chapter, pane2Story,
+  ]);
+
+  // Pragmatic real scroll tracking (SKY-10916): sessionSaveScene's scrollTop
+  // field is dead/write-only everywhere (always hardcoded 0, never read
+  // back) — this is a separate, real readout keyed off the DOM container
+  // each surface actually scrolls: `.msv-page` for the manuscript / scene
+  // editor (sceneEditorSlot renders BlockEditor inside it too) when not
+  // split, `.spe-content` per pane when split, and the notes editor's
+  // rich-text scroll region otherwise.
+  const getNavScrollTop = useCallback((): number => {
+    if (tabShell.activeTab === 'story') {
+      const el = splitWindowEnabled
+        ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+        : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      return el?.scrollTop ?? 0;
+    }
+    if (tabShell.activeTab === 'notes') {
+      const el = document.querySelector<HTMLElement>('.note-tiptap-content')
+        ?? document.querySelector<HTMLElement>('.note-viewer-preview')
+        ?? document.querySelector<HTMLElement>('.note-viewer');
+      return el?.scrollTop ?? 0;
+    }
+    return 0;
+  }, [tabShell.activeTab, splitWindowEnabled, focusedPane]);
+
+  const navHistory = useNavigationHistory(currentNavLocation, getNavScrollTop);
+  navHistoryHydrateRef.current = navHistory.hydrate;
+
+  // Restores every field a pushed NavigationLocation captured, via the same
+  // setters every other call site uses.
+  const applyNavLocation = useCallback((loc: NavigationLocation) => {
+    if (loc.sceneId) {
+      const found = findSceneLocation(loc.sceneId);
+      if (found) handleSelectScene(found.scene, found.chapter, found.story);
+    } else if (loc.entityId) {
+      const cached = allEntities.find((e) => e.id === loc.entityId);
+      if (cached) {
+        handleSelectEntity(cached);
+      } else {
+        window.api?.entityRead(loc.entityId)
+          .then((entry: EntityEntry | null) => { if (entry) handleSelectEntity(entry); })
+          .catch(() => {});
+      }
+    } else if (loc.notePath) {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(loc.notePath);
+    } else {
+      setSelectedScene(null);
+      setSelectedChapter(null);
+      setSelectedStory(null);
+      setSelectedEntity(null);
+      setOpenedNotePath(null);
+      // SKY-10916: the only case left that still needs restoring is a
+      // pseudo-tab (Entity Browser / Outline Planning) — those clear every
+      // other identity field, so storyDocTabId/notesDocTabId is the sole
+      // signal. Reuses the existing tab-select handler (kind-aware; no-ops
+      // harmlessly if the tab has since been closed).
+      if (loc.tab === 'story' && loc.storyDocTabId) {
+        handleWorkspaceTabSelect(loc.storyDocTabId);
+      } else if (loc.tab === 'notes' && loc.notesDocTabId) {
+        handleWorkspaceTabSelect(loc.notesDocTabId);
+      }
+    }
+
+    handleTabChange(loc.tab);
+    if (loc.tab === 'story') handleSetView(loc.view);
+    if (loc.tab === 'notes') handleNotesSubViewChange(loc.notesSubView);
+    setViewDepth(loc.viewDepth);
+
+    if (loc.splitWindowEnabled && loc.pane2SceneId) {
+      const found2 = findSceneLocation(loc.pane2SceneId);
+      if (found2) {
+        setPane2Scene(found2.scene);
+        setPane2Chapter(found2.chapter);
+        setPane2Story(found2.story);
+      }
+      setSplitWindowEnabled(true);
+    } else {
+      setPane2Scene(null);
+      setPane2Chapter(null);
+      setPane2Story(null);
+      setSplitWindowEnabled(loc.splitWindowEnabled);
+    }
+    setFocusedPane(loc.focusedPane);
+
+    // Restore scroll once the newly-applied location's content has actually
+    // painted — a double rAF gives async-mounted content (BlockEditor's
+    // TipTap init, NoteViewer's load) a tick to land in the DOM first.
+    const { scrollTop: targetScrollTop, tab: targetTab, splitWindowEnabled: targetSplit, focusedPane: targetPane } = loc;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        let el: HTMLElement | null = null;
+        if (targetTab === 'story') {
+          el = targetSplit
+            ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${targetPane}"] .spe-content`)
+            : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+        } else if (targetTab === 'notes') {
+          el = document.querySelector<HTMLElement>('.note-tiptap-content')
+            ?? document.querySelector<HTMLElement>('.note-viewer-preview')
+            ?? document.querySelector<HTMLElement>('.note-viewer');
+        }
+        if (el) el.scrollTop = targetScrollTop;
+      });
+    });
+  }, [findSceneLocation, allEntities, handleSelectEntity, handleTabChange, handleSetView, handleNotesSubViewChange, handleSelectScene, handleWorkspaceTabSelect]);
+
+  // Returns true only when history actually had somewhere to go — lets
+  // ManuscriptView's Alt+←/→ handler fall back to its own scene/chapter
+  // stepper when there's nothing to replay (see the onHistoryAltArrow prop
+  // on its render below), and lets the mouse/keyboard handlers below no-op
+  // cleanly at the ends of the stack.
+  const tryGoBack = useCallback((): boolean => {
+    const loc = navHistory.goBack();
+    if (!loc) return false;
+    applyNavLocation(loc);
+    return true;
+  }, [navHistory, applyNavLocation]);
+
+  const tryGoForward = useCallback((): boolean => {
+    const loc = navHistory.goForward();
+    if (!loc) return false;
+    applyNavLocation(loc);
+    return true;
+  }, [navHistory, applyNavLocation]);
+
+  // Debounced persistence (app-settings.json, existing settingsSet
+  // convention — same shape as persistGrsSettings/persistTabShell). Nav
+  // history changes on every navigation, unlike most AppSettings fields, so
+  // writing synchronously on every push would be excessive I/O.
+  //
+  // SKY-11017: merges onto a freshly-fetched settingsGet(), not the
+  // in-render `prev` closure. `prev` can be stale relative to disk whenever
+  // something writes settings out-of-band from React state (dev-only
+  // onboarding:reset, "Replay onboarding"/"Replay welcome tour" — both call
+  // saveAppSettings directly on the main process without notifying the
+  // renderer). Since navHistory changes on nearly every navigation, this
+  // debounce is "hot" far more often than the other settingsSet call sites
+  // it mirrors, making that stale-merge collision realistic instead of
+  // theoretical — it's what caused AC-OB-19 (onboarding:reset then
+  // relaunch) to intermittently fail: a pending debounce fired after reset
+  // and silently wrote the stale in-memory onboardingComplete:true back to
+  // disk, undoing the reset.
+  const navHistoryPersistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
+    navHistoryPersistDebounceRef.current = setTimeout(() => {
+      window.api.settingsGet().then((fresh) => {
+        const updated: AppSettings = { ...fresh, navHistory: navHistory.getSnapshot() };
+        setAppSettings(updated);
+        window.api.settingsSet(updated).catch(() => {});
+      }).catch(() => {});
+    }, 500);
+    return () => {
+      if (navHistoryPersistDebounceRef.current) clearTimeout(navHistoryPersistDebounceRef.current);
+    };
+    // navHistory.version is the intentional trigger; getSnapshot/setAppSettings are stable/functional-update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navHistory.version]);
+
+  // Plain Alt+←/→ everywhere the Story editor isn't the active surface
+  // (Notes, Brainstorm, Vault Graph, Coach/Kanban/Timeline/Book sub-views…).
+  // ManuscriptView owns the combo directly there via onHistoryAltArrow (its
+  // own window-level listener already claims it for the scene/chapter
+  // stepper — see the "Real keyboard conflict" note on that component).
+  // Deliberately a separate effect from the big "Writing mode keyboard
+  // shortcuts" one above (~2476) rather than folding in there, to avoid
+  // growing that effect's already-large dependency array.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (tabShell.activeTab === 'story' && view === 'editor') return; // ManuscriptView owns this combo there
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') tryGoBack(); else tryGoForward();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [tabShell.activeTab, view, tryGoBack, tryGoForward]);
+
+  // Mouse X1/X2 side buttons (standard DOM MouseEvent.button values 3/4) +
+  // the Electron main-process app-command bridge (Windows can deliver the
+  // side-button gesture as `app-command` without a `mousedown` at all).
+  //
+  // SKY-11042: on Windows, a physical side-button click can fire BOTH a DOM
+  // `mousedown` (button 3/4) AND the app-command IPC event for the same
+  // gesture. The ref below records when the last mousedown-driven nav fired so
+  // the IPC callback can skip if it arrives within 50 ms — enough to coalesce
+  // the pair without suppressing a genuine standalone IPC gesture (keyboard
+  // shortcut or accessibility tool triggering `app-command` without a click).
+  const lastMouseNavAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 3) { e.preventDefault(); lastMouseNavAtRef.current = Date.now(); tryGoBack(); }
+      else if (e.button === 4) { e.preventDefault(); lastMouseNavAtRef.current = Date.now(); tryGoForward(); }
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    const unsubBack = window.api?.onNavHistoryBack?.(() => {
+      if (Date.now() - lastMouseNavAtRef.current > 50) tryGoBack();
+    });
+    const unsubForward = window.api?.onNavHistoryForward?.(() => {
+      if (Date.now() - lastMouseNavAtRef.current > 50) tryGoForward();
+    });
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      unsubBack?.();
+      unsubForward?.();
+    };
+  }, [tryGoBack, tryGoForward]);
+
   // SKY-1699: The editor context that right-sidebar agents (Writing Assistant, Archive)
   // should respond to. In split mode this tracks the focused pane; otherwise it is the selected scene.
   const usePane2SidebarContext = splitWindowEnabled && focusedPane === 2;
@@ -4346,6 +4785,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             journalModeEnabled={appSettings?.journalMode?.enabled ?? false}
             onBetaRead={betaReadNote}
             onContinuityCheck={continuityCheckNote}
+            notesRefreshSignal={notesRefreshSignal}
           />
         );
       case 'vault-graph':
@@ -4486,6 +4926,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange, handleSetView,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
     sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
+    notesRefreshSignal,
   ]);
 
   const handleNavigateScene = useCallback((direction: 'prev' | 'next') => {
@@ -4810,6 +5251,38 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(stories.map((st) => (st.id === synced.id ? synced : st)));
     refreshManuscriptSelection(synced);
   }, [selectedStory, stories, updateManifest, refreshManuscriptSelection, reinjectChapter]);
+
+  // SKY-10917: Story Navigator right-click "Rename…" — same commit path as
+  // the inline doc-header rename above, just prompted via requestText
+  // (prefilled with the current title) instead of an in-place edit, since
+  // the navigator row isn't itself contentEditable. Scoped to story.chapters
+  // like createScene/createChapter — see deleteScene's comment.
+  const handleContextRenameScene = useCallback(async (sceneId: string) => {
+    const story = stories.find((s) => s.chapters.some((ch) => ch.scenes.some((sc) => sc.id === sceneId)));
+    const chapter = story?.chapters.find((ch) => ch.scenes.some((sc) => sc.id === sceneId));
+    const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
+    if (!story || !scene) return;
+    const title = await requestText('Scene title:', scene.title);
+    if (!title?.trim()) return;
+    const renamed = renameScene(story, sceneId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+    const renamedScene = renamed.chapters.flatMap((ch) => ch.scenes).find((sc) => sc.id === sceneId);
+    if (renamedScene) persistSceneMarkdown(renamedScene);
+  }, [stories, updateManifest, requestText, refreshManuscriptSelection, persistSceneMarkdown]);
+
+  const handleContextRenameChapter = useCallback(async (chapterId: string) => {
+    const story = stories.find((s) => s.chapters.some((ch) => ch.id === chapterId));
+    const chapter = story?.chapters.find((ch) => ch.id === chapterId);
+    if (!story || !chapter) return;
+    const title = await requestText('Chapter title:', chapter.title);
+    if (!title?.trim()) return;
+    const renamed = renameChapter(story, chapterId, title, now());
+    if (!renamed) return;
+    updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
+    refreshManuscriptSelection(renamed);
+  }, [stories, updateManifest, requestText, refreshManuscriptSelection]);
 
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
   // story title). TitleRow reverts empties/normalizes before committing here.
@@ -5328,6 +5801,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onNewStory={() => { void createStory(); }}
             editableItems={railEditItems}
             onEditableItemsChange={persistNavRailConfigItems}
+            vaults={navRailVaults}
+            onVaultSelect={handleVaultTileSelect}
+            onNewVault={() => { void createMythosVault(); }}
+            onVaultRename={(id) => { void handleVaultRename(id); }}
+            onVaultIconPickImage={handleVaultIconPickImage}
+            onVaultIconSet={handleVaultIconSet}
+            onVaultReveal={handleVaultReveal}
+            onVaultOpenSettings={handleVaultOpenSettings}
           />
         )}
         <div className="desktop-shell__main-col">
@@ -5337,22 +5818,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         {/* SKY-8907: while the Story split editor is active, pane 1 renders its
             own copy of this strip (storyDocTabs) — hide the global one so
             there aren't two.
-            SKY-9784: same for the Notes split — NotesTabPanel's own pane 1/
-            pane 2 strips take over while notesSplitActive. */}
+            SKY-10929: the Notes strip is never rendered here at all anymore —
+            NotesTabPanel owns it (scoped to its own center pane, not spanning
+            the vault tree / Brainstorm sidebar); see notesDocTabStrip below. */}
         {showTitleBar && workspaceStripMode.kind !== 'hidden' &&
           !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') &&
-          !(notesSplitActive && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
+          !(workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
           <WorkspaceTabBar
-            tabs={
-              workspaceStripMode.kind === 'docs'
-                ? (workspaceStripMode.strip === 'notes' ? notesDocTabs : storyDocTabs)
-                : []
-            }
-            activeTabId={
-              workspaceStripMode.kind === 'docs'
-                ? (workspaceStripMode.strip === 'notes' ? activeNotesDocTabId : activeStoryDocTabId)
-                : null
-            }
+            tabs={workspaceStripMode.kind === 'docs' ? storyDocTabs : []}
+            activeTabId={workspaceStripMode.kind === 'docs' ? activeStoryDocTabId : null}
             staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
@@ -5362,21 +5836,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTabPopOut={handleTabPopOut}
             onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
             agentsActive={agentsActive}
-            newTabTitle={
-              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes'
-                ? 'New note — via the notes explorer'
-                : 'New blank scene — it only saves once you type'
-            }
-            newTabPrimaryLabel={
-              workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes' ? 'New note' : 'New scene'
-            }
+            newTabTitle="New blank scene — it only saves once you type"
+            newTabPrimaryLabel="New scene"
             newTabPickerItems={workspaceStripMode.kind === 'docs' ? [
               { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
               // SKY-10019: story-scoped only (mirrors OutlinePlanningPanel's
               // `story` prop) — no Notes-strip entry, unlike Entity Browser.
-              ...(workspaceStripMode.strip === 'story'
-                ? [{ key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory }]
-                : []),
+              { key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory },
             ] : undefined}
           />
         )}
@@ -5402,7 +5868,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {settingsOpen && (
         <SettingsPanel
-          onClose={() => setSettingsOpen(false)}
+          key={settingsOpenToken}
+          initialCategory={settingsInitialCategory}
+          onClose={() => { setSettingsOpen(false); setSettingsInitialCategory('appearance'); }}
           onSaved={(s) => {
             setAppSettings(s);
             applyTheme(s.theme);
@@ -5456,6 +5924,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
           onClose={() => setTemplatePickerOpen(false)}
+          // SKY-10926: onCreated only fires for a brand-new note (not just
+          // applying/closing) — mirrors EntityBrowser's onEntityCreated
+          // pattern below (checkGettingStartedItem('add-character')): mark
+          // the Notes Vault checklist item done so the Getting Started
+          // panel/CTA update immediately, and bump the Notes tree's refresh
+          // signal so an already-mounted VaultBrowser (Notes tab) shows the
+          // new note without a manual reload.
+          onCreated={() => {
+            checkGettingStartedItem('notes-vault');
+            setNotesRefreshSignal((n) => n + 1);
+          }}
         />
       )}
       {/* SKY-5592: outer flex row — GlobalRightSidebar persists across all top-level tabs (Story/Notes/Brainstorm) */}
@@ -5604,6 +6083,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onPromoteSceneNote={handlePromoteSceneNote}
             onCycleSceneStatus={handleManuscriptCycleStatus}
+            onRenameChapter={handleContextRenameChapter}
+            onRenameScene={handleContextRenameScene}
+            onDeleteChapter={deleteChapter}
+            onDeleteScene={deleteScene}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
           />
@@ -5998,6 +6481,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     onPrev: handleDepthPrev,
                     onNext: handleDepthNext,
                   }}
+                  onHistoryAltArrow={(dir) => (dir === 'back' ? tryGoBack() : tryGoForward())}
                 />
               </div>
             ) : selectedEntity ? (
@@ -6008,6 +6492,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 onUpdated={(updated) => setSelectedEntity(updated)}
                 onDeleted={() => setSelectedEntity(null)}
                 onOpenScene={handleOpenSceneByPath}
+                // SKY-10926: reuse the same @-mention "open entity by id"
+                // navigation used elsewhere (handleEntityMentionClick) so a
+                // backlink click here follows the identical code path as
+                // opening any other entity — was previously left unwired,
+                // permanently disabling the "Connections" backlink buttons.
+                onOpenEntity={handleEntityMentionClick}
               />
             ) : openedNotePath ? (
               // SKY-204: vault note viewer (daily notes and any other .md file)
@@ -6103,6 +6593,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {tabShell.activeTab === 'notes' && vaultBinding.notesValid && (
         <NotesTabPanel
+          liquidNeonV2={appSettings?.liquidNeonV2}
+          docTabStrip={showTitleBar && (
+            <WorkspaceTabBar
+              tabs={notesDocTabs}
+              activeTabId={activeNotesDocTabId}
+              onTabSelect={handleWorkspaceTabSelect}
+              onTabClose={handleWorkspaceTabClose}
+              onTabReorder={handleWorkspaceTabReorder}
+              onNewTab={handleNewWorkspaceTab}
+              onTabOpenInSplit={handleTabOpenInSplit}
+              onTabPopOut={handleTabPopOut}
+              onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
+              agentsActive={agentsActive}
+              newTabTitle="New note — via the notes explorer"
+              newTabPrimaryLabel="New note"
+              newTabPickerItems={[
+                { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
+              ]}
+            />
+          )}
           notesSubView={tabShell.notesSubView}
           onNotesSubViewChange={handleNotesSubViewChange}
           notesSidebarWidth={tabShell.notesSidebarWidth}
@@ -6129,9 +6639,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onPane1NewTab={handleNewWorkspaceTab}
           onOpenEntityBrowser={handleOpenEntityBrowserNotes}
           activeTabIsEntityBrowser={activeNotesTabIsEntityBrowser}
-          onNoteSplitActiveChange={setNotesSplitActive}
           brainstormCollapsed={notesBrainstormCollapsed}
           onBrainstormCollapsedChange={setNotesBrainstormCollapsed}
+          notesRefreshSignal={notesRefreshSignal}
           stories={stories}
           selectedSceneId={selectedScene?.id ?? null}
           onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}

@@ -17,6 +17,19 @@
   }
 }
 
+/* SKY-11068 (owner red finding): embedded in the LeftRail the tree floats
+   directly on the rail glass — no container box, per the prototype. The fill
+   above stays for the standalone usages (FloatingPanelApp, renderSidebarPanel)
+   where .story-navigator IS the panel surface. */
+.left-rail .story-navigator {
+  width: auto;
+  border-right: none;
+}
+
+.left-rail .story-navigator:not(.story-navigator--note-drop) {
+  background: transparent;
+}
+
 /* M9b (SKY-9823): scene-note drag hovering the navigator (drop = promote to vault). */
 .story-navigator--note-drop {
   outline: 1px dashed var(--accent, #00f0ff);
@@ -121,6 +134,26 @@
   flex-shrink: 0;
 }
 
+/* SKY-11068: native <button> chrome reset — without this the disclosure
+   toggles pick up the UA grey fill + bevel border (the owner's grey boxes).
+   Same reset family as .nav-part-toggle. */
+.nav-story-toggle,
+.nav-chapter-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .nav-story-title {
   flex: 1;
   font-size: 0.85rem;
@@ -212,8 +245,12 @@
 
 .nav-scene-icon {
   font-size: 0.45rem;
-  color: var(--text-muted);
-  opacity: 0.5;
+  /* SKY-10917: was --text-muted at .5 opacity — a double-dim that made every
+     unselected scene (i.e. most of the tree) read as disabled instead of
+     just quieter than the active row. --text-muted stays reserved for
+     genuinely secondary content (word counts, the disclosure chevron). */
+  color: var(--text-body);
+  opacity: 0.7;
 }
 
 .nav-scene-row.active .nav-scene-icon {
@@ -224,7 +261,10 @@
 .nav-scene-title {
   flex: 1;
   font-size: 0.8rem;
-  color: var(--text-muted);
+  /* SKY-10917: scene titles are primary tree content, not secondary — the
+     M6 spec calls for a legible tree with clear hierarchy, which the active
+     row's brighter --text-header already supplies without dimming the rest. */
+  color: var(--text-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

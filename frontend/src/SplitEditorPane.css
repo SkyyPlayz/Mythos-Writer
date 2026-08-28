@@ -380,6 +380,42 @@
   height: 100%;
 }
 
+/* SKY-10998: BlockEditor's chromeless treatment (SKY-10925) is styled for
+   ManuscriptView's .msv-sheet — a different scroll/flex ancestor than this
+   pane's own self-scrolling .spe-content. Restore this pane's own
+   fill-height layout, page padding, and card styling so suppressing the
+   duplicate toolbar/header doesn't also strip the pane's presentation or
+   pull in the book page's drop-cap treatment. */
+.spe-content .block-editor--chromeless {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.spe-content .block-editor--chromeless .tiptap-editor-wrap {
+  overflow-y: auto;
+  padding: var(--story-page-pad-vert, 1.5rem) var(--story-page-pad-horiz, 2rem);
+  justify-content: center;
+}
+
+.spe-content .block-editor--chromeless .tiptap-content {
+  max-width: 720px;
+  background: var(--page-bg-fill);
+  border-radius: var(--page-bg-radius, 8px);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .spe-content .block-editor--chromeless .tiptap-content {
+    backdrop-filter: var(--page-bg-backdrop-filter, none);
+    -webkit-backdrop-filter: var(--page-bg-backdrop-filter, none);
+  }
+}
+
+.spe-content .block-editor--chromeless .tiptap-content .ProseMirror > p:first-child::first-letter {
+  all: unset;
+}
+
 /* Empty state */
 .spe-empty {
   display: flex;

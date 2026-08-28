@@ -67,11 +67,12 @@ interface Props {
   /** Beta 3 M10: optional Read/Dictate/Assist toolbar buttons (prototype 766–777). */
   toolbarActions?: FormatToolbarActions;
   /**
-   * SKY-10925: when true, suppress this component's own header (scene title +
-   * draft-state chips — already unified into ManuscriptView's TitleRow) and its
-   * own FormatToolbar (already unified into ManuscriptView's msv-toolbar). Used
-   * when BlockEditor is mounted inside ManuscriptView's sceneEditorSlot so scene
-   * depth renders through the same chrome as every other depth (R9).
+   * SKY-10925/SKY-10998: when true, suppress this component's own header
+   * (scene title + draft-state chips) and its own FormatToolbar. Used when a
+   * host surface already renders equivalent chrome for the scene — either
+   * ManuscriptView's unified TitleRow/msv-toolbar (scene depth) or
+   * SplitEditorPane's own .spe-header + PaneSceneSelector (split view) — so
+   * the scene never gets two toolbars/headers stacked (R9).
    */
   chromeless?: boolean;
   /** SKY-10925: reports the live Tiptap editor instance so a chromeless host
@@ -486,11 +487,12 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
 
   return (
     <div className={`block-editor${chromeless ? ' block-editor--chromeless' : ''}`}>
-      {/* SKY-10925: at scene depth (chromeless) the title + draft-state chips
-          are ManuscriptView's TitleRow (msv-status-chip) — rendering them here
-          too was the duplicate-header R9 violation. Heading-focus (GH #631) is
-          a distinct feature with no unified-shell equivalent, so it survives
-          as a slim bar of its own when active. */}
+      {/* SKY-10925/SKY-10998: at scene depth (chromeless) the title + draft-state
+          chips are ManuscriptView's TitleRow (msv-status-chip); in split view
+          they're SplitEditorPane's .spe-header — rendering them here too was
+          the duplicate-header R9 violation. Heading-focus (GH #631) is a
+          distinct feature with no unified-shell equivalent, so it survives as
+          a slim bar of its own when active. */}
       {!chromeless && (
         <div className="block-editor-toolbar">
           <span className="scene-name">{scene.title}</span>

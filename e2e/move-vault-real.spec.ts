@@ -16,6 +16,12 @@
  * `ipcMain.handle` overrides and is skipped (SKY-6933) — that spec never
  * exercises a real move.
  *
+ * SKY-10910: the home-directory override below (`homeEnvOverrides`) is
+ * platform-conditional so this spec also runs for-real on native Windows —
+ * `os.homedir()` (which the gate's `homeDir` param comes from) reads `HOME`
+ * on POSIX but `USERPROFILE` on win32; a POSIX-only override left this path
+ * silently unexercised on the notes-windows job until this ticket.
+ *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/move-vault-real.spec.ts --reporter=list
  */
@@ -105,6 +111,16 @@ function cleanup(dirs: Dirs): void {
   fs.rmSync(dirs.homeRoot, { recursive: true, force: true });
 }
 
+/**
+ * os.homedir() (the source of checkGuidedMoveGate's `homeDir`) reads `HOME`
+ * on POSIX and `USERPROFILE` on win32 — override the one the current
+ * platform actually consults so the homedir-containment gate sees `homeRoot`
+ * as home on every OS this suite runs on.
+ */
+function homeEnvOverrides(homeRoot: string): Record<string, string> {
+  return process.platform === 'win32' ? { USERPROFILE: homeRoot } : { HOME: homeRoot };
+}
+
 /** Recursively collect all file paths under `dir`, relative to `dir`. */
 function listFilesRecursive(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
@@ -131,7 +147,7 @@ async function launchApp(dirs: Dirs): Promise<ElectronApplication> {
   const extraArgs = process.platform !== 'darwin' && !process.env.DISPLAY ? ['--headless'] : [];
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${dirs.userData}`, '--no-sandbox', ...extraArgs],
-    env: { ...process.env, HOME: dirs.homeRoot },
+    env: { ...process.env, ...homeEnvOverrides(dirs.homeRoot) },
     timeout: 60_000,
   });
   const proc = app.process();

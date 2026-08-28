@@ -37,6 +37,15 @@ export interface CrafterSetup {
   customLen: string;
   beats: string[];
   tones: Record<string, boolean>;
+  /**
+   * Vault-reference columns (SKY-11072 owner ruling): note nids the writer
+   * removed from a column for THIS scene. Removal never touches the note —
+   * it only hides the reference here, per column so the same note can stay
+   * referenced in another column.
+   */
+  removedRefs: Partial<Record<VaultRefColumnKey, string[]>>;
+  /** Note nids added to a column via its `+` picker, beyond the vault-derived set. */
+  addedRefs: Partial<Record<VaultRefColumnKey, string[]>>;
 }
 
 export function defaultCrafterSetup(): CrafterSetup {
@@ -49,6 +58,8 @@ export function defaultCrafterSetup(): CrafterSetup {
     customLen: '',
     beats: [],
     tones: {},
+    removedRefs: {},
+    addedRefs: {},
   };
 }
 
@@ -92,6 +103,8 @@ export interface VaultListItem {
   modifiedAt: string;
   /** SKY-10511: the note's hook line, computed main-side during the listing. */
   excerpt?: string;
+  /** SKY-11049: vault-wide character signal (frontmatter/tag), main-side. */
+  characterTag?: boolean;
 }
 
 export interface SuggestedCard {
@@ -105,6 +118,8 @@ export interface SuggestedCard {
   group: string;
   /** Vault note path without `.md` — wikilink for the kanban, `nid` on canvas. */
   nid: string;
+  /** SKY-11049: vault-wide character signal, independent of `group`. */
+  characterTag: boolean;
 }
 
 export interface SuggestedGroup {
@@ -156,24 +171,162 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
       av: avatarForTitle(title),
       group: top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES',
       nid: path.replace(/\.md$/i, ''),
+      characterTag: item.characterTag ?? false,
     });
   }
   return cards;
 }
 
-/** Character names for the POV select — every suggested card grouped under CHARACTERS. */
-export function castFromSuggested(cards: SuggestedCard[]): string[] {
-  return cards.filter((card) => card.group === 'CHARACTERS').map((card) => card.t);
-}
-
-/** Cards for the right kanban's CAST column (§7.1) — full cards, not just names. */
+/**
+ * Cards for the CHARACTERS vault-reference column and the POV picker
+ * (SKY-11072 / SKY-11049 item 7): prefer a top-level `Characters` folder when
+ * the vault has one —
+ * otherwise fall back to any note carrying a character signal anywhere in the
+ * vault (frontmatter `type`/`tags`, or an inline `#character` hashtag), so a
+ * vault organized as `Main Characters/` + `#Character` tags still resolves.
+ * Never both at once — an explicit `Characters` folder is the stronger signal.
+ */
 export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'CHARACTERS');
+  const byFolder = cards.filter((card) => card.group === 'CHARACTERS');
+  if (byFolder.length > 0) return byFolder;
+  return cards.filter((card) => card.characterTag);
 }
 
-/** Cards for the right kanban's PLACES column (§7.1). */
+/** Character names for the POV field's filter list — see `castCardsFromSuggested`. */
+export function castFromSuggested(cards: SuggestedCard[]): string[] {
+  return castCardsFromSuggested(cards).map((card) => card.t);
+}
+
+/** Cards for the LOCATIONS vault-reference column (SKY-11072). */
 export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
   return cards.filter((card) => card.group === 'LOCATIONS');
+}
+
+/** Cards for the ITEMS & SYSTEMS vault-reference column (SKY-11072). */
+export function itemsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
+  return cards.filter((card) => card.group === 'ITEMS & SYSTEMS');
+}
+
+// ─── Vault-reference columns (right side — SKY-11072 owner ruling) ────────────
+// The prototype's `crafterVaultCols` (line 4374): three columns of removable
+// per-scene references to vault notes, replacing the BEATS/CAST/PLACES kanban.
+// Beats stay in the Setup form; a column's base stock is the vault itself
+// (live, like the suggested rail), with per-scene add/remove layered on top.
+
+export const VAULT_REF_COLUMN_KEYS = ['characters', 'locations', 'items'] as const;
+export type VaultRefColumnKey = (typeof VAULT_REF_COLUMN_KEYS)[number];
+
+export interface VaultRefColumn {
+  key: VaultRefColumnKey;
+  title: string;
+  /** Sentence-case name for empty-state copy ("No Characters notes …"). */
+  noun: string;
+  /** Canvas color slot (canvas spec §5) — same mapping as `slotForSuggestedGroup`. */
+  slot: number;
+}
+
+/** Column order, titles and slot colors exactly as the prototype's `crafterVaultCols`. */
+export const VAULT_REF_COLUMNS: readonly VaultRefColumn[] = [
+  { key: 'characters', title: 'CHARACTERS', noun: 'Characters', slot: 0 },
+  { key: 'locations', title: 'LOCATIONS', noun: 'Locations', slot: 1 },
+  { key: 'items', title: 'ITEMS & SYSTEMS', noun: 'Items & Systems', slot: 3 },
+];
+
+/** What the vault itself files under a column, before per-scene add/remove. */
+function baseRefCards(key: VaultRefColumnKey, cards: SuggestedCard[]): SuggestedCard[] {
+  switch (key) {
+    case 'characters':
+      return castCardsFromSuggested(cards);
+    case 'locations':
+      return placesFromSuggested(cards);
+    case 'items':
+      return itemsFromSuggested(cards);
+  }
+}
+
+/**
+ * The cards a column shows for this scene: the vault-derived base, plus notes
+ * added via the column's `+` picker (in pick order, deduped against the base),
+ * minus notes removed from this scene. A stale `addedRefs` nid (note renamed
+ * or deleted since) silently drops out rather than rendering a dead card.
+ */
+export function refCardsForColumn(
+  key: VaultRefColumnKey,
+  cards: SuggestedCard[],
+  setup: CrafterSetup,
+): SuggestedCard[] {
+  const base = baseRefCards(key, cards);
+  const inBase = new Set(base.map((card) => card.nid));
+  const byNid = new Map(cards.map((card) => [card.nid, card]));
+  const added = (setup.addedRefs[key] ?? [])
+    .filter((nid) => !inBase.has(nid))
+    .map((nid) => byNid.get(nid))
+    .filter((card): card is SuggestedCard => card !== undefined);
+  const removed = new Set(setup.removedRefs[key] ?? []);
+  return [...base, ...added].filter((card) => !removed.has(card.nid));
+}
+
+/**
+ * Candidates for a column's `+` picker: every vault note not already visible
+ * in that column, run through the same substring filter the suggested rail
+ * uses. Removed notes ARE offered — picking one is the un-remove path.
+ */
+export function refPickerCards(
+  key: VaultRefColumnKey,
+  cards: SuggestedCard[],
+  setup: CrafterSetup,
+  query: string,
+): SuggestedCard[] {
+  const visible = new Set(refCardsForColumn(key, cards, setup).map((card) => card.nid));
+  return filterSuggested(cards, query).filter((card) => !visible.has(card.nid));
+}
+
+/** Remove a note from THIS scene's column — never deletes or edits the note. */
+export function removeRef(setup: CrafterSetup, key: VaultRefColumnKey, nid: string): CrafterSetup {
+  const removed = setup.removedRefs[key] ?? [];
+  if (removed.includes(nid)) return setup;
+  return { ...setup, removedRefs: { ...setup.removedRefs, [key]: [...removed, nid] } };
+}
+
+/** Add a note to a column (also the un-remove path — clears any prior removal). */
+export function addRef(setup: CrafterSetup, key: VaultRefColumnKey, nid: string): CrafterSetup {
+  const removed = setup.removedRefs[key] ?? [];
+  const added = setup.addedRefs[key] ?? [];
+  const nextRemoved = removed.filter((value) => value !== nid);
+  const nextAdded = added.includes(nid) ? added : [...added, nid];
+  if (nextRemoved.length === removed.length && nextAdded === added) return setup;
+  return {
+    ...setup,
+    removedRefs: { ...setup.removedRefs, [key]: nextRemoved },
+    addedRefs: { ...setup.addedRefs, [key]: nextAdded },
+  };
+}
+
+/** The lane fields the beat migration reads — matches the page's `SceneCrafterLane`. */
+interface LegacyLaneLike {
+  name: string;
+  cards: Array<{ title: string }>;
+}
+
+/**
+ * SKY-11072 instruction 3: a saved board from the retired lanes-kanban era may
+ * hold beats in a lane literally named "Beats". Surface those card titles into
+ * the Setup beats list so no beat data is lost; the board file on disk stays
+ * untouched (B4-3 — no destructive migration).
+ */
+export function legacyBeatsFromLanes(lanes: LegacyLaneLike[]): string[] {
+  const seen = new Set<string>();
+  const beats: string[] = [];
+  for (const lane of lanes) {
+    if (!/^beats?$/i.test(lane.name.trim())) continue;
+    for (const card of lane.cards) {
+      const title = card.title.trim();
+      if (!title || seen.has(title)) continue;
+      seen.add(title);
+      beats.push(title);
+    }
+  }
+  return beats;
 }
 
 /** Prototype search filter (line 4527): substring over `"<title> <description>"`. */

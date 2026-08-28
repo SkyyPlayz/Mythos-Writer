@@ -149,6 +149,8 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
       const result = await window.api?.openVaultFolder?.();
       if (!result?.cancelled && result?.vaultRoot) {
         onSwitched(result.vaultRoot);
+      } else if (result?.error) {
+        alert(result.error);
       }
     } catch { /* non-fatal */ }
   }, [onSwitched]);

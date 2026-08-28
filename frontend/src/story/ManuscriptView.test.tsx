@@ -405,10 +405,24 @@ describe('page width', () => {
     expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 1100 }));
   });
 
-  it('the margin ruler reserves the comments-gutter width while the gutter is open (open by default) and drops it once closed', () => {
+  // SKY-10917: the ruler must only reserve the gutter's width when the
+  // CommentsGutter panel is actually on screen — it used to key off the
+  // comments-enabled *preference* alone (commentsVisible), which stays true
+  // even for a scene with zero comments, so the ruler reserved 236px for a
+  // gutter nobody could see and every diamond drifted ~118px off the page/
+  // margin edges it's supposed to sit on. The panel itself only renders when
+  // there's something to show it (comments present or the reader open) —
+  // see the render condition a few lines below `<MarginRuler`.
+  it('the margin ruler reserves no gutter width by default (no comments, reader closed)', () => {
     renderView();
+    expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('');
+  });
+
+  it('the margin ruler reserves the comments-gutter width once the reader panel actually opens, and drops it on close', () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('msv-tb-read'));
     expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('236px');
-    fireEvent.click(screen.getByTestId('msv-comments-chip')); // closes the gutter
+    fireEvent.click(screen.getByTestId('msv-tb-read')); // closes the reader/gutter
     expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('');
   });
 

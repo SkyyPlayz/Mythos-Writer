@@ -3,6 +3,8 @@ import {
   buildArchiveIndex,
   detectInconsistencies,
   detectWikiLinkOpportunities,
+  detectInternalContinuity,
+  detectVaultGapQuestions,
   runArchiveScan,
   getArchiveStatus,
   getArchiveIndex,
@@ -184,6 +186,7 @@ describe('detectInconsistencies', () => {
     expect(sug.target_path).toBe(SCENE_PATH);
     const payload = JSON.parse(sug.payload_json!);
     expect(payload.kind).toBe('inconsistency');
+    expect(payload.scope).toBe('story_vault');
     expect(payload.entityName).toBe('Elara');
   });
 
@@ -469,5 +472,294 @@ describe('runArchiveScan', () => {
     expect(result.inconsistenciesFound).toBe(0);
     expect(result.wikiLinksFound).toBe(0);
     expect(result.suggestions).toHaveLength(0);
+  });
+
+  it('carries questionsFound in sync with questions.length', () => {
+    const index = {
+      entities: [
+        {
+          id: 'e1',
+          name: 'Elara',
+          type: 'character' as const,
+          aliases: [],
+          path: 'entities/e1.md',
+          properties: {}, // no tracked details — a vault gap
+          prose: '',
+        },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const result = runArchiveScan('Elara stepped into the candlelit room.', index, 'scenes/s3.md');
+    expect(result.questionsFound).toBe(result.questions.length);
+    expect(result.questionsFound).toBeGreaterThan(0);
+  });
+});
+
+// ─── Check 1: Story internal (manuscript vs itself) ───
+
+describe('detectInternalContinuity', () => {
+  const emptyIndex = { entities: [], builtAt: new Date().toISOString() };
+
+  it('flags a character property drift across scenes for the same entity', () => {
+    const index = {
+      entities: [
+        {
+          id: 'e1',
+          name: 'Mira',
+          type: 'character' as const,
+          aliases: [],
+          path: 'entities/e1.md',
+          properties: {},
+          prose: '',
+        },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Mira brushed a strand of dark hair from her face.' },
+    ];
+    const result = detectInternalContinuity(scenes, index);
+    expect(result).toHaveLength(1);
+    const sug = result[0];
+    expect(sug.source_agent).toBe('archive');
+    expect(sug.status).toBe('proposed');
+    expect(sug.target_path).toBe('scenes/ch2.md');
+    const payload = JSON.parse(sug.payload_json!);
+    expect(payload.kind).toBe('internal-inconsistency');
+    expect(payload.scope).toBe('story_internal');
+    expect(payload.entityName).toBe('Mira');
+    expect(payload.earlierPhrase).toBe('blonde hair');
+    expect(payload.laterPhrase).toBe('dark hair');
+    expect(payload.earlierScenePath).toBe('scenes/ch1.md');
+  });
+
+  it('does not flag when the same phrase repeats across scenes', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Mira', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Mira ran a hand through her blonde hair.' },
+    ];
+    expect(detectInternalContinuity(scenes, index)).toHaveLength(0);
+  });
+
+  it('does not flag drift across two different entities (entity-scoped)', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Mira', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+        { id: 'e2', name: 'Talia', type: 'character' as const, aliases: [], path: 'e2.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Talia brushed a strand of dark hair from her face.' },
+    ];
+    expect(detectInternalContinuity(scenes, index)).toHaveLength(0);
+  });
+
+  it('flags a recurring character property drift only once, not on every later scene', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Mira', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Mira brushed a strand of dark hair from her face.' },
+      { path: 'scenes/ch3.md', text: 'Later, Mira tucked her dark hair behind her ear.' },
+      { path: 'scenes/ch4.md', text: 'Even later, Mira let her dark hair down.' },
+    ];
+    const result = detectInternalContinuity(scenes, index);
+    expect(result).toHaveLength(1);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+  });
+
+  it('flags a world-rule drift (lantern fuel source) with no vault entity involved', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern in her hand was oil-lit, its flame dancing gently.' },
+      { path: 'scenes/ch2.md', text: 'By the second chapter, the lantern was crystal-lit, humming faintly.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.kind).toBe('internal-inconsistency');
+    expect(payload.scope).toBe('story_internal');
+    expect(payload.earlierPhrase).toBe('oil-lit');
+    expect(payload.laterPhrase).toBe('crystal-lit');
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+  });
+
+  it('does not flag the world-rule pair when only one side appears', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern in her hand was oil-lit, its flame dancing gently.' },
+      { path: 'scenes/ch2.md', text: 'She set the lantern down on the table.' },
+    ];
+    expect(detectInternalContinuity(scenes, emptyIndex)).toHaveLength(0);
+  });
+
+  it('returns no findings for a single scene (nothing to compare against)', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern in her hand was oil-lit, its flame dancing gently.' },
+    ];
+    expect(detectInternalContinuity(scenes, emptyIndex)).toHaveLength(0);
+  });
+
+  it('does not flag two spelling variants of the same canonical value as a contradiction', () => {
+    // "oil-lit" (hyphenated) and "oil lit" (spaced) are variants of the same
+    // canonical — the old pair-based implementation would have flagged these.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit, its flame warm and steady.' },
+      { path: 'scenes/ch2.md', text: 'She carried the oil lit lantern into the tunnel.' },
+    ];
+    expect(detectInternalContinuity(scenes, emptyIndex)).toHaveLength(0);
+  });
+
+  it('includes worldRuleLabel in the payload', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'The lantern was crystal-lit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.worldRuleLabel).toBe('light-source fuel type');
+  });
+
+  it('flags drift to a third canonical value (not just the original two)', () => {
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lamp was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'The lamp was candlelit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.earlierPhrase).toBe('oil-lit');
+    expect(payload.laterPhrase).toBe('candlelit');
+  });
+
+  it('flags a recurring world-rule drift only once, not on every later scene', () => {
+    // A scene revisited across chapters that keeps repeating the drifted
+    // value ("crystal-lit") must produce a single suggestion pointing at the
+    // first scene where the drift occurred, not one per recurrence.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'By the second chapter, the lantern was crystal-lit.' },
+      { path: 'scenes/ch3.md', text: 'Later, the lantern was still crystal-lit.' },
+      { path: 'scenes/ch4.md', text: 'Even later, the lantern remained crystal-lit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+  });
+
+  it('still flags a second, distinct drifted value after the first has already been flagged', () => {
+    // Suppressing repeats of an already-flagged value must not suppress
+    // detection of a DIFFERENT canonical drifting in afterward.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'By the second chapter, the lantern was crystal-lit.' },
+      { path: 'scenes/ch3.md', text: 'Still later, the lantern was candlelit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(2);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+    expect(result[1].target_path).toBe('scenes/ch3.md');
+  });
+});
+
+// ─── Vault-gap questions (Check 2 side effect) ───
+
+describe('detectVaultGapQuestions', () => {
+  const SCENE_PATH = 'scenes/ch1/scene1.md';
+
+  it('proposes a question for an entity mentioned but with no tracked vault properties', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Elara', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const result = detectVaultGapQuestions('Elara stepped into the candlelit room.', index, SCENE_PATH);
+    expect(result).toHaveLength(1);
+    expect(result[0].entityName).toBe('Elara');
+    expect(result[0].scenePath).toBe(SCENE_PATH);
+    expect(result[0].question).toContain('Elara');
+  });
+
+  it('does not propose a question when the vault already has tracked properties', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Elara', type: 'character' as const, aliases: [], path: 'e1.md', properties: { hair: 'blonde' }, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const result = detectVaultGapQuestions('Elara stepped into the candlelit room.', index, SCENE_PATH);
+    expect(result).toHaveLength(0);
+  });
+
+  it('does not propose a question when the entity is not mentioned in the scene', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Elara', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const result = detectVaultGapQuestions('A stranger arrived at the inn.', index, SCENE_PATH);
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ─── Check 1 / Check 2 separation — negative control (SKY-10736 verification path) ───
+// Fixture manuscript plants BOTH a Story-internal error (lantern oil-lit →
+// crystal-lit, no vault involved) and a Story↔Vault error (tide rule
+// conflicting with the vault's "Strait" entity). Each check must catch only
+// its own error, proving the split is real rather than two labels on one pass.
+
+describe('Check 1 / Check 2 separation', () => {
+  const index = {
+    entities: [
+      {
+        id: 'e-strait',
+        name: 'the Strait',
+        type: 'location' as const,
+        aliases: ['Strait'],
+        path: 'entities/strait.md',
+        properties: { tide: 'rises at dawn' },
+        prose: '',
+      },
+    ],
+    builtAt: new Date().toISOString(),
+  };
+  // Extend the shared PROPERTY_CONTRADICTION_PAIRS-style vault comparison
+  // with a world-rule property key so the tide fixture is a genuine
+  // vault-vs-scene contradiction rather than an untracked property.
+  const scene1 = { path: 'scenes/ch1.md', text: 'The lantern in her hand was oil-lit, its flame dancing gently. Down at the Strait, all was calm.' };
+  const scene2 = {
+    path: 'scenes/ch2.md',
+    text: 'By the second chapter, the lantern was crystal-lit, humming faintly. Down at the Strait, the tide is highest at dusk, contradicting everything the elders taught.',
+  };
+
+  it('Check 1 flags only the lantern drift, never the tide conflict', () => {
+    const result = detectInternalContinuity([scene1, scene2], index);
+    expect(result).toHaveLength(1);
+    expect(result.some((s) => s.rationale.toLowerCase().includes('tide'))).toBe(false);
+    const payload = JSON.parse(result[0].payload_json!);
+    expect(payload.earlierPhrase).toBe('oil-lit');
+  });
+
+  it('Check 2 flags only the tide conflict, never the lantern mismatch', () => {
+    const result = detectInconsistencies(scene2.text, index, scene2.path);
+    expect(result.some((s) => s.rationale.toLowerCase().includes('lantern'))).toBe(false);
+    for (const s of result) {
+      const payload = JSON.parse(s.payload_json!);
+      expect(payload.scope).toBe('story_vault');
+    }
   });
 });

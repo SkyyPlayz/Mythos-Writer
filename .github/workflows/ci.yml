@@ -328,6 +328,7 @@ jobs:
   e2e-shard-1:
     # Shard 1: crud, brainstorm, visual-capture, writing-modes, depth-slider, a11y,
     # smoke, bg-scrim-slider, story-tab-subview, suggestions, tab-shell (SKY-6933 sweep)
+    # split-pane-tab-strips (SKY-8907, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -486,6 +487,11 @@ jobs:
       - name: E2E — Beta read (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:beta-read
 
+      - name: E2E — Split-pane per-pane tab strips (SKY-8907)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:split-pane-tab-strips
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -509,6 +515,7 @@ jobs:
     # Shard 2: writing-assistant-tips, two-vault, versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
+    # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -634,6 +641,9 @@ jobs:
       - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
         run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
 
+      - name: "E2E — TemplatePicker onCreated wiring (SKY-10926)"
+        run: xvfb-run --auto-servernum npm run test:e2e:note-template-picker-oncreated
+
       - name: E2E — Icons (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:icons
 
@@ -648,6 +658,14 @@ jobs:
 
       - name: "E2E — Agent Hub session picker switch/persist, real IPC + disk (SKY-8537, #1130)"
         run: xvfb-run --auto-servernum npm run test:e2e:agent-hub-session-picker
+
+      - name: "E2E — App-wide navigation history, Back/Forward across wikilinks (SKY-10916)"
+        run: xvfb-run --auto-servernum npm run test:e2e:nav-history
+
+      - name: E2E — Notes split per-pane tab strips (SKY-9784)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
 
       - name: Upload E2E report on failure
         if: failure()
@@ -674,6 +692,7 @@ jobs:
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
     # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
+    # onboarding-v2 (SKY-2009, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -835,6 +854,11 @@ jobs:
       - name: E2E — Background job-queue responsiveness + negative control (SKY-10768)
         run: xvfb-run --auto-servernum npm run test:e2e:jobs-responsiveness
 
+      - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
+        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
+        # and wall-clock — see PR description for measurements)
+        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
@@ -857,6 +881,11 @@ jobs:
   e2e-shard-4:
     # Shard 4: entity-mention, timeline, entries, post-onboarding, continuity-panel, scene-crafter
     # editor-format-bar, notes-parity, word-count (SKY-6933 sweep), theme-export-import (SKY-8210)
+    # SKY-11045: onboarding-v2, split-pane-tab-strips, and notes-split-pane-tab-strips moved
+    # OUT to shards 3/1/2 — this shard ran ~2x the wall-clock of its siblings (measured
+    # 442s vs 243-285s on run 32925624377), correlating with 7 of the last 11 e2e-shard
+    # failures on main being on shard-4 despite a different spec failing each time
+    # (tight per-test timeouts tripping under normal tail latency, not one bad test).
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -976,9 +1005,6 @@ jobs:
       - name: E2E — AI toggle restart persistence + comment/brainstorm round-trips (SKY-10604)
         run: xvfb-run --auto-servernum npm run test:e2e:ai-off-persistence
 
-      - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
-        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
-
       - name: E2E — Writing Assistant panel AC-WA-01..27 (SKY-2633)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant
 
@@ -1017,12 +1043,6 @@ jobs:
 
       - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
-
-      - name: E2E — Split-pane per-pane tab strips (SKY-8907)
-        run: xvfb-run --auto-servernum npm run test:e2e:split-pane-tab-strips
-
-      - name: E2E — Notes split per-pane tab strips (SKY-9784)
-        run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
 
       - name: E2E — Scene notes add/persist/drag-promote to vault (SKY-9823, M9b)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-notes-promote
@@ -1415,7 +1435,10 @@ jobs:
   notes-windows:
     needs: [setup]
     runs-on: windows-latest
-    timeout-minutes: 20
+    # SKY-10910: raised from 20 — this job grew 5 more native-Windows Electron
+    # launches (vault delete/migration/quit-teardown x4 lifecycle specs) to
+    # close the Windows CI vault-lifecycle gap.
+    timeout-minutes: 35
     defaults:
       run:
         shell: bash
@@ -1425,6 +1448,16 @@ jobs:
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
+
+      # SKY-10895: real-time Windows Defender scanning of freshly-written
+      # files is a documented source of transient EPERM/EBUSY on this
+      # runner's TEMP dir (where every e2e spec's mkdtempSync fixtures live),
+      # independent of anything our own code holds open. This is
+      # defense-in-depth alongside the app-level retry + copy/delete fallback
+      # in vaultGuidedMove.ts, not a substitute for it.
+      - name: Exclude runner TEMP from Windows Defender real-time scanning (SKY-10895)
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath "$env:TEMP"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -1454,8 +1487,68 @@ jobs:
       # assertions. Re-run here (not just in build-windows) so a regression
       # in this surface actually blocks the PR instead of only being visible
       # after merge on the non-PR, continue-on-error build-windows job.
-      - name: E2E — Notes Vault folder operations on native Windows (SKY-8881)
+      # SKY-10910: this is also the native-Windows "vault rename" gap-2
+      # coverage — FO-13 renames a nested note in place through the real
+      # renderer→IPC→fs path with the Notes Vault watcher + DB bound to the
+      # source, on native Windows. FO-05/FO-06 (folder rename/delete) are
+      # currently test.fixme'd on win32 — SKY-10910 discovered a real
+      # Windows-only bug (context-menu rename retargets to an expanded
+      # folder's child row instead of the folder), tracked as SKY-10935.
+      - name: E2E — Notes Vault folder operations on native Windows (SKY-8881, SKY-10910 gap 2)
         run: npm run test:e2e:folder-ops
+
+      # SKY-10895 regression guard: Move Vault wizard's default local-folder
+      # path (the owner's exact repro — "Settings → Move to a different
+      # folder") through the real vault:localFolderMove IPC handler, with the
+      # app's own Story Vault watcher + DB bound to the source, on native
+      # Windows. Windows refuses to rename a directory with open handles
+      # inside it (EPERM); POSIX (build-linux/build-macos/ci) does not, so
+      # this defect is invisible everywhere except here.
+      - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
+        run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
+
+      # SKY-10910 gap 5: the cloud-sync guided-move path (move-vault-real.spec.ts)
+      # was previously POSIX-only — it satisfies checkGuidedMoveGate's
+      # homedir-containment check by overriding $HOME, which native Windows
+      # (os.homedir() reads USERPROFILE, not HOME) silently ignored. The spec
+      # now branches its home-override env var by platform so this runs for
+      # real here too.
+      - name: E2E — Move Vault wizard cloud-sync guided move on native Windows (SKY-10910 gap 5)
+        run: npx playwright test e2e/move-vault-real.spec.ts --reporter=list
+
+      # SKY-10910 gap 1: SKY-8882 ("old vault not deleted on Windows") was
+      # independently closed as fixed three separate times on Linux-only E2E.
+      # Real Settings → Danger zone → Clear all data → uninstallHelper delete
+      # path, asserting the vault directory is actually gone from disk (not
+      # just DB-marked) on native Windows.
+      - name: E2E — Delete Everything removes the vault from disk on native Windows (SKY-10910 gap 1)
+        run: npm run test:e2e:windows-vault-delete-lifecycle
+
+      # SKY-10910 gap 3: the v0.4 → MythosVault v2 boot migration
+      # (mythosMigrationStatus / MythosMigrationCenter.tsx path) copies a full
+      # vault tree into a sibling folder and repoints settings — real
+      # directory/file-handle work with no prior native-Windows E2E coverage.
+      - name: E2E — Silent boot migration on native Windows (SKY-10910 gap 3)
+        run: npm run test:e2e:windows-vault-migration-lifecycle
+
+      # SKY-10910 gap 4: SKY-10902 fixed "app can't be closed" with bounded
+      # per-step teardown timeouts, but quitTeardown.test.ts only proves that
+      # contract with MOCKED timers, which cannot catch a real hang. This
+      # drives real move/delete/rename/migration ops on native Windows, then
+      # asserts the actual Electron process exits within a bounded time.
+      - name: E2E — App quits within bounded time after real vault ops on native Windows (SKY-10902, SKY-10910 gap 4)
+        run: npm run test:e2e:windows-quit-teardown
+
+      # SKY-11132 (owner data-safety bug): Open Vault Folder used to accept
+      # any OS-dialog folder unconditionally and repoint the Story Vault at
+      # it, seeding app files into whatever was picked — including the
+      # owner's real, cloud-synced Obsidian vault. checkOpenFolderGate
+      # (vaultGate.ts) now refuses that; this proves the source folder's
+      # contents and mtimes survive a refused open-folder attempt on native
+      # Windows, where path/mtime semantics differ from the POSIX runners
+      # this class of bug is otherwise invisible on.
+      - name: E2E — Open Vault Folder refuses a foreign non-empty folder, source untouched, on native Windows (SKY-11132)
+        run: npm run test:e2e:vault-open-folder-guard
 
       - name: Upload E2E report on failure
         if: failure()
