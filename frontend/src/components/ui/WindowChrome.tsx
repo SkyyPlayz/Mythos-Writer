@@ -11,6 +11,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import logoUrl from '../../assets/logo.png';
+import { useVaultIcons } from '../../hooks/useVaultIcons';
+import { VaultIconAvatar } from './VaultIconAvatar';
+import { VaultIconEditMenu } from './VaultIconEditMenu';
 import './WindowChrome.css';
 
 type Platform = string | null;
@@ -155,6 +158,10 @@ export default function WindowChrome({
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   // Beta 4 M2: vault stats keyed by vaultRoot (loaded when the popover opens).
   const [projStats, setProjStats] = useState<Record<string, ProjectStats>>({});
+  // SKY-11068 — per-vault icon, editable inline from each switcher row.
+  const { icons: vaultIcons, loadIcons, setVaultIcon, pickIconImage } = useVaultIcons();
+  const [iconEditFor, setIconEditFor] = useState<string | null>(null);
+  const iconEditTriggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const barRef = useRef<HTMLDivElement>(null);
   // Trigger refs so Escape can return focus to the opener.
   const projTriggerRef = useRef<HTMLButtonElement>(null);
@@ -173,10 +180,15 @@ export default function WindowChrome({
     setAcctOpen(false);
   }, []);
 
-  // Outside click closes any open popover.
+  // Outside click closes any open popover. SKY-11068: the icon-edit Menu is
+  // React-portaled to document.body, so it's never a DOM descendant of
+  // barRef even while it's logically part of this popover — exempt clicks
+  // inside any portaled `.ln-menu` or its content isn't a barRef descendant
+  // and would otherwise be treated as "outside" and close the whole switcher.
   useEffect(() => {
     if (!openMenu && !projOpen && !acctOpen) return;
     const onDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.('.ln-menu')) return;
       if (barRef.current && !barRef.current.contains(e.target as Node)) {
         closeAll();
       }
@@ -216,7 +228,8 @@ export default function WindowChrome({
         setProjStats(byRoot);
       })
       .catch(() => {});
-  }, []);
+    loadIcons();
+  }, [loadIcons]);
 
   const isMac = platform === 'darwin';
 
@@ -224,7 +237,7 @@ export default function WindowChrome({
   const handleMinimize = () => { void window.api?.windowMinimize?.(); };
   const handleMaximize = () => { void window.api?.windowMaximize?.(); };
 
-  const projItems: { t: string; sub: string; stats?: string | null; on?: boolean; testId?: string; pick: () => void }[] = [
+  const projItems: { t: string; sub: string; stats?: string | null; on?: boolean; testId?: string; vaultRoot?: string; pick: () => void }[] = [
     ...projects.map((p) => {
       const on = p.vaultRoot === activeVaultRoot;
       return {
@@ -238,6 +251,7 @@ export default function WindowChrome({
         // Beta 4 M2 (§4): location + stats per vault row.
         stats: formatVaultStats(projStats[p.vaultRoot]),
         on,
+        vaultRoot: p.vaultRoot,
         pick: () => {
           setProjOpen(false);
           if (on) return;
@@ -278,27 +292,64 @@ export default function WindowChrome({
             data-testid="wc-project-trigger"
           >
             <img src={logoUrl} alt="" className="wc-logo" />
+            {activeVaultRoot && (
+              <VaultIconAvatar
+                icon={vaultIcons[activeVaultRoot]}
+                label={activeStoryTitle || 'Mythos Writer'}
+                size="sm"
+                className="wc-active-vault-icon"
+              />
+            )}
             <span className="wc-title" aria-hidden="true">Mythos Writer</span>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
           </button>
           {projOpen && (
             <div className="wc-popover wc-popover-project" role="menu" onClick={(e) => e.stopPropagation()} data-testid="wc-project-menu">
               {projItems.map((p) => (
-                <button
-                  type="button"
-                  key={p.t + p.sub}
-                  className="wc-pop-row project-switcher-item"
-                  data-testid={p.testId}
-                  role="menuitem"
-                  onClick={p.pick}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="wc-pop-row-title">{p.t}</div>
-                    <div className="wc-pop-row-sub" title={p.sub}>{p.sub}</div>
-                    {p.stats && <div className="wc-pop-row-stats" data-testid="wc-vault-stats">{p.stats}</div>}
-                  </div>
-                  {p.on && <span className="wc-active-dot" />}
-                </button>
+                <div className={p.vaultRoot ? 'wc-pop-row-wrap' : undefined} key={p.t + p.sub}>
+                  {p.vaultRoot && (
+                    <button
+                      type="button"
+                      className="wc-pop-row-icon-edit"
+                      ref={(el) => { if (el) iconEditTriggerRefs.current.set(p.vaultRoot as string, el); else iconEditTriggerRefs.current.delete(p.vaultRoot as string); }}
+                      aria-label={`Set icon for ${p.t}`}
+                      data-testid={`wc-vault-icon-edit-${p.vaultRoot}`}
+                      onClick={(e) => { e.stopPropagation(); setIconEditFor((cur) => (cur === p.vaultRoot ? null : (p.vaultRoot as string))); }}
+                    >
+                      <VaultIconAvatar icon={vaultIcons[p.vaultRoot]} label={p.t} size="sm" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="wc-pop-row project-switcher-item"
+                    data-testid={p.testId}
+                    role="menuitem"
+                    onClick={p.pick}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="wc-pop-row-title">{p.t}</div>
+                      <div className="wc-pop-row-sub" title={p.sub}>{p.sub}</div>
+                      {p.stats && <div className="wc-pop-row-stats" data-testid="wc-vault-stats">{p.stats}</div>}
+                    </div>
+                    {p.on && <span className="wc-active-dot" />}
+                  </button>
+                  {p.vaultRoot && iconEditFor === p.vaultRoot && (
+                    <VaultIconEditMenu
+                      open
+                      anchorEl={iconEditTriggerRefs.current.get(p.vaultRoot) ?? null}
+                      hasIcon={vaultIcons[p.vaultRoot]?.kind != null}
+                      data-testid="wc-vault-icon-edit-menu"
+                      onClose={() => setIconEditFor(null)}
+                      onPickImage={() => {
+                        const vaultRoot = p.vaultRoot as string;
+                        pickIconImage()?.then((res) => {
+                          if (res?.filePath) setVaultIcon(vaultRoot, { kind: 'image', sourcePath: res.filePath });
+                        });
+                      }}
+                      onSetIcon={(icon) => { setVaultIcon(p.vaultRoot as string, icon); setIconEditFor(null); }}
+                    />
+                  )}
+                </div>
               ))}
             </div>
           )}

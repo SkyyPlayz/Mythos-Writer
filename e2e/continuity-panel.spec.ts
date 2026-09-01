@@ -29,6 +29,12 @@ interface ContinuitySeed {
   severity: 'low' | 'medium' | 'high' | 'critical';
   status?: 'open' | 'resolved' | 'ignored';
   scope?: 'story_vault' | 'vault_internal' | 'timeline';
+  /** M12.3 (SKY-10770): defaults to drift; the global contradiction section
+   *  only shows 'factual_contradiction'. */
+  category?: 'character_attribute_drift' | 'location_attribute_mismatch' | 'factual_contradiction';
+  /** M12.3: anchor scene — defaults to the fixture's active scene; set a
+   *  different id to prove cross-scene surfacing. */
+  sceneId?: string;
   manuscriptExcerpt?: string;
   vaultExcerpt?: string;
   rationale?: string;
@@ -185,7 +191,7 @@ function seedContinuityIssues(vaultDir: string, issues: ContinuitySeed[]): void 
          vault_note_path, vault_line, vault_excerpt, rationale, proposed_match_archive,
          proposed_suggest_story, status, resolved_at, resolved_action, created_at)
       VALUES
-        (?, ?, 'character_attribute_drift', ?, ?, 12, ?, 'Universes/Aster/Characters/Mara.md',
+        (?, ?, ?, ?, ?, 12, ?, 'Universes/Aster/Characters/Mara.md',
          8, ?, ?, ?,
          'Change the manuscript to match the daylight-only bridge note.', ?, NULL, NULL, ?)
     `);
@@ -193,8 +199,9 @@ function seedContinuityIssues(vaultDir: string, issues: ContinuitySeed[]): void 
       insert.run(
         issue.id,
         issue.scope ?? 'story_vault',
+        issue.category ?? 'character_attribute_drift',
         issue.severity,
-        SCENE_ID,
+        issue.sceneId ?? SCENE_ID,
         issue.manuscriptExcerpt ?? 'Glass Bridge under twin moons',
         issue.vaultExcerpt ?? 'Glass Bridge only appears in daylight',
         issue.rationale ?? 'The manuscript places Mara on the Glass Bridge at night, but the vault says it only appears in daylight.',
@@ -626,6 +633,65 @@ test('TC-CP-09: granting story-edit consent via the modal persists and survives 
     await reopenedCard.getByRole('button', { name: /suggest story change/i }).click();
     await expect(page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i })).toBeHidden();
     await expect(reopenedCard.getByText('Suggested manuscript change')).toBeVisible();
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+// ─── M12.3 (SKY-10770): scan-scope picker + global contradiction query ───
+
+test('TC-CP-10: the scan trigger carries a scope picker defaulting to Scene', async () => {
+  const fixture = createFixture();
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const sidebar = opened.page.getByTestId('global-right-sidebar');
+    const picker = sidebar.getByRole('combobox', { name: /scan scope/i });
+    await expect(picker).toBeVisible({ timeout: 12_000 });
+    await expect(picker).toContainText('Scene');
+    // All four levels are offered.
+    await picker.click();
+    for (const level of ['scene', 'chapter', 'part', 'book']) {
+      await expect(opened.page.getByTestId(`select-option-${level}`)).toBeVisible();
+    }
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-CP-11: a contradiction flagged in a DIFFERENT scene surfaces via the global query (AC3)', async () => {
+  // Negative-control half: the drift row in the other scene must NOT appear
+  // in the contradiction section — only factual contradictions do — proving
+  // the assertion below can fail for the wrong row kind.
+  const fixture = createFixture([
+    {
+      id: 'gc-elsewhere',
+      severity: 'critical',
+      category: 'factual_contradiction',
+      sceneId: 'scene-somewhere-else',
+      manuscriptExcerpt: 'The Glass Bridge shattered years ago.',
+    },
+    {
+      id: 'drift-elsewhere',
+      severity: 'high',
+      category: 'character_attribute_drift',
+      sceneId: 'scene-somewhere-else',
+      manuscriptExcerpt: 'DRIFT-ROW-MUST-NOT-SURFACE',
+    },
+  ]);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const sidebar = opened.page.getByTestId('global-right-sidebar');
+    const globalSection = sidebar.getByTestId('cp-global-contradictions');
+    await expect(globalSection).toBeVisible({ timeout: 12_000 });
+    await expect(globalSection).toContainText('Elsewhere in manuscript');
+    await expect(globalSection).toContainText('The Glass Bridge shattered years ago.');
+    await expect(globalSection).not.toContainText('DRIFT-ROW-MUST-NOT-SURFACE');
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

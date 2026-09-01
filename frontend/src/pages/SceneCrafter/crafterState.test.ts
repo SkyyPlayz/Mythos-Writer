@@ -6,6 +6,7 @@ import {
   CRAFTER_LENGTHS,
   CRAFTER_TONES,
   addBeat,
+  addRef,
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
@@ -15,10 +16,15 @@ import {
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
+  itemsFromSuggested,
+  legacyBeatsFromLanes,
   moveBeat,
   placesFromSuggested,
   planNotesFromVault,
+  refCardsForColumn,
+  refPickerCards,
   removeBeat,
+  removeRef,
   slotForSuggestedGroup,
   suggestedFromVault,
   toggleTone,
@@ -371,5 +377,88 @@ describe('buildDraftPrompt (Beta 4/M19 §7.1 — Coach-framed generation)', () =
   it('omits every empty field instead of emitting blank lines', () => {
     const prompt = buildDraftPrompt(defaultCrafterSetup(), [], '');
     expect(prompt).toBe('Title: Untitled scene\n\nLength: Medium');
+  });
+});
+
+describe('vault-reference columns (SKY-11072 — owner ruling, prototype crafterVaultCols)', () => {
+  const cards = suggestedFromVault([
+    item('Characters/Mira Veynn.md'),
+    item('Locations/The Undercity.md'),
+    item('Items & Systems/Drownlight.md'),
+    item('Loose Note.md', false, undefined, true), // #Character-tagged, outside any folder
+    item('Plans/Plan Act One.md'),
+  ]);
+
+  it('itemsFromSuggested picks the ITEMS & SYSTEMS vault group', () => {
+    expect(itemsFromSuggested(cards).map((c) => c.nid)).toEqual(['Items & Systems/Drownlight']);
+  });
+
+  it('each column starts from its vault group: characters / locations / items', () => {
+    const setup = defaultCrafterSetup();
+    expect(refCardsForColumn('characters', cards, setup).map((c) => c.nid)).toEqual(['Characters/Mira Veynn']);
+    expect(refCardsForColumn('locations', cards, setup).map((c) => c.nid)).toEqual(['Locations/The Undercity']);
+    expect(refCardsForColumn('items', cards, setup).map((c) => c.nid)).toEqual(['Items & Systems/Drownlight']);
+  });
+
+  it('removeRef hides the card from THIS column only and never mutates the input', () => {
+    const setup = defaultCrafterSetup();
+    const next = removeRef(setup, 'characters', 'Characters/Mira Veynn');
+    expect(refCardsForColumn('characters', cards, next)).toEqual([]);
+    // Other columns untouched; original setup untouched.
+    expect(refCardsForColumn('locations', cards, next).map((c) => c.nid)).toEqual(['Locations/The Undercity']);
+    expect(refCardsForColumn('characters', cards, setup).map((c) => c.nid)).toEqual(['Characters/Mira Veynn']);
+    expect(removeRef(next, 'characters', 'Characters/Mira Veynn')).toBe(next); // idempotent
+  });
+
+  it('addRef layers any vault note onto a column, in pick order after the base', () => {
+    const setup = addRef(defaultCrafterSetup(), 'characters', 'Loose Note');
+    expect(refCardsForColumn('characters', cards, setup).map((c) => c.nid)).toEqual([
+      'Characters/Mira Veynn',
+      'Loose Note',
+    ]);
+  });
+
+  it('addRef is the un-remove path: re-adding a removed base card restores it', () => {
+    let setup = removeRef(defaultCrafterSetup(), 'characters', 'Characters/Mira Veynn');
+    setup = addRef(setup, 'characters', 'Characters/Mira Veynn');
+    expect(refCardsForColumn('characters', cards, setup).map((c) => c.nid)).toEqual(['Characters/Mira Veynn']);
+  });
+
+  it('a stale added nid (note gone from the vault) drops out instead of rendering dead', () => {
+    const setup = addRef(defaultCrafterSetup(), 'items', 'Deleted/Note');
+    expect(refCardsForColumn('items', cards, setup).map((c) => c.nid)).toEqual(['Items & Systems/Drownlight']);
+  });
+
+  it('refPickerCards offers notes not visible in the column, filtered like the rail', () => {
+    const setup = defaultCrafterSetup();
+    const offered = refPickerCards('characters', cards, setup, '');
+    expect(offered.map((c) => c.nid)).not.toContain('Characters/Mira Veynn');
+    expect(offered.map((c) => c.nid)).toContain('Loose Note');
+    // Removed notes ARE offered — picking one is the un-remove path.
+    const removed = removeRef(setup, 'characters', 'Characters/Mira Veynn');
+    expect(refPickerCards('characters', cards, removed, 'mira').map((c) => c.nid)).toEqual(['Characters/Mira Veynn']);
+  });
+
+  it('a #Character-tagged loose note only reaches CHARACTERS when no Characters folder exists', () => {
+    const tagOnly = suggestedFromVault([item('Kael Thorne.md', false, undefined, true)]);
+    expect(refCardsForColumn('characters', tagOnly, defaultCrafterSetup()).map((c) => c.nid)).toEqual(['Kael Thorne']);
+  });
+});
+
+describe('legacyBeatsFromLanes (SKY-11072 instruction 3 — no beat data lost)', () => {
+  it('surfaces card titles from a lane named Beats, trimmed and deduped', () => {
+    const beats = legacyBeatsFromLanes([
+      { name: 'Idea', cards: [{ title: 'Not a beat' }] },
+      { name: ' Beats ', cards: [{ title: '  Cold open  ' }, { title: 'Cold open' }, { title: '' }, { title: 'The door answers' }] },
+    ]);
+    expect(beats).toEqual(['Cold open', 'The door answers']);
+  });
+
+  it('returns empty when no beat-shaped lane exists (default lane set)', () => {
+    expect(legacyBeatsFromLanes([
+      { name: 'Idea', cards: [] },
+      { name: 'Outline', cards: [] },
+      { name: 'Draft', cards: [] },
+    ])).toEqual([]);
   });
 });

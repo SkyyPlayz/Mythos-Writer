@@ -51,7 +51,18 @@ export default function ContinuityPanel({ selectionText, autoFocusSearch = false
       setNotesVaultRoot(nvr);
       latestVaultRootRef.current = nvr;
     });
-    return () => unsub?.();
+
+    // Also re-read on active-vault changes from the SKY-11058 Notes-vault
+    // registry (e.g. swapping the active notes vault via the picker), which
+    // does not fire onProjectSwitched.
+    const unsubRegistry = window.api.onNotesVaultRegistryChanged?.(() => {
+      void load();
+    });
+
+    return () => {
+      unsub?.();
+      unsubRegistry?.();
+    };
   }, []);
 
   useEffect(() => {

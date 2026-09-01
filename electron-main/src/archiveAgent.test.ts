@@ -563,6 +563,24 @@ describe('detectInternalContinuity', () => {
     expect(detectInternalContinuity(scenes, index)).toHaveLength(0);
   });
 
+  it('flags a recurring character property drift only once, not on every later scene', () => {
+    const index = {
+      entities: [
+        { id: 'e1', name: 'Mira', type: 'character' as const, aliases: [], path: 'e1.md', properties: {}, prose: '' },
+      ],
+      builtAt: new Date().toISOString(),
+    };
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Mira brushed a strand of dark hair from her face.' },
+      { path: 'scenes/ch3.md', text: 'Later, Mira tucked her dark hair behind her ear.' },
+      { path: 'scenes/ch4.md', text: 'Even later, Mira let her dark hair down.' },
+    ];
+    const result = detectInternalContinuity(scenes, index);
+    expect(result).toHaveLength(1);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+  });
+
   it('flags a world-rule drift (lantern fuel source) with no vault entity involved', () => {
     const scenes = [
       { path: 'scenes/ch1.md', text: 'The lantern in her hand was oil-lit, its flame dancing gently.' },
@@ -624,6 +642,35 @@ describe('detectInternalContinuity', () => {
     const payload = JSON.parse(result[0].payload_json!);
     expect(payload.earlierPhrase).toBe('oil-lit');
     expect(payload.laterPhrase).toBe('candlelit');
+  });
+
+  it('flags a recurring world-rule drift only once, not on every later scene', () => {
+    // A scene revisited across chapters that keeps repeating the drifted
+    // value ("crystal-lit") must produce a single suggestion pointing at the
+    // first scene where the drift occurred, not one per recurrence.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'By the second chapter, the lantern was crystal-lit.' },
+      { path: 'scenes/ch3.md', text: 'Later, the lantern was still crystal-lit.' },
+      { path: 'scenes/ch4.md', text: 'Even later, the lantern remained crystal-lit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(1);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+  });
+
+  it('still flags a second, distinct drifted value after the first has already been flagged', () => {
+    // Suppressing repeats of an already-flagged value must not suppress
+    // detection of a DIFFERENT canonical drifting in afterward.
+    const scenes = [
+      { path: 'scenes/ch1.md', text: 'The lantern was oil-lit.' },
+      { path: 'scenes/ch2.md', text: 'By the second chapter, the lantern was crystal-lit.' },
+      { path: 'scenes/ch3.md', text: 'Still later, the lantern was candlelit.' },
+    ];
+    const result = detectInternalContinuity(scenes, emptyIndex);
+    expect(result).toHaveLength(2);
+    expect(result[0].target_path).toBe('scenes/ch2.md');
+    expect(result[1].target_path).toBe('scenes/ch3.md');
   });
 });
 

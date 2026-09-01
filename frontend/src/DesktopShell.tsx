@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
 import { Toast } from './components/Toast/Toast';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
@@ -76,6 +77,7 @@ import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
+import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
@@ -1713,14 +1715,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       .catch(() => { /* non-fatal — rail renders without vault tiles */ });
   }, []);
 
-  useEffect(() => { loadVaults(); }, [loadVaults]);
+  // SKY-11068: per-vault icon, vault-local — shared by the nav-rail tiles,
+  // the title-bar switcher, and Settings > Mythos vaults.
+  const { icons: vaultIconsByRoot, loadIcons: loadVaultIcons, setVaultIcon, pickIconImage } = useVaultIcons();
+
+  useEffect(() => { loadVaults(); loadVaultIcons(); }, [loadVaults, loadVaultIcons]);
 
   // Derived display shape — recomputed whenever the raw list, the active
   // vault, or a per-vault display-name/icon override changes.
   const navRailVaults: NavRailVault[] = navRailProjects.map((p) => ({
     id: p.vaultRoot,
     name: appSettings?.vaultDisplayNames?.[p.vaultRoot] ?? (deriveVaultDisplayName(p) || p.name),
-    icon: appSettings?.vaultIcons?.[p.vaultRoot],
+    icon: vaultIconsByRoot[p.vaultRoot],
     active: p.vaultRoot === activeVaultRoot,
   }));
 
@@ -1760,14 +1766,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-11048: switch through the exact same IPC call + completion handler
   // WindowChrome's project menu uses (window.api.projectSwitch →
-  // handleProjectSwitched) — no second switch path.
-  const handleVaultTileSelect = useCallback((vaultId: string) => {
-    if (vaultId === activeVaultRoot) return;
+  // handleProjectSwitched) — no second switch path. Resolves once the vault
+  // is active (no-op if it already is) so callers can chain follow-up work
+  // (SKY-11086: e.g. opening Settings) onto the *target* vault, not whatever
+  // was active when the action was invoked.
+  const switchToVault = useCallback((vaultId: string): Promise<void> => {
+    if (vaultId === activeVaultRoot) return Promise.resolve();
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-      .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
-      .catch(() => { /* switch failed — tile stays as-is */ });
+    return (
+      window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
+        .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
+        .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
+      ?? Promise.resolve()
+    );
   }, [activeVaultRoot, navRailProjects, handleProjectSwitched]);
+
+  const handleVaultTileSelect = useCallback((vaultId: string) => {
+    switchToVault(vaultId);
+  }, [switchToVault]);
 
   // Both handlers below only touch `appSettings` (a per-vault override layered
   // on top of the registry) — no need to re-fetch the vault list itself;
@@ -1786,19 +1802,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, [navRailVaults, requestText]);
 
-  const handleVaultSetIcon = useCallback(async (vaultId: string) => {
-    const icon = await requestText('Icon for this vault (an emoji or 1-2 letters):');
-    if (icon === null) return;
-    const trimmed = icon.trim().slice(0, 4);
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const vaultIcons = { ...(prev.vaultIcons ?? {}) };
-      if (trimmed) vaultIcons[vaultId] = trimmed; else delete vaultIcons[vaultId];
-      const next = { ...prev, vaultIcons };
-      window.api?.settingsSet?.(next).catch(() => {});
-      return next;
+  // SKY-11068: replaces the old text-prompt + app-global appSettings.vaultIcons
+  // storage — icons are now vault-local (mythos.json) via useVaultIcons, so a
+  // vault's icon travels with it on move/copy instead of living in this app's
+  // settings file.
+  const handleVaultIconPickImage = useCallback((vaultId: string) => {
+    pickIconImage()?.then((res) => {
+      if (res?.filePath) setVaultIcon(vaultId, { kind: 'image', sourcePath: res.filePath });
     });
-  }, [requestText]);
+  }, [pickIconImage, setVaultIcon]);
+
+  const handleVaultIconSet = useCallback((vaultId: string, icon: VaultIconSetInput) => {
+    setVaultIcon(vaultId, icon);
+  }, [setVaultIcon]);
 
   // Only the active vault can be revealed — no IPC reveals an arbitrary path,
   // just the current Story Vault root (global.d.ts revealVaultFolder).
@@ -1807,11 +1823,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.revealVaultFolder?.().catch(() => {});
   }, [activeVaultRoot]);
 
-  const handleVaultOpenSettings = useCallback(() => {
-    setSettingsInitialCategory('vaults');
-    setSettingsOpenToken((t) => t + 1);
-    setSettingsOpen(true);
-  }, []);
+  // SKY-11086: previously ignored `vaultId` and just opened Settings against
+  // whatever vault happened to be active — right-clicking an INACTIVE tile
+  // and choosing "Settings → this vault" silently showed the wrong vault's
+  // Vault & Files settings. Switch to the target vault first (same as a tile
+  // click), then jump the panel to that vault's settings.
+  const handleVaultOpenSettings = useCallback((vaultId: string) => {
+    switchToVault(vaultId).then(() => {
+      setSettingsInitialCategory('vaults');
+      setSettingsOpenToken((t) => t + 1);
+      setSettingsOpen(true);
+    });
+  }, [switchToVault]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
@@ -3269,7 +3292,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const openVaultViaPicker = useCallback(async () => {
     try {
       const result = await window.api?.openVaultFolder?.();
-      if (!result?.cancelled && result?.vaultRoot) handleProjectSwitched(result.vaultRoot);
+      if (!result?.cancelled && result?.vaultRoot) {
+        handleProjectSwitched(result.vaultRoot);
+      } else if (result?.error) {
+        alert(result.error);
+      }
     } catch { /* non-fatal */ }
   }, [handleProjectSwitched]);
 
@@ -5508,6 +5535,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
   }, []);
 
+  // SKY-11058: NotesVaultPicker's "Import a vault…" (dispatched from
+  // NotesTabPanel — same no-callback-prop CustomEvent pattern as
+  // 'mythos:nav') reuses the wizard-replay path but lands on the Import
+  // screen: the sessionStorage flag survives the replay reload and
+  // OnboardingWizard consumes it on mount to open step-import directly.
+  useEffect(() => {
+    const handler = () => {
+      try {
+        sessionStorage.setItem(WIZARD_OPEN_IMPORT_STEP_KEY, '1');
+      } catch { /* non-fatal — wizard just opens on its landing screen */ }
+      replayOnboardingWizard();
+    };
+    window.addEventListener('mythos:import-notes-vault', handler);
+    return () => window.removeEventListener('mythos:import-notes-vault', handler);
+  }, [replayOnboardingWizard]);
+
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
   const paletteCommands = useMemo(() => [
@@ -5779,7 +5822,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onVaultSelect={handleVaultTileSelect}
             onNewVault={() => { void createMythosVault(); }}
             onVaultRename={(id) => { void handleVaultRename(id); }}
-            onVaultSetIcon={(id) => { void handleVaultSetIcon(id); }}
+            onVaultIconPickImage={handleVaultIconPickImage}
+            onVaultIconSet={handleVaultIconSet}
             onVaultReveal={handleVaultReveal}
             onVaultOpenSettings={handleVaultOpenSettings}
           />

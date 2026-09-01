@@ -1,0 +1,43 @@
+.vault-icon-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.vault-icon-avatar--sm {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.vault-icon-avatar--md {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+
+.vault-icon-avatar--lg {
+  width: 40px;
+  height: 40px;
+  font-size: 17px;
+  border-radius: 10px;
+}
+
+.vault-icon-avatar--default {
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+}
+
+.vault-icon-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

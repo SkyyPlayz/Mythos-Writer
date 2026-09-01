@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { DatabaseSync } from 'node:sqlite';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import {
   launchApp,
   firstWindow,
@@ -37,86 +36,14 @@ import { measureKeystrokeToPaint } from '../perf/ui-runtime/keystrokePaint';
  * with a real interaction: real vault-scan job through the production
  * `window.api.jobs` IPC surface, real keystrokes into the real ProseMirror
  * editor via `measureKeystrokeToPaint` (CDP-traced main-thread time, not a
- * mocked signal). The other M12.1 cases are untouched — they verify
- * different acceptance criteria and stay with their named owner.
+ * mocked signal). The remaining M12.1 cases are untouched — they verify
+ * different acceptance criteria and stay with their named owners.
  *
- * SKY-10839 (M12.2 finalization, 2026-08-26) un-skipped the persistent-cache
- * M12.2 case below with a real interaction, once PR #1283 (SKY-10731)
- * merged. The other two M12.2 cases stay `test.fixme` — per the SKY-11035
- * owner ruling the notes-side fact-ledger extractor was cut, and no IPC/UI
- * surface exists anywhere in electron-main/src/ipc.ts or frontend/src for
- * fact_decisions (dismiss / "don't ask again" is unreachable from the UI).
- * COMPANY-STANDARDS §4c: features must be REACHABLE, never pre-seed the
- * thing under test — there is nothing to drive yet, so these stay fixme
- * with the blocker named. Un-skip owner: whoever wires a dismiss UI/IPC
- * handler to fact_decisions, or SKY-11035 if it supersedes this scope.
+ * SKY-10839 (2026-08-26) closed out the M12.2 block below: owner ruling
+ * SKY-11035 dropped the notes-sourced fact ledger before it had a UI, so
+ * the fixmes that targeted that UI were removed rather than faked. See the
+ * comment on the M12.2 describe block for what still covers AC2.
  */
-
-/** Continuity Peek is the only shipped surface that calls loadEntityIndex()
- *  (electron-main/src/continuityPeekHandlers.ts) — it is the real UI path
- *  onto the M12.2 persistent vault_index_cache. Mirrors
- *  e2e/continuity-peek.spec.ts's shortcut-trigger pattern. */
-async function ensureFocusMode(page: Page): Promise<void> {
-  const shell = page.locator('.desktop-shell');
-  const cls = await shell.getAttribute('class');
-  if (!cls?.includes('writing-mode-focus')) {
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+F' : 'Control+Shift+F');
-    await expect(shell).toHaveClass(/writing-mode-focus/, { timeout: 4_000 });
-  }
-}
-
-async function selectWholeEditor(page: Page): Promise<void> {
-  const editor = page.locator('.ProseMirror');
-  // Retry the click+select — after closing the Continuity Peek modal
-  // overlay, the first click can land before its close transition has
-  // released pointer events / focus (SKY-8242 saw the same race in
-  // e2e/continuity-peek.spec.ts's replaceSceneText).
-  await expect
-    .poll(async () => {
-      await editor.click();
-      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-      return page.evaluate(() => window.getSelection()?.toString().trim() ?? '');
-    }, { timeout: 10_000 })
-    .not.toBe('');
-}
-
-async function openContinuityWithShortcut(page: Page): Promise<void> {
-  await ensureFocusMode(page);
-  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+K' : 'Control+Shift+K');
-  await expect(page.locator('.continuity-focus-overlay[role="dialog"]')).toBeVisible({ timeout: 6_000 });
-  await expect(page.locator('.continuity-panel').first()).toBeVisible({ timeout: 6_000 });
-}
-
-async function closeContinuityOverlay(page: Page): Promise<void> {
-  const overlay = page.locator('.continuity-focus-overlay[role="dialog"]');
-  if (await overlay.isVisible().catch(() => false)) {
-    await page.keyboard.press('Escape');
-    await expect(overlay).not.toBeVisible({ timeout: 4_000 });
-  }
-}
-
-function seedNotesEntity(notesVaultDir: string): void {
-  const noteAbs = path.join(notesVaultDir, 'Universes', 'Marcus.md');
-  fs.mkdirSync(path.dirname(noteAbs), { recursive: true });
-  fs.writeFileSync(
-    noteAbs,
-    ['---', 'name: Marcus', 'type: character', '---', '', 'Marcus commands the eastern garrison.', ''].join('\n')
-  );
-}
-
-function readVaultIndexCacheRow(
-  vaultDir: string,
-  filePath: string
-): { content_hash: string; needs_rescan: number; indexed_at: string } | undefined {
-  const db = new DatabaseSync(path.join(vaultDir, '.mythos', 'state.db'));
-  try {
-    return db
-      .prepare('SELECT content_hash, needs_rescan, indexed_at FROM vault_index_cache WHERE file_path = ?')
-      .get(filePath) as { content_hash: string; needs_rescan: number; indexed_at: string } | undefined;
-  } finally {
-    db.close();
-  }
-}
 
 test.describe('M12.1 — background job/queue infrastructure (real E2E)', () => {
   test('starting a large vault scan keeps the scene editor responsive to typing ' +
@@ -206,107 +133,22 @@ test.describe('M12.1 — background job/queue infrastructure (real E2E)', () => 
   );
 });
 
-test.describe('M12.2 — fact-ledger schema + persistent vault index cache (real E2E)', () => {
-  test(
-    'reopening the Continuity Peek panel on an unchanged vault reads from the persistent index cache instead of ' +
-      "rebuilding (negative control: an actual content edit DOES trigger a re-parse, proving the cache-hit check can fail)",
-    async () => {
-      const scratch = makeScratch('factledger-cache');
-      try {
-        seedUserData(scratch.userData, scratch.vaultDir, scratch.notesVaultDir);
-        seedVault(scratch.vaultDir);
-        seedNotesEntity(scratch.notesVaultDir);
-        const marcusPath = path.join(scratch.notesVaultDir, 'Universes', 'Marcus.md');
-
-        const app = await launchApp(scratch.userData, { reducedMotion: true });
-        try {
-          const page = await firstWindow(app);
-          await openSeededScene(page);
-
-          // Real UI -> IPC -> main -> disk path: type "Marcus" into the real
-          // ProseMirror editor, select it, and open Continuity Peek — this is
-          // the only shipped surface that calls loadEntityIndex()
-          // (electron-main/src/continuityPeekHandlers.ts).
-          const editor = page.locator('.ProseMirror');
-          await editor.click();
-          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-          await page.keyboard.press('Delete');
-          await page.keyboard.type('Marcus');
-          await expect(editor).toHaveText('Marcus', { timeout: 5_000 });
-          await selectWholeEditor(page);
-
-          await openContinuityWithShortcut(page);
-          await expect(page.locator('.entity-card', { hasText: 'Marcus' }).first()).toBeVisible({ timeout: 8_000 });
-
-          const afterFirstOpen = readVaultIndexCacheRow(scratch.vaultDir, marcusPath);
-          expect(afterFirstOpen).toBeDefined();
-
-          // Second open, unchanged note content on disk.
-          await closeContinuityOverlay(page);
-          await selectWholeEditor(page);
-          await openContinuityWithShortcut(page);
-          await expect(page.locator('.entity-card', { hasText: 'Marcus' }).first()).toBeVisible({ timeout: 8_000 });
-
-          const afterSecondOpen = readVaultIndexCacheRow(scratch.vaultDir, marcusPath);
-          expect(afterSecondOpen).toBeDefined();
-          expect(afterSecondOpen!.content_hash).toBe(afterFirstOpen!.content_hash);
-          // The cache-hit assertion: an unchanged-content re-open must not
-          // re-write the cache row (loadEntityIndex only upserts on a hash
-          // miss — see electron-main/src/vault/entityIndex.ts).
-          expect(afterSecondOpen!.indexed_at).toBe(afterFirstOpen!.indexed_at);
-
-          // NEGATIVE CONTROL: edit the note on disk, then re-open. This must
-          // change indexed_at — proving the above equality check is capable
-          // of failing, not just trivially passing every run.
-          await closeContinuityOverlay(page);
-          fs.writeFileSync(
-            marcusPath,
-            ['---', 'name: Marcus', 'type: character', '---', '', 'Marcus now commands the western fleet.', ''].join(
-              '\n'
-            )
-          );
-          await selectWholeEditor(page);
-          await openContinuityWithShortcut(page);
-          await expect(page.locator('.entity-card', { hasText: 'Marcus' }).first()).toBeVisible({ timeout: 8_000 });
-
-          const afterEdit = readVaultIndexCacheRow(scratch.vaultDir, marcusPath);
-          expect(afterEdit).toBeDefined();
-          expect(afterEdit!.content_hash).not.toBe(afterSecondOpen!.content_hash);
-          expect(afterEdit!.indexed_at).not.toBe(afterSecondOpen!.indexed_at);
-        } finally {
-          await app.close().catch(() => undefined);
-        }
-      } finally {
-        rmScratch(scratch);
-      }
-    }
-  );
-
-  // SKY-10839: left as `test.fixme` — no IPC/UI surface anywhere in
-  // electron-main/src/ipc.ts or frontend/src calls recordFactDecision() /
-  // revokeFactDecision() / isFactSuppressed() (electron-main/src/db.ts).
-  // Unit-level coverage of the tombstone-survives-rebuild contract itself is
-  // in electron-main/src/factLedger.acceptance.test.ts (AC3) and
-  // electron-main/src/factDecisions.test.ts. Per COMPANY-STANDARDS §4c,
-  // features must be REACHABLE before a real E2E can drive them — un-skip
-  // owner: whoever wires a dismiss/"don't ask again" UI+IPC handler to
-  // fact_decisions.
-  test.fixme(
-    'dismissing a suggested fact ("don\'t ask again"), then forcing a full index rebuild, leaves the fact dismissed ' +
-      '(negative control: a hard-deleted dismissal reappears after rebuild first)',
-    async () => {}
-  );
-
-  // SKY-10839: left as `test.fixme`. The notes-side fact-ledger extractor
-  // this case was written against was cut entirely by the SKY-11035 owner
-  // ruling (2026-08-26) — see electron-main/src/db.ts's "Fact decisions"
-  // section comment and electron-main/src/factLedger.acceptance.test.ts's
-  // AC4. No extractor produces a "ledger-only fact" anywhere in this repo,
-  // so there is nothing to drive; the assertion would be vacuous, not a real
-  // check. Un-skip owner: SKY-11035 (manuscript-side fact ledger, CTO-owned)
-  // if/when it introduces a comparable notes-rendering surface to guard.
-  test.fixme(
-    'the fact ledger never renders as vault content — a ledger-only extracted fact does not appear as a note in the Notes Vault',
-    async () => {}
-  );
-});
+// M12.2 (SKY-10731) closeout, 2026-08-26: owner ruling SKY-11035 (applied by
+// SKY-11037) dropped the notes-sourced fact ledger and its extractor before
+// any UI shipped for it. There is no "suggested fact" surface and no
+// dismiss/tombstone UI to drive, so the two fixmes below that targeted that
+// surface are removed rather than faked — per COMPANY-STANDARDS §4c a test
+// must drive a reachable feature, never pre-seed the thing under test.
+//
+// The remaining M12.2 fixme ("reopening the entity panel reads the
+// persistent cache") is covered without a new test here:
+//   - functionally, at the real UI->IPC->disk->back layer, by
+//     e2e/continuity-peek.spec.ts TC-CP-11 ("re-triggered lookup reads
+//     updated note content from disk") — that test edits a note on disk and
+//     asserts the re-lookup reflects it, which only works because
+//     loadEntityIndex()'s content-hash staleness check is real;
+//   - at the DB layer (cache row present / indexed_at unchanged on an
+//     unchanged-content repeat load, spy-verified zero re-parses), by
+//     electron-main/src/entityIndexCache.acceptance.test.ts.
+// A third, UI-level test asserting the same DB row directly would duplicate
+// both without adding coverage.

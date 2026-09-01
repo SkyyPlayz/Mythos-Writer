@@ -1,0 +1,1 @@
+This is an Obsidian vault, not a Mythos vault — Open Vault Folder never repoints at it. Use Settings → Vault & Files → Import another vault to copy it in instead.

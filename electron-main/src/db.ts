@@ -920,6 +920,29 @@ function runMigrations(db: DatabaseSync): void {
     db.exec('PRAGMA user_version = 31');
   }
 
+  // SKY-11084 self-heal: DBs that went v29→v31 (M12.1 shipped before M12.2)
+  // skipped the v30 block and are missing vault_index_cache / fact_decisions.
+  // CREATE TABLE IF NOT EXISTS is idempotent — safe to run on every DB open.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS vault_index_cache (
+      file_path    TEXT PRIMARY KEY,
+      content_hash TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      aliases_json TEXT NOT NULL,
+      type         TEXT,
+      needs_rescan INTEGER NOT NULL DEFAULT 0,
+      indexed_at   TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS fact_decisions (
+      fingerprint  TEXT PRIMARY KEY,
+      decision     TEXT NOT NULL,
+      payload_json TEXT,
+      decided_at   TEXT NOT NULL,
+      revoked_at   TEXT
+    );
+  `);
+
   if (currentVersion < 32) {
     // M12.B2 (SKY-10737): Brainstorm question-queue data model.
     //

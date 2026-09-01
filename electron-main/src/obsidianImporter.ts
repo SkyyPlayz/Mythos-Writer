@@ -13,7 +13,11 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { ObsidianImportPreview } from './ipc.js';
+import type { ObsidianImportPreview, ObsidianImportTargetSpec } from './ipc.js';
+import {
+  registerImportedNotesVault,
+  reserveNotesVaultDirName,
+} from './mythosFormat/notesVaultRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -161,6 +165,87 @@ export function importObsidianToVaultDir(
     skipped,
     errors,
     dropWarning,
+  };
+}
+
+// ─── SKY-11058 item 4: import as an ADDITIONAL notes vault ──────────────────
+
+export interface ExtraNotesVaultImportResult {
+  ok: boolean;
+  error?: string;
+  /** Registry id of the newly registered notes vault. */
+  vaultId?: string;
+  /** User-visible label (source folder basename). */
+  displayName?: string;
+  /** Directory name created directly inside mythosRoot. */
+  dirName?: string;
+  sourceCount?: number;
+  imported?: number;
+  skipped?: number;
+  dropWarning?: string;
+}
+
+/**
+ * SKY-11058 item 4 (owner ruling): copy an Obsidian folder's files verbatim
+ * into a NEW directory inside the currently-open Mythos vault root and
+ * register it as an additional notes vault. Bare [[stem]] wikilinks stay
+ * byte-for-byte untouched (same rule as importObsidianToVaultDir), the
+ * source is never mutated, and the imported vault does NOT become active —
+ * registerImportedNotesVault never changes activeId; the picker surfaces the
+ * new entry via the notesVaultRegistry:changed push instead.
+ */
+export function importObsidianAsExtraNotesVault(
+  mythosRoot: string,
+  targets: ObsidianImportTargetSpec[],
+): ExtraNotesVaultImportResult {
+  if (targets.length !== 1 || targets[0].kind !== 'notes') {
+    return { ok: false, error: 'Adding a notes vault accepts exactly one notes-kind source folder' };
+  }
+  const srcPath = targets[0].srcPath;
+  if (!fs.existsSync(srcPath)) {
+    return { ok: false, error: `Source path does not exist: ${srcPath}` };
+  }
+  let realSrc: string;
+  try {
+    realSrc = fs.realpathSync.native(srcPath);
+  } catch {
+    return { ok: false, error: `Cannot resolve source path: ${srcPath}` };
+  }
+  if (!fs.statSync(realSrc).isDirectory()) {
+    return { ok: false, error: `Not a directory: ${srcPath}` };
+  }
+
+  // Name the vault after the source folder; reserve a collision-free dir
+  // name against the registry BEFORE copying anything into place.
+  const displayName = path.basename(realSrc) || 'Imported Notes';
+  const dirName = reserveNotesVaultDirName(mythosRoot, displayName);
+  const destDir = path.join(mythosRoot, dirName);
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const copy = importObsidianToVaultDir(realSrc, destDir);
+  if (copy.errors.length > 0) {
+    // Copy failed — don't register a broken vault. Partial copies stay on
+    // disk (same policy as the new-Mythos-vault path) but the unregistered
+    // directory is invisible to the app.
+    return {
+      ok: false,
+      error: copy.errors.join('; '),
+      sourceCount: copy.sourceCount,
+      imported: copy.imported,
+      skipped: copy.skipped,
+    };
+  }
+
+  const { entry } = registerImportedNotesVault(mythosRoot, dirName, displayName);
+  return {
+    ok: true,
+    vaultId: entry.id,
+    displayName: entry.displayName,
+    dirName: entry.dirName,
+    sourceCount: copy.sourceCount,
+    imported: copy.imported,
+    skipped: copy.skipped,
+    dropWarning: copy.dropWarning || undefined,
   };
 }
 
