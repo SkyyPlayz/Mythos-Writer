@@ -73,7 +73,7 @@ describe('[QA] setActiveVault — changes active, not list (R2)', () => {
     const registry = ensureVaultRegistry(tmpDir, QA_CONFIG, makeQAEntry);
     fs.mkdirSync(path.join(tmpDir, 'Second Vault'));
     const { entry: second } = createBlankVaultEntry(tmpDir, QA_CONFIG, 'Second', makeQAEntry);
-    const updated = setActiveVault(tmpDir, QA_CONFIG, second.id);
+    const { registry: updated } = setActiveVault(tmpDir, QA_CONFIG, second.id);
     expect(updated.activeId).toBe(second.id);
     expect(updated.activeId).not.toBe(registry.activeId);
   });
@@ -114,7 +114,8 @@ describe('[QA] registerExistingVaultEntry — no mkdir (R4)', () => {
     const { entry } = registerExistingVaultEntry(
       tmpDir,
       QA_CONFIG,
-      { dirName: 'existing-vault-dir', displayName: 'Existing' },
+      'existing-vault-dir',
+      'Existing',
       makeQAEntry,
     );
     // The dir must NOT have been created by registerExistingVaultEntry.
@@ -126,7 +127,8 @@ describe('[QA] registerExistingVaultEntry — no mkdir (R4)', () => {
     registerExistingVaultEntry(
       tmpDir,
       QA_CONFIG,
-      { dirName: 'legacy-dir', displayName: 'Legacy' },
+      'legacy-dir',
+      'Legacy',
       makeQAEntry,
     );
     const registry = readVaultRegistry<QAEntry>(tmpDir, QA_CONFIG);
