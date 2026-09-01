@@ -1529,6 +1529,35 @@ a.gs-footer-link:focus-visible {
   margin-bottom: 4px;
 }
 
+/* SKY-11058: replay-only Obsidian import destination radios */
+.import-dest-mode {
+  border: none;
+  margin: var(--space-2, 8px) 0;
+  padding: 0;
+}
+
+.import-dest-mode__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-size: 0.875rem;
+  color: var(--text-body, #bfd6e8);
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.import-dest-mode__option--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-dest-mode__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted, rgba(191, 214, 232, 0.55));
+  margin: 2px 0 0 var(--space-5, 20px);
+  line-height: 1.4;
+}
+
 .import-field-row {
   display: flex;
   gap: var(--space-2, 8px);

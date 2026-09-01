@@ -485,14 +485,26 @@ test('AC-OPL-QA-08: Click link button, select scene from picker, chip appears', 
 // ─── AC-OPL-QA-09: Persistence after hard reload ────────────────────────────
 
 test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.json', async () => {
-  // Before reload, verify current state
+  // Before reload, verify current state. Poll briefly to handle retry runs
+  // where a prior attempt's deferred save (SAVE_DEBOUNCE_MS=500ms) may still
+  // be landing — direct readOutlineFile can race against the write on slow CI.
   const outlineFilePath = await getOutlineFilePath(vaultDir, storyPath);
-  const beforeReload = readOutlineFile(outlineFilePath) as any;
+  let beforeReload: any = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    beforeReload = readOutlineFile(outlineFilePath) as any;
+    if (beforeReload?.nodes?.length >= 1) break;
+    await page.waitForTimeout(500);
+  }
   expect(beforeReload?.nodes?.length).toBeGreaterThanOrEqual(1);
 
   // Hard reload the window
   await page.reload();
-  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  // SKY-11104: SKY-11068 (PR #1350) added loadVaultIcons() to the boot-time
+  // useEffect, which fires a PROJECT_ICONS IPC with synchronous fs reads on
+  // main. On a contended shard-4 runner this can back up the IPC queue, so
+  // the post-reload app-menu-bar and outline.load() round-trips take longer.
+  // Give the menu bar more headroom to account for the extended boot cascade.
+  await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
   // After reload selectedStory is null; click a scene to restore it via handleSelectScene.
   // SKY-9022/M6: scenes live in StoryNavigator now, not VaultBrowser's story tree.
@@ -505,11 +517,19 @@ test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.
 
   // Wait for outline panel to load
   const outlinePanel = page.locator('[data-testid="outline-planning-panel"]');
-  await expect(outlinePanel).toBeVisible({ timeout: 6_000 });
+  // SKY-10969: page.reload() re-triggers the whole app boot cascade (settings,
+  // vault manifest, story tree, scene reselect) before the outline panel's own
+  // window.api.outline.load() IPC round-trip can even start. On a contended
+  // shard-4 runner (see SKY-9620) that cascade alone can eat several seconds,
+  // so 6s was too tight for either wait below — give both real headroom.
+  // SKY-11104: raised further (12s→20s) because the SKY-11068 boot adds a
+  // PROJECT_ICONS IPC with synchronous file reads that queues ahead of
+  // outline.load() on a slow runner.
+  await expect(outlinePanel).toBeVisible({ timeout: 20_000 });
 
   // Verify nodes are rendered
   const inputs = page.locator('.opl-title-input');
-  await expect(inputs.first()).toHaveValue(beforeReload?.nodes?.[0]?.title || 'First outline node', { timeout: 6_000 });
+  await expect(inputs.first()).toHaveValue(beforeReload?.nodes?.[0]?.title || 'First outline node', { timeout: 20_000 });
 
   // Verify file content matches what was before
   const afterReload = readOutlineFile(outlineFilePath) as any;

@@ -456,6 +456,12 @@
   min-width: 320px;
   min-height: 0;
   overflow-y: auto;
+  /* SKY-10917: reserve the scrollbar gutter on both edges so a scene long
+     enough to scroll doesn't shift .msv-sheet-wrap's centered position —
+     the ruler above computes its diamond positions from this row's width
+     with no scrollbar, so a one-sided scrollbar would pull the sheet ~half
+     its width off the ruler's math even after the gutterOpen fix. */
+  scrollbar-gutter: stable both-edges;
   padding: 22px 26px 60px;
   position: relative;
 }
@@ -864,6 +870,33 @@
   font-size: 0.9em;
   line-height: 1.65;
   border-left: none;
+}
+
+/* M2 (SKY-9017): a filled epigraph re-opens for editing on click. */
+.msv-epigraph[role='button'] {
+  cursor: pointer;
+  border-radius: 7px;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.msv-epigraph[role='button']:hover,
+.msv-epigraph[role='button']:focus-visible {
+  opacity: 1;
+  background: var(--gs1, rgba(0, 240, 255, 0.05));
+  outline: none;
+}
+
+/* M2: the note field while open for editing — same contentEditable
+   treatment as the H2/H3 inline-rename titles, minus the italic epigraph
+   styling so typed text reads like an ordinary field. */
+.msv-epigraph--editing {
+  font-style: normal;
+  opacity: 1;
+  outline: none;
+  caret-color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.06));
+  box-shadow: inset 3px 0 0 var(--n1, #00f0ff);
+  min-height: 1.2em;
 }
 
 /* "+ PART NOTE" / "+ CHAPTER NOTE" affordance (ghost button). */

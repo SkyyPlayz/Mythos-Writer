@@ -44,28 +44,6 @@ Never merge these into one screen — the setup form needs full-width fields; th
 space. The prototype's separation is correct and PR #973 preserves it (`SceneCrafterPage.tsx` +
 `canvas/CanvasBoard.tsx`).
 
-### 1.1a Known drift — legacy Kanban lanes board (SKY-7589/SKY-7597, tracked SKY-7601)
-
-The shipped `SceneCrafterPage.tsx` (`:963–1078`) also renders a third element inside `.sc-columns`: a
-5-fixed-lane Kanban board (Idea/Outline/Draft/Revision/Done, `"N lanes · N cards"` header, `Add lane`
-button) sitting as a full-width sibling right after the Scene Draft column, reachable only by scrolling
-`.sc-columns`' horizontal scroller past Setup and Draft. **This is not part of the two-state model above
-and is not an approved third view** — resolve it as a drift finding, not new IA to design around:
-
-- It's Beta-2/3 Scene Crafter (see the outdated `plans/ProjectGoalOverView/07-scene-crafter.md`: same
-  concept, same "link a card to a real scene" behavior, earlier column names Ideas/Drafting/Writing/
-  Revised/Cut), which `plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`
-  ("Explicitly obsolete — no carry-forward") already retired in favor of this spec's §7.1/Canvas Board.
-  `SceneCrafterPage.css:939` even self-labels the block `/* Kanban lanes (Beta-2 selectors... */`.
-- It never got deleted when Canvas Board (M18/M19) shipped, and Beta-4 code (`chosenCards()`,
-  `addSuggestedCard()`) was subsequently built depending on it — clicking a suggested card writes into
-  `board.lanes[0]` so it counts toward the AI draft prompt. That coupling, plus ~15 lane-specific tests,
-  is why it can't simply be deleted outright without a rewire.
-- **Disposition: retire, don't document as permanent.** SKY-7601 scopes the migration (rewire
-  `chosenCards()`/suggested-card-click onto the real Plan Cards mechanism, decide the fate of
-  `manuscriptSceneId`/"Go to scene," remove the lanes UI, retire the lane tests). Once SKY-7601 ships,
-  this subsection should be deleted — the two-state model becomes accurate again with no caveat.
-
 ### 1.2 Canvas
 - World size: **2200×1500px** fixed, independent of viewport — cards are absolutely positioned within it.
 - Surface: dotted grid, 22px pitch, `radial-gradient(rgba(158,178,214,.14) 1px, transparent 1.3px)`, over
@@ -114,8 +92,11 @@ and is not an approved third view** — resolve it as a drift finding, not new I
 - Grouped under category headers (uppercase, 9px, letter-spaced) sourced live from the vault
   (Characters/Locations/Items & Systems today — extensible to any vault folder).
 
-**Vault-reference card** (inline columns beside Scene Draft, same visual family as suggested cards, plus
-a "remove from board" × in the top-right corner of the avatar swatch).
+**Vault-reference card** (inline columns beside Scene Draft, §3 — prototype line 1451): 13px radius,
+glass fill, 1px border in the column's slot color; a 52px initials band (gradient of the slot color
+toward the next slot), then name (12px/600, one line, ellipsis) and one-line role/excerpt (10.5px,
+ellipsis); a "remove from this scene" × in the top-right corner of the band (hover → red). Hover lifts
+the card 2px with a slot-color glow. Click opens the referenced note.
 
 **Draft card** (Scene Draft column — the AI first-pass output):
 - Header: ✎ avatar + `<Scene title> — first pass`.
@@ -133,17 +114,33 @@ a "remove from board" × in the top-right corner of the avatar swatch).
     button** (the prototype only shows two — Add to board / Retry). Keep it; it's a straightforward
     forgiveness-heuristic improvement over the prototype and costs nothing.
 
-## 3. Right kanban (beats / cast / places)
+## 3. Vault-reference columns (characters / locations / items & systems)
 
-Inline aside beside the canvas-adjacent Scene Draft column (not a separate app-level right panel —
-distinct from the editor's "Scenes" tab, which is a different, read-only mini-canvas surface, §6).
-Three columns, each a vertical card stack:
-- **BEATS** — mirrors the Scene Setup beat list live.
-- **CAST** — vault Characters notes; click opens the note.
-- **PLACES** — vault Locations notes; click opens the note.
-Empty-column copy should say what's missing and where to fix it (`No Characters notes in your vault
-yet.`) rather than just "Empty" — this is already how PR #973 wrote it; keep that pattern for any new
-column added later.
+**Owner ruling, 2026-08-26 (SKY-11072):** the Setup view's right side is the prototype's
+`crafterVaultCols` — three vault-reference columns — not the earlier BEATS/CAST/PLACES kanban this
+section used to describe. The prototype wins over FULL-SPEC §7.1's old wording (both docs now agree).
+
+Three 250px columns inline in the same horizontal scroller as Scene Setup and Scene Draft (not a
+separate app-level right panel — distinct from the editor's "Scenes" tab, the read-only mini-canvas
+surface of §6), each a vertical stack of **vault-reference cards** (§2):
+- **CHARACTERS** (slot A header) — vault `Characters` folder, or any `#Character`-signalled note
+  when no such folder exists (same resolution as the POV picker).
+- **LOCATIONS** (slot B header) — vault `Locations` folder.
+- **ITEMS & SYSTEMS** (slot D header) — vault `Items & Systems` folder.
+
+Column headers carry their slot color with the prototype's soft text glow. Behaviour:
+- Cards are **references** to vault notes — click opens the note.
+- **×** (top-right of the initials band) removes the reference from THIS scene only. It never
+  deletes or edits the note; the tooltip says so.
+- **`+`** on a column header opens a picker in the same card family as the SUGGESTED CARDS rail
+  (searchable, any vault note). Picking a note adds it to that column; picking a previously-removed
+  note is the un-remove path.
+- **Beats are not a column.** Beat editing lives in the Scene Setup form only. Boards saved by the
+  retired lanes-kanban era that hold a `Beats` lane migrate those card titles into the Setup beats
+  list on load — read-only; the board file on disk is never rewritten (B4-3).
+
+Empty-column copy keeps the "say what's missing and where to fix it" pattern
+(`No Characters notes in your vault yet — press + to reference any note.`) rather than just "Empty".
 
 ## 4. Interaction spec
 
@@ -170,15 +167,18 @@ column added later.
   but pair it with a "Card deleted" toast + Undo per the Forgiveness heuristic, matching how the app
   already handles "Empty scene discarded" elsewhere. Deleting a card also removes its connections.
 
-### 4.5 Keyboard paths — **not yet implemented, spec proposal**
+### 4.5 Keyboard paths — **implemented** (SKY-7929 #1043, SKY-7330 #1092)
 
-Verified against the shipped code: `canvas/CanvasBoard.tsx` has no `tabIndex`, `onKeyDown`, or `role`
-on any card — the canvas is currently mouse-only end to end (create/move/connect/delete all require a
-pointer). This is a real gap against this issue's own DoD line ("keyboard paths") and against WCAG
-2.1.1 (keyboard operable), and it isn't unique to Scene Crafter — `canvas/CanvasBoard.tsx` is shared
-with the M20 Brainstorm board (PR #958), so fixing it here fixes both surfaces.
+`canvas/CanvasBoard.tsx` now has a full keyboard path: `tabIndex`/`onKeyDown`/`role="group"` on the
+pan layer and every card head/resize handle, arrow-key nudge, Enter/Space to start/complete a link,
+Escape to cancel, Delete/Backspace to delete with the same undo toast as the mouse path. Landed as a
+shared-engine fix (`canvas/CanvasBoard.tsx`), so it also covers the M20 Brainstorm board (PR #958) as
+originally scoped. Two small deviations from the model below, left as-is (not worth a follow-up):
+Tab's first stop inside the canvas is the pan layer, not the first card (one extra Tab reaches it);
+`aria-label` composes title + description rather than a "category" field, since `CanvasCard` has no
+category field to read.
 
-Proposed model (component-agnostic, applies to any board built on this engine):
+Original proposal (component-agnostic, applies to any board built on this engine) — kept for reference:
 1. `Tab` into the canvas focuses the first card in DOM order; `Tab`/`Shift+Tab` cycle cards.
    Focused card gets `var(--focus-ring)` outline (not `--color-accent}` — per the existing
    accessibility lesson already logged for this codebase).
@@ -191,14 +191,9 @@ Proposed model (component-agnostic, applies to any board built on this engine):
 6. Each card needs `role="group"` + `aria-label` combining title and category so a screen reader user
    gets equivalent information to the visual avatar+title.
 
-This is scoped as its own follow-up (see §8) — it's a shared-engine change, not a one-file fix, and
-shouldn't block PR #973's merge.
-
-### 4.6 Reduced motion
-- The busy-state skeleton pulse (`sc-pulse`, `SceneCrafterPage.css`) is a 1.1s infinite animation with
-  **no `prefers-reduced-motion` override** — every sibling CSS file in this codebase (including
-  `canvas/CanvasBoard.css`, which this same PR touches) has one; this file is the exception. Concrete
-  fix in §8.
+### 4.6 Reduced motion — **implemented** (SKY-7589 #1007)
+- The busy-state skeleton pulse (`sc-pulse`, `SceneCrafterPage.css`) now has a `prefers-reduced-motion`
+  override, matching every sibling CSS file in this codebase.
 - Canvas pan/zoom itself is user-driven (not an ambient loop) so it isn't subject to this — only the
   `lnPulse`-style looping animations (busy skeletons, the "Connecting…" pulse text) need the guard.
 
@@ -220,6 +215,12 @@ common-region: same-type cards read as a group at a glance without needing a leg
 per-category (not per-panel) assignment if new categories are added later — don't reuse slot F (chrome)
 for a 6th category; if a 6th type is needed, differentiate by icon/glyph within an existing slot color
 rather than breaking the chrome/content color separation.
+
+**Carve-out — the AI first-pass draft card (owner ruling, 2026-08-26, SKY-11072):** the one deliberate
+exception to "slot F is never used for cards". The `— first pass` card `composeDraftPassCard` places on
+the canvas (`c: 5`) keeps the **chrome color** — it marks system-generated scaffolding, not vault
+content, and the owner ruled it stays that way. No other card may use slot F. Also ruled at the same
+time: the selected-card glow on the suggested rail stays **cyan** (slot A), as shipped in PR #1343.
 
 All glass/blur/glow values (`--glass2`, `--gr`, `--bw`) inherit the user's global intensity/glass/blur
 Appearance settings — nothing on this surface should hardcode an opacity or blur radius that bypasses
@@ -243,25 +244,31 @@ UX defect — flag it back to product if per-scene board scoping becomes a real 
 | `crafterState` (setup, draft prompt, card composition helpers) | `frontend/src/pages/SceneCrafter/crafterState.ts` | Implemented, PR #973 |
 | `CanvasBoard` (shared engine, `readOnly` prop) | `frontend/src/canvas/CanvasBoard.tsx` | Implemented M18 (#864), extended PR #973 |
 | `ScenesPanel` (editor right-panel mini canvas) | `frontend/src/ScenesPanel.tsx` | Implemented, PR #973 |
-| Keyboard interaction layer (§4.5) | `frontend/src/canvas/CanvasBoard.tsx` | **Not implemented — spec only, follow-up issue** |
+| Keyboard interaction layer (§4.5) | `frontend/src/canvas/CanvasBoard.tsx` | Implemented, SKY-7929 #1043 + SKY-7330 #1092 |
 | Canvas empty-state ghost hint (§1.3) | `frontend/src/canvas/CanvasBoard.tsx` | **Not implemented — small follow-up** |
 
 ## 8. Cross-check against PR #973 — disposition
 
 Confirmed matching prototype + this spec (no action needed): two-view model, canvas world size/zoom
 range/pan behavior, card anatomy, dock, right kanban, draft generation flow including the added
-Discard button, POV-from-cast dropdown with Custom escape hatch, keyboard-accessible beat reordering
-(↑/↓ buttons alongside drag), draft error state with Retry/Discard.
+Discard button, keyboard-accessible beat reordering (↑/↓ buttons alongside drag), draft error state
+with Retry/Discard.
 
-Three concrete findings posted to PR #973 as review comments:
-1. **`ScenesPanel.tsx` empty states have no glyph** — reproduces the exact anti-pattern GAP-REPORT-v2
-   #12 already named for this surface. Small CSS/markup fix.
-2. **`SceneCrafterPage.css`'s `sc-pulse` animation has no `prefers-reduced-motion` override** — every
-   sibling stylesheet in the codebase has one; this is the one exception. One-block fix.
-3. **Canvas cards have no keyboard path** (create is keyboard-reachable via the dock button, but
-   move/connect/delete are pointer-only) — real WCAG gap, but shared-engine scope (also affects M20).
-   Scoped as a follow-up issue, not a blocker for this PR.
+**POV field — superseded by SKY-11049 item 7 (owner, 2026-08-26):** the PR #973 dropdown-with-Custom
+design above resolved cast names from a `CHARACTERS`-named vault folder only; the owner's real vault
+has no such folder (notes tagged `#Character` instead), which left the control with nothing to pick —
+"the POV selector should either be a blank box to type in, or pull up character cards. Right now it
+doesn't have anything to select." Fixed: POV is now always a free-text input (no hidden "Custom…"
+step); focusing/typing shows a card-family dropdown (same visual family as Suggested Cards) built from
+`castCardsFromSuggested`, which resolves a `Characters` folder if one exists, else any note carrying a
+character signal anywhere in the vault (frontmatter `type`/`tags`, or an inline `#character` tag), else
+nothing — an empty result is a plain text box with a hint, never a dead control.
 
-Findings 1–2 are small enough to land in PR #973 directly before merge. Finding 3 is filed as a
-follow-up child issue (canvas keyboard accessibility) since it touches shared engine code used by two
-in-flight milestones.
+Three concrete findings posted to PR #973 as review comments — **all three since closed**:
+1. **`ScenesPanel.tsx` empty states have no glyph** — fixed for the canvas-preview empty state
+   (`LayoutGrid` glyph). Two secondary empty/loading states in the same file (no-story-selected,
+   loading) are still plain text; minor, not the state this finding named — see SKY-11049's
+   conformance table for a possible follow-up.
+2. **`SceneCrafterPage.css`'s `sc-pulse` animation has no `prefers-reduced-motion` override** — fixed,
+   SKY-7589 #1007.
+3. **Canvas cards have no keyboard path** — fixed, SKY-7929 #1043 + SKY-7330 #1092 (§4.5).

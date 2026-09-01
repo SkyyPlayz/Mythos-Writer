@@ -1,16 +1,6 @@
 {
   "_comment": "Pre-existing never-passed optional callback props, tracked at introduction of the rule-3a check (SKY-10918). NOT a suppression forever — each entry needs a fix or a real future-hook allow-comment, tracked on SKY-10923 (ManuscriptView/StoryNavigator) or SKY-10926 (everything else). Regenerate with `node scripts/check-dead-wiring.mjs --update-baseline` after fixing an entry so it drops out and a regression on it fails CI again.",
   "entries": [
-    "frontend/src/ContinuityPanel.tsx::ContinuityPanel.onConsentGranted",
-    "frontend/src/EntityDetail.tsx::EntityDetail.onOpenEntity",
-    "frontend/src/NoteViewer.tsx::NoteViewer.onModeChange",
-    "frontend/src/NotesTabPanel.tsx::NotesTabPanel.onOpenInNewTab",
-    "frontend/src/SplitEditorPane.tsx::SplitEditorPane.onSplitPane",
-    "frontend/src/StoryNavigator.tsx::StoryNavigator.onCreatePart",
-    "frontend/src/TemplatePicker.tsx::TemplatePicker.onCreated",
-    "frontend/src/components/ContinuityPanel/ContinuityPanel.tsx::ContinuityPanel.onOpenEntityNote",
-    "frontend/src/story/ManuscriptView.tsx::ManuscriptView.onAddPart",
-    "frontend/src/story/ManuscriptView.tsx::ManuscriptView.onEditChapterNote",
-    "frontend/src/story/ManuscriptView.tsx::ManuscriptView.onEditPartNote"
+    "frontend/src/StoryNavigator.tsx::StoryNavigator.onCreatePart"
   ]
 }

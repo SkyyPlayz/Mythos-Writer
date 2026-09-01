@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import AgentProviderSection from '../AgentProviderSection';
 import AutoApplyCategoryToggles from '../AutoApplyCategoryToggles';
 import PersonaViewer from '../PersonaViewer';
+import SessionHistoryViewer from '../SessionHistoryViewer';
 import {
   MODEL_OPTIONS,
   BETA_READER_DEFAULTS,
@@ -137,6 +138,7 @@ function BrainstormRoutingPanel() {
 
 interface AgentsSectionProps {
   settings: AppSettings;
+  setSettings?: React.Dispatch<React.SetStateAction<AppSettings>>;
   providerKind: ProviderKind;
   agentOverrides: Record<AgentName, AgentOverrideState>;
   agentTestStatus: Record<AgentName, TestConnectionStatus>;
@@ -155,6 +157,7 @@ interface AgentsSectionProps {
 
 export default function AgentsSection({
   settings,
+  setSettings,
   providerKind,
   agentOverrides,
   agentTestStatus,
@@ -171,6 +174,64 @@ export default function AgentsSection({
   // Beta 3 M22: betaReader is optional in AppSettings (pre-M22 files) — the
   // panel normalizes it at load; this fallback keeps rendering total.
   const betaReader = settings.agents.betaReader ?? BETA_READER_DEFAULTS;
+
+  // SKY-10772 M12.5: index stats + action state
+  type IndexStats = { entityCount: number; lastScanAt: string | null; factDecisionCount: number; cacheRowCount: number } | null;
+  const [indexStats, setIndexStats] = useState<IndexStats>(null);
+  const [indexStatsLoading, setIndexStatsLoading] = useState(false);
+  const [indexActionStatus, setIndexActionStatus] = useState<string | null>(null);
+  const [rebuildJobId, setRebuildJobId] = useState<string | null>(null);
+
+  const loadIndexStats = useCallback(async () => {
+    if (!window.api?.agentIndex) return;
+    setIndexStatsLoading(true);
+    try {
+      const stats = await window.api.agentIndex.getStats();
+      setIndexStats(stats);
+    } catch {
+      // stats unavailable (no vault open) — leave null
+    } finally {
+      setIndexStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadIndexStats(); }, [loadIndexStats]);
+
+  const handleCleanIndex = useCallback(async () => {
+    if (!window.api?.agentIndex) return;
+    setIndexActionStatus('Cleaning…');
+    try {
+      const result = await window.api.agentIndex.clean();
+      setIndexActionStatus(
+        result.tombstonesIntact
+          ? `Done — ${result.decisionsPreserved} author decision${result.decisionsPreserved === 1 ? '' : 's'} preserved.`
+          : 'Warning: tombstone count changed — check console.',
+      );
+      void loadIndexStats();
+    } catch {
+      setIndexActionStatus('Clean failed — see console.');
+    }
+  }, [loadIndexStats]);
+
+  const handleRebuildIndex = useCallback(async () => {
+    if (!window.api?.agentIndex) return;
+    setIndexActionStatus('Queuing full scan…');
+    setRebuildJobId(null);
+    try {
+      const result = await window.api.agentIndex.rebuild();
+      if ('error' in result) {
+        setIndexActionStatus(`Rebuild failed: ${result.error}`);
+      } else {
+        setRebuildJobId(result.jobId);
+        setIndexActionStatus('Scan job queued — running in background.');
+        void loadIndexStats();
+      }
+    } catch {
+      setIndexActionStatus('Rebuild failed — see console.');
+    }
+  }, [loadIndexStats]);
+
+  const autoScanEnabled = settings.agentIndexAutoScan !== false;
 
   return (
     <section className="settings-section" aria-labelledby="section-agents" data-settings-cat="agents">
@@ -399,6 +460,7 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="writingAssistant" />
+        <SessionHistoryViewer agentName="writingAssistant" />
       </div>
 
       <div className="settings-agent-card">
@@ -595,6 +657,7 @@ export default function AgentsSection({
           <BrainstormRoutingPanel />
         </div>
         <PersonaViewer agentName="brainstorm" />
+        <SessionHistoryViewer agentName="brainstorm" />
       </div>
 
       <div className="settings-agent-card">
@@ -754,6 +817,7 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="archive" />
+        <SessionHistoryViewer agentName="archive" />
       </div>
 
       {/* Beta 3 M22: fourth named agent — Beta Reader (prototype agentDefs, HTML 4350).
@@ -903,6 +967,80 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="betaReader" />
+        <SessionHistoryViewer agentName="betaReader" />
+      </div>
+
+      {/* SKY-10772 M12.5: AI Agents index controls */}
+      <div className="settings-agent-card" data-testid="agent-index-controls">
+        <div className="settings-agent-header">
+          <span className="settings-agent-name">Agent Index</span>
+        </div>
+        <div className="settings-agent-fields">
+          <p className="settings-hint" style={{ marginBottom: '0.5rem' }}>
+            The agent index tracks entities and facts across your vault.
+            Derived data is always rebuildable; author decisions (dismissed flags) are durable and survive any clean.
+          </p>
+
+          {/* Stats row */}
+          <div className="settings-field settings-field-inline" style={{ alignItems: 'flex-start', flexDirection: 'column', gap: '0.25rem' }}>
+            <span className="settings-label">Index stats</span>
+            {indexStatsLoading && <span className="settings-hint">Loading…</span>}
+            {!indexStatsLoading && indexStats === null && (
+              <span className="settings-hint">No vault open.</span>
+            )}
+            {!indexStatsLoading && indexStats !== null && (
+              <ul className="settings-hint" style={{ margin: 0, paddingLeft: '1.2em' }}>
+                <li>Entities: <strong>{indexStats.entityCount}</strong></li>
+                <li>Cache rows: <strong>{indexStats.cacheRowCount}</strong></li>
+                <li>Author decisions: <strong>{indexStats.factDecisionCount}</strong></li>
+                <li>Last scan: <strong>{indexStats.lastScanAt ? new Date(indexStats.lastScanAt).toLocaleString() : 'never'}</strong></li>
+              </ul>
+            )}
+          </div>
+
+          {/* Auto-scan toggle */}
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="agent-index-auto-scan">Background auto-scan on save</label>
+            <label className="settings-toggle">
+              <input
+                id="agent-index-auto-scan"
+                type="checkbox"
+                checked={autoScanEnabled}
+                onChange={(e) => {
+                  setSettings?.((prev) => ({ ...prev, agentIndexAutoScan: e.target.checked }));
+                }}
+              />
+              <span className="settings-toggle-track" />
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div className="settings-field" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="agent-index-clean-btn"
+              onClick={() => void handleCleanIndex()}
+            >
+              Clean index
+            </button>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="agent-index-rebuild-btn"
+              onClick={() => void handleRebuildIndex()}
+            >
+              Rebuild index
+            </button>
+          </div>
+
+          {indexActionStatus && (
+            <p className="settings-hint" data-testid="agent-index-status" style={{ marginTop: '0.25rem' }}>
+              {indexActionStatus}
+              {rebuildJobId && <span style={{ marginLeft: '0.5em', opacity: 0.6 }}>(job {rebuildJobId.slice(0, 8)}…)</span>}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* M6: green callout — note linking is built-in, no agent needed (spec §13) */}

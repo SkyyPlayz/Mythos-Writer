@@ -27,6 +27,12 @@ import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// SKY-11058: sessionStorage flag set by DesktopShell's 'mythos:import-notes-
+// vault' listener right before the wizard-replay reload — it survives the
+// window.location.reload() and the wizard consumes it (once) on mount to land
+// directly on the Import screen.
+export const WIZARD_OPEN_IMPORT_STEP_KEY = 'mythos.wizard.openImportStep';
+
 // SKY-2988: custom-location + custom-template are the Start Fresh location/template screens
 // SKY-2990: step-import is the 3-section Import/Open picker screen
 // Beta 3 M25 / Beta 4 M29: custom-genre + custom-theme are the shared genre and
@@ -180,9 +186,13 @@ type Api = {
   }>;
   /** SKY-2993: Obsidian vault importer — dry-run scan + commit (onboarding Path 3) */
   dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
-  /** SKY-10388: all selected sources go into ONE new Mythos vault at destParentPath. */
-  importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string }) => Promise<{ ok: boolean; mythosVaultRoot?: string; error?: string; dropWarning?: string }>;
+  /** SKY-10388: all selected sources go into ONE new Mythos vault at destParentPath.
+   *  SKY-11058: destMode 'extra-notes-vault' instead registers the (notes-kind
+   *  only) source as an additional notes vault inside the current vault. */
+  importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string; destMode?: 'new-mythos-vault' | 'extra-notes-vault' }) => Promise<{ ok: boolean; mythosVaultRoot?: string; notesVaultId?: string; notesVaultDisplayName?: string; error?: string; dropWarning?: string }>;
   onObsidianImportProgress?: (cb: (data: ObsidianImportProgress) => void) => () => void;
+  /** SKY-11058: non-null vaults ⇔ a v2 Mythos vault is currently open. */
+  notesVaultRegistryList?: () => Promise<{ vaults: Array<{ id: string; displayName: string }> | null; activeId: string | null }>;
 };
 
 // SKY-2993: dry-run summary returned by dryRunObsidianImport
@@ -663,6 +673,16 @@ function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onT
 
 export default function OnboardingWizard({ initialSettings, onComplete, onCancel, _testInitialStep }: OnboardingWizardProps) {
   const [step, setStep] = useState<WizardStep>(_testInitialStep ?? 'step1');
+  // SKY-11058: NotesVaultPicker's "Import a vault…" replays the wizard with
+  // this flag set — consume it exactly once and land on the Import screen.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(WIZARD_OPEN_IMPORT_STEP_KEY)) {
+        sessionStorage.removeItem(WIZARD_OPEN_IMPORT_STEP_KEY);
+        setStep('step-import');
+      }
+    } catch { /* sessionStorage unavailable — start on step1 as usual */ }
+  }, []);
   const [startMode, setStartMode] = useState<StartMode | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   // SKY-2008: step1c genre picker state
@@ -842,6 +862,25 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   const [obsImporting, setObsImporting] = useState(false);
   const [obsProgress, setObsProgress] = useState<ObsidianImportProgress | null>(null);
   const [obsError, setObsError] = useState('');
+
+  // ─── SKY-11058 item 4: import as an ADDITIONAL notes vault ─────────────────
+  // Only offered on a wizard REPLAY with a currently-open v2 Mythos vault
+  // (notesVaultRegistryList returns non-null vaults). First-run onboarding has
+  // no open vault, the list call returns null, and no radios render — the
+  // default new-Mythos-vault copy stays byte-for-byte as today.
+  const [obsDestMode, setObsDestMode] = useState<'new-mythos-vault' | 'extra-notes-vault'>('new-mythos-vault');
+  const [extraNotesVaultAvailable, setExtraNotesVaultAvailable] = useState(false);
+  useEffect(() => {
+    api().notesVaultRegistryList?.().then((res) => {
+      if (res && res.vaults !== null) setExtraNotesVaultAvailable(true);
+    }).catch(() => { /* non-fatal — radios stay hidden */ });
+  }, []);
+  // A story-kind source can never become a notes vault — option (b) is
+  // disabled (with a hint) while the story slot is filled, and the effective
+  // mode falls back to the default so a stale radio choice can't leak through.
+  const obsExtraDisabled = Boolean(importObsStoryPath);
+  const obsEffectiveDestMode: 'new-mythos-vault' | 'extra-notes-vault' =
+    extraNotesVaultAvailable && !obsExtraDisabled ? obsDestMode : 'new-mythos-vault';
 
   // SKY-2007: load system path suggestions when the save-location step opens
   // SKY-2988: also load for the Custom Setup location picker
@@ -1559,6 +1598,32 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
     setObsProgress(null);
     const unsubscribe = api().onObsidianImportProgress?.((data) => setObsProgress(data));
     try {
+      // SKY-11058 item 4 (owner ruling): option (b) — the source becomes an
+      // ADDITIONAL notes vault inside the currently-open Mythos vault. The
+      // app stays on its current vaults (no finishImportViaTail, no
+      // vault-settings repoint); the picker's notesVaultRegistry:changed push
+      // surfaces the new entry without activating it.
+      if (obsEffectiveDestMode === 'extra-notes-vault') {
+        const res = await api().importObsidianVault({
+          targets: obsDryRun.map((target) => ({ kind: target.kind, srcPath: target.path })),
+          destMode: 'extra-notes-vault',
+        });
+        if (!res.ok || res.error) {
+          setObsError(res.error ?? 'Import failed. Check the folder and try again.');
+          return;
+        }
+        if (res.dropWarning) showLnToast(res.dropWarning);
+        showLnToast(`Imported as notes vault "${res.notesVaultDisplayName ?? 'Notes'}"`);
+        // Re-arm the onboarding gate the replay disarmed, then close the
+        // wizard back to the untouched shell (best-effort persist — same
+        // non-fatal policy as withGuidedPersonalization).
+        try {
+          const fresh = await window.api.settingsGet();
+          await window.api.settingsSet({ ...fresh, onboardingComplete: true });
+        } catch { /* non-fatal — shell re-saves settings on any later change */ }
+        onComplete({ ...initialSettings, onboardingComplete: true });
+        return;
+      }
       const res = await api().importObsidianVault({
         targets: obsDryRun.map((target) => ({ kind: target.kind, srcPath: target.path })),
         destParentPath: importObsDestPath.trim() || undefined,
@@ -3319,6 +3384,15 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                   </section>
                 ))}
               </div>
+              {/* SKY-11058: say where the confirm will land when the replay
+                  offered a destination choice. */}
+              {extraNotesVaultAvailable && (
+                <p className="obs-report__meta" data-testid="obs-report-dest-mode">
+                  {obsEffectiveDestMode === 'extra-notes-vault'
+                    ? 'Destination: a new notes vault inside the current Mythos vault.'
+                    : 'Destination: a new Mythos vault copy.'}
+                </p>
+              )}
               {obsImporting && (
                 <p className="obs-report__progress" role="status" data-testid="obs-import-progress">
                   {obsProgress
@@ -3437,8 +3511,45 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 </button>
               </div>
             </div>
+            {/* SKY-11058 item 4: replay-only destination choice — (a) the
+                default new-Mythos-vault copy, (b) an additional notes vault
+                inside the currently-open Mythos vault. Hidden entirely on
+                first-run onboarding (no open v2 vault). */}
+            {extraNotesVaultAvailable && (
+              <fieldset className="import-dest-mode" data-testid="import-obs-dest-mode">
+                <legend className="import-slot__label">Import destination</legend>
+                <label className="import-dest-mode__option">
+                  <input
+                    type="radio"
+                    name="obs-dest-mode"
+                    checked={obsEffectiveDestMode === 'new-mythos-vault'}
+                    onChange={() => setObsDestMode('new-mythos-vault')}
+                    data-testid="import-obs-mode-new-vault"
+                  />
+                  <span>Create a new Mythos vault copy</span>
+                </label>
+                <label className={`import-dest-mode__option${obsExtraDisabled ? ' import-dest-mode__option--disabled' : ''}`}>
+                  <input
+                    type="radio"
+                    name="obs-dest-mode"
+                    checked={obsEffectiveDestMode === 'extra-notes-vault'}
+                    disabled={obsExtraDisabled}
+                    onChange={() => setObsDestMode('extra-notes-vault')}
+                    data-testid="import-obs-mode-extra-notes"
+                  />
+                  <span>Add as a notes vault in this Mythos vault</span>
+                </label>
+                {obsExtraDisabled && (
+                  <p className="import-dest-mode__hint" data-testid="import-obs-mode-hint">
+                    Story folders always create a new Mythos vault — clear the story slot to add a notes vault here.
+                  </p>
+                )}
+              </fieldset>
+            )}
             {/* SKY-10388 (owner rulings R2/R3): the import creates a NEW Mythos
-                vault here — prefilled with the default location, editable. */}
+                vault here — prefilled with the default location, editable.
+                SKY-11058: irrelevant (and hidden) for the notes-vault option. */}
+            {obsEffectiveDestMode === 'new-mythos-vault' && (
             <div className="import-slot">
               <span className="import-slot__label">New vault location</span>
               <VaultDestinationPicker
@@ -3451,6 +3562,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
                 testIdPrefix="import-obs-dest"
               />
             </div>
+            )}
             {/* SKY-2993: inline, retryable dry-run error — the submit button stays enabled */}
             {obsError && (
               <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-dryrun-error">

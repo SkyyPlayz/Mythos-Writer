@@ -432,3 +432,145 @@ describe('ContinuityPanel — failed action keeps the flag open (M9d)', () => {
     expect(screen.getByText(/Manuscript says green but vault says blue/i)).toBeInTheDocument();
   });
 });
+
+// M12.3 (SKY-10770): scan-scope picker + scoped background scan + global
+// contradiction section.
+describe('ContinuityPanel — M12.3 scan scope picker', () => {
+  function jobsMock() {
+    return {
+      enqueue: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      list: vi.fn().mockResolvedValue({ jobs: [] }),
+      progress: vi.fn().mockResolvedValue({}),
+      cancel: vi.fn().mockResolvedValue({ cancelled: false }),
+      onEvent: vi.fn(() => vi.fn()),
+    };
+  }
+
+  it('renders the scope picker attached to the scan trigger, defaulting to Scene', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    const picker = await screen.findByRole('combobox', { name: /scan scope/i });
+    expect(picker).toHaveTextContent('Scene');
+  });
+
+  it('initializes from the legacy full_manuscript setting as Book', async () => {
+    await renderContinuity(
+      <ContinuityPanel scene={mockScene} archiveScanScope="full_manuscript" />,
+    );
+    expect(await screen.findByRole('combobox', { name: /scan scope/i })).toHaveTextContent('Book');
+  });
+
+  it('scanning with a picked scope enqueues a scoped manuscript-scan and widens the LLM scan', async () => {
+    const jobs = jobsMock();
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+
+    fireEvent.click(await screen.findByRole('combobox', { name: /scan scope/i }));
+    fireEvent.click(await screen.findByTestId('select-option-chapter'));
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }));
+
+    expect(jobs.enqueue).toHaveBeenCalledWith('manuscript-scan', {
+      scope: { level: 'chapter', sceneId: 'sc-1' },
+    });
+    expect(mockArchiveScanContinuity).toHaveBeenCalledWith(
+      'sc-1',
+      expect.stringContaining('Her eyes were green'),
+      'active_chapter',
+    );
+  });
+
+  it('default Scene scope enqueues a scene-level scoped scan', async () => {
+    const jobs = jobsMock();
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
+    expect(jobs.enqueue).toHaveBeenCalledWith('manuscript-scan', {
+      scope: { level: 'scene', sceneId: 'sc-1' },
+    });
+  });
+
+  it('still scans without a jobs bridge (older harnesses) — no crash, LLM scan fires', async () => {
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
+    expect(mockArchiveScanContinuity).toHaveBeenCalled();
+  });
+
+  it('surfaces an enqueue error instead of silently dropping the scoped scan', async () => {
+    const jobs = jobsMock();
+    jobs.enqueue.mockResolvedValue({ error: 'Scan scope resolved to no scenes — the anchor scene is not in the manifest.' });
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    fireEvent.click(await screen.findByRole('button', { name: /scan now/i }));
+    await flushAsyncEffects();
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/Background scan didn’t start/);
+  });
+
+  it('a failed background scan reports the failure — not silence', async () => {
+    let onEventCb: ((evt: unknown) => void) | null = null;
+    const jobs = {
+      ...jobsMock(),
+      onEvent: vi.fn((cb: (evt: unknown) => void) => {
+        onEventCb = cb;
+        return vi.fn();
+      }),
+    };
+    setApi({ jobs, archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+
+    await act(async () => {
+      onEventCb?.({
+        kind: 'failed',
+        progress: {
+          jobId: 'j1', type: 'manuscript-scan', status: 'failed',
+          totalUnits: 4, completedUnits: 1, skippedUnits: 0,
+          etaMs: null, ratePerSec: null, error: 'Worker exited unexpectedly',
+        },
+      });
+    });
+    expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/Background scan failed — Worker exited unexpectedly/);
+  });
+});
+
+describe('ContinuityPanel — M12.3 global contradictions (scope-independent)', () => {
+  const globalItem = (overrides: Record<string, unknown> = {}) => ({
+    id: 'gc-1',
+    category: 'factual_contradiction',
+    severity: 'critical',
+    sceneId: 'sc-OTHER',
+    offset: 0,
+    excerpt: 'The gate fell in the third winter.',
+    vaultNotePath: 'lore/The Gate.md',
+    vaultExcerpt: 'The gate has never fallen.',
+    rationale: 'contradicts lore',
+    createdAt: '2026-08-27T00:00:00.000Z',
+    entityName: 'The Gate',
+    entityType: 'location',
+    ...overrides,
+  });
+
+  it('negative control: no section when the global query returns nothing', async () => {
+    setApi({ archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [] }) });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    expect(screen.queryByTestId('cp-global-contradictions')).not.toBeInTheDocument();
+  });
+
+  it('surfaces a contradiction flagged in a DIFFERENT scene than the current one (AC3)', async () => {
+    setApi({
+      archiveListGlobalContradictions: vi.fn().mockResolvedValue({ items: [globalItem()] }),
+    });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    const section = await screen.findByTestId('cp-global-contradictions');
+    expect(section).toHaveTextContent('Elsewhere in manuscript');
+    expect(section).toHaveTextContent('The gate fell in the third winter.');
+    expect(section).toHaveTextContent('lore/The Gate.md');
+  });
+
+  it('items anchored to the CURRENT scene stay out of the elsewhere section (they live in the main list)', async () => {
+    setApi({
+      archiveListGlobalContradictions: vi.fn().mockResolvedValue({
+        items: [globalItem({ id: 'gc-here', sceneId: 'sc-1' })],
+      }),
+    });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    expect(screen.queryByTestId('cp-global-contradictions')).not.toBeInTheDocument();
+  });
+});

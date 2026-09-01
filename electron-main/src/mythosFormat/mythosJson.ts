@@ -9,6 +9,9 @@
 //     timelines.json       ← timelines / eras / arcs / events (timelinesFile.ts)
 //     Story Vault/         ← manuscripts: <Story>/Part N/Chapter NN/Scene NN.md
 //     Notes Vault/         ← Obsidian-style notes
+//     Agent Vault/         ← machine state (agent chat sessions); visible but
+//                            not rendered in the notes UI (SKY-10952/SKY-10949,
+//                            supersedes the prototype's notes-tree Sessions/)
 //     .mythos/             ← machine-local, REGENERABLE state only (SQLite,
 //                            manifest cache, backups). Deleting it must never
 //                            lose user work (the storage rule, overview §Data
@@ -30,6 +33,11 @@ export const MYTHOS_FORMAT_VERSION = 2 as const;
 
 export const STORY_VAULT_DIRNAME = 'Story Vault';
 export const NOTES_VAULT_DIRNAME = 'Notes Vault';
+// SKY-10952 (owner ruling 2026-08-19, SKY-10949): third top-level sibling —
+// machine state (agent chat sessions today) that is visible but not rendered
+// in the notes UI. Not hidden — a curious user can open it — just kept out of
+// the user-content tree so it doesn't clutter Notes Vault.
+export const AGENT_VAULT_DIRNAME = 'Agent Vault';
 export const MYTHOS_MACHINE_DIRNAME = '.mythos';
 /** Regenerable legacy-Manifest cache for v2 vaults (never the source of truth). */
 export const MANIFEST_CACHE_FILENAME = 'manifest-cache.json';
@@ -59,6 +67,16 @@ export interface MythosMigrationRecord {
   migratorVersion: number;
 }
 
+/**
+ * SKY-11068: per-vault icon shown on the story switcher / rail header.
+ * `glyph` is an emoji or a couple of letters; `image` names an icon file
+ * stored directly at the mythos root, so it travels with the vault on
+ * move/copy (vaults are self-contained, SKY-10949).
+ */
+export type MythosVaultIcon =
+  | { kind: 'glyph'; value: string }
+  | { kind: 'image'; file: string };
+
 export interface MythosFile {
   formatVersion: number;
   id: string;
@@ -66,6 +84,8 @@ export interface MythosFile {
   createdAt: string;
   /** Theme preset key applied when this vault is opened (per-vault default theme). */
   defaultTheme?: string;
+  /** Author-set vault icon; absent → callers render an initials default. */
+  icon?: MythosVaultIcon;
   stories: MythosStoryRef[];
   /**
    * Seed-once marker. Non-null means "a seed decision was recorded for this
@@ -104,6 +124,10 @@ export function storyVaultRootFor(mythosRoot: string): string {
 
 export function notesVaultRootFor(mythosRoot: string): string {
   return path.join(mythosRoot, NOTES_VAULT_DIRNAME);
+}
+
+export function agentVaultRootFor(mythosRoot: string): string {
+  return path.join(mythosRoot, AGENT_VAULT_DIRNAME);
 }
 
 export function manifestCachePathFor(storyVaultRoot: string): string {
@@ -150,6 +174,32 @@ function sanitizeStoryRef(raw: unknown): MythosStoryRef | null {
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date(0).toISOString(),
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : new Date(0).toISOString(),
   };
+}
+
+/**
+ * SKY-11068: validate a raw vault-icon value. Mirrors sanitizeStoryRef's
+ * refusal of path-capable strings — `file` is joined onto the mythos root by
+ * the icon loader, so it must be a bare file name. Returns null when invalid
+ * (callers drop the field rather than failing the whole parse).
+ */
+export function sanitizeVaultIcon(raw: unknown): MythosVaultIcon | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.kind === 'glyph') {
+    if (typeof r.value !== 'string') return null;
+    const value = r.value.trim();
+    // Emoji ZWJ sequences can span several UTF-16 units; 16 is plenty for
+    // any glyph while refusing pasted prose.
+    if (!value || value.length > 16 || /[\n\r\0]/.test(value)) return null;
+    return { kind: 'glyph', value };
+  }
+  if (r.kind === 'image') {
+    if (typeof r.file !== 'string' || !r.file) return null;
+    if (r.file.includes('/') || r.file.includes('\\') || r.file.includes('\0')) return null;
+    if (r.file === '.' || r.file === '..') return null;
+    return { kind: 'image', file: r.file };
+  }
+  return null;
 }
 
 /**
@@ -203,6 +253,7 @@ export function parseMythosFile(rawText: string, filePath = MYTHOS_JSON_FILENAME
       migratorVersion: typeof m.migratorVersion === 'number' ? m.migratorVersion : 1,
     };
   }
+  const icon = sanitizeVaultIcon(r.icon);
   return {
     formatVersion: MYTHOS_FORMAT_VERSION,
     id: typeof r.id === 'string' && r.id ? r.id : crypto.randomUUID(),
@@ -211,6 +262,7 @@ export function parseMythosFile(rawText: string, filePath = MYTHOS_JSON_FILENAME
     ...(typeof r.defaultTheme === 'string' && r.defaultTheme
       ? { defaultTheme: r.defaultTheme }
       : {}),
+    ...(icon ? { icon } : {}),
     stories,
     seed,
     ...(migratedFrom ? { migratedFrom } : {}),

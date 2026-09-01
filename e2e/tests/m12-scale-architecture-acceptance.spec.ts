@@ -36,8 +36,13 @@ import { measureKeystrokeToPaint } from '../perf/ui-runtime/keystrokePaint';
  * with a real interaction: real vault-scan job through the production
  * `window.api.jobs` IPC surface, real keystrokes into the real ProseMirror
  * editor via `measureKeystrokeToPaint` (CDP-traced main-thread time, not a
- * mocked signal). The other M12.1/M12.2 cases are untouched — they verify
+ * mocked signal). The remaining M12.1 cases are untouched — they verify
  * different acceptance criteria and stay with their named owners.
+ *
+ * SKY-10839 (2026-08-26) closed out the M12.2 block below: owner ruling
+ * SKY-11035 dropped the notes-sourced fact ledger before it had a UI, so
+ * the fixmes that targeted that UI were removed rather than faked. See the
+ * comment on the M12.2 describe block for what still covers AC2.
  */
 
 test.describe('M12.1 — background job/queue infrastructure (real E2E)', () => {
@@ -128,21 +133,22 @@ test.describe('M12.1 — background job/queue infrastructure (real E2E)', () => 
   );
 });
 
-test.describe('M12.2 — fact-ledger schema + persistent vault index cache (real E2E)', () => {
-  test.fixme(
-    'reopening the entity panel on an unchanged vault reads from the persistent index cache instead of rebuilding ' +
-      '(negative control: today\'s rebuild-on-open path measurably re-executes first)',
-    async () => {}
-  );
-
-  test.fixme(
-    'dismissing a suggested fact ("don\'t ask again"), then forcing a full index rebuild, leaves the fact dismissed ' +
-      '(negative control: a hard-deleted dismissal reappears after rebuild first)',
-    async () => {}
-  );
-
-  test.fixme(
-    'the fact ledger never renders as vault content — a ledger-only extracted fact does not appear as a note in the Notes Vault',
-    async () => {}
-  );
-});
+// M12.2 (SKY-10731) closeout, 2026-08-26: owner ruling SKY-11035 (applied by
+// SKY-11037) dropped the notes-sourced fact ledger and its extractor before
+// any UI shipped for it. There is no "suggested fact" surface and no
+// dismiss/tombstone UI to drive, so the two fixmes below that targeted that
+// surface are removed rather than faked — per COMPANY-STANDARDS §4c a test
+// must drive a reachable feature, never pre-seed the thing under test.
+//
+// The remaining M12.2 fixme ("reopening the entity panel reads the
+// persistent cache") is covered without a new test here:
+//   - functionally, at the real UI->IPC->disk->back layer, by
+//     e2e/continuity-peek.spec.ts TC-CP-11 ("re-triggered lookup reads
+//     updated note content from disk") — that test edits a note on disk and
+//     asserts the re-lookup reflects it, which only works because
+//     loadEntityIndex()'s content-hash staleness check is real;
+//   - at the DB layer (cache row present / indexed_at unchanged on an
+//     unchanged-content repeat load, spy-verified zero re-parses), by
+//     electron-main/src/entityIndexCache.acceptance.test.ts.
+// A third, UI-level test asserting the same DB row directly would duplicate
+// both without adding coverage.

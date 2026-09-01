@@ -12,6 +12,7 @@ import path from 'node:path';
 import { isSafeVaultName, pickUniqueMythosVaultName } from '../mythosVault.js';
 import {
   MYTHOS_MACHINE_DIRNAME,
+  agentVaultRootFor,
   createMythosFile,
   notesVaultRootFor,
   storyVaultRootFor,
@@ -54,8 +55,8 @@ export const BLANK_SEED_LAYOUT = 'blank@M5';
 /**
  * Scaffold a complete v2 vault under `parentDir`:
  * mythos.json + settings.json + timelines.json + Story Vault/ + Notes Vault/
- * (+ the Veynn demo unless seedDemo=false). Refuses to write into an existing
- * non-empty folder — user data is never overwritten.
+ * + Agent Vault/ (+ the Veynn demo unless seedDemo=false). Refuses to write
+ * into an existing non-empty folder — user data is never overwritten.
  */
 export function createMythosVault(
   parentDir: string,
@@ -82,9 +83,11 @@ export function createMythosVault(
 
   const storyVaultPath = storyVaultRootFor(mythosRoot);
   const notesVaultPath = notesVaultRootFor(mythosRoot);
+  const agentVaultPath = agentVaultRootFor(mythosRoot);
   try {
     fs.mkdirSync(storyVaultPath, { recursive: true });
     fs.mkdirSync(notesVaultPath, { recursive: true });
+    fs.mkdirSync(agentVaultPath, { recursive: true });
     fs.mkdirSync(path.join(storyVaultPath, MYTHOS_MACHINE_DIRNAME), { recursive: true });
 
     const mythos: MythosFile = createMythosFile(vaultName, {

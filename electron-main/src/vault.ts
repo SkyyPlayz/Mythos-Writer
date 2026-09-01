@@ -559,19 +559,44 @@ export function excerptFromMarkdown(raw: string): string {
 }
 
 /**
- * Bounded excerpt read for a listing entry — first EXCERPT_READ_BYTES only,
- * never the whole file. Any read failure yields '' so one bad file cannot
- * break the vault listing.
+ * SKY-11049 item 7: does this note look like a character note, for the Scene
+ * Crafter POV picker's fallback when the vault has no top-level `Characters`
+ * folder? Three signals, matching how Obsidian users actually tag notes:
+ * frontmatter `type: character` (same convention as entityFrontmatterParser's
+ * `type` field), a frontmatter `tags:` entry of `character`, or an inline
+ * `#character` hashtag in the body (optionally nested, `#character/pov`).
  */
-export function readNoteExcerpt(absPath: string): string {
+export function noteHasCharacterSignal(raw: string): boolean {
+  const { frontmatter, prose } = parseFrontmatter(raw);
+  const type = frontmatter['type'];
+  if (typeof type === 'string' && type.trim().toLowerCase() === 'character') return true;
+  const tagsRaw = frontmatter['tags'];
+  const tagList = Array.isArray(tagsRaw) ? tagsRaw : typeof tagsRaw === 'string' ? [tagsRaw] : [];
+  if (tagList.some((tag) => String(tag).trim().toLowerCase().replace(/^#/, '') === 'character')) return true;
+  return /(^|\s)#character(?:\/[\w-]+)?\b/i.test(prose);
+}
+
+export interface NoteListingMeta {
+  excerpt: string;
+  /** SKY-11049: vault-wide character signal, independent of folder placement. */
+  characterTag: boolean;
+}
+
+/**
+ * Bounded listing-metadata read — first EXCERPT_READ_BYTES only, never the
+ * whole file. Any read failure yields the empty/false defaults so one bad
+ * file cannot break the vault listing.
+ */
+export function readNoteListingMeta(absPath: string): NoteListingMeta {
   let fd: number | null = null;
   try {
     fd = fs.openSync(absPath, 'r');
     const buf = Buffer.alloc(EXCERPT_READ_BYTES);
     const bytesRead = fs.readSync(fd, buf, 0, EXCERPT_READ_BYTES, 0);
-    return excerptFromMarkdown(buf.toString('utf-8', 0, bytesRead));
+    const raw = buf.toString('utf-8', 0, bytesRead);
+    return { excerpt: excerptFromMarkdown(raw), characterTag: noteHasCharacterSignal(raw) };
   } catch {
-    return '';
+    return { excerpt: '', characterTag: false };
   } finally {
     if (fd !== null) {
       try { fs.closeSync(fd); } catch { /* ignore close errors */ }

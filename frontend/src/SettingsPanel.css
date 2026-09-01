@@ -1438,6 +1438,114 @@
   color: var(--state-danger);
 }
 
+/* ─── Agent session history (SKY-10954) ──────────────────────────────────── */
+
+.settings-session-history {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+}
+
+.settings-session-history-panel {
+  margin-top: 8px;
+}
+
+.settings-session-history-body {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-session-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.settings-session-history-item {
+  width: 100%;
+  text-align: left;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 5px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-session-history-item:hover {
+  background: var(--bg-elevated);
+}
+
+.settings-session-history-item--active {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
+.settings-session-history-item-title {
+  font-size: 0.75rem;
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-session-history-item-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.settings-session-history-transcript {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.settings-session-history-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-session-history-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-session-history-turn-role {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.settings-session-history-turn--user .settings-session-history-turn-role {
+  color: var(--accent);
+}
+
+.settings-session-history-turn-text {
+  font-size: 0.75rem;
+  color: var(--text-body);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 /* ── Telemetry list (MYT-779) ── */
 .settings-telemetry-list {
   margin: 6px 0 8px 0;

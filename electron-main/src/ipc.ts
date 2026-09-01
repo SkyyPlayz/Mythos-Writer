@@ -306,6 +306,10 @@ export const IPC_CHANNELS = {
   PROJECT_SWITCH: 'project:switch',
   // Beta 4 M2 — per-vault stats for the title-bar Mythos-vault switcher (§4)
   PROJECT_STATS: 'project:stats',
+  // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
+  PROJECT_ICONS: 'project:icons',
+  PROJECT_ICON_SET: 'project:iconSet',
+  PROJECT_ICON_PICK: 'project:iconPick',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -482,6 +486,13 @@ export const IPC_CHANNELS = {
   // read-only NOTES_VAULT_READ_ICONS above (frontmatter-derived, file-only).
   NOTES_VAULT_SET_ICON: 'notesVault:setIcon',
 
+  // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
+  NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
+  NOTES_VAULT_REGISTRY_CREATE: 'notesVaultRegistry:create',
+  NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW: 'notesVaultRegistry:setActivePreview',
+  NOTES_VAULT_REGISTRY_SET_ACTIVE: 'notesVaultRegistry:setActive',
+  NOTES_VAULT_REGISTRY_RENAME: 'notesVaultRegistry:rename',
+
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   SMART_FOLDER_LIST: 'smartFolder:list',
   SMART_FOLDER_CREATE: 'smartFolder:create',
@@ -575,10 +586,18 @@ export const IPC_CHANNELS = {
   NAVIGATOR_REPORT_MANIFEST: 'navigator:report-manifest',
   NAVIGATOR_MANIFEST_CHANGED: 'navigator:manifest-changed',
 
+  // SKY-10916: app-wide nav history — OS-level back/forward mouse buttons
+  // (Windows `app-command` browser-backward/-forward) forwarded to the renderer.
+  NAV_HISTORY_BACK: 'nav-history:back',
+  NAV_HISTORY_FORWARD: 'nav-history:forward',
+
   // SKY-1684: Archive Agent v1 — continuity scan IPC
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
   ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',
   ARCHIVE_LIST_CONTINUITY: 'archive:list-continuity',
+  // M12.3 (SKY-10770): global contradiction query — always whole-manuscript,
+  // independent of any scan scope.
+  ARCHIVE_LIST_GLOBAL_CONTRADICTIONS: 'archive:list-global-contradictions',
   // Push events (main → renderer)
   ARCHIVE_CONT_SCAN_START: 'archive:cont-scan-start',
   ARCHIVE_CONT_SCAN_RESULT: 'archive:cont-scan-result',
@@ -649,6 +668,11 @@ export const IPC_CHANNELS = {
   JOBS_CANCEL: 'jobs:cancel',
   /** Push channel (main → renderer): JobEvent progress/terminal updates. */
   JOBS_EVENT: 'jobs:event',
+
+  // SKY-10772 M12.5: AI Agents index controls (Settings panel)
+  AGENT_INDEX_GET_STATS: 'agent-index:get-stats',
+  AGENT_INDEX_CLEAN: 'agent-index:clean',
+  AGENT_INDEX_REBUILD: 'agent-index:rebuild',
 } as const;
 
 // ─── Sender-frame guard (MYT-791) ───
@@ -853,6 +877,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.PROJECT_STATS]: (payload: never) => ProjectStatsResponse;
+  [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => ProjectIconsResponse;
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => ProjectIconSetResponse;
+  [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -874,6 +901,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_GET_ORDER]: (payload: never) => Record<string, string[]>;
   [IPC_CHANNELS.NOTES_VAULT_REORDER]: (payload: VaultReorderPayload) => VaultReorderResponse;
   [IPC_CHANNELS.NOTES_VAULT_SET_ICON]: (payload: VaultSetIconPayload) => VaultSetIconResponse;
+  // SKY-11058: notes vault registry
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_LIST]: (payload: never) => NotesVaultRegistryListResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_CREATE]: (payload: NotesVaultRegistryCreatePayload) => NotesVaultRegistryCreateResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW]: (payload: NotesVaultRegistrySetActivePreviewPayload) => NotesVaultRegistrySetActivePreviewResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE]: (payload: NotesVaultRegistrySetActivePayload) => NotesVaultRegistrySetActiveResponse;
+  [IPC_CHANNELS.NOTES_VAULT_REGISTRY_RENAME]: (payload: NotesVaultRegistryRenamePayload) => NotesVaultRegistryRenameResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
@@ -1067,6 +1100,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AUTO_LINKER_SET_SETTINGS]: (payload: import('./autoLinker/index.js').AutoLinkerSettings) => Promise<{ saved: boolean }>;
   [IPC_CHANNELS.AUTO_LINKER_FORMAT_VAULT_NOW]: (payload: never) => Promise<{ processed: number; linked: number; skipped: number }>;
   [IPC_CHANNELS.AUTO_LINKER_REBUILD_INDEX]: (payload: never) => Promise<{ count: number }>;
+  // SKY-10772 M12.5: AI Agents index controls
+  [IPC_CHANNELS.AGENT_INDEX_GET_STATS]: (payload: never) => { entityCount: number; lastScanAt: string | null; factDecisionCount: number; cacheRowCount: number };
+  [IPC_CHANNELS.AGENT_INDEX_CLEAN]: (payload: never) => { decisionsPreserved: number; derivedWiped: boolean; tombstonesIntact: boolean };
+  [IPC_CHANNELS.AGENT_INDEX_REBUILD]: (payload: never) => { jobId: string } | { error: string };
   // SKY-6306 M21: Multi-timeline store
   [IPC_CHANNELS.TIMELINES_GET_STORE]: (payload: TimelinesGetStorePayload) => TimelinesGetStoreResponse;
   [IPC_CHANNELS.TIMELINES_UPSERT]: (payload: TimelinesUpsertPayload) => TimelinesUpsertResponse;
@@ -1126,6 +1163,13 @@ export interface VaultListItem {
    * rows and on the story-vault VAULT_LIST, which has no use for it.
    */
   excerpt?: string;
+  /**
+   * SKY-11049: true when the note carries a character signal (frontmatter
+   * `type: character`, a `character` tag, or an inline `#character` hashtag)
+   * — lets Scene Crafter's POV picker find characters that live outside a
+   * top-level `Characters` folder. Same availability as `excerpt`.
+   */
+  characterTag?: boolean;
 }
 
 export interface VaultListResponse {
@@ -1206,6 +1250,59 @@ export interface VaultReorderResponse {
 }
 
 // SKY-9310: assign (icon truthy) or clear (icon null) one path's icon.
+// ─── SKY-11058: Notes vault registry ─────────────────────────────────────────
+
+export interface NotesVaultRegistryEntry {
+  id: string;
+  displayName: string;
+  dirName: string;
+  createdAt: string;
+  origin: 'created' | 'imported';
+}
+
+export interface NotesVaultRegistryListResponse {
+  /** null when the current vault is a legacy v0.4 vault (no registry). */
+  vaults: NotesVaultRegistryEntry[] | null;
+  activeId: string | null;
+}
+
+export interface NotesVaultRegistryCreatePayload {
+  displayName: string;
+}
+
+export interface NotesVaultRegistryCreateResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+export interface NotesVaultRegistrySetActivePreviewPayload {
+  id: string;
+}
+
+export interface NotesVaultRegistrySetActivePreviewResponse {
+  resolvedCount: number;
+  unresolvedStems: string[];
+  totalStems: number;
+}
+
+export interface NotesVaultRegistrySetActivePayload {
+  id: string;
+}
+
+export interface NotesVaultRegistrySetActiveResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+export interface NotesVaultRegistryRenamePayload {
+  id: string;
+  displayName: string;
+}
+
+export interface NotesVaultRegistryRenameResponse {
+  entry: NotesVaultRegistryEntry;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface VaultSetIconPayload {
   path: string;
   icon: string | null;
@@ -1530,6 +1627,9 @@ export interface SystemInfo {
 export interface VaultOpenFolderResponse {
   vaultRoot: string | null;
   cancelled: boolean;
+  /** SKY-11132: set when the picked folder was refused — not a recognized
+   *  Mythos vault, so it was never adopted or seeded. */
+  error?: string;
 }
 
 /**
@@ -2416,6 +2516,9 @@ export interface AppSettings {
 
   // SKY-6225: Built-in Auto Note Linker settings (separate from legacy autoLinker.mode)
   autoLinkerSettings?: import('./autoLinker/index.js').AutoLinkerSettings;
+
+  // SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default).
+  agentIndexAutoScan?: boolean;
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */
@@ -2557,12 +2660,22 @@ export interface OnboardingImportObsidianPayload {
   destParentPath?: string;
   /** Optional vault name; uniquified against destParentPath when taken. */
   destVaultName?: string;
+  /** SKY-11058 item 4: 'extra-notes-vault' copies the (notes-kind only)
+   *  source verbatim into a NEW directory inside the CURRENTLY OPEN Mythos
+   *  vault and registers it as an additional notes vault — no new Mythos
+   *  vault, and the active notes vault is never changed. Default
+   *  'new-mythos-vault' is the SKY-10388 flow above, byte-for-byte unchanged. */
+  destMode?: 'new-mythos-vault' | 'extra-notes-vault';
 }
 
 export interface OnboardingImportObsidianResponse {
   ok: boolean;
   /** Root folder of the freshly created Mythos vault. */
   mythosVaultRoot?: string;
+  /** SKY-11058 (destMode 'extra-notes-vault' only): registry id + label of
+   *  the newly added notes vault. */
+  notesVaultId?: string;
+  notesVaultDisplayName?: string;
   error?: string;
   /** Total files found across all source folders. */
   sourceCount?: number;
@@ -2696,6 +2809,39 @@ export interface ProjectStatsResponse {
     /** `.md` files under the paired Notes Vault root; null when unpaired. */
     noteCount: number | null;
   }>;
+}
+
+// SKY-11068 — per-vault icon, stored vault-local (mythos.json `icon` field +
+// a `vault-icon.<ext>` file at the mythos root so it travels on move/copy).
+
+export interface VaultIconEntry {
+  vaultRoot: string;
+  kind: 'glyph' | 'image' | null;
+  /** kind === 'glyph': the emoji / short text. */
+  value?: string;
+  /** kind === 'image': base64 data URL of the stored icon file. */
+  dataUrl?: string;
+}
+
+export interface ProjectIconsResponse {
+  icons: VaultIconEntry[];
+}
+
+export type ProjectIconSetPayload =
+  | { vaultRoot: string; icon: { kind: 'glyph'; value: string } }
+  | { vaultRoot: string; icon: { kind: 'image'; sourcePath: string } }
+  | { vaultRoot: string; icon: null };
+
+export interface ProjectIconSetResponse {
+  ok: boolean;
+  error?: string;
+  /** Resolved icon after the write, for immediate display. */
+  icon?: VaultIconEntry;
+}
+
+export interface ProjectIconPickResponse {
+  filePath: string | null;
+  cancelled: boolean;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
