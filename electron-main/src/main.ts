@@ -653,6 +653,7 @@ import {
   appendSyncEvent,
 } from './cloudSync.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
+import { getBlastRadius, trashVaultFolder } from './vaultSurface.js';
 const require = createRequire(import.meta.url);
 
 // SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
@@ -751,6 +752,10 @@ interface VaultSettings {
   // M5 (Beta 4): per-vault dismissal of the MythosVault upgrade prompt —
   // resolved v0.4 story vault root → ISO timestamp of the dismissal.
   mythosMigrationDismissed?: Record<string, string>;
+  // SKY-11153: vault roots hidden from the switcher/settings list. Hide never
+  // touches disk — this is purely a UI visibility flag. Keyed by resolved
+  // absolute vaultRoot so the match is stable across restarts.
+  hiddenVaultRoots?: string[];
 }
 
 // SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
@@ -5484,6 +5489,83 @@ const handlers: IpcHandlers = {
       return { filePath: null, cancelled: true };
     }
     return { filePath: result.filePaths[0], cancelled: false };
+  },
+
+  // ─── SKY-11153: Vault surface delete/hide (Recycle Bin semantics) ─────────
+
+  [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: import('./ipc.js').VaultSurfaceBlastRadiusPayload) => {
+    return getBlastRadius(payload.mythosVaultRoot);
+  },
+
+  [IPC_CHANNELS.VAULT_SURFACE_TRASH]: async (payload: import('./ipc.js').VaultSurfaceTrashPayload) => {
+    const vaultPath = path.resolve(payload.vaultPath);
+    const level = payload.level;
+
+    // Stop watchers and close DB before any file-system operation so Windows
+    // does not leave delete-pending ghosts (SKY-10895 / SKY-11058 class).
+    if (level === 'mythos' || level === 'story') {
+      stopWritingScanScheduler();
+      await stopBoardWatcher();
+      await stopVaultWatcher();
+      closeDb();
+    }
+    if (level === 'mythos' || level === 'notes') {
+      await stopNotesVaultWatcher();
+    }
+
+    // Remove from registry BEFORE trashing — a failed trash must not leave a
+    // dangling registry entry pointing at the now-gone path.
+    if (level === 'mythos') {
+      const current = loadVaultSettings();
+      const remaining = (current.recentProjects ?? []).filter(
+        (p) => !path.resolve(p.vaultRoot).startsWith(vaultPath + path.sep) &&
+               path.resolve(p.vaultRoot) !== vaultPath,
+      );
+      saveVaultSettings({ recentProjects: remaining });
+    } else {
+      const current = loadVaultSettings();
+      const remaining = (current.recentProjects ?? []).filter(
+        (p) => path.resolve(p.vaultRoot) !== vaultPath,
+      );
+      saveVaultSettings({ recentProjects: remaining });
+    }
+
+    // Trash via shell.trashItem ONLY — never fs.rm, no fallback.
+    return trashVaultFolder(vaultPath);
+  },
+
+  [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: import('./ipc.js').VaultSurfaceHidePayload) => {
+    const vaultRoot = path.resolve(payload.vaultRoot);
+    const current = loadVaultSettings();
+    const hidden = new Set(current.hiddenVaultRoots ?? []);
+    hidden.add(vaultRoot);
+    saveVaultSettings({ hiddenVaultRoots: [...hidden] });
+
+    let pairedStoryVaultName: string | undefined;
+    if (payload.level === 'notes') {
+      const linkedEntry = (current.recentProjects ?? []).find(
+        (p) => p.notesVaultRoot != null && path.resolve(p.notesVaultRoot) === vaultRoot,
+      );
+      if (linkedEntry) {
+        pairedStoryVaultName = linkedEntry.name;
+      }
+    }
+
+    return { hidden: true, pairedStoryVaultName };
+  },
+
+  [IPC_CHANNELS.VAULT_SURFACE_UNHIDE]: (payload: import('./ipc.js').VaultSurfaceUnhidePayload) => {
+    const vaultRoot = path.resolve(payload.vaultRoot);
+    const current = loadVaultSettings();
+    const hidden = (current.hiddenVaultRoots ?? []).filter(
+      (r) => path.resolve(r) !== vaultRoot,
+    );
+    saveVaultSettings({ hiddenVaultRoots: hidden });
+    return { ok: true as const };
+  },
+
+  [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: () => {
+    return { hiddenVaultRoots: loadVaultSettings().hiddenVaultRoots ?? [] };
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {

@@ -311,6 +311,13 @@ export const IPC_CHANNELS = {
   PROJECT_ICON_SET: 'project:iconSet',
   PROJECT_ICON_PICK: 'project:iconPick',
 
+  // SKY-11153 — Vault surface: Recycle Bin delete + hide/show
+  VAULT_SURFACE_TRASH: 'vault:surface:trash',
+  VAULT_SURFACE_BLAST_RADIUS: 'vault:surface:blastRadius',
+  VAULT_SURFACE_HIDE: 'vault:surface:hide',
+  VAULT_SURFACE_UNHIDE: 'vault:surface:unhide',
+  VAULT_SURFACE_LIST_HIDDEN: 'vault:surface:listHidden',
+
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
   ARCHIVE_IGNORE_LIST: 'archive:ignore-list',
@@ -880,6 +887,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => ProjectIconsResponse;
   [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => ProjectIconSetResponse;
   [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
+  [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: VaultSurfaceBlastRadiusPayload) => VaultSurfaceBlastRadiusResponse;
+  [IPC_CHANNELS.VAULT_SURFACE_TRASH]: (payload: VaultSurfaceTrashPayload) => Promise<VaultSurfaceTrashResponse>;
+  [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: VaultSurfaceHidePayload) => VaultSurfaceHideResponse;
+  [IPC_CHANNELS.VAULT_SURFACE_UNHIDE]: (payload: VaultSurfaceUnhidePayload) => { ok: true };
+  [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: (payload: never) => VaultSurfaceListHiddenResponse;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -2842,6 +2854,50 @@ export interface ProjectIconSetResponse {
 export interface ProjectIconPickResponse {
   filePath: string | null;
   cancelled: boolean;
+}
+
+// ─── SKY-11153 — Vault surface: Recycle Bin delete + hide/show ───────────────
+
+export interface VaultSurfaceTrashPayload {
+  /** Absolute path to the vault folder to trash. */
+  vaultPath: string;
+  /** Determines which watchers/handles to stop before trashing. */
+  level: 'mythos' | 'notes' | 'story';
+}
+
+export interface VaultSurfaceTrashResponse {
+  trashed: boolean;
+  /** Human-readable OS error when trashed === false. */
+  error?: string;
+}
+
+export interface VaultSurfaceBlastRadiusPayload {
+  mythosVaultRoot: string;
+}
+
+export interface VaultSurfaceBlastRadiusResponse {
+  vaultName: string;
+  /** Directory count directly inside the Mythos vault root. */
+  innerCount: number;
+}
+
+export interface VaultSurfaceHidePayload {
+  vaultRoot: string;
+  level: 'mythos' | 'notes' | 'story';
+}
+
+export interface VaultSurfaceHideResponse {
+  hidden: boolean;
+  /** Present when hiding a notes vault that is paired to a story vault. */
+  pairedStoryVaultName?: string;
+}
+
+export interface VaultSurfaceUnhidePayload {
+  vaultRoot: string;
+}
+
+export interface VaultSurfaceListHiddenResponse {
+  hiddenVaultRoots: string[];
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
