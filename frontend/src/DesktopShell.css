@@ -128,7 +128,10 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .app-menu-dropdown {
-    background: var(--glass-fill);
+    /* SKY-11133: dropdown menu — overlay-tier opacity so it stays legible at
+       a low global glass setting. Blur here is the separate --lg-blur
+       (legacy v1 axis, static) and is out of this ticket's scope. */
+    background: var(--glass-fill-overlay);
     backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
     -webkit-backdrop-filter: blur(var(--lg-blur, 16px)) saturate(160%);
   }

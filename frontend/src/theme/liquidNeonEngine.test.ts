@@ -196,6 +196,59 @@ describe('panel-glass token bridge (SKY-10914)', () => {
   });
 });
 
+// SKY-11133 (owner report): at the owner's preferred LOW global glass, Settings
+// and popups read through to the wallpaper and are hard to follow. Overlay
+// surfaces (Settings, popovers, dropdown/context menus, toasts) read a
+// derived tier — glassA/blur × 1.25, clamped to the sliders' own maxima
+// (96%/40px) — instead of the plain --glass-fill/--blur-panel the rest of
+// the app uses. Same source values as the SKY-10914 bridge above, just a
+// single offset constant; not a second theming system.
+describe('overlay-tier token bridge (SKY-11133)', () => {
+  it('derives --glass-fill-overlay as glassA × 1.25 in the same color family', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 20 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.200)');
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.250)');
+  });
+
+  it('derives --blur-panel-overlay as blur × 1.25', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ blur: 8 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--blur-panel')).toBe('8px');
+    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('10px');
+  });
+
+  it('clamps overlay opacity to 96% so a maxed-out global setting cannot overshoot', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 96 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.960)');
+  });
+
+  it('clamps overlay blur to 40px so a maxed-out global setting cannot overshoot', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ blur: 40 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('40px');
+  });
+
+  it('stays reactive: moving the sliders moves both tiers together', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 10, blur: 4 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.125)');
+    applyLiquidNeonV2Tokens({ glassA: 60, blur: 20 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.750)');
+    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('25px');
+  });
+
+  it('reset clears the overlay tokens along with the panel-glass bridge', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 40 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).not.toBe('');
+    resetLiquidNeonV2Tokens(el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('');
+    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
+  });
+});
+
 // ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
 
 describe('preset import/export (§3; prototype 7191–7192)', () => {

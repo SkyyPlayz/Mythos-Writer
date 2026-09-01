@@ -346,10 +346,25 @@ export function applyLiquidNeonV2Tokens(
   // --glass-fill locally on every element via `:where(*)`, so it never depends
   // on :root's inline value; reduced-transparency intentionally only touches
   // :root's own value (SKY-10908), so per-panel glass stays live either way.
+  //
+  // SKY-11133: overlay tier — Settings and popups stay legible when the user
+  // keeps the global glass low (owner report). --glass-fill-overlay/
+  // --blur-panel-overlay are the SAME glassA/blur values scaled by a single
+  // derived offset (×1.25), clamped to the sliders' own maxima (glassA≤96,
+  // blur≤40) so a maxed-out global setting can't overshoot. Not a new
+  // system: same source values, same reactivity, one offset constant. Only
+  // CSS for overlay surfaces (Settings, popovers, dropdown/context menus,
+  // toasts) reads these — the K8/reduced-transparency overrides below apply
+  // to them the same way they apply to --glass-fill/--blur-panel.
+  const OVERLAY_TIER_MULT = 1.25;
+  const overlayGlassA = Math.min(96, S.glassA * OVERLAY_TIER_MULT);
+  const overlayBlur = Math.min(40, S.blur * OVERLAY_TIER_MULT);
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
+    '--glass-fill-overlay': `rgba(13,16,28,${(overlayGlassA / 100).toFixed(3)})`,
+    '--blur-panel-overlay': `${overlayBlur}px`,
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {
     el.style.setProperty(k, v);
