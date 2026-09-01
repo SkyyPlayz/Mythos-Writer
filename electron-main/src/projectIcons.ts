@@ -20,27 +20,29 @@ import type { ProjectIconSetPayload, ProjectIconSetResponse, VaultIconEntry } fr
  * the renderer falls back to its initials-on-accent default.
  * Deduplicated by `vaultRoot` (first entry wins — recents are newest-first).
  */
-export function collectProjectIcons(
+export async function collectProjectIcons(
   vaultRoots: Array<{ vaultRoot: string }>,
-): VaultIconEntry[] {
+): Promise<VaultIconEntry[]> {
   const seen = new Set<string>();
-  const out: VaultIconEntry[] = [];
+  const uniqueRoots: string[] = [];
   for (const entry of vaultRoots) {
     if (!entry.vaultRoot || seen.has(entry.vaultRoot)) continue;
     seen.add(entry.vaultRoot);
-    out.push(resolveVaultIcon(entry.vaultRoot));
+    uniqueRoots.push(entry.vaultRoot);
   }
-  return out;
+  // SKY-11108: resolve every root concurrently — each is an independent
+  // async icon-file read, so there's no reason to serialize them.
+  return Promise.all(uniqueRoots.map(resolveVaultIcon));
 }
 
-function resolveVaultIcon(vaultRoot: string): VaultIconEntry {
+async function resolveVaultIcon(vaultRoot: string): Promise<VaultIconEntry> {
   const mythosRoot = mythosRootForStoryVault(vaultRoot);
   if (!mythosRoot) return { vaultRoot, kind: null };
   const mythosFile = tryReadMythosFile(mythosRoot);
   const icon = mythosFile?.icon;
   if (!icon) return { vaultRoot, kind: null };
   if (icon.kind === 'glyph') return { vaultRoot, kind: 'glyph', value: icon.value };
-  const { dataUrl } = readVaultIconAsDataUrl(mythosRoot, icon.file);
+  const { dataUrl } = await readVaultIconAsDataUrl(mythosRoot, icon.file);
   if (!dataUrl) return { vaultRoot, kind: null };
   return { vaultRoot, kind: 'image', dataUrl };
 }
@@ -50,7 +52,7 @@ function resolveVaultIcon(vaultRoot: string): VaultIconEntry {
  * mythos.json + (for images) a file at the mythos root, so the icon travels
  * with the vault on move/copy (SKY-10949).
  */
-export function setProjectIcon(payload: ProjectIconSetPayload): ProjectIconSetResponse {
+export async function setProjectIcon(payload: ProjectIconSetPayload): Promise<ProjectIconSetResponse> {
   const mythosRoot = mythosRootForStoryVault(payload.vaultRoot);
   if (!mythosRoot) return { ok: false, error: 'Not a Mythos vault (v0.4 legacy vaults cannot store an icon).' };
   const mythosFile = tryReadMythosFile(mythosRoot);
@@ -77,6 +79,6 @@ export function setProjectIcon(payload: ProjectIconSetPayload): ProjectIconSetRe
   const sanitized = sanitizeVaultIcon({ kind: 'image', file });
   if (!sanitized) return { ok: false, error: 'Invalid icon file.' };
   writeMythosFile(mythosRoot, { ...mythosFile, icon: sanitized });
-  const { dataUrl } = readVaultIconAsDataUrl(mythosRoot, file);
+  const { dataUrl } = await readVaultIconAsDataUrl(mythosRoot, file);
   return { ok: true, icon: { vaultRoot: payload.vaultRoot, kind: 'image', dataUrl: dataUrl ?? undefined } };
 }

@@ -884,8 +884,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_LIST]: (payload: never) => ProjectListResponse;
   [IPC_CHANNELS.PROJECT_SWITCH]: (payload: ProjectSwitchPayload) => Promise<ProjectSwitchResponse>;
   [IPC_CHANNELS.PROJECT_STATS]: (payload: never) => ProjectStatsResponse;
-  [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => ProjectIconsResponse;
-  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => ProjectIconSetResponse;
+  [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => Promise<ProjectIconsResponse>;
+  [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => Promise<ProjectIconSetResponse>;
   [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: VaultSurfaceBlastRadiusPayload) => VaultSurfaceBlastRadiusResponse;
   [IPC_CHANNELS.VAULT_SURFACE_TRASH]: (payload: VaultSurfaceTrashPayload) => Promise<VaultSurfaceTrashResponse>;
