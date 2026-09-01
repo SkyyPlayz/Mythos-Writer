@@ -975,6 +975,27 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 32');
   }
+
+  if (currentVersion < 33) {
+    // M12.B1 (SKY-10736): Archive Check 2's gap-hunt question emission.
+    // Deliberately its own table, not a continuity_issues column/status —
+    // see the "Archive proposed questions" section above. Renumbered from
+    // v32 to v33 (SKY-11030): v32 collided with M12.B2's brainstorm_questions
+    // migration above, which landed first.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS archive_proposed_questions (
+        id              TEXT PRIMARY KEY,
+        source_scene_id TEXT NOT NULL,
+        entity_name     TEXT,
+        question_text   TEXT NOT NULL,
+        rationale       TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_archive_questions_scene
+        ON archive_proposed_questions (source_scene_id);
+    `);
+    db.exec('PRAGMA user_version = 33');
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -2251,8 +2272,10 @@ export type ContinuityCategory =
 
 export type ContinuitySeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ContinuityIssueStatus = 'open' | 'resolved' | 'ignored';
-/** M9d: card scope tag — which two sources the flag says disagree. */
-export type ContinuityIssueScope = 'story_vault' | 'vault_internal' | 'timeline';
+/** M9d: card scope tag — which two sources the flag says disagree.
+ *  M12.B1 (SKY-10736): 'story_internal' added — Archive Check 1 (manuscript
+ *  vs itself), distinct from 'vault_internal' (unused/reserved). */
+export type ContinuityIssueScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface DbContinuityIssue {
   id: string;
@@ -2436,6 +2459,46 @@ export function answerBrainstormQuestion(
         WHERE id = @id AND status = 'pending'`
     )
     .run({ id, answer, answered_at: answeredAt, note_path: notePath });
+}
+
+// ─── Archive proposed questions (M12.B1 / SKY-10736) ───
+// Owner ruling (SKY-10528): "a flag is a defect, a question is an
+// invitation" — a NEW artifact class, deliberately not the continuity_issues
+// schema and with no resolve/ignore semantics. This is the minimal store
+// Check 2's gap-hunt emits into; M12.B2 owns the full Brainstorm
+// question-queue data model (drain-by-conversation, dedup) and may extend
+// or migrate this table.
+
+export interface DbArchiveProposedQuestion {
+  id: string;
+  source_scene_id: string;
+  entity_name: string | null;
+  question_text: string;
+  rationale: string;
+  created_at: string;
+}
+
+export function insertArchiveProposedQuestion(question: DbArchiveProposedQuestion): void {
+  getDb()
+    .prepare(
+      `INSERT INTO archive_proposed_questions
+         (id, source_scene_id, entity_name, question_text, rationale, created_at)
+       VALUES
+         (@id, @source_scene_id, @entity_name, @question_text, @rationale, @created_at)`
+    )
+    .run(question as unknown as Record<string, SQLInputValue>);
+}
+
+export function listArchiveProposedQuestionsByScene(sceneId: string): DbArchiveProposedQuestion[] {
+  return getDb()
+    .prepare('SELECT * FROM archive_proposed_questions WHERE source_scene_id = ? ORDER BY created_at DESC')
+    .all(sceneId) as unknown as DbArchiveProposedQuestion[];
+}
+
+export function listArchiveProposedQuestions(): DbArchiveProposedQuestion[] {
+  return getDb()
+    .prepare('SELECT * FROM archive_proposed_questions ORDER BY created_at DESC')
+    .all() as unknown as DbArchiveProposedQuestion[];
 }
 
 // ─── Archive Audit Log (SKY-1683 / Archive Agent v1) ───

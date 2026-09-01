@@ -3,8 +3,9 @@ import './InconsistencyCard.css';
 
 export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change' | 'ignore';
 
-/** M9d (SKY-9825): which two sources the flag says disagree. */
-export type ContinuityScope = 'story_vault' | 'vault_internal' | 'timeline';
+/** M9d (SKY-9825): which two sources the flag says disagree.
+ *  M12.B1 (SKY-10736): 'story_internal' — Archive Check 1 (manuscript vs itself). */
+export type ContinuityScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
 
 export interface InconsistencyItem {
   id: string;
@@ -43,6 +44,7 @@ const CATEGORY_LABEL: Record<InconsistencyItem['category'], string> = {
 
 /** M9d: scope tag copy — exact prototype labels (PLAN.md §M9 item 4). */
 const SCOPE_LABEL: Record<ContinuityScope, string> = {
+  story_internal: 'Story internal',
   story_vault: 'Story ↔ Vault',
   vault_internal: 'Vault internal',
   timeline: 'Timeline',

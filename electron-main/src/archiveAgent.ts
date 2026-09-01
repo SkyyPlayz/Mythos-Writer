@@ -184,10 +184,12 @@ export const PROPERTY_CONTRADICTION_PAIRS: Record<string, Array<[string, string]
     ['female', ' he '],
     ['female', ' his '],
   ],
-  // World/lore rules tracked as vault properties (e.g. a strait's tide
-  // pattern) are just another property key — Check 2 needs no special case.
+  // M12.B1 (SKY-10736): owner's own Check 2 example — a location note's rule
+  // ("opens only at low tide") vs a scene that enters at high tide.
   tide: [
     ['rises at dawn', 'tide is highest at dusk'],
+    ['low tide', 'high tide'],
+    ['high tide', 'low tide'],
   ],
 };
 

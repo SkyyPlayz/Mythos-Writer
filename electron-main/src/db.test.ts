@@ -669,7 +669,7 @@ describe('world DB migration — entity tables', () => {
   it('sets user_version to 27 on fresh vault', () => {
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(32);
+    expect(row.user_version).toBe(33);
   });
 
   it('entity_index table exists with expected columns', () => {
@@ -716,7 +716,7 @@ describe('world DB migration — entity tables', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(32);
+    expect(row.user_version).toBe(33);
   });
 
   it('wiki_link_suggestions table exists with expected columns (v21)', () => {
@@ -751,7 +751,7 @@ describe('world DB migration — entity tables', () => {
 
     const db = openDb(tmpDir);
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(32);
+    expect(row.user_version).toBe(33);
     const cols = db.prepare('PRAGMA table_info(entity_index)').all() as Array<{ name: string }>;
     expect(cols.length).toBeGreaterThan(0);
     const wlCols = db.prepare('PRAGMA table_info(writing_log)').all() as Array<{ name: string }>;
@@ -1023,7 +1023,7 @@ describe('scene_snapshots / SKY-1611', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(32);
+    expect(row.user_version).toBe(33);
   });
 });
 
@@ -1068,7 +1068,7 @@ describe('continuity_issues table', () => {
     closeDb();
     const db2 = openDb(tmpDir);
     const row = db2.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(row.user_version).toBe(32);
+    expect(row.user_version).toBe(33);
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('continuity_issues','archive_audit_log')")
       .all() as Array<{ name: string }>;
