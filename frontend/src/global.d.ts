@@ -1343,6 +1343,24 @@ interface Window {
       entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
     }>;
     onNotesVaultRegistryChanged?: (cb: () => void) => () => void;
+    // SKY-11150: Story vault registry
+    storyVaultRegistryList?: () => Promise<{
+      vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null }> | null;
+      activeId: string | null;
+    }>;
+    storyVaultRegistryCreate?: (displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+    }>;
+    storyVaultRegistrySetActive?: (id: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+    }>;
+    storyVaultRegistryRename?: (id: string, displayName: string) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+    }>;
+    storyVaultRegistryPair?: (storyVaultId: string, notesVaultId: string | null) => Promise<{
+      entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+    }>;
+    onStoryVaultRegistryChanged?: (cb: () => void) => () => void;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
     projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
     // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults

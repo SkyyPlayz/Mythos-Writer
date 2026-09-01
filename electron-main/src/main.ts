@@ -447,6 +447,13 @@ import {
   notesVaultAbsPath,
   buildLinkResolutionReport,
 } from './mythosFormat/notesVaultRegistry.js';
+import {
+  ensureStoryVaultRegistry,
+  createBlankStoryVault,
+  setActiveStoryVault,
+  renameStoryVault,
+  pairStoryVaultToNotesVault,
+} from './mythosFormat/storyVaultRegistry.js';
 import type {
   NotesVaultRegistryListResponse,
   NotesVaultRegistryCreatePayload,
@@ -457,6 +464,15 @@ import type {
   NotesVaultRegistrySetActiveResponse,
   NotesVaultRegistryRenamePayload,
   NotesVaultRegistryRenameResponse,
+  StoryVaultRegistryListResponse,
+  StoryVaultRegistryCreatePayload,
+  StoryVaultRegistryCreateResponse,
+  StoryVaultRegistrySetActivePayload,
+  StoryVaultRegistrySetActiveResponse,
+  StoryVaultRegistryRenamePayload,
+  StoryVaultRegistryRenameResponse,
+  StoryVaultRegistryPairPayload,
+  StoryVaultRegistryPairResponse,
 } from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
@@ -6627,6 +6643,57 @@ const handlers: IpcHandlers = {
     if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
     const { entry } = renameNotesVault(mythosRoot, payload.id, payload.displayName);
     mainWindow?.webContents.send('notesVaultRegistry:changed');
+    return { entry };
+  },
+
+  // ─── SKY-11150: Story vault registry ────────────────────────────────────
+
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_LIST]: (): StoryVaultRegistryListResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) {
+      return { vaults: null, activeId: null };
+    }
+    const registry = ensureStoryVaultRegistry(mythosRoot);
+    return { vaults: registry.vaults, activeId: registry.activeId };
+  },
+
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_CREATE]: (
+    payload: StoryVaultRegistryCreatePayload,
+  ): StoryVaultRegistryCreateResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = createBlankStoryVault(mythosRoot, payload.displayName ?? 'Story');
+    mainWindow?.webContents.send('storyVaultRegistry:changed');
+    return { entry };
+  },
+
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_SET_ACTIVE]: (
+    payload: StoryVaultRegistrySetActivePayload,
+  ): StoryVaultRegistrySetActiveResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = setActiveStoryVault(mythosRoot, payload.id);
+    mainWindow?.webContents.send('storyVaultRegistry:changed');
+    return { entry };
+  },
+
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_RENAME]: (
+    payload: StoryVaultRegistryRenamePayload,
+  ): StoryVaultRegistryRenameResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = renameStoryVault(mythosRoot, payload.id, payload.displayName);
+    mainWindow?.webContents.send('storyVaultRegistry:changed');
+    return { entry };
+  },
+
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_PAIR]: (
+    payload: StoryVaultRegistryPairPayload,
+  ): StoryVaultRegistryPairResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
+    const { entry } = pairStoryVaultToNotesVault(mythosRoot, payload.storyVaultId, payload.notesVaultId);
+    mainWindow?.webContents.send('storyVaultRegistry:changed');
     return { entry };
   },
 
