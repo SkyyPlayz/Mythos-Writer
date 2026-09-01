@@ -145,6 +145,15 @@ async function selectStory(pg: Page, index: number): Promise<void> {
 async function openBoardView(pg: Page): Promise<void> {
   await clickStoryNav(pg);
   await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+  // SKY-11069: boards open in workspace tabs that persist per story — if a
+  // board tab is still active from an earlier step, return to the pinned
+  // Setup tab so callers always land on the Scene Setup column.
+  const setupTab = pg.locator(
+    '[role="tablist"][aria-label="Workspace tabs"] [role="tab"]',
+    { hasText: 'Scene Crafter' },
+  );
+  await setupTab.waitFor({ state: 'visible', timeout: 8_000 });
+  if ((await setupTab.getAttribute('aria-selected')) !== 'true') await setupTab.click();
   // Wait for the M18/M19 Scene Setup column, which only renders once the
   // board has fully loaded (the loading state renders .scene-crafter-page
   // but not .sc-columns). The lanes board is retired — see SKY-7601.
@@ -623,9 +632,20 @@ test('AC-SC-17: Scenes-tab mini canvas pans/zooms and its board survives a full 
   await mini.getByTitle('Zoom in').click();
   await expect(zoomPct).toHaveText('115%');
 
-  // "Open full" reaches the same board in the real Scene Crafter canvas.
+  // "Open full" reaches the same board in the real Scene Crafter canvas —
+  // SKY-11069: it opens the previewed board's own workspace tab directly
+  // (upsertBoardTab), so the canvas shows without a gallery stop.
   await scenesPanel.getByRole('button', { name: /open full/i }).click();
-  await expect(page.locator('.sc-columns')).toBeVisible({ timeout: 8_000 });
+  // Scoped to the full-page canvas view — the ScenesPanel mini preview in the
+  // right sidebar is a second [data-testid="canvas-board"].
+  await expect(page.locator('.sc-canvas-view [data-testid="canvas-board"]')).toBeVisible({ timeout: 8_000 });
+  const coldOpenTab = page.locator(
+    '[role="tablist"][aria-label="Workspace tabs"] [role="tab"]',
+    { hasText: 'Cold Open' },
+  );
+  await expect(coldOpenTab).toHaveAttribute('aria-selected', 'true');
+  // The Setup tab's gallery still lists the board.
+  await page.locator('[role="tablist"][aria-label="Workspace tabs"] [role="tab"]', { hasText: 'Scene Crafter' }).click();
   await expect(page.locator('.sc-board-row', { hasText: 'Cold Open' })).toBeVisible({ timeout: 8_000 });
 
   // Full restart with the same userData/vault dirs — a genuine process-boundary crossing.
@@ -812,7 +832,9 @@ test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the
   const storyIndex = await createStory(page);
   await selectStory(page, storyIndex);
   await openBoardView(page);
-  await expect(page.locator('.sc-board-row')).toHaveCount(0);
+  // SKY-11069: the gallery always shows the "+ New board" card — zero
+  // BOARDS here means zero real board cards.
+  await expect(page.locator('.sc-board-row:not(.sc-board-row--new)')).toHaveCount(0);
 
   fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
   fs.writeFileSync(
@@ -849,7 +871,7 @@ test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the
 
   // Survives a real reload (unmount + IPC re-read from disk, not just React state).
   await reloadBoardView(page);
-  await page.locator('.sc-board-row').first().click();
+  await page.locator('.sc-board-row:not(.sc-board-row--new)').first().click();
   await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
   const stageAfterReload = page.getByTestId('canvas-stage');
   await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();

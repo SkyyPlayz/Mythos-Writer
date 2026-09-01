@@ -123,8 +123,10 @@ interface Props {
   scene: Scene | null;
   /** M9c/M6: drives the Scenes tab's canvas-board list. */
   story?: Story | null;
-  /** M9c/M6: Scenes tab empty-state + "Open full" → Scene Crafter. */
-  onOpenScenesFull?: () => void;
+  /** M9c/M6: Scenes tab empty-state + "Open full" → Scene Crafter.
+   * SKY-11069: carries the previewed board (null = none) so the shell can
+   * open it in its own Scene Crafter tab. */
+  onOpenScenesFull?: (board: { id: string; name: string } | null) => void;
   /** M9c/M6: Scenes tab canvas board note links. */
   onOpenSceneNote?: (notePath: string) => void;
   enabled?: boolean;

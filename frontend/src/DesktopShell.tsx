@@ -54,6 +54,10 @@ import {
   noteTitleFromPath,
   upsertEntityBrowserTab,
   upsertOutlineTab,
+  upsertBoardTab,
+  reconcileBoardTabs,
+  makeSceneCrafterSetupTab,
+  SCENE_CRAFTER_SETUP_TAB_ID,
   reconcileSceneTabs,
   renameCommitsProvisional,
   workspaceStripModeFor,
@@ -851,6 +855,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [activeStoryDocTabId, setActiveStoryDocTabId] = useState<string | null>(null);
   const [notesDocTabs, setNotesDocTabs] = useState<WorkspaceTab[]>([]);
   const [activeNotesDocTabId, setActiveNotesDocTabId] = useState<string | null>(null);
+  // SKY-11069: open Scene Crafter board tabs (kind 'board', all stories —
+  // filtered by storyId at render). null active id = the pinned Setup tab.
+  const [boardDocTabs, setBoardDocTabs] = useState<WorkspaceTab[]>([]);
+  const [activeBoardDocTabId, setActiveBoardDocTabId] = useState<string | null>(null);
+  // SKY-11069: the mounted SceneCrafterPage registers its "create a new empty
+  // board" action here so the board strip's + button can call it.
+  const createBoardActionRef = useRef<(() => void) | null>(null);
   // Beta 4 M4 (§1.5): the provisional scene created by "+" — its Scene lives
   // only in selectedScene until the first keystroke commits it.
   const [provisionalScene, setProvisionalScene] = useState<
@@ -1490,6 +1501,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           const act = s.activeLayout.activeNotesDocTabId ?? null;
           setActiveNotesDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
         }
+        // SKY-11069: restore open Scene Crafter board tabs. The synthetic
+        // Setup tab is composed at render and never persists; a null active
+        // id means Setup is the active tab.
+        if (Array.isArray(s.activeLayout?.boardDocTabs)) {
+          const restored = s.activeLayout.boardDocTabs.filter((t) => t.kind === 'board' && !!t.docId && !!t.storyId);
+          setBoardDocTabs(restored);
+          const act = s.activeLayout.activeBoardDocTabId ?? null;
+          setActiveBoardDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
+        }
         // GH #643: restore the right-hand workspace split pane. SKY-9920:
         // 'entities' is excluded — Entity Browser's home is the document-tab
         // system now, not this legacy split pane (dead path: nothing has
@@ -2020,6 +2040,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const persistDocTabs = useCallback((patch: {
     story?: { tabs: WorkspaceTab[]; activeId: string | null };
     notes?: { tabs: WorkspaceTab[]; activeId: string | null };
+    board?: { tabs: WorkspaceTab[]; activeId: string | null };
   }) => {
     setAppSettings((prev) => {
       if (!prev) return prev;
@@ -2036,6 +2057,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             : {}),
           ...(patch.notes
             ? { notesDocTabs: patch.notes.tabs, activeNotesDocTabId: patch.notes.activeId }
+            : {}),
+          // SKY-11069: only real board tabs persist — the pinned Setup tab is
+          // synthetic (its "active" state is activeBoardDocTabId = null).
+          ...(patch.board
+            ? { boardDocTabs: patch.board.tabs, activeBoardDocTabId: patch.board.activeId }
             : {}),
         },
       };
@@ -3697,6 +3723,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [tabShell.activeTab, view, tabShell.notesSubView],
   );
 
+  // SKY-11069: the Scene Crafter strip = pinned Setup tab + this story's open
+  // board tabs (null while any other strip is showing). Active falls back to
+  // Setup when no board tab is active or the active one is another story's.
+  const boardStripTabs = useMemo(() => {
+    if (workspaceStripMode.kind !== 'docs' || workspaceStripMode.strip !== 'board') return null;
+    const storyBoards = selectedStory ? boardDocTabs.filter((t) => t.storyId === selectedStory.id) : [];
+    return [makeSceneCrafterSetupTab(), ...storyBoards];
+  }, [workspaceStripMode, boardDocTabs, selectedStory]);
+  const boardStripActiveId =
+    boardStripTabs !== null && activeBoardDocTabId !== null && boardStripTabs.some((t) => t.id === activeBoardDocTabId)
+      ? activeBoardDocTabId
+      : SCENE_CRAFTER_SETUP_TAB_ID;
+
   // Opening a scene anywhere (tree, graph, timeline, palette…) surfaces or
   // focuses its document tab — never duplicating it (prototype tree pick).
   useEffect(() => {
@@ -3879,6 +3918,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       showLnToast('New note lives in the notes explorer — use its New note button');
       return;
     }
+    if (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'board') {
+      // SKY-11069: board strip "+" = new empty canvas board. The mounted
+      // SceneCrafterPage owns creation state; it also opens the board's tab.
+      createBoardActionRef.current?.();
+      return;
+    }
     handleNewProvisionalScene();
   }, [workspaceStripMode, handleNewProvisionalScene]);
 
@@ -3923,6 +3968,43 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return result.tabs;
     });
   }, [handleTabChange, handleSetView, persistDocTabs]);
+
+  // ─── SKY-11069: Scene Crafter boards as document tabs (owner ruling) ───
+  // Opening a board — gallery card, editor Scenes tab "Open full →", or a
+  // fresh draft board — focuses its existing tab or appends a new one, and
+  // routes to the Scene Crafter view where the board strip lives.
+  const handleOpenBoard = useCallback((board: { id: string; name: string }) => {
+    if (!selectedStory) return;
+    const storyId = selectedStory.id;
+    handleTabChange('story');
+    handleSetView('kanban');
+    setBoardDocTabs((prev) => {
+      const result = upsertBoardTab(prev, { id: board.id, name: board.name, storyId });
+      setActiveBoardDocTabId(result.activeId);
+      persistDocTabs({ board: { tabs: result.tabs, activeId: result.activeId } });
+      return result.tabs;
+    });
+  }, [selectedStory, handleTabChange, handleSetView, persistDocTabs]);
+
+  // Disk truth arrived from SceneCrafterPage's board load — drop tabs whose
+  // board file is gone, refresh renamed titles (mirrors reconcileSceneTabs).
+  const handleBoardsLoaded = useCallback((boards: { id: string; name: string }[]) => {
+    if (!selectedStory) return;
+    setBoardDocTabs((prev) => {
+      const result = reconcileBoardTabs(prev, selectedStory.id, boards);
+      if (!result.changed) return prev;
+      setActiveBoardDocTabId((act) => {
+        const nextAct = act !== null && result.tabs.some((t) => t.id === act) ? act : null;
+        persistDocTabs({ board: { tabs: result.tabs, activeId: nextAct } });
+        return nextAct;
+      });
+      return result.tabs;
+    });
+  }, [selectedStory, persistDocTabs]);
+
+  const registerCreateBoard = useCallback((create: (() => void) | null) => {
+    createBoardActionRef.current = create;
+  }, []);
 
   // Story pane 2 (split-only, session-only like handlePane2NewScene — never
   // independently persisted; folds into storyDocTabs on split collapse).
@@ -3992,6 +4074,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // Selecting a tab opens its document.
   const handleWorkspaceTabSelect = useCallback((tabId: string) => {
+    // SKY-11069: board strip — the pinned Setup tab is "no active board".
+    if (tabId === SCENE_CRAFTER_SETUP_TAB_ID) {
+      setActiveBoardDocTabId(null);
+      persistDocTabs({ board: { tabs: boardDocTabs, activeId: null } });
+      return;
+    }
+    const boardTab = boardDocTabs.find((t) => t.id === tabId);
+    if (boardTab) {
+      setActiveBoardDocTabId(tabId);
+      persistDocTabs({ board: { tabs: boardDocTabs, activeId: tabId } });
+      handleTabChange('story');
+      handleSetView('kanban');
+      return;
+    }
     const storyTab = storyDocTabs.find((t) => t.id === tabId);
     if (storyTab) {
       setActiveStoryDocTabId(tabId);
@@ -4030,12 +4126,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setOpenedNotePath(null);
       }
     }
-  }, [storyDocTabs, notesDocTabs, persistDocTabs, handleTabChange, handleOpenSceneById, handleNotesSubViewChange, setViewDepth, handleSetView]);
+  }, [storyDocTabs, notesDocTabs, boardDocTabs, persistDocTabs, handleTabChange, handleOpenSceneById, handleNotesSubViewChange, setViewDepth, handleSetView]);
 
   const handleWorkspaceTabClose = useCallback((tabId: string) => {
     // Closing the provisional tab = discarding the untouched scene (§1.5).
     if (provisionalScene?.tabId === tabId) {
       discardProvisionalScene(provisionalScene);
+      return;
+    }
+    // SKY-11069: board tabs. The bar already moved focus to a neighbor (or
+    // the Setup tab) via onTabSelect before this fires; the neighbor pick
+    // below only covers non-bar close paths. Closing the last board tab
+    // lands on Setup (activeId null) — the strip is never empty.
+    if (boardDocTabs.some((t) => t.id === tabId)) {
+      const next = boardDocTabs.filter((t) => t.id !== tabId);
+      let nextActive = activeBoardDocTabId;
+      if (activeBoardDocTabId === tabId) {
+        const sid = boardDocTabs.find((t) => t.id === tabId)?.storyId;
+        const strip = boardDocTabs.filter((t) => t.storyId === sid);
+        const idx = strip.findIndex((t) => t.id === tabId);
+        nextActive = strip.length > 1 ? (idx > 0 ? strip[idx - 1].id : strip[1].id) : null;
+      }
+      setBoardDocTabs(next);
+      setActiveBoardDocTabId(nextActive);
+      persistDocTabs({ board: { tabs: next, activeId: nextActive } });
       return;
     }
     if (storyDocTabs.some((t) => t.id === tabId)) {
@@ -4095,10 +4209,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setActiveNotesDocTabId(nextActive);
       persistDocTabs({ notes: { tabs: next, activeId: nextActive } });
     }
-  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane, handleOpenSceneById, selectedStory, handleSelectScene]);
+  }, [provisionalScene, discardProvisionalScene, storyDocTabs, notesDocTabs, boardDocTabs, activeStoryDocTabId, activeNotesDocTabId, activeBoardDocTabId, persistDocTabs, splitWindowEnabled, collapseSplitPane, handleOpenSceneById, selectedStory, handleSelectScene]);
 
   const handleWorkspaceTabReorder = useCallback((fromIndex: number, toIndex: number) => {
     if (workspaceStripMode.kind !== 'docs') return;
+    if (workspaceStripMode.strip === 'board') {
+      // SKY-11069: strip indices include the pinned Setup tab at 0 (the bar
+      // already blocks moves onto it — this is the state-side guard) and only
+      // this story's board tabs; other stories' tabs keep their positions.
+      const sid = selectedStory?.id;
+      if (!sid || fromIndex === 0 || toIndex === 0) return;
+      const storyTabs = boardDocTabs.filter((t) => t.storyId === sid);
+      const from = fromIndex - 1;
+      const to = toIndex - 1;
+      if (from < 0 || to < 0 || from >= storyTabs.length || to >= storyTabs.length) return;
+      const [moved] = storyTabs.splice(from, 1);
+      storyTabs.splice(to, 0, moved);
+      let k = 0;
+      const arr = boardDocTabs.map((t) => (t.storyId === sid ? storyTabs[k++] : t));
+      setBoardDocTabs(arr);
+      persistDocTabs({ board: { tabs: arr, activeId: activeBoardDocTabId } });
+      return;
+    }
     if (workspaceStripMode.strip === 'notes') {
       const arr = [...notesDocTabs];
       const [moved] = arr.splice(fromIndex, 1);
@@ -4112,7 +4244,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setStoryDocTabs(arr);
       persistDocTabs({ story: { tabs: arr, activeId: activeStoryDocTabId } });
     }
-  }, [workspaceStripMode, storyDocTabs, notesDocTabs, activeStoryDocTabId, activeNotesDocTabId, persistDocTabs]);
+  }, [workspaceStripMode, storyDocTabs, notesDocTabs, boardDocTabs, activeStoryDocTabId, activeNotesDocTabId, activeBoardDocTabId, selectedStory, persistDocTabs]);
 
   // §4: dropping a scene tab opens a second fully editable editor pane
   // (SKY-1699 split window) sided or stacked by drop zone; the doc's tab
@@ -4880,7 +5012,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <ScenesPanel
             story={selectedStory}
             onOpenNote={handleOpenSceneByPath}
-            onOpenFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+            // SKY-11069: with a previewed board, "Open full →" opens that
+            // board's tab; with none, land on the Setup tab.
+            onOpenFull={(board) => {
+              if (board) { handleOpenBoard(board); return; }
+              handleNavSectionChange('story');
+              handleSetView('kanban');
+            }}
           />
         );
       case 'references':
@@ -4924,7 +5062,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
     betaReadNote, continuityCheckNote,
     handleOpenCoachPage,
-    handleNavSectionChange, handleSetView,
+    handleNavSectionChange, handleSetView, handleOpenBoard,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
     sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
     notesRefreshSignal,
@@ -5842,8 +5980,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') &&
           !(workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
           <WorkspaceTabBar
-            tabs={workspaceStripMode.kind === 'docs' ? storyDocTabs : []}
-            activeTabId={workspaceStripMode.kind === 'docs' ? activeStoryDocTabId : null}
+            tabs={workspaceStripMode.kind === 'docs' ? (boardStripTabs ?? storyDocTabs) : []}
+            activeTabId={workspaceStripMode.kind === 'docs' ? (boardStripTabs !== null ? boardStripActiveId : activeStoryDocTabId) : null}
             staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
@@ -5851,11 +5989,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onNewTab={handleNewWorkspaceTab}
             onTabOpenInSplit={handleTabOpenInSplit}
             onTabPopOut={handleTabPopOut}
-            onTabDragStart={(tab) => { setTabDragPayload(tab); setTabDragSourcePane(null); }}
+            // SKY-11069: board tabs don't split — suppress the payload so the
+            // scene split drop zones never mount for a board tab drag.
+            onTabDragStart={(tab) => { if (tab.kind !== 'board') { setTabDragPayload(tab); setTabDragSourcePane(null); } }}
             agentsActive={agentsActive}
-            newTabTitle="New blank scene — it only saves once you type"
-            newTabPrimaryLabel="New scene"
-            newTabPickerItems={workspaceStripMode.kind === 'docs' ? [
+            newTabTitle={boardStripTabs !== null ? 'New canvas board' : 'New blank scene — it only saves once you type'}
+            newTabPrimaryLabel={boardStripTabs !== null ? 'New board' : 'New scene'}
+            newTabPickerItems={workspaceStripMode.kind === 'docs' && boardStripTabs === null ? [
               { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
               // SKY-10019: story-scoped only (mirrors OutlinePlanningPanel's
               // `story` prop) — no Notes-strip entry, unlike Entity Browser.
@@ -6011,6 +6151,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               story={selectedStory}
               onOpenNote={handleOpenSceneByPath}
               onOpenScene={handleOpenSceneById}
+              // SKY-11069: the active board tab decides which canvas shows
+              // full-screen; the Setup tab (activeId null) shows the gallery.
+              openBoardId={boardDocTabs.find((t) => t.id === activeBoardDocTabId && t.storyId === selectedStory.id)?.docId ?? null}
+              onOpenBoard={handleOpenBoard}
+              onBoardsLoaded={handleBoardsLoaded}
+              registerCreateBoard={registerCreateBoard}
             />
           ) : (
             <div className="shell-editor-empty">
@@ -6792,7 +6938,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <AgentHubPanel
           scene={activeSceneForSidebar}
           story={selectedStory}
-          onOpenScenesFull={() => { handleNavSectionChange('story'); handleSetView('kanban'); }}
+          onOpenScenesFull={(board) => {
+            if (board) { handleOpenBoard(board); return; }
+            handleNavSectionChange('story');
+            handleSetView('kanban');
+          }}
           onOpenSceneNote={handleOpenSceneByPath}
           enabled={appSettings?.waEnabled ?? appSettings?.agents?.writingAssistant?.enabled ?? true}
           scanIntervalSeconds={appSettings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
@@ -6979,6 +7129,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   story={selectedStory}
                   onOpenNote={handleOpenSceneByPath}
                   onOpenScene={handleOpenSceneById}
+                  // SKY-11069: the legacy split pane stays on the Setup view —
+                  // board clicks open tabs in the main Scene Crafter strip
+                  // (one navigation model, no second canvas mount).
+                  onOpenBoard={handleOpenBoard}
                 />
               ) : (
                 <div className="shell-editor-empty"><p>Select a story to see its Scene Board.</p></div>

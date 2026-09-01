@@ -16,6 +16,8 @@ export const TAB_KIND_META: Record<WorkspaceTabKind, { title: string; icon: stri
   note: { title: 'Note', icon: '📝' },
   // SKY-10019: singleton doc-tab kind, same shape as 'entities' above.
   outline: { title: 'Outline Planning', icon: '🗒️' },
+  // SKY-11069: Scene Crafter canvas board document tab (docId = board id).
+  board: { title: 'Board', icon: '🗺️' },
 };
 
 /** ≤Beta 3: every module kind the old new-tab picker offered, in display

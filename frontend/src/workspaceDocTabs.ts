@@ -123,6 +123,96 @@ export function upsertEntityBrowserTab(
   return { tabs: [...tabs, tab], activeId: tab.id, created: true };
 }
 
+/** SKY-11069: identity of a Scene Crafter canvas board for tab purposes —
+ * the id is the board's vault file path (stable across restarts). */
+export interface BoardTabRef {
+  id: string;
+  name: string;
+  storyId: string;
+}
+
+/** SKY-11069: the synthetic pinned Setup tab shown first in the Scene Crafter
+ * strip. Never persisted — composed at render time; active board id null
+ * means this tab is active. */
+export const SCENE_CRAFTER_SETUP_TAB_ID = 'scene-crafter-setup';
+
+export function makeSceneCrafterSetupTab(): WorkspaceTab {
+  return {
+    id: SCENE_CRAFTER_SETUP_TAB_ID,
+    kind: 'kanban',
+    title: 'Scene Crafter',
+    icon: '🗂️',
+    permanent: true,
+  };
+}
+
+export function makeBoardTab(board: BoardTabRef, makeId: () => string = defaultMakeId): WorkspaceTab {
+  return {
+    id: makeId(),
+    kind: 'board',
+    title: board.name,
+    icon: '🗺️',
+    docId: board.id,
+    storyId: board.storyId,
+  };
+}
+
+/**
+ * SKY-11069: focus the existing tab for this board (refreshing a stale title,
+ * boards are renamed on disk), or append a new one — the owner ruling's
+ * "same board twice = focus existing".
+ */
+export function upsertBoardTab(
+  tabs: WorkspaceTab[],
+  board: BoardTabRef,
+  makeId: () => string = defaultMakeId,
+): UpsertDocTabResult {
+  const existing = tabs.find((t) => t.kind === 'board' && t.docId === board.id);
+  if (existing) {
+    const stale = existing.title !== board.name;
+    return {
+      tabs: stale ? tabs.map((t) => (t === existing ? { ...t, title: board.name } : t)) : tabs,
+      activeId: existing.id,
+      created: false,
+    };
+  }
+  const tab = makeBoardTab(board, makeId);
+  return { tabs: [...tabs, tab], activeId: tab.id, created: true };
+}
+
+/**
+ * SKY-11069: reconcile one story's board tabs against the boards actually on
+ * disk (mirrors reconcileSceneTabs): drop tabs whose board file is gone,
+ * refresh renamed titles. Other stories' tabs are never touched.
+ */
+export function reconcileBoardTabs(
+  tabs: WorkspaceTab[],
+  storyId: string,
+  boards: { id: string; name: string }[],
+): { tabs: WorkspaceTab[]; changed: boolean } {
+  const byId = new Map(boards.map((b) => [b.id, b]));
+  let changed = false;
+  const next: WorkspaceTab[] = [];
+  for (const tab of tabs) {
+    if (tab.kind !== 'board' || tab.storyId !== storyId) {
+      next.push(tab);
+      continue;
+    }
+    const board = tab.docId ? byId.get(tab.docId) : undefined;
+    if (!board) {
+      changed = true;
+      continue;
+    }
+    if (board.name !== tab.title) {
+      changed = true;
+      next.push({ ...tab, title: board.name });
+    } else {
+      next.push(tab);
+    }
+  }
+  return { tabs: changed ? next : tabs, changed };
+}
+
 /**
  * Focus the existing Outline Planning tab in this strip, or append a new
  * one — SKY-10019, same "one per strip" rule as upsertEntityBrowserTab.
@@ -184,7 +274,7 @@ export function reconcileSceneTabs(
  * are overlays here) — prototype showTabStrip, line ~7404.
  */
 export type WorkspaceStripMode =
-  | { kind: 'docs'; strip: 'story' | 'notes' }
+  | { kind: 'docs'; strip: 'story' | 'notes' | 'board' }
   | { kind: 'static'; label: string }
   | { kind: 'hidden' };
 
@@ -198,7 +288,9 @@ export function workspaceStripModeFor(
   if (activeTab === 'brainstorm' || activeTab === 'vault-graph') return { kind: 'hidden' };
   if (activeTab === 'story') {
     if (storySubView === 'timeline') return { kind: 'hidden' };
-    if (storySubView === 'kanban') return { kind: 'static', label: 'Scene Crafter' };
+    // SKY-11069 owner ruling: Scene Crafter is a docs strip — pinned Setup
+    // tab + one tab per open canvas board.
+    if (storySubView === 'kanban') return { kind: 'docs', strip: 'board' };
     return { kind: 'docs', strip: 'story' };
   }
   return { kind: 'docs', strip: 'notes' };

@@ -30,19 +30,32 @@ Adjustable-not-forced. Applies to every surface below:
 
 ## 1. Board layout
 
-### 1.1 Two-state model
-The Scene Crafter module has two views under `isCrafter`, not one:
+### 1.1 Two-state model — AMENDED by owner ruling (SKY-11049 addendum item 6, 2026-08-26 → SKY-11069)
 
-1. **Scene Crafter (closed)** — `data-screen-label="Scene Crafter"`. A planning workspace: Scene Setup
-   column (title/POV/goal/conflict/beats/tone/length + BOARDS list) + Scene Draft column (quick
-   summary, plan cards from vault, Generate button, draft-card states) + inline vault-reference columns
+> **Owner ruling.** Scene Crafter is a **document-tab strip**, not an in-place two-state toggle.
+> The workspace tab bar over Scene Crafter shows a **pinned Setup tab** (never closable, never
+> reorderable) plus **one tab per open canvas board**. This supersedes the original back-button
+> navigation below.
+
+1. **Setup tab (pinned)** — the planning workspace: Scene Setup column (title/POV/goal/conflict/
+   beats/tone/length + **BOARDS gallery**) + Scene Draft column (quick summary, plan cards from
+   vault, Generate button, draft-card states) + inline vault-reference columns
    (Characters/Locations/Items & Systems) to their right. This is the form/generation surface.
-2. **Canvas Board (open)** — `data-screen-label="Canvas Board"`, entered by clicking a board under
-   BOARDS or the editor's "Open full →". A dedicated pan/zoom canvas, back button returns to (1).
+   - **BOARDS gallery**: one card per board for the current story — name, card count, last edited —
+     plus a `+ New board` card. No thumbnails (nothing fake); empty state keeps the §1.3 hint.
+2. **Board tabs** — clicking a gallery card, the editor Scenes tab's "Open full →", or "Add to
+   scene board" opens that board **full-screen in its own Scene Crafter tab** (the same pan/zoom
+   canvas). Opening a board that already has a tab **focuses the existing tab** — never a duplicate.
+   - **No in-place back button** — the pinned Setup tab is the way back; one navigation model.
+   - Ctrl+W closes a board tab (Setup tab is immune); Ctrl+Tab cycles the strip. Closing the last
+     board tab lands on the Setup tab — the strip is never empty.
+   - Open board tabs **persist per story across restart** (`activeLayout.boardDocTabs` /
+     `activeBoardDocTabId`, alongside `storyDocTabs`/`notesDocTabs`); a board's tab identity is its
+     vault file path, so tabs survive relaunch and die with their file.
 
-Never merge these into one screen — the setup form needs full-width fields; the canvas needs full-bleed
-space. The prototype's separation is correct and PR #973 preserves it (`SceneCrafterPage.tsx` +
-`canvas/CanvasBoard.tsx`).
+Never merge setup and canvas into one screen — the setup form needs full-width fields; the canvas
+needs full-bleed space. The prototype's separation is preserved (`SceneCrafterPage.tsx` +
+`canvas/CanvasBoard.tsx`); only the navigation between them changed with this ruling.
 
 ### 1.2 Canvas
 - World size: **2200×1500px** fixed, independent of viewport — cards are absolutely positioned within it.

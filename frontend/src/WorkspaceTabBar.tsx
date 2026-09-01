@@ -184,6 +184,9 @@ export default function WorkspaceTabBar({
   // Declared before handleTabKeyDown and keyboard useEffect so they can reference it.
   const handleClose = useCallback(
     (tabId: string) => {
+      // SKY-11069: permanent tabs (Scene Crafter Setup) never close — makes
+      // Ctrl+W, middle-click and the context menu no-ops in one place.
+      if (tabs.find((t) => t.id === tabId)?.permanent) return;
       if (tabId === activeTabId && tabs.length > 1) {
         const idx = tabs.findIndex((t) => t.id === tabId);
         // Select left, or right if closing the first tab
@@ -229,6 +232,8 @@ export default function WorkspaceTabBar({
     (index: number, delta: -1 | 1) => {
       const toIndex = index + delta;
       if (toIndex < 0 || toIndex >= tabs.length) return;
+      // SKY-11069: permanent tabs are pinned — neither move nor get displaced.
+      if (tabs[index].permanent || tabs[toIndex].permanent) return;
       pendingFocusIdRef.current = tabs[index].id;
       setMoveAnnouncement(
         `${tabs[index].title} moved to position ${toIndex + 1} of ${tabs.length}`,
@@ -343,10 +348,11 @@ export default function WorkspaceTabBar({
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     if (dragSrcIndex.current === null || dragSrcIndex.current === index) return;
+    if (tabs[index]?.permanent) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     setDropTargetIndex(index);
-  }, []);
+  }, [tabs]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent, index: number) => {
@@ -356,6 +362,7 @@ export default function WorkspaceTabBar({
       dragSrcIndex.current = null;
       setDraggingIndex(null);
       setDropTargetIndex(null);
+      if (tabs[index]?.permanent) return;
       if (from !== index) {
         setMoveAnnouncement(`${tabs[from].title} moved to position ${index + 1} of ${tabs.length}`);
         onTabReorder(from, index);
@@ -431,7 +438,7 @@ export default function WorkspaceTabBar({
                 className={['wtb-tab', isActive ? 'wtb-tab--active' : '']
                   .filter(Boolean)
                   .join(' ')}
-                draggable
+                draggable={!tab.permanent}
                 onDragStart={(e) => handleDragStart(e, i)}
                 onDragEnd={handleDragEnd}
                 onDragOver={(e) => handleDragOver(e, i)}
@@ -445,7 +452,7 @@ export default function WorkspaceTabBar({
                 onAuxClick={(e) => {
                   // M7 (PLAN.md §4/M7 item 5): middle-click closes the tab,
                   // same as clicking its X — Obsidian/browser-tab parity.
-                  if (e.button === 1 && closable) {
+                  if (e.button === 1 && closable && !tab.permanent) {
                     e.preventDefault();
                     handleClose(tab.id);
                   }
@@ -461,7 +468,7 @@ export default function WorkspaceTabBar({
                 <span className="wtb-tab-label">{tab.title}</span>
               </button>
 
-              {closable && (
+              {closable && !tab.permanent && (
                 <button
                   className="wtb-tab-close"
                   aria-label={`Close ${tab.title}`}

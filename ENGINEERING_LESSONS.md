@@ -130,4 +130,8 @@ Caught by the scanScopeResolver book-scope test before it shipped.
 
 **Fix pattern for "never re-reads / never writes" acceptance criteria:** an injected spy reader only proves the seam you injected; it is blind to code that calls the real reader directly. Spy at the fs boundary (`vi.spyOn(fs, 'readFileSync')`, filter to the file class) across the combined run, and mutation-test the spec once (plant the forbidden read/write, watch the test fail) before trusting it. Same for byte-identity: seed every protected file through its real writer first (a byte-identity check over files that don't exist is vacuous) and assert their existence in the snapshot.
 
+## SKY-11069 — Persisted-active document tabs silently change where e2e navigation helpers land (2026-08-26, ProductEngineer)
+
+**Lesson:** when a surface gains persisted "active document" state (Scene Crafter board tabs: `activeBoardDocTabId` restores across unmount/remount and relaunch), every e2e helper that navigates to that surface stops landing on the default view — it lands on whatever tab a *previous test* left active, and the suite fails in cascades far from the real cause. **Fix:** make the navigation helper idempotent (explicitly select the known base tab — here, click the pinned Setup tab when it isn't `aria-selected`), instead of assuming route == view. Also from this lane: a second canvas mount (ScenesPanel mini preview) makes bare `getByTestId('canvas-board')` a strict-mode violation — scope full-page canvas asserts to `.sc-canvas-view`.
+
 ---

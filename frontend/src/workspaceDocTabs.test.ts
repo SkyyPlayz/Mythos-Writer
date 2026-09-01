@@ -12,6 +12,10 @@ import {
   upsertNoteTab,
   upsertEntityBrowserTab,
   upsertOutlineTab,
+  upsertBoardTab,
+  reconcileBoardTabs,
+  makeSceneCrafterSetupTab,
+  SCENE_CRAFTER_SETUP_TAB_ID,
   reconcileSceneTabs,
   workspaceStripModeFor,
   provisionalSceneIsAway,
@@ -204,6 +208,79 @@ describe('upsertOutlineTab', () => {
   });
 });
 
+// ─── SKY-11069: Scene Crafter boards as document tabs (owner ruling) ───
+
+const BOARD_A = { id: 'Boards/st1/Board 1.canvas.json', name: 'Board 1', storyId: 'st1' };
+const BOARD_B = { id: 'Boards/st1/Board 2.canvas.json', name: 'Board 2', storyId: 'st1' };
+
+describe('upsertBoardTab', () => {
+  it('appends a tab for a new board and focuses it (docId = board vault path)', () => {
+    const result = upsertBoardTab([], BOARD_A, () => 'tab-b1');
+    expect(result.created).toBe(true);
+    expect(result.activeId).toBe('tab-b1');
+    expect(result.tabs[0]).toMatchObject({ kind: 'board', docId: BOARD_A.id, storyId: 'st1', title: 'Board 1' });
+  });
+
+  it('focuses the existing tab for the same board instead of duplicating', () => {
+    const first = upsertBoardTab([], BOARD_A, () => 'tab-b1');
+    const second = upsertBoardTab(first.tabs, BOARD_A, () => 'tab-dup');
+    expect(second.created).toBe(false);
+    expect(second.activeId).toBe('tab-b1');
+    expect(second.tabs).toBe(first.tabs); // unchanged reference — no state churn
+  });
+
+  it('refreshes a stale title when the board was renamed on disk', () => {
+    const first = upsertBoardTab([], BOARD_A, () => 'tab-b1');
+    const renamed = upsertBoardTab(first.tabs, { ...BOARD_A, name: 'Renamed' }, () => 'tab-dup');
+    expect(renamed.created).toBe(false);
+    expect(renamed.activeId).toBe('tab-b1');
+    expect(renamed.tabs[0].title).toBe('Renamed');
+  });
+
+  it('different boards get their own tabs', () => {
+    const first = upsertBoardTab([], BOARD_A, () => 'tab-b1');
+    const second = upsertBoardTab(first.tabs, BOARD_B, () => 'tab-b2');
+    expect(second.created).toBe(true);
+    expect(second.tabs).toHaveLength(2);
+  });
+});
+
+describe('makeSceneCrafterSetupTab', () => {
+  it('is permanent (pinned, never closable) with the stable synthetic id', () => {
+    const tab = makeSceneCrafterSetupTab();
+    expect(tab.id).toBe(SCENE_CRAFTER_SETUP_TAB_ID);
+    expect(tab.permanent).toBe(true);
+    expect(tab.kind).toBe('kanban');
+  });
+});
+
+describe('reconcileBoardTabs', () => {
+  it('drops tabs whose board file is gone and refreshes renamed titles', () => {
+    const tabs = [
+      upsertBoardTab([], BOARD_A, () => 'tab-b1').tabs[0],
+      upsertBoardTab([], BOARD_B, () => 'tab-b2').tabs[0],
+    ];
+    const result = reconcileBoardTabs(tabs, 'st1', [{ id: BOARD_A.id, name: 'Renamed' }]);
+    expect(result.changed).toBe(true);
+    expect(result.tabs).toHaveLength(1);
+    expect(result.tabs[0]).toMatchObject({ id: 'tab-b1', title: 'Renamed' });
+  });
+
+  it("never touches another story's board tabs", () => {
+    const other = upsertBoardTab([], { id: 'Boards/st2/Elsewhere.canvas.json', name: 'Elsewhere', storyId: 'st2' }, () => 'tab-other').tabs[0];
+    const result = reconcileBoardTabs([other], 'st1', []);
+    expect(result.changed).toBe(false);
+    expect(result.tabs).toEqual([other]);
+  });
+
+  it('reports changed=false when disk matches the tabs', () => {
+    const tabs = upsertBoardTab([], BOARD_A, () => 'tab-b1').tabs;
+    const result = reconcileBoardTabs(tabs, 'st1', [{ id: BOARD_A.id, name: BOARD_A.name }]);
+    expect(result.changed).toBe(false);
+    expect(result.tabs).toBe(tabs);
+  });
+});
+
 describe('reconcileSceneTabs', () => {
   it('drops tabs whose scene no longer exists and refreshes stale titles', () => {
     const keep = makeScene('sc-keep', 'Kept Scene', 'in-progress');
@@ -252,8 +329,8 @@ describe('workspaceStripModeFor (§4: strip on Story + Notes only)', () => {
     expect(workspaceStripModeFor('vault-graph', 'editor', 'editor')).toEqual({ kind: 'hidden' });
   });
 
-  it('shows the static view pseudo-tab on Scene Crafter (prototype tabList fallback)', () => {
-    expect(workspaceStripModeFor('story', 'kanban', 'editor')).toEqual({ kind: 'static', label: 'Scene Crafter' });
+  it('shows the board document strip on Scene Crafter (SKY-11069 owner ruling)', () => {
+    expect(workspaceStripModeFor('story', 'kanban', 'editor')).toEqual({ kind: 'docs', strip: 'board' });
   });
 });
 
