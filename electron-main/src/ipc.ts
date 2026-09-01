@@ -409,6 +409,13 @@ export const IPC_CHANNELS = {
   // <parentPath>/Notes Vault/, reindexes both, and calls setPaths.
   VAULT_LOAD_SAMPLE_TWO_VAULT: 'vault:load-sample-twovault',
 
+  // SKY-11151: THE shared vault-creation primitive's IPC surface. One channel
+  // that first run, `New Mythos vault…`, and Settings `Add vault…` all call —
+  // the option set (template / blank / import) is identical; only each caller's
+  // surrounding chrome differs. Wraps createVaultFromOptions (destination
+  // resolution + template seeding + Obsidian-parity blank + import copy).
+  VAULT_CREATE_FROM_OPTIONS: 'vault:create-from-options',
+
   // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
   // onComplete handler to persist onboardingComplete=true. Thin channel so
   // the wizard never needs to send the full settings object back.
@@ -950,6 +957,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_SELECT_CONTEXT]: (payload: BrainstormSelectContextPayload) => BrainstormSelectContextResponse;
   // SKY-12 onboarding channels
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
+  // SKY-11151 shared creation primitive — one channel for all three callers.
+  [IPC_CHANNELS.VAULT_CREATE_FROM_OPTIONS]: (payload: VaultCreateFromOptionsPayload) => Promise<VaultCreateFromOptionsResponse>;
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => { ok: true };
@@ -4028,6 +4037,58 @@ export interface VaultLoadSampleTwoVaultPayload {
 export interface VaultLoadSampleTwoVaultResponse {
   storyVaultPath: string;
   notesVaultPath: string;
+  error?: string;
+}
+
+// ─── SKY-11151: shared vault-creation primitive ───
+
+/** One import source folder → one side of the new vault (import mode only). */
+export interface VaultCreateFromOptionsSource {
+  kind: 'notes' | 'story';
+  /** Absolute path to the user's source folder (Obsidian vault / md tree). */
+  srcPath: string;
+}
+
+export interface VaultCreateFromOptionsPayload {
+  /** Which of the three creation options the caller picked. */
+  mode: 'template' | 'blank' | 'import';
+  /**
+   * Parent directory the new MythosVault folder is created under. Absolute or
+   * `~`-prefixed. Omitted → the default Mythos Vaults parent (so a caller with
+   * no chosen location still works, mirroring quick-start).
+   */
+  destinationParent?: string;
+  /** Vault display/folder name. Collision-suffixed unless `exactName`. */
+  name?: string;
+  /** Skip unique-name suffixing (destination chosen explicitly by the user). */
+  exactName?: boolean;
+  /** Per-vault default theme token; sanitised main-side before use. */
+  defaultTheme?: string;
+  /** Required for `import` mode — at least one side; the other stays blank. */
+  importSources?: VaultCreateFromOptionsSource[];
+  /**
+   * When true, make the freshly created vault the active one (persist paths,
+   * start watchers, add to recents) — first-run wants this; Settings
+   * `Add vault…` may create without switching. Defaults to false: the caller
+   * owns activation chrome.
+   */
+  activate?: boolean;
+}
+
+export interface VaultCreateFromOptionsResponse {
+  ok: boolean;
+  mode?: 'template' | 'blank' | 'import';
+  mythosRoot?: string;
+  storyVaultPath?: string;
+  notesVaultPath?: string;
+  vaultName?: string;
+  /** Present for `import` mode only. */
+  importTally?: {
+    imported: number;
+    skipped: number;
+    sourceCount: number;
+    warnings: string[];
+  };
   error?: string;
 }
 

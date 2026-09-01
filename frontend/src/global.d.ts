@@ -1453,6 +1453,26 @@ interface Window {
     appQuit?: () => Promise<void>;
     // SKY-12.3: copy the bundled sample project into two-vault layout under parentPath
     loadSampleTwoVault: (parentPath: string) => Promise<{ storyVaultPath: string; notesVaultPath: string } | { error: string }>;
+    // SKY-11151: THE shared vault-creation primitive — one surface for first run,
+    // New Mythos vault…, and Settings Add vault… (template / blank / import).
+    createVaultFromOptions: (payload: {
+      mode: 'template' | 'blank' | 'import';
+      destinationParent?: string;
+      name?: string;
+      exactName?: boolean;
+      defaultTheme?: string;
+      importSources?: { kind: 'notes' | 'story'; srcPath: string }[];
+      activate?: boolean;
+    }) => Promise<{
+      ok: boolean;
+      mode?: 'template' | 'blank' | 'import';
+      mythosRoot?: string;
+      storyVaultPath?: string;
+      notesVaultPath?: string;
+      vaultName?: string;
+      importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
+      error?: string;
+    }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
       startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';

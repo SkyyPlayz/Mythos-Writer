@@ -621,6 +621,9 @@ jobs:
       - name: E2E — Story-vault registry migrate/create/pair/restart (SKY-11150)
         run: xvfb-run --auto-servernum npm run test:e2e:story-vault-registry
 
+      - name: E2E — Vault-creation primitive template/blank/import reachability (SKY-11151)
+        run: xvfb-run --auto-servernum npm run test:e2e:vault-create-primitive
+
       - name: E2E — Versioned drafts snapshot + history + rollback (MYT-770)
         run: xvfb-run --auto-servernum npm run test:e2e:versioned-drafts
 

@@ -8,6 +8,39 @@ the single source of truth in parent spec **SKY-11141 §3 / §3a**.
 Module: [`electron-main/src/mythosFormat/createVaultFromOptions.ts`](../electron-main/src/mythosFormat/createVaultFromOptions.ts)
 Entry point: `createVaultFromOptions({ destinationParent, name, mode, … })`.
 
+## The IPC surface callers consume
+
+The primitive is pure Node (unit-testable with real tmpdirs). Renderer callers
+reach it through **one channel**, so first run, `New Mythos vault…`, and Settings
+`Add vault…` all invoke the same option set — only their chrome differs:
+
+```ts
+// renderer
+window.api.createVaultFromOptions({
+  mode: 'template' | 'blank' | 'import',
+  destinationParent?: string, // absolute or ~-prefixed; omitted → default Mythos Vaults parent
+  name?: string,              // collision-suffixed unless exactName
+  exactName?: boolean,
+  defaultTheme?: string,      // sanitised main-side to /^[a-z0-9-]{1,64}$/
+  importSources?: { kind: 'notes' | 'story'; srcPath: string }[], // import mode: ≥1 required
+  activate?: boolean,         // opt-in: make the new vault the open one (first run wants this)
+}) // → { ok, mode, mythosRoot, storyVaultPath, notesVaultPath, vaultName, importTally?, error? }
+```
+
+- Channel: `IPC_CHANNELS.VAULT_CREATE_FROM_OPTIONS = 'vault:create-from-options'`
+  (`electron-main/src/ipc.ts`). The main-side handler
+  (`electron-main/src/main.ts`) owns **destination resolution** (`~` expansion +
+  default-parent fallback) and **theme-token sanitisation**; the pure primitive
+  owns scaffold / seed / import.
+- `activate` runs the canonical post-scaffold bookkeeping (persist vault paths,
+  add to recents, open DB + manifest cache, restart watchers) — the same
+  sequence `onboarding:complete` and the Obsidian importer use. Left `false`,
+  the caller owns activation (e.g. "Add vault without switching to it").
+- Reachability is proven end-to-end from a fresh profile in
+  [`e2e/vault-create-primitive-sky11151.spec.ts`](../e2e/vault-create-primitive-sky11151.spec.ts)
+  (each mode creates a vault at a **chosen non-default** location, verified on
+  disk; blank stays empty across a full relaunch).
+
 ## The three modes
 
 | mode | what lands on disk | seed record (`mythos.json`) |

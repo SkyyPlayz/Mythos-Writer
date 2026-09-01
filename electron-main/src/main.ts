@@ -129,6 +129,8 @@ import {
   type VaultSetPathsPayload,
   type VaultLoadSampleTwoVaultPayload,
   type VaultLoadSampleTwoVaultResponse,
+  type VaultCreateFromOptionsPayload,
+  type VaultCreateFromOptionsResponse,
   type WritingModeSetPayload,
   type BackupAppDataPayload,
   type RestoreAppDataPayload,
@@ -437,6 +439,7 @@ import {
   isCanonicalV2ChapterPath,
 } from './mythosFormat/v2Manifest.js';
 import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
+import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js';
 // SKY-11058: notes vault registry
 import {
   ensureNotesVaultRegistry,
@@ -2893,6 +2896,69 @@ const handlers: IpcHandlers = {
       startArchiveContScheduler();
     }
     return { saved: true };
+  },
+
+  // SKY-11151: THE shared vault-creation primitive's IPC surface. Thin main-side
+  // wrapper over createVaultFromOptions — first run, `New Mythos vault…`, and
+  // Settings `Add vault…` all call this with the SAME option set (template /
+  // blank / import). This channel owns destination resolution (~ expansion +
+  // default-parent fallback) and theme-token sanitisation; the pure primitive
+  // owns scaffold/seed/import. `activate` (opt-in) makes the new vault current;
+  // otherwise the caller owns activation chrome (e.g. Add-vault-without-switch).
+  [IPC_CHANNELS.VAULT_CREATE_FROM_OPTIONS]: async (
+    payload: VaultCreateFromOptionsPayload,
+  ): Promise<VaultCreateFromOptionsResponse> => {
+    const { mode, destinationParent, name, exactName, defaultTheme, importSources, activate } = payload ?? {};
+
+    // Resolve the parent: explicit (~-expanded) or the default Mythos Vaults
+    // parent, mirroring quick-start so a caller with no chosen location works.
+    const destinationParentResolved = destinationParent?.trim()
+      ? destinationParent.trim().replace(/^~/, app.getPath('home'))
+      : defaultMythosVaultsParent();
+
+    // Cap the theme token so a hostile renderer can't stuff arbitrary data into
+    // mythos.json (same guard as onboarding:complete).
+    const safeTheme = (typeof defaultTheme === 'string' && /^[a-z0-9-]{1,64}$/.test(defaultTheme))
+      ? defaultTheme
+      : undefined;
+
+    const created = createVaultFromOptions({
+      destinationParent: destinationParentResolved,
+      ...(name?.trim() ? { name: name.trim() } : {}),
+      ...(exactName ? { exactName: true } : {}),
+      mode,
+      ...(safeTheme ? { defaultTheme: safeTheme } : {}),
+      ...(importSources ? { importSources } : {}),
+    });
+    if (!created.ok) return { ok: false, error: created.error };
+
+    // Opt-in activation: persist paths, add to recents, (re)start watchers so
+    // the freshly created vault is the one the shell opens. Same sequence as
+    // completeWithMythosV2 / open-existing above.
+    if (activate) {
+      saveVaultSettings({
+        vaultRoot: created.storyVaultPath,
+        notesVaultRoot: created.notesVaultPath,
+        layoutMode: 'blank',
+      });
+      addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
+      ensureVaultDir();
+      ensureNotesVaultDir();
+      await stopVaultWatcher();
+      await startVaultWatcher(created.storyVaultPath, notifyVaultChanged);
+      await stopNotesVaultWatcher();
+      await startNotesVaultWatcher(created.notesVaultPath, notifyNotesVaultChanged);
+    }
+
+    return {
+      ok: true,
+      mode: created.mode,
+      mythosRoot: created.mythosRoot,
+      storyVaultPath: created.storyVaultPath,
+      notesVaultPath: created.notesVaultPath,
+      vaultName: created.vaultName,
+      ...(created.importTally ? { importTally: created.importTally } : {}),
+    };
   },
 
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
