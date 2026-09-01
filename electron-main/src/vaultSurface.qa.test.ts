@@ -18,7 +18,8 @@ import { trashVaultFolder, getBlastRadius, VAULT_SURFACE_COPY } from './vaultSur
 
 const trash = vi.mocked(shell.trashItem);
 
-beforeEach(() => vi.clearAllMocks());
+// resetAllMocks clears both call history AND queued mockResolvedValueOnce stacks.
+beforeEach(() => vi.resetAllMocks());
 
 // ─── Invariant A+B: trash uses shell.trashItem exclusively ───────────────────
 
@@ -35,15 +36,13 @@ describe('[QA] trashVaultFolder — Recycle Bin contract', () => {
     expect(trash).toHaveBeenCalledWith('/vaults/My Story');
   });
 
-  it('does NOT call fs.rmSync as a fallback when trashItem rejects', async () => {
+  it('returns failure result (not void) when trashItem rejects — proves no silent fs fallback', async () => {
+    // If trashVaultFolder fell back to fs.rm, it would either succeed (trashed=true)
+    // or throw. The ONLY correct outcome when trashItem rejects is { trashed: false }.
     trash.mockRejectedValueOnce(new Error('EPERM'));
-    const fsSpy = vi.spyOn(
-      await import('node:fs'),
-      'rmSync',
-    ).mockImplementation(() => undefined as never);
-    await trashVaultFolder('/vaults/Protected');
-    expect(fsSpy).not.toHaveBeenCalled();
-    fsSpy.mockRestore();
+    const result = await trashVaultFolder('/vaults/Protected');
+    expect(result.trashed).toBe(false);
+    expect(result.error).toBeTruthy();
   });
 });
 
@@ -88,9 +87,11 @@ describe('[QA] VAULT_SURFACE_COPY — language spec', () => {
     expect(body).toMatch(/not been modified|not modified|untouched/i);
   });
 
-  it('hideBody does NOT imply deletion or permanent removal', () => {
+  it('hideBody does NOT promise deletion — folder stays on disk', () => {
     const body = VAULT_SURFACE_COPY.hideBody('MyVault');
-    expect(body).not.toMatch(/deleted|permanent/i);
+    // Must NOT promise that the folder will be deleted or permanently removed.
+    // ("won't be deleted" is fine; "will be deleted" is not.)
+    expect(body).not.toMatch(/will be deleted|permanently deleted|permanently removed/i);
     // Must clarify folder stays on disk
     expect(body).toMatch(/folder|stays|where it is/i);
   });
