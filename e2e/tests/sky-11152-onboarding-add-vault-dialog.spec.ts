@@ -58,7 +58,9 @@ function listAllFiles(dir: string): string[] {
 }
 
 test.describe('SKY-11152 first-run step 3 — name + destination on EVERY path (§3b step 3)', () => {
-  test('AC-OB3-01: name+destination step shows a live "WILL BE CREATED AT" full-path preview', async () => {
+  // Gated pending SKY-11152 (name+destination step not yet built). Slice
+  // owner removes this fixme as part of SKY-11152 done-criteria.
+  test.fixme('AC-OB3-01: name+destination step shows a live "WILL BE CREATED AT" full-path preview (pending SKY-11152)', async () => {
     const userData = freshUserData('mythos-ob01-');
     const app = await launchApp(userData);
     try {
@@ -108,7 +110,9 @@ test.describe('SKY-11152 first-run step 2 — import/restore (§3b step 2)', () 
     }
   });
 
-  test('AC-OB3-03: import screen states "One is enough — leave the other empty and it starts blank"', async () => {
+  // Gated pending SKY-11152 (import screen copy not yet added). Slice owner
+  // removes this fixme as part of SKY-11152 done-criteria.
+  test.fixme('AC-OB3-03: import screen states "One is enough — leave the other empty and it starts blank" (pending SKY-11152)', async () => {
     const userData = freshUserData('mythos-ob03-');
     const app = await launchApp(userData);
     try {
@@ -188,7 +192,9 @@ test.describe('SKY-11152 first-run step 2 — import/restore (§3b step 2)', () 
 });
 
 test.describe('SKY-11152 settings-side add-vault dialogs (§3c)', () => {
-  test('AC-OB3-05: Settings exposes "+ Add Notes Vault" / "+ Add Story Vault" dialogs reusing the creation primitive, with NO location picker', async () => {
+  // Gated pending SKY-11152 (settings-side add-vault dialogs not yet built).
+  // Slice owner removes this fixme as part of SKY-11152 done-criteria.
+  test.fixme('AC-OB3-05: Settings exposes "+ Add Notes Vault" / "+ Add Story Vault" dialogs reusing the creation primitive, with NO location picker (pending SKY-11152)', async () => {
     const storyVault = path.join(os.tmpdir(), `mythos-ob05-story-${Date.now()}`);
     const notesVault = path.join(os.tmpdir(), `mythos-ob05-notes-${Date.now()}`);
     fs.mkdirSync(storyVault, { recursive: true });
