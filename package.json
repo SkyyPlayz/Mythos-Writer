@@ -49,6 +49,7 @@
     "test:e2e:coach-page": "playwright test e2e/coach-page.spec.ts --reporter=list,html",
     "test:e2e:agent-hub-session-picker": "playwright test e2e/agent-hub-session-picker.spec.ts --reporter=list,html",
     "test:e2e:nav-history": "playwright test e2e/nav-history.spec.ts --reporter=list,html",
+    "test:e2e:brainstorm-glass": "playwright test e2e/tests/sky-11047-brainstorm-glass.spec.ts --reporter=list,html",
     "test:e2e:lmp": "playwright test e2e/tests/local-model-picker.spec.ts --reporter=list,html",
     "test:e2e:visual-capture": "playwright test e2e/visual-capture.spec.ts --reporter=list,html",
     "test:e2e:writing-modes": "playwright test e2e/writing-modes.spec.ts --reporter=list,html",

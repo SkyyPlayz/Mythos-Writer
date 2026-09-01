@@ -669,6 +669,9 @@ jobs:
       - name: "E2E — App-wide navigation history, Back/Forward across wikilinks (SKY-10916)"
         run: xvfb-run --auto-servernum npm run test:e2e:nav-history
 
+      - name: "E2E — Brainstorm chat panel is glass + tracks the Appearance slider (SKY-11047)"
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-glass
+
       - name: E2E — Notes split per-pane tab strips (SKY-9784)
         # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
         # and wall-clock — see PR description for measurements)
