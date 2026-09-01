@@ -500,6 +500,13 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_REGISTRY_SET_ACTIVE: 'notesVaultRegistry:setActive',
   NOTES_VAULT_REGISTRY_RENAME: 'notesVaultRegistry:rename',
 
+  // SKY-11150: Story vault registry
+  STORY_VAULT_REGISTRY_LIST: 'storyVaultRegistry:list',
+  STORY_VAULT_REGISTRY_CREATE: 'storyVaultRegistry:create',
+  STORY_VAULT_REGISTRY_SET_ACTIVE: 'storyVaultRegistry:setActive',
+  STORY_VAULT_REGISTRY_RENAME: 'storyVaultRegistry:rename',
+  STORY_VAULT_REGISTRY_PAIR: 'storyVaultRegistry:pair',
+
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   SMART_FOLDER_LIST: 'smartFolder:list',
   SMART_FOLDER_CREATE: 'smartFolder:create',
@@ -919,6 +926,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW]: (payload: NotesVaultRegistrySetActivePreviewPayload) => NotesVaultRegistrySetActivePreviewResponse;
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE]: (payload: NotesVaultRegistrySetActivePayload) => NotesVaultRegistrySetActiveResponse;
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_RENAME]: (payload: NotesVaultRegistryRenamePayload) => NotesVaultRegistryRenameResponse;
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_LIST]: (payload: never) => StoryVaultRegistryListResponse;
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_CREATE]: (payload: StoryVaultRegistryCreatePayload) => StoryVaultRegistryCreateResponse;
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_SET_ACTIVE]: (payload: StoryVaultRegistrySetActivePayload) => StoryVaultRegistrySetActiveResponse;
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_RENAME]: (payload: StoryVaultRegistryRenamePayload) => StoryVaultRegistryRenameResponse;
+  [IPC_CHANNELS.STORY_VAULT_REGISTRY_PAIR]: (payload: StoryVaultRegistryPairPayload) => StoryVaultRegistryPairResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
   [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
@@ -1311,6 +1323,55 @@ export interface NotesVaultRegistryRenamePayload {
 
 export interface NotesVaultRegistryRenameResponse {
   entry: NotesVaultRegistryEntry;
+}
+
+// SKY-11150: Story vault registry
+export interface StoryVaultRegistryEntry {
+  id: string;
+  displayName: string;
+  dirName: string;
+  createdAt: string;
+  pairedNotesVaultId: string | null;
+}
+
+export interface StoryVaultRegistryListResponse {
+  /** null when the current vault is a legacy v0.4 vault (no registry). */
+  vaults: StoryVaultRegistryEntry[] | null;
+  activeId: string | null;
+}
+
+export interface StoryVaultRegistryCreatePayload {
+  displayName: string;
+}
+
+export interface StoryVaultRegistryCreateResponse {
+  entry: StoryVaultRegistryEntry;
+}
+
+export interface StoryVaultRegistrySetActivePayload {
+  id: string;
+}
+
+export interface StoryVaultRegistrySetActiveResponse {
+  entry: StoryVaultRegistryEntry;
+}
+
+export interface StoryVaultRegistryRenamePayload {
+  id: string;
+  displayName: string;
+}
+
+export interface StoryVaultRegistryRenameResponse {
+  entry: StoryVaultRegistryEntry;
+}
+
+export interface StoryVaultRegistryPairPayload {
+  storyVaultId: string;
+  notesVaultId: string | null;
+}
+
+export interface StoryVaultRegistryPairResponse {
+  entry: StoryVaultRegistryEntry;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

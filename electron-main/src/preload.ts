@@ -670,6 +670,22 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('notesVaultRegistry:changed', handler);
   },
 
+  // SKY-11150: Story vault registry
+  storyVaultRegistryList: () => ipcRenderer.invoke('storyVaultRegistry:list', undefined),
+  storyVaultRegistryCreate: (displayName: string) =>
+    ipcRenderer.invoke('storyVaultRegistry:create', { displayName }),
+  storyVaultRegistrySetActive: (id: string) =>
+    ipcRenderer.invoke('storyVaultRegistry:setActive', { id }),
+  storyVaultRegistryRename: (id: string, displayName: string) =>
+    ipcRenderer.invoke('storyVaultRegistry:rename', { id, displayName }),
+  storyVaultRegistryPair: (storyVaultId: string, notesVaultId: string | null) =>
+    ipcRenderer.invoke('storyVaultRegistry:pair', { storyVaultId, notesVaultId }),
+  onStoryVaultRegistryChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('storyVaultRegistry:changed', handler);
+    return () => ipcRenderer.removeListener('storyVaultRegistry:changed', handler);
+  },
+
   // One-click Mythos Vault create (SKY-320). The default flow passes no
   // parentPath — main creates the bundle under ~/Mythos/Vaults/. SKY-10401:
   // activate:false creates + registers in recents without switching to it.

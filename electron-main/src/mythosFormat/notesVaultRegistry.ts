@@ -1,4 +1,5 @@
 // SKY-11058 — Per-Mythos-vault registry of Notes vaults.
+// Refactored (SKY-11150) to delegate generic ops to vaultRegistry.ts.
 //
 // Stored at <mythosRoot>/notes-vaults.json — vault-local, travels with the
 // folder (SKY-10949 self-contained ruling). Machine-local cache files go
@@ -12,11 +13,24 @@
 //
 // Pure Node — no Electron imports — so unit tests drive it with tmpdirs.
 
-import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import { writeFileAtomic } from '../vault.js';
 import { listVaultFiles, readVaultFile } from '../vault.js';
+import {
+  VaultEntry,
+  VaultRegistryConfig,
+  VaultRegistry,
+  vaultRegistryPath,
+  vaultAbsPath,
+  readVaultRegistry,
+  writeVaultRegistry,
+  ensureVaultRegistry,
+  getActiveVaultEntry,
+  createBlankVaultEntry,
+  reserveVaultDirName,
+  registerExistingVaultEntry,
+  setActiveVault,
+  renameVaultEntry,
+} from './vaultRegistry.js';
 
 export const NOTES_VAULT_REGISTRY_FILENAME = 'notes-vaults.json';
 export const NOTES_VAULT_REGISTRY_VERSION = 1 as const;
@@ -24,95 +38,50 @@ export const NOTES_VAULT_REGISTRY_VERSION = 1 as const;
 // The default Notes Vault dir name — matches the v2 scaffold (mythosJson.ts).
 export const DEFAULT_NOTES_VAULT_DIRNAME = 'Notes Vault';
 
+const NOTES_CONFIG: VaultRegistryConfig = {
+  registryFilename: NOTES_VAULT_REGISTRY_FILENAME,
+  defaultDirName: DEFAULT_NOTES_VAULT_DIRNAME,
+  defaultDisplayName: 'Notes',
+};
+
 export type NotesVaultOrigin = 'created' | 'imported';
 
-export interface NotesVaultEntry {
-  /** Stable opaque id — never changes on rename. */
-  id: string;
-  /** User-visible label shown in the picker. */
-  displayName: string;
-  /** Directory name directly inside mythosRoot (not a full path). */
-  dirName: string;
-  /** ISO 8601 creation timestamp. */
-  createdAt: string;
+export interface NotesVaultEntry extends VaultEntry {
   /** How the vault was originally added. */
   origin: NotesVaultOrigin;
 }
 
-export interface NotesVaultRegistry {
-  version: typeof NOTES_VAULT_REGISTRY_VERSION;
-  vaults: NotesVaultEntry[];
-  /** `id` of the currently active notes vault. */
-  activeId: string;
+export type NotesVaultRegistry = VaultRegistry<NotesVaultEntry>;
+
+function makeNotesEntry(base: VaultEntry, origin: NotesVaultOrigin = 'created'): NotesVaultEntry {
+  return { ...base, origin };
 }
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 export function notesVaultRegistryPath(mythosRoot: string): string {
-  return path.join(mythosRoot, NOTES_VAULT_REGISTRY_FILENAME);
+  return vaultRegistryPath(mythosRoot, NOTES_CONFIG);
 }
 
 export function notesVaultAbsPath(mythosRoot: string, entry: NotesVaultEntry): string {
-  return path.join(mythosRoot, entry.dirName);
+  return vaultAbsPath(mythosRoot, entry);
 }
 
 // ─── I/O ─────────────────────────────────────────────────────────────────────
 
-/** Tolerant read — returns null when the registry doesn't exist yet. */
+/** Tolerant read — returns null when the registry does not exist yet. */
 export function readNotesVaultRegistry(mythosRoot: string): NotesVaultRegistry | null {
-  const p = notesVaultRegistryPath(mythosRoot);
-  try {
-    const raw = fs.readFileSync(p, 'utf-8');
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      typeof parsed !== 'object' ||
-      parsed === null ||
-      Array.isArray(parsed) ||
-      !Array.isArray((parsed as { vaults?: unknown }).vaults)
-    ) {
-      return null;
-    }
-    return parsed as NotesVaultRegistry;
-  } catch {
-    return null;
-  }
+  return readVaultRegistry<NotesVaultEntry>(mythosRoot, NOTES_CONFIG);
 }
 
 export function writeNotesVaultRegistry(mythosRoot: string, registry: NotesVaultRegistry): void {
-  writeFileAtomic(
-    notesVaultRegistryPath(mythosRoot),
-    `${JSON.stringify(registry, null, 2)}\n`,
-  );
+  writeVaultRegistry(mythosRoot, NOTES_CONFIG, registry);
 }
 
 // ─── Migration / ensure ───────────────────────────────────────────────────────
 
-/**
- * Called every time a v2 vault opens. When notes-vaults.json doesn't exist
- * yet, create it with one entry pointing at the existing Notes Vault dir.
- * Existing vaults (registry present) are left unchanged (idempotent).
- *
- * Returns the current registry (post-migration if one happened).
- */
 export function ensureNotesVaultRegistry(mythosRoot: string): NotesVaultRegistry {
-  const existing = readNotesVaultRegistry(mythosRoot);
-  if (existing && existing.vaults.length > 0) return existing;
-
-  const defaultDirName = DEFAULT_NOTES_VAULT_DIRNAME;
-  const entry: NotesVaultEntry = {
-    id: crypto.randomUUID(),
-    displayName: 'Notes',
-    dirName: defaultDirName,
-    createdAt: new Date().toISOString(),
-    origin: 'created',
-  };
-  const registry: NotesVaultRegistry = {
-    version: NOTES_VAULT_REGISTRY_VERSION,
-    vaults: [entry],
-    activeId: entry.id,
-  };
-  writeNotesVaultRegistry(mythosRoot, registry);
-  return registry;
+  return ensureVaultRegistry(mythosRoot, NOTES_CONFIG, (base) => makeNotesEntry(base, 'created'));
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -120,7 +89,7 @@ export function ensureNotesVaultRegistry(mythosRoot: string): NotesVaultRegistry
 export function getActiveNotesVaultEntry(
   registry: NotesVaultRegistry,
 ): NotesVaultEntry | undefined {
-  return registry.vaults.find((v) => v.id === registry.activeId);
+  return getActiveVaultEntry(registry);
 }
 
 /** Resolve the active notes vault absolute path from the registry. */
@@ -142,58 +111,19 @@ export function createBlankNotesVault(
   mythosRoot: string,
   displayName: string,
 ): { registry: NotesVaultRegistry; entry: NotesVaultEntry } {
-  const registry = ensureNotesVaultRegistry(mythosRoot);
-
-  // Derive a unique dir name from the display name (slugified).
-  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'Notes Vault';
-  let dirName = slug;
-  let attempt = 2;
-  const used = new Set(registry.vaults.map((v) => v.dirName.toLowerCase()));
-  while (used.has(dirName.toLowerCase())) {
-    dirName = `${slug} ${attempt++}`;
-  }
-
-  const entry: NotesVaultEntry = {
-    id: crypto.randomUUID(),
-    displayName: displayName.trim() || dirName,
-    dirName,
-    createdAt: new Date().toISOString(),
-    origin: 'created',
-  };
-
-  const absDir = notesVaultAbsPath(mythosRoot, entry);
-  fs.mkdirSync(absDir, { recursive: true });
-
-  const updated: NotesVaultRegistry = {
-    ...registry,
-    vaults: [...registry.vaults, entry],
-  };
-  writeNotesVaultRegistry(mythosRoot, updated);
-  return { registry: updated, entry };
+  return createBlankVaultEntry(mythosRoot, NOTES_CONFIG, displayName, (base) =>
+    makeNotesEntry(base, 'created'),
+  );
 }
 
 /**
  * Reserve a unique, filesystem-safe directory name under mythosRoot for a
- * future notes vault, WITHOUT creating the directory or writing the
- * registry. Callers that need to copy files into place before registering
- * (e.g. vault imports) use this to pick the destination dir name first.
- *
- * Collision-checked against the current registry only (does not touch disk
- * beyond the registry read) — mirrors the slugify + collision-loop logic in
- * `createBlankNotesVault`.
+ * future notes vault, WITHOUT creating the directory or writing the registry.
  */
 export function reserveNotesVaultDirName(mythosRoot: string, displayName: string): string {
-  const registry = ensureNotesVaultRegistry(mythosRoot);
-
-  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || 'Notes Vault';
-  let dirName = slug;
-  let attempt = 2;
-  const used = new Set(registry.vaults.map((v) => v.dirName.toLowerCase()));
-  while (used.has(dirName.toLowerCase())) {
-    dirName = `${slug} ${attempt++}`;
-  }
-
-  return dirName;
+  return reserveVaultDirName(mythosRoot, NOTES_CONFIG, displayName, (base) =>
+    makeNotesEntry(base),
+  );
 }
 
 /**
@@ -205,22 +135,9 @@ export function registerImportedNotesVault(
   dirName: string,
   displayName: string,
 ): { registry: NotesVaultRegistry; entry: NotesVaultEntry } {
-  const registry = ensureNotesVaultRegistry(mythosRoot);
-
-  const entry: NotesVaultEntry = {
-    id: crypto.randomUUID(),
-    displayName: displayName.trim() || dirName,
-    dirName,
-    createdAt: new Date().toISOString(),
-    origin: 'imported',
-  };
-
-  const updated: NotesVaultRegistry = {
-    ...registry,
-    vaults: [...registry.vaults, entry],
-  };
-  writeNotesVaultRegistry(mythosRoot, updated);
-  return { registry: updated, entry };
+  return registerExistingVaultEntry(mythosRoot, NOTES_CONFIG, dirName, displayName, (base) =>
+    makeNotesEntry(base, 'imported'),
+  );
 }
 
 /** Change the active vault. Returns the updated registry. */
@@ -228,41 +145,23 @@ export function setActiveNotesVault(
   mythosRoot: string,
   id: string,
 ): { registry: NotesVaultRegistry; entry: NotesVaultEntry } {
-  const registry = ensureNotesVaultRegistry(mythosRoot);
-  const entry = registry.vaults.find((v) => v.id === id);
-  if (!entry) throw new Error(`Notes vault not found: ${id}`);
-
-  const updated: NotesVaultRegistry = { ...registry, activeId: id };
-  writeNotesVaultRegistry(mythosRoot, updated);
-  return { registry: updated, entry };
+  return setActiveVault<NotesVaultEntry>(mythosRoot, NOTES_CONFIG, id);
 }
 
-/** Rename a notes vault's display name. Returns the updated registry. */
+/** Rename a notes vault display name. Returns the updated registry. */
 export function renameNotesVault(
   mythosRoot: string,
   id: string,
   displayName: string,
 ): { registry: NotesVaultRegistry; entry: NotesVaultEntry } {
-  const registry = ensureNotesVaultRegistry(mythosRoot);
-  const idx = registry.vaults.findIndex((v) => v.id === id);
-  if (idx < 0) throw new Error(`Notes vault not found: ${id}`);
-
-  const entry: NotesVaultEntry = { ...registry.vaults[idx], displayName: displayName.trim() };
-  const vaults = [...registry.vaults];
-  vaults[idx] = entry;
-  const updated: NotesVaultRegistry = { ...registry, vaults };
-  writeNotesVaultRegistry(mythosRoot, updated);
-  return { registry: updated, entry };
+  return renameVaultEntry<NotesVaultEntry>(mythosRoot, NOTES_CONFIG, id, displayName);
 }
 
 // ─── Link resolution report ───────────────────────────────────────────────────
 
 /**
  * Scan all .md files in the story vault for [[stem]] wikilinks.
- * Returns which unique stems resolve against `targetNotesVaultRoot`
- * (a matching .md file exists anywhere in that vault, matched by stem).
- *
- * Used to generate the pre-swap confirmation report.
+ * Returns which unique stems resolve against targetNotesVaultRoot.
  */
 export function buildLinkResolutionReport(
   storyVaultRoot: string,
@@ -271,7 +170,6 @@ export function buildLinkResolutionReport(
 ): { resolvedCount: number; unresolvedStems: string[]; totalStems: number } {
   const wikiLinkPattern = /\[\[([^\]|#]+?)(?:[|#][^\]]*)?]]/g;
 
-  // Collect all unique stems referenced in story files.
   const stems = new Set<string>();
   try {
     const { items } = listVaultFiles(storyVaultRoot);
@@ -283,7 +181,6 @@ export function buildLinkResolutionReport(
         wikiLinkPattern.lastIndex = 0;
         while ((m = wikiLinkPattern.exec(content)) !== null) {
           const raw = m[1].trim();
-          // Take just the last path segment as the stem (Obsidian convention).
           const stem = path.basename(raw, '.md').toLowerCase();
           if (stem) stems.add(stem);
         }
@@ -299,7 +196,6 @@ export function buildLinkResolutionReport(
     return { resolvedCount: 0, unresolvedStems: [], totalStems: 0 };
   }
 
-  // Build a set of stems present in the TARGET notes vault.
   const targetStems = new Set<string>();
   try {
     const { items } = listVaultFiles(targetNotesVaultRoot);
@@ -311,7 +207,6 @@ export function buildLinkResolutionReport(
     // Target vault unreadable — all stems unresolved.
   }
 
-  // Compare.
   const unresolvedStems: string[] = [];
   let resolvedCount = 0;
   for (const stem of stems) {
