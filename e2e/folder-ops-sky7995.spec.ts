@@ -316,6 +316,16 @@ test('FO-04b: dragging a folder to the root drop zone still moves it (folders ma
   const deleted = await waitUntil(
     () => !fs.readdirSync(notesVaultDir).includes('New Folder'), 15_000);
   expect(deleted, 'cleanup delete of root "New Folder" left the name occupied (delete-pending ghost?)').toBe(true);
+
+  // SKY-11179: also wait for the delete's reload to SETTLE in the tree before
+  // handing off to FO-05. The delete triggers a notes-vault reload that
+  // reflattens the row list (removing "New Folder", which sorts above
+  // "Worldbuilding"). If that re-render lands during FO-05's right-click, the
+  // virtualized list recycles the clicked slot's DOM node in place onto its
+  // neighbour — so the right-click captured the wrong row and the folder rename
+  // renamed Worldbuilding's child note instead. Asserting disk state alone
+  // (above) does not guarantee the UI has caught up; wait for the row to leave.
+  await expect(page.locator('[data-testid="vb-row-New Folder"]')).toHaveCount(0, { timeout: 8_000 });
 });
 
 // ─── FO-05: Rename a folder ──────────────────────────────────────────────────
