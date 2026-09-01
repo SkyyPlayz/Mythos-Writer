@@ -136,7 +136,6 @@ interface StoryVaultEntry {
   id: string;
   displayName: string;
   dirName: string;
-  origin: string;
   pairedNotesVaultId: string | null;
 }
 
@@ -188,7 +187,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
     // Call the IPC handler through the preload API.
     const result = await page.evaluate(async () => {
-      return await (window as any).electronAPI.storyVaultRegistryList();
+      return await (window as any).api.storyVaultRegistryList();
     });
 
     expect(result.vaults).not.toBeNull();
@@ -210,7 +209,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
   test('TC-SVR-02: storyVaultRegistry:create creates "Second World" — listed, NOT active, dir exists', async () => {
     const result = await page.evaluate(async (name: string) => {
-      return await (window as any).electronAPI.storyVaultRegistryCreate(name);
+      return await (window as any).api.storyVaultRegistryCreate(name);
     }, SECOND_VAULT_NAME);
 
     expect(result.entry).toBeTruthy();
@@ -225,7 +224,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
     const reg = readStoryRegistry(bundle)!;
     const second = reg.vaults.find((v) => v.id === secondVaultId);
-    expect(second).toMatchObject({ displayName: SECOND_VAULT_NAME, origin: 'created' });
+    expect(second).toMatchObject({ displayName: SECOND_VAULT_NAME });
 
     // Active id is still the first vault (setActive was NOT called).
     const firstVault = reg.vaults.find((v) => v.id !== secondVaultId);
@@ -241,7 +240,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
   test('TC-SVR-03: storyVaultRegistry:pair pairs the second story vault to a fake notes vault id — persists', async () => {
     const result = await page.evaluate(
       async ({ vaultId, notesId }: { vaultId: string; notesId: string }) => {
-        return await (window as any).electronAPI.storyVaultRegistryPair(vaultId, notesId);
+        return await (window as any).api.storyVaultRegistryPair(vaultId, notesId);
       },
       { vaultId: secondVaultId, notesId: FAKE_NOTES_VAULT_ID },
     );
@@ -268,7 +267,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
     // Re-list after restart.
     const result = await page.evaluate(async () => {
-      return await (window as any).electronAPI.storyVaultRegistryList();
+      return await (window as any).api.storyVaultRegistryList();
     });
 
     expect(result.vaults).toHaveLength(2);
