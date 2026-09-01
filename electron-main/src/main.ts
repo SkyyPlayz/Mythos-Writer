@@ -677,6 +677,7 @@ import {
 } from './cloudSync.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 import { getBlastRadius, trashVaultFolder } from './vaultSurface.js';
+import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
 const require = createRequire(import.meta.url);
 
 // SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
@@ -10432,7 +10433,7 @@ app.on('window-all-closed', async () => {
     // window, app stays in the dock" case — quitRequested (set by
     // before-quit) means quit is already underway, so this call must still
     // run there too, or the process never actually exits.
-    if (process.platform !== 'darwin' || quitRequested) {
+    if (shouldQuitOnWindowAllClosed(process.platform, quitRequested)) {
       app.quit();
     }
   }
