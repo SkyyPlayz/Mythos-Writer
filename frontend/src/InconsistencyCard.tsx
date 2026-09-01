@@ -52,7 +52,6 @@ const SCOPE_LABEL: Record<ContinuityScope, string> = {
   story_vault: 'Story ↔ Vault',
   vault_internal: 'Vault internal',
   timeline: 'Timeline',
-  story_internal: 'Story internal',
 };
 
 /** M12.B3: the card's second anchor is a vault note for every scope except
