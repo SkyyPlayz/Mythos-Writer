@@ -183,15 +183,28 @@ function Row({
       onClick={isEditing ? undefined : handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseDown={(e) => {
-        // SKY-10935: on Windows, right-click fires focus before contextmenu.
-        // Block scrollToRow during that window so the virtualized list doesn't
-        // recycle the DOM node and point contextmenu at the wrong row.
+        // SKY-10935 / SKY-11179: a right-click fires `focus` *before*
+        // `contextmenu`. If Row.onFocus is allowed to call onMoveFocus →
+        // scrollToRow during that window, the virtualized list scrolls a row or
+        // two and recycles this DOM node onto a neighbour — so the contextmenu
+        // (and therefore Rename…/Delete) lands on the wrong item. Renaming a
+        // folder ended up renaming its first child note instead (FO-05).
+        //
+        // The original fix cleared the guard on a `setTimeout(0)` macrotask, but
+        // under load that macrotask can run *before* the focus event, reopening
+        // the race. Hold the guard for the whole gesture and clear it in
+        // onContextMenu once the target row is captured; the timeout is only a
+        // failsafe for a right mousedown that never yields a contextmenu.
         if (e.button === 2) {
           rightClickPendingRef.current = true;
-          setTimeout(() => { rightClickPendingRef.current = false; }, 0);
+          setTimeout(() => { rightClickPendingRef.current = false; }, 300);
         }
       }}
-      onContextMenu={(e) => { e.preventDefault(); onContextMenu(e, row); }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e, row);
+        rightClickPendingRef.current = false;
+      }}
       onKeyDown={handleKeyDown}
       onFocus={() => { if (!rightClickPendingRef.current && index !== focusedIdx) onMoveFocus(index); }}
       title={isEditing ? undefined : node.path}
