@@ -45,7 +45,17 @@ import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import ContinuityPanel from './ContinuityPanel';
 import type { Scene } from './types';
+import { RightSidebarSlot } from './RightSidebarSlot';
 import './BrainstormPage.css';
+
+/** SKY-11211: hosts the facts column inline (unchanged) in compact/split-pane
+ *  contexts, or claims the global right sidebar's route slot everywhere else
+ *  — so the page never renders its own second right-hand column next to the
+ *  real one. */
+function FactsColShell({ compact, children }: { compact: boolean; children: ReactElement }) {
+  if (compact) return children;
+  return <RightSidebarSlot>{children}</RightSidebarSlot>;
+}
 
 
 const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. Respond naturally to help develop the story — be generative and specific, offer possibilities rather than prescriptions, and keep replies conversational.
@@ -2548,7 +2558,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           )}
         </div>
 
-        <div className="brainstorm-facts-col">
+        <FactsColShell compact={compact}>
+        <div className={`brainstorm-facts-col${compact ? '' : ' brainstorm-facts-col--in-sidebar'}`}>
           {/* M19: agent activity feed (prototype right panel, lines 2468–2496)
               — LIVE header, real counters, and a feed of actual vault events. */}
           <div className="bs-activity-section" data-testid="bs-activity-section">
@@ -3005,6 +3016,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           </div>
           )}
         </div>
+        </FactsColShell>
       </div>
       </div>
       )}
