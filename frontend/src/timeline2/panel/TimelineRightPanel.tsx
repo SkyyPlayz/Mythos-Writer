@@ -67,6 +67,9 @@ export interface TimelineRightPanelProps {
   archiveBusy: boolean;
   /** SKY-10876 M12.B4b: "Rebuild my timeline" command (manuscript-driven). */
   onRebuildTimeline?: () => void;
+  /** SKY-10876: true only while the rebuild (not the quick-add) is in flight,
+   *  so the Rebuild button owns the "Rebuilding…" verb by itself. */
+  rebuilding?: boolean;
 }
 
 export default function TimelineRightPanel(props: TimelineRightPanelProps) {
@@ -175,6 +178,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
             busy={props.archiveBusy}
             showToast={props.showToast}
             onRebuildTimeline={props.onRebuildTimeline}
+            rebuilding={props.rebuilding}
           />
         )}
       </div>
