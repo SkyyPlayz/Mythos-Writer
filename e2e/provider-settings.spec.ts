@@ -10,6 +10,12 @@
  * TC-PROV-05  Switching the global provider dropdown fills Base URL with that
  *              provider's default (SKY-6941 regression — it used to keep the
  *              previously-selected provider's URL/placeholder)
+ * TC-PROV-07  Legacy API Key section only renders for providers that need a
+ *              key (SKY-11219 AC-1/AC-2)
+ * TC-PROV-08  No-override agent Model field inherits and live-tracks the
+ *              global provider's Default model (SKY-11219 AC-3)
+ * TC-PROV-09  Editing Base URL for an already-selected listable provider
+ *              re-fetches models after a debounce (SKY-11219 AC-4)
  *
  * The real `settings:testConnection` IPC handler is replaced with a mock that
  * always succeeds so no actual Ollama/LM Studio instance is needed.
@@ -383,6 +389,47 @@ test('TC-PROV-08: no-override agent Model field inherits & live-tracks the provi
   await waModel.fill('custom-agent-only-model');
   await providerModelInput.fill('yet-another-provider-default');
   await expect(waModel).toHaveValue('custom-agent-only-model');
+
+  await page.click('.settings-close');
+});
+
+// ─── TC-PROV-09: SKY-11219 AC-4 — Base URL edit debounce re-fetch ─────────────
+//
+// Prior to SKY-11219 the model list only re-fetched on a provider *switch*;
+// editing the Base URL for an already-selected listable provider (e.g.
+// pointing the same LM Studio dropdown at a different running endpoint) did
+// nothing until a manual "Refresh models" click. The fix debounces a
+// re-fetch 400ms after the last keystroke — verified here against a real
+// `provider:listModels` IPC handler mock with call tracking, not a fixed sleep.
+
+test('TC-PROV-09: editing Base URL for a listable provider re-fetches models after a debounce', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+  await providerSelect.selectOption('lmstudio');
+
+  await app!.evaluate(async ({ ipcMain }) => {
+    (globalThis as Record<string, unknown>).__e2eListModelsCalls = [];
+    ipcMain.removeHandler('provider:listModels');
+    ipcMain.handle('provider:listModels', async (_event, payload: unknown) => {
+      (((globalThis as Record<string, unknown>).__e2eListModelsCalls) as unknown[]).push(payload);
+      return { ok: true, models: ['e2e-debounced-model'] };
+    });
+  });
+
+  const baseUrlInput = page.getByLabel('Provider base URL');
+  await baseUrlInput.fill('http://127.0.0.1:5555/v1');
+
+  // Poll past the 400ms debounce instead of a single fixed wait.
+  await expect(async () => {
+    const calls = await app!.evaluate(
+      () => (globalThis as Record<string, unknown>).__e2eListModelsCalls as { baseUrl?: string }[],
+    );
+    expect(calls.some((c) => c.baseUrl === 'http://127.0.0.1:5555/v1')).toBe(true);
+  }).toPass({ timeout: 3_000 });
 
   await page.click('.settings-close');
 });
