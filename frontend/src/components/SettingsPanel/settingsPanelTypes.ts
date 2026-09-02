@@ -284,6 +284,7 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
     { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: 'brainstorm', order: 3 },
     { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 4 },
     { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 5 },
+    { id: 'boards', enabled: true, label: 'Boards', icon: 'boards', order: 6 },
   ],
   collapsedDefault: false,
   showLabels: true,

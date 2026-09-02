@@ -79,6 +79,7 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import { craftedSceneNote, type CrafterSetup } from './pages/SceneCrafter/crafterState';
 import VaultGraphView from './VaultGraphView';
+import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
@@ -2654,6 +2655,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         break;
       case 'vault-graph':
         handleTabChange('vault-graph');
+        break;
+      case 'boards':
+        handleTabChange('boards');
         break;
       case 'story':
         handleNavSectionChange('story');
@@ -5722,7 +5726,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ? 'vault-graph'
       : tabShell.activeTab === 'brainstorm'
         ? 'brainstorm'
-        : 'notes';
+        : tabShell.activeTab === 'boards'
+          ? 'boards'
+          : 'notes';
 
   // Beta 4 M3: rail edit popover rows — the full merged module config
   // (hidden items included) in user order; SKY-5903 merge semantics apply.
@@ -7002,6 +7008,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
         >
           <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
+        </div>
+      )}
+      {/* SKY-11184: Boards tab — Notes-vault canvas view (BOARDS-SPEC.md §1). */}
+      {tabShell.activeTab === 'boards' && (
+        <div
+          id="app-tabpanel-boards"
+          role="tabpanel"
+          aria-labelledby="app-tab-boards"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+        >
+          <BoardsTabPanel notesVaultRoot={vaultBinding.notesPath} notesVaultValid={vaultBinding.notesValid} />
         </div>
       )}
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
