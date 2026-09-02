@@ -5,6 +5,7 @@ import {
   registerAiActivityIpcHandlers,
   registerAiActivity,
   endAiActivity,
+  isEmptyModelOutput,
   AI_ACTIVITY_SURFACE_LABELS,
   type AiActivitySurface,
 } from './aiActivityRegistry.js';
@@ -9718,7 +9719,11 @@ function registerBetaReadScanHandler(): void {
     const requestId = crypto.randomUUID();
     let genError: string | null = null;
     let userCancelled = false;
-    let commentCount = 0;
+    // SKY-11223: "empty" must mean the model produced no output, NOT that a
+    // successful read found zero issues. A clean scene (model streamed a real
+    // "no problems here" answer that parses to zero margin comments) is a
+    // legitimate `done`, not "Produced nothing — try again".
+    let modelProducedText = false;
     const scanAbort = new AbortController();
     agentControllers.set(requestId, scanAbort);
     // SKY-11223: tag the timeout's own abort so it stays distinguishable
@@ -9745,10 +9750,10 @@ function registerBetaReadScanHandler(): void {
       })) {
         betaText += token;
       }
+      modelProducedText = !isEmptyModelOutput(betaText);
 
       const parsed = parseBetaReadLines(betaText);
       const comments = buildBetaReadComments(parsed, payload.sceneId, scannedAt, crypto.randomUUID.bind(crypto));
-      commentCount = comments.length;
 
       for (const comment of comments) {
         insertBetaReadComment({
@@ -9775,7 +9780,7 @@ function registerBetaReadScanHandler(): void {
       endTrackedAiActivity(requestId, {
         aborted: userCancelled,
         error: genError,
-        empty: !userCancelled && !genError && commentCount === 0,
+        empty: !userCancelled && !genError && !modelProducedText,
       });
       agentControllers.delete(requestId);
       clearTimeout(scanTimeout);
@@ -9838,7 +9843,11 @@ function registerBetaReportRunHandler(): void {
     const requestId = crypto.randomUUID();
     let genError: string | null = null;
     let userCancelled = false;
-    let reactionCount = 0;
+    // SKY-11223: "empty" means the model streamed nothing — a valid report with
+    // a score/verdict but zero LOVED/STUMBLED/CONFUSED reactions is a real
+    // success (it's parsed, saved, and shown), so it must terminate as `done`,
+    // not the dishonest "Produced nothing — try again".
+    let modelProducedText = false;
     const runAbort = new AbortController();
     agentControllers.set(requestId, runAbort);
     const runTimeout = setTimeout(() => runAbort.abort(new Error('scan-timeout')), SCAN_STREAM_TIMEOUT_MS);
@@ -9861,6 +9870,7 @@ function registerBetaReportRunHandler(): void {
       })) {
         responseText += token;
       }
+      modelProducedText = !isEmptyModelOutput(responseText);
 
       const parsed = parseBetaReportResponse(responseText);
       const reportId = crypto.randomUUID();
@@ -9873,7 +9883,6 @@ function registerBetaReportRunHandler(): void {
         where: r.where,
         note: r.note,
       }));
-      reactionCount = reactions.length;
       const report: BetaReport = {
         id: reportId,
         storyId: payload.storyId,
@@ -9916,7 +9925,7 @@ function registerBetaReportRunHandler(): void {
       endTrackedAiActivity(requestId, {
         aborted: userCancelled,
         error: genError,
-        empty: !userCancelled && !genError && reactionCount === 0,
+        empty: !userCancelled && !genError && !modelProducedText,
       });
       agentControllers.delete(requestId);
       clearTimeout(runTimeout);
