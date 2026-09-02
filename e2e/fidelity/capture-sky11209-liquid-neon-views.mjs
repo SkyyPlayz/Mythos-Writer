@@ -140,6 +140,8 @@ async function run(wp, label) {
   // ── Manuscript Structure ────────────────────────────────────────────────
   const storyRail = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
   await storyRail.click();
+  const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
+  if (await storyPick.count()) await storyPick.click();
   await page.waitForSelector('#app-tabpanel-story', { timeout: 8000 });
   await page.waitForTimeout(800);
   const structureTab = page.locator('[data-testid="story-subview-structure"]');
