@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isCatalogReaderVoice,
+  isReaderVoiceAvailable,
   listReaderVoices,
   readerVoiceSetupHint,
   resolveReaderVoiceId,
@@ -25,7 +26,7 @@ afterEach(() => {
 describe('listReaderVoices', () => {
   it('degrades to Default + self-explaining catalog when speechSynthesis is missing', () => {
     const options = listReaderVoices();
-    expect(options[0]).toEqual({ value: '', label: 'Default voice' });
+    expect(options[0]).toEqual({ value: '', label: 'Default voice', engine: 'default', available: true });
     // Catalog entries survive so the picker is never empty — each explains itself.
     expect(options.map((o) => o.value)).toEqual([
       '',
@@ -37,10 +38,14 @@ describe('listReaderVoices', () => {
       'kokoro:nicole',
       'kokoro:sky',
     ]);
-    for (const o of options.slice(1)) expect(o.setupHint).toBeTruthy();
+    // SKY-11242: every catalog entry is flagged unavailable and carries a hint.
+    for (const o of options.slice(1)) {
+      expect(o.available).toBe(false);
+      expect(o.setupHint).toBeTruthy();
+    }
   });
 
-  it('lists English OS voices first (prototype en filter)', () => {
+  it('lists English OS voices first (prototype en filter), marked available', () => {
     stubVoices([
       { name: 'Aria', lang: 'en-US' },
       { name: 'Hans', lang: 'de-DE' },
@@ -48,7 +53,12 @@ describe('listReaderVoices', () => {
     ]);
     const options = listReaderVoices();
     expect(options.map((o) => o.value).slice(0, 3)).toEqual(['', 'Aria', 'Sonia']);
-    expect(options[1].label).toBe('Aria — system');
+    expect(options[1]).toEqual({
+      value: 'Aria',
+      label: 'Aria — system',
+      engine: 'system',
+      available: true,
+    });
     expect(options[1].setupHint).toBeUndefined();
   });
 
@@ -61,7 +71,7 @@ describe('listReaderVoices', () => {
     expect(values.slice(0, 3)).toEqual(['', 'Hans', 'Yuki']);
   });
 
-  it('detects Windows Edge naturals, labels them, and ranks them first', () => {
+  it('detects Windows Edge naturals, labels them available, and ranks them first', () => {
     stubVoices([
       { name: 'Zira', lang: 'en-US' },
       { name: 'Microsoft Aria Online (Natural) - English (United States)', lang: 'en-US' },
@@ -70,32 +80,36 @@ describe('listReaderVoices', () => {
     expect(options[1]).toEqual({
       value: 'Microsoft Aria Online (Natural) - English (United States)',
       label: 'Aria — Edge natural',
+      engine: 'edge',
+      available: true,
     });
     expect(options[2].label).toBe('Zira — system');
     // Real naturals exist → no mocked Edge catalog entries.
     expect(options.some((o) => o.value.startsWith('edge:'))).toBe(false);
   });
 
-  it('offers Edge catalog entries with setup hints when the OS has no naturals', () => {
+  it('offers Edge catalog entries as unavailable, with setup hints, when the OS has no naturals', () => {
     stubVoices([{ name: 'Zira', lang: 'en-US' }]);
     const options = listReaderVoices();
     const aria = options.find((o) => o.value === 'edge:aria');
     expect(aria?.label).toBe('Aria Natural — Edge');
-    expect(aria?.setupHint).toContain('default voice');
+    expect(aria?.engine).toBe('edge');
+    expect(aria?.available).toBe(false);
+    expect(aria?.setupHint).toContain('Windows');
   });
 
-  it('always offers Piper/Kokoro catalog entries that explain their setup', () => {
+  it('always offers Piper/Kokoro catalog entries as unavailable that explain their setup', () => {
     stubVoices([{ name: 'Aria', lang: 'en-US' }]);
     const options = listReaderVoices();
     const amy = options.find((o) => o.value === 'piper:amy');
     const sky = options.find((o) => o.value === 'kokoro:sky');
-    expect(amy?.label).toBe('Amy — Piper (offline)');
+    expect(amy).toMatchObject({ label: 'Amy — Piper (offline)', engine: 'piper', available: false });
     expect(amy?.setupHint).toContain('Settings → Voice');
-    expect(sky?.label).toBe('Sky — Kokoro (offline)');
+    expect(sky).toMatchObject({ label: 'Sky — Kokoro (offline)', engine: 'kokoro', available: false });
     expect(sky?.setupHint).toContain('Settings → Voice');
   });
 
-  it('appends the configured Piper engine voice when an engine is set up', () => {
+  it('appends the configured Piper engine voice as an available Piper entry', () => {
     stubVoices([{ name: 'Aria', lang: 'en-US' }]);
     const options = listReaderVoices({
       enabled: true,
@@ -106,17 +120,24 @@ describe('listReaderVoices', () => {
     expect(options).toContainEqual({
       value: 'en_US/vctk_low',
       label: 'en_US/vctk_low — Piper (local)',
+      engine: 'piper',
+      available: true,
     });
   });
 
-  it('labels a cloud engine voice as cloud', () => {
+  it('labels a cloud engine voice as an available cloud entry', () => {
     const options = listReaderVoices({
       enabled: true,
       provider: 'cloud',
       cloudApiKey: 'k',
       voiceId: 'alloy',
     });
-    expect(options).toContainEqual({ value: 'alloy', label: 'alloy — cloud' });
+    expect(options).toContainEqual({
+      value: 'alloy',
+      label: 'alloy — cloud',
+      engine: 'cloud',
+      available: true,
+    });
   });
 
   it('omits the engine voice when the engine is not actually configured', () => {
@@ -130,7 +151,19 @@ describe('listReaderVoices', () => {
     expect(options).toContainEqual({
       value: 'my-roaming-voice',
       label: 'my-roaming-voice — configured',
+      engine: 'system',
+      available: true,
     });
+  });
+
+  it('surfaces a roamed catalog selection as an unavailable entry with its hint', () => {
+    stubVoices([{ name: 'Aria', lang: 'en-US' }]);
+    // A stored piper: pref roams in from a machine where Piper was set up.
+    const options = listReaderVoices(undefined, 'piper:custom');
+    const roamed = options.find((o) => o.value === 'piper:custom');
+    expect(roamed?.engine).toBe('piper');
+    expect(roamed?.available).toBe(false);
+    expect(roamed?.setupHint).toContain('Piper');
   });
 
   it('deduplicates a selection that already matches an OS voice', () => {
@@ -138,9 +171,16 @@ describe('listReaderVoices', () => {
     const options = listReaderVoices(undefined, 'Aria');
     expect(options.filter((o) => o.value === 'Aria')).toHaveLength(1);
   });
+
+  it('tags every option with an engine so the picker can group them', () => {
+    stubVoices([{ name: 'Aria', lang: 'en-US' }]);
+    const engines = new Set(listReaderVoices().map((o) => o.engine));
+    // default + system + the always-present piper/kokoro catalog + edge catalog.
+    expect(engines).toEqual(new Set(['default', 'system', 'edge', 'piper', 'kokoro']));
+  });
 });
 
-describe('catalog voice resolution (§1.2 never dead)', () => {
+describe('catalog voice resolution (SKY-11242 — no silent wrong-voice playback)', () => {
   it('flags edge:/piper:/kokoro: values as catalog picks', () => {
     expect(isCatalogReaderVoice('edge:aria')).toBe(true);
     expect(isCatalogReaderVoice('piper:amy')).toBe(true);
@@ -149,7 +189,17 @@ describe('catalog voice resolution (§1.2 never dead)', () => {
     expect(isCatalogReaderVoice('')).toBe(false);
   });
 
-  it('resolves catalog picks to the engine default and passes real ids through', () => {
+  it('marks catalog voices unavailable and everything else available', () => {
+    expect(isReaderVoiceAvailable('edge:aria')).toBe(false);
+    expect(isReaderVoiceAvailable('piper:amy')).toBe(false);
+    expect(isReaderVoiceAvailable('kokoro:sky')).toBe(false);
+    expect(isReaderVoiceAvailable('Aria')).toBe(true);
+    expect(isReaderVoiceAvailable('en_US/vctk_low')).toBe(true);
+    expect(isReaderVoiceAvailable('')).toBe(true);
+  });
+
+  it('resolves unavailable catalog picks to the engine default and passes real ids through', () => {
+    // Safety net for a roamed/stored pref; the picker itself refuses to switch here.
     expect(resolveReaderVoiceId('piper:amy')).toBe('');
     expect(resolveReaderVoiceId('edge:jenny')).toBe('');
     expect(resolveReaderVoiceId('Aria')).toBe('Aria');
@@ -157,7 +207,7 @@ describe('catalog voice resolution (§1.2 never dead)', () => {
   });
 
   it('provides a per-engine explanation for catalog picks only', () => {
-    expect(readerVoiceSetupHint('edge:aria')).toContain('Edge natural');
+    expect(readerVoiceSetupHint('edge:aria')).toContain('Edge');
     expect(readerVoiceSetupHint('piper:ryan')).toContain('Piper');
     expect(readerVoiceSetupHint('kokoro:nicole')).toContain('Kokoro');
     expect(readerVoiceSetupHint('Aria')).toBeUndefined();

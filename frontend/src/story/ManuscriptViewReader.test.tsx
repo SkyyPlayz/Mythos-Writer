@@ -373,15 +373,22 @@ describe('speed + voice controls', () => {
     expect(spoken[0].rate).toBe(1.5);
   });
 
-  it('lists Default + OS voices (naturals labeled) + offline catalog entries', () => {
+  it('lists Default + OS voices (naturals labeled) + offline catalog, grouped by engine', () => {
     renderView();
     openCard();
     const select = screen.getByTestId('msv-reader-voice');
     const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
     expect(labels[0]).toBe('Default voice');
     expect(labels[1]).toBe('Aria — Edge natural'); // 'Aria (Natural)' detected
-    expect(labels).toContain('Amy — Piper (offline)');
-    expect(labels).toContain('Nicole — Kokoro (offline)');
+    // SKY-11242: unavailable catalog voices are marked in the label…
+    expect(labels).toContain('Amy — Piper (offline) · needs setup');
+    expect(labels).toContain('Nicole — Kokoro (offline) · needs setup');
+    // …and grouped under their engine's <optgroup>.
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(expect.arrayContaining(['Edge natural', 'Piper (offline)', 'Kokoro (offline)']));
+    // The unavailable options carry the disabled semantics for assistive tech.
+    const amy = Array.from(select.querySelectorAll('option')).find((o) => o.value === 'piper:amy');
+    expect(amy?.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('applies a real OS voice selection to the next utterance', () => {
@@ -394,18 +401,20 @@ describe('speed + voice controls', () => {
     expect(spoken[0].voice).toBe(ariaVoice);
   });
 
-  it('catalog picks explain themselves and fall back to the default voice (§1.2)', () => {
+  it('unavailable catalog picks toast a setup hint and do NOT switch the voice (SKY-11242)', () => {
     renderView();
     openCard();
     const select = screen.getByTestId('msv-reader-voice') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'piper:amy' } });
-    expect(select.value).toBe('piper:amy'); // pick sticks — not dead
+    // The pick does NOT stick — playback keeps the current (default) voice, so
+    // an unavailable entry never plays a different voice than its label promises.
+    expect(select.value).toBe('');
     expect(document.querySelector('[data-testid="ln-toast"]')?.textContent).toContain(
       'Settings → Voice'
     );
     fireEvent.click(screen.getByTestId('msv-reader-play'));
     expect(speakMock).toHaveBeenCalledTimes(1); // still reads…
-    expect(spoken[0].voice).toBeNull(); // …with the default voice
+    expect(spoken[0].voice).toBeNull(); // …with the default voice, not a wrong one
   });
 
   it('seeds the voice from stored prefs and keeps it selectable', () => {
