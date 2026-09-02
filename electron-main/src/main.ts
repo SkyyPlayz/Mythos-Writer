@@ -8903,7 +8903,7 @@ function registerBrainstormHandler() {
         throw new SafeIpcError(userMessage);
       }
     } finally {
-      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: isEmptyModelOutput(fullText) });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = cappedPrompt;
@@ -9031,7 +9031,7 @@ function registerArchiveChatHandler() {
         throw new SafeIpcError(userMessage);
       }
     } finally {
-      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: isEmptyModelOutput(fullText) });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = cappedPrompt;
@@ -9267,7 +9267,7 @@ function registerWritingAssistantHandler() {
         throw new SafeIpcError(userMessage);
       }
     } finally {
-      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: isEmptyModelOutput(fullText) });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
@@ -9433,7 +9433,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
         throw new SafeIpcError(userMessage);
       }
     } finally {
-      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: vaultGenError, empty: fullText.length === 0 });
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: vaultGenError, empty: isEmptyModelOutput(fullText) });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
