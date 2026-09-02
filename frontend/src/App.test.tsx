@@ -76,7 +76,7 @@ describe('App — onboarding gate (SKY-152)', () => {
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeInTheDocument());
   });
 
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {
