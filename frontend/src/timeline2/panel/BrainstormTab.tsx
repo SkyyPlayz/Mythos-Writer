@@ -15,7 +15,7 @@ export interface BrainstormTabProps {
   showToast: (message: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
-const invokeBrainstorm: MiniChatInvoke = async (prompt, history) => {
+export const invokeBrainstorm: MiniChatInvoke = async (prompt, history) => {
   const api = window.api;
   if (typeof api?.agentBrainstorm !== 'function') {
     throw new Error('Brainstorm agent unavailable — check your provider settings.');

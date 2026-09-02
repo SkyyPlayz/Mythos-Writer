@@ -34,6 +34,7 @@ import type { InconsistencyItem } from './InconsistencyCard';
 import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
 import MiniAgentChat from './timeline2/panel/MiniAgentChat';
 import { invokeArchive } from './timeline2/panel/ArchiveTab';
+import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import ComposerQuickActions from './components/ComposerQuickActions';
 import { generateQuickActionChips, type QuickActionChip } from './archive/composerQuickActions';
 import SuggestionReview from './SuggestionReview';
@@ -827,11 +828,28 @@ function AgentChatView({
         <ArchiveChatBody scene={scene} continuityPanel={continuityPanel} continuityItems={continuityItems ?? []} />
       )}
 
-      {agentId !== 'writing-assistant' && agentId !== 'archive' && (
+      {/* SKY-11224: Brainstorm's chat backend already existed (BrainstormTab's
+          invokeBrainstorm, shared session) — this row just never rendered it. */}
+      {agentId === 'brainstorm' && <BrainstormChatBody />}
+
+      {agentId !== 'writing-assistant' && agentId !== 'archive' && agentId !== 'brainstorm' && (
         <div className="ahp-chat-placeholder">
           <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Brainstorm Agent chat body (SKY-11224) ──────────────────────────────────
+// Mini chat on the shared Brainstorm agent session — same backend BrainstormTab
+// and BrainstormPage already use, just wired into this row for the first time.
+
+function BrainstormChatBody() {
+  const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
+  return (
+    <div className="ahp-brainstorm-chat">
+      <MiniAgentChat chat={chat} accent="brainstorm" placeholder="Ask the Brainstorm agent…" testidPrefix="ahp-brainstorm" />
     </div>
   );
 }
