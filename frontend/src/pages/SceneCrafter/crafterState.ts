@@ -192,11 +192,6 @@ export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] 
   return cards.filter((card) => card.characterTag);
 }
 
-/** Character names for the POV field's filter list — see `castCardsFromSuggested`. */
-export function castFromSuggested(cards: SuggestedCard[]): string[] {
-  return castCardsFromSuggested(cards).map((card) => card.t);
-}
-
 /** Cards for the LOCATIONS vault-reference column (SKY-11072). */
 export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
   return cards.filter((card) => card.group === 'LOCATIONS');
