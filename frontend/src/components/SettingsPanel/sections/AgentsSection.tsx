@@ -1014,6 +1014,37 @@ export default function AgentsSection({
             </label>
           </div>
 
+          {/* SKY-10878 M12.B5b: wiki self-building autonomy (tri-state) */}
+          <div className="settings-field">
+            <label className="settings-label" htmlFor="wiki-autonomy">
+              When the wiki spots a new name
+            </label>
+            <select
+              id="wiki-autonomy"
+              data-testid="wiki-autonomy-select"
+              className="settings-input settings-select"
+              value={settings.wikiAutonomy ?? 'ask'}
+              onChange={(e) => {
+                setSettings?.((prev) => ({
+                  ...prev,
+                  wikiAutonomy: e.target.value as AppSettings['wikiAutonomy'],
+                }));
+              }}
+            >
+              <option value="ask">Always ask me first</option>
+              <option value="auto">Auto-add safe entries</option>
+              <option value="off">Do nothing</option>
+            </select>
+            <p className="settings-hint" style={{ marginTop: '0.25rem' }}>
+              {(settings.wikiAutonomy ?? 'ask') === 'ask' &&
+                'New names become Brainstorm questions — nothing is written to your vault until you answer.'}
+              {settings.wikiAutonomy === 'auto' &&
+                'New names that pass the duplicate / junk checks are stubbed automatically; anything uncertain is skipped.'}
+              {settings.wikiAutonomy === 'off' &&
+                'The wiki will not propose or create anything for new names it finds.'}
+            </p>
+          </div>
+
           {/* Actions */}
           <div className="settings-field" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
