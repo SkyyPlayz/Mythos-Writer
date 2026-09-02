@@ -2,6 +2,7 @@
 // Uses ipcRenderer directly (no ipcMain import) — safe in preload context.
 import { contextBridge, ipcRenderer } from 'electron';
 import { unwrapIpcEnvelope } from './ipcEnvelope.js';
+import type { AiActivityEntry, AiActivityTerminalEvent } from './aiActivityRegistry.js';
 
 // Primary API exposed as window.api
 
@@ -421,6 +422,22 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.send('agent:brainstorm:stream-cancel', { requestId }),
   cancelVaultCheck: (requestId: string) =>
     ipcRenderer.send('agent:vault-check:stream-cancel', { requestId }),
+
+  // SKY-11223: shared AI activity registry — one push channel carries every
+  // in-flight request (agent, surface, provider, model) regardless of which
+  // panel started it, and one cancel channel works for any of them.
+  getAiActivitySnapshot: () => ipcRenderer.invoke('ai-activity:get-snapshot', undefined),
+  onAiActivityUpdate: (cb: (entries: AiActivityEntry[]) => void) => {
+    const handler = (_: unknown, entries: AiActivityEntry[]) => cb(entries);
+    ipcRenderer.on('ai-activity:update', handler);
+    return () => ipcRenderer.removeListener('ai-activity:update', handler);
+  },
+  onAiActivityTerminal: (cb: (event: AiActivityTerminalEvent) => void) => {
+    const handler = (_: unknown, data: AiActivityTerminalEvent) => cb(data);
+    ipcRenderer.on('ai-activity:terminal', handler);
+    return () => ipcRenderer.removeListener('ai-activity:terminal', handler);
+  },
+  cancelAiActivity: (requestId: string) => ipcRenderer.send('ai-activity:cancel', { requestId }),
 
   // Generation log
   generationLogList: (page?: number, pageSize?: number, agent?: string) =>

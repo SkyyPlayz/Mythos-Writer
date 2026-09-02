@@ -5,6 +5,7 @@ import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
 import { Toast } from './components/Toast/Toast';
+import { AiActivityIndicator } from './components/AiActivityIndicator/AiActivityIndicator';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
 import FocusModePrefsDialog from './FocusModePrefsDialog';
 import ExportDialog, { type ExportScope } from './ExportDialog';
@@ -93,6 +94,7 @@ import TourModal from './TourModal';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
+import { useAnyAiActivityRunning } from './agents/aiActivity';
 import { useVaultAgentActions } from './agents/useVaultAgentActions';
 import { useContinuityCommentsBridge } from './archive/useContinuityCommentsBridge';
 import ProjectSwitcher from './ProjectSwitcher';
@@ -1210,7 +1212,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // useVaultAgentActions arms the notes-tree "Beta read" / "Continuity check"
   // context-menu items (left disabled by M15). Hooks live above the loading
   // early return per DesktopShell rules-of-hooks discipline.
-  const agentsActive = useAgentsActive();
+  // SKY-11223: ORed with the shared AiActivityRegistry so the chip lights up
+  // from real provider identity, not just this panel's local loading flag.
+  // Both hooks are called unconditionally first — `||` on the booleans, not
+  // the hook calls themselves, keeps this rules-of-hooks safe.
+  const legacyAgentsActive = useAgentsActive();
+  const registryAgentsActive = useAnyAiActivityRunning();
+  const agentsActive = legacyAgentsActive || registryAgentsActive;
   useAgentActivity(betaReadLoading);
   // Beta 4 M2 (§4): bell rows deep-link to their source. The handlers below
   // are consts declared later in the component — safe because these closures
@@ -7078,6 +7086,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           </div>
         </div>
       )}
+      <AiActivityIndicator />
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />
       <Toast message={voiceToastState?.message ?? null} level={voiceToastState?.level} className="app-toast--stacked" />
       <Toast message={upgradeToastState?.message ?? null} level={upgradeToastState?.level} className="app-toast--stacked" />

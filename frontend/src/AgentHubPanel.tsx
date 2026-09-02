@@ -13,6 +13,7 @@ import ScenesPanel from './ScenesPanel';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
+import { useAgentRunningEntry, useAgentRecentTerminal } from './agents/aiActivity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
 import { AGENT_LABELS, type UnifiedSuggestion } from './SuggestionDetailPane';
 import {
@@ -101,27 +102,44 @@ interface AgentStatus {
   pulse: boolean;
 }
 
-function resolveAgentStatus(
+export function resolveAgentStatus(
   agentId: AgentId,
-  { enabled, pendingCount, continuityCount }: { enabled: boolean; pendingCount: number; continuityCount: number },
+  { enabled, pendingCount, continuityCount, activeEntry, recentTerminal }: {
+    enabled: boolean;
+    pendingCount: number;
+    continuityCount: number;
+    /** SKY-11223: this agent's running request from the shared AiActivityRegistry, if any. */
+    activeEntry: AiActivityEntry | null;
+    /** SKY-11223: this agent's most recently finished request, while still within its visible window. */
+    recentTerminal: AiActivityTerminalEvent | null;
+  },
 ): AgentStatus {
   // GAP-6: a disabled agent says so — and suppresses the '{n} new' override
   // (its chat view surfaces the same disabled state on click-through).
   if (!enabled) return { text: 'Disabled', dot: 'disabled', pulse: false };
   // §9 attention override: pending suggestions from this agent are waiting.
   if (pendingCount > 0) return { text: `${pendingCount} new`, dot: 'attention', pulse: false };
+  // SKY-11223: real activity from the shared registry beats every other
+  // signal below — this is the actual fix behind SKY-11214 (Brainstorm's
+  // "Watching session" used to be hardcoded to enabled, not real work) and
+  // generalizes it to all four agents instead of adding a second, agent-
+  // specific activity store.
+  if (activeEntry) {
+    return { text: `Working — ${activeEntry.surfaceLabel}`, dot: 'watching', pulse: true };
+  }
+  if (recentTerminal?.status === 'error') {
+    return { text: `Needs attention — ${recentTerminal.reason ?? 'the last request failed'}`, dot: 'attention', pulse: false };
+  }
+  if (recentTerminal?.status === 'empty') {
+    return { text: 'Produced nothing — try again', dot: 'attention', pulse: false };
+  }
   switch (agentId) {
-    case 'brainstorm':
-      // Enabled Brainstorm literally watches the writing session.
-      return { text: 'Watching session', dot: 'watching', pulse: true };
     case 'archive':
       // Live open-flag count fed from ContinuityPanel via DesktopShell.
       return continuityCount > 0
         ? { text: `${continuityCount} flag${continuityCount === 1 ? '' : 's'} open`, dot: 'attention', pulse: false }
         : { text: 'Ready', dot: 'idle', pulse: false };
     default:
-      // Writing Coach with nothing pending; Beta Reader has no live
-      // reactions feed in the app yet — Ready/Disabled only.
       return { text: 'Ready', dot: 'idle', pulse: false };
   }
 }
@@ -464,7 +482,11 @@ interface AgentRowProps {
 }
 
 function AgentRow({ def, displayName, onClick, pendingCount = 0, enabled = true, continuityCount = 0 }: AgentRowProps) {
-  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount });
+  // SKY-11223: def.agentKey (NamedAgentId) and AiActivityAgentId are the same
+  // camelCase agent-id space by construction — no translation needed.
+  const activeEntry = useAgentRunningEntry(def.agentKey);
+  const recentTerminal = useAgentRecentTerminal(def.agentKey);
+  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount, activeEntry, recentTerminal });
   // SKY-3941: the row is a button — its accessible name carries name + status
   // so a status change is announced with the agent it belongs to.
   const ariaStatus = status.dot === 'attention' && pendingCount > 0
