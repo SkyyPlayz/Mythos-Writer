@@ -729,7 +729,7 @@ import {
   appendSyncEvent,
 } from './cloudSync.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
-import { getBlastRadius, trashVaultFolder } from './vaultSurface.js';
+import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
 const require = createRequire(import.meta.url);
 
@@ -5761,18 +5761,13 @@ const handlers: IpcHandlers = {
       return result;
     }
 
-    if (level === 'mythos') {
+    // SKY-11202: pruneRecentProjectsForTrash handles all three levels,
+    // including clearing a 'notes'-level entry's dangling notesVaultRoot
+    // pointer (the paired Story Vault entry survives, only the pointer is
+    // cleared) instead of leaving it pointing at a now-trashed folder.
+    {
       const current = loadVaultSettings();
-      const remaining = (current.recentProjects ?? []).filter(
-        (p) => !path.resolve(p.vaultRoot).startsWith(vaultPath + path.sep) &&
-               path.resolve(p.vaultRoot) !== vaultPath,
-      );
-      saveVaultSettings({ recentProjects: remaining });
-    } else {
-      const current = loadVaultSettings();
-      const remaining = (current.recentProjects ?? []).filter(
-        (p) => path.resolve(p.vaultRoot) !== vaultPath,
-      );
+      const remaining = pruneRecentProjectsForTrash(current.recentProjects ?? [], vaultPath, level);
       saveVaultSettings({ recentProjects: remaining });
     }
 
