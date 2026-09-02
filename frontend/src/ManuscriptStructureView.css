@@ -7,7 +7,19 @@
   overflow: hidden;
   position: absolute;
   inset: 0;
-  background: var(--bg-base);
+  /* SKY-11209: was a flat opaque --bg-base fill occluding the shell
+     wallpaper on this full-screen overlay. Same top-level glass pattern as
+     .settings-panel/.brainstorm-page (SKY-11047) — no ancestor glass sheet
+     sits behind this view to fall back on. */
+  background: var(--glass-fill-fallback);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .msv {
+    background: var(--glass-fill);
+    backdrop-filter: blur(var(--blur-panel));
+    -webkit-backdrop-filter: blur(var(--blur-panel));
+  }
 }
 
 /* ─── Header (Beta 3 M14, prototype 558–565) ─── */
