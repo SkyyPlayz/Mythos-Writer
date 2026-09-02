@@ -838,6 +838,51 @@ contextBridge.exposeInMainWorld('api', {
   iconReadSvg: (packName: string, iconName: string) =>
     ipcRenderer.invoke('icons:readSvg', { packName, iconName }) as unknown as Promise<{ svg: string | null }>,
 
+  // SKY-11183 (Notes Board 1/9): board metadata store IPC — data/IPC layer
+  // only, no UI yet. See notesBoard.ts / BOARDS-SPEC.md.
+  notesBoardGet: (folderPath: string) =>
+    ipcRenderer.invoke('notesBoard:get', { folderPath }) as Promise<{
+      id: string | null;
+      children: Array<{ path: string; kind: 'note' | 'folder'; id: string | null }>;
+      layout: Record<string, { x: number; y: number; w?: number; h?: number }>;
+      colors: Record<string, string>;
+      furniture: Array<Record<string, unknown> & { id: string; k: string; x: number; y: number }>;
+      view: { zoom: number; panX: number; panY: number };
+    }>,
+  notesBoardPatchLayout: (
+    folderPath: string,
+    itemPath: string,
+    patch: { x?: number; y?: number; w?: number; h?: number },
+  ) =>
+    ipcRenderer.invoke('notesBoard:patchLayout', { folderPath, itemPath, patch }) as Promise<{
+      key: string;
+      id: string;
+    }>,
+  notesBoardPatchColors: (folderPath: string, itemPath: string, color: string | null) =>
+    ipcRenderer.invoke('notesBoard:patchColors', { folderPath, itemPath, color }) as Promise<{
+      key: string;
+      id: string;
+    }>,
+  notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) =>
+    ipcRenderer.invoke('notesBoard:furnitureCreate', { folderPath, item }) as Promise<{
+      item: Record<string, unknown> & { id: string };
+    }>,
+  notesBoardFurnitureUpdate: (folderPath: string, furnitureId: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke('notesBoard:furnitureUpdate', { folderPath, furnitureId, patch }) as Promise<{
+      item: (Record<string, unknown> & { id: string }) | null;
+    }>,
+  notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) =>
+    ipcRenderer.invoke('notesBoard:furnitureDelete', { folderPath, furnitureId }) as Promise<{
+      deleted: boolean;
+    }>,
+  // SKY-11183 §2: Store B no-op by construction — see itemRenameNotify in
+  // notesBoard.ts. Exists for IPC-surface symmetry only.
+  notesBoardItemRename: (folderPath: string, fromPath: string, toPath: string) =>
+    ipcRenderer.invoke('notesBoard:itemRename', { folderPath, fromPath, toPath }) as Promise<{ ok: true }>,
+  // SKY-11183 §6 stub: Store B cleanup only, never touches the real fs item.
+  notesBoardItemDelete: (folderPath: string, itemPath: string) =>
+    ipcRenderer.invoke('notesBoard:itemDelete', { folderPath, itemPath }) as Promise<{ key: string | null }>,
+
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   smartFolderList: () =>
     ipcRenderer.invoke('smartFolder:list', undefined),

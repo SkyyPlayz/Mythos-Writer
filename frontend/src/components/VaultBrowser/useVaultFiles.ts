@@ -31,19 +31,33 @@ export function useVaultFiles(source: Source = 'story') {
   }, [source]);
 
   useEffect(() => {
-    window.api.startVaultWatch?.().catch(() => {});
-    load();
-
-    const unsub = window.api.onVaultFileChanged?.(() => {
+    const scheduleReload = () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       refreshTimer.current = setTimeout(load, 150);
-    });
+    };
+
+    // SKY-11182: subscribe to the change channel that matches this hook's vault.
+    // Previously both sources listened on the Story-Vault channel
+    // (`vault:file-changed`), so background Story-Vault writes spuriously
+    // reloaded the Notes tree, and real Notes-Vault edits (which emit only on
+    // `vault:notes-updated`) were missed. Branch on `source` so each tree
+    // refreshes on — and only on — its own vault's changes.
+    let unsub: (() => void) | undefined;
+    if (source === 'notes') {
+      // Main starts the Notes watcher (`startNotesVaultWatcher`) on project
+      // switch, so no renderer-side watch start is needed here.
+      unsub = window.api.onVaultNotesUpdated?.(scheduleReload);
+    } else {
+      window.api.startVaultWatch?.().catch(() => {});
+      unsub = window.api.onVaultFileChanged?.(scheduleReload);
+    }
+    load();
 
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       unsub?.();
     };
-  }, [load]);
+  }, [load, source]);
 
   return { items, loading, reload: load };
 }

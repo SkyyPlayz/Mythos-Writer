@@ -1,7 +1,6 @@
 {
   "_comment": "Pre-existing never-passed optional callback props, tracked at introduction of the rule-3a check (SKY-10918). NOT a suppression forever — each entry needs a fix or a real future-hook allow-comment, tracked on SKY-10923 (ManuscriptView/StoryNavigator) or SKY-10926 (everything else). Regenerate with `node scripts/check-dead-wiring.mjs --update-baseline` after fixing an entry so it drops out and a regression on it fails CI again.",
   "entries": [
-    "frontend/src/AgentHubPanel.tsx::AgentHubPanel.onOpenSuggestionInbox",
     "frontend/src/StoryNavigator.tsx::StoryNavigator.onCreatePart"
   ]
 }
